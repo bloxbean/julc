@@ -76,6 +76,22 @@ tasks.register('buildFrontend', Exec) {
     outputs.dir(file('src/main/resources/static'))
 }
 
+tasks.register('testFrontendStore', Exec) {
+    workingDir frontendDir
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm', 'run', 'test:store'
+    } else {
+        commandLine 'sh', '-c', 'npm run test:store'
+    }
+    inputs.file(new File(frontendDir, 'package.json'))
+    inputs.file(new File(frontendDir, 'src/lib/uplc/locals-identity.js'))
+    inputs.file(new File(frontendDir, 'src/lib/uplc/store-locals-identity.test.mjs'))
+}
+
+tasks.named('test') {
+    dependsOn 'testFrontendStore'
+}
+
 if (project.hasProperty('withFrontend')) {
     processResources.dependsOn buildFrontend
 }

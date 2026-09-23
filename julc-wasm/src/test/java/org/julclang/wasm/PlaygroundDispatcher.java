@@ -104,6 +104,10 @@ public final class PlaygroundDispatcher {
                         mapper.readValue(body, SourceDebugModels.OpenRequest.class));
                 case "/api/source-debug/act" -> sourceDebug.act(
                         mapper.readValue(body, SourceDebugModels.ActionRequest.class));
+                case "/api/source-debug/locals" -> sourceDebug.locals(
+                        mapper.readValue(body, SourceDebugModels.LocalsRequest.class));
+                case "/api/source-debug/children" -> sourceDebug.children(
+                        mapper.readValue(body, SourceDebugModels.ChildrenRequest.class));
                 case "/api/source-debug/close" -> sourceDebug.close(
                         mapper.readValue(body, SourceDebugModels.CloseRequest.class));
                 default -> notFound(method, path);

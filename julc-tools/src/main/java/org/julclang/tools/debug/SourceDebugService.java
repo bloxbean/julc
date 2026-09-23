@@ -2,6 +2,7 @@ package org.julclang.tools.debug;
 
 import org.julclang.blueprint.BlueprintGenerator;
 import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.DebugCompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
@@ -10,6 +11,8 @@ import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
 import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.core.cbor.PlutusDataCborEncoder;
+import org.julclang.core.debug.DebugMetadata;
 import org.julclang.core.source.SourceMap;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.tools.api.InputValidator;
@@ -18,6 +21,11 @@ import org.julclang.tools.model.FieldDto;
 import org.julclang.tools.model.SourceDebugModels.ActionRequest;
 import org.julclang.tools.model.SourceDebugModels.ActionResponse;
 import org.julclang.tools.model.SourceDebugModels.CloseRequest;
+import org.julclang.tools.model.SourceDebugModels.ChildrenRequest;
+import org.julclang.tools.model.SourceDebugModels.ChildrenResponse;
+import org.julclang.tools.model.SourceDebugModels.LocalsCapability;
+import org.julclang.tools.model.SourceDebugModels.LocalsRequest;
+import org.julclang.tools.model.SourceDebugModels.LocalsResponse;
 import org.julclang.tools.model.SourceDebugModels.OpenRequest;
 import org.julclang.tools.model.SourceDebugModels.OpenResponse;
 import org.julclang.tools.model.UplcModels.ScriptInput;
@@ -43,7 +51,20 @@ public final class SourceDebugService {
 
     private static final int MAX_SESSIONS = 16;
 
-    private record Session(UplcToolsService tools) {}
+    private static final class Session {
+        final UplcToolsService tools;
+        final JavaLocalsService locals;
+        long generation;
+
+        Session(UplcToolsService tools, JavaLocalsService locals) {
+            this.tools = tools;
+            this.locals = locals;
+            this.generation = 1;
+            if (locals != null) locals.invalidate(generation);
+        }
+    }
+
+    private record AppliedProgram(Program program, List<String> parameterDigests, int parameterCount) {}
 
     private final Map<String, LibrarySource> cachedLibSources;
     private final LinkedHashMap<String, Session> sessions = new LinkedHashMap<>();
@@ -65,7 +86,11 @@ public final class SourceDebugService {
             if (request.librarySource() != null && !request.librarySource().isBlank()) {
                 libraries.add(request.librarySource());
             }
-            CompileResult compiled = compiler.compileWithDetails(request.source(), libraries);
+            boolean localsRequested = Boolean.TRUE.equals(request.locals());
+            DebugCompileResult debugCompiled = localsRequested
+                    ? compiler.compileForDebug(request.source(), libraries) : null;
+            CompileResult compiled = debugCompiled == null ? compiler.compileWithDetails(request.source(), libraries)
+                    : debugCompiled.compileResult();
             var diagnostics = compiled.diagnostics().stream().map(DiagnosticDto::from).toList();
             if (compiled.hasErrors() || compiled.program() == null) {
                 return ServiceResult.ok(error("Compilation failed", diagnostics));
@@ -91,7 +116,8 @@ public final class SourceDebugService {
                         null, null, null, null, WARNING));
             }
 
-            Program debugProgram = applyParameters(compiled, request);
+            AppliedProgram applied = applyParameters(compiled, request);
+            Program debugProgram = applied.program();
             Map<Integer, org.julclang.core.source.SourceLocation> indexed =
                     compiled.sourceMap().toIndexed(debugProgram.term());
             String compiledCode = BlueprintGenerator.compiledCode(debugProgram);
@@ -113,17 +139,31 @@ public final class SourceDebugService {
             if (!opened.body().ok()) {
                 return ServiceResult.status(opened.status(), error(opened.body().error(), diagnostics));
             }
+            JavaLocalsService locals = null;
+            LocalsCapability localsCapability;
+            if (debugCompiled != null) {
+                DebugMetadata metadata = debugCompiled.debugMetadata().withAppliedArtifact(
+                        debugProgram, applied.parameterCount(), applied.parameterDigests());
+                locals = new JavaLocalsService(metadata, prepared.decoded().program());
+                localsCapability = new LocalsCapability(true, "julc-java-debug/1.1",
+                        List.of("scalar-v1", "raw-data-v1"), null);
+            } else {
+                localsCapability = new LocalsCapability(false, "julc-java-debug/1.1", List.of(),
+                        "Java locals were not requested for this source-debug session");
+            }
             String sessionId = Long.toUnsignedString(++nextSession);
-            sessions.put(sessionId, new Session(tools));
+            var session = new Session(tools, locals);
+            sessions.put(sessionId, session);
             evictOldest();
 
             var decoded = prepared.decoded();
+            var snapshot = withGeneration(session, opened.body().snapshot());
             return ServiceResult.ok(new OpenResponse(true, null, sessionId, request.source(),
                     tools.uplcText(),
                     compiledCode, BlueprintGenerator.scriptHash(debugProgram),
                     UplcFlatEncoder.encodeProgram(debugProgram).length, declaredParams, diagnostics,
-                    tools.executableJavaLines(), opened.body().timeline(), opened.body().snapshot(),
-                    EvaluationPreparation.targetOf(prepared), prepared.costModelId(), WARNING));
+                    tools.executableJavaLines(), opened.body().timeline(), snapshot,
+                    EvaluationPreparation.targetOf(prepared), prepared.costModelId(), WARNING, localsCapability));
         } catch (CompilerException e) {
             var diagnostics = e.diagnostics().stream().map(DiagnosticDto::from).toList();
             return ServiceResult.ok(error("Compilation failed", diagnostics));
@@ -138,25 +178,72 @@ public final class SourceDebugService {
         if (request == null || request.sessionId() == null) return missing();
         Session session = sessions.get(request.sessionId());
         if (session == null) return missing();
-        var result = session.tools().act(request.action(), request.step(), request.breakpoints());
+        var result = session.tools.act(request.action(), request.step(), request.breakpoints());
         var body = result.body();
+        if (body.ok()) {
+            session.generation++;
+            if (session.locals != null) session.locals.invalidate(session.generation);
+        }
         return ServiceResult.status(result.status(), new ActionResponse(body.ok(), body.error(),
-                body.timeline(), body.snapshot()));
+                body.timeline(), withGeneration(session, body.snapshot())));
+    }
+
+    public synchronized ServiceResult<LocalsResponse> locals(LocalsRequest request) {
+        if (request == null || request.sessionId() == null) {
+            return ServiceResult.status(404, new LocalsResponse(false,
+                    "Source-debug session is closed or belongs to a previous worker", 0,
+                    "stale", null, List.of()));
+        }
+        Session session = sessions.get(request.sessionId());
+        if (session == null) {
+            return ServiceResult.status(404, new LocalsResponse(false,
+                    "Source-debug session is closed or belongs to a previous worker", 0,
+                    "stale", null, List.of()));
+        }
+        if (session.locals == null) {
+            return ServiceResult.status(409, new LocalsResponse(false,
+                    "Java locals were not enabled for this session", session.generation,
+                    "unsupported", null, List.of()));
+        }
+        return ServiceResult.ok(session.locals.locals(session.tools.debugObservation(),
+                request.stopGeneration(), session.generation));
+    }
+
+    public synchronized ServiceResult<ChildrenResponse> children(ChildrenRequest request) {
+        if (request == null || request.sessionId() == null) {
+            return ServiceResult.status(404, new ChildrenResponse(false,
+                    "Source-debug session is closed or belongs to a previous worker", 0,
+                    request == null ? null : request.handle(), 0, null, List.of()));
+        }
+        Session session = sessions.get(request.sessionId());
+        if (session == null) {
+            return ServiceResult.status(404, new ChildrenResponse(false,
+                    "Source-debug session is closed or belongs to a previous worker", 0,
+                    request.handle(), request.start(), null, List.of()));
+        }
+        if (session.locals == null) {
+            return ServiceResult.status(409, new ChildrenResponse(false,
+                    "Java locals were not enabled for this session", session.generation,
+                    request.handle(), request.start(), null, List.of()));
+        }
+        return ServiceResult.ok(session.locals.children(request.stopGeneration(), session.generation,
+                request.handle(), request.start(), request.count()));
     }
 
     public synchronized ServiceResult<Map<String, Boolean>> close(CloseRequest request) {
         if (request == null || request.sessionId() == null) return closeMissing();
         Session session = sessions.remove(request.sessionId());
         if (session == null) return closeMissing();
-        session.tools().close();
+        session.tools.close();
         return ServiceResult.ok(Map.of("closed", true));
     }
 
-    private static Program applyParameters(CompileResult compiled, OpenRequest request) {
+    private static AppliedProgram applyParameters(CompileResult compiled, OpenRequest request) {
         var inputs = request.params() == null ? List.<org.julclang.tools.model.MockTransaction.DataInput>of()
                 : request.params();
-        if (inputs.isEmpty()) return compiled.program();
+        if (inputs.isEmpty()) return new AppliedProgram(compiled.program(), List.of(), 0);
         var values = new PlutusData[inputs.size()];
+        var digests = new ArrayList<String>(inputs.size());
         for (int i = 0; i < inputs.size(); i++) {
             try {
                 values[i] = DataInputs.parse(inputs.get(i));
@@ -164,8 +251,9 @@ public final class SourceDebugService {
                 throw new IllegalArgumentException("Parameter " + (i + 1) + ": " + e.getMessage(), e);
             }
             if (values[i] == null) throw new IllegalArgumentException("Parameter " + (i + 1) + " is empty");
+            digests.add(DebugMetadata.sha256(PlutusDataCborEncoder.encode(values[i])));
         }
-        return compiled.program().applyParams(values);
+        return new AppliedProgram(compiled.program().applyParams(values), List.copyOf(digests), values.length);
     }
 
     private static String validate(OpenRequest request) {
@@ -184,7 +272,7 @@ public final class SourceDebugService {
         while (sessions.size() > MAX_SESSIONS) {
             var iterator = sessions.entrySet().iterator();
             var oldest = iterator.next();
-            oldest.getValue().tools().close();
+            oldest.getValue().tools.close();
             iterator.remove();
         }
     }
@@ -192,6 +280,18 @@ public final class SourceDebugService {
     private static OpenResponse error(String message, List<DiagnosticDto> diagnostics) {
         return new OpenResponse(false, message, null, null, null, null, null, 0,
                 List.of(), diagnostics, List.of(), null, null, null, null, WARNING);
+    }
+
+    private static org.julclang.tools.model.UplcModels.Snapshot withGeneration(
+            Session session, org.julclang.tools.model.UplcModels.Snapshot snapshot) {
+        if (snapshot == null) return null;
+        if (session.locals == null) return snapshot.withLocals(session.generation, "unsupported");
+        var observation = session.tools.debugObservation();
+        if (!observation.computing()) {
+            return snapshot.withLocals(session.generation, "unavailable");
+        }
+        return snapshot.withLocals(session.generation,
+                session.locals.isAvailable(observation) ? "available" : "unavailable");
     }
 
     private static ServiceResult<ActionResponse> missing() {

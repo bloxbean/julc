@@ -157,7 +157,7 @@ tasks.register('vmToolsJar', Jar) {
             digest.update(moduleBytes)
             fileTree('src/main/js').files.sort { it.name }.each { digest.update(it.bytes) }
             digest.update(file('src/main/resources/julc-runtime.js').bytes)
-            def groups = vmOnly ? ['vm', 'debug'] : ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug']
+            def groups = vmOnly ? ['vm', 'debug'] : ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals']
             digest.update(variant.getBytes('UTF-8'))
             digest.update(groups.join(',').getBytes('UTF-8'))
             def hash = digest.digest().encodeHex().toString().substring(0, 12)

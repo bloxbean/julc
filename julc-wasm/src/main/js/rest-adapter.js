@@ -7,6 +7,7 @@
     '/api/uplc/evaluate': 'uplc.evaluateTransaction', '/api/uplc/debug': 'uplc.debugTransaction',
     '/api/source-debug/open': 'sourceDebug.open', '/api/source-debug/act': 'sourceDebug.act',
     '/api/source-debug/close': 'sourceDebug.close',
+    '/api/source-debug/locals': 'sourceDebug.locals', '/api/source-debug/children': 'sourceDebug.children',
   };
   function typed(value, schema) {
     if (value == null) return value;

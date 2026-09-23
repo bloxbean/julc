@@ -37,6 +37,7 @@ import org.julclang.vm.EvalOptions;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.PlutusLanguage;
 import org.julclang.vm.java.CekFrame;
+import org.julclang.vm.java.CekEnvironment;
 import org.julclang.vm.java.CekMachine;
 import org.julclang.vm.java.CekValue;
 import org.julclang.vm.java.SteppingEvaluation;
@@ -59,6 +60,10 @@ import java.util.TreeSet;
  * request stopped and moving backward replays from the start.
  */
 public final class UplcToolsService {
+
+    /** Immutable read-only view used by the transport-neutral Java-locals projector. */
+    public record DebugObservation(boolean computing, Term term, CekEnvironment environment,
+                                   String unavailableReason) {}
 
     /** Mainnet per-transaction execution unit limits, used when a request sets none. */
     public static final long DEFAULT_MAX_CPU = 10_000_000_000L;
@@ -207,6 +212,24 @@ public final class UplcToolsService {
     public synchronized String uplcText() {
         if (session == null) throw new IllegalStateException("Debug session is closed");
         return session.pretty.text();
+    }
+
+    /** Observe only a live compute-phase term/environment pair; all other CEK phases fail closed. */
+    public synchronized DebugObservation debugObservation() {
+        if (session == null || session.evaluation == null) {
+            return new DebugObservation(false, null, null, "debug machine has not started");
+        }
+        if (session.evaluation.result() != null) {
+            return new DebugObservation(false, null, null, "terminal debugger states have no Java locals");
+        }
+        CekMachine machine = session.evaluation.machine();
+        if (machine == null) {
+            return new DebugObservation(false, null, null, "debug machine is unavailable");
+        }
+        if (!machine.isComputing()) {
+            return new DebugObservation(false, null, null, "Java locals are unavailable in the CEK return phase");
+        }
+        return new DebugObservation(true, machine.currentTerm(), machine.currentEnvironment(), null);
     }
 
     public synchronized ServiceResult<DebugResponse> act(String action, Long step, Breakpoints points) {

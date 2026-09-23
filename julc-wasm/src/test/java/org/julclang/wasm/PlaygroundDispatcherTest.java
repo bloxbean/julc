@@ -24,6 +24,7 @@ import org.julclang.tools.model.MockTransaction;
 import org.julclang.tools.model.MockTransaction.DataInput;
 import org.julclang.tools.model.SourceDebugModels.ActionRequest;
 import org.julclang.tools.model.SourceDebugModels.CloseRequest;
+import org.julclang.tools.model.SourceDebugModels.LocalsRequest;
 import org.julclang.tools.model.SourceDebugModels.OpenRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -101,6 +102,8 @@ class PlaygroundDispatcherTest {
         var app = Javalin.create()
                 .post("/api/source-debug/open", sourceDebug::open)
                 .post("/api/source-debug/act", sourceDebug::act)
+                .post("/api/source-debug/locals", sourceDebug::locals)
+                .post("/api/source-debug/children", sourceDebug::children)
                 .post("/api/source-debug/close", sourceDebug::close);
         try {
             JavalinTest.test(app, (server, client) -> {
@@ -112,7 +115,7 @@ class PlaygroundDispatcherTest {
                                 return true;
                             }
                         }
-                        """, null, List.of(), sourceDebugTransaction(), 11, null, null, null, null);
+                        """, null, List.of(), sourceDebugTransaction(), 11, null, null, null, null, true);
                 String openBody = MAPPER.writeValueAsString(openRequest);
                 JsonNode serverOpen;
                 try (var response = client.post("/api/source-debug/open", openBody)) {
@@ -127,6 +130,9 @@ class PlaygroundDispatcherTest {
 
                 String serverSession = serverOpen.get("sessionId").asText();
                 String wasmSession = wasmOpen.get("sessionId").asText();
+                assertSessionLocalsParity(client, dispatcher, serverSession, wasmSession,
+                        serverOpen.at("/snapshot/stopGeneration").asLong(),
+                        wasmOpen.at("/snapshot/stopGeneration").asLong());
                 assertSessionActionParity(client, dispatcher, serverSession, wasmSession, "goto", 1L, 200);
 
                 var serverClose = client.post("/api/source-debug/close",
@@ -212,6 +218,20 @@ class PlaygroundDispatcherTest {
                 MAPPER.writeValueAsString(wasmRequest)));
         try (var serverResponse = client.post("/api/source-debug/act", MAPPER.writeValueAsString(serverRequest))) {
             assertEquals(expectedStatus, serverResponse.code());
+            assertEquals(serverResponse.code(), wasmResponse.get("status").asInt());
+            assertEquals(MAPPER.readTree(serverResponse.body().string()), wasmResponse.get("body"));
+        }
+    }
+
+    private static void assertSessionLocalsParity(HttpClient client, PlaygroundDispatcher dispatcher,
+                                                  String serverSession, String wasmSession,
+                                                  long serverGeneration, long wasmGeneration) throws Exception {
+        var serverRequest = new LocalsRequest(serverSession, serverGeneration);
+        var wasmRequest = new LocalsRequest(wasmSession, wasmGeneration);
+        JsonNode wasmResponse = MAPPER.readTree(dispatcher.dispatch("POST", "/api/source-debug/locals",
+                MAPPER.writeValueAsString(wasmRequest)));
+        try (var serverResponse = client.post("/api/source-debug/locals", MAPPER.writeValueAsString(serverRequest))) {
+            assertEquals(200, serverResponse.code());
             assertEquals(serverResponse.code(), wasmResponse.get("status").asInt());
             assertEquals(MAPPER.readTree(serverResponse.body().string()), wasmResponse.get("body"));
         }

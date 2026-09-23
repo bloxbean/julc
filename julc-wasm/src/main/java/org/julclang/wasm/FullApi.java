@@ -48,6 +48,8 @@ public final class FullApi {
         api.add("uplc.debugTransaction", TransactionRequest.class, r -> transaction(r, vmApi, true));
         api.add("sourceDebug.open", SourceDebugModels.OpenRequest.class, sourceDebug::open);
         api.add("sourceDebug.act", SourceDebugModels.ActionRequest.class, sourceDebug::act);
+        api.add("sourceDebug.locals", SourceDebugModels.LocalsRequest.class, sourceDebug::locals);
+        api.add("sourceDebug.children", SourceDebugModels.ChildrenRequest.class, sourceDebug::children);
         api.add("sourceDebug.close", SourceDebugModels.CloseRequest.class, sourceDebug::close);
     }
 

@@ -1,12 +1,14 @@
 import { derived, get, writable, type Writable } from 'svelte/store';
 import { post } from '../api/client';
 import { currentTransport, type Transport } from '../api/transport';
-import { engine } from '../stores/engine';
+import { engine, wasmFeatures } from '../stores/engine';
 import { EXAMPLES, type UplcExample } from './examples';
+import { localsIdentityKey, localsResponseMatches } from './locals-identity.js';
 import { defaultTransaction, PRESETS } from './mock';
 import type {
   Breakpoints, DataInput, DebugAction, DebugResponse, DecodeResponse, DecompileResponse, EvaluateResponse,
-  MockTransaction, PurposeType, ScriptInput, Snapshot, SourceDebugOpenResponse, Span, Timeline,
+  JavaChildrenResponse, JavaLocalsResponse, MockTransaction, PurposeType, ScriptInput, Snapshot,
+  SourceDebugOpenResponse, Span, Timeline,
 } from './types';
 
 // ---------------------------------------------------------------- persisted inputs
@@ -89,6 +91,9 @@ export interface SourceDebugState {
 export const sourceDebugState = writable<SourceDebugState>({
   loading: false, response: null, sessionId: null, error: null, stale: false, bindingKey: null, transport: null,
 });
+export const javaLocalsState = writable<{
+  loading: boolean; response: JavaLocalsResponse | null; error: string | null; identity: string | null;
+}>({ loading: false, response: null, error: null, identity: null });
 
 // ---------------------------------------------------------------- actions
 
@@ -146,6 +151,7 @@ function sourceDebugRequest() {
     protocolVersion: p.protocolVersion,
     maxCpu: p.maxCpu,
     maxMem: p.maxMem,
+    locals: get(engine) !== 'wasm' || !!get(wasmFeatures)?.groups.includes('sourceDebugLocals'),
   };
 }
 
@@ -169,6 +175,7 @@ let sourceDebugSeq = 0;
 
 export async function compileSourceDebug(): Promise<void> {
   const seq = ++sourceDebugSeq;
+  localsSeq++;
   const old = get(sourceDebugState);
   if (old.sessionId) {
     void post('/api/source-debug/close', { sessionId: old.sessionId }, undefined,
@@ -177,6 +184,7 @@ export async function compileSourceDebug(): Promise<void> {
   sourceDebugState.set({
     loading: true, response: null, sessionId: null, error: null, stale: false, bindingKey: null, transport: null,
   });
+  javaLocalsState.set({ loading: false, response: null, error: null, identity: null });
   debugState.set({ active: false, loading: true, timeline: null, snapshot: null, error: null, stale: false });
   outputTab.set('debugger');
   const request = sourceDebugRequest();
@@ -226,6 +234,7 @@ export async function compileSourceDebug(): Promise<void> {
       active: true, loading: false, timeline: response.timeline, snapshot: response.snapshot,
       error: null, stale: false,
     });
+    void loadJavaLocals();
   } catch (e) {
     if (seq !== sourceDebugSeq) return;
     const message = (e as Error).message;
@@ -264,6 +273,7 @@ async function debugRequest(action: DebugAction, step: number): Promise<void> {
       error: null,
       stale: action === 'timeline' ? false : s.stale,
     }));
+    if (isBoundSourceSession) void loadJavaLocals();
   } catch (e) {
     debugState.update((s) => ({ ...s, loading: false, error: (e as Error).message }));
   }
@@ -288,6 +298,7 @@ export async function startDebug(atFailure = false): Promise<void> {
 
 export function stopDebug(): void {
   sourceDebugSeq++;
+  localsSeq++;
   const source = get(sourceDebugState);
   if (source.sessionId) {
     void post('/api/source-debug/close', { sessionId: source.sessionId }, undefined,
@@ -295,6 +306,76 @@ export function stopDebug(): void {
   }
   sourceDebugState.update((s) => ({ ...s, sessionId: null, stale: !!s.response, transport: null }));
   debugState.set({ active: false, loading: false, timeline: null, snapshot: null, error: null, stale: false });
+  javaLocalsState.set({ loading: false, response: null, error: null, identity: null });
+}
+
+let localsSeq = 0;
+interface LocalsRequestIdentity {
+  key: string;
+  sessionId: string;
+  generation: number;
+  transport: Transport;
+}
+
+function currentLocalsRequestIdentity(): LocalsRequestIdentity | null {
+  const source = get(sourceDebugState);
+  const generation = get(debugState).snapshot?.stopGeneration;
+  if (!source.sessionId || source.stale || generation == null || !source.response?.localsCapability?.available) {
+    return null;
+  }
+  const key = localsIdentityKey({
+    sessionId: source.sessionId,
+    bindingKey: source.bindingKey,
+    artifactIdentity: source.response.scriptHash,
+    revision: sourceDebugSeq,
+    generation,
+  });
+  if (!key) return null;
+  return { key, sessionId: source.sessionId, generation,
+    transport: source.transport ?? currentTransport() };
+}
+
+export async function loadJavaLocals(): Promise<void> {
+  const seq = ++localsSeq;
+  const source = get(sourceDebugState);
+  const identity = currentLocalsRequestIdentity();
+  if (!identity) {
+    javaLocalsState.set({ loading: false, response: null,
+      error: source.response?.localsCapability?.unavailableReason ?? null, identity: null });
+    return;
+  }
+  javaLocalsState.set({ loading: true, response: null, error: null, identity: identity.key });
+  try {
+    const response = await post<JavaLocalsResponse>('/api/source-debug/locals', {
+      sessionId: identity.sessionId, stopGeneration: identity.generation,
+    }, undefined, identity.transport);
+    const current = currentLocalsRequestIdentity();
+    if (seq === localsSeq && localsResponseMatches(identity.key, current?.key,
+      identity.generation, response.stopGeneration)) {
+      javaLocalsState.set({ loading: false, response, error: response.ok ? null : response.error,
+        identity: identity.key });
+    }
+  } catch (e) {
+    const current = currentLocalsRequestIdentity();
+    if (seq === localsSeq && current?.key === identity.key) {
+      javaLocalsState.set({ loading: false, response: null, error: (e as Error).message,
+        identity: identity.key });
+    }
+  }
+}
+
+export async function loadJavaLocalChildren(handle: string, start = 0,
+  count = 50): Promise<JavaChildrenResponse> {
+  const identity = currentLocalsRequestIdentity();
+  if (!identity) throw new Error('Java locals reference is stale');
+  const response = await post<JavaChildrenResponse>('/api/source-debug/children', {
+    sessionId: identity.sessionId, stopGeneration: identity.generation, handle, start, count,
+  }, undefined, identity.transport);
+  const current = currentLocalsRequestIdentity();
+  if (!localsResponseMatches(identity.key, current?.key, identity.generation, response.stopGeneration)) {
+    throw new Error('Java locals reference is stale');
+  }
+  return response;
 }
 
 const currentStep = () => get(debugState).snapshot?.step ?? 0;
@@ -375,6 +456,7 @@ sourceDebugParams.subscribe(() => {
 function markStale() {
   evalState.update((s) => (s.response ? { ...s, stale: true } : s));
   refreshSourceDebugStaleness();
+  clearJavaLocalsIfStale();
   const source = get(sourceDebugState);
   const boundSource = !!source.sessionId && source.response?.compiledCode === get(scriptText);
   debugState.update((s) => (s.active ? { ...s, stale: boundSource ? source.stale : true } : s));
@@ -382,9 +464,16 @@ function markStale() {
 
 function markSourceDebugStale() {
   refreshSourceDebugStaleness();
+  clearJavaLocalsIfStale();
   const source = get(sourceDebugState);
   const boundSource = !!source.sessionId && source.response?.compiledCode === get(scriptText);
   debugState.update((s) => (s.active ? { ...s, stale: boundSource ? source.stale : true } : s));
+}
+
+function clearJavaLocalsIfStale(): void {
+  if (!get(sourceDebugState).stale) return;
+  localsSeq++;
+  javaLocalsState.set({ loading: false, response: null, error: null, identity: null });
 }
 
 function refreshSourceDebugStaleness(): void {

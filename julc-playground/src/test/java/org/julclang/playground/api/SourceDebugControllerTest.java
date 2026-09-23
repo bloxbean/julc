@@ -11,6 +11,8 @@ import org.julclang.tools.model.MockTransaction.DataInput;
 import org.julclang.tools.model.SourceDebugModels.ActionRequest;
 import org.julclang.tools.model.SourceDebugModels.ActionResponse;
 import org.julclang.tools.model.SourceDebugModels.CloseRequest;
+import org.julclang.tools.model.SourceDebugModels.LocalsRequest;
+import org.julclang.tools.model.SourceDebugModels.LocalsResponse;
 import org.julclang.tools.model.SourceDebugModels.OpenRequest;
 import org.julclang.tools.model.SourceDebugModels.OpenResponse;
 import org.junit.jupiter.api.AfterAll;
@@ -35,6 +37,8 @@ class SourceDebugControllerTest {
         return Javalin.create()
                 .post("/api/source-debug/open", CONTROLLER::open)
                 .post("/api/source-debug/act", CONTROLLER::act)
+                .post("/api/source-debug/locals", CONTROLLER::locals)
+                .post("/api/source-debug/children", CONTROLLER::children)
                 .post("/api/source-debug/close", CONTROLLER::close);
     }
 
@@ -49,12 +53,18 @@ class SourceDebugControllerTest {
                             return true;
                         }
                     }
-                    """, null, List.of(), transaction(), 11, null, null, null, null)));
+                    """, null, List.of(), transaction(), 11, null, null, null, null, true)));
             assertEquals(200, open.code());
             var descriptor = JSON.readValue(open.body().string(), OpenResponse.class);
             assertTrue(descriptor.ok(), descriptor.error());
             assertNotNull(descriptor.sessionId());
             assertTrue(descriptor.warning().contains("optimizer is disabled"));
+            assertTrue(descriptor.localsCapability().available());
+
+            var locals = client.post("/api/source-debug/locals", JSON.writeValueAsString(
+                    new LocalsRequest(descriptor.sessionId(), descriptor.snapshot().stopGeneration())));
+            assertEquals(200, locals.code());
+            assertTrue(JSON.readValue(locals.body().string(), LocalsResponse.class).ok());
 
             var act = client.post("/api/source-debug/act", JSON.writeValueAsString(
                     new ActionRequest(descriptor.sessionId(), "goto", 1L, null)));

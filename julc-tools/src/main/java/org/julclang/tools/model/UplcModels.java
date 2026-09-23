@@ -116,14 +116,29 @@ public final class UplcModels {
     public record Snapshot(long step, String phase, Span span, JavaLocation javaLocation, String termKind, String value,
                            List<EnvEntry> environment, List<Frame> frames, int stackDepth, long cpu, long mem,
                            long cpuDelta, long memDelta, List<String> traces, boolean finished, String status,
-                           String error, String stopReason) {
+                           String error, String stopReason, Long stopGeneration, String localsAvailability) {
+        /** Backward-compatible snapshot without Java-locals generation metadata. */
+        public Snapshot(long step, String phase, Span span, JavaLocation javaLocation, String termKind, String value,
+                        List<EnvEntry> environment, List<Frame> frames, int stackDepth, long cpu, long mem,
+                        long cpuDelta, long memDelta, List<String> traces, boolean finished, String status,
+                        String error, String stopReason) {
+            this(step, phase, span, javaLocation, termKind, value, environment, frames, stackDepth, cpu, mem,
+                    cpuDelta, memDelta, traces, finished, status, error, stopReason, null, null);
+        }
+
         /** Backward-compatible snapshot without Java source metadata. */
         public Snapshot(long step, String phase, Span span, String termKind, String value,
                         List<EnvEntry> environment, List<Frame> frames, int stackDepth, long cpu, long mem,
                         long cpuDelta, long memDelta, List<String> traces, boolean finished, String status,
                         String error, String stopReason) {
             this(step, phase, span, null, termKind, value, environment, frames, stackDepth, cpu, mem,
-                    cpuDelta, memDelta, traces, finished, status, error, stopReason);
+                    cpuDelta, memDelta, traces, finished, status, error, stopReason, null, null);
+        }
+
+        public Snapshot withLocals(long generation, String availability) {
+            return new Snapshot(step, phase, span, javaLocation, termKind, value, environment, frames,
+                    stackDepth, cpu, mem, cpuDelta, memDelta, traces, finished, status, error, stopReason,
+                    generation, availability);
         }
     }
 

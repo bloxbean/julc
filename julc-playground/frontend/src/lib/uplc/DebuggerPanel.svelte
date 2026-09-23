@@ -2,7 +2,7 @@
   import { formatNumber } from './mock';
   import {
     breakpoints, debugBack, debugContinue, debugGoto, debugOut, debugOver, debugRestart, debugState, debugStep,
-    decodeState, peekSpan, sourceDebugState, startDebug, stopDebug,
+    decodeState, javaLocalsState, loadJavaLocalChildren, peekSpan, sourceDebugState, startDebug, stopDebug,
   } from './store';
   import type { Span } from './types';
 
@@ -10,6 +10,12 @@
   let scrubValue: number | null = null;
   let builtinInput = '';
   let expanded = '';
+  let childIdentity: string | null = null;
+  let localChildren: Record<string, {
+    values: { name: string; value: import('./types').JavaDebugValue }[]; nextStart: number | null;
+  }> = {};
+  let localChildErrors: Record<string, string> = {};
+  let localChildLoading: Record<string, boolean> = {};
 
   $: s = $debugState.snapshot;
   $: t = $debugState.timeline;
@@ -20,6 +26,12 @@
   $: env = (s?.environment ?? []).filter((e) => !envFilter || e.name.toLowerCase().includes(envFilter.toLowerCase()) || e.value.toLowerCase().includes(envFilter.toLowerCase()));
   $: knownBuiltins = $decodeState.response?.info?.builtins ?? [];
   $: pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+  $: if ($javaLocalsState.identity !== childIdentity) {
+    childIdentity = $javaLocalsState.identity;
+    localChildren = {};
+    localChildErrors = {};
+    localChildLoading = {};
+  }
 
   const REASONS: Record<string, string> = {
     step: 'Paused', breakpoint: 'UPLC breakpoint', javaBreakpoint: 'Java breakpoint', trace: 'Trace emitted', builtin: 'Builtin breakpoint', end: 'Finished', error: 'Stopped at error', limit: 'Step limit reached',
@@ -46,6 +58,52 @@
     const name = builtinInput.trim();
     if (name && !$breakpoints.builtins.includes(name)) $breakpoints = { ...$breakpoints, builtins: [...$breakpoints.builtins, name] };
     builtinInput = '';
+  }
+
+  async function expandLocal(handle: string) {
+    if (localChildren[handle]) {
+      const next = { ...localChildren };
+      delete next[handle];
+      localChildren = next;
+      return;
+    }
+    const requestIdentity = $javaLocalsState.identity;
+    localChildLoading = { ...localChildLoading, [handle]: true };
+    try {
+      const response = await loadJavaLocalChildren(handle);
+      if ($javaLocalsState.identity !== requestIdentity) return;
+      if (!response.ok) throw new Error(response.error ?? 'Unable to expand value');
+      localChildren = { ...localChildren, [handle]: { values: response.children, nextStart: response.nextStart } };
+    } catch (error) {
+      if ($javaLocalsState.identity !== requestIdentity) return;
+      localChildErrors = { ...localChildErrors, [handle]: (error as Error).message };
+    } finally {
+      if ($javaLocalsState.identity === requestIdentity) {
+        localChildLoading = { ...localChildLoading, [handle]: false };
+      }
+    }
+  }
+
+  async function moreLocalChildren(handle: string) {
+    const current = localChildren[handle];
+    if (current?.nextStart == null) return;
+    const requestIdentity = $javaLocalsState.identity;
+    localChildLoading = { ...localChildLoading, [handle]: true };
+    try {
+      const response = await loadJavaLocalChildren(handle, current.nextStart);
+      if ($javaLocalsState.identity !== requestIdentity) return;
+      if (!response.ok) throw new Error(response.error ?? 'Unable to expand value');
+      localChildren = { ...localChildren, [handle]: {
+        values: [...current.values, ...response.children], nextStart: response.nextStart,
+      } };
+    } catch (error) {
+      if ($javaLocalsState.identity !== requestIdentity) return;
+      localChildErrors = { ...localChildErrors, [handle]: (error as Error).message };
+    } finally {
+      if ($javaLocalsState.identity === requestIdentity) {
+        localChildLoading = { ...localChildLoading, [handle]: false };
+      }
+    }
   }
 </script>
 
@@ -133,6 +191,60 @@
       </section>
 
       <section class="pane">
+        <h4>Java locals <span class="count">{$javaLocalsState.response?.scopes.reduce((n, scope) => n + scope.variables.length, 0) ?? 0}</span></h4>
+        {#if !$sourceDebugState.response?.ok}
+          <div class="muted small">Available only for an explicit Java source-debug build.</div>
+        {:else if !$sourceDebugState.response.localsCapability?.available}
+          <div class="muted small">{$sourceDebugState.response.localsCapability?.unavailableReason ?? 'This engine does not support Java locals.'}</div>
+        {:else if $javaLocalsState.loading}
+          <div class="muted small"><span class="spinner"></span> Reading the current compute state…</div>
+        {:else if $javaLocalsState.error}
+          <div class="error-text">{$javaLocalsState.error}</div>
+        {:else if $javaLocalsState.response?.availability !== 'available'}
+          <div class="muted small">{$javaLocalsState.response?.reason ?? s?.localsAvailability ?? 'Unavailable at this CEK phase.'}</div>
+        {:else}
+          {#each $javaLocalsState.response.scopes as scope}
+            <div class="java-scope">{scope.kind}</div>
+            <dl class="env java-env">
+              {#each scope.variables as variable}
+                <dt class="mono" class:shadowed={variable.shadowed} title={`declared at line ${variable.declaration.startLine}`}>
+                  {variable.name}{variable.shadowed ? ' (shadowed)' : ''}
+                </dt>
+                <dd>
+                  <span class="java-type">{variable.resolvedType}</span>
+                  {#if variable.value}
+                    <span class="mono">{variable.value.summary}</span>
+                    {#if variable.value.childrenHandle}
+                      <button type="button" class="link" on:click={() => expandLocal(variable.value!.childrenHandle!)}>
+                        {localChildLoading[variable.value.childrenHandle] ? 'loading…'
+                          : localChildren[variable.value.childrenHandle] ? 'collapse'
+                          : `expand ${variable.value.childCount ?? ''}`}
+                      </button>
+                      {#if localChildren[variable.value.childrenHandle]}
+                        <ul class="java-children">
+                          {#each localChildren[variable.value.childrenHandle].values as child}
+                            <li><span class="mono">{child.name}</span> {child.value.summary}</li>
+                          {/each}
+                        </ul>
+                        {#if localChildren[variable.value.childrenHandle].nextStart != null}
+                          <button type="button" class="link" on:click={() => moreLocalChildren(variable.value!.childrenHandle!)}>
+                            {localChildLoading[variable.value.childrenHandle] ? 'loading…' : 'load more'}
+                          </button>
+                        {/if}
+                      {/if}
+                      {#if localChildErrors[variable.value.childrenHandle]}
+                        <div class="error-text">{localChildErrors[variable.value.childrenHandle]}</div>
+                      {/if}
+                    {/if}
+                  {:else}<span class="muted">{variable.reason ?? variable.availability}</span>{/if}
+                </dd>
+              {/each}
+            </dl>
+          {/each}
+        {/if}
+      </section>
+
+      <section class="pane">
         <h4>Frames <span class="count">{s?.stackDepth ?? 0}</span></h4>
         {#if s?.frames.length}
           <ol class="frames">
@@ -206,7 +318,7 @@
   .marker { position: absolute; width: 4px; height: 10px; padding: 0; border-radius: 2px; transform: translateX(-2px); }
   .marker.trace { background: var(--warning); }
   .marker.error { background: var(--error); width: 6px; transform: translateX(-3px); }
-  .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(200px, 1fr) minmax(240px, 1.4fr) minmax(220px, 1.2fr) minmax(220px, 1fr); gap: 1px; background: var(--border); border-top: 1px solid var(--border); overflow: hidden; }
+  .panes { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: 1px; background: var(--border); border-top: 1px solid var(--border); overflow: hidden; }
   .pane { background: var(--bg-primary); padding: 8px 12px; overflow: auto; min-width: 0; font-size: 12px; }
   h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
   h4.spaced { margin-top: 14px; }
@@ -227,6 +339,11 @@
   .env-value { display: block; width: 100%; text-align: left; background: transparent; color: var(--text-primary); font-size: 12px; padding: 0 4px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .env-value:hover { background: var(--bg-surface); }
   .env-value.expanded { white-space: pre-wrap; word-break: break-all; background: var(--bg-secondary); }
+  .java-scope { margin: 8px 0 3px; color: var(--text-muted); text-transform: uppercase; font-size: 9px; }
+  .java-env dd { display: flex; flex-direction: column; gap: 1px; }
+  .java-type { color: var(--text-muted); font-size: 9px; }
+  .java-children { margin: 2px 0 4px; padding-left: 14px; list-style: none; color: var(--text-secondary); }
+  .shadowed { opacity: .65; }
   .frames, .traces { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
   .frames button { background: transparent; color: var(--text-primary); text-align: left; padding: 2px 4px; font-size: 12px; width: 100%; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .frames button:disabled { cursor: default; }

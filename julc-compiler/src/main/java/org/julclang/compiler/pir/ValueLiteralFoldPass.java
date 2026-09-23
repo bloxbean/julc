@@ -1,6 +1,7 @@
 package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.NativeValueSemantics;
@@ -36,6 +37,11 @@ public final class ValueLiteralFoldPass extends LiteralFoldPass {
 
     public ValueLiteralFoldPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
         super(context, positions);
+    }
+
+    public ValueLiteralFoldPass(CompilationContext context, Map<PirTerm, SourceLocation> positions,
+                                PirDebugProvenance debugProvenance) {
+        super(context, positions, debugProvenance);
     }
 
     @Override

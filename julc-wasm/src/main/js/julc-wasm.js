@@ -61,7 +61,8 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
   }
   function proxy(descriptor, group = 'debug') {
     if (!descriptor.sessionId) return descriptor;
-    const state = {open: true, step: descriptor.snapshot.step}; sessions.add(state);
+    const state = {open: true, step: descriptor.snapshot.step,
+      generation: descriptor.snapshot.stopGeneration}; sessions.add(state);
     const result = {...descriptor, isOpen: () => state.open && !disposed};
     const act = async (action, step = state.step, breakpoints) => {
       if (!result.isOpen()) throw closedError();
@@ -72,6 +73,7 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
         throw error;
       }
       if (value.snapshot) state.step = value.snapshot.step;
+      if (value.snapshot?.stopGeneration != null) state.generation = value.snapshot.stopGeneration;
       return value;
     };
     result.step = () => act('goto', state.step + 1n);
@@ -80,6 +82,14 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
     result.over = breakpoints => act('over', state.step, breakpoints);
     result.out = breakpoints => act('out', state.step, breakpoints);
     result.snapshot = () => act('goto');
+    if (group === 'sourceDebug') {
+      result.locals = () => send({method: 'sourceDebug.locals', body: {
+        sessionId: descriptor.sessionId, stopGeneration: state.generation,
+      }});
+      result.children = (handle, start = 0, count = 50) => send({method: 'sourceDebug.children', body: {
+        sessionId: descriptor.sessionId, stopGeneration: state.generation, handle, start, count,
+      }});
+    }
     result.close = async () => {
       if (!result.isOpen()) throw closedError();
       try { return await send({method: group + '.close', body: {sessionId: descriptor.sessionId}}); }

@@ -7,6 +7,10 @@ import org.julclang.tools.debug.SourceDebugService;
 import org.julclang.tools.model.SourceDebugModels.ActionRequest;
 import org.julclang.tools.model.SourceDebugModels.ActionResponse;
 import org.julclang.tools.model.SourceDebugModels.CloseRequest;
+import org.julclang.tools.model.SourceDebugModels.ChildrenRequest;
+import org.julclang.tools.model.SourceDebugModels.ChildrenResponse;
+import org.julclang.tools.model.SourceDebugModels.LocalsRequest;
+import org.julclang.tools.model.SourceDebugModels.LocalsResponse;
 import org.julclang.tools.model.SourceDebugModels.OpenRequest;
 import org.julclang.tools.model.SourceDebugModels.OpenResponse;
 import org.julclang.tools.service.ServiceResult;
@@ -45,6 +49,19 @@ public final class SourceDebugController {
     public void close(Context context) {
         var result = service.close(context.bodyAsClass(CloseRequest.class));
         context.status(result.status()).json(result.body());
+    }
+
+    public void locals(Context context) {
+        var request = context.bodyAsClass(LocalsRequest.class);
+        respond(context, () -> service.locals(request), message ->
+                new LocalsResponse(false, message, request.stopGeneration(), "unavailable", null, List.of()));
+    }
+
+    public void children(Context context) {
+        var request = context.bodyAsClass(ChildrenRequest.class);
+        respond(context, () -> service.children(request), message ->
+                new ChildrenResponse(false, message, request.stopGeneration(), request.handle(),
+                        request.start(), null, List.of()));
     }
 
     private <T> void respond(Context context, Callable<ServiceResult<T>> call, Function<String, T> error) {

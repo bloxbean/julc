@@ -102,6 +102,8 @@ public class JulcPlaygroundServer {
         app.before("/api/uplc/debug", checkLimiter.middleware());
         app.before("/api/source-debug/open", compileLimiter.middleware());
         app.before("/api/source-debug/act", checkLimiter.middleware());
+        app.before("/api/source-debug/locals", checkLimiter.middleware());
+        app.before("/api/source-debug/children", checkLimiter.middleware());
 
         // API routes
         app.post("/api/check", checkController::handle);
@@ -114,6 +116,8 @@ public class JulcPlaygroundServer {
         app.post("/api/uplc/debug", uplcController::debug);
         app.post("/api/source-debug/open", sourceDebugController::open);
         app.post("/api/source-debug/act", sourceDebugController::act);
+        app.post("/api/source-debug/locals", sourceDebugController::locals);
+        app.post("/api/source-debug/children", sourceDebugController::children);
         app.post("/api/source-debug/close", sourceDebugController::close);
         app.get("/api/examples", examplesController::list);
         app.get("/api/examples/{name}", examplesController::get);

@@ -22,7 +22,7 @@ const api = await createJulc({baseUrl, manifest, catalogue, workerFactory});
 console.log(`${variant} worker ready in ${Math.round(performance.now() - started)} ms`);
 try {
   const expectedGroups = variant === 'full'
-    ? ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug']
+    ? ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals']
     : ['vm', 'debug'];
   assert.deepEqual(manifest.groups, expectedGroups);
   assert.deepEqual(api.features().groups, expectedGroups);
@@ -92,24 +92,44 @@ try {
       assert.deepEqual(explicit, implicit, purpose + ' explicit script credential');
     }
     const sourceSession = await api.sourceDebug.open({
-      source: `@SpendingValidator
+      source: `import java.math.BigInteger;
+
+@SpendingValidator
 class WasmSourceDebugSmoke {
   @Entrypoint
   static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-    return true;
+    BigInteger exact = BigInteger.valueOf(9007199254740993L);
+    return exact.compareTo(BigInteger.ZERO) > 0;
   }
 }`,
       transaction: await api.uplc.defaultTransaction({purpose: 'spend'}),
+      locals: true,
     });
     assert.equal(sourceSession.ok, true, sourceSession.error);
     assert.ok(sourceSession.sessionId);
     assert.ok(sourceSession.executableJavaLines.length > 0);
-    const sourceStep = await sourceSession.step();
-    assert.equal(sourceStep.ok, true, sourceStep.error);
-    assert.equal(typeof sourceStep.snapshot.step, 'bigint');
+    assert.equal(sourceSession.localsCapability.available, true);
+    let observedExact = false;
+    for (let step = 0n; step <= sourceSession.timeline.totalSteps && !observedExact; step++) {
+      if (step > 0n) {
+        const sourceStep = await sourceSession.goto(step);
+        assert.equal(sourceStep.ok, true, sourceStep.error);
+        assert.equal(typeof sourceStep.snapshot.step, 'bigint');
+      }
+      const locals = await sourceSession.locals();
+      assert.equal(locals.ok, true, locals.error);
+      const exact = locals.scopes.flatMap(scope => scope.variables)
+        .find(variable => variable.name === 'exact' && variable.value);
+      if (exact) {
+        assert.equal(exact.value.summary, '9007199254740993');
+        observedExact = true;
+      }
+    }
+    assert.equal(observedExact, true, 'the real full image must expose the exact Java local');
     await sourceSession.close();
     assert.equal(sourceSession.isOpen(), false);
-    console.log('ok Java source-debug session');
+    await assert.rejects(sourceSession.locals(), error => error.status === 404);
+    console.log('ok Java source-debug locals session');
   }
   const session = await api.vm.debug(request);
   assert.equal(session.isOpen(), true);
