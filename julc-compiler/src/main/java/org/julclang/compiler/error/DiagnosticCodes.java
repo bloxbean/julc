@@ -13,6 +13,46 @@ public final class DiagnosticCodes {
             "arrays are not supported on-chain",
             "Use `JulcList<T>` or `List<T>` instead of `T[]`.");
 
+    public static final DiagnosticInfo BACKEND_CAPABILITY_UNAVAILABLE = new DiagnosticInfo(
+            "JULC0045",
+            "BACKEND_CAPABILITY_UNAVAILABLE",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "{0} requires backend capability {1}, which is not available for {2}",
+            "Check CompilerBackend.capabilities for the selected target and remove the dependency on the missing capability, or select a target and compiler that provide it.");
+
+    public static final DiagnosticInfo BACKEND_INVALID_DESCRIPTOR = new DiagnosticInfo(
+            "JULC0047",
+            "BACKEND_INVALID_DESCRIPTOR",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "Invalid descriptor {0}: {1}",
+            "Correct the descriptor field named in the message; descriptors are validated before any provider materialization or lowering.");
+
+    public static final DiagnosticInfo BACKEND_TARGET_MISMATCH = new DiagnosticInfo(
+            "JULC0046",
+            "BACKEND_TARGET_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "{0} was produced for target {1}, but the backend is configured for {2}",
+            "Configure the producer and CompilerOptions with the same CompilerTarget.");
+
+    public static final DiagnosticInfo BACKEND_UNSUPPORTED_REQUEST = new DiagnosticInfo(
+            "JULC0051",
+            "BACKEND_UNSUPPORTED_REQUEST",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "Library request {0} is not supported: {1}",
+            "Request only exports and operations the provider describes as supported; unsupported ones are listed with reasons by the provider.");
+
+    public static final DiagnosticInfo BACKEND_UNSUPPORTED_REVISION = new DiagnosticInfo(
+            "JULC0044",
+            "BACKEND_UNSUPPORTED_REVISION",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "{0} targets backend contract revision {1}; this backend supports revisions {2}",
+            "Produce the descriptor for a supported revision reported by CompilerBackend.capabilities, or use a compiler release that implements the requested revision.");
+
     public static final DiagnosticInfo BREAK_OUTSIDE_LOOP = new DiagnosticInfo(
             "JULC0004",
             "BREAK_OUTSIDE_LOOP",
@@ -213,6 +253,30 @@ public final class DiagnosticCodes {
             "@Param type ''{0}'' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpret the runtime representation.",
             "Use byte[], BigInteger, typed records, redeemers, or @Param PlutusData only for opaque data.");
 
+    public static final DiagnosticInfo PIR_INVALID_BINDING = new DiagnosticInfo(
+            "JULC0048",
+            "PIR_INVALID_BINDING",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "Invalid PIR binding in {0}: {1}",
+            "Use producer-owned names that avoid the reserved forms (a leading '.' or '__', a leading '$julc$', or '#'), and reference imports only through the binding names returned by their provider.");
+
+    public static final DiagnosticInfo PIR_TYPE_MISMATCH = new DiagnosticInfo(
+            "JULC0049",
+            "PIR_TYPE_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "PIR type mismatch in {0}: {1}",
+            "Annotate the term with the type of the value it actually holds; convert between native and Data representations explicitly with the corresponding builtins.");
+
+    public static final DiagnosticInfo PIR_UNSUPPORTED_STRUCTURE = new DiagnosticInfo(
+            "JULC0050",
+            "PIR_UNSUPPORTED_STRUCTURE",
+            CompilerDiagnostic.Level.ERROR,
+            "BACKEND",
+            "Unsupported PIR structure in {0}: {1}",
+            "Restructure the term as described; for example bind recursive values as lambdas and give a DataMatch exactly one branch per constructor in tag order.");
+
     public static final DiagnosticInfo RETURN_INSIDE_WHILE = new DiagnosticInfo(
             "JULC0003",
             "RETURN_INSIDE_WHILE",
@@ -352,6 +416,11 @@ public final class DiagnosticCodes {
 
     private static final java.util.List<DiagnosticInfo> ALL = java.util.List.of(
             ARRAY_UNSUPPORTED,
+            BACKEND_CAPABILITY_UNAVAILABLE,
+            BACKEND_INVALID_DESCRIPTOR,
+            BACKEND_TARGET_MISMATCH,
+            BACKEND_UNSUPPORTED_REQUEST,
+            BACKEND_UNSUPPORTED_REVISION,
             BREAK_OUTSIDE_LOOP,
             CIRCULAR_TYPE_DEPENDENCY,
             COMPILER_BUILTIN_UNAVAILABLE,
@@ -377,6 +446,9 @@ public final class DiagnosticCodes {
             NULL_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
             PARAM_RAW_PLUTUS_DATA,
+            PIR_INVALID_BINDING,
+            PIR_TYPE_MISMATCH,
+            PIR_UNSUPPORTED_STRUCTURE,
             RETURN_INSIDE_WHILE,
             SOURCE_PARSE_FAILED,
             STDLIB_METHOD_WRONG_ARITY,

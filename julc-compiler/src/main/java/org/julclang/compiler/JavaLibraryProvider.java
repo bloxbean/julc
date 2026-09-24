@@ -7,6 +7,7 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 
 import org.julclang.compiler.backend.*;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.*;
 
@@ -86,11 +87,11 @@ public final class JavaLibraryProvider implements LibraryProvider {
                             cls.getFullyQualifiedName().orElseThrow()
                                     + "."
                                     + method.getNameAsString();
-                    var compiled = registry.lookupMethod(symbol).orElseThrow();
                     if (!method.getTypeParameters().isEmpty()) {
                         unsupported.put(symbol, "Polymorphic Java methods require provider specialization, which is not yet supported");
                         continue;
                     }
+                    var compiled = registry.lookupMethod(symbol).orElseThrow();
                     try {
                         var parameters = method.getParameters().stream().map(p -> descriptions.reference(p.getType())).toList();
                         var result = descriptions.reference(method.getType());
@@ -112,6 +113,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
     }
 
     @Override public Map<String, LibraryType> types() { return types; }
+    @Override public int revision() { return BackendContract.REVISION_2; }
     @Override public Map<String, PirType> namedDefinitions() { return definitions; }
     @Override public Map<String, String> unsupportedExports() { return Collections.unmodifiableMap(unsupported); }
 
@@ -132,6 +134,31 @@ public final class JavaLibraryProvider implements LibraryProvider {
         PirTerm term = PirLinker.link(reachable, new PirTerm.Var(symbol, root.type()));
         PirClosure.check(term);
         return term;
+    }
+
+    /**
+     * Materialize the requested exports and their private dependencies as one group, so a
+     * dependency shared by several exports is linked once (ADR-059).
+     */
+    @Override
+    public LibraryImports materialize(List<LibraryRequest> requests) {
+        var reachable = new LinkedHashMap<String, PirTerm>();
+        var bindings = new LinkedHashMap<LibraryRequest, LibraryImports.Binding>();
+        for (var request : requests) {
+            switch (request) {
+                case LibraryRequest.Export export -> {
+                    var described = exports.get(export.symbol());
+                    if (described == null)
+                        throw new BackendException(DiagnosticCodes.BACKEND_UNSUPPORTED_REQUEST,
+                                export.symbol(), export.symbol(),
+                                unsupported.getOrDefault(export.symbol(), "no public on-chain export with this symbol"));
+                    gather(export.symbol(), reachable);
+                    bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
+                }
+            }
+        }
+        return new LibraryImports(JavaLibraryProvider.class.getName(), revision(), reachable,
+                bindings, definitions);
     }
 
     private void gather(String symbol, Map<String, PirTerm> found) {
