@@ -3,7 +3,7 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
-## Upcoming preview: builder binders no longer capture user variables
+## Upcoming preview: builder binders no longer capture user variables (#186)
 
 A variable referenced inside a lambda or argument could silently resolve to an
 internal variable of the list, map or loop code the compiler generated around it.
