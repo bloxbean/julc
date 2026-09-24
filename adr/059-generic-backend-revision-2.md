@@ -442,3 +442,32 @@ build against a locally published snapshot.
 - **Regression runs** (fresh): `julc-compiler` 1854/0/0, `pairCaseTest` 71/0/0,
   `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
   `julc-annotation-processor` 20/0/0.
+
+### Milestone 3 (#184)
+
+- **Capabilities:** `validator.parameters`, `spend.datum.optional`, `spend.datum.absent`
+  and `boundary.check-program`.
+- **Parameters:**
+  - Parameters become outer lambdas in ABI order with the Java `@Param` shape. Each raw
+    Data argument is decoded once and passed as a leading argument to every handler.
+  - Parameter types need a Data decoding. `Unit`, native, function and pair parameters
+    are rejected, as are duplicate or blank names and handlers whose leading argument
+    types differ from the parameter types.
+  - `BoundaryPrograms.check` compiles the `StrictBoundaryGenerator` check for a type as a
+    standalone one-argument program, for off-chain parameter validation.
+- **Datum profiles:** `OPTIONAL` passes the strictly checked ledger `Maybe`; `ABSENT`
+  compiles the two-argument spending call and never inspects the datum.
+- **`ValidatorParametersTest` (12 tests):**
+  - Java `@Param` parity: `threshold`/`owner` applied with `Program.applyParams`,
+    including a too-short owner and parameters in the wrong order. There are 9 cases,
+    2 of which accept.
+  - Applied script hashes are deterministic, change with parameter values and order,
+    and differ from the unapplied hash. The ABI is deterministic.
+  - All handlers receive the parameters.
+  - `OPTIONAL` datums, present or missing, pass while a malformed present datum is
+    rejected. `ABSENT` accepts any datum or none. A missing `REQUIRED` datum still fails.
+  - Inactive-handler isolation, ABI profiles, check programs for primitive, record, list
+    and `Optional` types, and every rejection above.
+- **Regression runs** (fresh): `julc-compiler` 1866/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
