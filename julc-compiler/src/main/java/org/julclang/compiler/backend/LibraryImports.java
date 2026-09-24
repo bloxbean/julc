@@ -22,13 +22,16 @@ import java.util.SequencedMap;
  * @param definitions closed group of strict definitions, in dependency-compatible order
  * @param bindings    the binding name and declared type of each requested implementation
  * @param namedTypes  named type definitions referenced by the binding types
+ * @param types       provider type descriptions; their approved operations decide which
+ *                    imported types a producer may match or construct (#183)
  */
 public record LibraryImports(
         String provider,
         int revision,
         SequencedMap<String, PirTerm> definitions,
         Map<LibraryRequest, Binding> bindings,
-        Map<String, PirType> namedTypes) {
+        Map<String, PirType> namedTypes,
+        Map<String, LibraryType> types) {
 
     /** The name a producer references and the type it may assume. */
     public record Binding(String name, PirType type) {
@@ -43,6 +46,7 @@ public record LibraryImports(
         definitions = Collections.unmodifiableSequencedMap(new LinkedHashMap<>(definitions));
         bindings = Collections.unmodifiableMap(new LinkedHashMap<>(bindings));
         namedTypes = Collections.unmodifiableMap(new LinkedHashMap<>(namedTypes));
+        types = Collections.unmodifiableMap(new LinkedHashMap<>(types));
         String subject = "library imports from " + provider;
         for (var entry : definitions.entrySet()) {
             if (entry.getKey().isBlank())
@@ -60,6 +64,12 @@ public record LibraryImports(
                 throw new BackendException(DiagnosticCodes.BACKEND_INVALID_DESCRIPTOR, subject,
                         subject, "binding for " + binding.getKey().describe()
                                 + " names no definition: " + binding.getValue().name());
+    }
+
+    /** A group whose imported named types have no approved operations. */
+    public LibraryImports(String provider, int revision, SequencedMap<String, PirTerm> definitions,
+                          Map<LibraryRequest, Binding> bindings, Map<String, PirType> namedTypes) {
+        this(provider, revision, definitions, bindings, namedTypes, Map.of());
     }
 
     /** The binding for a request materialized by this group. */

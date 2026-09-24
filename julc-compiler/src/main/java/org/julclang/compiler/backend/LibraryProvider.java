@@ -50,9 +50,20 @@ public interface LibraryProvider {
                     definitions.putIfAbsent(symbol, materialize(symbol));
                     bindings.put(request, new LibraryImports.Binding(symbol, described.type()));
                 }
+                case LibraryRequest.Operation operation -> bind(definitions, bindings, request,
+                        new TypeOperations(types(), namedDefinitions()).operation(operation));
+                case LibraryRequest.Codec codec -> bind(definitions, bindings, request,
+                        new TypeOperations(types(), namedDefinitions()).codec(codec));
             }
         }
         return new LibraryImports(getClass().getName(), revision(), definitions, bindings,
-                namedDefinitions());
+                namedDefinitions(), types());
+    }
+
+    private static void bind(Map<String, PirTerm> definitions,
+                             Map<LibraryRequest, LibraryImports.Binding> bindings,
+                             LibraryRequest request, TypeOperations.Materialized materialized) {
+        definitions.putIfAbsent(materialized.name(), materialized.term());
+        bindings.put(request, new LibraryImports.Binding(materialized.name(), materialized.type()));
     }
 }

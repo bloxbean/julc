@@ -495,20 +495,19 @@ class FunctionProgramTest {
         }
 
         @Test
-        void importedRecordsAreProjectedThroughTheDataViewButNotMatched() {
+        void importedRecordsAreProjectedAndMatchedWhenTheirDescriptionApproves() {
             var request = new LibraryRequest.Export("demo.Pricing.quote");
-            var group = provider().materialize(List.of(request));
+            var provider = provider();
+            var group = provider.materialize(List.of(request));
             var binding = group.binding(request);
-            var quoteType = ((PirType.FunType) binding.type()).returnType();
+            assertTrue(provider.types().get("demo.Pricing.Quote").supports(LibraryType.Operation.MATCH));
             var raw = call(DefaultFun.HeadList, call(DefaultFun.SndPair,
                     call(DefaultFun.UnConstrData, apply(var(binding.name(), binding.type()), integer(21)))));
             evaluatesTo(program(call(DefaultFun.MultiplyInteger, call(DefaultFun.UnIData, raw), integer(2)),
                     INT, new LinkedHashMap<>(), List.of(group)), Constant.integer(42));
-            var match = new PirTerm.DataMatch(apply(var(binding.name(), binding.type()), integer(1)),
+            var match = new PirTerm.DataMatch(apply(var(binding.name(), binding.type()), integer(7)),
                     List.of(new PirTerm.MatchBranch("Quote", List.of("amount"), List.of(INT), var("amount", INT))));
-            var error = rejects("JULC0050", program(match, INT, new LinkedHashMap<>(), List.of(group)));
-            assertTrue(error.getMessage().contains("no approved match operation"), error.getMessage()
-                    + " for " + quoteType);
+            evaluatesTo(program(match, INT, new LinkedHashMap<>(), List.of(group)), Constant.integer(7));
         }
 
         @Test

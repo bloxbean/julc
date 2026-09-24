@@ -33,7 +33,8 @@ public final class BoundaryPrograms {
         if (resolve(type, namedTypes) instanceof PirType.UnitType)
             throw new BackendException(org.julclang.compiler.error.DiagnosticCodes.BACKEND_INVALID_DESCRIPTOR,
                     subject, subject, "Unit has no parameter decoding; check the Data type instead");
-        ValidatorCompiler.requireBoundary(type, namedTypes, subject, "type");
+        ValidatorCompiler.requireBoundary(type, namedTypes, ValidatorCompiler.uncheckable(java.util.List.of()),
+                subject, "type");
         var data = new PirTerm.Var("$julc$data", new PirType.DataType());
         var check = new StrictBoundaryGenerator(namedTypes).check(data, type);
         var term = new PirTerm.Lam("$julc$data", new PirType.DataType(), new PirTerm.IfThenElse(check,
