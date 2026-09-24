@@ -400,3 +400,45 @@ build against a locally published snapshot.
   - `julc-annotation-processor` 20/0/0.
 
   The revision-1 path and every Java compilation path are unchanged.
+
+### Milestone 2 (#180)
+
+- **New code:**
+  - `ValidatorProgram` (with `Handler`), `DatumProfile`, `Parameter`, `ValidatorAbi` and
+    `ValidatorResult`.
+  - `ValidatorCompiler`, which checks the role and signature of each handler, verifies
+    producer PIR, and dispatches through `ValidatorWrapper.wrapMultiValidator`.
+  - Capabilities `program.validator`, `purpose.*` and `spend.datum.required`. Parameters
+    and optional or absent spending datums are declared, but their capabilities are
+    withheld until #184, so descriptors that use them fail with JULC0045.
+- **`ValidatorProgramTest` covers:**
+  - each of the six purposes on full `ScriptContextBuilder` contexts, rejecting wrong
+    redeemers and every other purpose's context;
+  - spending with a required datum: present, missing and malformed datums, and a
+    malformed redeemer;
+  - spend+mint and spend+withdraw groups;
+  - inactive-schema isolation: a withdrawal with an integer redeemer succeeds although
+    the spending redeemer is a record, and the reverse is rejected;
+  - byte-identical scripts for reordered handlers;
+  - the native `Unit` redeemer adaptation;
+  - a context typed as the ledger `ScriptContext`, the ABI in tag order, and ledger tags
+    matching the ScriptInfo encodings;
+  - descriptor, signature, boundary, capability and verifier rejections.
+- **Java parity:** a Java `@MultiValidator` with SPEND (record redeemer), MINT and
+  WITHDRAW handlers agrees with the neutral descriptor on all 81 matrix cases. The matrix
+  covers purposes × redeemers (valid, wrong tag, wrong arity, wrong kind) × datums
+  (present, missing, malformed), with 4 accepting cases. The neutral script is 271 bytes
+  against 321 for Java. Budgets are within 15%:
+
+  | Purpose | Java CPU/mem | Neutral CPU/mem |
+  | --- | --- | --- |
+  | SPEND | 5,218,511 / 20,413 | 5,955,284 / 23,509 |
+  | MINT | 2,074,195 / 7,623 | 2,314,195 / 9,123 |
+  | WITHDRAW | 2,749,441 / 10,627 | 2,603,818 / 10,325 |
+- **Cost of explicit purpose dispatch:** a one-handler minting descriptor costs 75 bytes
+  and 2,218,195 CPU / 8,523 mem, against 41 bytes and 1,128,903 / 4,462 for the legacy
+  single-purpose wrapper. The difference is the ScriptInfo tag check that rejects
+  unconfigured purposes.
+- **Regression runs** (fresh): `julc-compiler` 1854/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.

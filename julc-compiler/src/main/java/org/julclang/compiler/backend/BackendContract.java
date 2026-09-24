@@ -2,6 +2,7 @@ package org.julclang.compiler.backend;
 
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
+import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.vm.ProtocolCapability;
 
 import java.util.Locale;
@@ -32,6 +33,9 @@ public final class BackendContract {
         capabilities.add(BackendCapability.LIBRARY_REQUEST_EXPORT);
         capabilities.add(BackendCapability.PIR_VERIFIER);
         if (builtinCaseLowering(context)) capabilities.add(BackendCapability.PIR_BUILTIN_CASE);
+        capabilities.add(BackendCapability.VALIDATOR_PROGRAM);
+        for (var purpose : ContractSchema.Purpose.values()) capabilities.add(purposeCapability(purpose));
+        capabilities.add(BackendCapability.SPEND_DATUM_REQUIRED);
         for (var feature : ProtocolCapability.values())
             if (context.supports(feature)) capabilities.add(targetCapability(feature));
         return new BackendCapabilities(REVISION, MINIMUM_REVISION, context.target(), capabilities);
@@ -45,6 +49,26 @@ public final class BackendContract {
         return context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
                 && context.optimizationLevel().pv11SafeRulesEnabled()
                 && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS);
+    }
+
+    /** The capability for handlers of one ledger purpose, e.g. {@code purpose.withdraw}. */
+    public static BackendCapability purposeCapability(ContractSchema.Purpose purpose) {
+        return new BackendCapability("purpose." + purpose.name().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * The ScriptInfo constructor tag that selects a purpose. Explicit rather than the enum
+     * ordinal so reordering {@link ContractSchema.Purpose} cannot change dispatch.
+     */
+    public static int ledgerTag(ContractSchema.Purpose purpose) {
+        return switch (purpose) {
+            case MINT -> 0;
+            case SPEND -> 1;
+            case WITHDRAW -> 2;
+            case CERTIFY -> 3;
+            case VOTE -> 4;
+            case PROPOSE -> 5;
+        };
     }
 
     /** The capability that reports a target protocol feature, e.g. {@code target.constr-case}. */
