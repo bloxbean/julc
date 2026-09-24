@@ -3,6 +3,29 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: builder binders no longer capture user variables
+
+A variable referenced inside a lambda or argument could silently resolve to an
+internal variable of the list, map or loop code the compiler generated around it.
+For example, `outer.any(x -> inner.any(y -> y.equals(x)))` compared each inner
+element with itself and returned true whenever `inner` was non-empty, so a
+validator could accept a transaction it should reject. Affected names were the
+builders' internal binders: `x`, `acc`, `lst`, `go` and `h` for `any`, `all`,
+`find` and `foldl`; `x_map`, `acc_map`, `x_flt` and `acc_flt` for `map` and
+`filter`; the `*_get`, `*_c`, `go_*`, `ps_*`, `xs_*`, `*__ao` and `*__f` binders of
+`get`, `contains`, `reverse`, `concat`, `take`, `drop`, `size`, `keys`, `values`,
+map lookups, `ListsLib.contains`, `MapLib.member/lookup/delete` and
+`Value.assetOf`; and the statement binders `_if`, `_forEach`, `_while`,
+`_nested`, `__t` and `_u`. Instance and static `ListsLib` forms were both affected.
+
+Each generated binder is now renamed only when a caller term actually refers to
+that name, so evaluation order is unchanged. Scripts without such a reference
+keep byte-identical output at every optimization level. Recompiling an affected
+script changes its bytes, hash and budget; review it and redeploy if its
+behaviour mattered. Deployed scripts never change. The loop desugarer's
+counter-suffixed `loop__*__N` and `xs__` names are not yet renamed; do not use
+them as source variable names.
+
 ## Upcoming preview: release regression gates and profile freeze (#121)
 
 The proposed pre17 [hash-stability policy](/reference/hash-stability/) freezes

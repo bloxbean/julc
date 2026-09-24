@@ -579,7 +579,7 @@ public class PirGenerator {
         // fall through to), wrap in a let
         if (hasFollowing || cont != null) {
             var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-            return new PirTerm.Let("_if", ifExpr, rest);
+            return new PirTerm.Let(PirHelpers.hygienicName("_if", PirHelpers.freeVariables(rest)), ifExpr, rest);
         }
         return ifExpr;
     }
@@ -1876,7 +1876,8 @@ public class PirGenerator {
 
             if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-                return new PirTerm.Let("_forEach", forEachResult, rest);
+                return new PirTerm.Let(PirHelpers.hygienicName("_forEach", PirHelpers.freeVariables(rest)),
+                        forEachResult, rest);
             }
             return forEachResult;
         }
@@ -2140,7 +2141,8 @@ public class PirGenerator {
 
             if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-                return new PirTerm.Let("_while", whileResult, rest);
+                return new PirTerm.Let(PirHelpers.hygienicName("_while", PirHelpers.freeVariables(rest)),
+                        whileResult, rest);
             }
             return whileResult;
         }

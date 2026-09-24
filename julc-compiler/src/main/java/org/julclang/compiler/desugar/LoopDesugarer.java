@@ -281,7 +281,7 @@ public class LoopDesugarer {
 
         var bodyThenContinue = new PirTerm.Let("_body", body, recursiveCall);
 
-        var loopLambda = new PirTerm.Lam("_u", unitType,
+        var loopLambda = new PirTerm.Lam(PirHelpers.hygienicName("_u", PirHelpers.freeVariables(condition, body)), unitType,
                 new PirTerm.IfThenElse(condition, bodyThenContinue, new PirTerm.Const(Constant.unit())));
 
         var initialCall = new PirTerm.App(

@@ -440,7 +440,8 @@ public final class TypeMethodRegistry {
                 (scope, args, scopeType, argTypes) -> {
                     var lstVar = new PirTerm.Var("lst_rev", new PirType.ListType(new PirType.DataType()));
                     var accVar = new PirTerm.Var("acc_rev", new PirType.ListType(new PirType.DataType()));
-                    var goVar = new PirTerm.Var("go_rev", new PirType.FunType(
+                    // The receiver is applied under go_rev.
+                    var goVar = new PirTerm.Var(PirHelpers.hygienicName("go_rev", PirHelpers.freeVariables(scope)), new PirType.FunType(
                             new PirType.ListType(new PirType.DataType()),
                             new PirType.FunType(new PirType.ListType(new PirType.DataType()),
                                     new PirType.ListType(new PirType.DataType()))));
@@ -453,7 +454,7 @@ public final class TypeMethodRegistry {
                     var body = new PirTerm.IfThenElse(nullCheck, accVar, recurse);
                     var goBody = new PirTerm.Lam("lst_rev", new PirType.ListType(new PirType.DataType()),
                             new PirTerm.Lam("acc_rev", new PirType.ListType(new PirType.DataType()), body));
-                    var binding = new PirTerm.Binding("go_rev", goBody);
+                    var binding = new PirTerm.Binding(goVar.name(), goBody);
                     var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
                             new PirTerm.Const(Constant.unit()));
                     return new PirTerm.LetRec(List.of(binding),
@@ -469,7 +470,9 @@ public final class TypeMethodRegistry {
                     // First reverse the source list
                     var revLstVar = new PirTerm.Var("lst_crev", new PirType.ListType(new PirType.DataType()));
                     var revAccVar = new PirTerm.Var("acc_crev", new PirType.ListType(new PirType.DataType()));
-                    var revGoVar = new PirTerm.Var("go_crev", new PirType.FunType(
+                    // Both lists are applied under go_crev.
+                    var revGoVar = new PirTerm.Var(PirHelpers.hygienicName("go_crev",
+                            PirHelpers.freeVariables(scope, args.get(0))), new PirType.FunType(
                             new PirType.ListType(new PirType.DataType()),
                             new PirType.FunType(new PirType.ListType(new PirType.DataType()),
                                     new PirType.ListType(new PirType.DataType()))));
@@ -481,7 +484,7 @@ public final class TypeMethodRegistry {
                     var revBody = new PirTerm.IfThenElse(revNull, revAccVar, revRecurse);
                     var revGoBody = new PirTerm.Lam("lst_crev", new PirType.ListType(new PirType.DataType()),
                             new PirTerm.Lam("acc_crev", new PirType.ListType(new PirType.DataType()), revBody));
-                    var revBinding = new PirTerm.Binding("go_crev", revGoBody);
+                    var revBinding = new PirTerm.Binding(revGoVar.name(), revGoBody);
                     // reversed = go_crev(self, [])  then go_crev(reversed, other)
                     // Actually: go(reversed_self, other) does fold-prepend of reversed onto other, giving self ++ other
                     var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
@@ -498,7 +501,9 @@ public final class TypeMethodRegistry {
                     if (args.isEmpty()) throw new CompilerException("take() requires a count argument. Usage: list.take(n)");
                     var lstVar = new PirTerm.Var("lst_take", new PirType.ListType(new PirType.DataType()));
                     var nVar = new PirTerm.Var("n_take", new PirType.IntegerType());
-                    var goVar = new PirTerm.Var("go_take", new PirType.FunType(
+                    // The receiver and count are applied under go_take.
+                    var goVar = new PirTerm.Var(PirHelpers.hygienicName("go_take",
+                            PirHelpers.freeVariables(scope, args.get(0))), new PirType.FunType(
                             new PirType.ListType(new PirType.DataType()),
                             new PirType.FunType(new PirType.IntegerType(),
                                     new PirType.ListType(new PirType.DataType()))));
@@ -521,7 +526,7 @@ public final class TypeMethodRegistry {
                             new PirTerm.IfThenElse(nullCheck, nilData, consExpr));
                     var goBody = new PirTerm.Lam("lst_take", new PirType.ListType(new PirType.DataType()),
                             new PirTerm.Lam("n_take", new PirType.IntegerType(), body));
-                    var binding = new PirTerm.Binding("go_take", goBody);
+                    var binding = new PirTerm.Binding(goVar.name(), goBody);
 
                     return new PirTerm.LetRec(List.of(binding),
                             new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
@@ -534,7 +539,9 @@ public final class TypeMethodRegistry {
                     if (args.isEmpty()) throw new CompilerException("drop() requires a count argument. Usage: list.drop(n)");
                     if (context.optimizationLevel().pv11SafeRulesEnabled()) {
                         context.recordOptimizationRule("pv11.o1.drop-list");
-                        var listName = "list__pv11_drop";
+                        // The count is evaluated inside the receiver's binder.
+                        var listName = PirHelpers.hygienicName("list__pv11_drop",
+                                PirHelpers.freeVariables(args.get(0)));
                         var countName = "count__pv11_drop";
                         var listVar = new PirTerm.Var(listName, scopeType);
                         var countVar = new PirTerm.Var(countName, new PirType.IntegerType());
@@ -545,7 +552,9 @@ public final class TypeMethodRegistry {
                     }
                     var lstVar = new PirTerm.Var("lst_drop", new PirType.ListType(new PirType.DataType()));
                     var nVar = new PirTerm.Var("n_drop", new PirType.IntegerType());
-                    var goVar = new PirTerm.Var("go_drop", new PirType.FunType(
+                    // The receiver and count are applied under go_drop.
+                    var goVar = new PirTerm.Var(PirHelpers.hygienicName("go_drop",
+                            PirHelpers.freeVariables(scope, args.get(0))), new PirType.FunType(
                             new PirType.ListType(new PirType.DataType()),
                             new PirType.FunType(new PirType.IntegerType(),
                                     new PirType.ListType(new PirType.DataType()))));
@@ -562,7 +571,7 @@ public final class TypeMethodRegistry {
                             new PirTerm.IfThenElse(nullCheck, lstVar, recurse));
                     var goBody = new PirTerm.Lam("lst_drop", new PirType.ListType(new PirType.DataType()),
                             new PirTerm.Lam("n_drop", new PirType.IntegerType(), body));
-                    var binding = new PirTerm.Binding("go_drop", goBody);
+                    var binding = new PirTerm.Binding(goVar.name(), goBody);
                     return new PirTerm.LetRec(List.of(binding),
                             new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
                 },
@@ -905,8 +914,11 @@ public final class TypeMethodRegistry {
                     var tokenArg = PirHelpers.wrapEncode(args.get(1), argTypes.size() >= 2 ? argTypes.get(1) : new PirType.DataType());
 
                     // Let-bind value, policyId, tokenName
-                    var valVar = new PirTerm.Var("v__ao", new PirType.DataType());
-                    var polVar = new PirTerm.Var("pol__ao", new PirType.DataType());
+                    // policyId is evaluated under v__ao and tokenName under v__ao and pol__ao.
+                    var valVar = new PirTerm.Var(PirHelpers.hygienicName("v__ao",
+                            PirHelpers.freeVariables(policyArg, tokenArg)), new PirType.DataType());
+                    var polVar = new PirTerm.Var(PirHelpers.hygienicName("pol__ao",
+                            PirHelpers.freeVariables(tokenArg)), new PirType.DataType());
                     var tokVar = new PirTerm.Var("tok__ao", new PirType.DataType());
 
                     // Outer loop: search for matching policy in UnMapData(value)
@@ -970,8 +982,8 @@ public final class TypeMethodRegistry {
                     var search = new PirTerm.LetRec(List.of(outerBinding),
                             new PirTerm.App(outerGoVar, outerPairsVar));
 
-                    return new PirTerm.Let("v__ao", scope,
-                            new PirTerm.Let("pol__ao", policyArg,
+                    return new PirTerm.Let(valVar.name(), scope,
+                            new PirTerm.Let(polVar.name(), policyArg,
                                     new PirTerm.Let("tok__ao", tokenArg,
                                             new PirTerm.Let("ops__ao", outerPairs, search))));
                 },
