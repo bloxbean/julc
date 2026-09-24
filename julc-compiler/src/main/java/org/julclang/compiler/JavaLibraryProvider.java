@@ -252,6 +252,12 @@ public final class JavaLibraryProvider implements LibraryProvider {
         if (request.typeArguments().size() != scheme.typeParameters().size())
             throw unsupported(request, scheme.identity() + " takes " + scheme.typeParameters().size()
                     + " type arguments, not " + request.typeArguments().size());
+        Map<String, LibraryType> visible;
+        try {
+            visible = TypeReferences.withProducerTypes(types, request);
+        } catch (IllegalArgumentException e) {
+            throw unsupported(request, e.getMessage());
+        }
         var substitution = new LinkedHashMap<String, LibraryType.Reference>();
         var environment = new LinkedHashMap<String, PirType>();
         for (int i = 0; i < request.typeArguments().size(); i++) {
@@ -261,7 +267,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                 throw unsupported(request, "type arguments must be concrete, not " + argument.canonical());
             PirType representation;
             try {
-                representation = descriptions.representation(argument);
+                representation = TypeReferences.representation(argument, visible);
             } catch (IllegalArgumentException e) {
                 throw unsupported(request, "type argument " + argument.canonical() + " is not a supported type: "
                         + e.getMessage());
@@ -273,7 +279,8 @@ public final class JavaLibraryProvider implements LibraryProvider {
             environment.put(parameter.name(), representation);
         }
         var key = new SpecializationKey(contentHash, scheme.identity(), request.typeArguments(),
-                LibraryType.REPRESENTATION_REVISION, BackendContract.REVISION, context.target().profileId());
+                LibraryType.REPRESENTATION_REVISION, BackendContract.REVISION, context.target().profileId(),
+                TypeReferences.producerFingerprints(request));
         var cached = specializations.get(key);
         if (cached != null) return cached;
         String name = request.symbol() + "#" + key.digest();
@@ -290,10 +297,11 @@ public final class JavaLibraryProvider implements LibraryProvider {
         if (!compiled.errors().isEmpty())
             throw unsupported(request, "specialization does not compile: " + compiled.errors().stream()
                     .map(d -> d.message()).toList());
-        PirType signature = descriptions.representation(scheme.result().substitute(substitution));
+        PirType signature = TypeReferences.representation(scheme.result().substitute(substitution), visible);
         for (int i = scheme.parameters().size() - 1; i >= 0; i--)
             signature = new PirType.FunType(
-                    descriptions.representation(scheme.parameters().get(i).substitute(substitution)), signature);
+                    TypeReferences.representation(scheme.parameters().get(i).substitute(substitution), visible),
+                    signature);
         if (!signature.equals(compiled.type()))
             throw unsupported(request, "the specialized source signature disagrees with its compiled representation");
         // Recursive calls were compiled against Class.method at the specialized type.

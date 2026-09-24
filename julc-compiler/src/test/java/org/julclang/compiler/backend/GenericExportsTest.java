@@ -196,6 +196,77 @@ class GenericExportsTest {
                 List.of(group, again)), Constant.integer(3));
     }
 
+    // ---- producer-owned type arguments ----
+
+    static final PirType.RecordType ORDER = new PirType.RecordType("dsl.Order", List.of(
+            new PirType.Field("amount", INT), new PirType.Field("open", BOOL)));
+    static final PirType.SumType SIDE = new PirType.SumType("dsl.Side", List.of(
+            new PirType.Constructor("Buy", 0, List.of(new PirType.Field("amount", INT))),
+            new PirType.Constructor("Sell", 1, List.of())));
+    static final Reference ORDER_REF = new Reference("dsl.Order", List.of());
+    static final Reference SIDE_REF = new Reference("dsl.Side", List.of());
+
+    static LibraryRequest.Instantiate producer(String name, Reference argument, String type, PirType representation) {
+        return new LibraryRequest.Instantiate("demo.Seq." + name, List.of(argument), Map.of(type, representation));
+    }
+
+    static PirTerm data(PlutusData value) {
+        return new PirTerm.Const(Constant.data(value));
+    }
+
+    @Test
+    void producerOwnedRecordsAndSumsAreTypeArguments() {
+        var firstOrder = producer("firstOr", ORDER_REF, "dsl.Order", ORDER);
+        var containsSide = producer("contains", SIDE_REF, "dsl.Side", SIDE);
+        var countOrders = producer("count", ORDER_REF, "dsl.Order", ORDER);
+        var group = PROVIDER.materialize(List.of(firstOrder, containsSide, countOrders));
+        assertEquals(new PirType.FunType(new PirType.ListType(ORDER), new PirType.FunType(ORDER, ORDER)),
+                group.binding(firstOrder).type());
+        var open = PlutusData.constr(0, PlutusData.integer(3), PlutusData.constr(1));
+        var closed = PlutusData.constr(0, PlutusData.integer(9), PlutusData.constr(0));
+        assertEquals(new Term.Const(Constant.data(open)),
+                value(apply(ref(group, firstOrder), list(ORDER, data(open)), data(closed)), ORDER, group));
+        assertEquals(new Term.Const(Constant.data(closed)),
+                value(apply(ref(group, firstOrder), list(ORDER), data(closed)), ORDER, group));
+        assertEquals(new Term.Const(Constant.integer(2)),
+                value(apply(ref(group, countOrders), list(ORDER, data(open), data(closed))), INT, group));
+        // Equality follows the Data encoding of the producer's constructors.
+        var buy5 = PlutusData.constr(0, PlutusData.integer(5));
+        var sell = PlutusData.constr(1);
+        assertEquals(new Term.Const(Constant.bool(true)),
+                value(apply(ref(group, containsSide), list(SIDE, data(buy5), data(sell)), data(sell)), BOOL, group));
+        assertEquals(new Term.Const(Constant.bool(false)), value(apply(ref(group, containsSide),
+                list(SIDE, data(buy5)), data(PlutusData.constr(0, PlutusData.integer(6)))), BOOL, group));
+    }
+
+    @Test
+    void producerRepresentationsArePartOfTheSpecializationKey() {
+        var order = producer("firstOr", ORDER_REF, "dsl.Order", ORDER);
+        var wider = producer("firstOr", ORDER_REF, "dsl.Order", new PirType.RecordType("dsl.Order", List.of(
+                new PirType.Field("amount", INT), new PirType.Field("open", BOOL), new PirType.Field("fee", INT))));
+        var group = PROVIDER.materialize(List.of(order, wider, order));
+        assertNotEquals(group.binding(order).name(), group.binding(wider).name());
+        assertEquals(group.binding(order).name(), provider(SEQ).materialize(List.of(order)).binding(order).name());
+        // Keys without producer types keep their historical digest.
+        var plain = new SpecializationKey("content", "id", List.of(INT_REF), 1, 2, "plutus-v3-pv11-uplc-1.1.0");
+        assertEquals(plain.digest(), new SpecializationKey("content", "id", List.of(INT_REF), 1, 2,
+                "plutus-v3-pv11-uplc-1.1.0", List.of()).digest());
+        assertNotEquals(plain.digest(), new SpecializationKey("content", "id", List.of(INT_REF), 1, 2,
+                "plutus-v3-pv11-uplc-1.1.0", List.of("dsl.Order=x")).digest());
+    }
+
+    @Test
+    void producerTypesCannotShadowDescribedTypesOrBeNonConstructorTypes() {
+        var shadow = producer("firstOr", new Reference("demo.Seq.Quote", List.of()), "demo.Seq.Quote", ORDER);
+        var nonConstructor = producer("firstOr", new Reference("dsl.Count", List.of()), "dsl.Count", INT);
+        var missing = new LibraryRequest.Instantiate("demo.Seq.firstOr", List.of(ORDER_REF), Map.of());
+        for (var request : List.of(shadow, nonConstructor, missing))
+            assertEquals("JULC0051", assertThrows(BackendException.class,
+                    () -> PROVIDER.materialize(List.of(request))).code(), request.toString());
+        assertTrue(assertThrows(BackendException.class, () -> PROVIDER.materialize(List.of(shadow)))
+                .getMessage().contains("collides"));
+    }
+
     @Test
     void keysCoverEveryIdentityInput() {
         var base = new SpecializationKey("content", "id", List.of(INT_REF), 1, 2, "plutus-v3-pv11-uplc-1.1.0");
