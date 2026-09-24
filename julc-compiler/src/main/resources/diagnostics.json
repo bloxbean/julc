@@ -9,7 +9,8 @@
     "CONTROL_FLOW": "Control-flow restrictions (return, break, while, switch)",
     "LIBRARY": "@OnchainLibrary and @Param errors",
     "STDLIB": "Stdlib method usage errors (wrong arity, missing args)",
-    "PIR": "PIR generation errors (internal pipeline)"
+    "PIR": "PIR generation errors (internal pipeline)",
+    "BACKEND": "Language-neutral backend descriptors and producer PIR verification"
   },
   "diagnostics": [
     {
@@ -505,6 +506,94 @@
       "template": "Optimization rule {0} cannot be disabled. Rules that can be disabled: {1}",
       "summary": "Only the PIR-to-PIR sharing and promotion passes accept a per-rule switch; the identifier must match one of their rule ids exactly, so a typo never silently leaves the rule enabled.",
       "fix": "Use one of the listed rule identifiers exactly as reported in the optimization report, or lower the optimization level to disable a whole class of rules."
+    },
+    {
+      "code": "JULC0044",
+      "constant": "BACKEND_UNSUPPORTED_REVISION",
+      "status": "emitted",
+      "title": "Unsupported backend contract revision",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "{0} targets backend contract revision {1}; this backend supports revisions {2}",
+      "summary": "A neutral-backend descriptor or library provider declares a contract revision outside the range this compiler implements (ADR-059).",
+      "fix": "Produce the descriptor for a supported revision reported by CompilerBackend.capabilities, or use a compiler release that implements the requested revision."
+    },
+    {
+      "code": "JULC0045",
+      "constant": "BACKEND_CAPABILITY_UNAVAILABLE",
+      "status": "emitted",
+      "title": "Required backend capability unavailable",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "{0} requires backend capability {1}, which is not available for {2}",
+      "summary": "The descriptor declares a capability that this backend revision or compiler target does not provide, so compilation stops before materialization or lowering.",
+      "fix": "Check CompilerBackend.capabilities for the selected target and remove the dependency on the missing capability, or select a target and compiler that provide it."
+    },
+    {
+      "code": "JULC0046",
+      "constant": "BACKEND_TARGET_MISMATCH",
+      "status": "emitted",
+      "title": "Producer target differs from the backend target",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "{0} was produced for target {1}, but the backend is configured for {2}",
+      "summary": "Producer specialization and backend lowering must use the same ledger and UPLC profile; a mismatch would validate terms against the wrong builtin and feature set.",
+      "fix": "Configure the producer and CompilerOptions with the same CompilerTarget."
+    },
+    {
+      "code": "JULC0047",
+      "constant": "BACKEND_INVALID_DESCRIPTOR",
+      "status": "emitted",
+      "title": "Invalid neutral backend descriptor",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "Invalid descriptor {0}: {1}",
+      "summary": "A neutral-backend descriptor is malformed: for example duplicate or reserved names, conflicting named type definitions, duplicate purposes or a handler signature that does not match its role.",
+      "fix": "Correct the descriptor field named in the message; descriptors are validated before any provider materialization or lowering."
+    },
+    {
+      "code": "JULC0048",
+      "constant": "PIR_INVALID_BINDING",
+      "status": "emitted",
+      "title": "Invalid binding in producer PIR",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "Invalid PIR binding in {0}: {1}",
+      "summary": "Producer PIR uses a reserved binder name, references a symbol that is not an import, definition or enclosing binder, or declares the same program-level name twice.",
+      "fix": "Use producer-owned names that avoid the reserved forms (a leading '.' or '__', a leading '$julc$', or '#'), and reference imports only through the binding names returned by their provider."
+    },
+    {
+      "code": "JULC0049",
+      "constant": "PIR_TYPE_MISMATCH",
+      "status": "emitted",
+      "title": "Producer PIR types disagree",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "PIR type mismatch in {0}: {1}",
+      "summary": "A producer term disagrees with a declared or synthesized type: a variable annotation differs from its binder, an argument does not match a parameter or builtin signature, a condition is not Bool, or branches disagree.",
+      "fix": "Annotate the term with the type of the value it actually holds; convert between native and Data representations explicitly with the corresponding builtins."
+    },
+    {
+      "code": "JULC0050",
+      "constant": "PIR_UNSUPPORTED_STRUCTURE",
+      "status": "emitted",
+      "title": "Producer PIR structure unsupported by lowering",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "Unsupported PIR structure in {0}: {1}",
+      "summary": "Producer PIR contains a form the lowering cannot compile correctly, such as a non-function recursive binding, a generator-local IntegerCase, a constructor or match that disagrees with its type layout, or an unresolved named type.",
+      "fix": "Restructure the term as described; for example bind recursive values as lambdas and give a DataMatch exactly one branch per constructor in tag order."
+    },
+    {
+      "code": "JULC0051",
+      "constant": "BACKEND_UNSUPPORTED_REQUEST",
+      "status": "emitted",
+      "title": "Unsupported library request",
+      "category": "BACKEND",
+      "severity": "error",
+      "template": "Library request {0} is not supported: {1}",
+      "summary": "A library provider cannot materialize the requested export, instantiation or type operation with a verified representation.",
+      "fix": "Request only exports and operations the provider describes as supported; unsupported ones are listed with reasons by the provider."
     }
   ]
 }
