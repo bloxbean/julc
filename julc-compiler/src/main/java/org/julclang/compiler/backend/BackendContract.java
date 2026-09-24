@@ -43,6 +43,8 @@ public final class BackendContract {
         capabilities.add(BackendCapability.LIBRARY_REQUEST_OPERATION);
         capabilities.add(BackendCapability.LIBRARY_REQUEST_CODEC);
         capabilities.add(BackendCapability.LIBRARY_TYPE_OPERATIONS);
+        capabilities.add(BackendCapability.LIBRARY_SCHEMES);
+        capabilities.add(BackendCapability.LIBRARY_REQUEST_INSTANTIATE);
         for (var feature : ProtocolCapability.values())
             if (context.supports(feature)) capabilities.add(targetCapability(feature));
         return new BackendCapabilities(REVISION, MINIMUM_REVISION, context.target(), capabilities);

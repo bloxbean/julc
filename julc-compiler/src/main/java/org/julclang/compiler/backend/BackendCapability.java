@@ -67,6 +67,12 @@ public record BackendCapability(String id) implements Comparable<BackendCapabili
     public static final BackendCapability LIBRARY_TYPE_OPERATIONS =
             new BackendCapability("library.type-operations.1");
 
+    /** Generic export schemes ({@link LibraryScheme}), contract version 1. */
+    public static final BackendCapability LIBRARY_SCHEMES = new BackendCapability("library.schemes.1");
+    /** Specialization of generic exports ({@link LibraryRequest.Instantiate}). */
+    public static final BackendCapability LIBRARY_REQUEST_INSTANTIATE =
+            new BackendCapability("library.request.instantiate");
+
     public BackendCapability {
         Objects.requireNonNull(id, "id");
         if (!FORMAT.matcher(id).matches())

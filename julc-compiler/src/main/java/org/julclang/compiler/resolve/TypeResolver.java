@@ -42,6 +42,10 @@ public class TypeResolver {
     // Current import resolver (set per-CU during compilation)
     private ImportResolver currentImportResolver;
 
+    // Method type variables bound to concrete types while one generic library method is
+    // specialized (ADR-059). Empty during ordinary compilation.
+    private Map<String, PirType> typeVariables = Map.of();
+
     private static final Set<String> LEDGER_HASH_NAMES = Set.of(
             "PubKeyHash", "ScriptHash", "ValidatorHash", "PolicyId", "TokenName", "DatumHash", "TxId");
 
@@ -368,8 +372,29 @@ public class TypeResolver {
                 + ". Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces");
     }
 
+    /**
+     * Bind method type variables to concrete types for one specialization (ADR-059) and
+     * return the previous bindings, which the caller must restore with
+     * {@link #restoreTypeVariables} in a {@code finally} block.
+     */
+    public Map<String, PirType> bindTypeVariables(Map<String, PirType> bindings) {
+        var previous = typeVariables;
+        typeVariables = Map.copyOf(bindings);
+        return previous;
+    }
+
+    public void restoreTypeVariables(Map<String, PirType> previous) {
+        typeVariables = previous;
+    }
+
     private PirType resolveClassType(ClassOrInterfaceType ct) {
         var name = ct.getNameAsString();
+        // A bound method type variable shadows any class of the same name, as in Java.
+        if (ct.getScope().isEmpty() && typeVariables.containsKey(name)) {
+            if (ct.getTypeArguments().isPresent())
+                throw new CompilerException("Type variable " + name + " cannot take type arguments");
+            return typeVariables.get(name);
+        }
 
         // Built-in Java types: always by simple name (these never have FQCN variants)
         return switch (name) {
@@ -559,6 +584,8 @@ public class TypeResolver {
      * Returns empty for unknown types or built-in Java types (BigInteger, List, etc.).
      */
     public Optional<PirType> resolveNameToType(String fqcnOrSimpleName) {
+        if (typeVariables.containsKey(fqcnOrSimpleName))
+            return Optional.of(typeVariables.get(fqcnOrSimpleName));
         String fqcn = resolveName(fqcnOrSimpleName);
         if (LEDGER_HASH_FQCNS.contains(fqcn) || LEDGER_HASH_NAMES.contains(fqcnOrSimpleName))
             return Optional.of(new PirType.ByteStringType());

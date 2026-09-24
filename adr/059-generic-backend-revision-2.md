@@ -523,3 +523,60 @@ build against a locally published snapshot.
 - **Regression runs** (fresh): `julc-compiler` 1877/0/0, `pairCaseTest` 71/0/0,
   `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
   `julc-annotation-processor` 20/0/0.
+
+### Milestone 5 (#181)
+
+- **Repository fact recorded before implementation:** no generic on-chain library method
+  existed, and the Java compiler rejected method type variables. The accepted plan adds
+  specialization-only support, proven with a real Java library source compiled by the
+  real compiler. It adds no public stdlib API.
+- **Compiler changes:**
+  - `TypeResolver` gains a scoped type-variable environment, checked first in
+    `resolveClassType` and `resolveNameToType`. It is bound and restored in `finally`.
+  - `LibraryCompiler` registers generic static methods as templates and does not
+    compile them for Java callers. `LibraryMethodRegistry` rejects a Java call to a
+    template with an explicit diagnostic.
+  - `LibraryCompiler.compileSpecialization` compiles one generic method as an ordinary
+    method of its class, with its type variables bound. It returns the generator's
+    collected errors instead of dropping them.
+- **Pre-existing issue found (out of scope).** Ordinary library compilation ignores
+  collected generator errors, so an unresolved call in a library method compiles to a
+  runtime `Error` with no diagnostic. It is reported separately. Specialization checks
+  the collected errors.
+- **Neutral API:**
+  - `LibraryScheme`: stable identity, ordered source parameters with `Reference.variable`,
+    result, `DATA_ENCODABLE` type parameters and target.
+  - `LibraryProvider.schemes(module)`.
+  - `LibraryRequest.Instantiate`.
+  - `SpecializationKey`: content hash including the compiler version, identity, nominal
+    type arguments, representation and API revisions, and target profile.
+  - Generic methods do not appear in `describe`, so revision-1 consumers are unaffected;
+    `unsupportedExports` explains how to instantiate them.
+- **Specialization:**
+  - It checks the substituted source signature against the compiled representation.
+  - It renames self-recursion to the specialization binding and links non-generic
+    dependencies.
+  - It rejects bounds, wildcards, raw or ill-formed type arguments, variables, `Unit`,
+    unknown types, template-to-template calls and arity mismatches with JULC0051.
+- **`GenericExportsTest` (9 tests):**
+  - schemes, including a backward-compatible `describe`;
+  - `firstOr` at Int and Bytes;
+  - `pair<Bool>` encoding its elements as `Constr 1`/`Constr 0`, which erasure to Data
+    would not;
+  - `contains` equality at Int and Bytes;
+  - self-recursive `count` at a record type, plus dependency closure;
+  - distinct keys for the `Price` and `Quantity` newtypes despite equal representations;
+  - deduplication within a group and across isolated providers, and a new key when the
+    content changes;
+  - key sensitivity to every identity input;
+  - arguments captured once under partial application (a single trace);
+  - invalid instantiations;
+  - a Java validator calling a template is rejected, while the same library's concrete
+    methods still compile for Java.
+- **Java byte stability:** all 86 compiled artifacts from the 43 external example
+  validators are byte-identical to `main`.
+- **Compatibility:** the unmodified DSL-consumer suite gives 84/86, matching the
+  baseline.
+- **Regression runs** (fresh): `julc-compiler` 1886/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
