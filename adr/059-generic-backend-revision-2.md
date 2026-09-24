@@ -471,3 +471,55 @@ build against a locally published snapshot.
 - **Regression runs** (fresh): `julc-compiler` 1866/0/0, `pairCaseTest` 71/0/0,
   `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
   `julc-annotation-processor` 20/0/0.
+
+### Milestone 4 (#183)
+
+- **Audit before adding metadata.** `LibraryTypeDescriptions` already verified which
+  records are regular: they have constructor-encoded components and no custom codec.
+  `LibraryType.operations` is derived from that fact, newtype and sum flags, and a
+  `StrictBoundaryGenerator` check. Nothing is inferred from erased representations.
+- **Special layouts.** A special layout is a declared record whose runtime encoding is
+  not constructor data; the map-encoded ledger `Value` is the example.
+  - Special layouts get no operations.
+  - A type that contains one (`TxOut`, `TxInfo`, a user record with a `Value` field)
+    keeps CONSTRUCT/PROJECT/MATCH/ENCODE, but loses EQUALS, DECODE_STRICT and BOUNDARY.
+    The strict checker would treat the `Value` record as constructor data and reject a
+    correct map encoding, and `EqualsData` would be order-sensitive.
+  - Validator datum, redeemer and parameter types, and `BoundaryPrograms`, now reject
+    such types at compile time with JULC0047.
+- **Pre-existing Java issue found (out of scope).** A Java validator whose datum record
+  contains a ledger `Value` rejects the correct map encoding under strict boundaries and
+  accepts only `Constr 0 [map]`. It is reported separately; this milestone does not
+  change the Java path.
+- **Materialization.** `LibraryRequest.Operation` and `LibraryRequest.Codec` go through
+  `TypeOperations`, which a provider exposing types reuses:
+  - constructors use `DataConstr`;
+  - projections use the Java field-access lowering;
+  - equality follows Java `equals` semantics;
+  - encoders use `wrapEncode` and strict decoders use `StrictBoundaryGenerator`;
+  - MATCH and BOUNDARY are permissions rather than terms.
+- **Opacity and deduplication.** Imported types are now opaque per operation: producer
+  PIR can `DataMatch` or `DataConstr` an imported type only if its description approves
+  MATCH or CONSTRUCT. Identical definitions requested in separate groups are linked once.
+- **Capabilities:** `library.request.operation`, `library.request.codec` and
+  `library.type-operations.1`. `LibraryType.REPRESENTATION_REVISION` is 1.
+- **`TypeOperationsTest` (11 tests) covers:**
+  - the operation audit for custom and ledger types, including `Value`, `TxOut`,
+    `Credential` and `PubKeyHash`;
+  - record round trips and the fixed encoding `Quote(5, true) = Constr 0 [I 5, Constr 1 []]`;
+  - strict decoding rejecting a wrong tag, wrong arity, extra fields, nested kinds and
+    Bool tags;
+  - sum construction, matching and decoding;
+  - parity of equality and projection with the Java library's own `equals` and accessor
+    methods;
+  - a ledger `Credential` encoding identical to `julc-ledger-api` `toPlutusData`;
+  - `List Quote` and `Map Bytes Int` codecs;
+  - special layouts staying opaque in every form;
+  - rejection of boundaries that contain `Value`, and of incompatible nominal layouts;
+  - cross-group deduplication.
+- **Compatibility:** an unmodified DSL-consumer suite built against this snapshot gives
+  84/86, where the 2 failures are its pinned-version string check. This matches the
+  baseline, so the API is compatible.
+- **Regression runs** (fresh): `julc-compiler` 1877/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.

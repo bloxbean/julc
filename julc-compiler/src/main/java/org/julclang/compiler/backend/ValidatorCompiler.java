@@ -65,13 +65,14 @@ final class ValidatorCompiler {
         var unit = ProgramUnit.prepare(subject, capabilities, program.namedTypes(), program.imports(),
                 program.definitions());
         var namedTypes = unit.namedTypes();
-        requireParameters(program.parameters(), namedTypes, subject);
+        var uncheckable = uncheckable(unit.uncheckable());
+        requireParameters(program.parameters(), namedTypes, uncheckable, subject);
         var ordered = handlers.values().stream()
                 .sorted(Comparator.comparingInt(h -> BackendContract.ledgerTag(h.purpose())))
                 .toList();
         var shapes = new EnumMap<ContractSchema.Purpose, Shape>(ContractSchema.Purpose.class);
         for (var handler : ordered)
-            shapes.put(handler.purpose(), shape(handler, program.parameters(), namedTypes, subject));
+            shapes.put(handler.purpose(), shape(handler, program.parameters(), namedTypes, uncheckable, subject));
 
         var verifier = unit.verifier(BackendContract.builtinCaseLowering(context));
         unit.verifyDefinitions(verifier);
@@ -122,7 +123,7 @@ final class ValidatorCompiler {
 
     /** Check {@code parameters -> [datum ->] redeemer -> context -> Bool} for the handler's role. */
     private static Shape shape(ValidatorProgram.Handler handler, List<Parameter> parameters,
-                               Map<String, PirType> namedTypes, String subject) {
+                               Map<String, PirType> namedTypes, List<PirType> uncheckable, String subject) {
         var arguments = new ArrayList<PirType>();
         PirType result = handler.type();
         while (result instanceof PirType.FunType fn) {
@@ -152,8 +153,8 @@ final class ValidatorCompiler {
         if (handler.datum() == DatumProfile.OPTIONAL && !(resolve(datum, namedTypes) instanceof PirType.OptionalType))
             throw invalid(subject, role + " uses DatumProfile.OPTIONAL, so its datum argument must be an"
                     + " Optional type, not " + PirVerifier.show(datum));
-        if (datum != null) requireBoundary(datum, namedTypes, subject, role + " datum");
-        requireBoundary(redeemer, namedTypes, subject, role + " redeemer");
+        if (datum != null) requireBoundary(datum, namedTypes, uncheckable, subject, role + " datum");
+        requireBoundary(redeemer, namedTypes, uncheckable, subject, role + " redeemer");
         return new Shape(datum, redeemer, context);
     }
 
@@ -162,7 +163,7 @@ final class ValidatorCompiler {
      * have a Data decoding. Validate parameter Data off-chain with {@link BoundaryPrograms}.
      */
     private static void requireParameters(List<Parameter> parameters, Map<String, PirType> namedTypes,
-                                          String subject) {
+                                          List<PirType> uncheckable, String subject) {
         var names = new java.util.HashSet<String>();
         for (var parameter : parameters) {
             String what = "parameter " + parameter.name();
@@ -170,7 +171,7 @@ final class ValidatorCompiler {
             if (!names.add(parameter.name())) throw invalid(subject, what + " is declared more than once");
             if (resolve(parameter.type(), namedTypes) instanceof PirType.UnitType)
                 throw invalid(subject, what + " has type Unit, which decodes as raw Data; use Data or a record");
-            requireBoundary(parameter.type(), namedTypes, subject, what);
+            requireBoundary(parameter.type(), namedTypes, uncheckable, subject, what);
         }
     }
 
@@ -194,11 +195,27 @@ final class ValidatorCompiler {
         return body;
     }
 
-    static void requireBoundary(PirType type, Map<String, PirType> namedTypes, String subject,
-                                        String what) {
+    /**
+     * Types whose strict boundary check would misjudge valid Data: imported descriptions
+     * without BOUNDARY, and bundled ledger types such as the map-encoded {@code Value} (whose
+     * PIR record form the checker would treat as constructor data) and records containing them.
+     */
+    static List<PirType> uncheckable(List<PirType> imported) {
+        var all = new ArrayList<>(LedgerContext.UNCHECKABLE);
+        for (var type : imported) if (!all.contains(type)) all.add(type);
+        return all;
+    }
+
+    static void requireBoundary(PirType type, Map<String, PirType> namedTypes, List<PirType> uncheckable,
+                                String subject, String what) {
         if (containsNative(type, namedTypes, new java.util.HashSet<>()))
             throw invalid(subject, what + " has a native type, which has no Data boundary encoding: "
                     + PirVerifier.show(type));
+        var special = find(type, namedTypes, uncheckable, new java.util.HashSet<>());
+        if (special != null)
+            throw invalid(subject, what + " contains " + PirVerifier.show(special) + ", whose Data "
+                    + "encoding the strict boundary cannot check (for example the map-encoded ledger "
+                    + "Value); use Data for that part or an approved type");
         try {
             new StrictBoundaryGenerator(namedTypes).ensureSupported(type);
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -220,6 +237,29 @@ final class ValidatorCompiler {
                     || containsNative(m.valueType(), namedTypes, visiting);
             case PirType.OptionalType o -> containsNative(o.elemType(), namedTypes, visiting);
             default -> PirType.containsNativeOpaque(type);
+        };
+    }
+
+    /** The first component of {@code type} equal to one of {@code targets}, or null. */
+    private static PirType find(PirType type, Map<String, PirType> namedTypes, List<PirType> targets,
+                                Set<String> visiting) {
+        if (targets.contains(type)) return type;
+        return switch (type) {
+            case PirType.NamedTypeRef ref -> visiting.add(ref.stableId()) && namedTypes.containsKey(ref.stableId())
+                    ? find(namedTypes.get(ref.stableId()), namedTypes, targets, visiting) : null;
+            case PirType.RecordType r -> r.fields().stream()
+                    .map(f -> find(f.type(), namedTypes, targets, visiting))
+                    .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+            case PirType.SumType s -> s.constructors().stream().flatMap(c -> c.fields().stream())
+                    .map(f -> find(f.type(), namedTypes, targets, visiting))
+                    .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+            case PirType.ListType l -> find(l.elemType(), namedTypes, targets, visiting);
+            case PirType.MapType m -> {
+                var key = find(m.keyType(), namedTypes, targets, visiting);
+                yield key != null ? key : find(m.valueType(), namedTypes, targets, visiting);
+            }
+            case PirType.OptionalType o -> find(o.elemType(), namedTypes, targets, visiting);
+            default -> null;
         };
     }
 
@@ -254,8 +294,15 @@ final class ValidatorCompiler {
         return new BackendException(DiagnosticCodes.BACKEND_INVALID_DESCRIPTOR, subject, subject, detail);
     }
 
-    /** The bundled ledger ScriptContext representation, loaded on first use. */
+    /** Bundled ledger type facts, loaded on first use. */
     private static final class LedgerContext {
-        static final PirType TYPE = new LedgerTypeProvider().types().get(CONTEXT_TYPE_ID).representation();
+        static final Map<String, LibraryType> TYPES = new LedgerTypeProvider().types();
+        static final PirType TYPE = TYPES.get(CONTEXT_TYPE_ID).representation();
+        static final List<PirType> UNCHECKABLE = TYPES.values().stream()
+                .filter(t -> t.representation() instanceof PirType.RecordType
+                        || t.representation() instanceof PirType.SumType)
+                .filter(t -> !t.supports(LibraryType.Operation.BOUNDARY))
+                .map(LibraryType::representation)
+                .toList();
     }
 }

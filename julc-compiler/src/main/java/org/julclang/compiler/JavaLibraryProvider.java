@@ -155,10 +155,21 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     gather(export.symbol(), reachable);
                     bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
                 }
+                case LibraryRequest.Operation operation -> bind(reachable, bindings, request,
+                        new TypeOperations(types, definitions).operation(operation));
+                case LibraryRequest.Codec codec -> bind(reachable, bindings, request,
+                        new TypeOperations(types, definitions).codec(codec));
             }
         }
         return new LibraryImports(JavaLibraryProvider.class.getName(), revision(), reachable,
-                bindings, definitions);
+                bindings, definitions, types);
+    }
+
+    private static void bind(Map<String, PirTerm> definitions,
+                             Map<LibraryRequest, LibraryImports.Binding> bindings,
+                             LibraryRequest request, TypeOperations.Materialized materialized) {
+        definitions.putIfAbsent(materialized.name(), materialized.term());
+        bindings.put(request, new LibraryImports.Binding(materialized.name(), materialized.type()));
     }
 
     private void gather(String symbol, Map<String, PirTerm> found) {
