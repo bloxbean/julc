@@ -198,13 +198,19 @@ public final class StdlibLibraryProvider implements LibraryProvider {
         if (request.typeArguments().size() != scheme.typeParameters().size())
             throw unsupported(request, scheme.identity() + " takes " + scheme.typeParameters().size()
                     + " type arguments, not " + request.typeArguments().size());
+        Map<String, LibraryType> visible;
+        try {
+            visible = TypeReferences.withProducerTypes(types, request);
+        } catch (IllegalArgumentException e) {
+            throw unsupported(request, e.getMessage());
+        }
         var representations = new ArrayList<PirType>();
         for (var argument : request.typeArguments()) {
             if (argument.isGeneric())
                 throw unsupported(request, "type arguments must be concrete, not " + argument.canonical());
             PirType representation;
             try {
-                representation = TypeReferences.representation(argument, types);
+                representation = TypeReferences.representation(argument, visible);
             } catch (IllegalArgumentException e) {
                 throw unsupported(request, "type argument " + argument.canonical() + ": " + e.getMessage());
             }
@@ -214,7 +220,8 @@ public final class StdlibLibraryProvider implements LibraryProvider {
             representations.add(representation);
         }
         var key = new SpecializationKey(CONTENT, scheme.identity(), request.typeArguments(),
-                LibraryType.REPRESENTATION_REVISION, BackendContract.REVISION, context.target().profileId());
+                LibraryType.REPRESENTATION_REVISION, BackendContract.REVISION, context.target().profileId(),
+                TypeReferences.producerFingerprints(request));
         var cached = bindings.get(key);
         if (cached != null) return cached;
         var built = hof.builder().apply(representations);

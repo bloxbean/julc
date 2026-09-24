@@ -299,6 +299,25 @@ with schemes. It starts with the list higher-order functions (`map`, `filter`, `
 `LibraryProviders.compose` owns symbols deterministically. It rejects duplicate symbols
 and conflicting type identities, and checks provider revisions before materialization.
 
+### Producer-owned type arguments (follow-up to #181/#182)
+
+A generic export can be instantiated at a nominal type that the producer defines and the
+provider does not describe, such as a DSL record or union.
+
+- **Request:** `LibraryRequest.Instantiate` carries `producerTypes`, the representations
+  of such types keyed by the reference names used in its type arguments. The existing
+  two-argument constructor means "none".
+- **Validation:** each producer type must be a constructor-encoded record or sum. A
+  name the provider already describes is rejected (JULC0051) rather than shadowed.
+- **Resolution:** providers resolve type arguments against their own descriptions plus
+  the request's producer types, through `TypeReferences.withProducerTypes`. The same
+  path serves the Java-source templates (`JavaLibraryProvider`) and the programmatic
+  catalogue (`StdlibLibraryProvider`).
+- **Keys:** `SpecializationKey` gains the producer representations. Two producer types
+  with one name but different representations never share an implementation. Keys
+  without producer types keep their historical digests, so existing binding names and
+  script bytes are unchanged.
+
 ## Alternatives rejected
 
 - **Verify inlined library bodies.** Java PIR uses `Data` placeholders, so either every
@@ -625,3 +644,28 @@ build against a locally published snapshot.
   - The revision-2 compilation of that suite, with imports instead of inlined libraries,
     accepts all 68 programs (0 rejected), and all 54 function programs evaluate
     identically to revision 1.
+
+### Milestone 7 (producer-owned type arguments)
+
+- **New code:** the `producerTypes` component of `LibraryRequest.Instantiate`,
+  `TypeReferences.withProducerTypes` and `producerFingerprints`, and the
+  producer-type component of `SpecializationKey`. `JavaLibraryProvider` and
+  `StdlibLibraryProvider` resolve type arguments through them.
+- **`GenericExportsTest` (3 new tests):**
+  - `firstOr`, `count` and `contains` are specialized by the Java compiler at a
+    producer record and a producer sum. Equality follows the constructor encoding.
+  - Producer representations are part of the key: a wider record with the same name
+    gets a new binding, and an isolated provider reproduces the same binding name.
+  - Keys without producer types keep their digest.
+  - Collisions with described types, non-constructor representations and missing
+    producer types are rejected with JULC0051.
+- **`StdlibLibraryProviderTest` (1 new test):** programmatic `any` at a producer record,
+  and rejection without its representation.
+- **Compatibility:**
+  - Requests without producer types use the unchanged two-argument constructor and
+    key digest. Their binding names, and every Java compilation path, are untouched.
+  - The DSL-consumer suite built against this branch instantiates Java-source templates
+    and programmatic exports at its own records and unions.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 420/0/0, `julc-testkit` 193/0/0,
+  `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
