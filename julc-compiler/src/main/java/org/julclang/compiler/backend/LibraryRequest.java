@@ -2,12 +2,13 @@ package org.julclang.compiler.backend;
 
 import org.julclang.compiler.pir.PirType;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
 /** A request for a provider-owned, closed implementation (ADR-059). */
-public sealed interface LibraryRequest permits LibraryRequest.Export, LibraryRequest.Operation,
-        LibraryRequest.Codec {
+public sealed interface LibraryRequest permits LibraryRequest.Export, LibraryRequest.Instantiate,
+        LibraryRequest.Operation, LibraryRequest.Codec {
 
     /** A stable description used in diagnostics. */
     String describe();
@@ -22,6 +23,23 @@ public sealed interface LibraryRequest permits LibraryRequest.Export, LibraryReq
         @Override
         public String describe() {
             return symbol;
+        }
+    }
+
+    /**
+     * A generic export specialized at concrete type arguments (#181), in the order of the
+     * scheme's type parameters. Arguments are source references without variables.
+     */
+    record Instantiate(String symbol, List<LibraryType.Reference> typeArguments) implements LibraryRequest {
+        public Instantiate {
+            Objects.requireNonNull(symbol, "symbol");
+            typeArguments = List.copyOf(typeArguments);
+        }
+
+        @Override
+        public String describe() {
+            return symbol + "<" + String.join(",", typeArguments.stream()
+                    .map(LibraryType.Reference::canonical).toList()) + ">";
         }
     }
 

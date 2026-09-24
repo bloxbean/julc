@@ -63,9 +63,46 @@ public record LibraryType(
         public Constructor { fields = List.copyOf(fields); }
     }
 
-    public record Reference(String name, List<Reference> arguments) {
+    /**
+     * A source type reference. A {@linkplain #variable(String) variable} names a type parameter
+     * of a {@link LibraryScheme}; it is never a nominal type.
+     */
+    public record Reference(String name, List<Reference> arguments, boolean variable) {
         public Reference {
             arguments = List.copyOf(arguments);
+            if (variable && !arguments.isEmpty())
+                throw new IllegalArgumentException("A type variable takes no arguments: " + name);
+        }
+
+        public Reference(String name, List<Reference> arguments) {
+            this(name, arguments, false);
+        }
+
+        /** A scheme type variable. */
+        public static Reference variable(String name) {
+            return new Reference(name, List.of(), true);
+        }
+
+        /** Replace scheme variables with their bindings; unbound variables are an error. */
+        public Reference substitute(java.util.Map<String, Reference> bindings) {
+            if (variable) {
+                var bound = bindings.get(name);
+                if (bound == null) throw new IllegalArgumentException("Unbound type variable " + name);
+                return bound;
+            }
+            return new Reference(name, arguments.stream().map(a -> a.substitute(bindings)).toList(), false);
+        }
+
+        /** Whether this reference mentions a type variable. */
+        public boolean isGeneric() {
+            return variable || arguments.stream().anyMatch(Reference::isGeneric);
+        }
+
+        /** A canonical text form, stable across runs, used in identities and keys. */
+        public String canonical() {
+            if (variable) return "'" + name;
+            if (arguments.isEmpty()) return name;
+            return name + "[" + String.join(",", arguments.stream().map(Reference::canonical).toList()) + "]";
         }
     }
 

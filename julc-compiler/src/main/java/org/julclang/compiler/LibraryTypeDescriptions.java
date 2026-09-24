@@ -19,6 +19,8 @@ final class LibraryTypeDescriptions {
     private final Map<String, LibraryType> types = new LinkedHashMap<>();
     /** Declared records whose runtime encoding is not constructor data, e.g. the map-backed Value. */
     private final Set<String> special = new LinkedHashSet<>();
+    /** Type variables of the generic method being described (ADR-059, #181). */
+    private Set<String> variables = Set.of();
 
     LibraryTypeDescriptions(List<CompilationUnit> units, TypeResolver resolver) {
         this.resolver = resolver;
@@ -148,6 +150,11 @@ final class LibraryTypeDescriptions {
 
     Map<String, LibraryType> types() { return Collections.unmodifiableMap(types); }
 
+    /** Describe references to these names as scheme type variables until reset. */
+    void variables(Set<String> names) {
+        variables = Set.copyOf(names);
+    }
+
     void scope(CompilationUnit unit) {
         var known = new LinkedHashSet<>(resolver.allRegisteredFqcns());
         known.addAll(TypeResolver.ledgerHashFqcns());
@@ -170,6 +177,10 @@ final class LibraryTypeDescriptions {
         };
         if (!type.isClassOrInterfaceType()) throw unsupported(type);
         var ct = type.asClassOrInterfaceType();
+        if (ct.getScope().isEmpty() && variables.contains(ct.getNameAsString())) {
+            if (ct.getTypeArguments().isPresent()) throw unsupported(type);
+            return LibraryType.Reference.variable(ct.getNameAsString());
+        }
         String name = ct.getNameWithScope();
         var args = ct.getTypeArguments().map(a -> a.stream().map(this::reference).toList()).orElse(List.of());
         String resolved = resolver.resolveClassName(name);
@@ -199,8 +210,21 @@ final class LibraryTypeDescriptions {
     }
 
     PirType representation(LibraryType.Reference ref) {
-        if (types.containsKey(ref.name())) return types.get(ref.name()).representation();
+        if (ref.variable()) throw new IllegalArgumentException("Unbound type variable " + ref.name());
+        if (types.containsKey(ref.name())) {
+            if (!ref.arguments().isEmpty())
+                throw new IllegalArgumentException("Nominal type " + ref.name() + " takes no type arguments");
+            return types.get(ref.name()).representation();
+        }
         var args = ref.arguments();
+        int arity = switch (ref.name()) {
+            case "List", "JulcOptional" -> 1;
+            case "Map" -> 2;
+            default -> 0;
+        };
+        if (args.size() != arity)
+            throw new IllegalArgumentException("Type " + ref.name() + " takes " + arity + " type arguments, not "
+                    + args.size());
         return switch (ref.name()) {
             case "Int" -> new PirType.IntegerType();
             case "Bool" -> new PirType.BoolType();
