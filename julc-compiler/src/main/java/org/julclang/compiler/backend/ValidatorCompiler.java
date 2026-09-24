@@ -5,6 +5,7 @@ import org.julclang.compiler.LedgerTypeProvider;
 import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.codegen.ValidatorWrapper;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
@@ -27,6 +28,7 @@ import java.util.Set;
  */
 final class ValidatorCompiler {
     private static final String HANDLER_PREFIX = "$julc$handler$";
+    private static final String PARAMETER_PREFIX = "$julc$param$";
     private static final String CONTEXT_TYPE_ID = "org.julclang.ledger.ScriptContext";
 
     private ValidatorCompiler() {}
@@ -63,6 +65,7 @@ final class ValidatorCompiler {
         var unit = ProgramUnit.prepare(subject, capabilities, program.namedTypes(), program.imports(),
                 program.definitions());
         var namedTypes = unit.namedTypes();
+        requireParameters(program.parameters(), namedTypes, subject);
         var ordered = handlers.values().stream()
                 .sorted(Comparator.comparingInt(h -> BackendContract.ledgerTag(h.purpose())))
                 .toList();
@@ -87,7 +90,11 @@ final class ValidatorCompiler {
             var shape = shapes.get(handler.purpose());
             String name = HANDLER_PREFIX + handler.purpose().name().toLowerCase(Locale.ROOT);
             bindings.put(name, handler.term());
+            // Every handler receives all decoded parameters as leading arguments.
             PirTerm invocation = new PirTerm.Var(name, handler.type());
+            for (int i = 0; i < program.parameters().size(); i++)
+                invocation = new PirTerm.App(invocation, new PirTerm.Var(
+                        PARAMETER_PREFIX + i, program.parameters().get(i).type()));
             invocations.put(tag, adaptUnits(invocation, shape, namedTypes));
             parameterCounts.put(tag, shape.datum() != null ? 3 : 2);
             datumOptional.put(tag, handler.datum() == DatumProfile.OPTIONAL);
@@ -98,6 +105,15 @@ final class ValidatorCompiler {
         }
         PirTerm wrapped = new ValidatorWrapper(namedTypes).wrapMultiValidator(
                 invocations, parameterCounts, datumOptional, datumTypes, redeemerTypes);
+        // Deployment parameters are outer lambdas in ABI order with the Java @Param shape:
+        // each raw Data argument is decoded once, when it is applied.
+        for (int i = program.parameters().size() - 1; i >= 0; i--) {
+            var parameter = program.parameters().get(i);
+            String raw = PARAMETER_PREFIX + i + "$raw";
+            wrapped = new PirTerm.Lam(raw, new PirType.DataType(), new PirTerm.Let(PARAMETER_PREFIX + i,
+                    PirHelpers.wrapDecode(new PirTerm.Var(raw, new PirType.DataType()), parameter.type()),
+                    wrapped));
+        }
         var lowered = PirBackend.lower(unit.link(bindings, wrapped), context, null, true);
         var abi = new ValidatorAbi(program.identity(), context.target(), program.boundary(),
                 program.parameters(), handlerAbis, namedTypes);
@@ -142,6 +158,23 @@ final class ValidatorCompiler {
     }
 
     /**
+     * Parameters are decoded, not validated, on-chain (as Java {@code @Param}); their types must
+     * have a Data decoding. Validate parameter Data off-chain with {@link BoundaryPrograms}.
+     */
+    private static void requireParameters(List<Parameter> parameters, Map<String, PirType> namedTypes,
+                                          String subject) {
+        var names = new java.util.HashSet<String>();
+        for (var parameter : parameters) {
+            String what = "parameter " + parameter.name();
+            if (parameter.name().isBlank()) throw invalid(subject, "a parameter name must not be blank");
+            if (!names.add(parameter.name())) throw invalid(subject, what + " is declared more than once");
+            if (resolve(parameter.type(), namedTypes) instanceof PirType.UnitType)
+                throw invalid(subject, what + " has type Unit, which decodes as raw Data; use Data or a record");
+            requireBoundary(parameter.type(), namedTypes, subject, what);
+        }
+    }
+
+    /**
      * Unit boundary values are checked as {@code Constr 0 []} Data, but Julc's shared decoder
      * passes that Data through. Give the handler the native unit it declares instead.
      */
@@ -161,7 +194,7 @@ final class ValidatorCompiler {
         return body;
     }
 
-    private static void requireBoundary(PirType type, Map<String, PirType> namedTypes, String subject,
+    static void requireBoundary(PirType type, Map<String, PirType> namedTypes, String subject,
                                         String what) {
         if (containsNative(type, namedTypes, new java.util.HashSet<>()))
             throw invalid(subject, what + " has a native type, which has no Data boundary encoding: "
