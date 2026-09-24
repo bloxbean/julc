@@ -233,8 +233,8 @@ public final class JavaLibraryProvider implements LibraryProvider {
                         new TypeOperations(types, definitions).codec(codec));
             }
         }
-        return new LibraryImports(JavaLibraryProvider.class.getName(), revision(), reachable,
-                bindings, definitions, types);
+        return new LibraryImports(JavaLibraryProvider.class.getName(), revision(), context.target(),
+                reachable, bindings, definitions, types);
     }
 
     /**
@@ -266,7 +266,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                 throw unsupported(request, "type argument " + argument.canonical() + " is not a supported type: "
                         + e.getMessage());
             }
-            if (!dataEncodable(representation))
+            if (!TypeReferences.dataEncodable(representation))
                 throw unsupported(request, "type argument " + argument.canonical() + " for " + parameter.name()
                         + " does not satisfy " + LibraryScheme.Constraint.DATA_ENCODABLE);
             substitution.put(parameter.name(), argument);
@@ -302,17 +302,6 @@ public final class JavaLibraryProvider implements LibraryProvider {
         var specialized = new Specialized(name, body, compiled.type());
         specializations.put(key, specialized);
         return specialized;
-    }
-
-    private static boolean dataEncodable(PirType type) {
-        return switch (type) {
-            case PirType.IntegerType _, PirType.ByteStringType _, PirType.StringType _, PirType.BoolType _,
-                 PirType.DataType _, PirType.RecordType _, PirType.SumType _, PirType.NamedTypeRef _ -> true;
-            case PirType.ListType list -> !(list.elemType() instanceof PirType.PairType) && dataEncodable(list.elemType());
-            case PirType.MapType map -> dataEncodable(map.keyType()) && dataEncodable(map.valueType());
-            case PirType.OptionalType optional -> dataEncodable(optional.elemType());
-            default -> false;
-        };
     }
 
     /** SHA-256 of the compiler version and every source, length-prefixed in the supplied order. */

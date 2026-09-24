@@ -580,3 +580,48 @@ build against a locally published snapshot.
 - **Regression runs** (fresh): `julc-compiler` 1886/0/0, `pairCaseTest` 71/0/0,
   `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
   `julc-annotation-processor` 20/0/0.
+
+### Milestone 6 (#182)
+
+- **`StdlibLibraryProvider`** (`julc-stdlib`) describes the programmatic list
+  higher-order functions `map`, `filter`, `any`, `all`, `find` and `foldl` as schemes.
+  A `Function[a,b]` reference expresses the function arguments.
+  - Each instantiation materializes a closed lambda over reserved `$julc$arg$i`
+    parameters wrapped around the existing `PirHofBuilders`. Producer terms are never
+    placed under builder binders, and arguments are evaluated once, strictly, and left
+    to right.
+  - Julc-generated adapters decode Data list elements for the typed function argument
+    and encode results.
+  - Nominal element types resolve against the bundled ledger descriptions and any
+    descriptions supplied at construction.
+- **`TypeReferences`** is now the single reference-to-representation mapping, and
+  `LibraryTypeDescriptions` delegates to it.
+- **Target checks:** import groups record the target they were materialized for, and
+  `ProgramUnit` rejects a mismatch with JULC0046.
+- **`LibraryProviders.compose`:**
+  - checks provider revisions before any materialization;
+  - merges type descriptions and named definitions, rejecting conflicting identities;
+  - rejects a symbol described by more than one provider rather than ordering them;
+  - routes each request to its single owner and merges the owners' groups into one.
+- **Capability:** `library.compose`.
+- **`StdlibLibraryProviderTest` (8 tests) covers:**
+  - the catalogue;
+  - every function evaluated with typed functions, including Bool results, the
+    `Optional` result of `find`, and a nominal ledger element type (`TxOutRef`);
+  - freedom from capture for outer names `x`, `acc`, `lst`, `go`, `h` and `x_map`;
+  - left-to-right single evaluation, with the documented empty-list difference from
+    Java (the function argument is still evaluated once);
+  - failure ordering;
+  - Java-source `ListsLib.concat`, with its private `reverse` dependency, and
+    programmatic `map` in one composed group and one program;
+  - duplicate ownership, bad instantiations, provider revisions and target mismatch.
+- **Regression runs** (fresh): `julc-compiler` 1886/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 419/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+- **Whole-stack checks at the final branch:**
+  - `./gradlew build -PskipSigning=true` passes: 11,483 tests in 27 modules, 0 failures,
+    530 skipped.
+  - The unmodified DSL-consumer suite gives 84/86, matching the baseline.
+  - The revision-2 compilation of that suite, with imports instead of inlined libraries,
+    accepts all 68 programs (0 rejected), and all 54 function programs evaluate
+    identically to revision 1.
