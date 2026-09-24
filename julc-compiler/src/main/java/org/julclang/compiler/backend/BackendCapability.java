@@ -29,6 +29,32 @@ public record BackendCapability(String id) implements Comparable<BackendCapabili
      */
     public static final BackendCapability PIR_BUILTIN_CASE = new BackendCapability("pir.builtin-case");
 
+    /** Revision-2 {@link ValidatorProgram} descriptors with purpose dispatch. */
+    public static final BackendCapability VALIDATOR_PROGRAM = new BackendCapability("program.validator");
+    /** Minting handlers. */
+    public static final BackendCapability PURPOSE_MINT = new BackendCapability("purpose.mint");
+    /** Spending handlers. */
+    public static final BackendCapability PURPOSE_SPEND = new BackendCapability("purpose.spend");
+    /** Withdrawal (rewarding) handlers. */
+    public static final BackendCapability PURPOSE_WITHDRAW = new BackendCapability("purpose.withdraw");
+    /** Certifying handlers. */
+    public static final BackendCapability PURPOSE_CERTIFY = new BackendCapability("purpose.certify");
+    /** Voting handlers. */
+    public static final BackendCapability PURPOSE_VOTE = new BackendCapability("purpose.vote");
+    /** Proposing handlers. */
+    public static final BackendCapability PURPOSE_PROPOSE = new BackendCapability("purpose.propose");
+    /** Spending handlers with a required datum ({@link DatumProfile#REQUIRED}). */
+    public static final BackendCapability SPEND_DATUM_REQUIRED =
+            new BackendCapability("spend.datum.required");
+
+    /** Deployment parameters ({@link Parameter}); available from milestone #184. */
+    public static final BackendCapability VALIDATOR_PARAMETERS = new BackendCapability("validator.parameters");
+    /** Spending handlers with an optional datum; available from milestone #184. */
+    public static final BackendCapability SPEND_DATUM_OPTIONAL =
+            new BackendCapability("spend.datum.optional");
+    /** Spending handlers without a datum argument; available from milestone #184. */
+    public static final BackendCapability SPEND_DATUM_ABSENT = new BackendCapability("spend.datum.absent");
+
     public BackendCapability {
         Objects.requireNonNull(id, "id");
         if (!FORMAT.matcher(id).matches())
