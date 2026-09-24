@@ -229,7 +229,12 @@ final class LoopBodyGenerator {
     }
 
     PirTerm unpackAccumulators(PirTerm tuple, List<String> names, List<PirType> types, PirTerm body) {
-        var tupleVar = new PirTerm.Var("__t", new PirType.ListType(new PirType.DataType()));
+        // The body and every later accessor are in the tuple binder's scope, and an
+        // accumulator of the same name would shadow the tuple for later accessors.
+        var avoid = PirHelpers.freeVariables(body);
+        avoid.addAll(names);
+        var tupleVar = new PirTerm.Var(PirHelpers.hygienicName("__t", avoid),
+                new PirType.ListType(new PirType.DataType()));
         PirTerm result = body;
         for (int i = names.size() - 1; i >= 0; i--) {
             PirTerm accessor = tupleVar;
@@ -240,7 +245,7 @@ final class LoopBodyGenerator {
             var decoded = PirHelpers.wrapDecode(accessor, types.get(i));
             result = new PirTerm.Let(names.get(i), decoded, result);
         }
-        return new PirTerm.Let("__t", tuple, result);
+        return new PirTerm.Let(tupleVar.name(), tuple, result);
     }
 
     // ===== Single-accumulator body =====
@@ -403,7 +408,7 @@ final class LoopBodyGenerator {
             if (!thenBreaks && !elseBreaks) {
                 return new PirTerm.Let(accName, ifExpr, rest);
             }
-            return new PirTerm.Let("_if", ifExpr, rest);
+            return new PirTerm.Let(PirHelpers.hygienicName("_if", PirHelpers.freeVariables(rest)), ifExpr, rest);
         }
 
         if (!thenBreaks && !elseBreaks) {
@@ -833,7 +838,8 @@ final class LoopBodyGenerator {
             return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
         } else {
             var rest = continuation.apply(stmts, index + 1);
-            return new PirTerm.Let("_nested", innerResult, rest);
+            return new PirTerm.Let(PirHelpers.hygienicName("_nested", PirHelpers.freeVariables(rest)),
+                    innerResult, rest);
         }
     }
 }
