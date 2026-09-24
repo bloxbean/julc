@@ -56,6 +56,10 @@ final class ProgramUnit {
         for (var group : imports) {
             String groupSubject = subject + " import from " + group.provider();
             capabilities.requireRevision(group.revision(), groupSubject);
+            // A group specialized for another target used other builtins and features.
+            if (group.target() != null && !group.target().equals(capabilities.target()))
+                throw new BackendException(DiagnosticCodes.BACKEND_TARGET_MISMATCH, groupSubject, groupSubject,
+                        group.target().profileId(), capabilities.target().profileId());
             group.namedTypes().forEach((id, definition) -> {
                 var previous = namedTypes.putIfAbsent(id, definition);
                 if (previous != null && !previous.equals(definition))
