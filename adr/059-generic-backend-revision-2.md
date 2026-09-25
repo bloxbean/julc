@@ -376,6 +376,26 @@ instead of written by hand for each type.
   reference, so every value is finite. A recursive type with no finite value is
   rejected.
 
+### Arrays in library signatures (follow-up)
+
+`JulcArray<T>` lowers to `ArrayType`, a PV11 (CIP-138) array of Data-encoded
+elements. The library contract could not name it: a Java library method that took or
+returned an array was unsupported, and generic code could not be instantiated over
+arrays.
+
+- **Reference.** `LibraryTypeDescriptions` maps `JulcArray<T>` to the reference
+  `Array<T>`, and `TypeReferences` represents it as `ArrayType`.
+  - Arrays have no Data encoding, so they are not `DATA_ENCODABLE`. They cannot
+    instantiate a constrained type variable or pass through a codec.
+  - The verifier already types the array builtins.
+- **`TypedArrayLib`** (julc-stdlib) adds generic templates: `fromList`
+  (`ListToArray`), `get` (`IndexArray` with the element decode) and `length`
+  (`LengthOfArray`).
+  - They are the three `JulcArray` operations, lowered by the same
+    `TypeMethodRegistry` entries that Java validators use.
+  - Frontends instantiate them at their element types, including producer-owned
+    records.
+
 ## Alternatives rejected
 
 - **Verify inlined library bodies.** Java PIR uses `Data` placeholders, so either every
@@ -774,5 +794,21 @@ build against a locally published snapshot.
   unsupported types and a missing datum are rejected.
 - **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
   `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 204/0/0,
+  `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 10 (arrays in library signatures)
+
+- **`TypedArrayLibTest`** (julc-stdlib, 6 tests):
+  - the catalogue is generic, and `get` takes an `Array` reference;
+  - `fromList`, `get` and `length` at `Int` and `Bytes` evaluate and decode their
+    elements;
+  - indexing at `length` or `-1` fails evaluation;
+  - a producer-owned record is an element type;
+  - a Java library whose methods take and return `JulcArray<BigInteger>` is
+    described, linked and evaluated;
+  - `Array` is not Data-encodable and needs exactly one type argument.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 432/0/0, `julc-testkit` 204/0/0,
   `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
   `julc-annotation-processor` 20/0/0.
