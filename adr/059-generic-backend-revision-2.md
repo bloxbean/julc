@@ -341,6 +341,41 @@ provider does not describe, such as a DSL record or union.
   - This correctness fix changes the script bytes of Java programs that call
     `keys()` or `values()`. Nothing else changes.
 
+### Schema-driven test data (follow-up)
+
+A producer knows each boundary's PIR type: parameters, datums, redeemers, and the
+arguments of its own functions. Test data can therefore be derived from those types
+instead of written by hand for each type.
+
+- **`DataGenerators.forType`** (julc-testkit, package `property`) derives a seeded
+  `DataGenerator` from a PIR type and its named types.
+  - Every value is a valid Data encoding of the type: it passes the same
+    `StrictBoundaryGenerator` check that guards validator boundaries. Map keys are
+    distinct.
+  - Values grow with a size parameter.
+  - Shrinking is type-directed. It shortens lists, moves integers toward 0, moves
+    to earlier constructors and uses recursive subterms (`Cons x rest` → `rest`).
+    Every shrink candidate is still a valid value of the type.
+  - Callers can replace any named type's generator by stable id or name, for
+    example with 28-byte key hashes.
+  - Types without a Data encoding are rejected when the generator is built: pairs,
+    arrays, functions and native values.
+- **`PropertyCheck`** runs a property over generated arguments from one seed.
+  Sizes grow from 0 to a maximum. The first failure is shrunk greedily, one argument
+  at a time, and the result reports the seed that reproduces it. It uses only
+  `SplittableRandom` and no reflection, so producers can embed it in native tools.
+- **`SchemaArbitraries`** (julc-testkit-jqwik) is the jqwik counterpart for JUnit
+  properties:
+  - `forType` gives the same encodings as jqwik `Arbitrary`s, with jqwik's own
+    shrinking and edge cases;
+  - `redeemer`, `datum` and `parameters` read the types from a `ValidatorAbi`.
+- **Recursive types.** `DataShapes` computes each type's *height*: the least number
+  of named references in its smallest value. Recursive types are unrolled to a
+  size-dependent depth. Past that depth only the shallowest constructors are used,
+  and lists, maps and optionals are empty. The height strictly decreases at every
+  reference, so every value is finite. A recursive type with no finite value is
+  rejected.
+
 ## Alternatives rejected
 
 - **Verify inlined library bodies.** Java PIR uses `Data` placeholders, so either every
@@ -712,3 +747,32 @@ build against a locally published snapshot.
 - **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
   `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 193/0/0,
   `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
+
+### Milestone 9 (schema-driven test data)
+
+- **`DataGeneratorsTest`** (julc-testkit, 11 tests):
+  - **Validity:** values of a record, a sum with sparse tags, nested
+    maps/lists/optionals, `Data`, unit and two recursive types pass
+    `StrictBoundaryGenerator`'s check when evaluated on the VM. So does every
+    shrink candidate.
+  - **Determinism:** a seed reproduces values and whole runs.
+  - **Recursion:** size 0 yields the shallowest values, and recursive values stay
+    bounded at size 1000.
+  - **Constraints:** map keys are distinct even for `Bool` keys, and ranges and
+    fixed lengths hold under generation and shrinking.
+  - **Shrinking** reaches minimal counterexamples:
+    - `x < 100` shrinks to `100`;
+    - a list whose sum reaches 10 shrinks to one that sums to exactly 10;
+    - a tree with a big leaf shrinks to that leaf alone;
+    - two arguments shrink independently.
+  - **Failures and rejections:** exceptions count as failures. Overrides apply by
+    name and by id. Pairs, arrays, functions, native values and endless recursive
+    types are rejected.
+- **`SchemaArbitrariesTest`** (julc-testkit-jqwik, 6 tests): jqwik-generated records,
+  recursive types and a `ValidatorAbi`'s datum, redeemers and parameters pass the
+  same strict check. Map keys are distinct, overrides replace named types, and
+  unsupported types and a missing datum are rejected.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 204/0/0,
+  `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
