@@ -682,6 +682,26 @@ public final class TypeMethodRegistry {
 
     // --- Map methods (6): get, containsKey, size, isEmpty, keys, values ---
 
+    /**
+     * {@code letrec go = \ps -> if nullList ps then [] else project (head ps) : go (tail ps) in go scope}:
+     * the keys or values of a pair list, in order.
+     */
+    private static PirTerm projectPairs(PirTerm scope, DefaultFun projection, String suffix) {
+        var pairList = new PirType.ListType(new PirType.DataType());
+        var dataList = new PirType.ListType(new PirType.DataType());
+        String go = "go__" + suffix, ps = "ps__" + suffix;
+        var psVar = new PirTerm.Var(ps, pairList);
+        var goVar = new PirTerm.Var(go, new PirType.FunType(pairList, dataList));
+        var head = new PirTerm.App(new PirTerm.Builtin(projection),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), psVar));
+        var rest = new PirTerm.App(goVar, new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), psVar));
+        var nil = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData), new PirTerm.Const(Constant.unit()));
+        var body = new PirTerm.IfThenElse(new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), psVar), nil,
+                PirHelpers.builtinApp2(DefaultFun.MkCons, head, rest));
+        return new PirTerm.LetRec(List.of(new PirTerm.Binding(go, new PirTerm.Lam(ps, pairList, body))),
+                new PirTerm.App(goVar, scope));
+    }
+
     private static void registerMapMethods(TypeMethodRegistry reg) {
         // get(key): search pair list, return value directly (crash on miss)
         reg.register("MapType", "get",
@@ -765,40 +785,13 @@ public final class TypeMethodRegistry {
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), scope),
                 scopeType -> scopeType);
 
-        // keys(): foldl collecting fstPair from each pair
+        // keys() / values(): a right fold over the pair list, so the result keeps the map's
+        // order (a left fold with cons reversed it, unlike the off-chain JulcAssocMap).
         reg.register("MapType", "keys",
-                (scope, args, scopeType, argTypes) -> {
-                    var mt = (PirType.MapType) scopeType;
-                    // scope is already a pair list
-                    // foldl(\acc pair -> MkCons(FstPair(pair), acc), MkNilData, scope)
-                    var accVar = new PirTerm.Var("acc__keys", new PirType.ListType(new PirType.DataType()));
-                    var pairVar = new PirTerm.Var("p__keys", new PirType.DataType());
-                    var fstExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), pairVar);
-                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, fstExpr, accVar);
-                    var foldFn = new PirTerm.Lam("acc__keys", new PirType.ListType(new PirType.DataType()),
-                            new PirTerm.Lam("p__keys", new PirType.DataType(), consExpr));
-                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
-                            new PirTerm.Const(Constant.unit()));
-                    return PirHelpers.generateFoldl(foldFn, nilData, scope);
-                },
+                (scope, args, scopeType, argTypes) -> projectPairs(scope, DefaultFun.FstPair, "keys"),
                 scopeType -> new PirType.ListType(((PirType.MapType) scopeType).keyType()));
-
-        // values(): foldl collecting sndPair from each pair
         reg.register("MapType", "values",
-                (scope, args, scopeType, argTypes) -> {
-                    var mt = (PirType.MapType) scopeType;
-                    // scope is already a pair list
-                    // foldl(\acc pair -> MkCons(SndPair(pair), acc), MkNilData, scope)
-                    var accVar = new PirTerm.Var("acc__vals", new PirType.ListType(new PirType.DataType()));
-                    var pairVar = new PirTerm.Var("p__vals", new PirType.DataType());
-                    var sndExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), pairVar);
-                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, sndExpr, accVar);
-                    var foldFn = new PirTerm.Lam("acc__vals", new PirType.ListType(new PirType.DataType()),
-                            new PirTerm.Lam("p__vals", new PirType.DataType(), consExpr));
-                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
-                            new PirTerm.Const(Constant.unit()));
-                    return PirHelpers.generateFoldl(foldFn, nilData, scope);
-                },
+                (scope, args, scopeType, argTypes) -> projectPairs(scope, DefaultFun.SndPair, "vals"),
                 scopeType -> new PirType.ListType(((PirType.MapType) scopeType).valueType()));
 
         // insert(key, value): MkCons(MkPairData(key, value), pairList) — returns pair list
