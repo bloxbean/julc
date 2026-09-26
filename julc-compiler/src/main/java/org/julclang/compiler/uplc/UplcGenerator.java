@@ -148,7 +148,7 @@ public class UplcGenerator {
             case PirTerm.Builtin(var fun) -> generateBuiltin(fun);
 
             case PirTerm.Lam(var param, _, var body) -> {
-                scope.push(param);
+                bind(param);
                 var bodyTerm = generate(body);
                 scope.pop();
                 var lambda = new Term.Lam(param, bodyTerm);
@@ -163,7 +163,7 @@ public class UplcGenerator {
             case PirTerm.Let(var name, var value, var body) -> {
                 // Let(name, val, body) -> Apply(Lam(name, body'), val')
                 var valTerm = generate(value);
-                scope.push(name);
+                bind(name);
                 var bodyTerm = generate(body);
                 scope.pop();
                 var lambda = new Term.Lam(name, bodyTerm);
@@ -211,8 +211,8 @@ public class UplcGenerator {
                 }
                 context.recordOptimizationRule(PV11_CASE_PAIR_RULE);
                 var pairTerm = generate(scrutinee);
-                scope.push(first);
-                scope.push(second);
+                bind(first);
+                bind(second);
                 Term bodyTerm;
                 try {
                     bodyTerm = generate(body);
@@ -232,8 +232,8 @@ public class UplcGenerator {
                 context.recordOptimizationRule(PV11_CASE_LIST_RULE);
                 var listTerm = generate(scrutinee);
                 var nilTerm = generate(nil);
-                scope.push(head);
-                scope.push(tail);
+                bind(head);
+                bind(tail);
                 Term consTerm;
                 try {
                     consTerm = generate(cons);
@@ -317,7 +317,7 @@ public class UplcGenerator {
 
             // Generate the recursive function body: Lam(name, body')
             // The body references 'name' which is the recursive reference
-            scope.push(name);
+            bind(name);
             var bodyTerm = generate(value);
             scope.pop();
             var recursiveLam = Term.lam(name, bodyTerm);
@@ -326,7 +326,7 @@ public class UplcGenerator {
             var fixedFn = Term.apply(fix, recursiveLam);
 
             // Now bind name = fixedFn and generate the expression
-            scope.push(name);
+            bind(name);
             var exprTerm = generate(letRec.body());
             scope.pop();
 
@@ -637,6 +637,12 @@ public class UplcGenerator {
     /** Create a PIR Builtin application with 1 arg. */
     private static PirTerm pirApp1(DefaultFun fun, PirTerm arg) {
         return new PirTerm.App(new PirTerm.Builtin(fun), arg);
+    }
+
+    /** Enter a binder's scope; every PIR binder passes the frontend's namespace check (ADR-060 G2). */
+    private void bind(String name) {
+        context.checkBinderName(name);
+        scope.push(name);
     }
 
     private int deBruijnIndex(String name) {

@@ -35,6 +35,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MemberValuePair;
+import com.github.javaparser.ast.expr.SimpleName;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 
 import java.io.File;
@@ -42,6 +43,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
@@ -311,6 +313,7 @@ public class JulcCompiler {
             throw new CompilerException(diagnostics);
         }
         context.log("Subset validation passed");
+        verifyBinderNamespaceInTests(context, validatorCu, libraryCus);
 
         // 3. Validate: library CUs must not contain validator annotations
         for (var libCu : libraryCus) {
@@ -844,6 +847,7 @@ public class JulcCompiler {
         if (hasErrors(diagnostics)) {
             throw new CompilerException(diagnostics);
         }
+        verifyBinderNamespaceInTests(context, cu, libraryCus);
 
         // 3. Find the target class (first non-interface class)
         var targetClass = cu.findAll(ClassOrInterfaceDeclaration.class).stream()
@@ -1750,6 +1754,34 @@ public class JulcCompiler {
                 parameter.getNameAsString(),
                 type,
                 sourceLocation(parameter));
+    }
+
+    /** System property that enables the ADR-060 binder-namespace check (set by the test tasks). */
+    static final String VERIFY_BINDER_NAMESPACE = "julc.verifyBinderNamespace";
+
+    /**
+     * ADR-060 G2, enabled in tests: every binder that reaches UPLC generation must be a reserved
+     * {@code #} name, a source identifier (a block-local rename {@code name'N} counts as its
+     * name), or a qualified method name {@code owner.method}. A binder the compiler invents with
+     * any other name fails the compilation, whichever lowering created it.
+     */
+    private static void verifyBinderNamespaceInTests(CompilationContext context, CompilationUnit root,
+                                                     List<CompilationUnit> libraries) {
+        if (Boolean.getBoolean(VERIFY_BINDER_NAMESPACE)) context.verifyBinderNames(sourceBinderNamespace(root, libraries));
+    }
+
+    /** The binder names the Java frontend may produce from these sources (ADR-060 G2). */
+    static Predicate<String> sourceBinderNamespace(CompilationUnit root, List<CompilationUnit> libraries) {
+        var identifiers = new HashSet<String>();
+        root.findAll(SimpleName.class).forEach(name -> identifiers.add(name.getIdentifier()));
+        for (var library : libraries) library.findAll(SimpleName.class).forEach(name -> identifiers.add(name.getIdentifier()));
+        return name -> {
+            if (PirHelpers.isGeneratedName(name)) return true;
+            int mark = name.indexOf('\'');
+            if (identifiers.contains(mark < 0 ? name : name.substring(0, mark))) return true;
+            int dot = name.lastIndexOf('.');
+            return dot > 0 && identifiers.contains(name.substring(dot + 1));
+        };
     }
 
     /** The qualifier of a class's method binders: its fully qualified name (ADR-060). */
