@@ -159,7 +159,7 @@ public class UplcGenerator {
                 // Handle field accessor: App(Var(".field"), scope) -> field extraction
                 if (function instanceof PirTerm.Var(var name, _) && name.startsWith(".")) {
                     // For MVP, field access on Data-typed values is just passed through
-                    // The ValidatorWrapper/DataCodecGenerator handles the actual field extraction
+                    // The ValidatorWrapper handles the actual field extraction
                     yield Term.apply(
                             Term.var(deBruijnIndex(name.substring(1))),
                             generate(argument));
@@ -525,17 +525,26 @@ public class UplcGenerator {
      * the historical UnConstrData/FstPair/SndPair expansion.
      */
     private Term generateDataMatch(PirTerm scrutinee, List<PirTerm.MatchBranch> branches) {
-        var dataName = "__match_data";
-        var pairName = "__match_pair";
-        var tagName = "__match_tag";
-        var fieldsName = "__match_fields";
+        // ADR-060: the dispatch binders are reserved names, chosen against every name a branch
+        // can see or bind (its body's free variables, field bindings and pattern variable), so no
+        // branch code is captured and no branch binder intercepts a generated reference.
+        var avoid = new HashSet<String>();
+        for (var branch : branches) {
+            avoid.addAll(PirSubstitution.collectFreeVarNames(branch.body()));
+            avoid.addAll(branch.bindings());
+            if (branch.patternVar() != null) avoid.add(branch.patternVar());
+        }
+        var dataName = PirHelpers.hygienicName("#__match_data", avoid);
+        var pairName = PirHelpers.hygienicName("#__match_pair", avoid);
+        var tagName = PirHelpers.hygienicName("#__match_tag", avoid);
+        var fieldsName = PirHelpers.hygienicName("#__match_fields", avoid);
 
         // Build the dispatch: under the PV11 safe profile a single integer Case selects the
         // branch by tag (ADR-041 O5); otherwise the historical equality chain
         // IfThenElse(tag==0, branch0, IfThenElse(tag==1, branch1, ...Error)).
         PirTerm dispatch;
         if (branches.size() == 1) {
-            dispatch = buildBranchFieldExtraction(branches.get(0), fieldsName, dataName);
+            dispatch = buildBranchFieldExtraction(branches.get(0), fieldsName, dataName, avoid);
         } else if (branches.size() >= 2 && integerCaseEnabled()) {
             // Constructor tags are dense 0..n-1 by construction: buildDataMatch emits exactly one
             // branch per constructor in tag order. Any other tag fails at selection, before any
@@ -543,14 +552,14 @@ public class UplcGenerator {
             context.recordOptimizationRule(PV11_CASE_INTEGER_RULE);
             var bodies = new ArrayList<PirTerm>(branches.size());
             for (var branch : branches) {
-                bodies.add(buildBranchFieldExtraction(branch, fieldsName, dataName));
+                bodies.add(buildBranchFieldExtraction(branch, fieldsName, dataName, avoid));
             }
             dispatch = new PirTerm.IntegerCase(
                     new PirTerm.Var(tagName, new PirType.IntegerType()), bodies);
         } else {
             dispatch = new PirTerm.Error(new PirType.UnitType());
             for (int i = branches.size() - 1; i >= 0; i--) {
-                var branchBody = buildBranchFieldExtraction(branches.get(i), fieldsName, dataName);
+                var branchBody = buildBranchFieldExtraction(branches.get(i), fieldsName, dataName, avoid);
                 var tagCheck = new PirTerm.App(
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger),
                                 new PirTerm.Var(tagName, new PirType.IntegerType())),
@@ -565,9 +574,7 @@ public class UplcGenerator {
         //          let fields = SndPair(pair)
         //          dispatch
         var dataVar = new PirTerm.Var(dataName, new PirType.DataType());
-        // Direct PIR can reference this historical internal binder. Removing it in
-        // that case would change lexical binding, so retain the old expansion.
-        if (pairCaseEnabled() && !PirSubstitution.collectFreeVarNames(dispatch).contains(pairName)) {
+        if (pairCaseEnabled()) {
             // ADR-038: successful UnConstrData proves the native pair by construction.
             // Keep data strict and once-bound, and decoding inside the unchanged dispatch.
             var pairType = new PirType.PairType(new PirType.IntegerType(),
@@ -592,7 +599,8 @@ public class UplcGenerator {
      * Build PIR for extracting fields from a Data list and binding them in the branch body.
      * HeadList/TailList for extraction; the shared typed decoder for field values.
      */
-    private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName, String dataName) {
+    private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName, String dataName,
+                                               Set<String> avoid) {
         var bindings = branch.bindings();
         var bindingTypes = branch.bindingTypes();
 
@@ -603,7 +611,7 @@ public class UplcGenerator {
             var lets = new ArrayList<PirTerm.Let>();
 
             for (int j = 0; j < bindings.size(); j++) {
-                var listVar = (j == 0) ? fieldsName : "__rest_" + (j - 1);
+                var listVar = (j == 0) ? fieldsName : PirHelpers.hygienicName("#__rest_" + (j - 1), avoid);
                 var listRef = new PirTerm.Var(listVar, new PirType.DataType());
 
                 // Decode field: UnIData(HeadList(fields)) for Integer, etc.
@@ -613,7 +621,7 @@ public class UplcGenerator {
 
                 if (j + 1 < bindings.size()) {
                     var tailExpr = pirApp1(DefaultFun.TailList, listRef);
-                    lets.add(new PirTerm.Let("__rest_" + j, tailExpr, null)); // body filled later
+                    lets.add(new PirTerm.Let(PirHelpers.hygienicName("#__rest_" + j, avoid), tailExpr, null)); // body filled later
                 }
             }
 

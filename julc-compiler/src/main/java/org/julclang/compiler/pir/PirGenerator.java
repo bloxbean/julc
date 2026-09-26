@@ -456,7 +456,7 @@ public class PirGenerator {
             // rejected by generateExpression: the loop body generators bind every supported one)
             var expr = generateExpression(es.getExpression());
             var rest = generateStatements(stmts, index + 1, cont);
-            return new PirTerm.Let("_", expr, rest);
+            return new PirTerm.Let("#_", expr, rest);
         }
         if (stmt instanceof IfStmt is) {
             return generateIfStmt(is, stmts, index, cont);
@@ -580,7 +580,7 @@ public class PirGenerator {
         // fall through to), wrap in a let
         if (hasFollowing || cont != null) {
             var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-            return new PirTerm.Let(PirHelpers.hygienicName("_if", PirHelpers.freeVariables(rest)), ifExpr, rest);
+            return new PirTerm.Let(PirHelpers.hygienicName("#_if", PirHelpers.freeVariables(rest)), ifExpr, rest);
         }
         return ifExpr;
     }
@@ -1490,7 +1490,7 @@ public class PirGenerator {
      * Both the DataMatch field binding and the var.field() reuse reference this same name.
      */
     private static String destructuredFieldBinding(String patternVar, int fieldIndex) {
-        return "__pfield-" + patternVar + "-" + fieldIndex;
+        return "#__pfield-" + patternVar + "-" + fieldIndex;
     }
 
     /**
@@ -1838,7 +1838,7 @@ public class PirGenerator {
                     .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
                     .toList();
             var accInit = packAccumulators(accumulators, accTypes);
-            var tupleAccName = "__acc_tuple";
+            var tupleAccName = "#__acc_tuple";
             var tupleAccType = new PirType.ListType(new PirType.DataType()); // Data list
 
             PirTerm foldResult;
@@ -1928,13 +1928,13 @@ public class PirGenerator {
             symbolTable.popScope();
 
             var forEachResult = desugarer.desugarForEach(
-                    iterableExpr, itemName, "acc__forEach",
+                    iterableExpr, itemName, "#acc__forEach",
                     new PirTerm.Const(Constant.unit()), new PirType.UnitType(),
                     bodyTerm, elemType);
 
             if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-                return new PirTerm.Let(PirHelpers.hygienicName("_forEach", PirHelpers.freeVariables(rest)),
+                return new PirTerm.Let(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)),
                         forEachResult, rest);
             }
             return forEachResult;
@@ -2114,7 +2114,7 @@ public class PirGenerator {
             var precedingStmts = followingStmts.subList(0, followingIndex);
             var accTypes = refineAccumulatorTypes(ws, accumulators, rawAccTypes, precedingStmts);
             var accInit = packAccumulators(accumulators, accTypes);
-            var tupleAccName = "__acc_tuple";
+            var tupleAccName = "#__acc_tuple";
             var tupleAccType = new PirType.ListType(new PirType.DataType());
 
             PirTerm whileResult;
@@ -2199,7 +2199,7 @@ public class PirGenerator {
 
             if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-                return new PirTerm.Let(PirHelpers.hygienicName("_while", PirHelpers.freeVariables(rest)),
+                return new PirTerm.Let(PirHelpers.hygienicName("#_while", PirHelpers.freeVariables(rest)),
                         whileResult, rest);
             }
             return whileResult;
@@ -2428,7 +2428,7 @@ public class PirGenerator {
 
         // Zero-parameter lambda: \_ -> body
         if (params.isEmpty()) {
-            result = new PirTerm.Lam("_", new PirType.UnitType(), result);
+            result = new PirTerm.Lam("#_", new PirType.UnitType(), result);
         }
 
         return result;
@@ -2551,7 +2551,7 @@ public class PirGenerator {
         }
 
         if (params.isEmpty()) {
-            result = new PirTerm.Lam("_", new PirType.UnitType(), result);
+            result = new PirTerm.Lam("#_", new PirType.UnitType(), result);
         }
         return result;
     }

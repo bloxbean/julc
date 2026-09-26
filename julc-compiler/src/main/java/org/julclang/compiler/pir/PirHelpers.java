@@ -51,6 +51,18 @@ public final class PirHelpers {
     }
 
     /**
+     * ADR-060: every binder the compiler invents is named {@code "#" + <historical name>}. No source
+     * identifier contains {@code #}, so a user name can never resolve to a generated binder, and the
+     * one-to-one spelling keeps every existing equality between generated names.
+     */
+    public static final String GENERATED_PREFIX = "#";
+
+    /** Whether {@code name} is in the reserved namespace of compiler-generated binders. */
+    public static boolean isGeneratedName(String name) {
+        return name.startsWith(GENERATED_PREFIX);
+    }
+
+    /**
      * The free variables of caller-supplied terms that a builder places inside its own binders.
      * Pass the result to {@link #hygienicName} for every binder whose scope contains those terms.
      */
@@ -61,11 +73,16 @@ public final class PirHelpers {
     }
 
     /**
-     * A builder binder name that cannot capture a free variable of the caller-supplied terms in
-     * its scope. Returns {@code base} when it is not free there, so non-conflicting PIR is
-     * unchanged; otherwise appends {@code #N}, which no Java identifier can contain.
+     * A generated binder name that cannot capture a free variable of the terms placed in its scope
+     * (ADR-060 R2). {@code base} must be a reserved {@code #} name; it is returned unless it is free
+     * there, for example in another builder's term or in code from a non-Java frontend, and is
+     * otherwise suffixed {@code #N}.
      */
     public static String hygienicName(String base, Set<String> callerFreeVariables) {
+        if (!isGeneratedName(base)) {
+            throw new IllegalArgumentException("Generated binder names must begin with '"
+                    + GENERATED_PREFIX + "' (ADR-060): " + base);
+        }
         if (!callerFreeVariables.contains(base)) return base;
         int suffix = 1;
         while (callerFreeVariables.contains(base + "#" + suffix)) suffix++;
@@ -78,19 +95,19 @@ public final class PirHelpers {
      * Built once so that the lowering ({@link #recursiveListGet}) and the ADR-043 promotion pass
      * that recognises it structurally cannot drift apart.
      */
-    public static final PirTerm.Binding RECURSIVE_LIST_GET = recursiveListGetBinding("go_get");
+    public static final PirTerm.Binding RECURSIVE_LIST_GET = recursiveListGetBinding("#go_get");
 
     private static PirTerm.Binding recursiveListGetBinding(String goName) {
-        var lstVar = new PirTerm.Var("lst_get", new PirType.ListType(new PirType.DataType()));
-        var idxVar = new PirTerm.Var("idx_get", new PirType.IntegerType());
+        var lstVar = new PirTerm.Var("#lst_get", new PirType.ListType(new PirType.DataType()));
+        var idxVar = new PirTerm.Var("#idx_get", new PirType.IntegerType());
         var isZero = builtinApp2(DefaultFun.EqualsInteger, idxVar, new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
         var decIdx = builtinApp2(DefaultFun.SubtractInteger, idxVar, new PirTerm.Const(Constant.integer(BigInteger.ONE)));
         var recurse = new PirTerm.App(new PirTerm.App(recursiveListGetVar(goName), tailExpr), decIdx);
         var body = new PirTerm.IfThenElse(isZero, headExpr, recurse);
-        var goBody = new PirTerm.Lam("lst_get", new PirType.ListType(new PirType.DataType()),
-                new PirTerm.Lam("idx_get", new PirType.IntegerType(), body));
+        var goBody = new PirTerm.Lam("#lst_get", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("#idx_get", new PirType.IntegerType(), body));
         return new PirTerm.Binding(goName, goBody);
     }
 
@@ -201,12 +218,12 @@ public final class PirHelpers {
      * Generate PIR for list.size() — foldl(\acc _ -> acc + 1, 0, list).
      */
     static PirTerm generateListLength(PirTerm list) {
-        var accVar = new PirTerm.Var("acc__len", new PirType.IntegerType());
-        var xVar = new PirTerm.Var("_x__len", new PirType.DataType());
+        var accVar = new PirTerm.Var("#acc__len", new PirType.IntegerType());
+        var xVar = new PirTerm.Var("#_x__len", new PirType.DataType());
         var addOne = builtinApp2(DefaultFun.AddInteger, accVar,
                 new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-        var foldFn = new PirTerm.Lam("acc__len", new PirType.IntegerType(),
-                new PirTerm.Lam("_x__len", new PirType.DataType(), addOne));
+        var foldFn = new PirTerm.Lam("#acc__len", new PirType.IntegerType(),
+                new PirTerm.Lam("#_x__len", new PirType.DataType(), addOne));
         return generateFoldl(foldFn, new PirTerm.Const(Constant.integer(BigInteger.ZERO)), list);
     }
 
@@ -215,17 +232,17 @@ public final class PirHelpers {
      */
     static PirTerm generateListContains(PirTerm list, PirTerm target,
                                          PirType elemType, PirType targetType) {
-        var lstVar = new PirTerm.Var("lst_c", new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var("go_c", new PirType.FunType(
+        var lstVar = new PirTerm.Var("#lst_c", new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var("#go_c", new PirType.FunType(
                 new PirType.ListType(new PirType.DataType()), new PirType.BoolType()));
         // The list is evaluated inside the target's binder.
-        var targetVar = new PirTerm.Var(hygienicName("target_c", freeVariables(list)), targetType);
-        var listVar = new PirTerm.Var("list_c", new PirType.ListType(new PirType.DataType()));
+        var targetVar = new PirTerm.Var(hygienicName("#target_c", freeVariables(list)), targetType);
+        var listVar = new PirTerm.Var("#list_c", new PirType.ListType(new PirType.DataType()));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-        var hVar = new PirTerm.Var("h_c", new PirType.DataType());
+        var hVar = new PirTerm.Var("#h_c", new PirType.DataType());
 
         // Build equality: decode list element, but only decode target if it's still Data
         PirTerm equalCheck = buildContainsEquality(hVar, targetVar, elemType, targetType);
@@ -233,18 +250,18 @@ public final class PirHelpers {
         var recurse = new PirTerm.App(goVar, tailExpr);
         var innerIf = new PirTerm.IfThenElse(equalCheck,
                 new PirTerm.Const(Constant.bool(true)), recurse);
-        var letHead = new PirTerm.Let("h_c", headExpr, innerIf);
+        var letHead = new PirTerm.Let("#h_c", headExpr, innerIf);
         var outerIf = new PirTerm.IfThenElse(nullCheck,
                 new PirTerm.Const(Constant.bool(false)), letHead);
 
-        var goBody = new PirTerm.Lam("lst_c", new PirType.ListType(new PirType.DataType()), outerIf);
-        var binding = new PirTerm.Binding("go_c", goBody);
+        var goBody = new PirTerm.Lam("#lst_c", new PirType.ListType(new PirType.DataType()), outerIf);
+        var binding = new PirTerm.Binding("#go_c", goBody);
 
         var search = new PirTerm.LetRec(List.of(binding),
                 new PirTerm.App(goVar, listVar));
 
         return new PirTerm.Let(targetVar.name(), target,
-                new PirTerm.Let("list_c", list, search));
+                new PirTerm.Let("#list_c", list, search));
     }
 
     /**
@@ -309,15 +326,15 @@ public final class PirHelpers {
         var pairListType = new PirType.ListType(pairType);
         var avoid = freeVariables(key, baseCase);
 
-        var pairsVar = new PirTerm.Var(hygienicName("ps_" + suffix, avoid), pairListType);
-        var keyVar = new PirTerm.Var(hygienicName("k_" + suffix, avoid), new PirType.DataType());
-        var lstVar = new PirTerm.Var(hygienicName("lst_" + suffix, avoid), pairListType);
-        var goVar = new PirTerm.Var(hygienicName("go_" + suffix, avoid),
+        var pairsVar = new PirTerm.Var(hygienicName("#ps_" + suffix, avoid), pairListType);
+        var keyVar = new PirTerm.Var(hygienicName("#k_" + suffix, avoid), new PirType.DataType());
+        var lstVar = new PirTerm.Var(hygienicName("#lst_" + suffix, avoid), pairListType);
+        var goVar = new PirTerm.Var(hygienicName("#go_" + suffix, avoid),
                 new PirType.FunType(pairListType, new PirType.DataType()));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-        var hVar = new PirTerm.Var(hygienicName("h_" + suffix, avoid), pairType);
+        var hVar = new PirTerm.Var(hygienicName("#h_" + suffix, avoid), pairType);
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
         var recurse = new PirTerm.App(goVar, tailExpr);
 
@@ -370,15 +387,15 @@ public final class PirHelpers {
         var dataListType = new PirType.ListType(new PirType.DataType());
         var avoid = freeVariables(target, baseCase);
 
-        var xsVar = new PirTerm.Var(hygienicName("xs_" + suffix, avoid), dataListType);
-        var tVar = new PirTerm.Var(hygienicName("t_" + suffix, avoid), new PirType.DataType());
-        var lstVar = new PirTerm.Var(hygienicName("lst_" + suffix, avoid), dataListType);
-        var goVar = new PirTerm.Var(hygienicName("go_" + suffix, avoid),
+        var xsVar = new PirTerm.Var(hygienicName("#xs_" + suffix, avoid), dataListType);
+        var tVar = new PirTerm.Var(hygienicName("#t_" + suffix, avoid), new PirType.DataType());
+        var lstVar = new PirTerm.Var(hygienicName("#lst_" + suffix, avoid), dataListType);
+        var goVar = new PirTerm.Var(hygienicName("#go_" + suffix, avoid),
                 new PirType.FunType(dataListType, new PirType.DataType()));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-        var eVar = new PirTerm.Var(hygienicName("e_" + suffix, avoid), new PirType.DataType());
+        var eVar = new PirTerm.Var(hygienicName("#e_" + suffix, avoid), new PirType.DataType());
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
         var recurse = new PirTerm.App(goVar, tailExpr);
 
@@ -455,9 +472,9 @@ public final class PirHelpers {
     static PirTerm generateFoldl(PirTerm f, PirTerm init, PirTerm list) {
         // f is applied under all three binders; init and list under go.
         var avoid = freeVariables(f, init, list);
-        var accVar = new PirTerm.Var(hygienicName("acc__f", avoid), new PirType.DataType());
-        var lstVar = new PirTerm.Var(hygienicName("lst__f", avoid), new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var(hygienicName("go__f", avoid), new PirType.FunType(new PirType.DataType(),
+        var accVar = new PirTerm.Var(hygienicName("#acc__f", avoid), new PirType.DataType());
+        var lstVar = new PirTerm.Var(hygienicName("#lst__f", avoid), new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var(hygienicName("#go__f", avoid), new PirType.FunType(new PirType.DataType(),
                 new PirType.FunType(new PirType.ListType(new PirType.DataType()), new PirType.DataType())));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);

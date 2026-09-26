@@ -650,7 +650,7 @@ public class JulcCompiler {
         // 16. Wrap with outer param lambdas
         for (int i = paramFields.size() - 1; i >= 0; i--) {
             var pf = paramFields.get(i);
-            var rawName = pf.name + "__raw";
+            var rawName = "#" + pf.name + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
             var decodedBinding = new PirTerm.Let(pf.name, decoded, wrappedTerm);
@@ -969,7 +969,7 @@ public class JulcCompiler {
         // Build application: Var("method") applied to decoded args
         PirTerm application = new PirTerm.Var(methodName, computeMethodType(targetMethod, typeResolver));
         for (int i = 0; i < paramTypes.size(); i++) {
-            var decodedName = targetMethod.getParameter(i).getNameAsString() + "__dec";
+            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
             application = new PirTerm.App(application,
                     new PirTerm.Var(decodedName, paramTypes.get(i)));
         }
@@ -977,8 +977,8 @@ public class JulcCompiler {
         // Wrap with outer Lam + decode for each param (inside-out)
         PirTerm body = application;
         for (int i = paramTypes.size() - 1; i >= 0; i--) {
-            var decodedName = targetMethod.getParameter(i).getNameAsString() + "__dec";
-            var rawName = targetMethod.getParameter(i).getNameAsString() + "__raw";
+            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
+            var rawName = "#" + targetMethod.getParameter(i).getNameAsString() + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), paramTypes.get(i));
             body = new PirTerm.Let(decodedName, decoded, body);
@@ -1009,7 +1009,7 @@ public class JulcCompiler {
         // 16. Wrap with outer @Param lambdas
         for (int i = paramFields.size() - 1; i >= 0; i--) {
             var pf = paramFields.get(i);
-            var rawName = pf.name + "__raw";
+            var rawName = "#" + pf.name + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
             body = new PirTerm.Lam(rawName, new PirType.DataType(),

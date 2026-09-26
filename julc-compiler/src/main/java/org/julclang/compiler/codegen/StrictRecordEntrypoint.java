@@ -32,8 +32,8 @@ public final class StrictRecordEntrypoint {
             PirType resolved = resolve(root.type(), namedDefinitions);
             if (!(resolved instanceof PirType.RecordType record)) continue;
 
-            String pairName = "__boundary-pair-" + root.parameter();
-            String fieldsName = "__boundary-fields-" + root.parameter();
+            String pairName = "#__boundary-pair-" + root.parameter();
+            String fieldsName = "#__boundary-fields-" + root.parameter();
             var pair = new PirTerm.Var(pairName, new PirType.PairType(new PirType.IntegerType(),
                     new PirType.ListType(new PirType.DataType())));
             var fields = new PirTerm.Var(fieldsName,
@@ -98,17 +98,17 @@ public final class StrictRecordEntrypoint {
     }
 
     private static String cachedField(String parameter, int index) {
-        return "__boundary-field-" + parameter + "-" + index;
+        return "#__boundary-field-" + parameter + "-" + index;
     }
 
     private static String rawField(String parameter, int index) {
-        return "__boundary-raw-field-" + parameter + "-" + index;
+        return "#__boundary-raw-field-" + parameter + "-" + index;
     }
 
     private static String remainingFields(String parameter, int index) {
         return index == 0
-                ? "__boundary-fields-" + parameter
-                : "__boundary-fields-" + parameter + "-" + index;
+                ? "#__boundary-fields-" + parameter
+                : "#__boundary-fields-" + parameter + "-" + index;
     }
 
     private static PirTerm extraction(PirTerm data, int index, PirType fieldType) {
