@@ -32,9 +32,12 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MemberValuePair;
+import com.github.javaparser.ast.expr.TypePatternExpr;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 
 import java.io.File;
@@ -42,6 +45,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_WRONG_PARAMETER_COUNT;
@@ -310,6 +316,7 @@ public class JulcCompiler {
             throw new CompilerException(diagnostics);
         }
         context.log("Subset validation passed");
+        verifyBinderNamespaceInTests(context, validatorCu, libraryCus);
 
         // 3. Validate: library CUs must not contain validator annotations
         for (var libCu : libraryCus) {
@@ -419,7 +426,8 @@ public class JulcCompiler {
                 ? effectiveStdlibLookup
                 : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
 
-        // 10. Set up symbol table
+        // 10. Set up symbol table. Methods have their own namespace (ADR-060).
+        var methodOwner = methodOwner(validatorClass);
         var symbolTable = new SymbolTable();
         for (var pf : paramFields) {
             symbolTable.define(pf.name, pf.pirType);
@@ -430,7 +438,7 @@ public class JulcCompiler {
         for (var method : validatorClass.getMethods()) {
             if (method.isStatic()) {
                 var mType = computeMethodType(method, typeResolver);
-                symbolTable.define(method.getNameAsString(), mType);
+                symbolTable.declareMethod(method.getNameAsString(), methodBinder(methodOwner, method), mType);
             }
         }
 
@@ -445,14 +453,21 @@ public class JulcCompiler {
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
             var initPir = pirGenerator.generateExpression(sf.initExpr);
+            requireNoMethodCall(sf, initPir, methodOwner, validatorClass);
             compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
         }
 
+        var entrypointNames = validatorClass.getMethods().stream()
+                .filter(method -> method.getAnnotationByName("Entrypoint").isPresent())
+                .map(MethodDeclaration::getNameAsString)
+                .collect(Collectors.toSet());
+        var overloads = new OnchainOverloads(validatorClass.getNameAsString(), entrypointNames);
         for (var method : validatorClass.getMethods()) {
             if (method.isStatic() && method.getAnnotationByName("Entrypoint").isEmpty()) {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
-                symbolTable.defineMethod(method.getNameAsString(), mType, helperPir);
+                overloads.check(method, mType, helperPir);
+                symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
             }
         }
 
@@ -643,7 +658,7 @@ public class JulcCompiler {
         // 16. Wrap with outer param lambdas
         for (int i = paramFields.size() - 1; i >= 0; i--) {
             var pf = paramFields.get(i);
-            var rawName = pf.name + "__raw";
+            var rawName = "#" + pf.name + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
             var decodedBinding = new PirTerm.Let(pf.name, decoded, wrappedTerm);
@@ -654,6 +669,7 @@ public class JulcCompiler {
         }
 
         var provenance = debugMetadata == null ? null : debugMetadata.provenance();
+        pirGenerator.rejectUnresolvedMembers(wrappedTerm);
         var lowered = PirBackend.lower(
                 wrappedTerm, context, pirGenerator.getPirPositions(), true, provenance);
         var program = lowered.program();
@@ -835,6 +851,7 @@ public class JulcCompiler {
         if (hasErrors(diagnostics)) {
             throw new CompilerException(diagnostics);
         }
+        verifyBinderNamespaceInTests(context, cu, libraryCus);
 
         // 3. Find the target class (first non-interface class)
         var targetClass = cu.findAll(ClassOrInterfaceDeclaration.class).stream()
@@ -904,7 +921,8 @@ public class JulcCompiler {
                 ? effectiveStdlibLookup
                 : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
 
-        // 9. Set up symbol table
+        // 9. Set up symbol table. Methods have their own namespace (ADR-060).
+        var methodOwner = methodOwner(targetClass);
         var symbolTable = new SymbolTable();
         for (var pf : paramFields) {
             symbolTable.define(pf.name, pf.pirType);
@@ -915,7 +933,7 @@ public class JulcCompiler {
         for (var method : targetClass.getMethods()) {
             if (method.isStatic()) {
                 var mType = computeMethodType(method, typeResolver);
-                symbolTable.define(method.getNameAsString(), mType);
+                symbolTable.declareMethod(method.getNameAsString(), methodBinder(methodOwner, method), mType);
             }
         }
 
@@ -939,15 +957,18 @@ public class JulcCompiler {
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
             var initPir = pirGenerator.generateExpression(sf.initExpr);
+            requireNoMethodCall(sf, initPir, methodOwner, targetClass);
             compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
         }
 
         // Compile ALL static methods (including target) so cross-references work
+        var overloads = new OnchainOverloads(targetClass.getNameAsString(), Set.of());
         for (var method : targetClass.getMethods()) {
             if (method.isStatic()) {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
-                symbolTable.defineMethod(method.getNameAsString(), mType, helperPir);
+                overloads.check(method, mType, helperPir);
+                symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
             }
         }
 
@@ -958,9 +979,10 @@ public class JulcCompiler {
 
         // 11. Build body: Data-accepting lambda that calls target method by Var reference
         // Build application: Var("method") applied to decoded args
-        PirTerm application = new PirTerm.Var(methodName, computeMethodType(targetMethod, typeResolver));
+        PirTerm application = new PirTerm.Var(methodBinder(methodOwner, targetMethod),
+                computeMethodType(targetMethod, typeResolver));
         for (int i = 0; i < paramTypes.size(); i++) {
-            var decodedName = targetMethod.getParameter(i).getNameAsString() + "__dec";
+            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
             application = new PirTerm.App(application,
                     new PirTerm.Var(decodedName, paramTypes.get(i)));
         }
@@ -968,8 +990,8 @@ public class JulcCompiler {
         // Wrap with outer Lam + decode for each param (inside-out)
         PirTerm body = application;
         for (int i = paramTypes.size() - 1; i >= 0; i--) {
-            var decodedName = targetMethod.getParameter(i).getNameAsString() + "__dec";
-            var rawName = targetMethod.getParameter(i).getNameAsString() + "__raw";
+            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
+            var rawName = "#" + targetMethod.getParameter(i).getNameAsString() + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), paramTypes.get(i));
             body = new PirTerm.Let(decodedName, decoded, body);
@@ -1000,13 +1022,14 @@ public class JulcCompiler {
         // 16. Wrap with outer @Param lambdas
         for (int i = paramFields.size() - 1; i >= 0; i--) {
             var pf = paramFields.get(i);
-            var rawName = pf.name + "__raw";
+            var rawName = "#" + pf.name + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
             body = new PirTerm.Lam(rawName, new PirType.DataType(),
                     new PirTerm.Let(pf.name, decoded, body));
         }
 
+        pirGenerator.rejectUnresolvedMembers(body);
         var values = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(body);
         var folding = new ArrayLiteralFoldPass(context, values.positions()).lower(values.term());
         var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
@@ -1736,6 +1759,71 @@ public class JulcCompiler {
                 parameter.getNameAsString(),
                 type,
                 sourceLocation(parameter));
+    }
+
+    /** System property that enables the ADR-060 binder-namespace check (set by the test tasks). */
+    static final String VERIFY_BINDER_NAMESPACE = "julc.verifyBinderNamespace";
+
+    /**
+     * ADR-060 G2, enabled in tests: every binder that reaches UPLC generation must be a reserved
+     * {@code #} name, a source identifier (a block-local rename {@code name'N} counts as its
+     * name), or a qualified method name {@code owner.method}. A binder the compiler invents with
+     * any other name fails the compilation, whichever lowering created it.
+     */
+    private static void verifyBinderNamespaceInTests(CompilationContext context, CompilationUnit root,
+                                                     List<CompilationUnit> libraries) {
+        if (Boolean.getBoolean(VERIFY_BINDER_NAMESPACE)) context.verifyBinderNames(sourceBinderNamespace(root, libraries));
+    }
+
+    /**
+     * The binder names the Java frontend may produce from these sources (ADR-060 G2): names the
+     * sources declare (parameters, including lambda parameters and record components, variables
+     * and fields, pattern variables), and {@code owner.method} for a declared method.
+     */
+    static Predicate<String> sourceBinderNamespace(CompilationUnit root, List<CompilationUnit> libraries) {
+        var declared = new HashSet<String>();
+        var methods = new HashSet<String>();
+        for (var cu : Stream.concat(Stream.of(root), libraries.stream()).toList()) {
+            cu.findAll(Parameter.class).forEach(p -> declared.add(p.getNameAsString()));
+            cu.findAll(VariableDeclarator.class).forEach(v -> declared.add(v.getNameAsString()));
+            cu.findAll(TypePatternExpr.class).forEach(p -> declared.add(p.getNameAsString()));
+            cu.findAll(MethodDeclaration.class).forEach(m -> methods.add(m.getNameAsString()));
+        }
+        return name -> {
+            if (PirHelpers.isGeneratedName(name)) return true;
+            int mark = name.indexOf('\'');
+            if (declared.contains(mark < 0 ? name : name.substring(0, mark))) return true;
+            int dot = name.lastIndexOf('.');
+            return dot > 0 && methods.contains(name.substring(dot + 1));
+        };
+    }
+
+    /** The qualifier of a class's method binders: its fully qualified name (ADR-060). */
+    private static String methodOwner(ClassOrInterfaceDeclaration cls) {
+        return cls.getFullyQualifiedName().orElse(cls.getNameAsString());
+    }
+
+    /**
+     * A static method's PIR binder: {@code owner.method}, as library methods are bound. A dot cannot
+     * occur in a variable name, so no local, field or parameter can shadow a method (ADR-060).
+     */
+    private static String methodBinder(String owner, MethodDeclaration method) {
+        return owner + "." + method.getNameAsString();
+    }
+
+    /**
+     * Static field initializers are bound outside the class's methods, so they cannot call them.
+     * Reject the call here instead of leaving an unbound method reference to UPLC generation.
+     */
+    private void requireNoMethodCall(StaticField field, PirTerm initPir, String owner,
+                                     ClassOrInterfaceDeclaration cls) {
+        var free = PirSubstitution.collectFreeVarNames(initPir);
+        for (var method : cls.getMethods()) {
+            if (method.isStatic() && free.contains(methodBinder(owner, method))) {
+                throw CompilerTypeDiagnostics.staticInitializerCallsMethod(field.name(), method.getNameAsString(),
+                        sourceLocation(field.initExpr()));
+            }
+        }
     }
 
     private CompilerException schemaError(Node node, String message) {

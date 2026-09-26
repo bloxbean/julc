@@ -39,6 +39,9 @@ existing proof pass.
    If the dispatch has a free reference to the historical `__match_pair`
    binder, retain the legacy expansion. Direct PIR may depend on that binding;
    deleting it would change capture or produce an unbound variable.
+   *Superseded by ADR-060:* the dispatch binders are reserved `#` names chosen
+   against every branch, so no branch can reference them and this fallback is
+   removed.
 6. Require the exact PLUTUS_V3_PV11 target, safe optimization level, and
    CASE_ON_BUILTIN_CONSTANTS capability. Other levels retain the historical
    expansion verbatim. Final target validation remains mandatory.

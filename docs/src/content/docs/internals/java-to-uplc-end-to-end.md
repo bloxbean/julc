@@ -508,8 +508,8 @@ static BigInteger threshold;
 JuLC wraps the script as:
 
 ```text
-lam threshold__raw : Data
-  let threshold = UnIData(threshold__raw)
+lam #threshold__raw : Data
+  let threshold = UnIData(#threshold__raw)
   in <validator>
 ```
 
@@ -546,10 +546,10 @@ static boolean validate(PlutusData redeemer, ScriptContext ctx)
 `ValidatorWrapper` connects those worlds:
 
 ```text
-lam scriptContextData : Data
-  let ctxFields = SndPair(UnConstrData(scriptContextData))
-  let redeemer = HeadList(TailList(ctxFields))
-  let result = validate(redeemer, scriptContextData)
+lam #scriptContextData : Data
+  let #ctxFields__ = SndPair(UnConstrData(#scriptContextData))
+  let redeemer = HeadList(TailList(#ctxFields__))
+  let result = validate(redeemer, #scriptContextData)
   in if result then Unit else Error
 ```
 
@@ -643,7 +643,7 @@ Inside an entrypoint with source-map return guards enabled, the compiler may wra
 After validator wrapping, the boolean becomes success or failure:
 
 ```text
-(if result__
+(if #result__
     (con unit ())
     (error))
 ```
@@ -918,17 +918,17 @@ PIR shape:
 
 ```text
 (letrec
-  ((loop__forEach__0 =
+  ((#loop__forEach__0 =
      (lam xs : List[Data]
        (lam acc : Integer
          (if [(force (builtin nullList)) xs]
              acc
              (let item = [(force (builtin headList)) xs] in
-               [[loop__forEach__0 [(force (builtin tailList)) xs]]
+               [[#loop__forEach__0 [(force (builtin tailList)) xs]]
                  [[(builtin addInteger) acc] [(builtin unIData) item]]]))))))
   in
     [[(builtin equalsInteger)
-      [[loop__forEach__0 items] (con integer 0)]]
+      [[#loop__forEach__0 items] (con integer 0)]]
       (con integer 10)])
 ```
 
@@ -952,9 +952,9 @@ static boolean validate(PlutusData redeemer, ScriptContext ctx) {
 PIR after parameter wrapping:
 
 ```text
-(lam threshold__raw : Data
-  (let threshold = [(builtin unIData) threshold__raw] in
-    (lam scriptContextData : Data
+(lam #threshold__raw : Data
+  (let threshold = [(builtin unIData) #threshold__raw] in
+    (lam #scriptContextData : Data
       ...)))
 ```
 
@@ -1255,7 +1255,6 @@ TypeRegistrar
 TypeResolver
 PirType
 PirHelpers.wrapEncode / wrapDecode
-DataCodecGenerator if it is record-like
 ```
 
 Ask:
@@ -1320,7 +1319,7 @@ When something fails, identify the boundary where it first becomes wrong:
 | Unsupported Java construct | `SubsetValidator` |
 | Wrong type selected | `TypeResolver`, `TypeInferenceHelper`, `SymbolTable` |
 | Wrong builtin in PIR | `PirGenerator`, `TypeMethodRegistry`, `StdlibLookup` |
-| Field access broken | `TypeRegistrar`, `DataCodecGenerator`, record field extraction in `PirGenerator` |
+| Field access broken | `TypeRegistrar`, record field extraction in `PirGenerator` |
 | Pattern match broken | `PatternMatchDesugarer`, `UplcGenerator.generateDataMatch` |
 | Loop behavior wrong | `LoopDesugarer`, `AccumulatorTypeAnalyzer`, `LoopBodyGenerator` |
 | Unbound variable | PIR binding shape or `UplcGenerator` scope stack |
@@ -1378,15 +1377,15 @@ Entrypoint PIR:
       in LessThanEqualsInteger(threshold, amount)
 
 Validator wrapper PIR:
-  lam scriptContextData : Data
-    let ctxFields = SndPair(UnConstrData(scriptContextData))
-    let redeemer__ = HeadList(TailList(ctxFields))
-    let result__ = validate(redeemer__, scriptContextData)
-    in if result__ then Unit else Error
+  lam #scriptContextData : Data
+    let #ctxFields__ = SndPair(UnConstrData(#scriptContextData))
+    let #redeemer__ = HeadList(TailList(#ctxFields__))
+    let #result__ = validate(#redeemer__, #scriptContextData)
+    in if #result__ then Unit else Error
 
 Parameter wrapper PIR:
-  lam threshold__raw : Data
-    let threshold = UnIData(threshold__raw)
+  lam #threshold__raw : Data
+    let threshold = UnIData(#threshold__raw)
     in <validator wrapper>
 
 UPLC:

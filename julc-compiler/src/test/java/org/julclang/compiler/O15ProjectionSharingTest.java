@@ -713,11 +713,11 @@ class O15ProjectionSharingTest {
             case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> { }
             case PirTerm.Lam l -> walkUserLeaves(l.body(), leaf, visit);
             case PirTerm.Let l -> {
-                if (!l.name().contains(".")) walkUserLeaves(l.value(), leaf, visit);
+                if (!isLibraryMethod(l.name())) walkUserLeaves(l.value(), leaf, visit);
                 walkUserLeaves(l.body(), leaf, visit);
             }
             case PirTerm.LetRec r -> {
-                r.bindings().forEach(b -> { if (!b.name().contains(".")) walkUserLeaves(b.value(), leaf, visit); });
+                r.bindings().forEach(b -> { if (!isLibraryMethod(b.name())) walkUserLeaves(b.value(), leaf, visit); });
                 walkUserLeaves(r.body(), leaf, visit);
             }
             case PirTerm.App a -> { walkUserLeaves(a.function(), leaf, visit); walkUserLeaves(a.argument(), leaf, visit); }
@@ -795,5 +795,14 @@ class O15ProjectionSharingTest {
                     .substring(id.length() + 1);
             return UplcFlatDecoder.decodeProgram(HexFormat.of().parseHex(hex));
         }
+    }
+
+    /**
+     * Stdlib method bindings are qualified by their package. Since ADR-060 the fixture's own
+     * methods are qualified too, by the default-package fixture class, so a dot alone no longer
+     * separates library code from user code.
+     */
+    private static boolean isLibraryMethod(String binder) {
+        return binder.startsWith("org.julclang.");
     }
 }

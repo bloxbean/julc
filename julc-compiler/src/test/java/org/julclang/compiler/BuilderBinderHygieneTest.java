@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class BuilderBinderHygieneTest {
     private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
 
-    private static final String LISTS = """
+    static final String LISTS = """
             import java.math.BigInteger;
             import org.julclang.core.types.JulcList;
             import org.julclang.core.types.JulcMap;

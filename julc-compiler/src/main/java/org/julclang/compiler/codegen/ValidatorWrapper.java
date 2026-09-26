@@ -89,15 +89,15 @@ public class ValidatorWrapper {
      * 2-param spending: validate(redeemer, scriptContext) -> bool
      */
     private PirTerm wrapSpending2Param(PirTerm validateFn, PirType redeemerType) {
-        var ctxParam = "scriptContextData";
-        var ctxFieldsVar = "ctxFields__";
-        var redeemerVar = "redeemer__";
-        var resultVar = "result__";
+        var ctxParam = "#scriptContextData";
+        var ctxFieldsVar = "#ctxFields__";
+        var redeemerVar = "#redeemer__";
+        var resultVar = "#result__";
 
         var ctxVar = new PirTerm.Var(ctxParam, new PirType.DataType());
 
         var rawRedeemer = new PirTerm.Var(redeemerVar, new PirType.DataType());
-        PirTerm invoke = withPreparedBoundary(rawRedeemer, "redeemer__decoded", redeemerType,
+        PirTerm invoke = withPreparedBoundary(rawRedeemer, "#redeemer__decoded", redeemerType,
                 decodedRedeemer -> new PirTerm.Let(resultVar,
                         new PirTerm.App(
                                 new PirTerm.App(validateFn, decodedRedeemer),
@@ -131,14 +131,14 @@ public class ValidatorWrapper {
      */
     private PirTerm wrapSpending3Param(PirTerm validateFn, boolean datumIsOptional,
                                         PirType datumType, PirType redeemerType) {
-        var ctxParam = "scriptContextData";
-        var ctxFieldsVar = "ctxFields__";
-        var redeemerVar = "redeemer__";
-        var scriptInfoVar = "scriptInfo__";
-        var scriptInfoFieldsVar = "scriptInfoFields__";
-        var optDatumVar = "optDatum__";
-        var datumVar = "datum__";
-        var resultVar = "result__";
+        var ctxParam = "#scriptContextData";
+        var ctxFieldsVar = "#ctxFields__";
+        var redeemerVar = "#redeemer__";
+        var scriptInfoVar = "#scriptInfo__";
+        var scriptInfoFieldsVar = "#scriptInfoFields__";
+        var optDatumVar = "#optDatum__";
+        var datumVar = "#datum__";
+        var resultVar = "#result__";
 
         var ctxVar = new PirTerm.Var(ctxParam, new PirType.DataType());
 
@@ -155,9 +155,9 @@ public class ValidatorWrapper {
 
         var rawDatum = new PirTerm.Var(datumVar, new PirType.DataType());
         var rawRedeemer = new PirTerm.Var(redeemerVar, new PirType.DataType());
-        PirTerm invoke = withPreparedBoundary(rawDatum, "datum__decoded", datumType,
+        PirTerm invoke = withPreparedBoundary(rawDatum, "#datum__decoded", datumType,
                 decodedDatum -> withPreparedBoundary(
-                        rawRedeemer, "redeemer__decoded", redeemerType,
+                        rawRedeemer, "#redeemer__decoded", redeemerType,
                         decodedRedeemer -> new PirTerm.Let(resultVar,
                                 new PirTerm.App(
                                         new PirTerm.App(
@@ -218,12 +218,12 @@ public class ValidatorWrapper {
                                        Map<Integer, Boolean> datumOptionalFlags,
                                        Map<Integer, PirType> datumTypes,
                                        Map<Integer, PirType> redeemerTypes) {
-        var ctxParam = "scriptContextData";
-        var ctxFieldsVar = "ctxFields__";
-        var redeemerVar = "redeemer__";
-        var scriptInfoVar = "scriptInfo__";
-        var scriptInfoPairVar = "scriptInfoPair__";
-        var tagVar = "tag__";
+        var ctxParam = "#scriptContextData";
+        var ctxFieldsVar = "#ctxFields__";
+        var redeemerVar = "#redeemer__";
+        var scriptInfoVar = "#scriptInfo__";
+        var scriptInfoPairVar = "#scriptInfoPair__";
+        var tagVar = "#tag__";
 
         var ctxVar = new PirTerm.Var(ctxParam, new PirType.DataType());
 
@@ -280,10 +280,10 @@ public class ValidatorWrapper {
         PirTerm callExpr;
         if (tag == 1 && paramCount == 3) {
             // SPEND with datum: extract from ScriptInfo fields
-            var siFieldsVar = "siFields__spend";
-            var optDatumVar = "optDatum__spend";
-            var datumVar = "datum__spend";
-            var resultVar = "result__spend";
+            var siFieldsVar = "#siFields__spend";
+            var optDatumVar = "#optDatum__spend";
+            var datumVar = "#datum__spend";
+            var resultVar = "#result__spend";
 
             // Datum binding: either pass raw Optional or force-unwrap
             PirTerm datumBinding;
@@ -297,9 +297,9 @@ public class ValidatorWrapper {
             var rawDatum = new PirTerm.Var(datumVar, new PirType.DataType());
             var rawRedeemer = new PirTerm.Var(redeemerVar, new PirType.DataType());
             PirTerm invoke = withPreparedBoundary(
-                    rawDatum, "datum__decoded__spend", datumType,
+                    rawDatum, "#datum__decoded__spend", datumType,
                     decodedDatum -> withPreparedBoundary(
-                            rawRedeemer, "redeemer__decoded__spend", redeemerType,
+                            rawRedeemer, "#redeemer__decoded__spend", redeemerType,
                             decodedRedeemer -> new PirTerm.Let(resultVar,
                                     new PirTerm.App(
                                             new PirTerm.App(
@@ -321,10 +321,10 @@ public class ValidatorWrapper {
                                     invoke)));
         } else {
             // All 2-param handlers: handler(redeemer, ctx)
-            var resultVar = "result__tag" + tag;
+            var resultVar = "#result__tag" + tag;
             var rawRedeemer = new PirTerm.Var(redeemerVar, new PirType.DataType());
             callExpr = withPreparedBoundary(
-                    rawRedeemer, "redeemer__decoded__tag" + tag, redeemerType,
+                    rawRedeemer, "#redeemer__decoded__tag" + tag, redeemerType,
                     decodedRedeemer -> new PirTerm.Let(resultVar,
                             new PirTerm.App(
                                     new PirTerm.App(handler, decodedRedeemer),

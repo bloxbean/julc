@@ -3,6 +3,64 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)
+
+The compiler generates variables around your code for switch dispatch, loops, the
+validator wrapper, `@Param` decoding and the list and map builders. Several of
+those names were legal Java identifiers, so a source variable with the same name
+silently resolved to the compiler's variable instead:
+
+- `BigInteger __match_tag = ...;` read inside a switch arm gave the constructor tag;
+- a `@Param` named `datum__` compared the spent datum with itself, so any parameter
+  value was accepted;
+- a variable named `xs__`, `__acc_tuple` or `loop__forEach__0` read inside a loop saw
+  the loop's remaining list, accumulator tuple or recursive function;
+- a `@Param` named `redeemer__`, `scriptContextData`, `ctxFields__` or `tag__`, or a
+  pair of `@Param`s `cfg__raw` and `cfg`, read the wrapper's value.
+
+Every generated name now begins with `#`, which no Java identifier can contain, and
+switch-dispatch names are also chosen away from every name a branch uses
+([ADR-060](https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md)).
+The same change fixes adjacent silent miscompiles:
+
+- **Compound assignment in loops** dropped the operator: `count += 1` over three items
+  returned 1 and `while (k < 3) { k += 1; }` never terminated. `+=`, `-=`, `*=`, `/=`
+  and `%=` on integers, and `+=` on strings, now mean `x = x op y`. `&=`, `|=`, `^=`
+  and the shift operators are rejected (`JULC0052`), because lowering `&=` as `&&`
+  would skip a check Java always evaluates.
+- **Overloaded methods**: the last declaration ran for every call, so `check(BigInteger)`
+  next to `check(long)` used the wrong body. Overloads are rejected (`JULC0054`) unless
+  they compile to identical code, like the stdlib's two `integerToByteString` forms.
+- **Declarations with several variables**, `BigInteger a = x, b = y;`, bound only the
+  first, so a later `b` could read a field `b`. They are rejected (`JULC0053`); fields
+  may still declare several variables.
+- **Methods now have their own namespace**, as in Java: a local, parameter, field or
+  `@Param` may share a method's name (`BigInteger fee = fee(a); return fee(fee);`
+  failed at run time, and a `@Param limit` next to a method `limit(...)` gave the
+  wrong decision). `x.name()` or `x.name` on a value whose type is not known used to
+  call whatever was named `name`; it is now rejected (`JULC0055`). A static field
+  initializer that calls a method of its class now gets an explicit error (`JULC0057`).
+- **Fields updated in loops**: a loop assignment to a static field or `@Param` rebinds
+  the name only inside that method, so another method reading the field saw the
+  original value (a helper returned 0 after `count += 1` three times). Such an update
+  is rejected (`JULC0056`) when the field is final or another method reads it; updating
+  a field read only in the same method keeps working. A loop-body local that shadows a
+  field and is reassigned was threaded out of the loop as if it were the field; it is
+  now a local.
+
+**Migration.** Programs that use none of these shapes keep byte-identical scripts
+and hashes at every optimization level; this was checked on 1,432 in-repo corpus
+rows (all levels, with and without source maps, including `@Param` and
+multi-validator programs) and the 344 external example artifacts. A recompiled script that used an affected shape changes its bytes, hash
+and budget, and its behaviour now matches Java: review it and redeploy if the old
+behaviour mattered. Deployed scripts never change. Code that is now rejected must
+be rewritten as the diagnostic describes. PIR and UPLC text output, such as the
+`.uplc` file from `julc build` and the playground pipeline view, now shows `#`
+names; this is cosmetic. Code that drives `PirGenerator` directly must register a
+method with `SymbolTable.declareMethod`: a method registered as a variable with
+`SymbolTable.define` is no longer callable. Diagnostic codes `JULC0044`–`JULC0051`
+are reserved for the generic backend work.
+
 ## Upcoming preview: builder binders no longer capture user variables (#186)
 
 A variable referenced inside a lambda or argument could silently resolve to an
@@ -22,9 +80,8 @@ Each generated binder is now renamed only when a caller term actually refers to
 that name, so evaluation order is unchanged. Scripts without such a reference
 keep byte-identical output at every optimization level. Recompiling an affected
 script changes its bytes, hash and budget; review it and redeploy if its
-behaviour mattered. Deployed scripts never change. The loop desugarer's
-counter-suffixed `loop__*__N` and `xs__` names are not yet renamed; do not use
-them as source variable names.
+behaviour mattered. Deployed scripts never change. The generated names #186 did
+not reach, such as the loop and switch binders, are covered by ADR-060 below.
 
 ## Upcoming preview: release regression gates and profile freeze (#121)
 

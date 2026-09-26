@@ -220,6 +220,7 @@ final class AccumulatorTypeAnalyzer {
         for (var stmt : stmts) {
             if (stmt instanceof ExpressionStmt es
                     && es.getExpression() instanceof AssignExpr ae
+                    && ae.getOperator() == AssignExpr.Operator.ASSIGN
                     && ae.getTarget() instanceof NameExpr ne
                     && ne.getNameAsString().equals(varName)
                     && ae.getValue() instanceof MethodCallExpr mce
@@ -456,25 +457,42 @@ final class AccumulatorTypeAnalyzer {
      */
     static void collectAccumulatorAssignments(List<Statement> stmts, LinkedHashSet<String> accNames,
                                                Function<String, Optional<PirType>> typeLookup) {
+        collectAccumulatorAssignments(stmts, accNames, typeLookup, Set.of());
+    }
+
+    /**
+     * An assignment updates an accumulator when its target is visible before the loop and not a
+     * local the body declared in an enclosing block before it. Java forbids shadowing a method's
+     * locals, so a body local with an outer name shadows a field or {@code @Param} (ADR-060).
+     */
+    private static void collectAccumulatorAssignments(List<Statement> stmts, LinkedHashSet<String> accNames,
+                                                      Function<String, Optional<PirType>> typeLookup,
+                                                      Set<String> outerLocals) {
+        var locals = new HashSet<>(outerLocals);
         for (var stmt : stmts) {
+            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                vde.getVariables().forEach(v -> locals.add(v.getNameAsString()));
+            }
             if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
                 var name = ne.getNameAsString();
-                if (typeLookup.apply(name).isPresent()) accNames.add(name);
+                if (!locals.contains(name) && typeLookup.apply(name).isPresent()) accNames.add(name);
             }
             if (stmt instanceof IfStmt is) {
-                collectAccumulatorAssignments(PirHelpers.blockStmts(is.getThenStmt()), accNames, typeLookup);
+                collectAccumulatorAssignments(PirHelpers.blockStmts(is.getThenStmt()), accNames, typeLookup, locals);
                 is.getElseStmt().ifPresent(e ->
-                        collectAccumulatorAssignments(PirHelpers.blockStmts(e), accNames, typeLookup));
+                        collectAccumulatorAssignments(PirHelpers.blockStmts(e), accNames, typeLookup, locals));
             }
             if (stmt instanceof BlockStmt bs) {
-                collectAccumulatorAssignments(bs.getStatements(), accNames, typeLookup);
+                collectAccumulatorAssignments(bs.getStatements(), accNames, typeLookup, locals);
             }
             if (stmt instanceof WhileStmt ws) {
-                collectAccumulatorAssignments(PirHelpers.blockStmts(ws.getBody()), accNames, typeLookup);
+                collectAccumulatorAssignments(PirHelpers.blockStmts(ws.getBody()), accNames, typeLookup, locals);
             }
             if (stmt instanceof ForEachStmt fes) {
-                collectAccumulatorAssignments(PirHelpers.blockStmts(fes.getBody()), accNames, typeLookup);
+                var loopLocals = new HashSet<>(locals);
+                fes.getVariable().getVariables().forEach(v -> loopLocals.add(v.getNameAsString()));
+                collectAccumulatorAssignments(PirHelpers.blockStmts(fes.getBody()), accNames, typeLookup, loopLocals);
             }
         }
     }

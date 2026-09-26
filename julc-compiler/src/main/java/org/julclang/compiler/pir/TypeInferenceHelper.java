@@ -70,7 +70,8 @@ final class TypeInferenceHelper {
             if (!(resolved instanceof PirType.DataType)) return resolved;
         }
         if (expr instanceof MethodCallExpr mce && mce.getScope().isEmpty()) {
-            var methodType = symbolTable.lookup(mce.getNameAsString());
+            var methodType = symbolTable.lookupMethodSignature(mce.getNameAsString())
+                    .map(SymbolTable.MethodSignature::type);
             if (methodType.isPresent()) {
                 return extractReturnType(methodType.get());
             }

@@ -54,6 +54,51 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), message, location);
     }
 
+    /** JULC0052: a compound assignment whose Java meaning the lowering does not implement (ADR-060). */
+    public static CompilerException compoundAssignmentUnsupported(String operator, SourceLocation location) {
+        var info = DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(operator), location);
+    }
+
+    /** JULC0053: a local declaration with more than one variable (ADR-060). */
+    public static CompilerException multipleDeclarators(String declaration, SourceLocation location) {
+        var info = DiagnosticCodes.MULTIPLE_DECLARATORS_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(declaration), location);
+    }
+
+    /**
+     * JULC0054: two static methods with one name that are not interchangeable on-chain. Methods
+     * are bound by name, so every call would run one of them (ADR-060).
+     */
+    public static CompilerException methodOverload(String method, String owner, SourceLocation location) {
+        var info = DiagnosticCodes.METHOD_OVERLOAD_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner), location);
+    }
+
+    /**
+     * JULC0055: {@code x.name()} or {@code x.name} whose receiver type is unknown survived to code
+     * generation. It used to bind to whatever binder was named {@code name} (ADR-060).
+     */
+    public static CompilerException unresolvedMember(String member, SourceLocation location) {
+        var info = DiagnosticCodes.UNRESOLVED_MEMBER_ACCESS;
+        return exception(info.code(), info.level(), info.fix(), info.format(member), location);
+    }
+
+    /**
+     * JULC0056: a loop assignment to a final static field, or to a static field or {@code @Param}
+     * another method reads. The loop lowering rebinds the name only inside the method (ADR-060).
+     */
+    public static CompilerException fieldAssignment(String field, SourceLocation location) {
+        var info = DiagnosticCodes.FIELD_ASSIGNMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(field), location);
+    }
+
+    /** JULC0057: a static field initializer that calls a method of its class. */
+    public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
+        var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;
+        return exception(info.code(), info.level(), info.fix(), info.format(field, method), location);
+    }
+
     private static CompilerException exception(
             String code,
             CompilerDiagnostic.Level level,
