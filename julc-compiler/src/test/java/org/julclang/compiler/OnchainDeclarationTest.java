@@ -17,7 +17,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * on-chain and multi-variable declarations used to compile to the wrong program: the last overload
  * ran for every call ({@code check(BigInteger)} vs {@code check(long)} returned false), and only the
  * first declared variable was bound ({@code BigInteger a = ONE, b = TWO; a.add(b)} read a static
- * field {@code b} and returned 11). Both are now rejected.
+ * field {@code b} and returned 11). Both are now rejected. A loop assignment to a static field or
+ * {@code @Param} rebinds it only inside the assigning method; it is rejected when the field is final
+ * or another method reads it, where that differs from Java.
  */
 class OnchainDeclarationTest {
     private static final String HEADER = """
@@ -135,6 +137,58 @@ class OnchainDeclarationTest {
                     for (var x : xs) { BigInteger d = x, e = x; total = total.add(d).add(e); }
                     return total;
                 }""")));
+    }
+
+    @Test
+    void fieldAndParamAssignmentsInLoopsAreRejected() {
+        // A loop assignment rebound the name only inside the method, so readK() still saw 0 (Java: 3).
+        for (var update : List.of("K += 1;", "K = K + 1;"))
+            assertEquals("JULC0056", rejectedCode(() -> compileMethod("""
+                    static long K = 0;
+                    static long readK() { return K; }
+                    static long m(JulcList<BigInteger> xs) { for (var x : xs) { %s } return readK(); }""".formatted(update))));
+        assertEquals("JULC0056", rejectedCode(() -> compileMethod("""
+                static final BigInteger LIMIT = BigInteger.TEN;
+                static BigInteger m(JulcList<BigInteger> xs) { for (var x : xs) { LIMIT = LIMIT.add(x); } return LIMIT; }""")));
+        String validator = """
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcList;
+                @SpendingValidator
+                class ParamUpdate {
+                    @Param BigInteger limit;
+                    static boolean within(BigInteger v) { return v.compareTo(limit) <= 0; }
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                        for (var item : items) { limit = limit.add(Builtins.unIData(item)); }
+                        return within(BigInteger.valueOf(50));
+                    }
+                }""";
+        assertEquals("JULC0056", rejectedCode(() -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(validator)));
+    }
+
+    @Test
+    void fieldUpdatedAndReadOnlyInOneMethodMatchesJava() {
+        // The loop rebinds the field within the method, which is Java's result while no other
+        // method reads it.
+        var result = compileMethod("""
+                static long K = 0;
+                static long m(JulcList<BigInteger> xs) { for (var x : xs) { K += 1; } return K; }""");
+        assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(3))), evaluate(result,
+                PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3))));
+    }
+
+    @Test
+    void localShadowingAFieldIsStillALocal() {
+        var result = compileMethod("""
+                static long K = 5;
+                static long m(JulcList<BigInteger> xs) {
+                    long total = 0;
+                    for (var x : xs) { long K = 1; K += 1; total = total + K; }
+                    return total + K;
+                }""");
+        assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(11))), evaluate(result,
+                PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3))));
     }
 
     @Test

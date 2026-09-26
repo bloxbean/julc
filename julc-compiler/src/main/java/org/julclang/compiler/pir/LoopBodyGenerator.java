@@ -781,6 +781,7 @@ final class LoopBodyGenerator {
             throw gen.enrichedError("Assignment to undeclared variable '" + sourceName(name) + "'",
                     "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.", ae);
         }
+        if (symbolTable.isClassLevel(name)) gen.requireUnsharedField(name, ae);
         return gen.assignmentValue(ae, name, target);
     }
 

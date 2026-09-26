@@ -10,7 +10,8 @@ import java.util.function.Function;
 
 /**
  * ADR-060 byte-stability corpus: every compileMethod fixture of the O-series suites, the
- * switch-dispatch validators, the golden validators and the builder-hygiene validators. Renaming a
+ * switch-dispatch validators, the golden validators, the builder-hygiene validators, and the G1
+ * oracle's {@code @Param}, multi-validator and construct-shaped programs. Renaming a
  * compiler-generated binder must not change the FLAT bytes of any of these programs unless a
  * user name coincided with an internal one (recorded per row in {@link Adr060ByteSnapshotTest}).
  */
@@ -45,6 +46,8 @@ final class Adr060Corpus {
                 GoldenUplcTest.WHILE_BREAK, GoldenUplcTest.NESTED_WHILE, GoldenUplcTest.HOF_MAP,
                 GoldenUplcTest.HOF_FILTER, GoldenUplcTest.MULTI_ACC_WHILE, GoldenUplcTest.NESTED_WHILE_NO_ACC));
         addValidators(entries, "hygiene", hygieneSources());
+        // @Param validators, a multi-validator and the construct-shaped programs of the G1 oracle.
+        entries.addAll(BinderNameIndependenceTest.CLASS_LEVEL);
         return entries;
     }
 

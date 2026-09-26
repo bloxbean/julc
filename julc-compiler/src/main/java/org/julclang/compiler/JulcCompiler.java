@@ -32,10 +32,12 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MemberValuePair;
-import com.github.javaparser.ast.expr.SimpleName;
+import com.github.javaparser.ast.expr.TypePatternExpr;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 
 import java.io.File;
@@ -45,6 +47,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_WRONG_PARAMETER_COUNT;
@@ -666,6 +669,7 @@ public class JulcCompiler {
         }
 
         var provenance = debugMetadata == null ? null : debugMetadata.provenance();
+        pirGenerator.rejectUnresolvedMembers(wrappedTerm);
         var lowered = PirBackend.lower(
                 wrappedTerm, context, pirGenerator.getPirPositions(), true, provenance);
         var program = lowered.program();
@@ -1025,6 +1029,7 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, body));
         }
 
+        pirGenerator.rejectUnresolvedMembers(body);
         var values = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(body);
         var folding = new ArrayLiteralFoldPass(context, values.positions()).lower(values.term());
         var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
@@ -1770,17 +1775,26 @@ public class JulcCompiler {
         if (Boolean.getBoolean(VERIFY_BINDER_NAMESPACE)) context.verifyBinderNames(sourceBinderNamespace(root, libraries));
     }
 
-    /** The binder names the Java frontend may produce from these sources (ADR-060 G2). */
+    /**
+     * The binder names the Java frontend may produce from these sources (ADR-060 G2): names the
+     * sources declare (parameters, including lambda parameters and record components, variables
+     * and fields, pattern variables), and {@code owner.method} for a declared method.
+     */
     static Predicate<String> sourceBinderNamespace(CompilationUnit root, List<CompilationUnit> libraries) {
-        var identifiers = new HashSet<String>();
-        root.findAll(SimpleName.class).forEach(name -> identifiers.add(name.getIdentifier()));
-        for (var library : libraries) library.findAll(SimpleName.class).forEach(name -> identifiers.add(name.getIdentifier()));
+        var declared = new HashSet<String>();
+        var methods = new HashSet<String>();
+        for (var cu : Stream.concat(Stream.of(root), libraries.stream()).toList()) {
+            cu.findAll(Parameter.class).forEach(p -> declared.add(p.getNameAsString()));
+            cu.findAll(VariableDeclarator.class).forEach(v -> declared.add(v.getNameAsString()));
+            cu.findAll(TypePatternExpr.class).forEach(p -> declared.add(p.getNameAsString()));
+            cu.findAll(MethodDeclaration.class).forEach(m -> methods.add(m.getNameAsString()));
+        }
         return name -> {
             if (PirHelpers.isGeneratedName(name)) return true;
             int mark = name.indexOf('\'');
-            if (identifiers.contains(mark < 0 ? name : name.substring(0, mark))) return true;
+            if (declared.contains(mark < 0 ? name : name.substring(0, mark))) return true;
             int dot = name.lastIndexOf('.');
-            return dot > 0 && identifiers.contains(name.substring(dot + 1));
+            return dot > 0 && methods.contains(name.substring(dot + 1));
         };
     }
 
@@ -1806,13 +1820,8 @@ public class JulcCompiler {
         var free = PirSubstitution.collectFreeVarNames(initPir);
         for (var method : cls.getMethods()) {
             if (method.isStatic() && free.contains(methodBinder(owner, method))) {
-                var location = sourceLocation(field.initExpr());
-                throw new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
-                        "Static field '" + field.name() + "' calls method " + method.getNameAsString()
-                                + "; static field initializers cannot call methods of their class",
-                        location.fileName(), location.line(), location.column(),
-                        "Call the method where the value is used, or initialise the field with an expression "
-                                + "that does not call a method of this class.")));
+                throw CompilerTypeDiagnostics.staticInitializerCallsMethod(field.name(), method.getNameAsString(),
+                        sourceLocation(field.initExpr()));
             }
         }
     }

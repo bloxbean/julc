@@ -13,6 +13,7 @@ import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
@@ -46,6 +47,9 @@ public class PirGenerator {
     private final CompilationContext context;
     private final DebugMetadataCollector debugMetadata;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
+    private final Map<String, SourceLocation> unresolvedMembers = new LinkedHashMap<>();
+    /** The source method being generated; loop updates of fields are checked against its class. */
+    private MethodDeclaration currentMethod;
     private final LoopDesugarer loopDesugarer;
     private int ifJoinCounter;
 
@@ -349,6 +353,16 @@ public class PirGenerator {
      * Generate PIR for a method body. Returns a lambda term wrapping the body.
      */
     public PirTerm generateMethod(MethodDeclaration method) {
+        var previousMethod = currentMethod;
+        currentMethod = method;
+        try {
+            return generateMethodBody(method);
+        } finally {
+            currentMethod = previousMethod;
+        }
+    }
+
+    private PirTerm generateMethodBody(MethodDeclaration method) {
         var params = method.getParameters();
         var body = method.getBody().orElseThrow(
                 () -> new CompilerException("Method must have a body: " + method.getNameAsString()));
@@ -1064,6 +1078,30 @@ public class PirGenerator {
         return binaryOperation(operator, ae.getTarget(), current, ae.getValue(), operand, ae);
     }
 
+    /**
+     * JULC0056: a static field or {@code @Param} is not shared state on-chain. A loop assignment
+     * rebinds it only inside the assigning method, which matches Java unless the field is final or
+     * another method of the class reads it; those cases are rejected (ADR-060).
+     */
+    void requireUnsharedField(String name, Node at) {
+        var field = LoopBodyGenerator.sourceName(name);
+        var owner = currentMethod == null ? null
+                : currentMethod.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
+        boolean shared = owner == null;
+        if (owner != null) {
+            for (var declaration : owner.getFields())
+                if (declaration.isFinal() && declaration.getVariables().stream()
+                        .anyMatch(v -> v.getNameAsString().equals(field))) shared = true;
+            for (var method : owner.getMethods()) {
+                if (method == currentMethod) continue;
+                boolean parameter = method.getParameters().stream().anyMatch(p -> p.getNameAsString().equals(field));
+                if (!parameter && method.findAll(NameExpr.class).stream()
+                        .anyMatch(n -> n.getNameAsString().equals(field))) shared = true;
+            }
+        }
+        if (shared) throw CompilerTypeDiagnostics.fieldAssignment(field, sourceLocation(at));
+    }
+
     /** JULC0053: every lowering binds only a declaration's first variable, so reject more (ADR-060). */
     static void requireSingleDeclarator(VariableDeclarationExpr vde) {
         if (vde.getVariables().size() > 1) {
@@ -1377,7 +1415,7 @@ public class PirGenerator {
             }
         }
 
-        return generateFieldAccessFromMethod(scope, methodName, args);
+        return generateFieldAccessFromMethod(scope, methodName, args, mce);
     }
 
     /**
@@ -1537,12 +1575,13 @@ public class PirGenerator {
     }
 
     private PirTerm generateFieldAccessFromMethod(PirTerm scope, String methodName,
-                                                   com.github.javaparser.ast.NodeList<Expression> args) {
+                                                   com.github.javaparser.ast.NodeList<Expression> args,
+                                                   Node source) {
         // The receiver's type did not resolve the member. The ".name" pseudo-variable keeps the
         // call in the term, because HOF inference may still discard this lowering; UPLC
         // generation rejects any that survives (JULC0055, ADR-060) instead of binding it to a
         // variable or method that happens to be named like the member.
-        var member = new PirTerm.Var("." + methodName, new PirType.DataType());
+        var member = unresolvedMember(methodName, source);
         if (args.isEmpty()) return new PirTerm.App(member, scope);
         PirTerm fn = new PirTerm.App(member, scope);
         for (var arg : args) {
@@ -1589,9 +1628,29 @@ public class PirGenerator {
             }
         }
 
-        return new PirTerm.App(
-                new PirTerm.Var("." + fieldName, new PirType.DataType()),
-                scope);
+        return new PirTerm.App(unresolvedMember(fieldName, fae), scope);
+    }
+
+    /**
+     * The {@code .name} pseudo-variable for a member its receiver's type did not resolve, with the
+     * first source location seen for that name so JULC0055 can point at it (ADR-060).
+     */
+    private PirTerm.Var unresolvedMember(String name, Node source) {
+        unresolvedMembers.putIfAbsent(name, sourceLocation(source));
+        return new PirTerm.Var("." + name, new PirType.DataType());
+    }
+
+    /**
+     * JULC0055: reject a member access that survived HOF inference unresolved. Called on the term
+     * handed to the backend; UPLC generation rejects any that reach it without this check.
+     */
+    public void rejectUnresolvedMembers(PirTerm term) {
+        for (var name : PirSubstitution.collectFreeVarNames(term)) {
+            if (name.startsWith(".")) {
+                var member = name.substring(1);
+                throw CompilerTypeDiagnostics.unresolvedMember(member, unresolvedMembers.get(member));
+            }
+        }
     }
 
     private PirTerm generateObjectCreation(ObjectCreationExpr oce) {
@@ -1993,7 +2052,16 @@ public class PirGenerator {
     }
 
     List<String> detectForEachAccumulators(Statement bodyStmt) {
-        return AccumulatorTypeAnalyzer.detectForEachAccumulators(bodyStmt, symbolTable::lookup);
+        var accumulators = AccumulatorTypeAnalyzer.detectForEachAccumulators(bodyStmt, symbolTable::lookup);
+        for (var name : accumulators) {
+            // A static field or @Param updated in a loop is rebound only in this method.
+            if (symbolTable.isClassLevel(name)) {
+                Node at = bodyStmt.findFirst(AssignExpr.class, a -> a.getTarget() instanceof NameExpr ne
+                        && ne.getNameAsString().equals(name)).map(a -> (Node) a).orElse(bodyStmt);
+                requireUnsharedField(name, at);
+            }
+        }
+        return accumulators;
     }
 
     private String findAccumulatorInBreakPattern(List<Statement> stmts) {

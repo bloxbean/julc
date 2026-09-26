@@ -217,9 +217,13 @@ public final class NameAssigner {
             if (name == null || name.isEmpty()) return "v";
             // De Bruijn names like "i0", "i1" are meaningless
             if (name.matches("i\\d+")) return "v";
-            // Compiler-generated names (ADR-060 "#..."), qualified names and block-local
-            // renames are not Java identifiers, so they cannot name a decompiled variable.
-            if (!isJavaIdentifier(name)) return "v";
+            // Keep the readable part of names that are not Java identifiers: a compiler-generated
+            // "#name" (ADR-060), a qualified method "Owner.name" and a block-local rename "name'N".
+            if (name.startsWith("#")) name = name.substring(1);
+            name = name.substring(name.lastIndexOf('.') + 1);
+            int mark = name.indexOf('\'');
+            if (mark >= 0) name = name.substring(0, mark);
+            if (name.isEmpty() || !isJavaIdentifier(name)) return "v";
             return name;
         }
 

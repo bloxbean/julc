@@ -108,6 +108,8 @@ class MethodNamespaceTest {
                 static BigInteger amount(PlutusData d) { return Builtins.unIData(d); }
                 static BigInteger m(PlutusData d) { return d.amount(); }""");
         assertEquals("JULC0055", helper.diagnostics().getFirst().code(), helper.getMessage());
+        assertTrue(helper.diagnostics().getFirst().line() > 0, "JULC0055 must point at the source: " + helper.getMessage());
+        assertTrue(helper.getMessage().contains("Cannot resolve amount"), helper.getMessage());
         // ... and with an argument, the local named like the member.
         var local = rejected("""
                 static BigInteger m(PlutusData d, BigInteger scale) { BigInteger times = scale; return d.times(scale); }""");
@@ -120,6 +122,7 @@ class MethodNamespaceTest {
                 static BigInteger base() { return BigInteger.TEN; }
                 static final BigInteger FEE = base();
                 static BigInteger m(BigInteger a) { return a.add(FEE); }""");
+        assertEquals("JULC0057", error.diagnostics().getFirst().code(), error.getMessage());
         assertTrue(error.getMessage().contains("Static field 'FEE' calls method base"), error.getMessage());
     }
 }

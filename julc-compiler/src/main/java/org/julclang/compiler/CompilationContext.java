@@ -17,11 +17,13 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
- * Immutable configuration resolved for one compiler invocation.
+ * Configuration resolved for one compiler invocation, and the state its stages report into.
  *
  * <p>The context snapshots mutable {@link CompilerOptions} at the compiler
  * boundary. It is then passed through the pipeline so every target-sensitive
- * stage observes the same target and options.
+ * stage observes the same target and options. Stages record diagnostics and
+ * applied optimization rules here, and the Java frontend may install the
+ * binder-namespace check (ADR-060).
  */
 public final class CompilationContext {
 
@@ -199,7 +201,7 @@ public final class CompilationContext {
      * ADR-060 G2: require every binder that reaches UPLC generation to be accepted by
      * {@code allowed}. The Java frontend enables this in tests; other frontends own their names.
      */
-    public void verifyBinderNames(Predicate<String> allowed) {
+    void verifyBinderNames(Predicate<String> allowed) {
         this.binderNamespace = Objects.requireNonNull(allowed, "allowed");
     }
 

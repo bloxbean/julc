@@ -117,6 +117,14 @@ public final class DiagnosticCodes {
             "{0} entrypoint must have {1} parameters{2}, found {3} in {4}.{5}(){6}",
             "Adjust the entrypoint signature to match the validator annotation. Spending: `(Datum, Redeemer, ScriptContext)`. Others: `(Redeemer, ScriptContext)`.");
 
+    public static final DiagnosticInfo FIELD_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0056",
+            "FIELD_ASSIGNMENT_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Assignment to field ''{0}'' in a loop is not supported: the field is final or another method reads it",
+            "Copy the field into a local accumulator before the loop, update the local, and pass it to the methods that need it.");
+
     public static final DiagnosticInfo FLOATING_POINT_UNSUPPORTED = new DiagnosticInfo(
             "JULC0020",
             "FLOATING_POINT_UNSUPPORTED",
@@ -154,7 +162,7 @@ public final class DiagnosticCodes {
             "METHOD_OVERLOAD_UNSUPPORTED",
             CompilerDiagnostic.Level.ERROR,
             "VALIDATOR",
-            "Method {0} is declared more than once in {1} with different on-chain behaviour; overloaded methods are not supported",
+            "Method {0} is declared more than once in {1}; on-chain methods are bound by name, so declarations sharing a name must compile to identical code",
             "Give each method a distinct name.");
 
     public static final DiagnosticInfo MISSING_OPTIMIZATION_COST_PROFILE = new DiagnosticInfo(
@@ -253,6 +261,14 @@ public final class DiagnosticCodes {
             "Failed to parse {0} source: {1}",
             "Check the file with a Java IDE or `javac` \u2014 the JuLC compiler relies on JavaParser to produce a clean AST.");
 
+    public static final DiagnosticInfo STATIC_INITIALIZER_CALLS_METHOD = new DiagnosticInfo(
+            "JULC0057",
+            "STATIC_INITIALIZER_CALLS_METHOD",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Static field ''{0}'' calls method {1}; static field initializers cannot call methods of their class",
+            "Call the method where the value is used, or initialise the field with an expression that does not call a method of this class.");
+
     public static final DiagnosticInfo STDLIB_METHOD_WRONG_ARITY = new DiagnosticInfo(
             "JULC0025",
             "STDLIB_METHOD_WRONG_ARITY",
@@ -338,7 +354,7 @@ public final class DiagnosticCodes {
             "UNRESOLVED_MEMBER_ACCESS",
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
-            "Cannot resolve {0} on a value whose type is not known here",
+            "Cannot resolve {0}: the receiver's type does not declare it as a record field, accessor or supported method",
             "Give the receiver its record or ledger type instead of var or PlutusData, or call a static helper as helper(x) rather than x.helper().");
 
     public static final DiagnosticInfo UNSUPPORTED_COMPILER_TARGET = new DiagnosticInfo(
@@ -397,6 +413,7 @@ public final class DiagnosticCodes {
             DUPLICATE_TYPE_DECLARATION,
             ENTRYPOINT_MISSING,
             ENTRYPOINT_WRONG_PARAMETER_COUNT,
+            FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             METHOD_BODY_MISSING,
@@ -414,6 +431,7 @@ public final class DiagnosticCodes {
             PARAM_RAW_PLUTUS_DATA,
             RETURN_INSIDE_WHILE,
             SOURCE_PARSE_FAILED,
+            STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,
             SWITCH_FIELD_SHADOWS_PARAMETER,
             SWITCH_NOT_EXHAUSTIVE,

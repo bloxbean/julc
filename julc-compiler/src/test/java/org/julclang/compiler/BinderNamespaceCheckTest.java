@@ -13,8 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ADR-060 G2: in tests, every binder that reaches UPLC generation must be a reserved {@code #}
- * name, a source identifier (a block-local rename {@code name'N} counts as its name), or a
- * qualified method name. The root build enables the check for every test task, so any lowering
+ * name, a name the sources declare (a block-local rename {@code name'N} counts as its name), or
+ * a qualified method name. The root build enables the check for every test task, so any lowering
  * that invents a legal-Java binder name fails the tests that exercise it.
  */
 class BinderNamespaceCheckTest {
@@ -47,7 +47,9 @@ class BinderNamespaceCheckTest {
         var allowed = JulcCompiler.sourceBinderNamespace(validator, List.of(library));
         for (var name : List.of("#__match_tag", "amount", "amount'2", "acc", "V.fee", "org.example.Lib.total"))
             assertTrue(allowed.test(name), name);
-        for (var name : List.of("__match_tag", "scriptContextData", "x", "xs__", "go", "V.missing"))
+        // Only declared names count: type names and names that only appear in calls do not.
+        for (var name : List.of("__match_tag", "scriptContextData", "x", "xs__", "go", "V.missing", "V", "Lib",
+                "java", "BigInteger"))
             assertFalse(allowed.test(name), name);
     }
 }

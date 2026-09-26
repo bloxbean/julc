@@ -240,9 +240,7 @@ class BinderNameIndependenceTest {
         var failures = new ArrayList<String>();
         int renames = 0;
         int rotation = 0;
-        var entries = new ArrayList<>(Adr060Corpus.entries());
-        entries.addAll(CLASS_LEVEL);
-        for (var entry : entries) {
+        for (var entry : Adr060Corpus.entries()) {
             var cu = PARSER.parse(entry.source()).getResult().orElseThrow();
             var classLevel = CLASS_LEVEL.contains(entry);
             for (var candidate : candidates(cu, classLevel)) {
@@ -288,7 +286,13 @@ class BinderNameIndependenceTest {
                 boolean countsNames = level.pv11SafeRulesEnabled();
                 if (countsNames && binderNames(before).contains(rename.to())) {
                     evaluationComparisons++;
-                    // The PV11 passes count binders by name: only the observable behaviour must agree.
+                    // The PV11 passes count binders by name: only the observable behaviour must agree,
+                    // which needs inputs to observe it.
+                    if (original.inputs().isEmpty()) {
+                        failures.add(rename + " at " + level + " maps=" + maps
+                                + ": FLAT bytes differ and the entry has no inputs to compare behaviour");
+                        continue;
+                    }
                     for (var input : original.inputs())
                         if (!sameEvaluation(before, after, input))
                             failures.add(rename + " at " + level + " maps=" + maps + ": evaluation differs on " + input);

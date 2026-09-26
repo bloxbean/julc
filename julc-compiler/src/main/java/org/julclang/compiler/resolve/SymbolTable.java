@@ -40,6 +40,17 @@ public class SymbolTable {
     }
 
     /**
+     * Whether {@code name} resolves to the global scope: a static field, {@code @Param} or method
+     * binder of the class rather than a parameter, local or accumulator of a method.
+     */
+    public boolean isClassLevel(String name) {
+        for (var scope : scopes) {
+            if (scope.containsKey(name)) return scope == scopes.peekLast();
+        }
+        return false;
+    }
+
+    /**
      * Look up a name in the current (innermost) scope only.
      * Used to check if a variable was defined in the current scope level
      * (e.g., by switch pattern destructuring) rather than an outer scope.

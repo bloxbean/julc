@@ -84,6 +84,21 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(member), location);
     }
 
+    /**
+     * JULC0056: a loop assignment to a final static field, or to a static field or {@code @Param}
+     * another method reads. The loop lowering rebinds the name only inside the method (ADR-060).
+     */
+    public static CompilerException fieldAssignment(String field, SourceLocation location) {
+        var info = DiagnosticCodes.FIELD_ASSIGNMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(field), location);
+    }
+
+    /** JULC0057: a static field initializer that calls a method of its class. */
+    public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
+        var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;
+        return exception(info.code(), info.level(), info.fix(), info.format(field, method), location);
+    }
+
     private static CompilerException exception(
             String code,
             CompilerDiagnostic.Level level,

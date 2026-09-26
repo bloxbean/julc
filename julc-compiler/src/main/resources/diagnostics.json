@@ -543,8 +543,8 @@
       "title": "Overloaded methods are not supported",
       "category": "VALIDATOR",
       "severity": "error",
-      "template": "Method {0} is declared more than once in {1} with different on-chain behaviour; overloaded methods are not supported",
-      "summary": "On-chain methods are bound by name, so every call to an overloaded name would run one of the declarations. Declarations that lower to identical code and types are accepted; any other overload is rejected (ADR-060).",
+      "template": "Method {0} is declared more than once in {1}; on-chain methods are bound by name, so declarations sharing a name must compile to identical code",
+      "summary": "Every call to an overloaded name would run one of its declarations. Declarations that lower to identical code and types are accepted; any other overload, or a helper that reuses an entrypoint's name, is rejected (ADR-060).",
       "fix": "Give each method a distinct name.",
       "example": {
         "bad": "static boolean check(BigInteger a) { ... }\nstatic boolean check(long a) { ... }",
@@ -558,13 +558,39 @@
       "title": "Member access that cannot be resolved",
       "category": "TYPE",
       "severity": "error",
-      "template": "Cannot resolve {0} on a value whose type is not known here",
-      "summary": "x.name() and x.name resolve against the receiver's record, ledger or library type. When that type is not known the call was previously bound to whatever variable or method happened to be named name, which is not Java's meaning (ADR-060).",
+      "template": "Cannot resolve {0}: the receiver's type does not declare it as a record field, accessor or supported method",
+      "summary": "x.name() and x.name resolve against the receiver's record, ledger or library type; record instance methods are not compiled. An unresolved member used to be bound to whatever variable or method happened to be named name, which is not Java's meaning (ADR-060).",
       "fix": "Give the receiver its record or ledger type instead of var or PlutusData, or call a static helper as helper(x) rather than x.helper().",
       "example": {
         "bad": "static BigInteger amount(PlutusData d) { ... }\nPlutusData d = ...;\nreturn d.amount();",
         "good": "static BigInteger amount(PlutusData d) { ... }\nPlutusData d = ...;\nreturn amount(d);"
       }
+    },
+    {
+      "code": "JULC0056",
+      "constant": "FIELD_ASSIGNMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Loop assignment to a shared static field or @Param",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Assignment to field ''{0}'' in a loop is not supported: the field is final or another method reads it",
+      "summary": "Static fields and @Param fields are not shared state on-chain: a loop assignment rebinds the name only inside the assigning method. That matches Java while no other method reads the field, so the assignment is rejected when the field is final or another method of the class reads it (ADR-060).",
+      "fix": "Copy the field into a local accumulator before the loop, update the local, and pass it to the methods that need it.",
+      "example": {
+        "bad": "static long count = 0;\nstatic long current() { return count; }\n...\nfor (var x : xs) { count += 1; }\nreturn current();",
+        "good": "long seen = count;\nfor (var x : xs) { seen += 1; }\nreturn seen;"
+      }
+    },
+    {
+      "code": "JULC0057",
+      "constant": "STATIC_INITIALIZER_CALLS_METHOD",
+      "status": "emitted",
+      "title": "Static field initializer calls a method of its class",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Static field ''{0}'' calls method {1}; static field initializers cannot call methods of their class",
+      "summary": "Static field initializers are evaluated outside the class's methods, so a call to one of them cannot be bound.",
+      "fix": "Call the method where the value is used, or initialise the field with an expression that does not call a method of this class."
     }
   ]
 }
