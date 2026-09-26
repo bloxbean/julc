@@ -505,6 +505,51 @@
       "template": "Optimization rule {0} cannot be disabled. Rules that can be disabled: {1}",
       "summary": "Only the PIR-to-PIR sharing and promotion passes accept a per-rule switch; the identifier must match one of their rule ids exactly, so a typo never silently leaves the rule enabled.",
       "fix": "Use one of the listed rule identifiers exactly as reported in the optimization report, or lower the optimization level to disable a whole class of rules."
+    },
+    {
+      "code": "JULC0052",
+      "constant": "COMPOUND_ASSIGNMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Compound assignment operator is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Compound assignment operator {0} is not supported on-chain",
+      "summary": "Only +=, -=, *=, /= and %= on integers, and += on strings, are lowered. Bitwise, shift and boolean compound operators (&=, |=, ^=, <<=, >>=, >>>=) are rejected instead of being lowered with different semantics (ADR-060).",
+      "fix": "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;",
+      "example": {
+        "bad": "for (var x : xs) {\n    ok &= check(x);\n}",
+        "good": "for (var x : xs) {\n    boolean c = check(x);\n    ok = ok && c;\n}"
+      }
+    },
+    {
+      "code": "JULC0053",
+      "constant": "MULTIPLE_DECLARATORS_UNSUPPORTED",
+      "status": "emitted",
+      "title": "More than one variable in a declaration",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Declare one variable per statement: {0}",
+      "summary": "A local declaration with several variables (BigInteger a = x, b = y;) is not lowered; only the first variable would be bound, so later references could resolve to an outer declaration of the same name (ADR-060).",
+      "fix": "Split the declaration into one statement per variable.",
+      "example": {
+        "bad": "BigInteger a = BigInteger.ONE, b = BigInteger.TWO;",
+        "good": "BigInteger a = BigInteger.ONE;\nBigInteger b = BigInteger.TWO;"
+      }
+    },
+    {
+      "code": "JULC0054",
+      "constant": "METHOD_OVERLOAD_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Overloaded methods are not supported",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Method {0} is declared more than once in {1} with different on-chain behaviour; overloaded methods are not supported",
+      "summary": "On-chain methods are bound by name, so every call to an overloaded name would run one of the declarations. Declarations that lower to identical code and types are accepted; any other overload is rejected (ADR-060).",
+      "fix": "Give each method a distinct name.",
+      "example": {
+        "bad": "static boolean check(BigInteger a) { ... }\nstatic boolean check(long a) { ... }",
+        "good": "static boolean checkAmount(BigInteger a) { ... }\nstatic boolean checkIndex(long a) { ... }"
+      }
     }
   ]
 }

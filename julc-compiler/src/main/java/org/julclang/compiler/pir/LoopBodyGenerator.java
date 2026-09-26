@@ -772,7 +772,8 @@ final class LoopBodyGenerator {
     /**
      * Lower an assignment's value and check it against the target's type: an accumulator or a
      * loop-body local keeps the type it was declared with (ADR-047 isolation, PR #150 review).
-     * A target with no declaration in scope is an error, not a fresh binding.
+     * A target with no declaration in scope is an error, not a fresh binding. A compound
+     * assignment stores {@code target op value} (ADR-060).
      */
     private PirTerm assigned(AssignExpr ae, PirType target) {
         var name = ((NameExpr) ae.getTarget()).getNameAsString();
@@ -780,15 +781,14 @@ final class LoopBodyGenerator {
             throw gen.enrichedError("Assignment to undeclared variable '" + sourceName(name) + "'",
                     "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.", ae);
         }
-        var value = gen.generateExpression(ae.getValue());
-        gen.checkNativeAssignment(name, ae.getValue(), value, target);
-        return value;
+        return gen.assignmentValue(ae, name, target);
     }
 
     /** Compile a variable declaration and continue with the provided continuation. */
     private PirTerm compileVarDeclThenContinue(VariableDeclarationExpr vde,
                                                 List<Statement> stmts, int index,
                                                 StmtContinuation continuation) {
+        PirGenerator.requireSingleDeclarator(vde);
         var decl = vde.getVariable(0);
         var name = decl.getNameAsString();
         var initExpr = decl.getInitializer().orElseThrow(

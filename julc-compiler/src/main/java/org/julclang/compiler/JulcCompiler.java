@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_WRONG_PARAMETER_COUNT;
@@ -448,10 +449,16 @@ public class JulcCompiler {
             compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
         }
 
+        var entrypointNames = validatorClass.getMethods().stream()
+                .filter(method -> method.getAnnotationByName("Entrypoint").isPresent())
+                .map(MethodDeclaration::getNameAsString)
+                .collect(Collectors.toSet());
+        var overloads = new OnchainOverloads(validatorClass.getNameAsString(), entrypointNames);
         for (var method : validatorClass.getMethods()) {
             if (method.isStatic() && method.getAnnotationByName("Entrypoint").isEmpty()) {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
+                overloads.check(method, mType, helperPir);
                 symbolTable.defineMethod(method.getNameAsString(), mType, helperPir);
             }
         }
@@ -943,10 +950,12 @@ public class JulcCompiler {
         }
 
         // Compile ALL static methods (including target) so cross-references work
+        var overloads = new OnchainOverloads(targetClass.getNameAsString(), Set.of());
         for (var method : targetClass.getMethods()) {
             if (method.isStatic()) {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
+                overloads.check(method, mType, helperPir);
                 symbolTable.defineMethod(method.getNameAsString(), mType, helperPir);
             }
         }

@@ -100,6 +100,7 @@ final class LibraryCompiler {
                 compiledLibFields.add(new LibCompiledField(sf.name(), initPir));
             }
 
+            var overloads = new OnchainOverloads(classNameFqcn, Set.of());
             for (var method : cls.getMethods()) {
                 if (method.isStatic()) {
                     var pirBody = libPirGenerator.generateMethod(method);
@@ -108,6 +109,7 @@ final class LibraryCompiler {
                         pirBody = new PirTerm.Let(sf.name(), sf.initPir(), pirBody);
                     }
                     var mType = computeMethodType(method, typeResolver);
+                    overloads.check(method, mType, pirBody);
                     registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
                 }
             }

@@ -220,6 +220,7 @@ final class AccumulatorTypeAnalyzer {
         for (var stmt : stmts) {
             if (stmt instanceof ExpressionStmt es
                     && es.getExpression() instanceof AssignExpr ae
+                    && ae.getOperator() == AssignExpr.Operator.ASSIGN
                     && ae.getTarget() instanceof NameExpr ne
                     && ne.getNameAsString().equals(varName)
                     && ae.getValue() instanceof MethodCallExpr mce

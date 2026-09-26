@@ -239,7 +239,7 @@ public class PirGenerator {
                 });
     }
 
-    private static SourceLocation sourceLocation(Node node) {
+    static SourceLocation sourceLocation(Node node) {
         if (node == null || node.getRange().isEmpty()) {
             return null;
         }
@@ -436,6 +436,7 @@ public class PirGenerator {
         }
         if (stmt instanceof ExpressionStmt es) {
             if (es.getExpression() instanceof VariableDeclarationExpr vde) {
+                requireSingleDeclarator(vde);
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
                 var sourceName = LoopBodyGenerator.sourceName(name);
@@ -966,29 +967,38 @@ public class PirGenerator {
     private PirTerm generateBinaryExpr(BinaryExpr be) {
         var left = generateExpression(be.getLeft());
         var right = generateExpression(be.getRight());
+        return binaryOperation(be.getOperator(), be.getLeft(), left, be.getRight(), right, be);
+    }
 
+    /**
+     * Lower {@code left op right} from already generated operands. The source expressions only
+     * type the operands; {@code node} locates diagnostics. Shared by binary expressions and
+     * compound assignments, so both lower an operator identically.
+     */
+    private PirTerm binaryOperation(BinaryExpr.Operator operator, Expression leftExpr, PirTerm left,
+                                    Expression rightExpr, PirTerm right, Node node) {
         // Infer operand type for type-aware dispatching
-        var leftType = resolveExpressionType(be.getLeft());
+        var leftType = resolveExpressionType(leftExpr);
         if (leftType instanceof PirType.DataType) leftType = inferPirType(left);
-        var rightType = resolveExpressionType(be.getRight());
+        var rightType = resolveExpressionType(rightExpr);
         if (rightType instanceof PirType.DataType) rightType = inferPirType(right);
 
-        if ((be.getOperator() == BinaryExpr.Operator.EQUALS
-                || be.getOperator() == BinaryExpr.Operator.NOT_EQUALS)
+        if ((operator == BinaryExpr.Operator.EQUALS
+                || operator == BinaryExpr.Operator.NOT_EQUALS)
                 && (typeResolver.containsNativeOpaque(leftType)
                 || typeResolver.containsNativeOpaque(rightType))) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(
                     "Equality comparison",
                     typeResolver.containsNativeOpaque(leftType) ? leftType : rightType,
                     new PirType.DataType(),
-                    sourceLocation(be));
+                    sourceLocation(node));
         }
         // If left is still DataType, try the right operand for better type inference
         if (leftType instanceof PirType.DataType) {
             if (!(rightType instanceof PirType.DataType)) leftType = rightType;
         }
 
-        return switch (be.getOperator()) {
+        return switch (operator) {
             case PLUS -> {
                 if (leftType instanceof PirType.StringType)
                     yield builtinApp2(DefaultFun.AppendString, left, right);
@@ -1008,9 +1018,57 @@ public class PirGenerator {
             case GREATER_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, right, left); // swap
             case AND -> new PirTerm.IfThenElse(left, right, new PirTerm.Const(Constant.bool(false)));
             case OR -> new PirTerm.IfThenElse(left, new PirTerm.Const(Constant.bool(true)), right);
-            default -> collectError("Unsupported operator: " + be.getOperator(),
-                    "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||", be);
+            default -> collectError("Unsupported operator: " + operator,
+                    "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||", node);
         };
+    }
+
+    /**
+     * The value an assignment stores (ADR-060): the right-hand side for {@code =}, and
+     * {@code target op value} for {@code += -= *= /= %=}, lowered by {@link #binaryOperation} in
+     * Java's operand order. Integer targets take every lowered operator and String targets take
+     * {@code +=}; SubsetValidator rejects the bitwise, shift and boolean operators.
+     */
+    PirTerm assignmentValue(AssignExpr ae, String name, PirType target) {
+        if (ae.getOperator() == AssignExpr.Operator.ASSIGN) {
+            var value = generateExpression(ae.getValue());
+            checkNativeAssignment(name, ae.getValue(), value, target);
+            return value;
+        }
+        var operator = ae.getOperator().toBinaryOperator()
+                .filter(op -> op == BinaryExpr.Operator.PLUS || op == BinaryExpr.Operator.MINUS
+                        || op == BinaryExpr.Operator.MULTIPLY || op == BinaryExpr.Operator.DIVIDE
+                        || op == BinaryExpr.Operator.REMAINDER)
+                .orElseThrow(() -> CompilerTypeDiagnostics.compoundAssignmentUnsupported(
+                        ae.getOperator().asString(), sourceLocation(ae)));
+        boolean integer = target instanceof PirType.IntegerType;
+        boolean string = target instanceof PirType.StringType && operator == BinaryExpr.Operator.PLUS;
+        if (!integer && !string) {
+            throw enrichedError("Compound assignment " + ae.getOperator().asString() + " to '"
+                            + LoopBodyGenerator.sourceName(name) + "' of type "
+                            + LibraryMethodRegistry.pirTypeName(target) + " is not supported",
+                    "Compound assignment is supported on integer variables, and += on String variables. "
+                            + "Write the update explicitly, e.g. x = x.add(y).", ae);
+        }
+        var current = generateExpression(ae.getTarget());
+        var operand = generateExpression(ae.getValue());
+        var operandType = expressionType(ae.getValue(), operand);
+        if (string ? !(operandType instanceof PirType.StringType)
+                : !(operandType instanceof PirType.IntegerType || operandType instanceof PirType.DataType)) {
+            throw enrichedError("Compound assignment " + ae.getOperator().asString() + " to '"
+                            + LoopBodyGenerator.sourceName(name) + "' needs a "
+                            + LibraryMethodRegistry.pirTypeName(target) + " operand, found "
+                            + LibraryMethodRegistry.pirTypeName(operandType),
+                    "Convert the right-hand side to the variable's type first.", ae.getValue());
+        }
+        return binaryOperation(operator, ae.getTarget(), current, ae.getValue(), operand, ae);
+    }
+
+    /** JULC0053: every lowering binds only a declaration's first variable, so reject more (ADR-060). */
+    static void requireSingleDeclarator(VariableDeclarationExpr vde) {
+        if (vde.getVariables().size() > 1) {
+            throw CompilerTypeDiagnostics.multipleDeclarators(vde.toString(), sourceLocation(vde));
+        }
     }
 
     /**

@@ -15,8 +15,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import static org.julclang.compiler.error.DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.C_STYLE_FOR_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.DO_WHILE_UNSUPPORTED;
+import static org.julclang.compiler.error.DiagnosticCodes.MULTIPLE_DECLARATORS_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.NULL_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.THROW_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.TRY_CATCH_UNSUPPORTED;
@@ -82,6 +84,31 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
             diagnostics.add(new CompilerDiagnostic(
                     CompilerDiagnostic.Level.WARNING, message, fileName, line, col));
         }
+    }
+
+    // --- Constructs the lowering would silently change (ADR-060) ---
+
+    /** Compound operators lowered as {@code target op value}; every other one is rejected. */
+    private static final Set<AssignExpr.Operator> LOWERED_COMPOUND_OPERATORS = Set.of(
+            AssignExpr.Operator.PLUS, AssignExpr.Operator.MINUS, AssignExpr.Operator.MULTIPLY,
+            AssignExpr.Operator.DIVIDE, AssignExpr.Operator.REMAINDER);
+
+    @Override
+    public void visit(AssignExpr n, Void arg) {
+        if (n.getOperator() != AssignExpr.Operator.ASSIGN
+                && !LOWERED_COMPOUND_OPERATORS.contains(n.getOperator())) {
+            error(n, COMPOUND_ASSIGNMENT_UNSUPPORTED, COMPOUND_ASSIGNMENT_UNSUPPORTED.fix(),
+                    n.getOperator().asString());
+        }
+        super.visit(n, arg);
+    }
+
+    @Override
+    public void visit(VariableDeclarationExpr n, Void arg) {
+        if (n.getVariables().size() > 1) {
+            error(n, MULTIPLE_DECLARATORS_UNSUPPORTED, MULTIPLE_DECLARATORS_UNSUPPORTED.fix(), n);
+        }
+        super.visit(n, arg);
     }
 
     // --- Rejected statements ---

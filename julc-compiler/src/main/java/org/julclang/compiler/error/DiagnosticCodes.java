@@ -69,6 +69,14 @@ public final class DiagnosticCodes {
             "Compiler stage {0} emitted target-illegal feature {1} for {2}",
             "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer.");
 
+    public static final DiagnosticInfo COMPOUND_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0052",
+            "COMPOUND_ASSIGNMENT_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Compound assignment operator {0} is not supported on-chain",
+            "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;");
+
     public static final DiagnosticInfo C_STYLE_FOR_UNSUPPORTED = new DiagnosticInfo(
             "JULC0018",
             "C_STYLE_FOR_UNSUPPORTED",
@@ -141,6 +149,14 @@ public final class DiagnosticCodes {
             "Method {0} may not return a value on all execution paths",
             "Ensure every if/else branch returns, or add a fallthrough return at the end of the method.");
 
+    public static final DiagnosticInfo METHOD_OVERLOAD_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0054",
+            "METHOD_OVERLOAD_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Method {0} is declared more than once in {1} with different on-chain behaviour; overloaded methods are not supported",
+            "Give each method a distinct name.");
+
     public static final DiagnosticInfo MISSING_OPTIMIZATION_COST_PROFILE = new DiagnosticInfo(
             "JULC0037",
             "MISSING_OPTIMIZATION_COST_PROFILE",
@@ -148,6 +164,14 @@ public final class DiagnosticCodes {
             "CONFIG",
             "Optimization level {0} requires an explicit pinned optimization cost profile",
             "Current compilation needs no cost profile. Configure cost parameters on the evaluator for budget measurements.");
+
+    public static final DiagnosticInfo MULTIPLE_DECLARATORS_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0053",
+            "MULTIPLE_DECLARATORS_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Declare one variable per statement: {0}",
+            "Split the declaration into one statement per variable.");
 
     public static final DiagnosticInfo MUTUAL_RECURSION_TOO_LARGE = new DiagnosticInfo(
             "JULC0023",
@@ -359,6 +383,7 @@ public final class DiagnosticCodes {
             COMPILER_FEATURE_UNAVAILABLE,
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,
+            COMPOUND_ASSIGNMENT_UNSUPPORTED,
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
@@ -368,7 +393,9 @@ public final class DiagnosticCodes {
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
+            METHOD_OVERLOAD_UNSUPPORTED,
             MISSING_OPTIMIZATION_COST_PROFILE,
+            MULTIPLE_DECLARATORS_UNSUPPORTED,
             MUTUAL_RECURSION_TOO_LARGE,
             NATIVE_TYPE_AT_DATA_BOUNDARY,
             NATIVE_TYPE_MISMATCH,

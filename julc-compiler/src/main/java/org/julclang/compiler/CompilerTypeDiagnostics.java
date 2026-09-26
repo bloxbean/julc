@@ -54,6 +54,27 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), message, location);
     }
 
+    /** JULC0052: a compound assignment whose Java meaning the lowering does not implement (ADR-060). */
+    public static CompilerException compoundAssignmentUnsupported(String operator, SourceLocation location) {
+        var info = DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(operator), location);
+    }
+
+    /** JULC0053: a local declaration with more than one variable (ADR-060). */
+    public static CompilerException multipleDeclarators(String declaration, SourceLocation location) {
+        var info = DiagnosticCodes.MULTIPLE_DECLARATORS_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(declaration), location);
+    }
+
+    /**
+     * JULC0054: two static methods with one name that are not interchangeable on-chain. Methods
+     * are bound by name, so every call would run one of them (ADR-060).
+     */
+    public static CompilerException methodOverload(String method, String owner, SourceLocation location) {
+        var info = DiagnosticCodes.METHOD_OVERLOAD_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner), location);
+    }
+
     private static CompilerException exception(
             String code,
             CompilerDiagnostic.Level level,
