@@ -568,12 +568,12 @@ for (var item : items) {
 Becomes:
 
 ```
-LetRec([loop__forEach__0 = \xs \acc ->
+LetRec([#loop__forEach__0 = \xs \acc ->
     IfThenElse(NullList(xs),
         acc,                                        // base case: return accumulator
         Let(item, wrapDecode(HeadList(xs), elemType),
-            loop__forEach__0(TailList(xs), acc + item)))  // recursive case
-], loop__forEach__0(items, 0))                      // initial call
+            #loop__forEach__0(TailList(xs), acc + item)))  // recursive case
+], #loop__forEach__0(items, 0))                      // initial call
 ```
 
 ### While Loop
@@ -588,11 +588,11 @@ while (n > 0) {
 Becomes:
 
 ```
-LetRec([loop__while__0 = \n ->
+LetRec([#loop__while__0 = \n ->
     IfThenElse(n > 0,
-        loop__while__0(n - 1),    // recursive case
+        #loop__while__0(n - 1),    // recursive case
         n)                         // base case: return accumulator
-], loop__while__0(x))
+], #loop__while__0(x))
 ```
 
 ### Five Compilation Paths
@@ -726,10 +726,10 @@ Case(Constr(tag, fields), branches) → Apply(branches[tag], fields...)
 `ValidatorWrapper` adds ScriptContext decoding and bool→unit/error conversion:
 
 ```
-\scriptContextData ->
-  let ctxFields = SndPair(UnConstrData(scriptContextData))
-  let redeemer = HeadList(TailList(ctxFields))       // field 1
-  let result = validate(redeemer, scriptContextData)
+\#scriptContextData ->
+  let #ctxFields__ = SndPair(UnConstrData(#scriptContextData))
+  let redeemer = HeadList(TailList(#ctxFields__))       // field 1
+  let result = validate(redeemer, #scriptContextData)
   in IfThenElse(result, Unit, Error)
 ```
 
@@ -740,8 +740,8 @@ For spending validators with datum (3-param), the wrapper also extracts the datu
 Each `@Param` field adds an outer lambda:
 
 ```
-\param1__raw -> Let(param1, UnIData(param1__raw),
-  \param2__raw -> Let(param2, UnBData(param2__raw),
+\#param1__raw -> Let(param1, UnIData(#param1__raw),
+  \#param2__raw -> Let(param2, UnBData(#param2__raw),
     <validator body>))
 ```
 
@@ -852,7 +852,7 @@ Understanding encode/decode insertion is key to understanding the compiler. Here
 | List element access | Decode | `list.head()` → `wrapDecode(HeadList(list), elemType)` |
 | List prepend | Encode | `list.prepend(elem)` → `MkCons(wrapEncode(elem), list)` |
 | Method parameter | Pass-through | Entrypoint params are raw Data |
-| `@Param` decode | Decode | `@Param int fee` → `UnIData(param__raw)` |
+| `@Param` decode | Decode | `@Param int fee` → `UnIData(#param__raw)` |
 | HOF lambda argument | Decode | `list.map(x -> ...)` → unwrap x from Data |
 | HOF lambda result | Encode | `list.map(x -> x+1)` → wrap result to Data |
 
@@ -1165,11 +1165,11 @@ Lam("redeemer", DataType,
 Adds ScriptContext decoding and bool→unit/error:
 
 ```
-Lam("__scriptContextData", DataType,
-  Let("__ctxFields", SndPair(UnConstrData(Var("__scriptContextData"))),
-    Let("__redeemer", HeadList(TailList(Var("__ctxFields"))),
+Lam("#scriptContextData", DataType,
+  Let("#ctxFields__", SndPair(UnConstrData(Var("#scriptContextData"))),
+    Let("#redeemer__", HeadList(TailList(Var("#ctxFields__"))),
       Let("__result",
-        App(App(entrypoint, Var("__redeemer")), Var("__scriptContextData")),
+        App(App(entrypoint, Var("#redeemer__")), Var("#scriptContextData")),
         IfThenElse(Var("__result"), Const(Unit), Error)))))
 ```
 

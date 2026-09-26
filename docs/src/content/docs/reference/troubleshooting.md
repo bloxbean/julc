@@ -885,6 +885,41 @@ public record Cancel() implements Action {}
 
 ---
 
+### 2.14 `JULC0052` `Compound assignment operator <op> is not supported on-chain`
+
+**Cause:** A bitwise, shift or boolean compound assignment (`&=`, `|=`, `^=`, `<<=`, `>>=`,
+`>>>=`) was used. Only `+=`, `-=`, `*=`, `/=` and `%=` on integers, and `+=` on strings, are
+lowered (as `x = x op y`). Java evaluates the right-hand side of `&=` and `|=` even when the
+result is already known; lowering them as `&&` or `||` would skip it, so they are rejected
+([ADR-060](https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md)).
+
+**Fix:** Evaluate the check first, then combine it.
+
+```java
+// WRONG
+for (var x : xs) {
+    ok &= check(x);
+}
+
+// CORRECT
+for (var x : xs) {
+    boolean c = check(x);
+    ok = ok && c;
+}
+```
+
+---
+
+### 2.15 `JULC0053` `Declare one variable per statement: <declaration>`
+
+**Cause:** A local declaration declared several variables (`BigInteger a = x, b = y;`). Only the
+first one would be bound, so a later reference to another could read an outer declaration of the
+same name. Fields may still declare several variables.
+
+**Fix:** Split the declaration into one statement per variable.
+
+---
+
 ## 3. Configuration Errors (JulcCompiler)
 
 These errors are raised during compiler setup and pipeline orchestration.
@@ -1036,6 +1071,27 @@ public class HelperLib { ... }
 
 ---
 
+### 3.7 `JULC0054` `Method <name> is declared more than once in <class> with different on-chain behaviour`
+
+**Cause:** On-chain methods are bound by name, so every call to an overloaded name would run one
+of its declarations. Declarations that compile to identical code and types (such as the stdlib's
+`integerToByteString(boolean, long, long)` and `(boolean, long, BigInteger)`) are accepted; any
+other overload is rejected. A helper may not reuse an entrypoint's name.
+
+**Fix:** Give each method a distinct name.
+
+---
+
+### 3.8 `Static field '<field>' calls method <name>`
+
+**Cause:** Static field initializers are evaluated outside the class's methods, so they cannot
+call them.
+
+**Fix:** Call the method where the value is needed, or initialise the field with an expression that
+does not call a method of the same class.
+
+---
+
 ## 4. Type Resolution Errors
 
 These errors are raised by the `TypeResolver` and `TypeRegistrar` during type
@@ -1110,6 +1166,26 @@ types. Type A depends on type B, which depends on type A.
 
 **Fix:** Break the circular dependency by restructuring your types. Use `Data` as
 an opaque type to break cycles if needed.
+
+---
+
+### 4.8 `JULC0055` `Cannot resolve <member> on a value whose type is not known here`
+
+**Cause:** `x.name()` or `x.name` was used on a value whose record, ledger or library type the
+compiler does not know, for example a `PlutusData` or an untyped `var`. Before ADR-060 such a call
+was bound to whatever variable or helper method happened to be named `name`, which is not Java's
+meaning.
+
+**Fix:** Give the receiver its record or ledger type, or call a static helper as `helper(x)`.
+
+```java
+// WRONG: PlutusData has no amount()
+static BigInteger amount(PlutusData d) { return Builtins.unIData(d); }
+return d.amount();
+
+// CORRECT
+return amount(d);
+```
 
 ---
 

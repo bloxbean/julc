@@ -1,6 +1,6 @@
 # ADR-060: Generated binder names can never capture source names
 
-**Status:** Proposed; implementation in progress
+**Status:** Implemented and locally validated on `fix/generated-name-hygiene` (stacked on PR #186); independent review pending
 **Follows:** PR [#186](https://github.com/bloxbean/julc/pull/186)
 (builder binders no longer capture user variables)
 
@@ -110,9 +110,15 @@ Non-goals:
    bitwise, shift and boolean compound operators. Lowering `&=` or `|=` as
    `&&` or `||` would skip the right-hand side, which Java always evaluates,
    so a failing check could turn a rejection into an acceptance.
-3. Reject overloaded methods and multi-declarator declarations.
+3. Reject overloaded methods unless every declaration lowers to the same PIR and
+   type, and reject multi-declarator declarations. Identical overloads stay
+   accepted because the stdlib declares `ByteStringLib.integerToByteString` for
+   `long` and `BigInteger` with the same body.
 4. Bind helper methods by qualified name, resolve calls against methods only,
-   and turn unresolved member access into a compile error.
+   and turn unresolved member access into a compile error. The member-access
+   check runs in UPLC generation: HOF parameter inference generates some lambda
+   bodies speculatively and discards them, so only a `.name` pseudo-variable
+   that survives to code generation is an error.
 5. Guard the rule with three independent tests:
    - **G1 alpha-renaming oracle.** Renaming a user variable, parameter,
      method, field or `@Param` to any historical internal name must not
@@ -122,6 +128,44 @@ Non-goals:
      qualified method name.
    - **G3 source lint.** Every binder name the compiler constructs in
      `julc-compiler` and `julc-stdlib` must start with `#`.
+
+## Implementation
+
+- `PirHelpers.GENERATED_PREFIX`, `isGeneratedName` and `hygienicName`, which
+  rejects a base outside the namespace. `RECURSIVE_LIST_GET` is one shared
+  binding named `#go_get`.
+- Every generated binder in `PirHofBuilders`, `PirHelpers`,
+  `TypeMethodRegistry`, `LoopDesugarer`, `PirGenerator`, `LoopBodyGenerator`,
+  `ValidatorWrapper`, `StrictBoundaryGenerator`, `StrictRecordEntrypoint`,
+  `JulcCompiler` (`#<param>__raw`, `#<param>__dec`), `StdlibRegistry` and
+  `PirSubstitution` (`#$pir$subst$N`). `UplcGenerator.generateDataMatch`
+  chooses its binders with `hygienicName` against every branch and no longer
+  keeps the legacy expansion for a free `__match_pair`. The unused
+  `DataCodecGenerator` is removed. The decompiler no longer reuses a binder name
+  that is not a Java identifier.
+- `SymbolTable.declareMethod` and `lookupMethodSignature`: methods are bound as
+  `<class FQCN>.<method>` in the validator, `compileMethod` and library paths.
+  The qualified binders stay in the pre-loop name snapshot, so loop rebinding
+  and the name-counting passes see the same shapes as before.
+- Compound assignment goes through `PirGenerator.assignmentValue`, which lowers
+  `target op value` with the binary-operator lowering. It builds no JavaParser
+  nodes, because the AST is lowered more than once and new nodes would lose
+  their compilation unit and debug identity.
+- `OnchainOverloads` applies the overload rule at the validator,
+  `compileMethod` and library method loops. `SubsetValidator` and the
+  declaration lowering reject multi-declarators.
+- Diagnostics `JULC0052`-`JULC0055`. `JULC0044`-`JULC0051` are left to the
+  ADR-059 stack.
+- Guards:
+  - **G1** `BinderNameIndependenceTest`: 72 target names, with the O-series,
+    switch, golden and hygiene corpus plus five programs whose names are all
+    renamed to every target.
+  - **G2** `CompilationContext.verifyBinderNames`, checked at every binder that
+    `UplcGenerator` enters. The Java frontend installs it when
+    `julc.verifyBinderNamespace` is set, which the root build does for every
+    test task.
+  - **G3** `GeneratedBinderNameLintTest`: parses the compiler and stdlib sources
+    with javac, because JavaParser 3.26 cannot parse all of them.
 
 ## Alternatives rejected
 
@@ -202,7 +246,8 @@ Stop and report if:
 - a byte difference is not explained by the exposure report;
 - an unresolved member access still compiles after M4;
 - G2 finds a generated binder that does not start with `#`;
-- a G1 target name has no rename that changes output at `ef932b21`;
+- a G1 target name that can be captured has no rename that changes output at
+  `ef932b21`, or at `c95ee610` for names #186 already fixed;
 - any golden `.flat.hex` or Blaster artifact hash changes.
 
 ## Verification
@@ -215,6 +260,38 @@ Stop and report if:
 - Accept and reject VM tests for every site at BASELINE and PV11_SAFE on the
   Java and Scalus VMs, each shown to fail at `ef932b21`.
 - G1, G2 and G3 in the default test task.
+
+## Validation evidence
+
+- Every new semantic test fails at `ef932b21`: `CompoundAssignmentTest` 7 of 8,
+  `OnchainDeclarationTest` 4 of 7 (the other 3 pin behaviour that must be kept),
+  `GeneratedNameCaptureTest` 10 of 10, `MethodNamespaceTest` 6 of 6.
+- The ADR-060 snapshot (1,392 rows), the golden FLAT files and every
+  `*-pre-change-bytes.txt` are byte-identical. External example validators give
+  344 of 344 identical artifacts (43 validators, 4 levels, with and without
+  source maps) after M3 and after M4.
+- G1: no rename changes a byte on this branch (5,616 renames). The oracle is
+  not vacuous:
+  - at `ef932b21`, 184 renames over 53 of 72 target names change the program
+    (47 of them change evaluation results);
+  - at `c95ee610`, 488 renames over 64 names do.
+
+  The 8 names never reached bind only compiler-built terms: `count__pv11_drop`,
+  `_body`, `result__`, `__native_scalars`, `go__scalars`, `__bytes`,
+  `$pir$subst$0` and `$julc$x`. This refines the stop gate above, which
+  originally required every target name to be reachable.
+- G2: turning one wrapper binder back into `scriptContextData` fails all 8
+  golden tests. G3: turning a builder base or a switch rest binder back into a
+  legal identifier fails the lint.
+- A dry-run merge with the ADR-059 stack conflicts only in `diagnostics.json`
+  (#187) and, at the stack tip, in `TypeMethodRegistry` map `keys`/`values`. On
+  the merged tip, G3 lists the stack's own binders that must adopt `#`:
+  - `TypeMethodRegistry.projectPairs`, `go__<suffix>` and `ps__<suffix>`. This
+    one is a real capture risk, because the receiver is applied inside `go`.
+  - `ValidatorCompiler`, `BoundaryPrograms` and `StdlibLibraryProvider`, the
+    `$julc$…` names.
+  - `TypeOperations`, the codec parameters.
+  - One name in `JavaLibraryProvider`.
 
 ## Open questions
 

@@ -116,11 +116,12 @@ historical bytes. Rule provenance is `pv11.o4.case-pair` (ADR-036).
 ADR-038 also constructs `PairMatch` directly inside `generateDataMatch`, after
 preserving the strict once-bound Data scrutinee. This producer proves the native
 pair by its own `UnConstrData`; the earlier proof pass cannot see this late
-expansion. Tag dispatch and branch-local field decoding remain unchanged. A
-free dispatch reference to the historical `__match_pair` binder retains the old
-expansion for lexical compatibility. The producer and PairMatch consumer share
-the exact O4 gate and rule identity. This changes safe-profile direct-PIR output
-as well as source switches.
+expansion. Tag dispatch and branch-local field decoding remain unchanged. The
+dispatch binders are reserved `#` names chosen against every branch (ADR-060), so
+no branch can refer to them; the former fallback for a direct-PIR reference to
+`__match_pair` is gone. The producer and PairMatch consumer share the exact O4
+gate and rule identity. This changes safe-profile direct-PIR output as well as
+source switches.
 
 `ValueConversionSharingPass` (ADR-042, O8) runs just before `PairDestructuringPass`
 at the same three entry points. For a scope in which one variable is converted to
@@ -933,9 +934,40 @@ someCall();
 
 ---
 
+### 8.7 Names: generated binders and the method namespace (ADR-060)
+
+UPLC resolves a variable to its nearest binder, so a binder the compiler wraps
+around user code must never share a name with anything that code refers to. The
+rule, from [ADR-060](https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md),
+applies to every lowering:
+
+- **A binder you invent is named `"#" + name`.** No Java identifier contains `#`,
+  so a source name can never resolve to it. Keep existing names one-to-one
+  (`"#" + historical name`): the name-counting PV11 passes compare names.
+- **If caller, user or producer terms sit inside the binder, choose the name with
+  `PirHelpers.hygienicName("#base", avoid)`.** `avoid` holds the free variables
+  of those terms (`PirHelpers.freeVariables`) and the names of any
+  caller-supplied binders placed between your binder and your references to it.
+  `hygienicName` rejects a base without `#`.
+- **Choose names while building the term.** Never rename afterwards: source maps
+  and Java debug provenance key on PIR node identity.
+- **A binder that rebinds a source name keeps it exactly** (method parameters,
+  locals, accumulators, `Let p = decode(p)`); block-local renames use `name'N`.
+- **Methods have their own namespace.** Declare them with
+  `SymbolTable.declareMethod(sourceName, owner + "." + sourceName, type)` and
+  resolve calls with `lookupMethodSignature`; never look a method up as a
+  variable.
+- **Other frontends must not bind or reference `#` names.**
+
+Three tests enforce the rule. `GeneratedBinderNameLintTest` parses the compiler
+and stdlib sources and fails on a binder name outside the namespace. Test tasks
+set `julc.verifyBinderNamespace`, so every compilation in tests checks each
+binder that reaches UPLC generation. `BinderNameIndependenceTest` renames source
+names to the old internal names and requires identical output.
+
 ## 9. Phase 4: Loop Desugaring
 
-Loops are transformed into recursive `LetRec` patterns by `LoopDesugarer`. The desugarer assigns unique names to each loop function (`loop__forEach__0`, `loop__while__1`, etc.) to support nesting.
+Loops are transformed into recursive `LetRec` patterns by `LoopDesugarer`. The desugarer assigns unique names to each loop function (`#loop__forEach__0`, `#loop__while__1`, etc.) to support nesting.
 
 Before choosing a lowering path, `LoopBodyGenerator.validateConditionalLocalUpdates`
 checks lexical scopes (ADR-048, #155). An `if` returns only the loop's accumulators,
@@ -993,11 +1025,11 @@ for (var item : items) {
 ```
 →
 ```
-LetRec([loop__forEach__0 = \xs \acc ->
+LetRec([#loop__forEach__0 = \xs \acc ->
     IfThenElse(NullList(xs), acc,
       Let(item, wrapDecode(HeadList(xs), elemType),
-        loop__forEach__0(TailList(xs), acc + item)))
-], loop__forEach__0(items, 0))
+        #loop__forEach__0(TailList(xs), acc + item)))
+], #loop__forEach__0(items, 0))
 ```
 
 **Path B: Single accumulator, with break**
@@ -1045,11 +1077,11 @@ while (n > 0) {
 ```
 →
 ```
-LetRec([loop__while__0 = \n ->
+LetRec([#loop__while__0 = \n ->
     IfThenElse(n > 0,
-      loop__while__0(n - 1),
+      #loop__while__0(n - 1),
       n)
-], loop__while__0(x))
+], #loop__while__0(x))
 ```
 
 **Accumulator type refinement** (`AccumulatorTypeAnalyzer.refineAccumulatorTypes()`): The compiler distinguishes `ListType` vs `MapType` accumulators by looking for evidence (this logic was extracted from PirGenerator into `AccumulatorTypeAnalyzer` as part of ADR-018):
@@ -1065,8 +1097,8 @@ LetRec([loop__while__0 = \n ->
 **Nested loop unique naming:**
 Each loop gets a unique counter-based name. A `loopCounter` field in `LoopDesugarer` increments per loop:
 ```
-Outer: loop__forEach__0
-Inner: loop__forEach__1
+Outer: #loop__forEach__0
+Inner: #loop__forEach__1
 ```
 
 **`bodyUsesPairOpsOnCursor` fix:** The compiler now checks pair operations specifically on the cursor's `headList` result variable, not anywhere in the loop body. This prevents incorrect MapType inference when pair operations appear on unrelated variables.
@@ -1164,10 +1196,10 @@ Converted to `DataMatch` with the same structure. Missing variants are filled wi
 ### 2-Param Wrapper (Non-spending or spending without datum)
 
 ```
-\scriptContextData ->
-  let ctxFields = SndPair(UnConstrData(scriptContextData))
-  let redeemer = HeadList(TailList(ctxFields))       // field 1
-  let result = validate(redeemer, scriptContextData)
+\#scriptContextData ->
+  let #ctxFields__ = SndPair(UnConstrData(#scriptContextData))
+  let redeemer = HeadList(TailList(#ctxFields__))       // field 1
+  let result = validate(redeemer, #scriptContextData)
   in IfThenElse(result, Unit, Error)
 ```
 
@@ -1176,14 +1208,14 @@ Converted to `DataMatch` with the same structure. Missing variants are filled wi
 Extracts datum from `ScriptInfo.SpendingScript`:
 
 ```
-\scriptContextData ->
-  let ctxFields = SndPair(UnConstrData(scriptContextData))
-  let redeemer = HeadList(TailList(ctxFields))              // field 1
-  let scriptInfo = HeadList(TailList(TailList(ctxFields)))  // field 2
+\#scriptContextData ->
+  let #ctxFields__ = SndPair(UnConstrData(#scriptContextData))
+  let redeemer = HeadList(TailList(#ctxFields__))              // field 1
+  let scriptInfo = HeadList(TailList(TailList(#ctxFields__)))  // field 2
   let siFields = SndPair(UnConstrData(scriptInfo))
   let optDatum = HeadList(TailList(siFields))               // SpendingScript field 1
   let datum = HeadList(SndPair(UnConstrData(optDatum)))     // unwrap Some
-  let result = validate(datum, redeemer, scriptContextData)
+  let result = validate(datum, redeemer, #scriptContextData)
   in IfThenElse(result, Unit, Error)
 ```
 
@@ -1192,8 +1224,8 @@ Extracts datum from `ScriptInfo.SpendingScript`:
 Each `@Param` field gets an outer lambda that accepts raw Data and decodes it:
 
 ```
-\param1__raw -> Let(param1, UnIData(param1__raw),
-  \param2__raw -> Let(param2, UnBData(param2__raw),
+\#param1__raw -> Let(param1, UnIData(#param1__raw),
+  \#param2__raw -> Let(param2, UnBData(#param2__raw),
     <validator body>))
 ```
 
@@ -2033,11 +2065,11 @@ Lam("redeemer", DataType,
 2-param spending wrapper adds ScriptContext decoding and bool→unit/error:
 
 ```
-Lam("__scriptContextData", DataType,
-  Let("__ctxFields", SndPair(UnConstrData(Var("__scriptContextData"))),
-    Let("__redeemer", HeadList(TailList(Var("__ctxFields"))),
+Lam("#scriptContextData", DataType,
+  Let("#ctxFields__", SndPair(UnConstrData(Var("#scriptContextData"))),
+    Let("#redeemer__", HeadList(TailList(Var("#ctxFields__"))),
       Let("__result",
-        App(App(Var("validate"), Var("__redeemer")), Var("__scriptContextData")),
+        App(App(Var("validate"), Var("#redeemer__")), Var("#scriptContextData")),
         IfThenElse(Var("__result"), Const(Unit), Error)))))
 ```
 
@@ -2047,7 +2079,7 @@ All Let bindings become `Apply(Lam(...), ...)`. Variables become De Bruijn indic
 
 ```
 Lam("__scd",
-  Apply(Lam("__ctxFields",
+  Apply(Lam("#ctxFields__",
     Apply(Lam("__red",
       Apply(Lam("__result",
         Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), Var(1)),
