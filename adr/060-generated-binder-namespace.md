@@ -73,15 +73,19 @@ Non-goals:
   unchanged. Names containing `#` are reserved for the compiler. `#` cannot
   occur in a Java identifier, and a leading `#` cannot equal a program-level
   definition name of the form `symbol#<hex>`.
-- **R2 Construction-time hygiene.** Wherever caller, user or producer terms sit
-  inside a generated binder, its name comes from
-  `PirHelpers.hygienicName(base, avoid)`. `avoid` holds the free variables of
-  those terms and the names of any caller-controlled binder placed between the
-  generated binder and a generated reference to it. This keeps nested
-  generated names apart and protects frontends that are not Java. The name is
-  chosen when the lowering builds the term. There is no later renaming pass,
-  because source maps and debug provenance key on PIR node identity
-  (ADR-049, ADR-058).
+- **R2 Construction-time hygiene.** A fixed `#` name is enough when no term
+  in the binder's scope can mention that name free. Java source cannot, and
+  terms a builder assembles itself bind their own names internally; the loop
+  desugarer, accumulator tuples, validator wrapper and stdlib builders rely on
+  this. Where the scope can hold a term that may mention generated names, the
+  name comes from `PirHelpers.hygienicName(base, avoid)`: code from another
+  frontend, or a term another builder assembled around the same generated
+  name, as in the list, map and value builders, statement sequencing and
+  switch dispatch. `avoid` holds the free variables of those terms and the
+  names of any caller-controlled binder placed between the generated binder
+  and a generated reference to it. The name is chosen when the lowering builds
+  the term. There is no later renaming pass, because source maps and debug
+  provenance key on PIR node identity (ADR-049, ADR-058).
 - **R3 One source name, one declaration.** A binder that rebinds a user name
   (method parameters, locals, loop accumulators, `#if-join` parameters,
   `Let p = decode(p)`, self-aliases) keeps the exact source name, as the Java
@@ -119,7 +123,12 @@ Non-goals:
    check runs in UPLC generation: HOF parameter inference generates some lambda
    bodies speculatively and discards them, so only a `.name` pseudo-variable
    that survives to code generation is an error.
-5. Guard the rule with three independent tests:
+5. Reject a loop assignment to a static field or `@Param` when the field is
+   final or another method of the class reads it (`JULC0056`). The loop
+   lowering rebinds the name only inside the method, which matches Java only
+   while no other method reads the field. Accumulator detection also stops
+   treating a body local that shadows a field as the field.
+6. Guard the rule with three independent tests:
    - **G1 alpha-renaming oracle.** Renaming a user variable, parameter,
      method, field or `@Param` to any historical internal name must not
      change the output.
@@ -154,7 +163,7 @@ Non-goals:
 - `OnchainOverloads` applies the overload rule at the validator,
   `compileMethod` and library method loops. `SubsetValidator` and the
   declaration lowering reject multi-declarators.
-- Diagnostics `JULC0052`-`JULC0055`. `JULC0044`-`JULC0051` are left to the
+- Diagnostics `JULC0052`-`JULC0057`. `JULC0044`-`JULC0051` are left to the
   ADR-059 stack.
 - Guards:
   - **G1** `BinderNameIndependenceTest`: 72 target names, with the O-series,
@@ -266,7 +275,8 @@ Stop and report if:
 - Every new semantic test fails at `ef932b21`: `CompoundAssignmentTest` 7 of 8,
   `OnchainDeclarationTest` 4 of 7 (the other 3 pin behaviour that must be kept),
   `GeneratedNameCaptureTest` 10 of 10, `MethodNamespaceTest` 6 of 6.
-- The ADR-060 snapshot (1,392 rows), the golden FLAT files and every
+- The ADR-060 snapshot (1,432 rows, including `@Param` and multi-validator
+  programs), the golden FLAT files and every
   `*-pre-change-bytes.txt` are byte-identical. External example validators give
   344 of 344 identical artifacts (43 validators, 4 levels, with and without
   source maps) after M3 and after M4.
@@ -292,6 +302,40 @@ Stop and report if:
     `$julc$…` names.
   - `TypeOperations`, the codec parameters.
   - One name in `JavaLibraryProvider`.
+
+## Independent review
+
+An adversarial review of the full diff found no new miscompile. It
+independently reproduced the byte stability: 336 of 336 external artifacts,
+including 28 `@Param` and 24 multi-validator programs. It found the following,
+now addressed:
+
+- **Loop update of a field.** A loop assignment to a static field or `@Param`
+  miscompiled when another method read the field. This is pre-existing and now
+  handled by decision 5.
+- **Shadowing local.** A reassigned body local that shadows a field was
+  threaded out of the loop. This is pre-existing and now fixed.
+- **G2** accepted any identifier in the sources; it now accepts only declared
+  names.
+- **G3** trusted any method call. It now follows parameters to their call
+  sites and methods to their `return`s, trusts only an allowlist of accessors,
+  and checks enhanced-for literals and `MatchBranch` pattern variables.
+- **G1** passed a fallback comparison with no inputs; it now fails it.
+- **`JULC0055`** had no location without source maps; it is now reported
+  before lowering with the member's position.
+- **Messages and docs.** The `JULC0054` and `JULC0055` messages are reworded,
+  the static-initializer error has a code (`JULC0057`), and stale
+  documentation is updated.
+
+Deferred:
+
+- **Labelled `break`** acts as a plain `break`. This is pre-existing and not a
+  naming issue.
+- **Two `@Entrypoint` methods** in a single-purpose validator: the first is
+  used silently. This is pre-existing.
+- **`BigInteger t += x`** is accepted although javac rejects it; it means
+  addition.
+- **`long c += <PlutusData>`** fails at run time, the same as the explicit form.
 
 ## Open questions
 

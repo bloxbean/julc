@@ -1244,7 +1244,6 @@ After optimization, the validator becomes equivalent to `\ctx -> Unit` (always s
 | File | Role |
 |------|------|
 | `codegen/ValidatorWrapper.java` | ScriptContext decoding + bool→unit/error wrapping |
-| `codegen/DataCodecGenerator.java` | Data codec generation |
 | `desugar/LoopDesugarer.java` | For-each/while → LetRec transformation |
 | `desugar/PatternMatchDesugarer.java` | Switch/instanceof → DataMatch transformation |
 | `error/CompilerDiagnostic.java` | Diagnostic record (level, message, location) |

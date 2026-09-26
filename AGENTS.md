@@ -98,7 +98,7 @@ Compilation and generated artifacts should be deterministic for the same inputs/
 
 ### Generated names
 A source name must only ever resolve to the declaration Java binds it to (ADR-060).
-- Every binder the compiler invents is named `"#" + name` (no Java identifier contains `#`); use `PirHelpers.hygienicName("#base", avoid)` when user, caller or frontend terms are in its scope.
+- Every binder the compiler invents is named `"#" + name` (no Java identifier contains `#`). A fixed `#` name is enough when nothing in its scope can mention that name; use `PirHelpers.hygienicName("#base", avoid)` when terms built elsewhere (by another builder or another frontend) are in its scope.
 - Choose names while building the term; never rename afterwards (source maps and debug provenance key on PIR node identity).
 - Binders that rebind a source name keep it exactly; methods live in their own namespace (`SymbolTable.declareMethod`), as in Java.
 - `GeneratedBinderNameLintTest`, the `julc.verifyBinderNamespace` test check and `BinderNameIndependenceTest` enforce this; keep them passing rather than weakening them.

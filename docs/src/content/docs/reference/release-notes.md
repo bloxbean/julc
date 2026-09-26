@@ -39,18 +39,27 @@ The same change fixes adjacent silent miscompiles:
   failed at run time, and a `@Param limit` next to a method `limit(...)` gave the
   wrong decision). `x.name()` or `x.name` on a value whose type is not known used to
   call whatever was named `name`; it is now rejected (`JULC0055`). A static field
-  initializer that calls a method of its class now gets an explicit error.
+  initializer that calls a method of its class now gets an explicit error (`JULC0057`).
+- **Fields updated in loops**: a loop assignment to a static field or `@Param` rebinds
+  the name only inside that method, so another method reading the field saw the
+  original value (a helper returned 0 after `count += 1` three times). Such an update
+  is rejected (`JULC0056`) when the field is final or another method reads it; updating
+  a field read only in the same method keeps working. A loop-body local that shadows a
+  field and is reassigned was threaded out of the loop as if it were the field; it is
+  now a local.
 
 **Migration.** Programs that use none of these shapes keep byte-identical scripts
-and hashes at every optimization level; this was checked on 1,392 in-repo corpus
-rows (all levels, with and without source maps) and the 344 external example
-artifacts. A recompiled script that used an affected shape changes its bytes, hash
+and hashes at every optimization level; this was checked on 1,432 in-repo corpus
+rows (all levels, with and without source maps, including `@Param` and
+multi-validator programs) and the 344 external example artifacts. A recompiled script that used an affected shape changes its bytes, hash
 and budget, and its behaviour now matches Java: review it and redeploy if the old
 behaviour mattered. Deployed scripts never change. Code that is now rejected must
 be rewritten as the diagnostic describes. PIR and UPLC text output, such as the
 `.uplc` file from `julc build` and the playground pipeline view, now shows `#`
-names; this is cosmetic. Diagnostic codes `JULC0044`–`JULC0051` are reserved for
-the generic backend work.
+names; this is cosmetic. Code that drives `PirGenerator` directly must register a
+method with `SymbolTable.declareMethod`: a method registered as a variable with
+`SymbolTable.define` is no longer callable. Diagnostic codes `JULC0044`–`JULC0051`
+are reserved for the generic backend work.
 
 ## Upcoming preview: builder binders no longer capture user variables (#186)
 

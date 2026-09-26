@@ -480,7 +480,7 @@ org.julclang.compiler/
 ├── CompilerException.java     # Fatal compiler error
 ├── CompilerOptions.java       # Compilation options
 ├── LibrarySourceResolver.java # Classpath scanning + transitive resolution
-├── codegen/                   # ValidatorWrapper, DataCodecGenerator
+├── codegen/                   # ValidatorWrapper, strict boundary checks
 ├── desugar/                   # LoopDesugarer, PatternMatchDesugarer
 ├── error/                     # CompilerDiagnostic, DiagnosticCollector
 ├── pir/                       # PIR generation subsystem 
@@ -944,11 +944,18 @@ applies to every lowering:
 - **A binder you invent is named `"#" + name`.** No Java identifier contains `#`,
   so a source name can never resolve to it. Keep existing names one-to-one
   (`"#" + historical name`): the name-counting PV11 passes compare names.
-- **If caller, user or producer terms sit inside the binder, choose the name with
-  `PirHelpers.hygienicName("#base", avoid)`.** `avoid` holds the free variables
-  of those terms (`PirHelpers.freeVariables`) and the names of any
-  caller-supplied binders placed between your binder and your references to it.
-  `hygienicName` rejects a base without `#`.
+- **If terms built elsewhere sit inside the binder, choose the name with
+  `PirHelpers.hygienicName("#base", avoid)`.** That means terms from another
+  builder, which may mention the same generated name, or from another frontend.
+  `avoid` holds the free variables of those terms (`PirHelpers.freeVariables`)
+  and the names of any caller-supplied binders placed between your binder and
+  your references to it. `hygienicName` rejects a base without `#`. A fixed `#`
+  name is enough when nothing in the scope can mention it, for example Java
+  source only.
+- **A loop must not update a shared field.** A loop assignment to a static field
+  or `@Param` rebinds the name only inside the method, so it is rejected
+  (`JULC0056`) when the field is final or another method reads it. A body local
+  that shadows a field is a local, not an accumulator.
 - **Choose names while building the term.** Never rename afterwards: source maps
   and Java debug provenance key on PIR node identity.
 - **A binder that rebinds a source name keeps it exactly** (method parameters,
@@ -2068,9 +2075,9 @@ Lam("redeemer", DataType,
 Lam("#scriptContextData", DataType,
   Let("#ctxFields__", SndPair(UnConstrData(Var("#scriptContextData"))),
     Let("#redeemer__", HeadList(TailList(Var("#ctxFields__"))),
-      Let("__result",
-        App(App(Var("validate"), Var("#redeemer__")), Var("#scriptContextData")),
-        IfThenElse(Var("__result"), Const(Unit), Error)))))
+      Let("#result__",
+        App(App(<entrypoint>, Var("#redeemer__")), Var("#scriptContextData")),
+        IfThenElse(Var("#result__"), Const(Unit), Error)))))
 ```
 
 ### Phase 21: UPLC Generation
@@ -2338,7 +2345,6 @@ ADR files are in the `adr/` directory at the project root.
 | `julc-compiler/.../CompilerOptions.java` | — | Compilation options |
 | `julc-compiler/.../LibrarySourceResolver.java` | — | Classpath scanning + transitive BFS library resolution |
 | `julc-compiler/.../codegen/ValidatorWrapper.java` | — | ScriptContext decoding + bool→unit/error wrapping |
-| `julc-compiler/.../codegen/DataCodecGenerator.java` | — | Data codec generation |
 | `julc-compiler/.../desugar/LoopDesugarer.java` | — | For-each/while → LetRec transformation |
 | `julc-compiler/.../desugar/PatternMatchDesugarer.java` | — | Switch/instanceof → DataMatch transformation |
 | `julc-compiler/.../error/CompilerDiagnostic.java` | — | Diagnostic record (level, message, location, suggestion) |

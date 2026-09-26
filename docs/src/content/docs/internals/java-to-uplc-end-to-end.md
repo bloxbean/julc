@@ -1255,7 +1255,6 @@ TypeRegistrar
 TypeResolver
 PirType
 PirHelpers.wrapEncode / wrapDecode
-DataCodecGenerator if it is record-like
 ```
 
 Ask:
@@ -1320,7 +1319,7 @@ When something fails, identify the boundary where it first becomes wrong:
 | Unsupported Java construct | `SubsetValidator` |
 | Wrong type selected | `TypeResolver`, `TypeInferenceHelper`, `SymbolTable` |
 | Wrong builtin in PIR | `PirGenerator`, `TypeMethodRegistry`, `StdlibLookup` |
-| Field access broken | `TypeRegistrar`, `DataCodecGenerator`, record field extraction in `PirGenerator` |
+| Field access broken | `TypeRegistrar`, record field extraction in `PirGenerator` |
 | Pattern match broken | `PatternMatchDesugarer`, `UplcGenerator.generateDataMatch` |
 | Loop behavior wrong | `LoopDesugarer`, `AccumulatorTypeAnalyzer`, `LoopBodyGenerator` |
 | Unbound variable | PIR binding shape or `UplcGenerator` scope stack |

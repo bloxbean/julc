@@ -920,6 +920,32 @@ same name. Fields may still declare several variables.
 
 ---
 
+### 2.16 `JULC0056` `Assignment to field '<field>' in a loop is not supported`
+
+**Cause:** A loop updates a static field or `@Param`. On-chain fields are not shared state: the
+update rebinds the name only inside the method, so it is rejected when the field is final or
+another method of the class reads it, where the result would differ from Java.
+
+**Fix:** Copy the field into a local accumulator before the loop, update the local, and pass it to
+the methods that need it.
+
+```java
+// WRONG: current() still sees the original count
+for (var x : xs) {
+    count += 1;
+}
+return current();
+
+// CORRECT
+long seen = count;
+for (var x : xs) {
+    seen += 1;
+}
+return seen;
+```
+
+---
+
 ## 3. Configuration Errors (JulcCompiler)
 
 These errors are raised during compiler setup and pipeline orchestration.
@@ -1082,7 +1108,7 @@ other overload is rejected. A helper may not reuse an entrypoint's name.
 
 ---
 
-### 3.8 `Static field '<field>' calls method <name>`
+### 3.8 `JULC0057` `Static field '<field>' calls method <name>`
 
 **Cause:** Static field initializers are evaluated outside the class's methods, so they cannot
 call them.
