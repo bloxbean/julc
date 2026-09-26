@@ -1085,9 +1085,11 @@ public class PirGenerator {
      */
     void requireUnsharedField(String name, Node at) {
         var field = LoopBodyGenerator.sourceName(name);
+        // Outside a method (a block or expression generated directly) no class is known and the
+        // global scope holds the caller's bindings, so nothing is rejected.
         var owner = currentMethod == null ? null
                 : currentMethod.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
-        boolean shared = owner == null;
+        boolean shared = false;
         if (owner != null) {
             for (var declaration : owner.getFields())
                 if (declaration.isFinal() && declaration.getVariables().stream()
