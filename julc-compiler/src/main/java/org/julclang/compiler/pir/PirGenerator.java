@@ -1380,12 +1380,18 @@ public class PirGenerator {
         return generateFieldAccessFromMethod(scope, methodName, args);
     }
 
-    /** Resolve an unqualified method call — local static method or library method. */
+    /**
+     * Resolve an unqualified method call to a static method of the class being compiled. As in
+     * Java, call syntax names a method, never a variable: a local, field or parameter with the
+     * method's name does not shadow it (ADR-060).
+     */
     private PirTerm resolveUnqualifiedMethodCall(MethodCallExpr mce, String methodName,
                                                   com.github.javaparser.ast.NodeList<Expression> args) {
-        var resolvedName = methodName;
-        var funType = symbolTable.lookup(methodName);
+        var signature = symbolTable.lookupMethodSignature(methodName);
+        var resolvedName = signature.map(SymbolTable.MethodSignature::binderName).orElse(methodName);
+        var funType = signature.map(SymbolTable.MethodSignature::type);
         if (funType.isEmpty() && libraryClassName != null) {
+            // Callers that registered library methods by qualified name before ADR-060.
             resolvedName = libraryClassName + "." + methodName;
             funType = symbolTable.lookup(resolvedName);
         }
@@ -1532,16 +1538,13 @@ public class PirGenerator {
 
     private PirTerm generateFieldAccessFromMethod(PirTerm scope, String methodName,
                                                    com.github.javaparser.ast.NodeList<Expression> args) {
-        // For record accessor methods (no args), treat as field access
-        if (args.isEmpty()) {
-            // This will be compiled to field extraction in UplcGenerator
-            return new PirTerm.App(
-                    new PirTerm.Var("." + methodName, new PirType.DataType()),
-                    scope);
-        }
-        // Method with args: apply scope + args
-        PirTerm fn = new PirTerm.Var(methodName, new PirType.DataType());
-        fn = new PirTerm.App(fn, scope);
+        // The receiver's type did not resolve the member. The ".name" pseudo-variable keeps the
+        // call in the term, because HOF inference may still discard this lowering; UPLC
+        // generation rejects any that survives (JULC0055, ADR-060) instead of binding it to a
+        // variable or method that happens to be named like the member.
+        var member = new PirTerm.Var("." + methodName, new PirType.DataType());
+        if (args.isEmpty()) return new PirTerm.App(member, scope);
+        PirTerm fn = new PirTerm.App(member, scope);
         for (var arg : args) {
             fn = new PirTerm.App(fn, generateExpression(arg));
         }

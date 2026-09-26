@@ -135,9 +135,10 @@ public class UplcGenerator {
     private Term generateInner(PirTerm pir) {
         return switch (pir) {
             case PirTerm.Var(var name, _) -> {
-                // Field accessor pseudo-variables are handled by their containing App
+                // ADR-060: a ".name" pseudo-variable is member access whose receiver type did not
+                // resolve it. It is never bound to a binder that happens to be named "name".
                 if (name.startsWith(".")) {
-                    throw new CompilerException("Bare field accessor not supported: " + name);
+                    throw CompilerTypeDiagnostics.unresolvedMember(name.substring(1), currentSourceLocation());
                 }
                 yield Term.var(deBruijnIndex(name));
             }
@@ -156,14 +157,6 @@ public class UplcGenerator {
             }
 
             case PirTerm.App(var function, var argument) -> {
-                // Handle field accessor: App(Var(".field"), scope) -> field extraction
-                if (function instanceof PirTerm.Var(var name, _) && name.startsWith(".")) {
-                    // For MVP, field access on Data-typed values is just passed through
-                    // The ValidatorWrapper handles the actual field extraction
-                    yield Term.apply(
-                            Term.var(deBruijnIndex(name.substring(1))),
-                            generate(argument));
-                }
                 yield Term.apply(generate(function), generate(argument));
             }
 

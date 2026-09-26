@@ -84,7 +84,8 @@ final class LibraryCompiler {
             for (var method : cls.getMethods()) {
                 if (method.isStatic()) {
                     var mType = computeMethodType(method, typeResolver);
-                    libSymbolTable.define(classNameFqcn + "." + method.getNameAsString(), mType);
+                    libSymbolTable.declareMethod(method.getNameAsString(),
+                            classNameFqcn + "." + method.getNameAsString(), mType);
                 }
             }
 

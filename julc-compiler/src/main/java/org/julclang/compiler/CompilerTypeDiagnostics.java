@@ -75,6 +75,15 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(method, owner), location);
     }
 
+    /**
+     * JULC0055: {@code x.name()} or {@code x.name} whose receiver type is unknown survived to code
+     * generation. It used to bind to whatever binder was named {@code name} (ADR-060).
+     */
+    public static CompilerException unresolvedMember(String member, SourceLocation location) {
+        var info = DiagnosticCodes.UNRESOLVED_MEMBER_ACCESS;
+        return exception(info.code(), info.level(), info.fix(), info.format(member), location);
+    }
+
     private static CompilerException exception(
             String code,
             CompilerDiagnostic.Level level,

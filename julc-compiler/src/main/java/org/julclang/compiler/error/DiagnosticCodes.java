@@ -333,6 +333,14 @@ public final class DiagnosticCodes {
             "Optimization rule {0} cannot be disabled. Rules that can be disabled: {1}",
             "Use one of the listed rule identifiers exactly as reported in the optimization report, or lower the optimization level to disable a whole class of rules.");
 
+    public static final DiagnosticInfo UNRESOLVED_MEMBER_ACCESS = new DiagnosticInfo(
+            "JULC0055",
+            "UNRESOLVED_MEMBER_ACCESS",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Cannot resolve {0} on a value whose type is not known here",
+            "Give the receiver its record or ledger type instead of var or PlutusData, or call a static helper as helper(x) rather than x.helper().");
+
     public static final DiagnosticInfo UNSUPPORTED_COMPILER_TARGET = new DiagnosticInfo(
             "JULC0031",
             "UNSUPPORTED_COMPILER_TARGET",
@@ -416,6 +424,7 @@ public final class DiagnosticCodes {
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,
             UNKNOWN_OPTIMIZATION_RULE,
+            UNRESOLVED_MEMBER_ACCESS,
             UNSUPPORTED_COMPILER_TARGET,
             UNSUPPORTED_OPTIMIZATION_COST_PROFILE,
             UNSUPPORTED_OPTIMIZATION_LEVEL,

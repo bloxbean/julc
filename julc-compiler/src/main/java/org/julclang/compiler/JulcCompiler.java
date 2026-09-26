@@ -420,7 +420,8 @@ public class JulcCompiler {
                 ? effectiveStdlibLookup
                 : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
 
-        // 10. Set up symbol table
+        // 10. Set up symbol table. Methods have their own namespace (ADR-060).
+        var methodOwner = methodOwner(validatorClass);
         var symbolTable = new SymbolTable();
         for (var pf : paramFields) {
             symbolTable.define(pf.name, pf.pirType);
@@ -431,7 +432,7 @@ public class JulcCompiler {
         for (var method : validatorClass.getMethods()) {
             if (method.isStatic()) {
                 var mType = computeMethodType(method, typeResolver);
-                symbolTable.define(method.getNameAsString(), mType);
+                symbolTable.declareMethod(method.getNameAsString(), methodBinder(methodOwner, method), mType);
             }
         }
 
@@ -446,6 +447,7 @@ public class JulcCompiler {
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
             var initPir = pirGenerator.generateExpression(sf.initExpr);
+            requireNoMethodCall(sf, initPir, methodOwner, validatorClass);
             compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
         }
 
@@ -459,7 +461,7 @@ public class JulcCompiler {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
                 overloads.check(method, mType, helperPir);
-                symbolTable.defineMethod(method.getNameAsString(), mType, helperPir);
+                symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
             }
         }
 
@@ -911,7 +913,8 @@ public class JulcCompiler {
                 ? effectiveStdlibLookup
                 : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
 
-        // 9. Set up symbol table
+        // 9. Set up symbol table. Methods have their own namespace (ADR-060).
+        var methodOwner = methodOwner(targetClass);
         var symbolTable = new SymbolTable();
         for (var pf : paramFields) {
             symbolTable.define(pf.name, pf.pirType);
@@ -922,7 +925,7 @@ public class JulcCompiler {
         for (var method : targetClass.getMethods()) {
             if (method.isStatic()) {
                 var mType = computeMethodType(method, typeResolver);
-                symbolTable.define(method.getNameAsString(), mType);
+                symbolTable.declareMethod(method.getNameAsString(), methodBinder(methodOwner, method), mType);
             }
         }
 
@@ -946,6 +949,7 @@ public class JulcCompiler {
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
             var initPir = pirGenerator.generateExpression(sf.initExpr);
+            requireNoMethodCall(sf, initPir, methodOwner, targetClass);
             compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
         }
 
@@ -956,7 +960,7 @@ public class JulcCompiler {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
                 overloads.check(method, mType, helperPir);
-                symbolTable.defineMethod(method.getNameAsString(), mType, helperPir);
+                symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
             }
         }
 
@@ -967,7 +971,8 @@ public class JulcCompiler {
 
         // 11. Build body: Data-accepting lambda that calls target method by Var reference
         // Build application: Var("method") applied to decoded args
-        PirTerm application = new PirTerm.Var(methodName, computeMethodType(targetMethod, typeResolver));
+        PirTerm application = new PirTerm.Var(methodBinder(methodOwner, targetMethod),
+                computeMethodType(targetMethod, typeResolver));
         for (int i = 0; i < paramTypes.size(); i++) {
             var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
             application = new PirTerm.App(application,
@@ -1745,6 +1750,39 @@ public class JulcCompiler {
                 parameter.getNameAsString(),
                 type,
                 sourceLocation(parameter));
+    }
+
+    /** The qualifier of a class's method binders: its fully qualified name (ADR-060). */
+    private static String methodOwner(ClassOrInterfaceDeclaration cls) {
+        return cls.getFullyQualifiedName().orElse(cls.getNameAsString());
+    }
+
+    /**
+     * A static method's PIR binder: {@code owner.method}, as library methods are bound. A dot cannot
+     * occur in a variable name, so no local, field or parameter can shadow a method (ADR-060).
+     */
+    private static String methodBinder(String owner, MethodDeclaration method) {
+        return owner + "." + method.getNameAsString();
+    }
+
+    /**
+     * Static field initializers are bound outside the class's methods, so they cannot call them.
+     * Reject the call here instead of leaving an unbound method reference to UPLC generation.
+     */
+    private void requireNoMethodCall(StaticField field, PirTerm initPir, String owner,
+                                     ClassOrInterfaceDeclaration cls) {
+        var free = PirSubstitution.collectFreeVarNames(initPir);
+        for (var method : cls.getMethods()) {
+            if (method.isStatic() && free.contains(methodBinder(owner, method))) {
+                var location = sourceLocation(field.initExpr());
+                throw new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
+                        "Static field '" + field.name() + "' calls method " + method.getNameAsString()
+                                + "; static field initializers cannot call methods of their class",
+                        location.fileName(), location.line(), location.column(),
+                        "Call the method where the value is used, or initialise the field with an expression "
+                                + "that does not call a method of this class.")));
+            }
+        }
     }
 
     private CompilerException schemaError(Node node, String message) {

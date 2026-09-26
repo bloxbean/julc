@@ -550,6 +550,21 @@
         "bad": "static boolean check(BigInteger a) { ... }\nstatic boolean check(long a) { ... }",
         "good": "static boolean checkAmount(BigInteger a) { ... }\nstatic boolean checkIndex(long a) { ... }"
       }
+    },
+    {
+      "code": "JULC0055",
+      "constant": "UNRESOLVED_MEMBER_ACCESS",
+      "status": "emitted",
+      "title": "Member access that cannot be resolved",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Cannot resolve {0} on a value whose type is not known here",
+      "summary": "x.name() and x.name resolve against the receiver's record, ledger or library type. When that type is not known the call was previously bound to whatever variable or method happened to be named name, which is not Java's meaning (ADR-060).",
+      "fix": "Give the receiver its record or ledger type instead of var or PlutusData, or call a static helper as helper(x) rather than x.helper().",
+      "example": {
+        "bad": "static BigInteger amount(PlutusData d) { ... }\nPlutusData d = ...;\nreturn d.amount();",
+        "good": "static BigInteger amount(PlutusData d) { ... }\nPlutusData d = ...;\nreturn amount(d);"
+      }
     }
   ]
 }
