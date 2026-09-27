@@ -50,6 +50,18 @@ public class PirGenerator {
     private final Map<String, SourceLocation> unresolvedMembers = new LinkedHashMap<>();
     /** The source method being generated; loop updates of fields are checked against its class. */
     private MethodDeclaration currentMethod;
+    /**
+     * JULC0056 (ADR-060): the methods that run once per evaluation, {@code null} until a class
+     * compilation declares them; the methods generated so far with the names their PIR refers to;
+     * and the loop updates of fields, both in generation order so the reported error is stable.
+     */
+    private Set<MethodDeclaration> entryMethods;
+    private final List<GeneratedMethod> generatedMethods = new ArrayList<>();
+    private final List<LoopFieldUpdate> loopFieldUpdates = new ArrayList<>();
+
+    private record GeneratedMethod(MethodDeclaration method, Set<String> references) {}
+
+    private record LoopFieldUpdate(MethodDeclaration method, String name, SourceLocation location) {}
     private final LoopDesugarer loopDesugarer;
     private int ifJoinCounter;
 
@@ -350,13 +362,28 @@ public class PirGenerator {
     }
 
     /**
+     * Start a class compilation (ADR-060, JULC0056). {@code entries} are the methods the program
+     * runs once per evaluation: the validator entrypoints, or the {@code compileMethod} target.
+     * A library has none. Only an entry method may update a static field or {@code @Param} in a
+     * loop. Without this call a generated method may not update one at all.
+     */
+    public void setEntryMethods(Collection<MethodDeclaration> entries) {
+        entryMethods = Collections.newSetFromMap(new IdentityHashMap<>());
+        entryMethods.addAll(entries);
+    }
+
+    /**
      * Generate PIR for a method body. Returns a lambda term wrapping the body.
      */
     public PirTerm generateMethod(MethodDeclaration method) {
         var previousMethod = currentMethod;
         currentMethod = method;
         try {
-            return generateMethodBody(method);
+            var term = generateMethodBody(method);
+            generatedMethods.add(new GeneratedMethod(method,
+                    PirSubstitution.collectFreeVarNames(withoutIdentityLets(term))));
+            requireUnsharedFields();
+            return term;
         } finally {
             currentMethod = previousMethod;
         }
@@ -1080,28 +1107,79 @@ public class PirGenerator {
 
     /**
      * JULC0056: a static field or {@code @Param} is not shared state on-chain. A loop assignment
-     * rebinds it only inside the assigning method, which matches Java unless the field is final or
-     * another method of the class reads it; those cases are rejected (ADR-060).
+     * rebinds it only in the rest of the assigning method's current run, and every other run and
+     * every other method sees the field's initial value (ADR-060). That matches Java only when the
+     * field is not final, the method runs once per evaluation (an entry method that nothing calls,
+     * with the loop outside any lambda), and no other method reads the field. This method rejects
+     * what the source shows; {@link #requireUnsharedFields} checks calls and reads.
      */
     void requireUnsharedField(String name, Node at) {
+        // A block generated directly, outside a class compilation, keeps the caller's bindings in
+        // the global scope, so a loop update there is not a field update.
+        if (currentMethod == null && entryMethods == null) return;
         var field = LoopBodyGenerator.sourceName(name);
-        // Outside a method (a block or expression generated directly) no class is known and the
-        // global scope holds the caller's bindings, so nothing is rejected.
-        var owner = currentMethod == null ? null
-                : currentMethod.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
-        boolean shared = false;
+        var location = sourceLocation(at);
+        if (currentMethod == null) {
+            throw CompilerTypeDiagnostics.fieldAssignment(field,
+                    "a static field initializer cannot update a field", location);
+        }
+        var owner = currentMethod.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
         if (owner != null) {
             for (var declaration : owner.getFields())
                 if (declaration.isFinal() && declaration.getVariables().stream()
-                        .anyMatch(v -> v.getNameAsString().equals(field))) shared = true;
-            for (var method : owner.getMethods()) {
-                if (method == currentMethod) continue;
-                boolean parameter = method.getParameters().stream().anyMatch(p -> p.getNameAsString().equals(field));
-                if (!parameter && method.findAll(NameExpr.class).stream()
-                        .anyMatch(n -> n.getNameAsString().equals(field))) shared = true;
+                        .anyMatch(v -> v.getNameAsString().equals(field)))
+                    throw CompilerTypeDiagnostics.fieldAssignment(field, "the field is final", location);
+        }
+        var method = currentMethod.getNameAsString();
+        if (entryMethods == null || !entryMethods.contains(currentMethod)) {
+            throw CompilerTypeDiagnostics.fieldAssignment(field, "'" + method
+                    + "' is not an entry method, and each call of it starts from the field's initial value", location);
+        }
+        if (at.findAncestor(LambdaExpr.class).isPresent()) {
+            throw CompilerTypeDiagnostics.fieldAssignment(field,
+                    "the loop is in a lambda, and each run of it starts from the field's initial value", location);
+        }
+        loopFieldUpdates.add(new LoopFieldUpdate(currentMethod, name, location));
+    }
+
+    /**
+     * Reject a loop update of a field when a generated method calls the updating method, which
+     * would then run more than once, or when another generated method reads the field. A method
+     * refers to a name when the name is free in its PIR, so a local, parameter, lambda or pattern
+     * variable that shadows the field is not a read. Every update is made while its method is
+     * generated, and this runs after each method, so it sees every pair of an update and a
+     * reference whatever order the methods are generated in.
+     */
+    private void requireUnsharedFields() {
+        for (var update : loopFieldUpdates) {
+            var field = LoopBodyGenerator.sourceName(update.name());
+            var method = update.method().getNameAsString();
+            var binder = symbolTable.lookupMethodSignature(method).map(SymbolTable.MethodSignature::binderName);
+            for (var generated : generatedMethods) {
+                var other = generated.method().getNameAsString();
+                if (binder.isPresent() && generated.references().contains(binder.get())) {
+                    throw CompilerTypeDiagnostics.fieldAssignment(field, (generated.method() == update.method()
+                            ? "'" + method + "' calls itself" : "'" + other + "' calls '" + method + "'")
+                            + ", and each call starts from the field's initial value", update.location());
+                }
+                if (generated.method() != update.method() && generated.references().contains(update.name())) {
+                    throw CompilerTypeDiagnostics.fieldAssignment(field, "'" + other
+                            + "' reads it, and sees only the field's initial value", update.location());
+                }
             }
         }
-        if (shared) throw CompilerTypeDiagnostics.fieldAssignment(field, sourceLocation(at));
+    }
+
+    /**
+     * {@code let x = x in b} is {@code b}. The loop lowering rebinds every pre-loop name the rest
+     * of the method mentions that way, shadowed or not, so without this a method that shadows a
+     * field or never calls a method would appear to refer to it.
+     */
+    private static PirTerm withoutIdentityLets(PirTerm term) {
+        if (term instanceof PirTerm.Let(var name, PirTerm.Var(var value, _), var body) && name.equals(value)) {
+            return withoutIdentityLets(body);
+        }
+        return PirHelpers.mapChildren(term, PirGenerator::withoutIdentityLets);
     }
 
     /** JULC0053: every lowering binds only a declaration's first variable, so reject more (ADR-060). */

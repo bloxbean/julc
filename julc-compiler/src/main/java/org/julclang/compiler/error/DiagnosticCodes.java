@@ -122,7 +122,7 @@ public final class DiagnosticCodes {
             "FIELD_ASSIGNMENT_UNSUPPORTED",
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
-            "Assignment to field ''{0}'' in a loop is not supported: the field is final or another method reads it",
+            "Assignment to field ''{0}'' in a loop is not supported: {1}",
             "Copy the field into a local accumulator before the loop, update the local, and pass it to the methods that need it.");
 
     public static final DiagnosticInfo FLOATING_POINT_UNSUPPORTED = new DiagnosticInfo(

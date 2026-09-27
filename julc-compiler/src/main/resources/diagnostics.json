@@ -573,8 +573,8 @@
       "title": "Loop assignment to a shared static field or @Param",
       "category": "SYNTAX",
       "severity": "error",
-      "template": "Assignment to field ''{0}'' in a loop is not supported: the field is final or another method reads it",
-      "summary": "Static fields and @Param fields are not shared state on-chain: a loop assignment rebinds the name only inside the assigning method. That matches Java while no other method reads the field, so the assignment is rejected when the field is final or another method of the class reads it (ADR-060).",
+      "template": "Assignment to field ''{0}'' in a loop is not supported: {1}",
+      "summary": "Static fields and @Param fields are not shared state on-chain: a loop assignment rebinds the name only in the rest of the assigning method's current run, and every other run and every other method sees the initial value. The assignment is accepted only where that matches Java: the field is not final, the method is an entry method (a validator entrypoint or the compileMethod target) that no method calls, the loop is not in a lambda, and no other method reads the field (ADR-060).",
       "fix": "Copy the field into a local accumulator before the loop, update the local, and pass it to the methods that need it.",
       "example": {
         "bad": "static long count = 0;\nstatic long current() { return count; }\n...\nfor (var x : xs) { count += 1; }\nreturn current();",

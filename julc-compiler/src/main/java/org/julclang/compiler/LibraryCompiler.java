@@ -93,6 +93,8 @@ final class LibraryCompiler {
             var libPirGenerator = PirGenerator.forCompilation(
                     typeResolver, libSymbolTable, composedLookup,
                     TypeMethodRegistry.defaultRegistry(), classNameFqcn, context);
+            // A library method can run any number of times: no entry methods (JULC0056, ADR-060).
+            libPirGenerator.setEntryMethods(List.of());
 
             record LibCompiledField(String name, PirTerm initPir) {}
             var compiledLibFields = new ArrayList<LibCompiledField>();

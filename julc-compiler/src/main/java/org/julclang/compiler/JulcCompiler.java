@@ -448,6 +448,10 @@ public class JulcCompiler {
                         TypeMethodRegistry.defaultRegistry(), null, context)
                 : PirGenerator.forDebugCompilation(typeResolver, symbolTable, effectiveLookup,
                         TypeMethodRegistry.defaultRegistry(), null, context, debugMetadata);
+        // The entrypoints run once per evaluation (JULC0056, ADR-060). An entrypoint the dispatch
+        // does not use is never generated, so listing it too changes nothing.
+        pirGenerator.setEntryMethods(entrypointMethod != null ? List.of(entrypointMethod)
+                : entrypointInfos.stream().map(EntrypointInfo::method).toList());
 
         // 11b. Compile static field initializers
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
@@ -953,6 +957,8 @@ public class JulcCompiler {
         // 10. Generate PIR for helper methods
         var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
                 TypeMethodRegistry.defaultRegistry(), null, context);
+        // The target runs once per evaluation (JULC0056, ADR-060).
+        pirGenerator.setEntryMethods(List.of(targetMethod));
 
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
