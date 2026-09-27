@@ -26,6 +26,8 @@ script size and execution cost.
 - If several branches reach the same large block, extract that block into a helper method.
 - Prefer exhaustive `switch` expressions for sealed types such as redeemers.
 - Measure script size and execution budget; do not optimize based only on appearance.
+- Compute a value where it is declared instead of updating it across branches; see
+  [Value-Oriented Contract Code](/best-practices/value-oriented-code/).
 
 ## `else` is optional
 
@@ -94,6 +96,8 @@ for (var x : xs) {
 
 Alternatively declare `step` before the loop, making it an accumulator; reset it
 at the start of each iteration if needed to preserve its original lifetime.
+[Value-Oriented Contract Code](/best-practices/value-oriented-code/) shows this and
+the other value-returning rewrites with tested examples.
 If the value is only needed inside the branch, declare it there instead:
 
 ```java

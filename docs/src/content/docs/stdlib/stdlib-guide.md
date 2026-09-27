@@ -444,6 +444,14 @@ class ListSearchExample {
 
 The HOF methods (`any`, `all`, `find`, `foldl`, `map`, `filter`, `zip`) accept lambda expressions. These are compiled via PIR and require lambda support.
 
+> **javac-compiled projects:** the static `ListsLib` forms below are compiler intrinsics
+> with no Java declaration, so javac rejects them in a Gradle project; they compile only
+> from source text (testkit strings, the playground). Use the `JulcList` instance methods
+> `any`, `all`, `filter` and `map`, and write a fold as an accumulator loop. Avoid
+> `list.find(...)` for now: the compiled result is an optional value, not the element.
+> Compiled `any` and `all` evaluate the predicate for every element. See
+> [Value-Oriented Contract Code](/best-practices/value-oriented-code/#use-list-operations-where-they-read-better).
+
 ```java
 @SpendingValidator
 class HofExample {
