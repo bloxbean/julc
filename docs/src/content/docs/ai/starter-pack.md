@@ -54,7 +54,7 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - Where an assignment is supported, `x += y` (also `-=`, `*=`, `/=`, `%=`) means `x = x op y` on integers, and `+=` appends to a `String`. `&=`, `|=`, `^=` and shift compound operators are rejected (`JULC0052`): evaluate the check first, then write `ok = ok && c`. `x++` is rejected.
 - Declare one variable per statement (`BigInteger a = x, b = y;` is `JULC0053`). Overloaded methods are rejected unless every declaration compiles to the same code (`JULC0054`). A local, parameter or field may share a method's name. Calling a member on a value whose type is unknown, such as `d.amount()` on `PlutusData`, is `JULC0055`. Do not update a static field or `@Param` in a loop except in the entrypoint, and only when no other method reads it (`JULC0056`); copy it into a local accumulator. Do not reassign a for-each variable in a loop that updates no variable declared before it (`JULC0058`); declare a new local.
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
-- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`, `list.find(...)`, `ListsLib.foldl(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`.
+- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`. Compiled `any`/`all` evaluate the predicate for every element (no early exit), so guard a predicate that can fail with `&&`. Assign `map`'s result to a typed `JulcList<T>` local before a lambda uses its elements. In a javac-compiled project do **not** use `list.find(...)` (the compiled result is an optional value, not the element) or the static `ListsLib.any/all/filter/map/find/foldl/zip` forms (not declared in Java, so javac rejects them); write a fold as an accumulator loop.
 - **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
@@ -108,7 +108,9 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
   Do not generate a statement-style switch containing `return` in its cases.
 
 Full examples and the reasoning behind these rules:
-[Conditionals and Script Size](/best-practices/conditionals/).
+[Conditionals and Script Size](/best-practices/conditionals/). Tested rewrites that
+compute values instead of updating them, and list-operation caveats:
+[Value-Oriented Contract Code](/best-practices/value-oriented-code/).
 
 ---
 

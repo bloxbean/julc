@@ -3,6 +3,25 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: value-oriented contract code guide (#163)
+
+A new Best Practices page, [Value-Oriented Contract Code](/best-practices/value-oriented-code/),
+shows how to compute values in initializers, switch expressions, helper methods and list
+operations instead of updating variables across branches, and how to test the compiled
+validator. Every example is compiled and evaluated on the VM by tests in `julc-examples`,
+and a test fails if the page and the tested code drift apart.
+
+The page records current list-operation behaviour that differs from Java:
+
+- compiled `any` and `all` evaluate the predicate for every element, so a predicate that
+  fails on a later element fails the script where Java would already have returned;
+- `list.find(...)` returns an optional value in compiled code although its Java signature
+  returns the element;
+- the static `ListsLib.any`, `all`, `filter`, `map`, `find`, `foldl` and `zip` forms
+  compile only from source text, because `ListsLib` does not declare them in Java.
+
+No compiler behaviour changes in this entry.
+
 ## Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)
 
 The compiler generates variables around your code for switch dispatch, loops, the

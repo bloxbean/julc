@@ -462,7 +462,9 @@ Any type supported by the compiler can be used as a loop accumulator:
 | Reassignment of a switch case-pattern variable | Rejected | See [#162](https://github.com/bloxbean/julc/issues/162); copy to a fresh arm-local accumulator instead |
 
 See [loop-local assignment rules](/best-practices/conditionals/#loop-local-assignment-rules)
-for scope boundaries and examples of safe rewrites.
+for scope boundaries and examples of safe rewrites, and
+[Value-Oriented Contract Code](/best-practices/value-oriented-code/) for tested rewrites
+that compute values instead of updating them, and for when a loop is the better choice.
 
 ### Workaround for `continue`
 
