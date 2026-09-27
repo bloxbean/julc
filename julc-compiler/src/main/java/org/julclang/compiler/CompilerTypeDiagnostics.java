@@ -94,6 +94,15 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(field, reason), location);
     }
 
+    /**
+     * JULC0058: a for-each loop with no accumulator reassigns its loop variable or a body local;
+     * {@code kind} is {@code "loop variable"} or {@code "local variable"}.
+     */
+    public static CompilerException loopReassignmentWithoutAccumulator(String kind, String name, SourceLocation location) {
+        var info = DiagnosticCodes.LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR;
+        return exception(info.code(), info.level(), info.fix(), info.format(kind, name), location);
+    }
+
     /** JULC0057: a static field initializer that calls a method of its class. */
     public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
         var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;

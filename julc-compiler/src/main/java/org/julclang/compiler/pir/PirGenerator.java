@@ -1892,7 +1892,7 @@ public class PirGenerator {
         boolean hasBreak = containsBreak(fes.getBody());
 
         // Detect all accumulator assignments in the loop body
-        var accumulators = detectForEachAccumulators(fes.getBody());
+        var accumulators = detectLoopAccumulators(fes);
 
         if (accumulators.size() == 1) {
             // --- Single-accumulator path ---
@@ -2054,6 +2054,16 @@ public class PirGenerator {
 
         } else {
             // --- Unit-accumulator fallback: for-each with no accumulator ---
+            // The body is compiled as plain statements, which cannot reassign a variable.
+            var reassignment = AccumulatorTypeAnalyzer.firstLocalReassignment(fes);
+            if (reassignment.isPresent()) {
+                var name = ((NameExpr) reassignment.get().getTarget()).getNameAsString();
+                boolean loopVariable = fes.getVariable().getVariables().stream()
+                        .anyMatch(v -> v.getNameAsString().equals(name));
+                throw CompilerTypeDiagnostics.loopReassignmentWithoutAccumulator(
+                        loopVariable ? "loop variable" : "local variable", LoopBodyGenerator.sourceName(name),
+                        sourceLocation(reassignment.get()));
+            }
             symbolTable.pushScope();
             symbolTable.define(itemName, elemType);
 
@@ -2131,13 +2141,13 @@ public class PirGenerator {
         return AccumulatorTypeAnalyzer.refineAccumulatorTypes(ws, accNames, initialTypes, precedingStmts);
     }
 
-    List<String> detectForEachAccumulators(Statement bodyStmt) {
-        var accumulators = AccumulatorTypeAnalyzer.detectForEachAccumulators(bodyStmt, symbolTable::lookup);
+    List<String> detectLoopAccumulators(Statement loop) {
+        var accumulators = AccumulatorTypeAnalyzer.detectLoopAccumulators(loop, symbolTable::lookup);
         for (var name : accumulators) {
             // A static field or @Param updated in a loop is rebound only in this method.
             if (symbolTable.isClassLevel(name)) {
-                Node at = bodyStmt.findFirst(AssignExpr.class, a -> a.getTarget() instanceof NameExpr ne
-                        && ne.getNameAsString().equals(name)).map(a -> (Node) a).orElse(bodyStmt);
+                Node at = loop.findFirst(AssignExpr.class, a -> a.getTarget() instanceof NameExpr ne
+                        && ne.getNameAsString().equals(name)).map(a -> (Node) a).orElse(loop);
                 requireUnsharedField(name, at);
             }
         }
@@ -2189,7 +2199,7 @@ public class PirGenerator {
         }
         var desugarer = loopDesugarer;
         boolean hasBreak = containsBreak(ws.getBody());
-        var accumulators = detectForEachAccumulators(ws.getBody());
+        var accumulators = detectLoopAccumulators(ws);
 
         if (accumulators.size() == 1) {
             // --- Single-accumulator while loop ---

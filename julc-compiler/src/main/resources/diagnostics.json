@@ -591,6 +591,21 @@
       "template": "Static field ''{0}'' calls method {1}; static field initializers cannot call methods of their class",
       "summary": "Static field initializers are evaluated outside the class's methods, so a call to one of them cannot be bound.",
       "fix": "Call the method where the value is used, or initialise the field with an expression that does not call a method of this class."
+    },
+    {
+      "code": "JULC0058",
+      "constant": "LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR",
+      "status": "emitted",
+      "title": "Reassignment in a loop that updates no earlier variable",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Reassigning {0} ''{1}'' is not supported in a loop that updates no variable declared before the loop",
+      "summary": "A for-each loop can reassign its loop variable or a local declared in its body only while it also updates a variable declared before the loop. Without one, the body is compiled as plain statements, which cannot reassign a variable (ADR-060).",
+      "fix": "Declare a new local for the new value instead of reassigning, for example var adjusted = amount.subtract(fee);",
+      "example": {
+        "bad": "for (var amount : amounts) {\n    amount = amount.subtract(fee);\n    if (amount.signum() < 0) Builtins.error();\n}",
+        "good": "for (var amount : amounts) {\n    var net = amount.subtract(fee);\n    if (net.signum() < 0) Builtins.error();\n}"
+      }
     }
   ]
 }

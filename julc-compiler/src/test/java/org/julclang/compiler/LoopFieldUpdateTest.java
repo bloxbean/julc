@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * the field's initial value. It is accepted only where that is Java's result: the method is an
  * entry method that nothing calls, the loop is not in a lambda, and no other method reads the
  * field. Each accepted program is compared with the same source compiled and run by javac.
+ * JULC0058 covers the related reassignment a loop without an accumulator cannot compile.
  */
 class LoopFieldUpdateTest {
     private static final String IMPORTS = """
@@ -103,6 +104,70 @@ class LoopFieldUpdateTest {
                 + " while (i < n) { i = i + 1; j = j + 2; } long K = 7; return K + j; }\n" + ENTRY_UPDATES_K);
         matchesJava("static long K = 0; static long helper(long n) { long i = 0;"
                 + " if (n > 1) { while (i < n) { i = i + 1; } } long K = 7; return K + i; }\n" + ENTRY_UPDATES_K);
+    }
+
+    @Test
+    void reassignedLoopVariableThatShadowsAFieldIsTheVariable() throws Exception {
+        // PR #199 review: accumulator detection read the body before the for-each variable was in
+        // scope, so reassigning a variable named like a field was taken as updating the field. A
+        // helper doing so was rejected (JULC0056); in m, K after the loop was 1 instead of Java's 10.
+        // The variable now behaves as it would under any other name. A loop with no accumulator
+        // cannot reassign its variable under any name, so these two get JULC0058, as with x.
+        for (var members : List.of(
+                "static BigInteger K = BigInteger.TEN; static long helper(long n) {"
+                        + " for (var K : JulcList.of(BigInteger.ONE, BigInteger.TWO)) { K = BigInteger.ONE; } return 7; }\n"
+                        + "public static long m(long n) { return helper(n); }",
+                "static BigInteger K = BigInteger.TEN; public static long m(long n) {"
+                        + " for (var K : JulcList.of(BigInteger.ONE, BigInteger.TWO)) { K = BigInteger.ONE; } return K.longValue(); }")) {
+            var shadowing = reassignmentRejected(members, "loop variable 'K'");
+            var renamed = reassignmentRejected(members.replace("var K :", "var x :")
+                    .replace("{ K = BigInteger.ONE; }", "{ x = BigInteger.ONE; }"), "loop variable 'x'");
+            assertEquals(renamed.line(), shadowing.line());
+            assertEquals(renamed.column(), shadowing.column());
+        }
+        // With an accumulator the update holds for the rest of the iteration, and the field and the
+        // accumulator stay separate.
+        matchesJava("static BigInteger K = BigInteger.TEN; public static long m(long n) { " + XS + " long t = 0;"
+                + " for (var K : xs) { K = K.add(BigInteger.ONE); t = t + K.longValue(); } return t * 100 + K.longValue(); }");
+        // The inner loop of a nested pair, under a for-each and under a while.
+        matchesJava("static BigInteger K = BigInteger.TEN; public static long m(long n) { " + XS + " long t = 0;"
+                + " for (var y : xs) { for (var K : xs) { K = BigInteger.ONE; t = t + K.longValue(); } }"
+                + " return t * 100 + K.longValue(); }");
+        matchesJava("static BigInteger K = BigInteger.TEN; public static long m(long n) { " + XS + " long t = 0;"
+                + " long i = 0; while (i < 2) { for (var K : xs) { K = BigInteger.TWO; t = t + K.longValue(); } i = i + 1; }"
+                + " return t * 100 + K.longValue(); }");
+    }
+
+    /** JuLC rejects the class with JULC0058 and a message containing {@code subject}. */
+    private static org.julclang.compiler.error.CompilerDiagnostic reassignmentRejected(String members, String subject) {
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileMethod(source(members), "m"), members);
+        var diagnostic = error.diagnostics().getFirst();
+        assertEquals("JULC0058", diagnostic.code(), error.getMessage());
+        assertEquals("Reassigning " + subject + " is not supported in a loop that updates no variable declared"
+                + " before the loop", diagnostic.message());
+        return diagnostic;
+    }
+
+    @Test
+    void reassignmentInALoopWithoutAccumulatorHasItsOwnDiagnostic() throws Exception {
+        // Such a loop compiles its body as plain statements, which cannot reassign; the generic
+        // "Unsupported expression: AssignExpr" error it used to give did not say so.
+        reassignmentRejected("public static long m(long n) { " + XS
+                + "\n for (var x : xs) {\n  x = x.add(BigInteger.ONE);\n }\n return 7; }", "loop variable 'x'");
+        assertEquals(6, reassignmentRejected("public static long m(long n) { " + XS
+                + "\n for (var x : xs) {\n  x = x.add(BigInteger.ONE);\n }\n return 7; }", "loop variable 'x'").line());
+        reassignmentRejected("public static long m(long n) { " + XS
+                + " for (var x : xs) { var net = x; net = net.add(BigInteger.ONE); } return 7; }", "local variable 'net'");
+        reassignmentRejected("public static long m(long n) { " + XS
+                + " for (var x : xs) { if (n > 1) { var y = x; y = y.add(BigInteger.ONE); } } return 7; }", "local variable 'y'");
+        // Not rejected: a new local instead of a reassignment; a loop that also updates an earlier
+        // variable; and a nested loop, which compiles its own assignments.
+        matchesJava("public static long m(long n) { " + XS + " for (var x : xs) { var next = x.add(BigInteger.ONE); } return 7; }");
+        matchesJava("public static long m(long n) { " + XS + " long t = 0;"
+                + " for (var x : xs) { x = x.add(BigInteger.ONE); t = t + x.longValue(); } return t; }");
+        matchesJava("public static long m(long n) { " + XS
+                + " for (var y : xs) { long t = 0; for (var x : xs) { t = t + 1; } } return 7; }");
     }
 
     @Test

@@ -141,6 +141,14 @@ public final class DiagnosticCodes {
             "Lambda cannot be stored in a variable",
             "Pass the lambda directly: `list.map(x -> ...)`, `list.filter(p -> ...)`. If you need to share lambda logic, extract it as a regular static method (not as a lambda).");
 
+    public static final DiagnosticInfo LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
+            "JULC0058",
+            "LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Reassigning {0} ''{1}'' is not supported in a loop that updates no variable declared before the loop",
+            "Declare a new local for the new value instead of reassigning, for example var adjusted = amount.subtract(fee);");
+
     public static final DiagnosticInfo METHOD_BODY_MISSING = new DiagnosticInfo(
             "JULC0001",
             "METHOD_BODY_MISSING",
@@ -416,6 +424,7 @@ public final class DiagnosticCodes {
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
+            LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
             METHOD_OVERLOAD_UNSUPPORTED,

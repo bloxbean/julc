@@ -386,18 +386,54 @@ final class AccumulatorTypeAnalyzer {
     }
 
     /**
-     * Detect accumulator variables in a for-each or while loop body.
+     * The first assignment, in the statements a for-each body compiles itself, to its loop variable
+     * or to a local declared in the body. Nested loops compile their own assignments and lambdas
+     * cannot assign, so neither is searched. Used where the loop has no accumulator and its body
+     * is compiled as plain statements, which cannot reassign a variable (JULC0058, ADR-060).
+     */
+    static Optional<AssignExpr> firstLocalReassignment(ForEachStmt loop) {
+        var locals = new HashSet<String>();
+        loop.getVariable().getVariables().forEach(v -> locals.add(v.getNameAsString()));
+        return firstLocalReassignment(PirHelpers.blockStmts(loop.getBody()), locals);
+    }
+
+    private static Optional<AssignExpr> firstLocalReassignment(List<Statement> stmts, Set<String> outerLocals) {
+        var locals = new HashSet<>(outerLocals);
+        for (var stmt : stmts) {
+            Optional<AssignExpr> found = Optional.empty();
+            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                vde.getVariables().forEach(v -> locals.add(v.getNameAsString()));
+            } else if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne && locals.contains(ne.getNameAsString())) {
+                found = Optional.of(ae);
+            } else if (stmt instanceof IfStmt is) {
+                found = firstLocalReassignment(PirHelpers.blockStmts(is.getThenStmt()), locals);
+                if (found.isEmpty() && is.getElseStmt().isPresent()) {
+                    found = firstLocalReassignment(PirHelpers.blockStmts(is.getElseStmt().get()), locals);
+                }
+            } else if (stmt instanceof BlockStmt bs) {
+                found = firstLocalReassignment(bs.getStatements(), locals);
+            }
+            if (found.isPresent()) return found;
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Detect the accumulators of a for-each or while loop: the enclosing bindings its body assigns.
+     * The loop statement is scanned, not just its body, so a for-each variable is in scope there:
+     * assigning it is not an accumulator update even when it shadows a field or {@code @Param}
+     * (ADR-060).
      *
      * @param typeLookup function to check if a variable name is defined in scope
      */
-    static List<String> detectForEachAccumulators(Statement bodyStmt,
-                                                   Function<String, Optional<PirType>> typeLookup) {
-        List<Statement> stmts;
-        if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
-        else stmts = List.of(bodyStmt);
-        if (stmts.isEmpty()) return List.of();
+    static List<String> detectLoopAccumulators(Statement loop,
+                                               Function<String, Optional<PirType>> typeLookup) {
+        if (!(loop instanceof ForEachStmt || loop instanceof WhileStmt)) {
+            throw new IllegalArgumentException("Not a loop: " + loop.getClass().getSimpleName());
+        }
         var accNames = new LinkedHashSet<String>();
-        collectAccumulatorAssignments(stmts, accNames, typeLookup);
+        collectAccumulatorAssignments(List.of(loop), accNames, typeLookup);
         return new ArrayList<>(accNames);
     }
 
