@@ -50,7 +50,12 @@ The same change fixes adjacent silent miscompiles:
   reads the field. Updating a field in a helper or a library method no longer compiles;
   copy the field into a local accumulator. A loop-body local that shadows a
   field and is reassigned was threaded out of the loop as if it were the field; it is
-  now a local.
+  now a local. So is a for-each variable that shadows a field: reassigning it updated
+  the field, so the field read 1 after the loop where Java reads 10.
+- **Reassignment in a loop without an accumulator**: a for-each loop that updates no
+  variable declared before it cannot reassign its loop variable or a body local. This
+  was already rejected, with "Unsupported expression: AssignExpr"; it now reports
+  `JULC0058` and suggests declaring a new local.
 
 **Migration.** Programs that use none of these shapes keep byte-identical scripts
 and hashes at every optimization level; this was checked on 1,432 in-repo corpus

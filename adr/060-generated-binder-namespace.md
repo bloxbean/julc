@@ -184,7 +184,7 @@ Non-goals:
 - `OnchainOverloads` applies the overload rule at the validator,
   `compileMethod` and library method loops. `SubsetValidator` and the
   declaration lowering reject multi-declarators.
-- Diagnostics `JULC0052`-`JULC0057`. `JULC0044`-`JULC0051` are left to the
+- Diagnostics `JULC0052`-`JULC0058`. `JULC0044`-`JULC0051` are left to the
   ADR-059 stack. `JULC0056` names the reason in its message.
 - `PirGenerator.requireUnsharedField` and `requireUnsharedFields` apply
   decision 5. `JulcCompiler` declares the entrypoints or the `compileMethod`
@@ -394,6 +394,19 @@ that the first fix counted too many reads:
 compiled and run by javac, at `NONE`, `BASELINE` and `PV11_SAFE` on the Java
 and Scalus VMs. It also pins each rejection's reason, one per loop lowering
 path. Disabling any single check makes a test fail.
+
+A review of `6aa4efd7` found that accumulator detection scanned a for-each body
+before the loop variable was in scope. Reassigning a loop variable named like a
+field was therefore taken as updating the field: a helper doing so was rejected
+with `JULC0056`, and in the entry method the field read 1 after the loop where
+Java reads 10 (on `main` and #186 too). Detection now scans the loop statement,
+so the variable is in scope, and a shadowing name behaves as any other name. A
+loop with no accumulator still cannot reassign its variable under any name.
+This was already true for other names; the shadowing case only compiled because
+of the misclassification. Such a reassignment, of the loop variable or of a body
+local, now reports `JULC0058` with the fix (declare a new local) instead of the
+generic "Unsupported expression: AssignExpr". Supporting it would need a new
+lowering for accumulator-free loops, which is left out of this ADR.
 
 ## Open questions
 

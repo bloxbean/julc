@@ -958,6 +958,31 @@ return seen;
 
 ---
 
+### 2.17 `JULC0058` `Reassigning loop variable '<name>' is not supported in a loop that updates no variable declared before the loop`
+
+**Cause:** A for-each loop reassigns its loop variable, or a local declared in its body, and updates
+no variable declared before the loop. Such a loop compiles its body as plain statements, which
+cannot reassign a variable. A loop that also updates an earlier variable (an accumulator) can
+reassign its loop variable and body locals. The message says `local variable` for a body local.
+
+**Fix:** Declare a new local for the new value instead of reassigning.
+
+```java
+// WRONG
+for (var amount : amounts) {
+    amount = amount.subtract(fee);
+    if (amount.signum() < 0) Builtins.error();
+}
+
+// CORRECT
+for (var amount : amounts) {
+    var net = amount.subtract(fee);
+    if (net.signum() < 0) Builtins.error();
+}
+```
+
+---
+
 ## 3. Configuration Errors (JulcCompiler)
 
 These errors are raised during compiler setup and pipeline orchestration.
