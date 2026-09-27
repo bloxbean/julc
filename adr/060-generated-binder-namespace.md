@@ -123,11 +123,32 @@ Non-goals:
    check runs in UPLC generation: HOF parameter inference generates some lambda
    bodies speculatively and discards them, so only a `.name` pseudo-variable
    that survives to code generation is an error.
-5. Reject a loop assignment to a static field or `@Param` when the field is
-   final or another method of the class reads it (`JULC0056`). The loop
-   lowering rebinds the name only inside the method, which matches Java only
-   while no other method reads the field. Accumulator detection also stops
-   treating a body local that shadows a field as the field.
+5. Accept a loop assignment to a static field or `@Param` only where the
+   result is Java's, and reject it otherwise (`JULC0056`). The loop lowering
+   rebinds the name only in the rest of the assigning method's current run.
+   Every other run of that method, and every other method, sees the field's
+   initial value (a library method even has its own copy of its class's
+   fields). That matches Java only when all of these hold:
+   - the field is not final;
+   - the method runs once per evaluation. It must be an entry method (the
+     validator entrypoints or multi-validator handlers, or the
+     `compileMethod` target), no generated method may refer to it (this
+     rejects recursion), and the loop must not be in a lambda. A helper, a
+     library method and a static field initializer may not update a field;
+   - no other generated method reads the field.
+
+   A method refers to a name when the name is free in its generated PIR, once
+   `let x = x` is removed. The compiler's own scoping decides, so a local,
+   parameter, lambda or pattern variable that shadows the field is not a read.
+   `let x = x` is removed because the loop lowering rebinds every pre-loop
+   name that the rest of the method mentions this way, including fields and
+   method binders, whether or not the name is shadowed. The check runs after
+   each method is generated and walks methods and updates in generation
+   order, so it sees every pair and reports the same error every time.
+   A pipeline declares its entry methods (`PirGenerator.setEntryMethods`).
+   Without that declaration a generated method may not update a field at all.
+   Accumulator detection also stops treating a body local that shadows a
+   field as the field.
 6. Guard the rule with three independent tests:
    - **G1 alpha-renaming oracle.** Renaming a user variable, parameter,
      method, field or `@Param` to any historical internal name must not
@@ -164,7 +185,10 @@ Non-goals:
   `compileMethod` and library method loops. `SubsetValidator` and the
   declaration lowering reject multi-declarators.
 - Diagnostics `JULC0052`-`JULC0057`. `JULC0044`-`JULC0051` are left to the
-  ADR-059 stack.
+  ADR-059 stack. `JULC0056` names the reason in its message.
+- `PirGenerator.requireUnsharedField` and `requireUnsharedFields` apply
+  decision 5. `JulcCompiler` declares the entrypoints or the `compileMethod`
+  target as entry methods; `LibraryCompiler` declares none.
 - Guards:
   - **G1** `BinderNameIndependenceTest`: 72 target names, with the O-series,
     switch, golden and hygiene corpus plus five programs whose names are all
@@ -225,7 +249,10 @@ Output can change once for these programs:
 
 Every changed artifact is listed with its reason in the PR and release notes.
 Overloads, multi-declarators, bitwise compound operators and unresolved member
-access now fail to compile.
+access now fail to compile, as does a loop update of a static field or
+`@Param` outside an entry method (decision 5). That update was only correct
+when the method ran once per evaluation, which the compiler cannot show for a
+helper or a library method.
 
 PIR and UPLC text output now shows `#` names. This is cosmetic: compiled UPLC
 text never parsed back, because variables print as `iN`.
@@ -336,6 +363,37 @@ Deferred:
 - **`BigInteger t += x`** is accepted although javac rejects it; it means
   addition.
 - **`long c += <PlutusData>`** fails at run time, the same as the explicit form.
+
+A review of the PR head `8433dbb1` found that `JULC0056` counted any identifier
+with the field's name in another method as a read, except a parameter. A
+helper whose local, lambda parameter or for-each variable shadowed the field
+was rejected, although #186 compiled it to Java's result. Reads are now the
+field's free occurrences in the other method's generated PIR (decision 5).
+
+Checking that fix against javac found that the rule itself was incomplete, and
+that the first fix counted too many reads:
+
+- **A method that runs more than once.** Every run of an updating method
+  started from the field's initial value. The rule accepted this because no
+  other method read the field. Java and JuLC disagreed on a helper called
+  twice (9 and 6), a helper called in a loop (18 and 9), direct and mutual
+  recursion (3 and 0), a recursive call before the loop (2040608 and
+  2020202), a loop in a lambda passed to `any` (1 and 0), and a loop in a
+  lambda in a static field initializer (4 and 0). The same results occur at
+  `ef932b21`, so this predates the PR. Only an entry method that nothing
+  calls may now update a field, and only outside a lambda.
+- **Pass-through rebinding.** After any loop, `let K = K` made a shadowed
+  field look read, so a helper with an unrelated loop followed by
+  `long K = 7` was rejected. Identity lets are now removed before free names
+  are collected.
+- **Unstable error.** The reads were kept in an identity map, so with two
+  conflicting fields the reported one could change between runs. Both lists
+  are now in generation order.
+
+`LoopFieldUpdateTest` compares every accepted shape with the same source
+compiled and run by javac, at `NONE`, `BASELINE` and `PV11_SAFE` on the Java
+and Scalus VMs. It also pins each rejection's reason, one per loop lowering
+path. Disabling any single check makes a test fail.
 
 ## Open questions
 

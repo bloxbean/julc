@@ -923,8 +923,20 @@ same name. Fields may still declare several variables.
 ### 2.16 `JULC0056` `Assignment to field '<field>' in a loop is not supported`
 
 **Cause:** A loop updates a static field or `@Param`. On-chain fields are not shared state: the
-update rebinds the name only inside the method, so it is rejected when the field is final or
-another method of the class reads it, where the result would differ from Java.
+update rebinds the name only in the rest of the method's current run. Every other method, and
+every other run of the same method, sees the field's initial value. The update is accepted only
+where that gives Java's result, and the message says which condition failed:
+
+- `the field is final`
+- `'<method>' is not an entry method`: only a validator entrypoint, a multi-validator handler or
+  the `compileMethod` target may update a field. A helper or a library method can be called more
+  than once.
+- `'<method>' calls itself` or `'<caller>' calls '<method>'`: the entry method would run more
+  than once.
+- `the loop is in a lambda`: the lambda can run more than once.
+- `a static field initializer cannot update a field`
+- `'<method>' reads it`: another method would see the initial value. A method whose local,
+  parameter or lambda variable has the field's name does not read the field.
 
 **Fix:** Copy the field into a local accumulator before the loop, update the local, and pass it to
 the methods that need it.

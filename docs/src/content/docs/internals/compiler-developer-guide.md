@@ -953,9 +953,15 @@ applies to every lowering:
   name is enough when nothing in the scope can mention it, for example Java
   source only.
 - **A loop must not update a shared field.** A loop assignment to a static field
-  or `@Param` rebinds the name only inside the method, so it is rejected
-  (`JULC0056`) when the field is final or another method reads it. A body local
-  that shadows a field is a local, not an accumulator.
+  or `@Param` rebinds the name only in the rest of the method's current run, so
+  it is rejected (`JULC0056`) unless the field is not final, the method is an
+  entry method that no method calls, the loop is not in a lambda, and no other
+  method reads the field. A method refers to a name when the name is free in
+  its generated PIR once `let x = x` is removed, so a variable that shadows the
+  field is not a read (`PirGenerator.requireUnsharedFields`). A new pipeline
+  must declare its entry methods with `PirGenerator.setEntryMethods`, or no
+  method may update a field. A body local that shadows a field is a local, not
+  an accumulator.
 - **Choose names while building the term.** Never rename afterwards: source maps
   and Java debug provenance key on PIR node identity.
 - **A binder that rebinds a source name keeps it exactly** (method parameters,

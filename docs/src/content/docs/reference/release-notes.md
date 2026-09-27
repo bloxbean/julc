@@ -42,9 +42,13 @@ The same change fixes adjacent silent miscompiles:
   initializer that calls a method of its class now gets an explicit error (`JULC0057`).
 - **Fields updated in loops**: a loop assignment to a static field or `@Param` rebinds
   the name only inside that method, so another method reading the field saw the
-  original value (a helper returned 0 after `count += 1` three times). Such an update
-  is rejected (`JULC0056`) when the field is final or another method reads it; updating
-  a field read only in the same method keeps working. A loop-body local that shadows a
+  original value (a helper returned 0 after `count += 1` three times), and every call of
+  the updating method started again from the initial value (a helper called twice
+  returned 6 where Java returns 9). Such an update is now rejected (`JULC0056`) unless
+  it is in an entry method (a validator entrypoint, a multi-validator handler or the
+  `compileMethod` target) that no method calls, outside any lambda, and no other method
+  reads the field. Updating a field in a helper or a library method no longer compiles;
+  copy the field into a local accumulator. A loop-body local that shadows a
   field and is reassigned was threaded out of the loop as if it were the field; it is
   now a local.
 
