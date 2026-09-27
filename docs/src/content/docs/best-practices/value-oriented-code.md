@@ -30,8 +30,8 @@ fails if this page stops matching the tested code.
 - Let a `switch` expression yield its result. An arm cannot update a variable declared
   outside it.
 - Copy a case-pattern binding into a fresh local before accumulating into it.
-- Pass values to helper methods and return results from them. A loop must not update a
-  static field or `@Param` that another method reads.
+- Pass values to helper methods and return results from them. A loop may update a static
+  field or `@Param` only in the entrypoint, and only when no other method reads it.
 - Use `any`, `all`, `filter` and `map` where they read better, and measure their cost.
 - Keep ordinary accumulator loops for sums, counts, several results in one pass, and
   early exit.
@@ -208,9 +208,11 @@ When only one field accumulates, copying that field into a local is simpler stil
 ## Return values from helper methods
 
 A static field or `@Param` is not shared state on-chain. A loop that updates one
-rebinds the name only inside the updating method, so another method still reads the
-original value. Java would see the update, so JuLC rejects the loop update when another
-method reads the field or the field is final (`JULC0056`):
+rebinds the name only in the rest of that method's current run, so other methods, and
+later calls of the same method, still see the original value. Java would see the update,
+so JuLC accepts such an update only in the entrypoint, when nothing calls it and no other
+method reads the field, and rejects anything else (`JULC0056`). Here `feeCovered` reads
+the field that `paysFees` updates:
 
 ```java
 static BigInteger fee = BigInteger.ZERO;
