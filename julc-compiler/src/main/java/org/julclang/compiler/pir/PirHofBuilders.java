@@ -18,6 +18,11 @@ import java.util.List;
  * <p>
  * This class lives in {@code julc-compiler} so that {@code TypeMethodRegistry} can reference it
  * without a dependency on {@code julc-stdlib}.
+ * <p>
+ * Caller terms (lists, predicates, functions, initial values) are placed inside the builders'
+ * own binders. Every such binder is named with {@link PirHelpers#hygienicName} against the
+ * free variables of the caller terms in its scope, so a user variable such as an outer lambda
+ * parameter {@code x} is never captured by a builder binder of the same name.
  */
 public final class PirHofBuilders {
 
@@ -29,15 +34,16 @@ public final class PirHofBuilders {
      * Implemented as a left fold: foldl (\acc x -> if pred(x) then True else acc) False list
      */
     public static PirTerm any(PirTerm list, PirTerm predicate) {
-        var accVar = new PirTerm.Var("acc", new PirType.BoolType());
-        var xVar = new PirTerm.Var("x", new PirType.DataType());
+        var avoid = PirHelpers.freeVariables(predicate);
+        var accVar = new PirTerm.Var(PirHelpers.hygienicName("acc", avoid), new PirType.BoolType());
+        var xVar = new PirTerm.Var(PirHelpers.hygienicName("x", avoid), new PirType.DataType());
         var predApp = new PirTerm.App(predicate, xVar);
         var body = new PirTerm.IfThenElse(
                 predApp,
                 new PirTerm.Const(Constant.bool(true)),
                 accVar);
-        var foldFn = new PirTerm.Lam("acc", new PirType.BoolType(),
-                new PirTerm.Lam("x", new PirType.DataType(), body));
+        var foldFn = new PirTerm.Lam(accVar.name(), new PirType.BoolType(),
+                new PirTerm.Lam(xVar.name(), new PirType.DataType(), body));
         return foldl(foldFn, new PirTerm.Const(Constant.bool(false)), list);
     }
 
@@ -47,15 +53,16 @@ public final class PirHofBuilders {
      * Implemented as a left fold: foldl (\acc x -> if pred(x) then acc else False) True list
      */
     public static PirTerm all(PirTerm list, PirTerm predicate) {
-        var accVar = new PirTerm.Var("acc", new PirType.BoolType());
-        var xVar = new PirTerm.Var("x", new PirType.DataType());
+        var avoid = PirHelpers.freeVariables(predicate);
+        var accVar = new PirTerm.Var(PirHelpers.hygienicName("acc", avoid), new PirType.BoolType());
+        var xVar = new PirTerm.Var(PirHelpers.hygienicName("x", avoid), new PirType.DataType());
         var predApp = new PirTerm.App(predicate, xVar);
         var body = new PirTerm.IfThenElse(
                 predApp,
                 accVar,
                 new PirTerm.Const(Constant.bool(false)));
-        var foldFn = new PirTerm.Lam("acc", new PirType.BoolType(),
-                new PirTerm.Lam("x", new PirType.DataType(), body));
+        var foldFn = new PirTerm.Lam(accVar.name(), new PirType.BoolType(),
+                new PirTerm.Lam(xVar.name(), new PirType.DataType(), body));
         return foldl(foldFn, new PirTerm.Const(Constant.bool(true)), list);
     }
 
@@ -66,8 +73,10 @@ public final class PirHofBuilders {
      * Implemented using LetRec recursion.
      */
     public static PirTerm find(PirTerm list, PirTerm predicate) {
-        var lstVar = new PirTerm.Var("lst", new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var("go", new PirType.FunType(
+        // The predicate runs under go, lst and h; the list is applied under go.
+        var avoid = PirHelpers.freeVariables(list, predicate);
+        var lstVar = new PirTerm.Var(PirHelpers.hygienicName("lst", avoid), new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("go", avoid), new PirType.FunType(
                 new PirType.ListType(new PirType.DataType()),
                 new PirType.DataType()));
 
@@ -75,18 +84,18 @@ public final class PirHofBuilders {
         var none = new PirTerm.DataConstr(1, new PirType.OptionalType(new PirType.DataType()), List.of());
 
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-        var hVar = new PirTerm.Var("h", new PirType.DataType());
+        var hVar = new PirTerm.Var(PirHelpers.hygienicName("h", avoid), new PirType.DataType());
         var predH = new PirTerm.App(predicate, hVar);
         var some = new PirTerm.DataConstr(0, new PirType.OptionalType(new PirType.DataType()), List.of(hVar));
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
         var recurse = new PirTerm.App(goVar, tailExpr);
 
         var innerIf = new PirTerm.IfThenElse(predH, some, recurse);
-        var letHead = new PirTerm.Let("h", headExpr, innerIf);
+        var letHead = new PirTerm.Let(hVar.name(), headExpr, innerIf);
         var outerIf = new PirTerm.IfThenElse(nullCheck, none, letHead);
 
-        var goBody = new PirTerm.Lam("lst", new PirType.ListType(new PirType.DataType()), outerIf);
-        var binding = new PirTerm.Binding("go", goBody);
+        var goBody = new PirTerm.Lam(lstVar.name(), new PirType.ListType(new PirType.DataType()), outerIf);
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
 
         return new PirTerm.LetRec(
                 List.of(binding),
@@ -100,9 +109,11 @@ public final class PirHofBuilders {
      * accumulating a result starting from init.
      */
     public static PirTerm foldl(PirTerm f, PirTerm init, PirTerm list) {
-        var accVar = new PirTerm.Var("acc", new PirType.DataType());
-        var lstVar = new PirTerm.Var("lst", new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var("go", new PirType.FunType(new PirType.DataType(),
+        // f is applied under go, acc and lst; init and list are applied under go.
+        var avoid = PirHelpers.freeVariables(f, init, list);
+        var accVar = new PirTerm.Var(PirHelpers.hygienicName("acc", avoid), new PirType.DataType());
+        var lstVar = new PirTerm.Var(PirHelpers.hygienicName("lst", avoid), new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("go", avoid), new PirType.FunType(new PirType.DataType(),
                 new PirType.FunType(new PirType.ListType(new PirType.DataType()), new PirType.DataType())));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
@@ -116,9 +127,9 @@ public final class PirHofBuilders {
 
         var ifExpr = new PirTerm.IfThenElse(nullCheck, accVar, recurse);
 
-        var goBody = new PirTerm.Lam("acc", new PirType.DataType(),
-                new PirTerm.Lam("lst", new PirType.ListType(new PirType.DataType()), ifExpr));
-        var binding = new PirTerm.Binding("go", goBody);
+        var goBody = new PirTerm.Lam(accVar.name(), new PirType.DataType(),
+                new PirTerm.Lam(lstVar.name(), new PirType.ListType(new PirType.DataType()), ifExpr));
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
 
         return new PirTerm.LetRec(
                 List.of(binding),
@@ -131,14 +142,15 @@ public final class PirHofBuilders {
      * Implemented as: reverse(foldl (\acc x -> MkCons(f(x), acc)) MkNilData list)
      */
     public static PirTerm map(PirTerm list, PirTerm f) {
-        var accVar = new PirTerm.Var("acc_map", new PirType.ListType(new PirType.DataType()));
-        var xVar = new PirTerm.Var("x_map", new PirType.DataType());
+        var avoid = PirHelpers.freeVariables(f);
+        var accVar = new PirTerm.Var(PirHelpers.hygienicName("acc_map", avoid), new PirType.ListType(new PirType.DataType()));
+        var xVar = new PirTerm.Var(PirHelpers.hygienicName("x_map", avoid), new PirType.DataType());
         var mapped = new PirTerm.App(f, xVar);
         var consExpr = new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), mapped),
                 accVar);
-        var foldFn = new PirTerm.Lam("acc_map", new PirType.ListType(new PirType.DataType()),
-                new PirTerm.Lam("x_map", new PirType.DataType(), consExpr));
+        var foldFn = new PirTerm.Lam(accVar.name(), new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam(xVar.name(), new PirType.DataType(), consExpr));
         var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
                 new PirTerm.Const(Constant.unit()));
         return reverse(foldl(foldFn, emptyList, list));
@@ -150,15 +162,16 @@ public final class PirHofBuilders {
      * Implemented as: reverse(foldl (\acc x -> if pred(x) then MkCons(x, acc) else acc) MkNilData list)
      */
     public static PirTerm filter(PirTerm list, PirTerm predicate) {
-        var accVar = new PirTerm.Var("acc_flt", new PirType.ListType(new PirType.DataType()));
-        var xVar = new PirTerm.Var("x_flt", new PirType.DataType());
+        var avoid = PirHelpers.freeVariables(predicate);
+        var accVar = new PirTerm.Var(PirHelpers.hygienicName("acc_flt", avoid), new PirType.ListType(new PirType.DataType()));
+        var xVar = new PirTerm.Var(PirHelpers.hygienicName("x_flt", avoid), new PirType.DataType());
         var predApp = new PirTerm.App(predicate, xVar);
         var consExpr = new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), xVar),
                 accVar);
         var body = new PirTerm.IfThenElse(predApp, consExpr, accVar);
-        var foldFn = new PirTerm.Lam("acc_flt", new PirType.ListType(new PirType.DataType()),
-                new PirTerm.Lam("x_flt", new PirType.DataType(), body));
+        var foldFn = new PirTerm.Lam(accVar.name(), new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam(xVar.name(), new PirType.DataType(), body));
         var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
                 new PirTerm.Const(Constant.unit()));
         return reverse(foldl(foldFn, emptyList, list));
@@ -171,10 +184,12 @@ public final class PirHofBuilders {
      * Stops when either list is exhausted.
      */
     public static PirTerm zip(PirTerm a, PirTerm b) {
+        // Both lists are applied under go_zip.
+        var avoid = PirHelpers.freeVariables(a, b);
         var lstAVar = new PirTerm.Var("lstA_zip", new PirType.ListType(new PirType.DataType()));
         var lstBVar = new PirTerm.Var("lstB_zip", new PirType.ListType(new PirType.DataType()));
         var accVar = new PirTerm.Var("acc_zip", new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var("go_zip", new PirType.FunType(
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("go_zip", avoid), new PirType.FunType(
                 new PirType.ListType(new PirType.DataType()),
                 new PirType.FunType(new PirType.ListType(new PirType.DataType()),
                         new PirType.FunType(new PirType.ListType(new PirType.DataType()),
@@ -210,7 +225,7 @@ public final class PirHofBuilders {
         var goBody = new PirTerm.Lam("lstA_zip", new PirType.ListType(new PirType.DataType()),
                 new PirTerm.Lam("lstB_zip", new PirType.ListType(new PirType.DataType()),
                         new PirTerm.Lam("acc_zip", new PirType.ListType(new PirType.DataType()), body)));
-        var binding = new PirTerm.Binding("go_zip", goBody);
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
 
         var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
                 new PirTerm.Const(Constant.unit()));

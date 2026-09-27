@@ -8,7 +8,9 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.Statement;
 
 import java.math.BigInteger;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
@@ -49,29 +51,51 @@ public final class PirHelpers {
     }
 
     /**
+     * The free variables of caller-supplied terms that a builder places inside its own binders.
+     * Pass the result to {@link #hygienicName} for every binder whose scope contains those terms.
+     */
+    public static Set<String> freeVariables(PirTerm... callerTerms) {
+        var free = new HashSet<String>();
+        for (var term : callerTerms) free.addAll(PirSubstitution.collectFreeVarNames(term));
+        return free;
+    }
+
+    /**
+     * A builder binder name that cannot capture a free variable of the caller-supplied terms in
+     * its scope. Returns {@code base} when it is not free there, so non-conflicting PIR is
+     * unchanged; otherwise appends {@code #N}, which no Java identifier can contain.
+     */
+    public static String hygienicName(String base, Set<String> callerFreeVariables) {
+        if (!callerFreeVariables.contains(base)) return base;
+        int suffix = 1;
+        while (callerFreeVariables.contains(base + "#" + suffix)) suffix++;
+        return base + "#" + suffix;
+    }
+
+    /**
      * The recursive binding behind {@code JulcList.get}:
      * {@code go_get(lst, idx) = if idx == 0 then HeadList(lst) else go_get(TailList(lst), idx - 1)}.
      * Built once so that the lowering ({@link #recursiveListGet}) and the ADR-043 promotion pass
      * that recognises it structurally cannot drift apart.
      */
-    public static final PirTerm.Binding RECURSIVE_LIST_GET = recursiveListGetBinding();
+    public static final PirTerm.Binding RECURSIVE_LIST_GET = recursiveListGetBinding("go_get");
 
-    private static PirTerm.Binding recursiveListGetBinding() {
+    private static PirTerm.Binding recursiveListGetBinding(String goName) {
         var lstVar = new PirTerm.Var("lst_get", new PirType.ListType(new PirType.DataType()));
         var idxVar = new PirTerm.Var("idx_get", new PirType.IntegerType());
         var isZero = builtinApp2(DefaultFun.EqualsInteger, idxVar, new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
         var decIdx = builtinApp2(DefaultFun.SubtractInteger, idxVar, new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-        var recurse = new PirTerm.App(new PirTerm.App(recursiveListGetVar(), tailExpr), decIdx);
+        var recurse = new PirTerm.App(new PirTerm.App(recursiveListGetVar(goName), tailExpr), decIdx);
         var body = new PirTerm.IfThenElse(isZero, headExpr, recurse);
         var goBody = new PirTerm.Lam("lst_get", new PirType.ListType(new PirType.DataType()),
                 new PirTerm.Lam("idx_get", new PirType.IntegerType(), body));
-        return new PirTerm.Binding("go_get", goBody);
+        return new PirTerm.Binding(goName, goBody);
     }
 
-    private static PirTerm.Var recursiveListGetVar() {
-        return new PirTerm.Var("go_get", new PirType.FunType(
+    private static PirTerm.Var recursiveListGetVar(String goName) {
+        return new PirTerm.Var(goName, new PirType.FunType(
                 new PirType.ListType(new PirType.DataType()),
                 new PirType.FunType(new PirType.IntegerType(), new PirType.DataType())));
     }
@@ -80,10 +104,16 @@ public final class PirHelpers {
      * {@code list.get(index)} as a per-site recursive traversal: O(index) {@code TailList} steps,
      * failing with {@code HeadList: empty list} when {@code index} equals the length and
      * {@code TailList: empty list} when it is negative or larger. Returns the raw element.
+     * The list and index are applied inside the {@code LetRec}; if either mentions
+     * {@code go_get}, the binding is renamed (and the ADR-043 promotion no longer applies).
      */
     public static PirTerm recursiveListGet(PirTerm list, PirTerm index) {
-        return new PirTerm.LetRec(List.of(RECURSIVE_LIST_GET),
-                new PirTerm.App(new PirTerm.App(recursiveListGetVar(), list), index));
+        String goName = hygienicName(RECURSIVE_LIST_GET.name(), freeVariables(list, index));
+        var binding = goName.equals(RECURSIVE_LIST_GET.name())
+                ? RECURSIVE_LIST_GET
+                : recursiveListGetBinding(goName);
+        return new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(recursiveListGetVar(goName), list), index));
     }
 
     static PirTerm builtinApp2(DefaultFun fun, PirTerm a, PirTerm b) {
@@ -188,7 +218,8 @@ public final class PirHelpers {
         var lstVar = new PirTerm.Var("lst_c", new PirType.ListType(new PirType.DataType()));
         var goVar = new PirTerm.Var("go_c", new PirType.FunType(
                 new PirType.ListType(new PirType.DataType()), new PirType.BoolType()));
-        var targetVar = new PirTerm.Var("target_c", targetType);
+        // The list is evaluated inside the target's binder.
+        var targetVar = new PirTerm.Var(hygienicName("target_c", freeVariables(list)), targetType);
         var listVar = new PirTerm.Var("list_c", new PirType.ListType(new PirType.DataType()));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
@@ -212,7 +243,7 @@ public final class PirHelpers {
         var search = new PirTerm.LetRec(List.of(binding),
                 new PirTerm.App(goVar, listVar));
 
-        return new PirTerm.Let("target_c", target,
+        return new PirTerm.Let(targetVar.name(), target,
                 new PirTerm.Let("list_c", list, search));
     }
 
@@ -267,36 +298,39 @@ public final class PirHelpers {
      * @param list        the pair list to search (scope term)
      * @param key         the key to search for (pre-encoded as Data)
      * @param baseCase    result when list is exhausted
-     * @param bodyBuilder produces the body for the non-null case
+     * @param bodyBuilder produces the body for the non-null case; it may reference only the
+     *                    supplied variables and closed terms (caller terms belong in {@code key}
+     *                    or {@code baseCase}, whose free variables the binders avoid)
      * @return the complete LetRec search term
      */
     public static PirTerm pairListSearch(String suffix, PirTerm list, PirTerm key,
                                           PirTerm baseCase, PairSearchBody bodyBuilder) {
         var pairType = new PirType.PairType(new PirType.DataType(), new PirType.DataType());
         var pairListType = new PirType.ListType(pairType);
+        var avoid = freeVariables(key, baseCase);
 
-        var pairsVar = new PirTerm.Var("ps_" + suffix, pairListType);
-        var keyVar = new PirTerm.Var("k_" + suffix, new PirType.DataType());
-        var lstVar = new PirTerm.Var("lst_" + suffix, pairListType);
-        var goVar = new PirTerm.Var("go_" + suffix,
+        var pairsVar = new PirTerm.Var(hygienicName("ps_" + suffix, avoid), pairListType);
+        var keyVar = new PirTerm.Var(hygienicName("k_" + suffix, avoid), new PirType.DataType());
+        var lstVar = new PirTerm.Var(hygienicName("lst_" + suffix, avoid), pairListType);
+        var goVar = new PirTerm.Var(hygienicName("go_" + suffix, avoid),
                 new PirType.FunType(pairListType, new PirType.DataType()));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-        var hVar = new PirTerm.Var("h_" + suffix, pairType);
+        var hVar = new PirTerm.Var(hygienicName("h_" + suffix, avoid), pairType);
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
         var recurse = new PirTerm.App(goVar, tailExpr);
 
         var innerBody = bodyBuilder.build(hVar, keyVar, recurse);
-        var letHead = new PirTerm.Let("h_" + suffix, headExpr, innerBody);
+        var letHead = new PirTerm.Let(hVar.name(), headExpr, innerBody);
         var outerIf = new PirTerm.IfThenElse(nullCheck, baseCase, letHead);
 
-        var goBody = new PirTerm.Lam("lst_" + suffix, pairListType, outerIf);
-        var binding = new PirTerm.Binding("go_" + suffix, goBody);
+        var goBody = new PirTerm.Lam(lstVar.name(), pairListType, outerIf);
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
         var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
 
-        return new PirTerm.Let("ps_" + suffix, list,
-                new PirTerm.Let("k_" + suffix, key, search));
+        return new PirTerm.Let(pairsVar.name(), list,
+                new PirTerm.Let(keyVar.name(), key, search));
     }
 
     /**
@@ -326,35 +360,38 @@ public final class PirHelpers {
      * @param list        the list to search
      * @param target      the target value (pre-encoded as Data)
      * @param baseCase    result when list is exhausted
-     * @param bodyBuilder produces the body for the non-null case
+     * @param bodyBuilder produces the body for the non-null case; it may reference only the
+     *                    supplied variables and closed terms (caller terms belong in
+     *                    {@code target} or {@code baseCase}, whose free variables the binders avoid)
      * @return the complete LetRec search term
      */
     public static PirTerm listSearch(String suffix, PirTerm list, PirTerm target,
                                       PirTerm baseCase, ListSearchBody bodyBuilder) {
         var dataListType = new PirType.ListType(new PirType.DataType());
+        var avoid = freeVariables(target, baseCase);
 
-        var xsVar = new PirTerm.Var("xs_" + suffix, dataListType);
-        var tVar = new PirTerm.Var("t_" + suffix, new PirType.DataType());
-        var lstVar = new PirTerm.Var("lst_" + suffix, dataListType);
-        var goVar = new PirTerm.Var("go_" + suffix,
+        var xsVar = new PirTerm.Var(hygienicName("xs_" + suffix, avoid), dataListType);
+        var tVar = new PirTerm.Var(hygienicName("t_" + suffix, avoid), new PirType.DataType());
+        var lstVar = new PirTerm.Var(hygienicName("lst_" + suffix, avoid), dataListType);
+        var goVar = new PirTerm.Var(hygienicName("go_" + suffix, avoid),
                 new PirType.FunType(dataListType, new PirType.DataType()));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
         var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-        var eVar = new PirTerm.Var("e_" + suffix, new PirType.DataType());
+        var eVar = new PirTerm.Var(hygienicName("e_" + suffix, avoid), new PirType.DataType());
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
         var recurse = new PirTerm.App(goVar, tailExpr);
 
         var innerBody = bodyBuilder.build(eVar, tVar, recurse);
-        var letHead = new PirTerm.Let("e_" + suffix, headExpr, innerBody);
+        var letHead = new PirTerm.Let(eVar.name(), headExpr, innerBody);
         var outerIf = new PirTerm.IfThenElse(nullCheck, baseCase, letHead);
 
-        var goBody = new PirTerm.Lam("lst_" + suffix, dataListType, outerIf);
-        var binding = new PirTerm.Binding("go_" + suffix, goBody);
+        var goBody = new PirTerm.Lam(lstVar.name(), dataListType, outerIf);
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
         var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, xsVar));
 
-        return new PirTerm.Let("xs_" + suffix, list,
-                new PirTerm.Let("t_" + suffix, target, search));
+        return new PirTerm.Let(xsVar.name(), list,
+                new PirTerm.Let(tVar.name(), target, search));
     }
 
     /** Check if a PIR term contains a Var reference with the given name (for self-recursion detection). */
@@ -416,9 +453,11 @@ public final class PirHelpers {
      * Generate PIR foldl using LetRec — same pattern as ListsLib.foldl.
      */
     static PirTerm generateFoldl(PirTerm f, PirTerm init, PirTerm list) {
-        var accVar = new PirTerm.Var("acc__f", new PirType.DataType());
-        var lstVar = new PirTerm.Var("lst__f", new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var("go__f", new PirType.FunType(new PirType.DataType(),
+        // f is applied under all three binders; init and list under go.
+        var avoid = freeVariables(f, init, list);
+        var accVar = new PirTerm.Var(hygienicName("acc__f", avoid), new PirType.DataType());
+        var lstVar = new PirTerm.Var(hygienicName("lst__f", avoid), new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var(hygienicName("go__f", avoid), new PirType.FunType(new PirType.DataType(),
                 new PirType.FunType(new PirType.ListType(new PirType.DataType()), new PirType.DataType())));
 
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
@@ -430,9 +469,9 @@ public final class PirHelpers {
 
         var ifExpr = new PirTerm.IfThenElse(nullCheck, accVar, recurse);
 
-        var goBody = new PirTerm.Lam("acc__f", new PirType.DataType(),
-                new PirTerm.Lam("lst__f", new PirType.ListType(new PirType.DataType()), ifExpr));
-        var binding = new PirTerm.Binding("go__f", goBody);
+        var goBody = new PirTerm.Lam(accVar.name(), new PirType.DataType(),
+                new PirTerm.Lam(lstVar.name(), new PirType.ListType(new PirType.DataType()), ifExpr));
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
 
         return new PirTerm.LetRec(List.of(binding),
                 new PirTerm.App(new PirTerm.App(goVar, init), list));
