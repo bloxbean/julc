@@ -135,9 +135,10 @@ public class UplcGenerator {
     private Term generateInner(PirTerm pir) {
         return switch (pir) {
             case PirTerm.Var(var name, _) -> {
-                // Field accessor pseudo-variables are handled by their containing App
+                // ADR-060: a ".name" pseudo-variable is member access whose receiver type did not
+                // resolve it. It is never bound to a binder that happens to be named "name".
                 if (name.startsWith(".")) {
-                    throw new CompilerException("Bare field accessor not supported: " + name);
+                    throw CompilerTypeDiagnostics.unresolvedMember(name.substring(1), currentSourceLocation());
                 }
                 yield Term.var(deBruijnIndex(name));
             }
@@ -147,7 +148,7 @@ public class UplcGenerator {
             case PirTerm.Builtin(var fun) -> generateBuiltin(fun);
 
             case PirTerm.Lam(var param, _, var body) -> {
-                scope.push(param);
+                bind(param);
                 var bodyTerm = generate(body);
                 scope.pop();
                 var lambda = new Term.Lam(param, bodyTerm);
@@ -156,21 +157,13 @@ public class UplcGenerator {
             }
 
             case PirTerm.App(var function, var argument) -> {
-                // Handle field accessor: App(Var(".field"), scope) -> field extraction
-                if (function instanceof PirTerm.Var(var name, _) && name.startsWith(".")) {
-                    // For MVP, field access on Data-typed values is just passed through
-                    // The ValidatorWrapper/DataCodecGenerator handles the actual field extraction
-                    yield Term.apply(
-                            Term.var(deBruijnIndex(name.substring(1))),
-                            generate(argument));
-                }
                 yield Term.apply(generate(function), generate(argument));
             }
 
             case PirTerm.Let(var name, var value, var body) -> {
                 // Let(name, val, body) -> Apply(Lam(name, body'), val')
                 var valTerm = generate(value);
-                scope.push(name);
+                bind(name);
                 var bodyTerm = generate(body);
                 scope.pop();
                 var lambda = new Term.Lam(name, bodyTerm);
@@ -218,8 +211,8 @@ public class UplcGenerator {
                 }
                 context.recordOptimizationRule(PV11_CASE_PAIR_RULE);
                 var pairTerm = generate(scrutinee);
-                scope.push(first);
-                scope.push(second);
+                bind(first);
+                bind(second);
                 Term bodyTerm;
                 try {
                     bodyTerm = generate(body);
@@ -239,8 +232,8 @@ public class UplcGenerator {
                 context.recordOptimizationRule(PV11_CASE_LIST_RULE);
                 var listTerm = generate(scrutinee);
                 var nilTerm = generate(nil);
-                scope.push(head);
-                scope.push(tail);
+                bind(head);
+                bind(tail);
                 Term consTerm;
                 try {
                     consTerm = generate(cons);
@@ -324,7 +317,7 @@ public class UplcGenerator {
 
             // Generate the recursive function body: Lam(name, body')
             // The body references 'name' which is the recursive reference
-            scope.push(name);
+            bind(name);
             var bodyTerm = generate(value);
             scope.pop();
             var recursiveLam = Term.lam(name, bodyTerm);
@@ -333,7 +326,7 @@ public class UplcGenerator {
             var fixedFn = Term.apply(fix, recursiveLam);
 
             // Now bind name = fixedFn and generate the expression
-            scope.push(name);
+            bind(name);
             var exprTerm = generate(letRec.body());
             scope.pop();
 
@@ -525,17 +518,26 @@ public class UplcGenerator {
      * the historical UnConstrData/FstPair/SndPair expansion.
      */
     private Term generateDataMatch(PirTerm scrutinee, List<PirTerm.MatchBranch> branches) {
-        var dataName = "__match_data";
-        var pairName = "__match_pair";
-        var tagName = "__match_tag";
-        var fieldsName = "__match_fields";
+        // ADR-060: the dispatch binders are reserved names, chosen against every name a branch
+        // can see or bind (its body's free variables, field bindings and pattern variable), so no
+        // branch code is captured and no branch binder intercepts a generated reference.
+        var avoid = new HashSet<String>();
+        for (var branch : branches) {
+            avoid.addAll(PirSubstitution.collectFreeVarNames(branch.body()));
+            avoid.addAll(branch.bindings());
+            if (branch.patternVar() != null) avoid.add(branch.patternVar());
+        }
+        var dataName = PirHelpers.hygienicName("#__match_data", avoid);
+        var pairName = PirHelpers.hygienicName("#__match_pair", avoid);
+        var tagName = PirHelpers.hygienicName("#__match_tag", avoid);
+        var fieldsName = PirHelpers.hygienicName("#__match_fields", avoid);
 
         // Build the dispatch: under the PV11 safe profile a single integer Case selects the
         // branch by tag (ADR-041 O5); otherwise the historical equality chain
         // IfThenElse(tag==0, branch0, IfThenElse(tag==1, branch1, ...Error)).
         PirTerm dispatch;
         if (branches.size() == 1) {
-            dispatch = buildBranchFieldExtraction(branches.get(0), fieldsName, dataName);
+            dispatch = buildBranchFieldExtraction(branches.get(0), fieldsName, dataName, avoid);
         } else if (branches.size() >= 2 && integerCaseEnabled()) {
             // Constructor tags are dense 0..n-1 by construction: buildDataMatch emits exactly one
             // branch per constructor in tag order. Any other tag fails at selection, before any
@@ -543,14 +545,14 @@ public class UplcGenerator {
             context.recordOptimizationRule(PV11_CASE_INTEGER_RULE);
             var bodies = new ArrayList<PirTerm>(branches.size());
             for (var branch : branches) {
-                bodies.add(buildBranchFieldExtraction(branch, fieldsName, dataName));
+                bodies.add(buildBranchFieldExtraction(branch, fieldsName, dataName, avoid));
             }
             dispatch = new PirTerm.IntegerCase(
                     new PirTerm.Var(tagName, new PirType.IntegerType()), bodies);
         } else {
             dispatch = new PirTerm.Error(new PirType.UnitType());
             for (int i = branches.size() - 1; i >= 0; i--) {
-                var branchBody = buildBranchFieldExtraction(branches.get(i), fieldsName, dataName);
+                var branchBody = buildBranchFieldExtraction(branches.get(i), fieldsName, dataName, avoid);
                 var tagCheck = new PirTerm.App(
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger),
                                 new PirTerm.Var(tagName, new PirType.IntegerType())),
@@ -565,9 +567,7 @@ public class UplcGenerator {
         //          let fields = SndPair(pair)
         //          dispatch
         var dataVar = new PirTerm.Var(dataName, new PirType.DataType());
-        // Direct PIR can reference this historical internal binder. Removing it in
-        // that case would change lexical binding, so retain the old expansion.
-        if (pairCaseEnabled() && !PirSubstitution.collectFreeVarNames(dispatch).contains(pairName)) {
+        if (pairCaseEnabled()) {
             // ADR-038: successful UnConstrData proves the native pair by construction.
             // Keep data strict and once-bound, and decoding inside the unchanged dispatch.
             var pairType = new PirType.PairType(new PirType.IntegerType(),
@@ -592,7 +592,8 @@ public class UplcGenerator {
      * Build PIR for extracting fields from a Data list and binding them in the branch body.
      * HeadList/TailList for extraction; the shared typed decoder for field values.
      */
-    private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName, String dataName) {
+    private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName, String dataName,
+                                               Set<String> avoid) {
         var bindings = branch.bindings();
         var bindingTypes = branch.bindingTypes();
 
@@ -603,7 +604,7 @@ public class UplcGenerator {
             var lets = new ArrayList<PirTerm.Let>();
 
             for (int j = 0; j < bindings.size(); j++) {
-                var listVar = (j == 0) ? fieldsName : "__rest_" + (j - 1);
+                var listVar = (j == 0) ? fieldsName : PirHelpers.hygienicName("#__rest_" + (j - 1), avoid);
                 var listRef = new PirTerm.Var(listVar, new PirType.DataType());
 
                 // Decode field: UnIData(HeadList(fields)) for Integer, etc.
@@ -613,7 +614,7 @@ public class UplcGenerator {
 
                 if (j + 1 < bindings.size()) {
                     var tailExpr = pirApp1(DefaultFun.TailList, listRef);
-                    lets.add(new PirTerm.Let("__rest_" + j, tailExpr, null)); // body filled later
+                    lets.add(new PirTerm.Let(PirHelpers.hygienicName("#__rest_" + j, avoid), tailExpr, null)); // body filled later
                 }
             }
 
@@ -636,6 +637,12 @@ public class UplcGenerator {
     /** Create a PIR Builtin application with 1 arg. */
     private static PirTerm pirApp1(DefaultFun fun, PirTerm arg) {
         return new PirTerm.App(new PirTerm.Builtin(fun), arg);
+    }
+
+    /** Enter a binder's scope; every PIR binder passes the frontend's namespace check (ADR-060 G2). */
+    private void bind(String name) {
+        context.checkBinderName(name);
+        scope.push(name);
     }
 
     private int deBruijnIndex(String name) {

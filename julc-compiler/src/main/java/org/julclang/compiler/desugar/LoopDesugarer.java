@@ -58,16 +58,16 @@ public class LoopDesugarer {
         // Map iteration also reaches this builder, but carries native pairs, not Data.
         boolean useListCase = listCaseEnabled && !(elemType instanceof PirType.PairType);
         var listType = new PirType.ListType(new PirType.DataType());
-        var loopName = nextLoopName("loop__forEach");
-        var xsName = "xs__";
+        var loopName = nextLoopName("#loop__forEach");
+        var xsName = "#xs__";
 
         // loop = \xs \acc -> IfThenElse(NullList(xs), acc, loop(TailList(xs), body))
         // where body substitutes item = wrapDecode(HeadList(xs), elemType)
         var xsVar = new PirTerm.Var(xsName, listType);
         var accVar = new PirTerm.Var(accName, accType);
         // '#' cannot occur in a Java identifier; loopName makes nested binders distinct.
-        var headName = "#head_" + loopName;
-        var tailName = "#tail_" + loopName;
+        var headName = "#head_" + loopName.substring(1);
+        var tailName = "#tail_" + loopName.substring(1);
         PirTerm rawHead = useListCase
                 ? new PirTerm.Var(headName, new PirType.DataType())
                 : new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
@@ -137,14 +137,14 @@ public class LoopDesugarer {
         // Map iteration also reaches this builder, but carries native pairs, not Data.
         boolean useListCase = listCaseEnabled && !(elemType instanceof PirType.PairType);
         var listType = new PirType.ListType(new PirType.DataType());
-        var loopName = nextLoopName("loop__forEach");
-        var xsName = "xs__";
+        var loopName = nextLoopName("#loop__forEach");
+        var xsName = "#xs__";
 
         var xsVar = new PirTerm.Var(xsName, listType);
         var accVar = new PirTerm.Var(accName, accType);
         // '#' cannot occur in a Java identifier; loopName makes nested binders distinct.
-        var headName = "#head_" + loopName;
-        var tailName = "#tail_" + loopName;
+        var headName = "#head_" + loopName.substring(1);
+        var tailName = "#tail_" + loopName.substring(1);
         PirTerm rawHead = useListCase
                 ? new PirTerm.Var(headName, new PirType.DataType())
                 : new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
@@ -206,7 +206,7 @@ public class LoopDesugarer {
     public PirTerm desugarWhileWithAccumulator(
             PirTerm condition, PirTerm body,
             String accName, PirTerm accInit, PirType accType) {
-        var loopName = nextLoopName("loop__while");
+        var loopName = nextLoopName("#loop__while");
         var funType = new PirType.FunType(accType, accType);
         var accVar = new PirTerm.Var(accName, accType);
 
@@ -241,7 +241,7 @@ public class LoopDesugarer {
     public PirTerm desugarWhileWithAccumulatorAndBreak(
             PirTerm condition, String accName, PirTerm accInit, PirType accType,
             BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder) {
-        var loopName = nextLoopName("loop__while");
+        var loopName = nextLoopName("#loop__while");
         var funType = new PirType.FunType(accType, accType);
         var accVar = new PirTerm.Var(accName, accType);
 
@@ -272,16 +272,16 @@ public class LoopDesugarer {
      */
     public PirTerm desugarWhile(PirTerm condition, PirTerm body) {
         var unitType = new PirType.UnitType();
-        var loopName = nextLoopName("loop__while");
+        var loopName = nextLoopName("#loop__while");
 
         // loop = \_ -> IfThenElse(cond, Let("_", body, loop(Unit)), Unit)
         var recursiveCall = new PirTerm.App(
                 new PirTerm.Var(loopName, new PirType.FunType(unitType, unitType)),
                 new PirTerm.Const(Constant.unit()));
 
-        var bodyThenContinue = new PirTerm.Let("_body", body, recursiveCall);
+        var bodyThenContinue = new PirTerm.Let("#_body", body, recursiveCall);
 
-        var loopLambda = new PirTerm.Lam(PirHelpers.hygienicName("_u", PirHelpers.freeVariables(condition, body)), unitType,
+        var loopLambda = new PirTerm.Lam(PirHelpers.hygienicName("#_u", PirHelpers.freeVariables(condition, body)), unitType,
                 new PirTerm.IfThenElse(condition, bodyThenContinue, new PirTerm.Const(Constant.unit())));
 
         var initialCall = new PirTerm.App(

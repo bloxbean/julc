@@ -137,6 +137,8 @@ the new gating tests pin `-1`, `n`, `2^40`, `2^64` and `-2^64` on Java, Truffle 
   `Term.Case(tag, [B0 .. Bn-1])`. Single-constructor matches keep their unchanged
   field-extraction body. The rule applies inside both the ADR-038 pair Case and the legacy
   `__match_pair` expansion, since the dispatch is orthogonal to the binder shape.
+  (ADR-060 removed that expansion's direct-PIR fallback; the legacy expansion now appears
+  only below the PV11 safe profile, where O5 does not apply.)
 - Rule provenance: `pv11.o5.case-integer` in the optimization report.
 - `NONE` and `BASELINE` keep their historical bytes; `PV11_SAFE` and `PV11_COSTED` change bytes
   and hashes for every program containing a sealed switch with two or more constructors.

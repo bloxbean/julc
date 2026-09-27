@@ -84,7 +84,8 @@ final class LibraryCompiler {
             for (var method : cls.getMethods()) {
                 if (method.isStatic()) {
                     var mType = computeMethodType(method, typeResolver);
-                    libSymbolTable.define(classNameFqcn + "." + method.getNameAsString(), mType);
+                    libSymbolTable.declareMethod(method.getNameAsString(),
+                            classNameFqcn + "." + method.getNameAsString(), mType);
                 }
             }
 
@@ -92,6 +93,8 @@ final class LibraryCompiler {
             var libPirGenerator = PirGenerator.forCompilation(
                     typeResolver, libSymbolTable, composedLookup,
                     TypeMethodRegistry.defaultRegistry(), classNameFqcn, context);
+            // A library method can run any number of times: no entry methods (JULC0056, ADR-060).
+            libPirGenerator.setEntryMethods(List.of());
 
             record LibCompiledField(String name, PirTerm initPir) {}
             var compiledLibFields = new ArrayList<LibCompiledField>();
@@ -100,6 +103,7 @@ final class LibraryCompiler {
                 compiledLibFields.add(new LibCompiledField(sf.name(), initPir));
             }
 
+            var overloads = new OnchainOverloads(classNameFqcn, Set.of());
             for (var method : cls.getMethods()) {
                 if (method.isStatic()) {
                     var pirBody = libPirGenerator.generateMethod(method);
@@ -108,6 +112,7 @@ final class LibraryCompiler {
                         pirBody = new PirTerm.Let(sf.name(), sf.initPir(), pirBody);
                     }
                     var mType = computeMethodType(method, typeResolver);
+                    overloads.check(method, mType, pirBody);
                     registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
                 }
             }

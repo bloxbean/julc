@@ -77,6 +77,8 @@ subprojects {
 //        jvmArgs '--enable-preview'
         jvmArgs '--enable-native-access=ALL-UNNAMED'
         maxHeapSize = '1g'
+        // ADR-060 G2: every compilation in tests checks the generated-binder namespace.
+        systemProperty 'julc.verifyBinderNamespace', 'true'
     }
 
     tasks.withType(Javadoc).configureEach {

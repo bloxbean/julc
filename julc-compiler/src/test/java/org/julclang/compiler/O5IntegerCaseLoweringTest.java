@@ -389,7 +389,7 @@ class O5IntegerCaseLoweringTest {
 
     private static void collectDispatchBodies(Term term, List<Term> found) {
         switch (term) {
-            case Term.Lam fields when fields.paramName().equals("__match_fields") -> {
+            case Term.Lam fields when fields.paramName().equals("#__match_fields") -> {
                 found.add(fields.body());
                 collectDispatchBodies(fields.body(), found);
             }

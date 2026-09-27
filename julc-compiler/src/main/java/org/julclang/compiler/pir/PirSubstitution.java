@@ -171,7 +171,7 @@ public final class PirSubstitution {
             String renamed = name;
             if (!collecting && forbidden.contains(name)) {
                 do {
-                    renamed = "$pir$subst$" + next++;
+                    renamed = "#$pir$subst$" + next++;
                 } while (!used.add(renamed));
             }
             scope.put(name, renamed);

@@ -220,6 +220,7 @@ final class AccumulatorTypeAnalyzer {
         for (var stmt : stmts) {
             if (stmt instanceof ExpressionStmt es
                     && es.getExpression() instanceof AssignExpr ae
+                    && ae.getOperator() == AssignExpr.Operator.ASSIGN
                     && ae.getTarget() instanceof NameExpr ne
                     && ne.getNameAsString().equals(varName)
                     && ae.getValue() instanceof MethodCallExpr mce
@@ -385,18 +386,54 @@ final class AccumulatorTypeAnalyzer {
     }
 
     /**
-     * Detect accumulator variables in a for-each or while loop body.
+     * The first assignment, in the statements a for-each body compiles itself, to its loop variable
+     * or to a local declared in the body. Nested loops compile their own assignments and lambdas
+     * cannot assign, so neither is searched. Used where the loop has no accumulator and its body
+     * is compiled as plain statements, which cannot reassign a variable (JULC0058, ADR-060).
+     */
+    static Optional<AssignExpr> firstLocalReassignment(ForEachStmt loop) {
+        var locals = new HashSet<String>();
+        loop.getVariable().getVariables().forEach(v -> locals.add(v.getNameAsString()));
+        return firstLocalReassignment(PirHelpers.blockStmts(loop.getBody()), locals);
+    }
+
+    private static Optional<AssignExpr> firstLocalReassignment(List<Statement> stmts, Set<String> outerLocals) {
+        var locals = new HashSet<>(outerLocals);
+        for (var stmt : stmts) {
+            Optional<AssignExpr> found = Optional.empty();
+            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                vde.getVariables().forEach(v -> locals.add(v.getNameAsString()));
+            } else if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne && locals.contains(ne.getNameAsString())) {
+                found = Optional.of(ae);
+            } else if (stmt instanceof IfStmt is) {
+                found = firstLocalReassignment(PirHelpers.blockStmts(is.getThenStmt()), locals);
+                if (found.isEmpty() && is.getElseStmt().isPresent()) {
+                    found = firstLocalReassignment(PirHelpers.blockStmts(is.getElseStmt().get()), locals);
+                }
+            } else if (stmt instanceof BlockStmt bs) {
+                found = firstLocalReassignment(bs.getStatements(), locals);
+            }
+            if (found.isPresent()) return found;
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Detect the accumulators of a for-each or while loop: the enclosing bindings its body assigns.
+     * The loop statement is scanned, not just its body, so a for-each variable is in scope there:
+     * assigning it is not an accumulator update even when it shadows a field or {@code @Param}
+     * (ADR-060).
      *
      * @param typeLookup function to check if a variable name is defined in scope
      */
-    static List<String> detectForEachAccumulators(Statement bodyStmt,
-                                                   Function<String, Optional<PirType>> typeLookup) {
-        List<Statement> stmts;
-        if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
-        else stmts = List.of(bodyStmt);
-        if (stmts.isEmpty()) return List.of();
+    static List<String> detectLoopAccumulators(Statement loop,
+                                               Function<String, Optional<PirType>> typeLookup) {
+        if (!(loop instanceof ForEachStmt || loop instanceof WhileStmt)) {
+            throw new IllegalArgumentException("Not a loop: " + loop.getClass().getSimpleName());
+        }
         var accNames = new LinkedHashSet<String>();
-        collectAccumulatorAssignments(stmts, accNames, typeLookup);
+        collectAccumulatorAssignments(List.of(loop), accNames, typeLookup);
         return new ArrayList<>(accNames);
     }
 
@@ -456,25 +493,42 @@ final class AccumulatorTypeAnalyzer {
      */
     static void collectAccumulatorAssignments(List<Statement> stmts, LinkedHashSet<String> accNames,
                                                Function<String, Optional<PirType>> typeLookup) {
+        collectAccumulatorAssignments(stmts, accNames, typeLookup, Set.of());
+    }
+
+    /**
+     * An assignment updates an accumulator when its target is visible before the loop and not a
+     * local the body declared in an enclosing block before it. Java forbids shadowing a method's
+     * locals, so a body local with an outer name shadows a field or {@code @Param} (ADR-060).
+     */
+    private static void collectAccumulatorAssignments(List<Statement> stmts, LinkedHashSet<String> accNames,
+                                                      Function<String, Optional<PirType>> typeLookup,
+                                                      Set<String> outerLocals) {
+        var locals = new HashSet<>(outerLocals);
         for (var stmt : stmts) {
+            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                vde.getVariables().forEach(v -> locals.add(v.getNameAsString()));
+            }
             if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
                 var name = ne.getNameAsString();
-                if (typeLookup.apply(name).isPresent()) accNames.add(name);
+                if (!locals.contains(name) && typeLookup.apply(name).isPresent()) accNames.add(name);
             }
             if (stmt instanceof IfStmt is) {
-                collectAccumulatorAssignments(PirHelpers.blockStmts(is.getThenStmt()), accNames, typeLookup);
+                collectAccumulatorAssignments(PirHelpers.blockStmts(is.getThenStmt()), accNames, typeLookup, locals);
                 is.getElseStmt().ifPresent(e ->
-                        collectAccumulatorAssignments(PirHelpers.blockStmts(e), accNames, typeLookup));
+                        collectAccumulatorAssignments(PirHelpers.blockStmts(e), accNames, typeLookup, locals));
             }
             if (stmt instanceof BlockStmt bs) {
-                collectAccumulatorAssignments(bs.getStatements(), accNames, typeLookup);
+                collectAccumulatorAssignments(bs.getStatements(), accNames, typeLookup, locals);
             }
             if (stmt instanceof WhileStmt ws) {
-                collectAccumulatorAssignments(PirHelpers.blockStmts(ws.getBody()), accNames, typeLookup);
+                collectAccumulatorAssignments(PirHelpers.blockStmts(ws.getBody()), accNames, typeLookup, locals);
             }
             if (stmt instanceof ForEachStmt fes) {
-                collectAccumulatorAssignments(PirHelpers.blockStmts(fes.getBody()), accNames, typeLookup);
+                var loopLocals = new HashSet<>(locals);
+                fes.getVariable().getVariables().forEach(v -> loopLocals.add(v.getNameAsString()));
+                collectAccumulatorAssignments(PirHelpers.blockStmts(fes.getBody()), accNames, typeLookup, loopLocals);
             }
         }
     }

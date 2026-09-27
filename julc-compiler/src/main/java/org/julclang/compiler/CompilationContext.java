@@ -14,13 +14,16 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
- * Immutable configuration resolved for one compiler invocation.
+ * Configuration resolved for one compiler invocation, and the state its stages report into.
  *
  * <p>The context snapshots mutable {@link CompilerOptions} at the compiler
  * boundary. It is then passed through the pipeline so every target-sensitive
- * stage observes the same target and options.
+ * stage observes the same target and options. Stages record diagnostics and
+ * applied optimization rules here, and the Java frontend may install the
+ * binder-namespace check (ADR-060).
  */
 public final class CompilationContext {
 
@@ -46,6 +49,7 @@ public final class CompilationContext {
     private final Consumer<String> logger;
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
+    private Predicate<String> binderNamespace;
 
     private CompilationContext(
             ResolvedCompilerTarget resolvedTarget,
@@ -191,5 +195,21 @@ public final class CompilationContext {
 
     public void warnf(String format, Object... args) {
         logger.accept("[julc] WARN: " + String.format(format, args));
+    }
+
+    /**
+     * ADR-060 G2: require every binder that reaches UPLC generation to be accepted by
+     * {@code allowed}. The Java frontend enables this in tests; other frontends own their names.
+     */
+    void verifyBinderNames(Predicate<String> allowed) {
+        this.binderNamespace = Objects.requireNonNull(allowed, "allowed");
+    }
+
+    /** Fails when a binder is outside the namespace the frontend declared: a compiler bug. */
+    public void checkBinderName(String name) {
+        if (binderNamespace != null && !binderNamespace.test(name)) {
+            throw new IllegalStateException("ADR-060: binder '" + name
+                    + "' is neither a reserved '#' name nor a source name");
+        }
     }
 }

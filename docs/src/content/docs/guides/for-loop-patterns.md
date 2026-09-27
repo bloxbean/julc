@@ -157,18 +157,18 @@ return found;
 accInit = MkCons(ConstrData(0, []), MkCons(IData(0), MkNilData))
 
 // Fold body: unpack, compute, repack
-loop = \xs \__acc_tuple ->
-  if NullList(xs) then __acc_tuple
-  else Let(item, HeadList(xs),
-    Let(found, UnConstrData(HeadList(__acc_tuple)),
-    Let(count, UnIData(HeadList(TailList(__acc_tuple))),
+loop = \#xs__ \#__acc_tuple ->
+  if NullList(#xs__) then #__acc_tuple
+  else Let(item, HeadList(#xs__),
+    Let(found, UnConstrData(HeadList(#__acc_tuple)),
+    Let(count, UnIData(HeadList(TailList(#__acc_tuple))),
       ... compute new found, new count ...
       MkCons(encode(found'), MkCons(encode(count'), MkNilData)))))
 
 // After loop: unpack final state
-Let(__acc_tuple, loop(sigs, accInit),
-  Let(found, decode(HeadList(__acc_tuple)),
-  Let(count, decode(HeadList(TailList(__acc_tuple))),
+Let(#__acc_tuple, loop(sigs, accInit),
+  Let(found, decode(HeadList(#__acc_tuple)),
+  Let(count, decode(HeadList(TailList(#__acc_tuple))),
     ... rest of validator ...)))
 ```
 
@@ -418,7 +418,11 @@ for (var input : txInfo.inputs()) {
 }
 ```
 
-Each loop gets a unique counter-based name (`loop__forEach__0`, `loop__while__1`, etc.) to prevent naming collisions. Inner loop accumulators are correctly rebound into the outer loop's scope.
+Each loop gets a unique counter-based name (`#loop__forEach__0`, `#loop__while__1`, etc.) to prevent naming collisions. Inner loop accumulators are correctly rebound into the outer loop's scope.
+
+Every name the compiler generates begins with `#`, which no Java identifier can contain, so a
+source variable never collides with the loop's own list, accumulator tuple or function, whatever
+it is called ([ADR-060](https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md)).
 
 ## Supported Accumulator Types
 
@@ -446,6 +450,10 @@ Any type supported by the compiler can be used as a loop accumulator:
 | Nested loops | Supported | While-in-while, for-each-in-for-each, mixed |
 | For-each on MapType | Supported | Elements are PairType with `.key()`/`.value()` |
 | Accumulator reassignment outside if | Supported | Direct loop-body statements; not arbitrary expression positions |
+| `acc += x`, `-=`, `*=`, `/=`, `%=` | Supported | Same as `acc = acc op x` on integers; `+=` also appends to a `String` |
+| `ok &= check(x)`, `\|=`, `^=`, `<<=`, `>>=`, `>>>=` | Rejected (JULC0052) | Java always evaluates the right side of `&=`/`\|=`; write `boolean c = check(x); ok = ok && c;` |
+| `x++`, `x--` | Rejected | Write `x = x + 1` |
+| `BigInteger a = x, b = y;` | Rejected (JULC0053) | Declare one variable per statement |
 | Variable declaration inside loop | Supported | Local vars are scoped to the iteration |
 | `if` updates a body local declared outside the branch | Rejected | Use a conditional initializer, a pre-loop accumulator, or a branch-local declaration |
 | Switch arm updates a variable declared outside the arm | Rejected | Includes updates through nested loops; declare inside the arm and yield the result |
@@ -473,7 +481,10 @@ for (var item : items) {
 
 ### Immutability Reminder
 
-Variables in JuLC are immutable. The `acc = expr` syntax inside loops is special — the compiler recognizes it as a fold accumulator update, not a true mutation. Outside of loop bodies, assignment (`x = x + 1`) is not supported.
+Variables in JuLC are immutable. The `acc = expr` syntax inside loops is special — the compiler recognizes it as a fold accumulator update, not a true mutation. A compound update `acc += expr` is the same update as `acc = acc + expr`. Outside of loop bodies, assignment (`x = x + 1` or `x += 1`) is not supported.
+
+JuLC integers are unbounded, so `long` and `int` arithmetic, including `+=`, never overflows or
+narrows as it would in Java.
 
 ### Post-Loop Variable Access in Multi-Accumulator Loops (FIXED)
 

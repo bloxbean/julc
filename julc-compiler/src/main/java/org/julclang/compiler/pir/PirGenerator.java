@@ -13,6 +13,7 @@ import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
@@ -46,6 +47,21 @@ public class PirGenerator {
     private final CompilationContext context;
     private final DebugMetadataCollector debugMetadata;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
+    private final Map<String, SourceLocation> unresolvedMembers = new LinkedHashMap<>();
+    /** The source method being generated; loop updates of fields are checked against its class. */
+    private MethodDeclaration currentMethod;
+    /**
+     * JULC0056 (ADR-060): the methods that run once per evaluation, {@code null} until a class
+     * compilation declares them; the methods generated so far with the names their PIR refers to;
+     * and the loop updates of fields, both in generation order so the reported error is stable.
+     */
+    private Set<MethodDeclaration> entryMethods;
+    private final List<GeneratedMethod> generatedMethods = new ArrayList<>();
+    private final List<LoopFieldUpdate> loopFieldUpdates = new ArrayList<>();
+
+    private record GeneratedMethod(MethodDeclaration method, Set<String> references) {}
+
+    private record LoopFieldUpdate(MethodDeclaration method, String name, SourceLocation location) {}
     private final LoopDesugarer loopDesugarer;
     private int ifJoinCounter;
 
@@ -239,7 +255,7 @@ public class PirGenerator {
                 });
     }
 
-    private static SourceLocation sourceLocation(Node node) {
+    static SourceLocation sourceLocation(Node node) {
         if (node == null || node.getRange().isEmpty()) {
             return null;
         }
@@ -346,9 +362,34 @@ public class PirGenerator {
     }
 
     /**
+     * Start a class compilation (ADR-060, JULC0056). {@code entries} are the methods the program
+     * runs once per evaluation: the validator entrypoints, or the {@code compileMethod} target.
+     * A library has none. Only an entry method may update a static field or {@code @Param} in a
+     * loop. Without this call a generated method may not update one at all.
+     */
+    public void setEntryMethods(Collection<MethodDeclaration> entries) {
+        entryMethods = Collections.newSetFromMap(new IdentityHashMap<>());
+        entryMethods.addAll(entries);
+    }
+
+    /**
      * Generate PIR for a method body. Returns a lambda term wrapping the body.
      */
     public PirTerm generateMethod(MethodDeclaration method) {
+        var previousMethod = currentMethod;
+        currentMethod = method;
+        try {
+            var term = generateMethodBody(method);
+            generatedMethods.add(new GeneratedMethod(method,
+                    PirSubstitution.collectFreeVarNames(withoutIdentityLets(term))));
+            requireUnsharedFields();
+            return term;
+        } finally {
+            currentMethod = previousMethod;
+        }
+    }
+
+    private PirTerm generateMethodBody(MethodDeclaration method) {
         var params = method.getParameters();
         var body = method.getBody().orElseThrow(
                 () -> new CompilerException("Method must have a body: " + method.getNameAsString()));
@@ -436,6 +477,7 @@ public class PirGenerator {
         }
         if (stmt instanceof ExpressionStmt es) {
             if (es.getExpression() instanceof VariableDeclarationExpr vde) {
+                requireSingleDeclarator(vde);
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
                 var sourceName = LoopBodyGenerator.sourceName(name);
@@ -455,7 +497,7 @@ public class PirGenerator {
             // rejected by generateExpression: the loop body generators bind every supported one)
             var expr = generateExpression(es.getExpression());
             var rest = generateStatements(stmts, index + 1, cont);
-            return new PirTerm.Let("_", expr, rest);
+            return new PirTerm.Let("#_", expr, rest);
         }
         if (stmt instanceof IfStmt is) {
             return generateIfStmt(is, stmts, index, cont);
@@ -579,7 +621,7 @@ public class PirGenerator {
         // fall through to), wrap in a let
         if (hasFollowing || cont != null) {
             var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-            return new PirTerm.Let(PirHelpers.hygienicName("_if", PirHelpers.freeVariables(rest)), ifExpr, rest);
+            return new PirTerm.Let(PirHelpers.hygienicName("#_if", PirHelpers.freeVariables(rest)), ifExpr, rest);
         }
         return ifExpr;
     }
@@ -966,29 +1008,38 @@ public class PirGenerator {
     private PirTerm generateBinaryExpr(BinaryExpr be) {
         var left = generateExpression(be.getLeft());
         var right = generateExpression(be.getRight());
+        return binaryOperation(be.getOperator(), be.getLeft(), left, be.getRight(), right, be);
+    }
 
+    /**
+     * Lower {@code left op right} from already generated operands. The source expressions only
+     * type the operands; {@code node} locates diagnostics. Shared by binary expressions and
+     * compound assignments, so both lower an operator identically.
+     */
+    private PirTerm binaryOperation(BinaryExpr.Operator operator, Expression leftExpr, PirTerm left,
+                                    Expression rightExpr, PirTerm right, Node node) {
         // Infer operand type for type-aware dispatching
-        var leftType = resolveExpressionType(be.getLeft());
+        var leftType = resolveExpressionType(leftExpr);
         if (leftType instanceof PirType.DataType) leftType = inferPirType(left);
-        var rightType = resolveExpressionType(be.getRight());
+        var rightType = resolveExpressionType(rightExpr);
         if (rightType instanceof PirType.DataType) rightType = inferPirType(right);
 
-        if ((be.getOperator() == BinaryExpr.Operator.EQUALS
-                || be.getOperator() == BinaryExpr.Operator.NOT_EQUALS)
+        if ((operator == BinaryExpr.Operator.EQUALS
+                || operator == BinaryExpr.Operator.NOT_EQUALS)
                 && (typeResolver.containsNativeOpaque(leftType)
                 || typeResolver.containsNativeOpaque(rightType))) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(
                     "Equality comparison",
                     typeResolver.containsNativeOpaque(leftType) ? leftType : rightType,
                     new PirType.DataType(),
-                    sourceLocation(be));
+                    sourceLocation(node));
         }
         // If left is still DataType, try the right operand for better type inference
         if (leftType instanceof PirType.DataType) {
             if (!(rightType instanceof PirType.DataType)) leftType = rightType;
         }
 
-        return switch (be.getOperator()) {
+        return switch (operator) {
             case PLUS -> {
                 if (leftType instanceof PirType.StringType)
                     yield builtinApp2(DefaultFun.AppendString, left, right);
@@ -1008,9 +1059,134 @@ public class PirGenerator {
             case GREATER_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, right, left); // swap
             case AND -> new PirTerm.IfThenElse(left, right, new PirTerm.Const(Constant.bool(false)));
             case OR -> new PirTerm.IfThenElse(left, new PirTerm.Const(Constant.bool(true)), right);
-            default -> collectError("Unsupported operator: " + be.getOperator(),
-                    "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||", be);
+            default -> collectError("Unsupported operator: " + operator,
+                    "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||", node);
         };
+    }
+
+    /**
+     * The value an assignment stores (ADR-060): the right-hand side for {@code =}, and
+     * {@code target op value} for {@code += -= *= /= %=}, lowered by {@link #binaryOperation} in
+     * Java's operand order. Integer targets take every lowered operator and String targets take
+     * {@code +=}; SubsetValidator rejects the bitwise, shift and boolean operators.
+     */
+    PirTerm assignmentValue(AssignExpr ae, String name, PirType target) {
+        if (ae.getOperator() == AssignExpr.Operator.ASSIGN) {
+            var value = generateExpression(ae.getValue());
+            checkNativeAssignment(name, ae.getValue(), value, target);
+            return value;
+        }
+        var operator = ae.getOperator().toBinaryOperator()
+                .filter(op -> op == BinaryExpr.Operator.PLUS || op == BinaryExpr.Operator.MINUS
+                        || op == BinaryExpr.Operator.MULTIPLY || op == BinaryExpr.Operator.DIVIDE
+                        || op == BinaryExpr.Operator.REMAINDER)
+                .orElseThrow(() -> CompilerTypeDiagnostics.compoundAssignmentUnsupported(
+                        ae.getOperator().asString(), sourceLocation(ae)));
+        boolean integer = target instanceof PirType.IntegerType;
+        boolean string = target instanceof PirType.StringType && operator == BinaryExpr.Operator.PLUS;
+        if (!integer && !string) {
+            throw enrichedError("Compound assignment " + ae.getOperator().asString() + " to '"
+                            + LoopBodyGenerator.sourceName(name) + "' of type "
+                            + LibraryMethodRegistry.pirTypeName(target) + " is not supported",
+                    "Compound assignment is supported on integer variables, and += on String variables. "
+                            + "Write the update explicitly, e.g. x = x.add(y).", ae);
+        }
+        var current = generateExpression(ae.getTarget());
+        var operand = generateExpression(ae.getValue());
+        var operandType = expressionType(ae.getValue(), operand);
+        if (string ? !(operandType instanceof PirType.StringType)
+                : !(operandType instanceof PirType.IntegerType || operandType instanceof PirType.DataType)) {
+            throw enrichedError("Compound assignment " + ae.getOperator().asString() + " to '"
+                            + LoopBodyGenerator.sourceName(name) + "' needs a "
+                            + LibraryMethodRegistry.pirTypeName(target) + " operand, found "
+                            + LibraryMethodRegistry.pirTypeName(operandType),
+                    "Convert the right-hand side to the variable's type first.", ae.getValue());
+        }
+        return binaryOperation(operator, ae.getTarget(), current, ae.getValue(), operand, ae);
+    }
+
+    /**
+     * JULC0056: a static field or {@code @Param} is not shared state on-chain. A loop assignment
+     * rebinds it only in the rest of the assigning method's current run, and every other run and
+     * every other method sees the field's initial value (ADR-060). That matches Java only when the
+     * field is not final, the method runs once per evaluation (an entry method that nothing calls,
+     * with the loop outside any lambda), and no other method reads the field. This method rejects
+     * what the source shows; {@link #requireUnsharedFields} checks calls and reads.
+     */
+    void requireUnsharedField(String name, Node at) {
+        // A block generated directly, outside a class compilation, keeps the caller's bindings in
+        // the global scope, so a loop update there is not a field update.
+        if (currentMethod == null && entryMethods == null) return;
+        var field = LoopBodyGenerator.sourceName(name);
+        var location = sourceLocation(at);
+        if (currentMethod == null) {
+            throw CompilerTypeDiagnostics.fieldAssignment(field,
+                    "a static field initializer cannot update a field", location);
+        }
+        var owner = currentMethod.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
+        if (owner != null) {
+            for (var declaration : owner.getFields())
+                if (declaration.isFinal() && declaration.getVariables().stream()
+                        .anyMatch(v -> v.getNameAsString().equals(field)))
+                    throw CompilerTypeDiagnostics.fieldAssignment(field, "the field is final", location);
+        }
+        var method = currentMethod.getNameAsString();
+        if (entryMethods == null || !entryMethods.contains(currentMethod)) {
+            throw CompilerTypeDiagnostics.fieldAssignment(field, "'" + method
+                    + "' is not an entry method, and each call of it starts from the field's initial value", location);
+        }
+        if (at.findAncestor(LambdaExpr.class).isPresent()) {
+            throw CompilerTypeDiagnostics.fieldAssignment(field,
+                    "the loop is in a lambda, and each run of it starts from the field's initial value", location);
+        }
+        loopFieldUpdates.add(new LoopFieldUpdate(currentMethod, name, location));
+    }
+
+    /**
+     * Reject a loop update of a field when a generated method calls the updating method, which
+     * would then run more than once, or when another generated method reads the field. A method
+     * refers to a name when the name is free in its PIR, so a local, parameter, lambda or pattern
+     * variable that shadows the field is not a read. Every update is made while its method is
+     * generated, and this runs after each method, so it sees every pair of an update and a
+     * reference whatever order the methods are generated in.
+     */
+    private void requireUnsharedFields() {
+        for (var update : loopFieldUpdates) {
+            var field = LoopBodyGenerator.sourceName(update.name());
+            var method = update.method().getNameAsString();
+            var binder = symbolTable.lookupMethodSignature(method).map(SymbolTable.MethodSignature::binderName);
+            for (var generated : generatedMethods) {
+                var other = generated.method().getNameAsString();
+                if (binder.isPresent() && generated.references().contains(binder.get())) {
+                    throw CompilerTypeDiagnostics.fieldAssignment(field, (generated.method() == update.method()
+                            ? "'" + method + "' calls itself" : "'" + other + "' calls '" + method + "'")
+                            + ", and each call starts from the field's initial value", update.location());
+                }
+                if (generated.method() != update.method() && generated.references().contains(update.name())) {
+                    throw CompilerTypeDiagnostics.fieldAssignment(field, "'" + other
+                            + "' reads it, and sees only the field's initial value", update.location());
+                }
+            }
+        }
+    }
+
+    /**
+     * {@code let x = x in b} is {@code b}. The loop lowering rebinds every pre-loop name the rest
+     * of the method mentions that way, shadowed or not, so without this a method that shadows a
+     * field or never calls a method would appear to refer to it.
+     */
+    private static PirTerm withoutIdentityLets(PirTerm term) {
+        if (term instanceof PirTerm.Let(var name, PirTerm.Var(var value, _), var body) && name.equals(value)) {
+            return withoutIdentityLets(body);
+        }
+        return PirHelpers.mapChildren(term, PirGenerator::withoutIdentityLets);
+    }
+
+    /** JULC0053: every lowering binds only a declaration's first variable, so reject more (ADR-060). */
+    static void requireSingleDeclarator(VariableDeclarationExpr vde) {
+        if (vde.getVariables().size() > 1) {
+            throw CompilerTypeDiagnostics.multipleDeclarators(vde.toString(), sourceLocation(vde));
+        }
     }
 
     /**
@@ -1319,15 +1495,21 @@ public class PirGenerator {
             }
         }
 
-        return generateFieldAccessFromMethod(scope, methodName, args);
+        return generateFieldAccessFromMethod(scope, methodName, args, mce);
     }
 
-    /** Resolve an unqualified method call — local static method or library method. */
+    /**
+     * Resolve an unqualified method call to a static method of the class being compiled. As in
+     * Java, call syntax names a method, never a variable: a local, field or parameter with the
+     * method's name does not shadow it (ADR-060).
+     */
     private PirTerm resolveUnqualifiedMethodCall(MethodCallExpr mce, String methodName,
                                                   com.github.javaparser.ast.NodeList<Expression> args) {
-        var resolvedName = methodName;
-        var funType = symbolTable.lookup(methodName);
+        var signature = symbolTable.lookupMethodSignature(methodName);
+        var resolvedName = signature.map(SymbolTable.MethodSignature::binderName).orElse(methodName);
+        var funType = signature.map(SymbolTable.MethodSignature::type);
         if (funType.isEmpty() && libraryClassName != null) {
+            // Callers that registered library methods by qualified name before ADR-060.
             resolvedName = libraryClassName + "." + methodName;
             funType = symbolTable.lookup(resolvedName);
         }
@@ -1432,7 +1614,7 @@ public class PirGenerator {
      * Both the DataMatch field binding and the var.field() reuse reference this same name.
      */
     private static String destructuredFieldBinding(String patternVar, int fieldIndex) {
-        return "__pfield-" + patternVar + "-" + fieldIndex;
+        return "#__pfield-" + patternVar + "-" + fieldIndex;
     }
 
     /**
@@ -1473,17 +1655,15 @@ public class PirGenerator {
     }
 
     private PirTerm generateFieldAccessFromMethod(PirTerm scope, String methodName,
-                                                   com.github.javaparser.ast.NodeList<Expression> args) {
-        // For record accessor methods (no args), treat as field access
-        if (args.isEmpty()) {
-            // This will be compiled to field extraction in UplcGenerator
-            return new PirTerm.App(
-                    new PirTerm.Var("." + methodName, new PirType.DataType()),
-                    scope);
-        }
-        // Method with args: apply scope + args
-        PirTerm fn = new PirTerm.Var(methodName, new PirType.DataType());
-        fn = new PirTerm.App(fn, scope);
+                                                   com.github.javaparser.ast.NodeList<Expression> args,
+                                                   Node source) {
+        // The receiver's type did not resolve the member. The ".name" pseudo-variable keeps the
+        // call in the term, because HOF inference may still discard this lowering; UPLC
+        // generation rejects any that survives (JULC0055, ADR-060) instead of binding it to a
+        // variable or method that happens to be named like the member.
+        var member = unresolvedMember(methodName, source);
+        if (args.isEmpty()) return new PirTerm.App(member, scope);
+        PirTerm fn = new PirTerm.App(member, scope);
         for (var arg : args) {
             fn = new PirTerm.App(fn, generateExpression(arg));
         }
@@ -1528,9 +1708,29 @@ public class PirGenerator {
             }
         }
 
-        return new PirTerm.App(
-                new PirTerm.Var("." + fieldName, new PirType.DataType()),
-                scope);
+        return new PirTerm.App(unresolvedMember(fieldName, fae), scope);
+    }
+
+    /**
+     * The {@code .name} pseudo-variable for a member its receiver's type did not resolve, with the
+     * first source location seen for that name so JULC0055 can point at it (ADR-060).
+     */
+    private PirTerm.Var unresolvedMember(String name, Node source) {
+        unresolvedMembers.putIfAbsent(name, sourceLocation(source));
+        return new PirTerm.Var("." + name, new PirType.DataType());
+    }
+
+    /**
+     * JULC0055: reject a member access that survived HOF inference unresolved. Called on the term
+     * handed to the backend; UPLC generation rejects any that reach it without this check.
+     */
+    public void rejectUnresolvedMembers(PirTerm term) {
+        for (var name : PirSubstitution.collectFreeVarNames(term)) {
+            if (name.startsWith(".")) {
+                var member = name.substring(1);
+                throw CompilerTypeDiagnostics.unresolvedMember(member, unresolvedMembers.get(member));
+            }
+        }
     }
 
     private PirTerm generateObjectCreation(ObjectCreationExpr oce) {
@@ -1692,7 +1892,7 @@ public class PirGenerator {
         boolean hasBreak = containsBreak(fes.getBody());
 
         // Detect all accumulator assignments in the loop body
-        var accumulators = detectForEachAccumulators(fes.getBody());
+        var accumulators = detectLoopAccumulators(fes);
 
         if (accumulators.size() == 1) {
             // --- Single-accumulator path ---
@@ -1780,7 +1980,7 @@ public class PirGenerator {
                     .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
                     .toList();
             var accInit = packAccumulators(accumulators, accTypes);
-            var tupleAccName = "__acc_tuple";
+            var tupleAccName = "#__acc_tuple";
             var tupleAccType = new PirType.ListType(new PirType.DataType()); // Data list
 
             PirTerm foldResult;
@@ -1854,6 +2054,16 @@ public class PirGenerator {
 
         } else {
             // --- Unit-accumulator fallback: for-each with no accumulator ---
+            // The body is compiled as plain statements, which cannot reassign a variable.
+            var reassignment = AccumulatorTypeAnalyzer.firstLocalReassignment(fes);
+            if (reassignment.isPresent()) {
+                var name = ((NameExpr) reassignment.get().getTarget()).getNameAsString();
+                boolean loopVariable = fes.getVariable().getVariables().stream()
+                        .anyMatch(v -> v.getNameAsString().equals(name));
+                throw CompilerTypeDiagnostics.loopReassignmentWithoutAccumulator(
+                        loopVariable ? "loop variable" : "local variable", LoopBodyGenerator.sourceName(name),
+                        sourceLocation(reassignment.get()));
+            }
             symbolTable.pushScope();
             symbolTable.define(itemName, elemType);
 
@@ -1870,13 +2080,13 @@ public class PirGenerator {
             symbolTable.popScope();
 
             var forEachResult = desugarer.desugarForEach(
-                    iterableExpr, itemName, "acc__forEach",
+                    iterableExpr, itemName, "#acc__forEach",
                     new PirTerm.Const(Constant.unit()), new PirType.UnitType(),
                     bodyTerm, elemType);
 
             if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-                return new PirTerm.Let(PirHelpers.hygienicName("_forEach", PirHelpers.freeVariables(rest)),
+                return new PirTerm.Let(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)),
                         forEachResult, rest);
             }
             return forEachResult;
@@ -1931,8 +2141,17 @@ public class PirGenerator {
         return AccumulatorTypeAnalyzer.refineAccumulatorTypes(ws, accNames, initialTypes, precedingStmts);
     }
 
-    List<String> detectForEachAccumulators(Statement bodyStmt) {
-        return AccumulatorTypeAnalyzer.detectForEachAccumulators(bodyStmt, symbolTable::lookup);
+    List<String> detectLoopAccumulators(Statement loop) {
+        var accumulators = AccumulatorTypeAnalyzer.detectLoopAccumulators(loop, symbolTable::lookup);
+        for (var name : accumulators) {
+            // A static field or @Param updated in a loop is rebound only in this method.
+            if (symbolTable.isClassLevel(name)) {
+                Node at = loop.findFirst(AssignExpr.class, a -> a.getTarget() instanceof NameExpr ne
+                        && ne.getNameAsString().equals(name)).map(a -> (Node) a).orElse(loop);
+                requireUnsharedField(name, at);
+            }
+        }
+        return accumulators;
     }
 
     private String findAccumulatorInBreakPattern(List<Statement> stmts) {
@@ -1980,7 +2199,7 @@ public class PirGenerator {
         }
         var desugarer = loopDesugarer;
         boolean hasBreak = containsBreak(ws.getBody());
-        var accumulators = detectForEachAccumulators(ws.getBody());
+        var accumulators = detectLoopAccumulators(ws);
 
         if (accumulators.size() == 1) {
             // --- Single-accumulator while loop ---
@@ -2056,7 +2275,7 @@ public class PirGenerator {
             var precedingStmts = followingStmts.subList(0, followingIndex);
             var accTypes = refineAccumulatorTypes(ws, accumulators, rawAccTypes, precedingStmts);
             var accInit = packAccumulators(accumulators, accTypes);
-            var tupleAccName = "__acc_tuple";
+            var tupleAccName = "#__acc_tuple";
             var tupleAccType = new PirType.ListType(new PirType.DataType());
 
             PirTerm whileResult;
@@ -2141,7 +2360,7 @@ public class PirGenerator {
 
             if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 var rest = generateStatements(followingStmts, followingIndex + 1, cont);
-                return new PirTerm.Let(PirHelpers.hygienicName("_while", PirHelpers.freeVariables(rest)),
+                return new PirTerm.Let(PirHelpers.hygienicName("#_while", PirHelpers.freeVariables(rest)),
                         whileResult, rest);
             }
             return whileResult;
@@ -2370,7 +2589,7 @@ public class PirGenerator {
 
         // Zero-parameter lambda: \_ -> body
         if (params.isEmpty()) {
-            result = new PirTerm.Lam("_", new PirType.UnitType(), result);
+            result = new PirTerm.Lam("#_", new PirType.UnitType(), result);
         }
 
         return result;
@@ -2493,7 +2712,7 @@ public class PirGenerator {
         }
 
         if (params.isEmpty()) {
-            result = new PirTerm.Lam("_", new PirType.UnitType(), result);
+            result = new PirTerm.Lam("#_", new PirType.UnitType(), result);
         }
         return result;
     }
