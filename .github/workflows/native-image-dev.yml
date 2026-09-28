@@ -29,6 +29,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Extract version
       id: version
@@ -45,10 +47,10 @@ jobs:
 
     - name: Setup MSVC (Windows only)
       if: runner.os == 'Windows'
-      uses: ilammy/msvc-dev-cmd@v1
+      uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
     - name: Build native image
       run: ./gradlew :julc-cli:nativeCompile -PskipSigning=true --no-daemon
@@ -57,24 +59,31 @@ jobs:
     - name: Package (Unix)
       if: runner.os != 'Windows'
       shell: bash
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        LABEL: ${{ matrix.label }}
+        BINARY: ${{ matrix.binary }}
       run: |
-        VERSION="${{ steps.version.outputs.version }}"
-        STAGING="julc-${VERSION}-${{ matrix.label }}"
+        set -euo pipefail
+        STAGING="julc-${VERSION}-${LABEL}"
         mkdir -p "$STAGING"
-        cp julc-cli/build/native/nativeCompile/${{ matrix.binary }} "$STAGING/"
+        cp "julc-cli/build/native/nativeCompile/${BINARY}" "$STAGING/"
         cp julc-cli/README.md "$STAGING/"
-        zip -r "julc-${VERSION}-${{ matrix.label }}.zip" "$STAGING"
+        zip -r "julc-${VERSION}-${LABEL}.zip" "$STAGING"
 
     - name: Package (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        LABEL: ${{ matrix.label }}
+        BINARY: ${{ matrix.binary }}
       run: |
-        $VERSION = "${{ steps.version.outputs.version }}"
-        $STAGING = "julc-${VERSION}-${{ matrix.label }}"
+        $STAGING = "julc-$env:VERSION-$env:LABEL"
         New-Item -ItemType Directory -Path $STAGING -Force
-        Copy-Item "julc-cli/build/native/nativeCompile/${{ matrix.binary }}" -Destination $STAGING
+        Copy-Item "julc-cli/build/native/nativeCompile/$env:BINARY" -Destination $STAGING
         Copy-Item "julc-cli/README.md" -Destination $STAGING
-        Compress-Archive -Path $STAGING -DestinationPath "julc-${VERSION}-${{ matrix.label }}.zip"
+        Compress-Archive -Path $STAGING -DestinationPath "julc-$env:VERSION-$env:LABEL.zip"
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -93,6 +102,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Extract version
       id: version
@@ -105,7 +116,7 @@ jobs:
     # (actions/setup-java only sees the 25.0 LTS line); it exports GRAALVM_HOME, which the Gradle build reads.
     # JAVA_HOME stays on the Temurin JDK below, so Gradle itself runs on the same JDK as the main build.
     - name: Set up GraalVM 25.3 (Web Image)
-      uses: graalvm/setup-graalvm@v1
+      uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
       with:
         version: '25.3'
         distribution: 'graalvm'
@@ -124,7 +135,7 @@ jobs:
         node-version: '22'
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
     - name: Install Binaryen
       shell: bash
@@ -148,8 +159,10 @@ jobs:
 
     - name: Package
       shell: bash
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
       run: |
-        VERSION="${{ steps.version.outputs.version }}"
+        set -euo pipefail
         echo "Engine version: $(jq -r .version julc-wasm/build/wasm-bundle-full/engine.json)"
         # Engine only: launcher, module and engine.json under content-addressed names.
         tar czf "julc-wasm-${VERSION}.tar.gz" -C julc-wasm/build/wasm-bundle-full .
@@ -204,6 +217,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Extract version
       id: version
@@ -225,10 +240,10 @@ jobs:
 
     - name: Setup MSVC (Windows only)
       if: runner.os == 'Windows'
-      uses: ilammy/msvc-dev-cmd@v1
+      uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
     # The frontend build copies public/wasm into the static resources, so every server binary serves the browser
     # engine at /wasm/ without building Web Image on this platform.
@@ -245,24 +260,31 @@ jobs:
     - name: Package (Unix)
       if: runner.os != 'Windows'
       shell: bash
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        LABEL: ${{ matrix.label }}
+        BINARY: ${{ matrix.binary }}
       run: |
-        VERSION="${{ steps.version.outputs.version }}"
-        STAGING="julc-playground-${VERSION}-${{ matrix.label }}"
+        set -euo pipefail
+        STAGING="julc-playground-${VERSION}-${LABEL}"
         mkdir -p "$STAGING"
-        cp julc-playground/build/native/nativeCompile/${{ matrix.binary }} "$STAGING/"
+        cp "julc-playground/build/native/nativeCompile/${BINARY}" "$STAGING/"
         cp julc-playground/README.md "$STAGING/"
-        zip -r "julc-playground-${VERSION}-${{ matrix.label }}.zip" "$STAGING"
+        zip -r "julc-playground-${VERSION}-${LABEL}.zip" "$STAGING"
 
     - name: Package (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        LABEL: ${{ matrix.label }}
+        BINARY: ${{ matrix.binary }}
       run: |
-        $VERSION = "${{ steps.version.outputs.version }}"
-        $STAGING = "julc-playground-${VERSION}-${{ matrix.label }}"
+        $STAGING = "julc-playground-$env:VERSION-$env:LABEL"
         New-Item -ItemType Directory -Path $STAGING -Force
-        Copy-Item "julc-playground/build/native/nativeCompile/${{ matrix.binary }}" -Destination $STAGING
+        Copy-Item "julc-playground/build/native/nativeCompile/$env:BINARY" -Destination $STAGING
         Copy-Item "julc-playground/README.md" -Destination $STAGING
-        Compress-Archive -Path $STAGING -DestinationPath "julc-playground-${VERSION}-${{ matrix.label }}.zip"
+        Compress-Archive -Path $STAGING -DestinationPath "julc-playground-$env:VERSION-$env:LABEL.zip"
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
