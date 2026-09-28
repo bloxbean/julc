@@ -253,6 +253,14 @@ public final class DiagnosticCodes {
             "@Param type ''{0}'' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpret the runtime representation.",
             "Use byte[], BigInteger, typed records, redeemers, or @Param PlutusData only for opaque data.");
 
+    public static final DiagnosticInfo PATTERN_VARIABLE_SHADOWS_FIELD = new DiagnosticInfo(
+            "JULC0059",
+            "PATTERN_VARIABLE_SHADOWS_FIELD",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Pattern variable ''{0}'' has the same name as a field of {1}",
+            "Rename the pattern variable, for example `if (action instanceof Bid bid)`, so it does not reuse a field name.");
+
     public static final DiagnosticInfo RETURN_INSIDE_WHILE = new DiagnosticInfo(
             "JULC0003",
             "RETURN_INSIDE_WHILE",
@@ -438,6 +446,7 @@ public final class DiagnosticCodes {
             NULL_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
             PARAM_RAW_PLUTUS_DATA,
+            PATTERN_VARIABLE_SHADOWS_FIELD,
             RETURN_INSIDE_WHILE,
             SOURCE_PARSE_FAILED,
             STATIC_INITIALIZER_CALLS_METHOD,
