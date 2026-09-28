@@ -622,6 +622,12 @@ var total = BigInteger.ZERO;
 return total;
 ```
 
+An `instanceof` pattern variable is only in scope when the pattern is the whole
+condition of an `if` statement outside a loop. Used anywhere else, for example
+`if (x instanceof Bid b && b.amount() > 0)` or inside a loop body, it is reported as
+undefined until [#204](https://github.com/bloxbean/julc/issues/204). Use a `switch` on the sealed type there, which binds case
+variables in every position.
+
 ---
 
 ## 2. Validation Errors (SubsetValidator)
@@ -979,6 +985,29 @@ for (var amount : amounts) {
     var net = amount.subtract(fee);
     if (net.signum() < 0) Builtins.error();
 }
+```
+
+---
+
+### 2.18 `JULC0059` `Pattern variable '<name>' has the same name as a field of <Class>`
+
+**Cause:** An `instanceof` pattern variable has the same name as a field of the class,
+including a `@Param` field. JuLC binds a pattern variable only when the pattern is the
+whole condition of an `if` statement outside a loop. In any other position (a loop body,
+an `&&` condition, a negated guard, a ternary, a lambda) the name resolved to the field
+instead, so the code silently read or updated the field ([#204](https://github.com/bloxbean/julc/issues/204)). The name is rejected in
+every position, including the one where the variable is bound correctly.
+
+**Fix:** Rename the pattern variable. `switch` case patterns are not affected.
+
+```java
+static Bid best = new Bid(BigInteger.ZERO);
+
+// WRONG
+if (action instanceof Bid best) { return best.amount(); }
+
+// CORRECT
+if (action instanceof Bid bid) { return bid.amount(); }
 ```
 
 ---

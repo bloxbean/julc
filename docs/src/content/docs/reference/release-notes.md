@@ -3,6 +3,28 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
+
+JuLC binds an `instanceof` pattern variable only when the pattern is the whole
+condition of an `if` statement outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In every other position (a loop
+body, an `&&` condition, a negated guard such as `if (!(x instanceof T v)) return ...;`,
+a ternary, a lambda, a boolean `return`) the variable is not bound. When a field of the
+class, including a `@Param` field, has the same name, those positions silently read or
+updated the field. For example, with a field `q` holding 40,
+`if (s instanceof Sq q && q.s() > 1) { return q.s(); }` returned 40 where Java returns 3.
+This behaviour dates back to the first preview.
+
+The compiler now rejects a pattern variable that reuses the name of a field of an
+enclosing class (`JULC0059`) in every position, including the one where the variable is
+bound correctly. Rename the variable. `switch` case patterns (`case Sq q ->`) bind their
+variables in every position and are not affected. This is validation only: every program
+that still compiles produces the same script bytes and hashes.
+
+Known limitation until [#204](https://github.com/bloxbean/julc/issues/204) (planned for the next preview): a pattern variable with any
+name that is used outside that one position fails to compile, usually with
+`Undefined variable`. Use a
+`switch` on the sealed type, or the plain `if (x instanceof T v) { ... }` form outside a loop.
+
 ## Upcoming preview: value-oriented contract code guide (#163)
 
 A new Best Practices page, [Value-Oriented Contract Code](/best-practices/value-oriented-code/),
