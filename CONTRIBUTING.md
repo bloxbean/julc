@@ -188,9 +188,3 @@ JUnit 5 (Jupiter) with `junit-bom:5.11.4`. Test files follow the `*Test.java` na
 - **User-facing changes**: Update relevant files in `docs/` (api-reference, getting-started, stdlib-guide, etc.)
 - **Architectural decisions**: Add an ADR in the `adr/` directory
 - **Cross-check consistency**: When adding methods or types, ensure they appear in all relevant docs (getting-started listing, stdlib-guide table, api-reference table)
-
-
-## Release Process (for maintainers)
-
-- **Snapshots**: Manually triggered via the `snapshot.yml` workflow. Version includes the Git commit hash (e.g., `0.1.0-055d17f-SNAPSHOT`).
-- **Releases**: Pushing a `v*` tag triggers the `release.yml` workflow, which publishes to Maven Central via Sonatype.

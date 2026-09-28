@@ -136,7 +136,7 @@ engine from this job, so every `julc-playground` binary serves it at `/wasm/`):
 The documentation site publishes it at [julc.dev/playground/](https://julc.dev/playground/):
 `.github/workflows/docs-deploy.yml` downloads the static bundle of the release named in `docs/playground-release`,
 verifies its checksum and copies it to `docs/dist/playground/`. To publish a newer playground, bump that file to a
-release that carries the assets and push a `dv*` tag. `.github/workflows/native-image-dev.yml` produces the same
+release that carries the assets and merge the change to `main`. `.github/workflows/native-image-dev.yml` produces the same
 bundles as workflow artifacts for testing before a release. To preview the playground with `npm run dev` in
 `docs/`, copy `dist-static/` to `docs/public/playground/` (ignored by git).
 
