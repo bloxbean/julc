@@ -408,6 +408,60 @@ local, now reports `JULC0058` with the fix (declare a new local) instead of the
 generic "Unsupported expression: AssignExpr". Supporting it would need a new
 lowering for accumulator-free loops, which is left out of this ADR.
 
+## Follow-up: instanceof pattern variables (#207)
+
+The invariant that a source name resolves only to the declaration Java binds it
+to does not hold for `instanceof` pattern variables (#204, present since
+`v0.1.0-pre1`). `PirGenerator` binds a pattern variable only when
+`x instanceof T v` is the whole condition of an `if` statement outside a loop
+(`generateInstanceOfIf`, `generateInstanceOfIfCps`). Every other position (loop
+bodies, `&&`/`||`/`!`, ternaries, lambdas, boolean returns) lowers the test with
+`generateInstanceOf`, which emits only the constructor-tag check. The unbound
+name then resolves to a field of the same name. A field is the only outer
+variable declaration it can reach:
+- Java rejects reusing a local or parameter name.
+- Methods have their own namespace.
+- A library's fields are bound only around that library's methods.
+
+A separate, pre-existing resolution issue is not specific to patterns: a
+receiver name that is also an imported class name (`Fees.s()`) resolves to the
+class even when a variable of that name is in scope. It is left out of this
+follow-up.
+
+For pre17, `SubsetValidator` rejects a pattern variable that reuses the name of
+a field of an enclosing class (`JULC0059`), in every position, including the
+one that is bound correctly. It is validation only, so accepted programs are
+byte-identical. Binding pattern variables in every position (JLS §6.3.1 scopes
+and one shared condition lowering) is #204, planned for pre18 under its own ADR.
+That work can narrow or retire `JULC0059`.
+
+`PatternVariableFieldGuardTest` covers the rule:
+- Thirteen rejection tests: for-each, while, nested loops, `&&`, `!` guard,
+  `||` guard, ternary, lambda, helper method, the whole `if` condition, a
+  multi-line position check, `@Param` and library source.
+  - Each program is valid Java, which javac confirms.
+  - Each test checks the diagnostic's code, message and position.
+- Three accepted controls compared with javac at `NONE`, `BASELINE` and
+  `PV11_SAFE` on the Java and Scalus VMs: a distinct name, `switch` case
+  patterns and a method name.
+- A library field of the pattern's name, checked against Java's result at the
+  same levels and VMs.
+- Seven programs where an earlier binder shares the pattern's name, each
+  required to be rejected or to match javac:
+  - a pattern bound over a continuation-bearing branch, followed by a loop
+    pattern;
+  - the same, followed by an `&&` pattern;
+  - a pattern on the legacy path;
+  - a closed block's local;
+  - an `if`-branch local;
+  - an earlier for-each variable;
+  - a switch case binding.
+
+  All are rejected today with `Undefined variable`; after #204 they must match
+  javac.
+
+With the check removed, all thirteen rejection tests fail.
+
 ## Open questions
 
 - Whether the name-counting PV11 passes should count by binder identity, so

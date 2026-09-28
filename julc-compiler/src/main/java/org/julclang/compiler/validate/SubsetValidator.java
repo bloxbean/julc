@@ -3,8 +3,10 @@ package org.julclang.compiler.validate;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
@@ -13,6 +15,7 @@ import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.julclang.compiler.error.DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED;
@@ -20,6 +23,7 @@ import static org.julclang.compiler.error.DiagnosticCodes.C_STYLE_FOR_UNSUPPORTE
 import static org.julclang.compiler.error.DiagnosticCodes.DO_WHILE_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.MULTIPLE_DECLARATORS_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.NULL_UNSUPPORTED;
+import static org.julclang.compiler.error.DiagnosticCodes.PATTERN_VARIABLE_SHADOWS_FIELD;
 import static org.julclang.compiler.error.DiagnosticCodes.THROW_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.TRY_CATCH_UNSUPPORTED;
 
@@ -109,6 +113,34 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
             error(n, MULTIPLE_DECLARATORS_UNSUPPORTED, MULTIPLE_DECLARATORS_UNSUPPORTED.fix(), n);
         }
         super.visit(n, arg);
+    }
+
+    /**
+     * An instanceof pattern variable is bound only when the pattern is the whole condition of an
+     * if statement outside a loop. Anywhere else its name resolves to a field of the same name
+     * (#204), so a pattern variable may not reuse the name of a field of an enclosing class.
+     * Java already rejects reusing the name of a local or parameter in scope, so a field is the
+     * only variable such a name can resolve to.
+     */
+    @Override
+    public void visit(InstanceOfExpr n, Void arg) {
+        n.getPattern().ifPresent(pattern -> {
+            for (var variable : pattern.findAll(TypePatternExpr.class)) {
+                String name = variable.getNameAsString();
+                enclosingTypeWithField(n, name).ifPresent(owner -> error(variable,
+                        PATTERN_VARIABLE_SHADOWS_FIELD, PATTERN_VARIABLE_SHADOWS_FIELD.fix(), name, owner));
+            }
+        });
+        super.visit(n, arg);
+    }
+
+    private static Optional<String> enclosingTypeWithField(Node node, String name) {
+        for (var ancestor = node.getParentNode(); ancestor.isPresent(); ancestor = ancestor.get().getParentNode()) {
+            if (ancestor.get() instanceof TypeDeclaration<?> type && type.getFieldByName(name).isPresent()) {
+                return Optional.of(type.getNameAsString());
+            }
+        }
+        return Optional.empty();
     }
 
     // --- Rejected statements ---

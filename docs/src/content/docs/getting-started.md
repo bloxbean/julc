@@ -805,6 +805,12 @@ if (datum instanceof OutputDatum.OutputDatumInline inline) {
 }
 ```
 
+The pattern variable (`inline` above) is bound when the `instanceof` test is the whole
+condition of an `if` statement outside a loop. In other positions (a loop body, an `&&`
+condition, a negated guard, a ternary or a lambda) it is not bound yet ([#204](https://github.com/bloxbean/julc/issues/204)) and
+compilation fails, usually with `Undefined variable`; use a `switch` on the sealed type there.
+A pattern variable may not reuse the name of a field or `@Param` (`JULC0059`).
+
 ### 8.4 For-Each Loops
 
 For-each loops over lists are desugared into tail-recursive functions with

@@ -606,6 +606,21 @@
         "bad": "for (var amount : amounts) {\n    amount = amount.subtract(fee);\n    if (amount.signum() < 0) Builtins.error();\n}",
         "good": "for (var amount : amounts) {\n    var net = amount.subtract(fee);\n    if (net.signum() < 0) Builtins.error();\n}"
       }
+    },
+    {
+      "code": "JULC0059",
+      "constant": "PATTERN_VARIABLE_SHADOWS_FIELD",
+      "status": "emitted",
+      "title": "instanceof pattern variable reuses a field name",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Pattern variable ''{0}'' has the same name as a field of {1}",
+      "summary": "An instanceof pattern variable is bound only when the pattern is the whole condition of an if statement outside a loop. In any other position (a loop body, an && condition, a negated guard, a ternary, a lambda) the name resolves to a field of the same name instead, which silently reads or updates the field (#204). A pattern variable may therefore not reuse the name of a field, including a @Param field, of an enclosing class.",
+      "fix": "Rename the pattern variable, for example `if (action instanceof Bid bid)`, so it does not reuse a field name.",
+      "example": {
+        "bad": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid best) { return best.amount(); }",
+        "good": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid bid) { return bid.amount(); }"
+      }
     }
   ]
 }
