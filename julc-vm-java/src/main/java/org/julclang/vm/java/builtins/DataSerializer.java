@@ -4,6 +4,7 @@ import org.julclang.core.PlutusData;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -44,8 +45,8 @@ public final class DataSerializer {
             // General encoding: tag 102, then [tag, fields]
             writeTag(out, 102);
             writeMajorArg(out, 4, 2); // outer definite array of 2: [tag, fields]
-            // plutus encodes this tag with cborg's encodeInteger, whose bignum bytes are never chunked
-            writeInteger(out, tag, false);
+            // plutus writes this tag with cborg's encodeInteger (Data.hs:152-160), not the Data one
+            writeCborgInteger(out, tag);
             writeDataArray(out, cd.fields());
             return;
         }
@@ -82,22 +83,46 @@ public final class DataSerializer {
     }
 
     private static void writeIntData(ByteArrayOutputStream out, PlutusData.IntData id) {
-        writeInteger(out, id.value(), true);
+        writeDataInteger(out, id.value());
     }
 
     /**
-     * Write an integer as a CBOR integer, or as a tag 2/3 bignum once it is outside the 64-bit range.
-     * With {@code chunkBignum}, the bignum's bytes go through {@link #writeBoundedBytes} as plutus-core's
-     * {@code encodeInteger} does for {@code I} data; without it they are one definite byte string, as
-     * cborg's {@code encodeInteger} writes them.
+     * plutus-core {@code encodeInteger} (Data.hs:170-183): outside the 64-bit range, a tag 2/3 bignum whose
+     * bytes go through {@code encodeBs}, so over 64 bytes they are chunked.
      */
-    private static void writeInteger(ByteArrayOutputStream out, BigInteger value, boolean chunkBignum) {
-        if (value.signum() >= 0) {
-            writeBigUnsigned(out, 0, value, chunkBignum);
+    private static void writeDataInteger(ByteArrayOutputStream out, BigInteger value) {
+        BigInteger arg = cborArgument(value);
+        if (arg.bitLength() <= 64) {
+            writeCborgInteger(out, value);
         } else {
-            // CBOR negative: -1 - n
-            writeBigUnsigned(out, 1, value.negate().subtract(BigInteger.ONE), chunkBignum);
+            writeTag(out, value.signum() >= 0 ? 2 : 3);
+            writeBoundedBytes(out, unsignedBytes(arg));
         }
+    }
+
+    /** cborg {@code encodeInteger}: a CBOR integer, or a tag 2/3 bignum whose bytes are one definite byte string. */
+    private static void writeCborgInteger(ByteArrayOutputStream out, BigInteger value) {
+        int major = value.signum() >= 0 ? 0 : 1;
+        BigInteger arg = cborArgument(value);
+        if (arg.bitLength() <= 64) {
+            writeUnsignedWord64(out, major, arg.longValue());
+        } else {
+            writeTag(out, major == 0 ? 2 : 3);
+            byte[] bytes = unsignedBytes(arg);
+            writeMajorArg(out, 2, bytes.length);
+            out.write(bytes, 0, bytes.length);
+        }
+    }
+
+    /** The CBOR argument of an integer: the value itself, or {@code -1 - value} when negative. */
+    private static BigInteger cborArgument(BigInteger value) {
+        return value.signum() >= 0 ? value : value.negate().subtract(BigInteger.ONE);
+    }
+
+    /** Big-endian bytes of a non-negative value, without a leading sign byte. */
+    private static byte[] unsignedBytes(BigInteger value) {
+        byte[] bytes = value.toByteArray();
+        return bytes.length > 1 && bytes[0] == 0 ? Arrays.copyOfRange(bytes, 1, bytes.length) : bytes;
     }
 
     private static void writeBytesData(ByteArrayOutputStream out, PlutusData.BytesData bd) {
@@ -161,29 +186,6 @@ public final class DataSerializer {
             out.write(majorBits | 27);
             for (int i = 56; i >= 0; i -= 8) {
                 out.write((int) ((arg >> i) & 0xff));
-            }
-        }
-    }
-
-    private static void writeBigUnsigned(
-            ByteArrayOutputStream out, int major, BigInteger value, boolean chunkBignum) {
-        if (value.bitLength() <= 64) {
-            writeUnsignedWord64(out, major, value.longValue());
-        } else {
-            // Big integer: tag 2 (positive) or 3 (negative) + bytestring
-            writeTag(out, major == 0 ? 2 : 3);
-            byte[] bytes = value.toByteArray();
-            // Remove leading zero byte if present
-            if (bytes.length > 1 && bytes[0] == 0) {
-                byte[] trimmed = new byte[bytes.length - 1];
-                System.arraycopy(bytes, 1, trimmed, 0, trimmed.length);
-                bytes = trimmed;
-            }
-            if (chunkBignum) {
-                writeBoundedBytes(out, bytes);
-            } else {
-                writeMajorArg(out, 2, bytes.length);
-                out.write(bytes, 0, bytes.length);
             }
         }
     }
