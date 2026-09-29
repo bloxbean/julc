@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "julcVersion": "0.1.0-pre16",
+  "julcVersion": "0.1.0-pre17",
   "$comment": "Authoritative catalog of JuLC compiler diagnostics. Each entry has a stable JULC#### code, a generated Java constant, an emitted-message template, a one-line root cause, a canonical fix snippet, and optionally example bad/good code. Consumed by: (1) generated DiagnosticCodes.java, (2) the MCP julc_explain_diagnostic tool, (3) docs/AI catalog resources, (4) future full compiler diagnostic coverage tests.",
   "categories": {
     "SYNTAX": "Java syntax forms not supported in the on-chain subset",
@@ -152,13 +152,14 @@
     {
       "code": "JULC0012",
       "constant": "TYPE_RESOLUTION_FAILED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Cannot resolve type",
       "category": "TYPE",
       "severity": "error",
       "template": "Cannot resolve type: {0}",
       "summary": "The compiler could not resolve a type reference. The class may not be on the classpath, may not be a registered ledger/stdlib type, or may not be a valid on-chain type.",
-      "fix": "Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String)."
+      "fix": "Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).",
+      "example": "var a = JulcArray.of(BigInteger.ONE, new byte[]{1}); // elements of different types under var: declare JulcArray<T>"
     },
     {
       "code": "JULC0013",
@@ -361,6 +362,265 @@
       "template": "Circular type dependency detected among: {0}",
       "summary": "Type registration found a cycle that cannot be resolved.",
       "fix": "Break the cycle by introducing a parameterized record or refactoring the involved types."
+    },
+    {
+      "code": "JULC0031",
+      "constant": "UNSUPPORTED_COMPILER_TARGET",
+      "status": "emitted",
+      "title": "Unsupported compiler target",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Compiler target {0} is not supported. Supported targets: {1}",
+      "summary": "JuLC compilation is pinned to an explicit ledger language, protocol version, and UPLC version. Evaluator support for another profile does not imply compiler support.",
+      "fix": "Select a listed compiler target. This release supports Plutus V3/PV11/UPLC 1.1.0 only; do not rely on fallback to another target."
+    },
+    {
+      "code": "JULC0032",
+      "constant": "COMPILER_BUILTIN_UNAVAILABLE",
+      "status": "emitted",
+      "title": "Builtin unavailable for compiler target",
+      "category": "TARGET",
+      "severity": "error",
+      "template": "Builtin {0} is not available for compiler target {1}",
+      "summary": "A source lowering or low-level PIR route requested a builtin that is not in the canonical protocol feature profile selected for this compilation.",
+      "fix": "Use an operation available in the selected target, or explicitly select a future compiler target after JuLC adds and verifies support for it."
+    },
+    {
+      "code": "JULC0033",
+      "constant": "COMPILER_FEATURE_UNAVAILABLE",
+      "status": "emitted",
+      "title": "Term or constant feature unavailable for compiler target",
+      "category": "TARGET",
+      "severity": "error",
+      "template": "Compiler feature {0} is not available for compiler target {1}",
+      "summary": "A lowering requires a UPLC term form or constant universe that the canonical protocol feature profile does not authorize.",
+      "fix": "Use a portable lowering for the selected target, or add the future target through the reviewed compiler support process."
+    },
+    {
+      "code": "JULC0034",
+      "constant": "COMPILER_PROGRAM_VERSION_MISMATCH",
+      "status": "emitted",
+      "title": "Generated UPLC version does not match compiler target",
+      "category": "INTERNAL",
+      "severity": "error",
+      "template": "Generated UPLC version {0} does not match compiler target {1}, which requires {2}",
+      "summary": "Program construction and the resolved compiler target disagreed. This is a compiler invariant violation, not a user source error.",
+      "fix": "Report this as a JuLC compiler bug with the source, selected target, and verbose compiler log."
+    },
+    {
+      "code": "JULC0035",
+      "constant": "COMPILER_TARGET_INVARIANT_VIOLATION",
+      "status": "emitted",
+      "title": "Compiler stage emitted a target-illegal feature",
+      "category": "INTERNAL",
+      "severity": "error",
+      "template": "Compiler stage {0} emitted target-illegal feature {1} for {2}",
+      "summary": "Final post-lowering validation found a builtin, term form, or constant universe that an earlier compiler stage should have rejected.",
+      "fix": "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer."
+    },
+    {
+      "code": "JULC0036",
+      "constant": "COMPILER_EVALUATION_TARGET_MISMATCH",
+      "status": "emitted",
+      "title": "Compile and evaluation targets do not match",
+      "category": "TARGET",
+      "severity": "error",
+      "template": "Compiled target {0} cannot be evaluated as {1}",
+      "summary": "The evaluator must use the exact ledger language and protocol version retained by the compiler result.",
+      "fix": "Evaluate with CompileResult.target().ledgerTarget(), or recompile for an explicitly supported compiler target."
+    },
+    {
+      "code": "JULC0037",
+      "constant": "MISSING_OPTIMIZATION_COST_PROFILE",
+      "status": "internal",
+      "title": "Optimization cost profile is required",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization level {0} requires an explicit pinned optimization cost profile",
+      "summary": "Legacy diagnostic retained for compatibility. No current compiler level consumes numeric cost parameters or requires a profile.",
+      "fix": "Current compilation needs no cost profile. Configure cost parameters on the evaluator for budget measurements."
+    },
+    {
+      "code": "JULC0038",
+      "constant": "OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH",
+      "status": "emitted",
+      "title": "Optimization cost profile does not match compiler target",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization cost profile {0} targets {1}, but compiler target {2} evaluates as {3}",
+      "summary": "A cost profile is valid only for the exact ledger language and protocol profile from which its parameters were pinned.",
+      "fix": "Use a cost profile pinned for the selected compiler target, or select a compatible compiler target explicitly."
+    },
+    {
+      "code": "JULC0039",
+      "constant": "UNSUPPORTED_OPTIMIZATION_LEVEL",
+      "status": "emitted",
+      "title": "Unsupported optimization level",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization level {0} is not supported. Supported levels: {1}",
+      "summary": "Optimizer selection uses an exact, versioned identifier and never falls back to a different rollout level.",
+      "fix": "Select one of the listed optimization levels. Use baseline to preserve the pre-ADR-032 generated program."
+    },
+    {
+      "code": "JULC0040",
+      "constant": "UNSUPPORTED_OPTIMIZATION_COST_PROFILE",
+      "status": "emitted",
+      "title": "Unsupported optimization cost profile",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization cost profile {0} is not supported. Supported profiles: {1}",
+      "summary": "An explicitly supplied compatibility profile must identify a known immutable snapshot, even though current compiler rules do not consume it.",
+      "fix": "Omit the unused compiler profile or select a listed ID, such as plutus-v3-pv11-costs-v1. Supply runtime cost parameters separately to the evaluator."
+    },
+    {
+      "code": "JULC0041",
+      "constant": "NATIVE_TYPE_MISMATCH",
+      "status": "emitted",
+      "title": "Native UPLC type mismatch",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} received {1}, but requires {2}",
+      "summary": "Opaque native UPLC values are not Data and cannot be passed through a differently typed compiler boundary.",
+      "fix": "Use the matching typed native operation. Convert native Value explicitly with ValueData, or convert Data explicitly with UnValueData."
+    },
+    {
+      "code": "JULC0042",
+      "constant": "NATIVE_TYPE_AT_DATA_BOUNDARY",
+      "status": "emitted",
+      "title": "Native UPLC type at a Data argument boundary",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Method parameter {0} has opaque type {1}, which cannot be decoded from a Plutus Data argument",
+      "summary": "compileMethod and validator inputs are Data-encoded; a native evaluator value has no implicit Data representation.",
+      "fix": "Accept PlutusData or a ledger type at the external boundary and call the explicit native conversion inside the method."
+    },
+    {
+      "code": "JULC0043",
+      "constant": "UNKNOWN_OPTIMIZATION_RULE",
+      "status": "emitted",
+      "title": "Unknown optimization rule in the disabled-rule set",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization rule {0} cannot be disabled. Rules that can be disabled: {1}",
+      "summary": "Only the PIR-to-PIR sharing and promotion passes accept a per-rule switch; the identifier must match one of their rule ids exactly, so a typo never silently leaves the rule enabled.",
+      "fix": "Use one of the listed rule identifiers exactly as reported in the optimization report, or lower the optimization level to disable a whole class of rules."
+    },
+    {
+      "code": "JULC0052",
+      "constant": "COMPOUND_ASSIGNMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Compound assignment operator is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Compound assignment operator {0} is not supported on-chain",
+      "summary": "Only +=, -=, *=, /= and %= on integers, and += on strings, are lowered. Bitwise, shift and boolean compound operators (&=, |=, ^=, <<=, >>=, >>>=) are rejected instead of being lowered with different semantics (ADR-060).",
+      "fix": "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;",
+      "example": {
+        "bad": "for (var x : xs) {\n    ok &= check(x);\n}",
+        "good": "for (var x : xs) {\n    boolean c = check(x);\n    ok = ok && c;\n}"
+      }
+    },
+    {
+      "code": "JULC0053",
+      "constant": "MULTIPLE_DECLARATORS_UNSUPPORTED",
+      "status": "emitted",
+      "title": "More than one variable in a declaration",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Declare one variable per statement: {0}",
+      "summary": "A local declaration with several variables (BigInteger a = x, b = y;) is not lowered; only the first variable would be bound, so later references could resolve to an outer declaration of the same name (ADR-060).",
+      "fix": "Split the declaration into one statement per variable.",
+      "example": {
+        "bad": "BigInteger a = BigInteger.ONE, b = BigInteger.TWO;",
+        "good": "BigInteger a = BigInteger.ONE;\nBigInteger b = BigInteger.TWO;"
+      }
+    },
+    {
+      "code": "JULC0054",
+      "constant": "METHOD_OVERLOAD_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Overloaded methods are not supported",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Method {0} is declared more than once in {1}; on-chain methods are bound by name, so declarations sharing a name must compile to identical code",
+      "summary": "Every call to an overloaded name would run one of its declarations. Declarations that lower to identical code and types are accepted; any other overload, or a helper that reuses an entrypoint's name, is rejected (ADR-060).",
+      "fix": "Give each method a distinct name.",
+      "example": {
+        "bad": "static boolean check(BigInteger a) { ... }\nstatic boolean check(long a) { ... }",
+        "good": "static boolean checkAmount(BigInteger a) { ... }\nstatic boolean checkIndex(long a) { ... }"
+      }
+    },
+    {
+      "code": "JULC0055",
+      "constant": "UNRESOLVED_MEMBER_ACCESS",
+      "status": "emitted",
+      "title": "Member access that cannot be resolved",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Cannot resolve {0}: the receiver's type does not declare it as a record field, accessor or supported method",
+      "summary": "x.name() and x.name resolve against the receiver's record, ledger or library type; record instance methods are not compiled. An unresolved member used to be bound to whatever variable or method happened to be named name, which is not Java's meaning (ADR-060).",
+      "fix": "Give the receiver its record or ledger type instead of var or PlutusData, or call a static helper as helper(x) rather than x.helper().",
+      "example": {
+        "bad": "static BigInteger amount(PlutusData d) { ... }\nPlutusData d = ...;\nreturn d.amount();",
+        "good": "static BigInteger amount(PlutusData d) { ... }\nPlutusData d = ...;\nreturn amount(d);"
+      }
+    },
+    {
+      "code": "JULC0056",
+      "constant": "FIELD_ASSIGNMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Loop assignment to a shared static field or @Param",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Assignment to field ''{0}'' in a loop is not supported: {1}",
+      "summary": "Static fields and @Param fields are not shared state on-chain: a loop assignment rebinds the name only in the rest of the assigning method's current run, and every other run and every other method sees the initial value. The assignment is accepted only where that matches Java: the field is not final, the method is an entry method (a validator entrypoint or the compileMethod target) that no method calls, the loop is not in a lambda, and no other method reads the field (ADR-060).",
+      "fix": "Copy the field into a local accumulator before the loop, update the local, and pass it to the methods that need it.",
+      "example": {
+        "bad": "static long count = 0;\nstatic long current() { return count; }\n...\nfor (var x : xs) { count += 1; }\nreturn current();",
+        "good": "long seen = count;\nfor (var x : xs) { seen += 1; }\nreturn seen;"
+      }
+    },
+    {
+      "code": "JULC0057",
+      "constant": "STATIC_INITIALIZER_CALLS_METHOD",
+      "status": "emitted",
+      "title": "Static field initializer calls a method of its class",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Static field ''{0}'' calls method {1}; static field initializers cannot call methods of their class",
+      "summary": "Static field initializers are evaluated outside the class's methods, so a call to one of them cannot be bound.",
+      "fix": "Call the method where the value is used, or initialise the field with an expression that does not call a method of this class."
+    },
+    {
+      "code": "JULC0058",
+      "constant": "LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR",
+      "status": "emitted",
+      "title": "Reassignment in a loop that updates no earlier variable",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Reassigning {0} ''{1}'' is not supported in a loop that updates no variable declared before the loop",
+      "summary": "A for-each loop can reassign its loop variable or a local declared in its body only while it also updates a variable declared before the loop. Without one, the body is compiled as plain statements, which cannot reassign a variable (ADR-060).",
+      "fix": "Declare a new local for the new value instead of reassigning, for example var adjusted = amount.subtract(fee);",
+      "example": {
+        "bad": "for (var amount : amounts) {\n    amount = amount.subtract(fee);\n    if (amount.signum() < 0) Builtins.error();\n}",
+        "good": "for (var amount : amounts) {\n    var net = amount.subtract(fee);\n    if (net.signum() < 0) Builtins.error();\n}"
+      }
+    },
+    {
+      "code": "JULC0059",
+      "constant": "PATTERN_VARIABLE_SHADOWS_FIELD",
+      "status": "emitted",
+      "title": "instanceof pattern variable reuses a field name",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Pattern variable ''{0}'' has the same name as a field of {1}",
+      "summary": "An instanceof pattern variable is bound only when the pattern is the whole condition of an if statement outside a loop. In any other position (a loop body, an && condition, a negated guard, a ternary, a lambda) the name resolves to a field of the same name instead, which silently reads or updates the field (#204). A pattern variable may therefore not reuse the name of a field, including a @Param field, of an enclosing class.",
+      "fix": "Rename the pattern variable, for example `if (action instanceof Bid bid)`, so it does not reuse a field name.",
+      "example": {
+        "bad": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid best) { return best.amount(); }",
+        "good": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid bid) { return bid.amount(); }"
+      }
     }
   ]
 }

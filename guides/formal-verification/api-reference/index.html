@@ -1,0 +1,763 @@
+<!DOCTYPE html><html lang="en" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>API and DSL Reference | JuLC</title><link rel="canonical" href="https://julc.dev/guides/formal-verification/api-reference/"/><link rel="sitemap" href="/sitemap-index.xml"/><link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.3"/><meta name="generator" content="Starlight v0.42.2"/><meta property="og:title" content="API and DSL Reference"/><meta property="og:type" content="article"/><meta property="og:url" content="https://julc.dev/guides/formal-verification/api-reference/"/><meta property="og:locale" content="en"/><meta property="og:description" content="Experimental JuLC formal-verification annotations, typed Java DSL, and CLI reference"/><meta property="og:site_name" content="JuLC"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="Experimental JuLC formal-verification annotations, typed Java DSL, and CLI reference"/><script>
+  (function() {
+    var scheme = typeof localStorage !== 'undefined' && localStorage.getItem('julc-color-scheme');
+    if (scheme) document.documentElement.setAttribute('data-color-scheme', scheme);
+  })();
+</script><script>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme =
+			storedTheme ||
+			(window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/_astro/common.Dh5z17wB.css"><style>@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}}
+@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}
+</style><script type="module" src="/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">Skip to content</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-xiqy3rs3"><div class="title-wrapper sl-flex astro-xiqy3rs3"><a href="/" class="site-title sl-flex astro-xiqy3rs3"><img src="/logo.png" alt="" class="site-logo astro-xiqy3rs3"><span class="site-name astro-xiqy3rs3" translate="no">JuLC</span></a></div><div class="sl-flex print:hidden astro-xiqy3rs3"><site-search class="astro-xiqy3rs3 astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;Search&quot;}"><button data-open-modal disabled aria-label="Search" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">Search</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="Search" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">Cancel</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
+	(() => {
+		const openBtn = document.querySelector('button[data-open-modal]');
+		const shortcut = openBtn?.querySelector('kbd');
+		if (!openBtn || !(shortcut instanceof HTMLElement)) return;
+		const platformKey = shortcut.querySelector('kbd');
+		if (platformKey && /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)) {
+			platformKey.textContent = '⌘';
+			openBtn.setAttribute('aria-keyshortcuts', 'Meta+K');
+		}
+		shortcut.style.display = '';
+	})();
+</script><script type="module" src="/_astro/Search.astro_astro_type_script_index_0_lang.DZqJ8Bdf.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-xiqy3rs3"><div class="sl-flex social-icons astro-xiqy3rs3"><a href="https://github.com/bloxbean/julc" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-color-scheme class="astro-he74j3um"><label class="astro-he74j3um"><span class="sr-only astro-he74j3um">Color scheme</span><svg class="icon label-icon astro-he74j3um" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5" class="astro-he74j3um"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" class="astro-he74j3um"></path></svg><select autocomplete="off" class="astro-he74j3um"><option value="orange" selected class="astro-he74j3um">Orange</option><option value="ocean" class="astro-he74j3um">Ocean</option><option value="emerald" class="astro-he74j3um">Emerald</option><option value="purple" class="astro-he74j3um">Purple</option><option value="teal" class="astro-he74j3um">Teal</option></select><svg class="icon caret astro-he74j3um" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 16l-6-6h12z" class="astro-he74j3um"></path></svg></label></starlight-color-scheme><script>
+  (function() {
+    var scheme = typeof localStorage !== 'undefined' && localStorage.getItem('julc-color-scheme');
+    if (scheme) document.documentElement.setAttribute('data-color-scheme', scheme);
+  })();
+</script><script type="module">var e=`julc-color-scheme`;function t(){return typeof localStorage<`u`&&localStorage.getItem(e)||`orange`}function n(t){document.documentElement.setAttribute(`data-color-scheme`,t),typeof localStorage<`u`&&localStorage.setItem(e,t),document.querySelectorAll(`starlight-color-scheme select`).forEach(e=>{e instanceof HTMLSelectElement&&(e.value=t)})}var r=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);if(e){let r=t();e.value=r,n(r),e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&n(e.currentTarget.value)})}}};customElements.define(`starlight-color-scheme`,r);</script><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Select theme</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Dark</option><option value="light" class="astro-2z5xp7gb">Light</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="Main"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">Menu</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="02nleih" class="astro-ipdry5cl"><script aria-hidden="true">
+		(() => {
+			try {
+				if (!matchMedia('(min-width: 50em)').matches) return;
+				/** @type {HTMLElement | null} */
+				const target = document.querySelector('sl-sidebar-state-persist');
+				const state = JSON.parse(sessionStorage.getItem('sl-sidebar-state') || '0');
+				if (!target || !state || target.dataset.hash !== state.hash) return;
+				window._starlightScrollRestore = state.scroll;
+				customElements.define(
+					'sl-sidebar-restore',
+					class SidebarRestore extends HTMLElement {
+						connectedCallback() {
+							try {
+								const idx = parseInt(this.dataset.index || '');
+								const details = this.closest('details');
+								if (details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+							} catch {}
+						}
+					}
+				);
+			} catch {}
+		})();
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/overview/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><a href="/first-contract/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Write Your First Contract</span></a></li><li class="astro-rmhv4bp6"><a href="/getting-started/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Getting Started</span></a></li><li class="astro-rmhv4bp6"><a href="/playground/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Playground</span><span class="sl-badge tip small  astro-rmhv4bp6 astro-f4zorn72">Browser</span></a></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">AI Agents</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/ai/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Using JuLC with AI</span></a></li><li class="astro-rmhv4bp6"><a href="/ai/starter-pack/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">AI Starter Pack</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Guides</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/guides/advanced-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Advanced Guide</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/for-loop-patterns/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">For-Loop Patterns</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/testing-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Testing Guide</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/source-maps/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Source Maps</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/strict-data-boundaries/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Strict Data Boundaries</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/purpose-indexed-blueprints/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Multi-validator Blueprints</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/javascript-wasm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">JavaScript &amp; WebAssembly</span><span class="sl-badge caution small  astro-rmhv4bp6 astro-f4zorn72">Experimental</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Formal Verification</span><span class="sl-badge caution small  astro-rmhv4bp6 astro-f4zorn72">Experimental</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/design/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Design</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/annotation-profiles/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Annotation Profiles</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/typed-dsl/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Typed Java DSL</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/dsl-examples/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">DSL Examples</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/api-reference/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API &amp; DSL Reference</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/troubleshooting/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Troubleshooting</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Best Practices</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/best-practices/conditionals/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Conditionals and Script Size</span></a></li><li class="astro-rmhv4bp6"><a href="/best-practices/value-oriented-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Value-Oriented Contract Code</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Standard Library</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/stdlib/stdlib-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Library Reference</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Reference</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/reference/api-reference/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API Reference</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/release-notes/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Release Notes</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/cost-model-profiles/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Cost Model Profiles</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/hash-stability/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Hash and Cost Stability</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/library-developer-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Library Developer Guide</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/examples/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Examples</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/troubleshooting/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Troubleshooting</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internals</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/internals/compiler-design/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Compiler Design</span></a></li><li class="astro-rmhv4bp6"><a href="/internals/java-to-uplc-end-to-end/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Java to UPLC End to End</span></a></li><li class="astro-rmhv4bp6"><a href="/internals/compiler-developer-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Compiler Developer Guide</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Experimental</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/experimental/jrl-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">JRL Guide</span><span class="sl-badge caution small  astro-rmhv4bp6 astro-f4zorn72">Experimental</span></a></li></ul></details></li></ul><script aria-hidden="true">
+		(() => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!window._starlightScrollRestore || !scroller) return;
+			scroller.scrollTop = window._starlightScrollRestore;
+			delete window._starlightScrollRestore;
+		})();
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/bloxbean/julc" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Select theme</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Dark</option><option value="light" class="astro-2z5xp7gb">Light</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
+	StarlightThemeProvider.updatePickers();
+</script></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">On this page<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Overview</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#verification-annotations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Verification annotations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#stable-construction-api-v1" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Stable construction API v1</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#property-factories" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Property factories</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#core-expression-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Core expression operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#generated-contract-metamodel" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Generated contract metamodel</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#two-expression-families" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Two expression families</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ledger-context-and-transaction-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Ledger context and transaction operations</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#credentials-and-output-datum" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Credentials and output datum</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#authorization-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Authorization operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#certificate-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Certificate operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#multi-asset-value-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Multi-asset value operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#governance-transaction-data-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Governance transaction-data operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#reviewed-raw-data-adapters" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Reviewed raw-data adapters</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#cli" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">CLI</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#result-contract" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Result contract</span></a></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.BcSo_yiZ.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">On this page</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Overview</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#verification-annotations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Verification annotations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#stable-construction-api-v1" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Stable construction API v1</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#property-factories" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Property factories</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#core-expression-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Core expression operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#generated-contract-metamodel" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Generated contract metamodel</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#two-expression-families" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Two expression families</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#ledger-context-and-transaction-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Ledger context and transaction operations</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#credentials-and-output-datum" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">Credentials and output datum</span></a></li></ul></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#authorization-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Authorization operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#certificate-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Certificate operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#multi-asset-value-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Multi-asset value operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#governance-transaction-data-operations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Governance transaction-data operations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#reviewed-raw-data-adapters" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Reviewed raw-data adapters</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#cli" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">CLI</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#result-contract" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Result contract</span></a></li></ul></nav></starlight-toc><script type="module" src="/_astro/TableOfContents.astro_astro_type_script_index_0_lang.Csloo1VZ.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="en" dir="ltr"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">API and DSL Reference</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><aside aria-label="Experimental verification feature" class="starlight-aside starlight-aside--caution"><p class="starlight-aside__title" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="starlight-aside__icon"><path d="M12 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10.67 1.47-8.05-14a3 3 0 0 0-5.24 0l-8 14A3 3 0 0 0 3.94 22h16.12a3 3 0 0 0 2.61-4.53Zm-1.73 2a1 1 0 0 1-.88.51H3.94a1 1 0 0 1-.88-.51 1 1 0 0 1 0-1l8-14a1 1 0 0 1 1.78 0l8.05 14a1 1 0 0 1 .05 1.02v-.02ZM12 8a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0V9a1 1 0 0 0-1-1Z"/></svg>Experimental verification feature</p><div class="starlight-aside__content"><p>The documented Java construction API and canonical schema-1 meanings are
+stable as API v1. The verifier, compiler, pinned ledger model, Blaster
+translation, and solver integration remain experimental and are not a general
+contract-safety certification.</p></div></aside>
+<p>This page covers the off-chain APIs in <code dir="auto">julc-verification</code>. None of these
+annotations or property builders changes compiler lowering or emitted UPLC.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="verification-annotations">Verification annotations</h2><a class="sl-anchor-link" href="#verification-annotations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Verification annotations”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Annotation</th>
+<th>Purpose</th>
+<th>Admitted form</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">@RequiresSigner("datum.&lt;field&gt;")</code></td>
+<td>spending</td>
+<td>The selected datum field resolves to a supported byte-string/key-hash authority.</td>
+</tr>
+<tr>
+<td><code dir="auto">@ControlledMint(authority=..., tokenName=..., quantity=..., action=...)</code></td>
+<td>minting</td>
+<td>Fixed 28-byte authority, token name up to 32 bytes, and a strictly positive magnitude interpreted according to <code dir="auto">MINT</code> or <code dir="auto">BURN</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">@PreservesValue(output=SINGLE_CONTINUING_OUTPUT)</code></td>
+<td>spending</td>
+<td>Accepted only as part of the complete stateful profile.</td>
+</tr>
+<tr>
+<td><code dir="auto">@Monotonic(current=..., next=..., relation=GREATER_THAN)</code></td>
+<td>spending</td>
+<td>Accepted only as part of the complete stateful profile.</td>
+</tr>
+</tbody>
+</table>
+<p>The complete stateful profile is <code dir="auto">@RequiresSigner + @PreservesValue + @Monotonic</code>. Partial combinations fail closed. Every profile lowers to the
+same canonical typed DSL IR used by a direct Java specification; annotations
+do not own separate Lean security formulas.</p>
+<p>See <a href="../annotation-profiles/">Annotation Profiles</a> for complete examples and
+profile-specific limitations.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="stable-construction-api-v1">Stable construction API v1</h2><a class="sl-anchor-link" href="#stable-construction-api-v1"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Stable construction API v1”</span></a></div>
+<p>Canonical property documents use:</p>
+<div class="expressive-code"><link rel="stylesheet" href="/_astro/ec.w36nc.css"><script type="module" src="/_astro/ec.0vx5m.js"></script><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="json"><code><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">{</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"format"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#C789D6;--1:#7C5686">julc.verification.dsl</span><span style="--0:#D9F5DD;--1:#111111">"</span><span style="--0:#D6DEEB;--1:#403F53">,</span></div></div><div class="ec-line"><div class="code"><span class="indent">  </span><span style="--0:#7FDBCA;--1:#096E72">"schemaVersion"</span><span style="--0:#D6DEEB;--1:#403F53">: </span><span style="--0:#F78C6C;--1:#AA0982">1</span></div></div><div class="ec-line"><div class="code"><span style="--0:#D6DEEB;--1:#403F53">}</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="{  &quot;format&quot;: &quot;julc.verification.dsl&quot;,  &quot;schemaVersion&quot;: 1}"><div></div></button></div></figure></div>
+<p>Earlier E.2–E.4 schema numbers were unreleased milestone gates. They are not
+selectable, generated, or accepted as current property input.</p>
+<p>Do not confuse that public schema number with the <code dir="auto">schemaVersion</code> on an
+internal workspace property record such as <code dir="auto">ComposedDslProperty</code>. The public
+canonical DSL document above is always format <code dir="auto">julc.verification.dsl</code>, schema</p>
+<ol>
+<li>Workspace manifests, promoted-property records, runner plans, and
+certificates have separate versioned protocols and may contain a different
+<code dir="auto">schemaVersion</code> field.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Type or surface</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">VerificationSpecification</code></td>
+<td>Trusted Java property-builder entry point.</td>
+</tr>
+<tr>
+<td><code dir="auto">VerificationDsl</code></td>
+<td>Property, integer, boolean, bytes, key-hash, token-name, policy-ID, and output-reference factories.</td>
+</tr>
+<tr>
+<td>Typed wrappers in <code dir="auto">org.julclang.verification.dsl</code></td>
+<td>Closed expressions for booleans, integers, bytes, options, lists, maps, contract types, ledger data, authorization, certificates, values, and governance data.</td>
+</tr>
+<tr>
+<td><code dir="auto">DslProperty</code></td>
+<td>One named guarantee with an explicit modeled domain.</td>
+</tr>
+<tr>
+<td><code dir="auto">DslPropertySet</code></td>
+<td>Canonical schema-1 envelope; generated models normally construct it through <code dir="auto">contract.properties(...)</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">DslPurpose</code></td>
+<td><code dir="auto">SPENDING</code>, <code dir="auto">MINTING</code>, <code dir="auto">REWARDING</code>, or <code dir="auto">CERTIFYING</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">DslDomain</code></td>
+<td><code dir="auto">NONE</code> or one of the four pinned V3 ledger domains.</td>
+</tr>
+<tr>
+<td>Generated contract metamodel</td>
+<td>Compiler-owned datum/redeemer types and purpose-specific context roots.</td>
+</tr>
+</tbody>
+</table>
+<p>Concrete node classes under <code dir="auto">verification.dsl.ir</code> are serialization
+infrastructure, except for the documented property envelope and enums.
+Renderers, validators, promotion internals, worker protocols, arbitrary Lean,
+and user-defined AST node kinds are not supported construction APIs.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="property-factories">Property factories</h2><a class="sl-anchor-link" href="#property-factories"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Property factories”</span></a></div>
+<p>Common static imports from <code dir="auto">VerificationDsl</code> include:</p>
+<table>
+<thead>
+<tr>
+<th>Factory</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">property(id, domain, guarantee)</code></td>
+<td>A named, domain-qualified property.</td>
+</tr>
+<tr>
+<td><code dir="auto">bool(value)</code></td>
+<td>Boolean literal expression.</td>
+</tr>
+<tr>
+<td><code dir="auto">integer(value)</code></td>
+<td>Canonical bounded integer literal expression.</td>
+</tr>
+<tr>
+<td><code dir="auto">bytes(hex)</code></td>
+<td>Byte-string literal expression.</td>
+</tr>
+<tr>
+<td><code dir="auto">keyHash(hex)</code></td>
+<td>Fixed public-key-hash literal for admitted signer operations.</td>
+</tr>
+<tr>
+<td><code dir="auto">tokenName(hex)</code></td>
+<td>Token-name literal.</td>
+</tr>
+<tr>
+<td><code dir="auto">policyId(hex)</code></td>
+<td>Policy-ID literal where the selected operation admits a fixed policy.</td>
+</tr>
+<tr>
+<td><code dir="auto">txOutRef(transactionIdHex, index)</code></td>
+<td>Transaction-output-reference literal.</td>
+</tr>
+</tbody>
+</table>
+<p>Generated wrappers expose only operations admitted for their compiler-owned
+type. Options require <code dir="auto">exists</code>, <code dir="auto">isPresent</code>, or <code dir="auto">isEmpty</code>; sealed variants
+require the generated guarded eliminator; list and map operations preserve
+order and duplicates unless a method explicitly states different semantics.</p>
+<p>See <a href="../typed-dsl/">Typed Java DSL</a> for composition examples and the supported
+Cardano surface.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="core-expression-operations">Core expression operations</h2><a class="sl-anchor-link" href="#core-expression-operations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Core expression operations”</span></a></div>
+<p>Do not construct wrappers from raw <code dir="auto">PropertyNode</code> values. Obtain them from
+<code dir="auto">VerificationDsl</code>, the generated model, or another documented wrapper method.
+The public operations are:</p>
+<table>
+<thead>
+<tr>
+<th>Wrapper</th>
+<th>Supported operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">BoolExpr</code></td>
+<td><code dir="auto">and</code>, <code dir="auto">or</code>, <code dir="auto">implies</code>, <code dir="auto">not</code>, <code dir="auto">eq</code>, <code dir="auto">ne</code></td>
+</tr>
+<tr>
+<td><code dir="auto">IntegerExpr</code></td>
+<td><code dir="auto">eq</code>, <code dir="auto">ne</code>, <code dir="auto">ge</code>, <code dir="auto">gt</code>, <code dir="auto">le</code>, <code dir="auto">lt</code>, <code dir="auto">negate</code>, <code dir="auto">add</code>, <code dir="auto">subtract</code>, <code dir="auto">times</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ByteStringExpr</code>, <code dir="auto">StringExpr</code></td>
+<td><code dir="auto">eq</code>, <code dir="auto">ne</code></td>
+</tr>
+<tr>
+<td><code dir="auto">TypedValueExpr</code></td>
+<td>type-checked <code dir="auto">eq</code>, <code dir="auto">ne</code>, and <code dir="auto">asInteger</code> when its compiler-owned type is integer</td>
+</tr>
+<tr>
+<td><code dir="auto">TypedOptionExpr</code></td>
+<td><code dir="auto">exists</code>, <code dir="auto">isPresent</code>, <code dir="auto">isEmpty</code></td>
+</tr>
+<tr>
+<td><code dir="auto">TypedListExpr</code></td>
+<td><code dir="auto">isEmpty</code>, <code dir="auto">isNotEmpty</code>, <code dir="auto">contains</code>, <code dir="auto">exists</code>, <code dir="auto">all</code>, <code dir="auto">none</code>, <code dir="auto">whenSingleton</code>, <code dir="auto">count</code>, <code dir="auto">exactlyOne</code>, <code dir="auto">at</code>, <code dir="auto">structurallyEquals</code>, <code dir="auto">structurallyNotEquals</code></td>
+</tr>
+<tr>
+<td><code dir="auto">TypedAssocMapExpr</code></td>
+<td><code dir="auto">existsEntry</code>, <code dir="auto">allEntries</code>, <code dir="auto">noneEntries</code>, <code dir="auto">countEntry</code>, <code dir="auto">containsKey</code>, <code dir="auto">countKey</code>, <code dir="auto">lookupFirst</code>, <code dir="auto">lookupAll</code>, <code dir="auto">structurallyEquals</code>, <code dir="auto">structurallyNotEquals</code></td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">at</code> returns an option and is empty for a negative or out-of-range index.
+Lists and association maps are ordered and duplicate-preserving. Structural
+equality is therefore not mathematical set or map equality.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="generated-contract-metamodel">Generated contract metamodel</h2><a class="sl-anchor-link" href="#generated-contract-metamodel"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Generated contract metamodel”</span></a></div>
+<p>Every generated model exposes the operations applicable to its selected
+interface and compiler-owned schema:</p>
+<table>
+<thead>
+<tr>
+<th>Generated surface</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">properties(DslProperty...)</code></td>
+<td>Creates the schema-1 envelope with the selected purpose and contract-schema hash.</td>
+</tr>
+<tr>
+<td><code dir="auto">datum()</code>, <code dir="auto">redeemer()</code></td>
+<td>Strictly decoded optional roots; datum is present only for a spending interface.</td>
+</tr>
+<tr>
+<td><code dir="auto">decodeDatum(raw, predicate)</code></td>
+<td>Strictly decodes raw <code dir="auto">Data</code> with the compiler-projected datum type.</td>
+</tr>
+<tr>
+<td><code dir="auto">context()</code></td>
+<td>Returns the selected script’s <code dir="auto">LedgerContextExpr</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">authorization()</code></td>
+<td>Returns the authorization builder.</td>
+</tr>
+<tr>
+<td><code dir="auto">currentOutputRef()</code>, <code dir="auto">ownInput()</code>, <code dir="auto">continuingOutputs()</code></td>
+<td>Spending-only helpers.</td>
+</tr>
+<tr>
+<td><code dir="auto">ownPolicy()</code></td>
+<td>Minting-only policy root.</td>
+</tr>
+<tr>
+<td><code dir="auto">rewardingCredential()</code></td>
+<td>Rewarding-only credential root.</td>
+</tr>
+<tr>
+<td><code dir="auto">certificate()</code>, <code dir="auto">certificateIndex()</code></td>
+<td>Certifying-only current-certificate roots.</td>
+</tr>
+</tbody>
+</table>
+<p>Generated record wrappers expose field accessors and structural equality.
+Generated sealed variants expose <code dir="auto">is&lt;Constructor&gt;()</code> and guarded
+<code dir="auto">when&lt;Constructor&gt;(...)</code> eliminators. Generated optional, list, and map wrappers
+mirror the core operations with schema-specific Java types; generated
+<code dir="auto">List&lt;byte[]&gt;</code> additionally exposes <code dir="auto">asAuthorities()</code>.</p>
+<p>Purpose helper models are also part of API v1 where a reviewed profile needs
+special roots. In particular, <code dir="auto">MintingContractModel</code> exposes <code dir="auto">context()</code>,
+<code dir="auto">ownPolicy()</code>, <code dir="auto">redeemerStrictlyDecodes()</code>, <code dir="auto">exactUplcSucceeds()</code>, and
+<code dir="auto">validMintingContext()</code>. Prefer generated roots for ordinary custom properties;
+the <a href="../dsl-examples/#minting-authority-anchor-and-exact-own-policy-asset">minting example</a>
+shows the reviewed exact-own-policy operation.</p>
+<p>The complete purpose-helper surface is:</p>
+<table>
+<thead>
+<tr>
+<th>Helper</th>
+<th>Roots and operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">SpendingContractModel</code></td>
+<td><code dir="auto">datum</code>, <code dir="auto">context</code>, <code dir="auto">exactUplcSucceeds</code>, <code dir="auto">validSpendingContext</code></td>
+</tr>
+<tr>
+<td><code dir="auto">MintingContractModel</code></td>
+<td><code dir="auto">context</code>, <code dir="auto">ownPolicy</code>, <code dir="auto">redeemerStrictlyDecodes</code>, <code dir="auto">exactUplcSucceeds</code>, <code dir="auto">validMintingContext</code></td>
+</tr>
+<tr>
+<td><code dir="auto">RewardingContractModel</code></td>
+<td><code dir="auto">context</code>, <code dir="auto">rewardingCredential</code>, <code dir="auto">redeemerStrictlyDecodes</code></td>
+</tr>
+<tr>
+<td><code dir="auto">CertifyingContractModel</code></td>
+<td><code dir="auto">context</code>, <code dir="auto">certificate</code>, <code dir="auto">certificateIndex</code>, <code dir="auto">redeemerStrictlyDecodes</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ContextExpr</code></td>
+<td><code dir="auto">txInfo</code></td>
+</tr>
+<tr>
+<td><code dir="auto">DatumExpr</code></td>
+<td>reviewed <code dir="auto">bytesField(name)</code> and <code dir="auto">integerField(name)</code> access used by supported profile roots</td>
+</tr>
+<tr>
+<td><code dir="auto">TxInfoExpr</code></td>
+<td><code dir="auto">signatories</code>, <code dir="auto">outputs</code>, <code dir="auto">inputs</code>, <code dir="auto">mint</code>, <code dir="auto">withdrawals</code>, <code dir="auto">certificates</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ByteStringListExpr</code></td>
+<td><code dir="auto">contains</code></td>
+</tr>
+<tr>
+<td><code dir="auto">TxInInfoListExpr</code></td>
+<td><code dir="auto">consumes</code></td>
+</tr>
+<tr>
+<td><code dir="auto">MintValueExpr</code></td>
+<td><code dir="auto">exactOwnPolicyAsset</code></td>
+</tr>
+<tr>
+<td><code dir="auto">TxOutListExpr</code></td>
+<td><code dir="auto">exists</code></td>
+</tr>
+<tr>
+<td><code dir="auto">TxOutExpr</code></td>
+<td><code dir="auto">address</code>, <code dir="auto">value</code></td>
+</tr>
+<tr>
+<td><code dir="auto">AddressExpr</code></td>
+<td><code dir="auto">credential</code></td>
+</tr>
+<tr>
+<td><code dir="auto">CredentialExpr</code></td>
+<td><code dir="auto">eq</code>, <code dir="auto">matchesKeyHash</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ValueExpr</code></td>
+<td><code dir="auto">lovelace</code></td>
+</tr>
+<tr>
+<td><code dir="auto">WithdrawalsExpr</code></td>
+<td>ordered duplicate-preserving <code dir="auto">exists</code> over <code dir="auto">credential</code> and <code dir="auto">amount</code></td>
+</tr>
+<tr>
+<td><code dir="auto">TxCertListExpr</code></td>
+<td>indexed <code dir="auto">containsAt</code></td>
+</tr>
+</tbody>
+</table>
+<p>The generated model still owns <code dir="auto">properties(...)</code> and the contract-schema hash;
+purpose helpers supply only closed reviewed expression roots.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="two-expression-families">Two expression families</h3><a class="sl-anchor-link" href="#two-expression-families"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Two expression families”</span></a></div>
+<p>The API contains two deliberately different families:</p>
+<ul>
+<li>the generated/current-ledger family starts at a generated model’s
+<code dir="auto">LedgerContextExpr</code> and exposes the broader, compiler-bound
+<code dir="auto">LedgerTxInfoExpr</code> surface used by custom properties;</li>
+<li>the purpose-helper family starts at <code dir="auto">ContextExpr</code> and exposes the smaller
+reviewed <code dir="auto">TxInfoExpr</code> surface used by established profile operations.</li>
+</ul>
+<p>For example, withdrawals are a generic typed association map on the first
+path and a specialized <code dir="auto">WithdrawalsExpr</code> on the second. Likewise,
+<code dir="auto">VerificationDsl.tokenName(hex)</code> is a generic byte-string literal, while
+<code dir="auto">LedgerExpressions.tokenName(bytes(...))</code> is a role-preserving ledger token
+name. Prefer the generated family for custom properties and use a purpose
+helper only when its documented operation requires it. Similar names do not
+make wrappers interchangeable; use their public factory or adapter methods.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="ledger-context-and-transaction-operations">Ledger context and transaction operations</h2><a class="sl-anchor-link" href="#ledger-context-and-transaction-operations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Ledger context and transaction operations”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Wrapper</th>
+<th>Supported operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">LedgerContextExpr</code></td>
+<td><code dir="auto">txInfo</code>, <code dir="auto">scriptPurpose</code>, <code dir="auto">valueSpent</code>, <code dir="auto">valueProduced</code>, <code dir="auto">isBalanced</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxInfoExpr</code></td>
+<td><code dir="auto">inputs</code>, <code dir="auto">referenceInputs</code>, <code dir="auto">outputs</code>, <code dir="auto">fee</code>, <code dir="auto">mint</code>, <code dir="auto">id</code>, <code dir="auto">certificates</code>, <code dir="auto">datums</code>, <code dir="auto">redeemers</code>, <code dir="auto">withdrawals</code>, <code dir="auto">votes</code>, <code dir="auto">proposals</code>, <code dir="auto">signatories</code>, <code dir="auto">validityRangeReviewed</code>, <code dir="auto">currentTreasuryStrict</code>, <code dir="auto">treasuryDonationStrict</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxInInfoExpr</code></td>
+<td><code dir="auto">outRef</code>, <code dir="auto">resolved</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxInInfoListExpr</code></td>
+<td><code dir="auto">isEmpty</code>, <code dir="auto">isNotEmpty</code>, <code dir="auto">exists</code>, <code dir="auto">all</code>, <code dir="auto">none</code>, <code dir="auto">count</code>, <code dir="auto">exactlyOne</code>, <code dir="auto">at</code>, <code dir="auto">resolve</code>, <code dir="auto">valueSpent</code>, <code dir="auto">forPaymentKey</code>, <code dir="auto">forScript</code>, structural equality/inequality</td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxInInfoOptionExpr</code></td>
+<td><code dir="auto">exists</code>, <code dir="auto">isPresent</code>, <code dir="auto">isEmpty</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxOutExpr</code></td>
+<td><code dir="auto">address</code>, <code dir="auto">value</code>, <code dir="auto">datum</code>, <code dir="auto">referenceScript</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxOutListExpr</code></td>
+<td><code dir="auto">isEmpty</code>, <code dir="auto">isNotEmpty</code>, <code dir="auto">exists</code>, <code dir="auto">all</code>, <code dir="auto">none</code>, <code dir="auto">whenSingleton</code>, <code dir="auto">count</code>, <code dir="auto">exactlyOne</code>, <code dir="auto">at</code>, <code dir="auto">valueProduced</code>, <code dir="auto">toAddress</code>, <code dir="auto">toPaymentCredential</code>, structural equality/inequality</td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxOutOptionExpr</code></td>
+<td><code dir="auto">exists</code>, <code dir="auto">isPresent</code>, <code dir="auto">isEmpty</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerAddressExpr</code></td>
+<td><code dir="auto">paymentCredential</code>, <code dir="auto">stakingCredential</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxOutRefExpr</code></td>
+<td><code dir="auto">id</code>, <code dir="auto">index</code>, <code dir="auto">eq</code>, <code dir="auto">ne</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerTxIdExpr</code></td>
+<td>equality/inequality with another transaction ID or matching ledger byte alias</td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerScriptPurposeExpr</code></td>
+<td><code dir="auto">isMinting</code>, <code dir="auto">isSpending</code>, <code dir="auto">isRewarding</code>, <code dir="auto">isCertifying</code>, <code dir="auto">isVoting</code>, <code dir="auto">isProposing</code>, <code dir="auto">eq</code>, <code dir="auto">ne</code>, <code dir="auto">typed</code></td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">toAddress</code> compares the complete address. <code dir="auto">toPaymentCredential</code> intentionally
+ignores the staking credential and is a weaker aggregation scope.</p>
+<div class="sl-heading-wrapper level-h3"><h3 id="credentials-and-output-datum">Credentials and output datum</h3><a class="sl-anchor-link" href="#credentials-and-output-datum"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Credentials and output datum”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Wrapper</th>
+<th>Supported operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">LedgerCredentialExpr</code></td>
+<td><code dir="auto">typed</code>, <code dir="auto">isPubKey</code>, <code dir="auto">isScript</code>, <code dir="auto">whenPubKey</code>, <code dir="auto">whenScript</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerStakingCredentialExpr</code></td>
+<td><code dir="auto">isHash</code>, <code dir="auto">isPointer</code>, <code dir="auto">whenHash</code>, <code dir="auto">whenPointer</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerStakingCredentialOptionExpr</code></td>
+<td><code dir="auto">exists</code>, <code dir="auto">isPresent</code>, <code dir="auto">isEmpty</code></td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerOutputDatumExpr</code></td>
+<td><code dir="auto">isNone</code>, <code dir="auto">isHash</code>, <code dir="auto">isInline</code>, <code dir="auto">whenHash</code>, <code dir="auto">whenInline</code>, <code dir="auto">whenInlineDecoded</code>; generated <code dir="auto">decodeDatum</code> is the preferred contract-datum decoder</td>
+</tr>
+<tr>
+<td><code dir="auto">LedgerByteAliasExpr</code></td>
+<td>role-preserving <code dir="auto">typed</code>, <code dir="auto">eq</code>, <code dir="auto">ne</code></td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">LedgerExpressions.context()</code> creates the closed pinned V3 ledger-context
+root. <code dir="auto">LedgerExpressions</code> also creates reviewed ledger aliases with <code dir="auto">transactionId</code>,
+<code dir="auto">datumHash</code>, <code dir="auto">scriptHash</code>, <code dir="auto">publicKeyHash</code>, <code dir="auto">currencySymbol</code>, and <code dir="auto">tokenName</code>.
+It also supplies the current certificate/index, rewarding credential, and
+<code dir="auto">singletonValueDelta</code> helpers used by generated or purpose-specific models.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="authorization-operations">Authorization operations</h2><a class="sl-anchor-link" href="#authorization-operations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Authorization operations”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Supported operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">AuthorizationDsl</code></td>
+<td><code dir="auto">fixed</code>, <code dir="auto">fromContractBytes(ByteStringExpr)</code>, <code dir="auto">fromContractBytes(TypedListExpr)</code>, <code dir="auto">authorities</code>, <code dir="auto">noSigners</code></td>
+</tr>
+<tr>
+<td><code dir="auto">AuthoritySetExpr</code></td>
+<td><code dir="auto">anySigned</code>, <code dir="auto">allSigned</code>, <code dir="auto">noneSigned</code>, <code dir="auto">atLeastSigned</code>, <code dir="auto">exactlySigned</code>, <code dir="auto">noUnexpectedSigners</code>, <code dir="auto">exactSignerSet</code></td>
+</tr>
+</tbody>
+</table>
+<p>Authorization uses distinct identities. A threshold does not exclude unrelated
+signers; compose <code dir="auto">noUnexpectedSigners</code> when that is required. Static authority
+sets contain 1–16 unique fixed authorities. Parameter-derived roots and fixed
+hashes containing byte <code dir="auto">00</code> currently fail closed.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="certificate-operations">Certificate operations</h2><a class="sl-anchor-link" href="#certificate-operations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Certificate operations”</span></a></div>
+<p><code dir="auto">LedgerTxCertListExpr</code> supports <code dir="auto">isEmpty</code>, <code dir="auto">isNotEmpty</code>, <code dir="auto">exists</code>, <code dir="auto">all</code>,
+<code dir="auto">none</code>, <code dir="auto">count</code>, <code dir="auto">at</code>, <code dir="auto">containsAt</code>, and structural equality/inequality.
+<code dir="auto">LedgerTxCertOptionExpr</code> supports <code dir="auto">exists</code>, <code dir="auto">isPresent</code>, and <code dir="auto">isEmpty</code>.</p>
+<p><code dir="auto">TxCertExpr</code> supports typed <code dir="auto">eq</code> and <code dir="auto">ne</code>. Its <code dir="auto">isKind</code> method accepts the
+closed <code dir="auto">TxCertKind</code> enum:</p>
+<div class="expressive-code"><figure class="frame not-content"><figcaption class="header"></figcaption><pre data-language="text"><code><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">REG_STAKING, UNREG_STAKING, DELEG_STAKING, REG_DELEG,</span></div></div><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">REG_DREP, UPDATE_DREP, UNREG_DREP, POOL_REGISTER, POOL_RETIRE,</span></div></div><div class="ec-line"><div class="code"><span style="--0:#d6deeb;--1:#403f53">AUTH_HOT_COMMITTEE, RESIGN_COLD_COMMITTEE</span></div></div></code></pre><div class="copy"><div aria-live="polite"></div><button title="Copy to clipboard" data-copied="Copied!" data-code="REG_STAKING, UNREG_STAKING, DELEG_STAKING, REG_DELEG,REG_DREP, UPDATE_DREP, UNREG_DREP, POOL_REGISTER, POOL_RETIRE,AUTH_HOT_COMMITTEE, RESIGN_COLD_COMMITTEE"><div></div></button></div></figure></div>
+<p>Payloads are accessible only through the corresponding guarded eliminator:
+<code dir="auto">whenRegStaking</code>, <code dir="auto">whenUnRegStaking</code>, <code dir="auto">whenDelegStaking</code>, <code dir="auto">whenRegDeleg</code>,
+<code dir="auto">whenRegDRep</code>, <code dir="auto">whenUpdateDRep</code>, <code dir="auto">whenUnRegDRep</code>, <code dir="auto">whenPoolRegister</code>,
+<code dir="auto">whenPoolRetire</code>, <code dir="auto">whenAuthHotCommittee</code>, and <code dir="auto">whenResignColdCommittee</code>.</p>
+<p>Nested <code dir="auto">LedgerDRepExpr</code> supports credential, always-abstain, and
+always-no-confidence cases. <code dir="auto">LedgerDelegateeExpr</code> supports stake, vote, and
+stake-plus-vote cases. DRep and committee credential wrappers retain their
+roles while exposing the credential guard operations.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="multi-asset-value-operations">Multi-asset value operations</h2><a class="sl-anchor-link" href="#multi-asset-value-operations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Multi-asset value operations”</span></a></div>
+<p>Output <code dir="auto">LedgerValueExpr</code>, transaction <code dir="auto">LedgerMintValueExpr</code>, and checked
+<code dir="auto">ValueDeltaExpr</code> remain different Java types even where encodings overlap.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">lovelace()</code></td>
+<td>Ada quantity for an output value.</td>
+</tr>
+<tr>
+<td><code dir="auto">rawPolicies()</code></td>
+<td>Strict guarded traversal of raw policy and token entries.</td>
+</tr>
+<tr>
+<td><code dir="auto">quantityFirst(policy, token)</code></td>
+<td>Pinned first-match lookup.</td>
+</tr>
+<tr>
+<td><code dir="auto">quantitySumStrict(policy, token)</code></td>
+<td>Sums duplicate matches; returns empty for absence or malformed data.</td>
+</tr>
+<tr>
+<td><code dir="auto">structurallyEquals</code></td>
+<td>Exact ordered nested association-list equality.</td>
+</tr>
+<tr>
+<td><code dir="auto">extensionallyEquals</code></td>
+<td>Strict finite-support summed-quantity equality.</td>
+</tr>
+<tr>
+<td><code dir="auto">pointwiseLe/Lt/Ge/Gt</code></td>
+<td>Strict finite-support pointwise ordering.</td>
+</tr>
+<tr>
+<td><code dir="auto">checkedDelta()</code></td>
+<td>Validates and converts a value or mint value to optional <code dir="auto">ValueDeltaExpr</code>.</td>
+</tr>
+<tr>
+<td><code dir="auto">ValueDeltaExpr.plus</code>, <code dir="auto">negate</code>, <code dir="auto">scale</code></td>
+<td>Checked arithmetic returning <code dir="auto">ValueDeltaOptionExpr</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">ValuePolicyEntriesExpr</code> exposes <code dir="auto">exists</code>, <code dir="auto">all</code>, and <code dir="auto">none</code> with
+<code dir="auto">ValuePolicyEntryExpr.whenWellFormed</code>. Token entries expose <code dir="auto">exists</code>, <code dir="auto">all</code>,
+and <code dir="auto">whenWellFormed</code>. <code dir="auto">ValueDeltaOptionExpr</code> exposes <code dir="auto">exists</code>, <code dir="auto">isPresent</code>, and
+<code dir="auto">isEmpty</code>.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="governance-transaction-data-operations">Governance transaction-data operations</h2><a class="sl-anchor-link" href="#governance-transaction-data-operations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Governance transaction-data operations”</span></a></div>
+<p>These operations inspect governance fields from an already supported spending,
+minting, rewarding, or certifying interface. They do not enable voting or
+proposing validator selection.</p>
+<table>
+<thead>
+<tr>
+<th>Wrapper</th>
+<th>Supported operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">VoterMapExpr</code></td>
+<td><code dir="auto">existsEntry</code>, <code dir="auto">isKnown</code>, <code dir="auto">lookupFirst</code>, <code dir="auto">countKey</code>, <code dir="auto">typed</code></td>
+</tr>
+<tr>
+<td><code dir="auto">VoterExpr</code></td>
+<td>guarded <code dir="auto">whenCommittee</code>, <code dir="auto">whenDRep</code>, <code dir="auto">whenStakePool</code>, plus <code dir="auto">typed</code></td>
+</tr>
+<tr>
+<td><code dir="auto">GovernanceVoteMapExpr</code></td>
+<td><code dir="auto">existsEntry</code>, <code dir="auto">lookupFirst</code>, <code dir="auto">lookupAll</code>, <code dir="auto">containsKey</code>, <code dir="auto">countKey</code>, <code dir="auto">typed</code></td>
+</tr>
+<tr>
+<td><code dir="auto">VoteExpr</code></td>
+<td><code dir="auto">isNo</code>, <code dir="auto">isYes</code>, <code dir="auto">isAbstain</code>, <code dir="auto">typed</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ProposalProcedureListExpr</code></td>
+<td><code dir="auto">exists</code>, <code dir="auto">all</code>, <code dir="auto">none</code>, <code dir="auto">count</code>, <code dir="auto">at</code>, <code dir="auto">isKnown</code>, <code dir="auto">typed</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ProposalProcedureExpr</code></td>
+<td><code dir="auto">deposit</code>, <code dir="auto">returnAddress</code>, strict <code dir="auto">actionStrict</code>, <code dir="auto">typed</code></td>
+</tr>
+<tr>
+<td><code dir="auto">GovernanceActionIdExpr</code></td>
+<td><code dir="auto">txId</code>, <code dir="auto">index</code>, <code dir="auto">typed</code>, <code dir="auto">eq</code>, <code dir="auto">ne</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ProtocolVersionExpr</code></td>
+<td><code dir="auto">major</code>, <code dir="auto">minor</code>, <code dir="auto">typed</code></td>
+</tr>
+</tbody>
+</table>
+<p><code dir="auto">GovernanceActionExpr</code> exposes guarded <code dir="auto">whenParameterChange</code>, <code dir="auto">whenHardFork</code>,
+<code dir="auto">whenTreasuryWithdrawals</code>, <code dir="auto">whenNoConfidence</code>, <code dir="auto">whenUpdateCommittee</code>,
+<code dir="auto">whenNewConstitution</code>, and <code dir="auto">isInfo</code>. No action payload is available outside its
+matching guard.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="reviewed-raw-data-adapters">Reviewed raw-data adapters</h2><a class="sl-anchor-link" href="#reviewed-raw-data-adapters"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Reviewed raw-data adapters”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Adapter</th>
+<th>Supported operations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">ValidityRangeExpr</code></td>
+<td><code dir="auto">decoderValid</code>, <code dir="auto">canonicalEncoding</code>, <code dir="auto">isEmpty</code>, <code dir="auto">contains</code>, <code dir="auto">includes</code>, <code dir="auto">isEntirelyBefore</code>, <code dir="auto">isEntirelyAfter</code></td>
+</tr>
+<tr>
+<td><code dir="auto">StrictTreasuryExpr</code></td>
+<td><code dir="auto">isWellFormed</code>, <code dir="auto">isAbsent</code>, <code dir="auto">isMalformed</code>, <code dir="auto">whenPresent</code></td>
+</tr>
+<tr>
+<td><code dir="auto">ChangedParametersExpr</code></td>
+<td><code dir="auto">isWellFormed</code>, <code dir="auto">isNonEmpty</code>, <code dir="auto">isStrictlyAscendingUnique</code>, <code dir="auto">containsId</code>, <code dir="auto">countIdEquals</code></td>
+</tr>
+<tr>
+<td><code dir="auto">QuorumExpr</code></td>
+<td><code dir="auto">decoderValid</code>, <code dir="auto">canonicalEncoding</code>, <code dir="auto">isUnitInterval</code>, <code dir="auto">whenDecoded</code></td>
+</tr>
+</tbody>
+</table>
+<p>Changed parameters are supplied only by the three-argument
+<code dir="auto">whenParameterChange</code> guard. Quorum is supplied only by the four-argument
+<code dir="auto">whenUpdateCommittee</code> guard. The raw payload and arbitrary decoder selection
+remain inaccessible.</p>
+<p>See <a href="../dsl-examples/">DSL Examples</a> for complete compositions covering every
+operation group above.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="cli">CLI</h2><a class="sl-anchor-link" href="#cli"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “CLI”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code dir="auto">julc verify . --validator &lt;name&gt;</code></td>
+<td>Build and verify a supported annotation profile.</td>
+</tr>
+<tr>
+<td><code dir="auto">julc verify init . --validator &lt;name&gt; --purpose &lt;purpose&gt;</code></td>
+<td>Generate a pinned but unspecialized workspace from an already built project’s blueprint.</td>
+</tr>
+<tr>
+<td><code dir="auto">julc verify dsl-init . --validator &lt;name&gt; ...</code></td>
+<td>Generate the API-v1/schema-1 contract metamodel.</td>
+</tr>
+<tr>
+<td><code dir="auto">julc verify dsl . --validator &lt;name&gt; ...</code></td>
+<td>Execute a trusted Java specification, admit its canonical IR, and verify it.</td>
+</tr>
+<tr>
+<td><code dir="auto">julc verify run &lt;workspace&gt;</code></td>
+<td>Re-run an existing current hash-bound workspace without rebuilding the contract.</td>
+</tr>
+</tbody>
+</table>
+<p>For a purpose-indexed validator, pass one of <code dir="auto">spending</code>, <code dir="auto">minting</code>,
+<code dir="auto">rewarding</code>, or <code dir="auto">certifying</code> through <code dir="auto">--purpose</code>. Voting and proposing
+verification selection currently fails closed.</p>
+<p>The annotation command defaults to <code dir="auto">--fuel 1000</code> and
+<code dir="auto">--recursive-depth 4</code>. The typed DSL command defaults to <code dir="auto">--fuel 1500</code>,
+<code dir="auto">--recursive-depth 4</code>, and <code dir="auto">--worker-timeout 30</code> seconds; raise the worker
+timeout only when trusted specification Java itself needs longer. The
+lower-level <code dir="auto">verify init</code> command uses <code dir="auto">--fuel 20000</code> because it creates the
+older unspecialized proof workspace rather than running a typed property.</p>
+<p>The native CLI still launches a bounded child JVM for
+<code dir="auto">VerificationSpecification</code>, because the specification is trusted project
+Java. Supply the compiled specification, generated model, and JuLC JAR through
+<code dir="auto">--spec-classpath</code>.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="result-contract">Result contract</h2><a class="sl-anchor-link" href="#result-contract"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Result contract”</span></a></div>
+<p><code dir="auto">SMT-VALID</code>, <code dir="auto">REFUTED</code>, and <code dir="auto">COULD-NOT-EVALUATE</code> are distinct outcomes. Always
+read <code dir="auto">verification-result.json</code> for the exact artifact, property, modeled
+domain, fuel/decode bounds, backend inputs, and counterexample qualifications.
+An SMT-valid property is not a claim that the complete contract is safe.</p>
+<p>See <a href="../troubleshooting/">Troubleshooting</a> for workspace, toolchain, solver, and
+classification failures.</p>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/bloxbean/julc/edit/main/docs/src/content/docs/guides/formal-verification/api-reference.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>Edit page</a></div><div class="pagination-links print:hidden astro-b5raizh3" dir="ltr"><a href="/guides/formal-verification/dsl-examples/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">Previous<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">DSL Examples</span></span></a><a href="/guides/formal-verification/troubleshooting/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">Next<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">Troubleshooting</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>

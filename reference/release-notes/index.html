@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-bguv2lll"> <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Release Notes | JuLC</title><link rel="canonical" href="https://julc.dev/reference/release-notes/"/><link rel="sitemap" href="/sitemap-index.xml"/><link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v6.1.5"/><meta name="generator" content="Starlight v0.38.3"/><meta property="og:title" content="Release Notes"/><meta property="og:type" content="article"/><meta property="og:url" content="https://julc.dev/reference/release-notes/"/><meta property="og:locale" content="en"/><meta property="og:description" content="JuLC release notes and migration guidance"/><meta property="og:site_name" content="JuLC"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="JuLC release notes and migration guidance"/><script>
+<!DOCTYPE html><html lang="en" dir="ltr" data-theme="dark" data-has-toc data-has-sidebar class="astro-g5ptsecz"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Release Notes | JuLC</title><link rel="canonical" href="https://julc.dev/reference/release-notes/"/><link rel="sitemap" href="/sitemap-index.xml"/><link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml"/><meta name="generator" content="Astro v7.3.3"/><meta name="generator" content="Starlight v0.42.2"/><meta property="og:title" content="Release Notes"/><meta property="og:type" content="article"/><meta property="og:url" content="https://julc.dev/reference/release-notes/"/><meta property="og:locale" content="en"/><meta property="og:description" content="JuLC release notes and migration guidance"/><meta property="og:site_name" content="JuLC"/><meta name="twitter:card" content="summary_large_image"/><meta name="description" content="JuLC release notes and migration guidance"/><script>
   (function() {
     var scheme = typeof localStorage !== 'undefined' && localStorage.getItem('julc-color-scheme');
     if (scheme) document.documentElement.setAttribute('data-color-scheme', scheme);
@@ -29,8 +29,11 @@
 			},
 		};
 	})();
-</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/_astro/print.DNXP8c50.css" media="print"><link rel="stylesheet" href="/_astro/common.gWDF1Ngx.css">
-<link rel="stylesheet" href="/_astro/Code.CYq6ZDRC.css"><script type="module" src="/_astro/page.BIhdncjw.js"></script></head> <body class="astro-bguv2lll"> <a href="#_top" class="astro-7q3lir66">Skip to content</a> <div class="page sl-flex astro-vrdttmbt"> <header class="header astro-vrdttmbt"><div class="header astro-bkumecsx"> <div class="title-wrapper sl-flex astro-bkumecsx"> <a href="/" class="site-title sl-flex astro-bkumecsx"> <img src="/logo.png" alt="" class="site-logo astro-bkumecsx"> <span class="site-name astro-bkumecsx" translate="no">JuLC</span> </a> </div> <div class="sl-flex print:hidden astro-bkumecsx"> <site-search class="astro-bkumecsx astro-v37mnknz" data-translations="{&#34;placeholder&#34;:&#34;Search&#34;}"> <button data-open-modal disabled aria-label="Search" aria-keyshortcuts="Control+K" class="astro-v37mnknz"> <svg aria-hidden="true" class="astro-v37mnknz astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg> <span class="sl-hidden md:sl-block astro-v37mnknz" aria-hidden="true">Search</span> <kbd class="sl-hidden md:sl-flex astro-v37mnknz" style="display: none;"> <kbd class="astro-v37mnknz">Ctrl</kbd><kbd class="astro-v37mnknz">K</kbd> </kbd> </button> <dialog style="padding:0" aria-label="Search" class="astro-v37mnknz"> <div class="dialog-frame sl-flex astro-v37mnknz">  <button data-close-modal class="sl-flex md:sl-hidden astro-v37mnknz"> Cancel </button> <div class="search-container astro-v37mnknz"> <div id="starlight__search" class="astro-v37mnknz"></div> </div> </div> </dialog> </site-search>  <script>
+</script><template id="theme-icons"><svg aria-hidden="true" class="light astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M5 12a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h1a1 1 0 0 0 1-1Zm.64 5-.71.71a1 1 0 0 0 0 1.41 1 1 0 0 0 1.41 0l.71-.71A1 1 0 0 0 5.64 17ZM12 5a1 1 0 0 0 1-1V3a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1Zm5.66 2.34a1 1 0 0 0 .7-.29l.71-.71a1 1 0 1 0-1.41-1.41l-.66.71a1 1 0 0 0 0 1.41 1 1 0 0 0 .66.29Zm-12-.29a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.71-.71a1.004 1.004 0 1 0-1.43 1.41l.73.71ZM21 11h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2Zm-2.64 6A1 1 0 0 0 17 18.36l.71.71a1 1 0 0 0 1.41 0 1 1 0 0 0 0-1.41l-.76-.66ZM12 6.5a5.5 5.5 0 1 0 5.5 5.5A5.51 5.51 0 0 0 12 6.5Zm0 9a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0 3.5a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z"/></svg><svg aria-hidden="true" class="dark astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8.049 8.049 0 0 1-3.37.73 8.15 8.15 0 0 1-8.14-8.1 8.59 8.59 0 0 1 .25-2A1 1 0 0 0 8 2.36a10.14 10.14 0 1 0 14 11.69 1 1 0 0 0-.36-1.05Zm-9.5 6.69A8.14 8.14 0 0 1 7.08 5.22v.27a10.15 10.15 0 0 0 10.14 10.14 9.784 9.784 0 0 0 2.1-.22 8.11 8.11 0 0 1-7.18 4.32v-.04Z"/></svg><svg aria-hidden="true" class="auto astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg></template><link rel="stylesheet" href="/_astro/print.ehPL0gv-.css" media="print"><link rel="stylesheet" href="/_astro/common.Dh5z17wB.css"><style>@layer starlight.components{.card-grid:where(.astro-7qmvx3iy){grid-template-columns:100%;gap:1rem;display:grid}.card-grid:where(.astro-7qmvx3iy)>*{margin-top:0!important}@media (width>=50rem){.card-grid:where(.astro-7qmvx3iy){grid-template-columns:1fr 1fr;gap:1.5rem}.stagger:where(.astro-7qmvx3iy){--stagger-height:5rem;padding-bottom:var(--stagger-height)}.stagger:where(.astro-7qmvx3iy)>:nth-child(2n){transform:translateY(var(--stagger-height))}}}
+@layer starlight.components{.card:where(.astro-oag6qnet){--sl-card-border:var(--sl-color-purple);--sl-card-bg:var(--sl-color-purple-low);border:1px solid var(--sl-color-gray-5);background-color:var(--sl-color-black);flex-direction:column;gap:clamp(.5rem,.125rem + 1vw,1rem);padding:clamp(1rem,.125rem + 3vw,2.5rem)}.card:where(.astro-oag6qnet):nth-child(4n+1){--sl-card-border:var(--sl-color-orange);--sl-card-bg:var(--sl-color-orange-low)}.card:where(.astro-oag6qnet):nth-child(4n+3){--sl-card-border:var(--sl-color-green);--sl-card-bg:var(--sl-color-green-low)}.card:where(.astro-oag6qnet):nth-child(4n+4){--sl-card-border:var(--sl-color-red);--sl-card-bg:var(--sl-color-red-low)}.card:where(.astro-oag6qnet):nth-child(4n+5){--sl-card-border:var(--sl-color-blue);--sl-card-bg:var(--sl-color-blue-low)}.title:where(.astro-oag6qnet){font-weight:600;font-size:var(--sl-text-h4);color:var(--sl-color-white);line-height:var(--sl-line-height-headings);align-items:center;gap:1rem}.card:where(.astro-oag6qnet) .icon:where(.astro-oag6qnet){border:1px solid var(--sl-card-border);background-color:var(--sl-card-bg);border-radius:.25rem;flex-shrink:0;padding:.2em}.card:where(.astro-oag6qnet) .body:where(.astro-oag6qnet){font-size:clamp(var(--sl-text-sm), calc(.5rem + 1vw), var(--sl-text-body));margin:0}}
+@layer starlight.components{svg:where(.astro-hkc32dio){color:var(--sl-icon-color);font-size:var(--sl-icon-size,1em);width:1em;height:1em}}
+@layer starlight.components{.sl-link-card:where(.astro-zaaezwya){border:1px solid var(--sl-color-gray-5);box-shadow:var(--sl-shadow-sm);border-radius:.5rem;grid-template-columns:1fr auto;gap:.5rem;padding:1rem;display:grid;position:relative}a:where(.astro-zaaezwya){line-height:var(--sl-line-height-headings);text-decoration:none}a:where(.astro-zaaezwya):before{content:"";position:absolute;inset:0}.stack:where(.astro-zaaezwya){flex-direction:column;gap:.5rem}.title:where(.astro-zaaezwya){color:var(--sl-color-white);font-weight:600;font-size:var(--sl-text-lg)}.description:where(.astro-zaaezwya){color:var(--sl-color-gray-3);line-height:1.5}.icon:where(.astro-zaaezwya){color:var(--sl-color-gray-3)}.sl-link-card:where(.astro-zaaezwya):hover{background:var(--sl-color-gray-7,var(--sl-color-gray-6));border-color:var(--sl-color-gray-2)}.sl-link-card:where(.astro-zaaezwya):hover .icon:where(.astro-zaaezwya){color:var(--sl-color-white)}}
+</style><script type="module" src="/_astro/page.Dwipeu-R.js"></script></head><body class="astro-g5ptsecz"><a class="sl-skip-link astro-qb7clj6f" href="#_top">Skip to content</a><div class="page sl-flex astro-yntsjkba"><header class="header astro-yntsjkba"><div class="header astro-xiqy3rs3"><div class="title-wrapper sl-flex astro-xiqy3rs3"><a href="/" class="site-title sl-flex astro-xiqy3rs3"><img src="/logo.png" alt="" class="site-logo astro-xiqy3rs3"><span class="site-name astro-xiqy3rs3" translate="no">JuLC</span></a></div><div class="sl-flex print:hidden astro-xiqy3rs3"><site-search class="astro-xiqy3rs3 astro-b5kgnn7o" data-translations="{&quot;placeholder&quot;:&quot;Search&quot;}"><button data-open-modal disabled aria-label="Search" aria-keyshortcuts="Control+K" class="astro-b5kgnn7o"><svg aria-hidden="true" class="astro-b5kgnn7o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/></svg><span class="sl-hidden md:sl-block astro-b5kgnn7o" aria-hidden="true">Search</span><kbd class="sl-hidden md:sl-flex astro-b5kgnn7o" style="display: none;"><kbd class="astro-b5kgnn7o">Ctrl</kbd><kbd class="astro-b5kgnn7o">K</kbd></kbd></button><dialog style="padding:0" aria-label="Search" class="astro-b5kgnn7o"><div class="dialog-frame sl-flex astro-b5kgnn7o"><button data-close-modal class="sl-flex md:sl-hidden astro-b5kgnn7o">Cancel</button><div class="search-container astro-b5kgnn7o"><div id="starlight__search" class="astro-b5kgnn7o"></div></div></div></dialog></site-search><script>
 	(() => {
 		const openBtn = document.querySelector('button[data-open-modal]');
 		const shortcut = openBtn?.querySelector('kbd');
@@ -42,14 +45,14 @@
 		}
 		shortcut.style.display = '';
 	})();
-</script> <script type="module" src="/_astro/Search.astro_astro_type_script_index_0_lang.Egn2Jinm.js"></script>  </div> <div class="sl-hidden md:sl-flex print:hidden right-group astro-bkumecsx"> <div class="sl-flex social-icons astro-bkumecsx"> <a href="https://github.com/bloxbean/julc" rel="me" class="sl-flex astro-wy4te6ga"><span class="sr-only astro-wy4te6ga">GitHub</span><svg aria-hidden="true" class="astro-wy4te6ga astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a> </div> <starlight-color-scheme class="astro-teofvw24"> <label class="astro-teofvw24"> <span class="sr-only astro-teofvw24">Color scheme</span> <svg class="icon label-icon astro-teofvw24" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"> <circle cx="12" cy="12" r="5" class="astro-teofvw24"></circle> <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" class="astro-teofvw24"></path> </svg> <select autocomplete="off" class="astro-teofvw24"> <option value="orange" selected class="astro-teofvw24">Orange</option><option value="ocean" class="astro-teofvw24">Ocean</option><option value="emerald" class="astro-teofvw24">Emerald</option><option value="purple" class="astro-teofvw24">Purple</option><option value="teal" class="astro-teofvw24">Teal</option> </select> <svg class="icon caret astro-teofvw24" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"> <path d="M12 16l-6-6h12z" class="astro-teofvw24"></path> </svg> </label> </starlight-color-scheme>  <script>
+</script><script type="module" src="/_astro/Search.astro_astro_type_script_index_0_lang.DZqJ8Bdf.js"></script></div><div class="sl-hidden md:sl-flex print:hidden right-group astro-xiqy3rs3"><div class="sl-flex social-icons astro-xiqy3rs3"><a href="https://github.com/bloxbean/julc" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-color-scheme class="astro-he74j3um"><label class="astro-he74j3um"><span class="sr-only astro-he74j3um">Color scheme</span><svg class="icon label-icon astro-he74j3um" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5" class="astro-he74j3um"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" class="astro-he74j3um"></path></svg><select autocomplete="off" class="astro-he74j3um"><option value="orange" selected class="astro-he74j3um">Orange</option><option value="ocean" class="astro-he74j3um">Ocean</option><option value="emerald" class="astro-he74j3um">Emerald</option><option value="purple" class="astro-he74j3um">Purple</option><option value="teal" class="astro-he74j3um">Teal</option></select><svg class="icon caret astro-he74j3um" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 16l-6-6h12z" class="astro-he74j3um"></path></svg></label></starlight-color-scheme><script>
   (function() {
     var scheme = typeof localStorage !== 'undefined' && localStorage.getItem('julc-color-scheme');
     if (scheme) document.documentElement.setAttribute('data-color-scheme', scheme);
   })();
-</script> <script type="module">const n="julc-color-scheme";function r(){return typeof localStorage<"u"&&localStorage.getItem(n)||"orange"}function l(t){document.documentElement.setAttribute("data-color-scheme",t),typeof localStorage<"u"&&localStorage.setItem(n,t),document.querySelectorAll("starlight-color-scheme select").forEach(e=>{e instanceof HTMLSelectElement&&(e.value=t)})}class a extends HTMLElement{constructor(){super();const e=this.querySelector("select");if(e){const o=r();e.value=o,l(o),e.addEventListener("change",c=>{c.currentTarget instanceof HTMLSelectElement&&l(c.currentTarget.value)})}}}customElements.define("starlight-color-scheme",a);</script> <starlight-theme-select>  <label style="--sl-select-width: 6.25em" class="astro-4yphtoen"> <span class="sr-only astro-4yphtoen">Select theme</span> <svg aria-hidden="true" class="icon label-icon astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg> <select autocomplete="off" class="astro-4yphtoen"> <option value="dark" class="astro-4yphtoen">Dark</option><option value="light" class="astro-4yphtoen">Light</option><option value="auto" selected class="astro-4yphtoen">Auto</option> </select> <svg aria-hidden="true" class="icon caret astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg> </label> </starlight-theme-select>  <script>
+</script><script type="module">var e=`julc-color-scheme`;function t(){return typeof localStorage<`u`&&localStorage.getItem(e)||`orange`}function n(t){document.documentElement.setAttribute(`data-color-scheme`,t),typeof localStorage<`u`&&localStorage.setItem(e,t),document.querySelectorAll(`starlight-color-scheme select`).forEach(e=>{e instanceof HTMLSelectElement&&(e.value=t)})}var r=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);if(e){let r=t();e.value=r,n(r),e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&n(e.currentTarget.value)})}}};customElements.define(`starlight-color-scheme`,r);</script><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Select theme</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Dark</option><option value="light" class="astro-2z5xp7gb">Light</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
 	StarlightThemeProvider.updatePickers();
-</script> <script type="module">const r="starlight-theme",o=e=>e==="auto"||e==="dark"||e==="light"?e:"auto",c=()=>o(typeof localStorage<"u"&&localStorage.getItem(r));function n(e){typeof localStorage<"u"&&localStorage.setItem(r,e==="light"||e==="dark"?e:"")}const l=()=>matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";function t(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e==="auto"?l():e,n(e)}matchMedia("(prefers-color-scheme: light)").addEventListener("change",()=>{c()==="auto"&&t("auto")});class s extends HTMLElement{constructor(){super(),t(c()),this.querySelector("select")?.addEventListener("change",a=>{a.currentTarget instanceof HTMLSelectElement&&t(o(a.currentTarget.value))})}}customElements.define("starlight-theme-select",s);</script> <script type="module">class s extends HTMLElement{constructor(){super();const e=this.querySelector("select");e&&(e.addEventListener("change",t=>{t.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=t.currentTarget.value)}),window.addEventListener("pageshow",t=>{if(!t.persisted)return;const n=e.querySelector("option[selected]")?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}}customElements.define("starlight-lang-select",s);</script> </div> </div></header> <nav class="sidebar print:hidden astro-vrdttmbt" aria-label="Main"> <starlight-menu-button class="print:hidden astro-jif73yzw"> <button aria-expanded="false" aria-label="Menu" aria-controls="starlight__sidebar" class="sl-flex md:sl-hidden astro-jif73yzw"> <svg aria-hidden="true" class="open-menu astro-jif73yzw astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg> <svg aria-hidden="true" class="close-menu astro-jif73yzw astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg> </button> </starlight-menu-button> <script type="module">class s extends HTMLElement{constructor(){super(),this.btn=this.querySelector("button"),this.btn.addEventListener("click",()=>this.toggleExpanded());const t=this.closest("nav");t&&t.addEventListener("keyup",e=>this.closeOnEscape(e))}setExpanded(t){this.setAttribute("aria-expanded",String(t)),document.body.toggleAttribute("data-mobile-menu-expanded",t)}toggleExpanded(){this.setExpanded(this.getAttribute("aria-expanded")!=="true")}closeOnEscape(t){t.code==="Escape"&&(this.setExpanded(!1),this.btn.focus())}}customElements.define("starlight-menu-button",s);</script>  <div id="starlight__sidebar" class="sidebar-pane astro-vrdttmbt"> <div class="sidebar-content sl-flex astro-vrdttmbt"> <sl-sidebar-state-persist data-hash="04ke63b" class="astro-kku4brbg"> <script aria-hidden="true">
+</script><script type="module">var e=`starlight-theme`,t=e=>e===`auto`||e===`dark`||e===`light`?e:`auto`,n=()=>t(typeof localStorage<`u`&&localStorage.getItem(e));function r(t){typeof localStorage<`u`&&localStorage.setItem(e,t===`light`||t===`dark`?t:``)}var i=()=>matchMedia(`(prefers-color-scheme: light)`).matches?`light`:`dark`;function a(e){StarlightThemeProvider.updatePickers(e),document.documentElement.dataset.theme=e===`auto`?i():e,r(e)}matchMedia(`(prefers-color-scheme: light)`).addEventListener(`change`,()=>{n()===`auto`&&a(`auto`)});var o=class extends HTMLElement{constructor(){super(),a(n()),this.querySelector(`select`)?.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&a(t(e.currentTarget.value))})}};customElements.define(`starlight-theme-select`,o);</script><script type="module">var e=class extends HTMLElement{constructor(){super();let e=this.querySelector(`select`);e&&(e.addEventListener(`change`,e=>{e.currentTarget instanceof HTMLSelectElement&&(window.location.pathname=e.currentTarget.value)}),window.addEventListener(`pageshow`,t=>{if(!t.persisted)return;let n=e.querySelector(`option[selected]`)?.index;n!==e.selectedIndex&&(e.selectedIndex=n??0)}))}};customElements.define(`starlight-lang-select`,e);</script></div></div></header><nav class="sidebar print:hidden astro-yntsjkba" aria-label="Main"><button popovertarget="starlight__sidebar" class="sl-menu-button sl-flex md:sl-hidden print:hidden astro-r2osgdlg"><svg aria-hidden="true" class="open-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M3 8h18a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2Zm18 8H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Zm0-5H3a1 1 0 0 0 0 2h18a1 1 0 0 0 0-2Z"/></svg><svg aria-hidden="true" class="close-menu astro-r2osgdlg astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="m13.41 12 6.3-6.29a1.004 1.004 0 1 0-1.42-1.42L12 10.59l-6.29-6.3a1.004 1.004 0 0 0-1.42 1.42l6.3 6.29-6.3 6.29a1 1 0 0 0 0 1.42.998.998 0 0 0 1.42 0l6.29-6.3 6.29 6.3a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.42L13.41 12Z"/></svg><span class="sr-only astro-r2osgdlg">Menu</span></button><script type="module">var e=class extends HTMLElement{constructor(){super();let e=matchMedia(`(min-width: 50em)`),t=()=>{this.popover=e.matches?null:`auto`};t(),e.addEventListener(`change`,()=>t()),this.addEventListener(`toggle`,({newState:e})=>this.trapFocus(e===`open`))}trapFocus(e){document.querySelectorAll(`.main-frame, .sl-skip-link`).forEach(t=>{t.toggleAttribute(`inert`,e)})}};customElements.define(`sl-sidebar-pane`,e);</script><sl-sidebar-pane popover id="starlight__sidebar" class="sidebar-pane astro-yntsjkba"><div class="sidebar-content sl-flex astro-yntsjkba"><sl-sidebar-state-persist data-hash="02nleih" class="astro-ipdry5cl"><script aria-hidden="true">
 		(() => {
 			try {
 				if (!matchMedia('(min-width: 50em)').matches) return;
@@ -72,57 +75,857 @@
 				);
 			} catch {}
 		})();
-	</script>  <ul class="top-level astro-3ii7xxms"> <li class="astro-3ii7xxms"> <a href="/overview/" class="large astro-3ii7xxms"> <span class="astro-3ii7xxms">Overview</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/first-contract/" class="large astro-3ii7xxms"> <span class="astro-3ii7xxms">Write Your First Contract</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/getting-started/" class="large astro-3ii7xxms"> <span class="astro-3ii7xxms">Getting Started</span>  </a> </li><li class="astro-3ii7xxms"> <details open class="astro-3ii7xxms"> <summary class="astro-3ii7xxms"> <span class="group-label astro-3ii7xxms"> <span class="large astro-3ii7xxms">AI Agents</span>  </span> <svg aria-hidden="true" class="caret astro-3ii7xxms astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg> </summary> <sl-sidebar-restore data-index="0"></sl-sidebar-restore> <ul class="astro-3ii7xxms"> <li class="astro-3ii7xxms"> <a href="/ai/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Using JuLC with AI</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/ai/starter-pack/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">AI Starter Pack</span>  </a> </li> </ul> </details> </li><li class="astro-3ii7xxms"> <details open class="astro-3ii7xxms"> <summary class="astro-3ii7xxms"> <span class="group-label astro-3ii7xxms"> <span class="large astro-3ii7xxms">Guides</span>  </span> <svg aria-hidden="true" class="caret astro-3ii7xxms astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg> </summary> <sl-sidebar-restore data-index="1"></sl-sidebar-restore> <ul class="astro-3ii7xxms"> <li class="astro-3ii7xxms"> <a href="/guides/advanced-guide/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Advanced Guide</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/guides/for-loop-patterns/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">For-Loop Patterns</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/guides/testing-guide/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Testing Guide</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/guides/source-maps/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Source Maps</span>  </a> </li> </ul> </details> </li><li class="astro-3ii7xxms"> <details open class="astro-3ii7xxms"> <summary class="astro-3ii7xxms"> <span class="group-label astro-3ii7xxms"> <span class="large astro-3ii7xxms">Standard Library</span>  </span> <svg aria-hidden="true" class="caret astro-3ii7xxms astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg> </summary> <sl-sidebar-restore data-index="2"></sl-sidebar-restore> <ul class="astro-3ii7xxms"> <li class="astro-3ii7xxms"> <a href="/stdlib/stdlib-guide/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Library Reference</span>  </a> </li> </ul> </details> </li><li class="astro-3ii7xxms"> <details open class="astro-3ii7xxms"> <summary class="astro-3ii7xxms"> <span class="group-label astro-3ii7xxms"> <span class="large astro-3ii7xxms">Reference</span>  </span> <svg aria-hidden="true" class="caret astro-3ii7xxms astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg> </summary> <sl-sidebar-restore data-index="3"></sl-sidebar-restore> <ul class="astro-3ii7xxms"> <li class="astro-3ii7xxms"> <a href="/reference/api-reference/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">API Reference</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/reference/release-notes/" aria-current="page" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Release Notes</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/reference/library-developer-guide/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Library Developer Guide</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/reference/examples/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Examples</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/reference/troubleshooting/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Troubleshooting</span>  </a> </li> </ul> </details> </li><li class="astro-3ii7xxms"> <details class="astro-3ii7xxms"> <summary class="astro-3ii7xxms"> <span class="group-label astro-3ii7xxms"> <span class="large astro-3ii7xxms">Internals</span>  </span> <svg aria-hidden="true" class="caret astro-3ii7xxms astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg> </summary> <sl-sidebar-restore data-index="4"></sl-sidebar-restore> <ul class="astro-3ii7xxms"> <li class="astro-3ii7xxms"> <a href="/internals/compiler-design/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Compiler Design</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/internals/java-to-uplc-end-to-end/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Java to UPLC End to End</span>  </a> </li><li class="astro-3ii7xxms"> <a href="/internals/compiler-developer-guide/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">Compiler Developer Guide</span>  </a> </li> </ul> </details> </li><li class="astro-3ii7xxms"> <details class="astro-3ii7xxms"> <summary class="astro-3ii7xxms"> <span class="group-label astro-3ii7xxms"> <span class="large astro-3ii7xxms">Experimental</span>  </span> <svg aria-hidden="true" class="caret astro-3ii7xxms astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg> </summary> <sl-sidebar-restore data-index="5"></sl-sidebar-restore> <ul class="astro-3ii7xxms"> <li class="astro-3ii7xxms"> <a href="/experimental/jrl-guide/" class="astro-3ii7xxms"> <span class="astro-3ii7xxms">JRL Guide</span> <span class="sl-badge caution small  astro-3ii7xxms astro-avdet4wd">Experimental</span> </a> </li> </ul> </details> </li> </ul>  <script aria-hidden="true">
+	</script><ul class="top-level astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/overview/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><a href="/first-contract/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Write Your First Contract</span></a></li><li class="astro-rmhv4bp6"><a href="/getting-started/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Getting Started</span></a></li><li class="astro-rmhv4bp6"><a href="/playground/" class="large astro-rmhv4bp6"><span class="astro-rmhv4bp6">Playground</span><span class="sl-badge tip small  astro-rmhv4bp6 astro-f4zorn72">Browser</span></a></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">AI Agents</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="0"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/ai/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Using JuLC with AI</span></a></li><li class="astro-rmhv4bp6"><a href="/ai/starter-pack/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">AI Starter Pack</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Guides</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="1"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/guides/advanced-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Advanced Guide</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/for-loop-patterns/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">For-Loop Patterns</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/testing-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Testing Guide</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/source-maps/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Source Maps</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/strict-data-boundaries/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Strict Data Boundaries</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/purpose-indexed-blueprints/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Multi-validator Blueprints</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/javascript-wasm/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">JavaScript &amp; WebAssembly</span><span class="sl-badge caution small  astro-rmhv4bp6 astro-f4zorn72">Experimental</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Formal Verification</span><span class="sl-badge caution small  astro-rmhv4bp6 astro-f4zorn72">Experimental</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="2"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Overview</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/design/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Design</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/annotation-profiles/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Annotation Profiles</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/typed-dsl/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Typed Java DSL</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/dsl-examples/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">DSL Examples</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/api-reference/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API &amp; DSL Reference</span></a></li><li class="astro-rmhv4bp6"><a href="/guides/formal-verification/troubleshooting/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Troubleshooting</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Best Practices</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="3"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/best-practices/conditionals/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Conditionals and Script Size</span></a></li><li class="astro-rmhv4bp6"><a href="/best-practices/value-oriented-code/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Value-Oriented Contract Code</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Standard Library</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="4"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/stdlib/stdlib-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Library Reference</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details open class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Reference</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="5"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/reference/api-reference/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">API Reference</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/release-notes/" aria-current="page" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Release Notes</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/cost-model-profiles/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Cost Model Profiles</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/hash-stability/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Hash and Cost Stability</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/library-developer-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Library Developer Guide</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/examples/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Examples</span></a></li><li class="astro-rmhv4bp6"><a href="/reference/troubleshooting/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Troubleshooting</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Internals</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="6"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/internals/compiler-design/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Compiler Design</span></a></li><li class="astro-rmhv4bp6"><a href="/internals/java-to-uplc-end-to-end/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Java to UPLC End to End</span></a></li><li class="astro-rmhv4bp6"><a href="/internals/compiler-developer-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">Compiler Developer Guide</span></a></li></ul></details></li><li class="astro-rmhv4bp6"><details class="astro-rmhv4bp6"><summary class="astro-rmhv4bp6"><span class="group-label astro-rmhv4bp6"><span class="large astro-rmhv4bp6">Experimental</span></span><svg aria-hidden="true" class="caret astro-rmhv4bp6 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.25rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></summary><sl-sidebar-restore data-index="7"></sl-sidebar-restore><ul class="astro-rmhv4bp6"><li class="astro-rmhv4bp6"><a href="/experimental/jrl-guide/" class="astro-rmhv4bp6"><span class="astro-rmhv4bp6">JRL Guide</span><span class="sl-badge caution small  astro-rmhv4bp6 astro-f4zorn72">Experimental</span></a></li></ul></details></li></ul><script aria-hidden="true">
 		(() => {
 			const scroller = document.getElementById('starlight__sidebar');
 			if (!window._starlightScrollRestore || !scroller) return;
 			scroller.scrollTop = window._starlightScrollRestore;
 			delete window._starlightScrollRestore;
 		})();
-	</script> </sl-sidebar-state-persist> <div class="md:sl-hidden"> <div class="mobile-preferences sl-flex astro-wu23bvmt"> <div class="social-icons astro-wu23bvmt"> <a href="https://github.com/bloxbean/julc" rel="me" class="sl-flex astro-wy4te6ga"><span class="sr-only astro-wy4te6ga">GitHub</span><svg aria-hidden="true" class="astro-wy4te6ga astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a> </div> <starlight-theme-select>  <label style="--sl-select-width: 6.25em" class="astro-4yphtoen"> <span class="sr-only astro-4yphtoen">Select theme</span> <svg aria-hidden="true" class="icon label-icon astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg> <select autocomplete="off" class="astro-4yphtoen"> <option value="dark" class="astro-4yphtoen">Dark</option><option value="light" class="astro-4yphtoen">Light</option><option value="auto" selected class="astro-4yphtoen">Auto</option> </select> <svg aria-hidden="true" class="icon caret astro-4yphtoen astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg> </label> </starlight-theme-select>  <script>
+	</script></sl-sidebar-state-persist><div class="md:sl-hidden"><div class="mobile-preferences sl-flex astro-p4azlveh"><div class="social-icons astro-p4azlveh"><a href="https://github.com/bloxbean/julc" rel="me" class="sl-flex astro-n2mnl6yq"><span class="sr-only astro-n2mnl6yq">GitHub</span><svg aria-hidden="true" class="astro-n2mnl6yq astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.08 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg></a></div><starlight-theme-select><label style="--sl-select-width: 6.25em" class="astro-2z5xp7gb"><span class="sr-only astro-2z5xp7gb">Select theme</span><svg aria-hidden="true" class="icon label-icon astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M21 14h-1V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v7H3a1 1 0 0 0-1 1v2a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-2a1 1 0 0 0-1-1ZM6 7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7H6V7Zm14 10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1h16v1Z"/></svg><select autocomplete="off" class="astro-2z5xp7gb"><option value="dark" class="astro-2z5xp7gb">Dark</option><option value="light" class="astro-2z5xp7gb">Light</option><option value="auto" selected class="astro-2z5xp7gb">Auto</option></select><svg aria-hidden="true" class="icon caret astro-2z5xp7gb astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1em;"><path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z"/></svg></label></starlight-theme-select><script>
 	StarlightThemeProvider.updatePickers();
-</script>   </div> </div> </div> </div> </nav> <div class="main-frame astro-vrdttmbt">  <script type="module">const a=document.getElementById("starlight__sidebar"),n=a?.querySelector("sl-sidebar-state-persist"),o="sl-sidebar-state",i=()=>{let t=[];const e=n?.dataset.hash||"";try{const s=sessionStorage.getItem(o),r=JSON.parse(s||"{}");Array.isArray(r.open)&&r.hash===e&&(t=r.open)}catch{}return{hash:e,open:t,scroll:a?.scrollTop||0}},c=t=>{try{sessionStorage.setItem(o,JSON.stringify(t))}catch{}},d=()=>c(i()),l=(t,e)=>{const s=i();s.open[e]=t,c(s)};n?.addEventListener("click",t=>{if(!(t.target instanceof Element))return;const e=t.target.closest("summary")?.closest("details");if(!e)return;const s=e.querySelector("sl-sidebar-restore"),r=parseInt(s?.dataset.index||"");isNaN(r)||l(!e.open,r)});addEventListener("visibilitychange",()=>{document.visibilityState==="hidden"&&d()});addEventListener("pageHide",d);</script> <div class="lg:sl-flex astro-67yu43on"> <aside class="right-sidebar-container print:hidden astro-67yu43on"> <div class="right-sidebar astro-67yu43on"> <div class="lg:sl-hidden astro-pb3aqygn"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-doynk5tl"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-doynk5tl"><details id="starlight__mobile-toc" class="astro-doynk5tl"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-doynk5tl"><span class="toggle sl-flex astro-doynk5tl">On this page<svg aria-hidden="true" class="caret astro-doynk5tl astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-doynk5tl"></span></summary><div class="dropdown astro-doynk5tl"><ul class="isMobile astro-gnoq344e" style="--depth: 0;"> <li class="astro-gnoq344e" style="--depth: 0;"> <a href="#_top" class="astro-gnoq344e" style="--depth: 0;"> <span class="astro-gnoq344e" style="--depth: 0;">Overview</span> </a>  </li><li class="astro-gnoq344e" style="--depth: 0;"> <a href="#upcoming-release-pv11-builtin-contract-correction" class="astro-gnoq344e" style="--depth: 0;"> <span class="astro-gnoq344e" style="--depth: 0;">Upcoming release: PV11 builtin contract correction</span> </a> <ul class="isMobile astro-gnoq344e" style="--depth: 1;"> <li class="astro-gnoq344e" style="--depth: 1;"> <a href="#multiindexarray-migration-warning" class="astro-gnoq344e" style="--depth: 1;"> <span class="astro-gnoq344e" style="--depth: 1;">multiIndexArray migration warning</span> </a>  </li> </ul> </li> </ul></div></details></nav></mobile-starlight-toc><script type="module" src="/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.hwBsy0Mo.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-pb3aqygn"><div class="sl-container astro-pb3aqygn"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">On this page</h2><ul class="astro-gnoq344e" style="--depth: 0;"> <li class="astro-gnoq344e" style="--depth: 0;"> <a href="#_top" class="astro-gnoq344e" style="--depth: 0;"> <span class="astro-gnoq344e" style="--depth: 0;">Overview</span> </a>  </li><li class="astro-gnoq344e" style="--depth: 0;"> <a href="#upcoming-release-pv11-builtin-contract-correction" class="astro-gnoq344e" style="--depth: 0;"> <span class="astro-gnoq344e" style="--depth: 0;">Upcoming release: PV11 builtin contract correction</span> </a> <ul class="astro-gnoq344e" style="--depth: 1;"> <li class="astro-gnoq344e" style="--depth: 1;"> <a href="#multiindexarray-migration-warning" class="astro-gnoq344e" style="--depth: 1;"> <span class="astro-gnoq344e" style="--depth: 1;">multiIndexArray migration warning</span> </a>  </li> </ul> </li> </ul></nav></starlight-toc><script type="module" src="/_astro/TableOfContents.astro_astro_type_script_index_0_lang.FuRcXuRY.js"></script></div></div> </div> </aside> <div class="main-pane astro-67yu43on">  <main data-pagefind-body class="astro-bguv2lll" lang="en" dir="ltr">    <div class="content-panel astro-7nkwcw3z"> <div class="sl-container astro-7nkwcw3z"> <h1 id="_top" class="astro-j6tvhyss">Release Notes</h1> </div> </div> <div class="content-panel astro-7nkwcw3z"> <div class="sl-container astro-7nkwcw3z"> <div class="sl-markdown-content"> <div class="sl-heading-wrapper level-h2"><h2 id="upcoming-release-pv11-builtin-contract-correction">Upcoming release: PV11 builtin contract correction</h2><a class="sl-anchor-link" href="#upcoming-release-pv11-builtin-contract-correction"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24"><path fill="currentcolor" d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 0 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 1 0-1.42-1.42Zm8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 0 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 1 0 1.42 1.42l3.88-3.89a4.49 4.49 0 0 0 0-6.33ZM8.83 15.17a1 1 0 0 0 1.1.22 1 1 0 0 0 .32-.22l4.92-4.92a1 1 0 0 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42Z"></path></svg></span><span class="sr-only" data-pagefind-ignore="">Section titled “Upcoming release: PV11 builtin contract correction”</span></a></div>
+</script></div></div></div></sl-sidebar-pane></nav><div class="main-frame astro-yntsjkba"><script type="module">var e=document.getElementById(`starlight__sidebar`),t=e?.querySelector(`sl-sidebar-state-persist`),n=`sl-sidebar-state`,r=()=>{let r=[],i=t?.dataset.hash||``;try{let e=sessionStorage.getItem(n),t=JSON.parse(e||`{}`);Array.isArray(t.open)&&t.hash===i&&(r=t.open)}catch{}return{hash:i,open:r,scroll:e?.scrollTop||0}},i=e=>{try{sessionStorage.setItem(n,JSON.stringify(e))}catch{}},a=()=>i(r()),o=(e,t)=>{let n=r();n.open[t]=e,i(n)};t?.addEventListener(`click`,e=>{if(!(e.target instanceof Element))return;let t=e.target.closest(`summary`)?.closest(`details`);if(!t)return;let n=t.querySelector(`sl-sidebar-restore`),r=parseInt(n?.dataset.index||``);isNaN(r)||o(!t.open,r)}),addEventListener(`visibilitychange`,()=>{document.visibilityState===`hidden`&&a()});</script><div class="lg:sl-flex astro-lrzkfocr"><aside class="right-sidebar-container print:hidden astro-lrzkfocr"><div class="right-sidebar astro-lrzkfocr"><div class="lg:sl-hidden astro-qok35upx"><mobile-starlight-toc data-min-h="2" data-max-h="3" class="astro-66cqc7ze"><nav aria-labelledby="starlight__on-this-page--mobile" class="astro-66cqc7ze"><details id="starlight__mobile-toc" class="astro-66cqc7ze"><summary id="starlight__on-this-page--mobile" class="sl-flex astro-66cqc7ze"><span class="toggle sl-flex astro-66cqc7ze">On this page<svg aria-hidden="true" class="caret astro-66cqc7ze astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1rem;"><path d="m14.83 11.29-4.24-4.24a1 1 0 1 0-1.42 1.41L12.71 12l-3.54 3.54a1 1 0 0 0 0 1.41 1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.24-4.24a1.002 1.002 0 0 0 0-1.42Z"/></svg></span><span class="display-current astro-66cqc7ze"></span></summary><div class="dropdown astro-66cqc7ze"><ul class="isMobile astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Overview</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-instanceof-pattern-variables-may-not-reuse-a-field-name-julc0059-207" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-value-oriented-contract-code-guide-163" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: value-oriented contract code guide (#163)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-a-source-name-can-never-resolve-to-a-compiler-generated-binder-adr-060" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-builder-binders-no-longer-capture-user-variables-186" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: builder binders no longer capture user variables (#186)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-release-regression-gates-and-profile-freeze-121" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: release regression gates and profile freeze (#121)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-decode-boolean-and-string-switch-fields-166" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: decode boolean and String switch fields (#166)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-preserve-loop-state-across-enclosing-branches-161" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: preserve loop state across enclosing branches (#161)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-reject-lost-conditional-loop-local-updates-155" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: reject lost conditional loop-local updates (#155)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-independent-compiler-and-evaluation-costs-153" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: independent compiler and evaluation costs (#153)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-typed-bls12-381-values-and-multi-scalar-multiplication-adr-047" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-array-literals-and-literal-folding-adr-046" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: array literals and literal folding (ADR-046)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-native-value-literals-and-literal-folding-adr-045" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: native Value literals and literal folding (ADR-045)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-automatic-sharing-of-repeated-record-field-projections-adr-044" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: automatic sharing of repeated record field projections (ADR-044)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-list-to-array-promotion-at-pv11-costed-adr-043" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: list-to-array promotion at pv11-costed (ADR-043)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-automatic-sharing-of-repeated-native-value-conversions-adr-042" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-integer-case-dispatch-for-sealed-interface-switches-adr-041" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-conditional-yield-in-switch-case-blocks" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: conditional yield in switch case blocks</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-serialisedata-compiled-without-a-force-wrapper" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: serialiseData compiled without a force wrapper</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-lossless-data-map-decoding" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: lossless Data map decoding</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-typed-native-pair-case-lowering" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: typed native Pair Case lowering</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-stable-typed-formal-verification-api-v1" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: stable typed formal-verification API v1</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-explicit-pv11-compiler-target" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: explicit PV11 compiler target</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-scalus-protocol-aware-evaluation-adr-033" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: Scalus protocol-aware evaluation (ADR-033)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-strict-typed-datumredeemer-boundaries" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: strict typed datum/redeemer boundaries</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-purpose-indexed-multi-validator-blueprints" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: purpose-indexed multi-validator blueprints</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-typed-list-case-lowering-110" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: typed List-case lowering (#110)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-target-aware-pv11-optimizations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: target-aware PV11 optimizations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-release-pv11-builtin-contract-correction" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming release: PV11 builtin contract correction</span></a><ul class="isMobile astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#multiindexarray-migration-warning" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">multiIndexArray migration warning</span></a></li></ul></li></ul></div></details></nav></mobile-starlight-toc><script type="module" src="/_astro/MobileTableOfContents.astro_astro_type_script_index_0_lang.BcSo_yiZ.js"></script></div><div class="right-sidebar-panel sl-hidden lg:sl-block astro-qok35upx"><div class="sl-container astro-qok35upx"><starlight-toc data-min-h="2" data-max-h="3"><nav aria-labelledby="starlight__on-this-page"><h2 id="starlight__on-this-page">On this page</h2><ul class="astro-jugkfwgx" style="--depth: 0;"><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#_top" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Overview</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-instanceof-pattern-variables-may-not-reuse-a-field-name-julc0059-207" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-value-oriented-contract-code-guide-163" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: value-oriented contract code guide (#163)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-a-source-name-can-never-resolve-to-a-compiler-generated-binder-adr-060" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-builder-binders-no-longer-capture-user-variables-186" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: builder binders no longer capture user variables (#186)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-release-regression-gates-and-profile-freeze-121" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: release regression gates and profile freeze (#121)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-decode-boolean-and-string-switch-fields-166" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: decode boolean and String switch fields (#166)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-preserve-loop-state-across-enclosing-branches-161" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: preserve loop state across enclosing branches (#161)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-reject-lost-conditional-loop-local-updates-155" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: reject lost conditional loop-local updates (#155)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-independent-compiler-and-evaluation-costs-153" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: independent compiler and evaluation costs (#153)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-typed-bls12-381-values-and-multi-scalar-multiplication-adr-047" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-array-literals-and-literal-folding-adr-046" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: array literals and literal folding (ADR-046)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-native-value-literals-and-literal-folding-adr-045" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: native Value literals and literal folding (ADR-045)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-automatic-sharing-of-repeated-record-field-projections-adr-044" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: automatic sharing of repeated record field projections (ADR-044)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-list-to-array-promotion-at-pv11-costed-adr-043" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: list-to-array promotion at pv11-costed (ADR-043)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-automatic-sharing-of-repeated-native-value-conversions-adr-042" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-integer-case-dispatch-for-sealed-interface-switches-adr-041" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-conditional-yield-in-switch-case-blocks" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: conditional yield in switch case blocks</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-serialisedata-compiled-without-a-force-wrapper" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: serialiseData compiled without a force wrapper</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-lossless-data-map-decoding" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: lossless Data map decoding</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-typed-native-pair-case-lowering" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: typed native Pair Case lowering</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-stable-typed-formal-verification-api-v1" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: stable typed formal-verification API v1</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-explicit-pv11-compiler-target" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: explicit PV11 compiler target</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-scalus-protocol-aware-evaluation-adr-033" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: Scalus protocol-aware evaluation (ADR-033)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-strict-typed-datumredeemer-boundaries" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: strict typed datum/redeemer boundaries</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-purpose-indexed-multi-validator-blueprints" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: purpose-indexed multi-validator blueprints</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-typed-list-case-lowering-110" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: typed List-case lowering (#110)</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-preview-target-aware-pv11-optimizations" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming preview: target-aware PV11 optimizations</span></a></li><li style="--depth: 0;" class="astro-jugkfwgx"><a href="#upcoming-release-pv11-builtin-contract-correction" style="--depth: 0;" class="astro-jugkfwgx"><span style="--depth: 0;" class="astro-jugkfwgx">Upcoming release: PV11 builtin contract correction</span></a><ul class="astro-jugkfwgx" style="--depth: 1;"><li style="--depth: 1;" class="astro-jugkfwgx"><a href="#multiindexarray-migration-warning" style="--depth: 1;" class="astro-jugkfwgx"><span style="--depth: 1;" class="astro-jugkfwgx">multiIndexArray migration warning</span></a></li></ul></li></ul></nav></starlight-toc><script type="module" src="/_astro/TableOfContents.astro_astro_type_script_index_0_lang.Csloo1VZ.js"></script></div></div></div></aside><div class="main-pane astro-lrzkfocr"><main data-pagefind-body class="astro-g5ptsecz" lang="en" dir="ltr"><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><h1 id="_top" class="astro-bebwqqxs">Release Notes</h1></div></div><div class="content-panel astro-a7po4psb"><div class="sl-container astro-a7po4psb"><div class="sl-markdown-content"><div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-instanceof-pattern-variables-may-not-reuse-a-field-name-julc0059-207">Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)</h2><a class="sl-anchor-link" href="#upcoming-preview-instanceof-pattern-variables-may-not-reuse-a-field-name-julc0059-207"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)”</span></a></div>
+<p>JuLC binds an <code dir="auto">instanceof</code> pattern variable only when the pattern is the whole
+condition of an <code dir="auto">if</code> statement outside a loop (<a href="https://github.com/bloxbean/julc/issues/204">#204</a>). In every other position (a loop
+body, an <code dir="auto">&amp;&amp;</code> condition, a negated guard such as <code dir="auto">if (!(x instanceof T v)) return ...;</code>,
+a ternary, a lambda, a boolean <code dir="auto">return</code>) the variable is not bound. When a field of the
+class, including a <code dir="auto">@Param</code> field, has the same name, those positions silently read or
+updated the field. For example, with a field <code dir="auto">q</code> holding 40,
+<code dir="auto">if (s instanceof Sq q &amp;&amp; q.s() &gt; 1) { return q.s(); }</code> returned 40 where Java returns 3.
+This behaviour dates back to the first preview.</p>
+<p>The compiler now rejects a pattern variable that reuses the name of a field of an
+enclosing class (<code dir="auto">JULC0059</code>) in every position, including the one where the variable is
+bound correctly. Rename the variable. <code dir="auto">switch</code> case patterns (<code dir="auto">case Sq q -&gt;</code>) bind their
+variables in every position and are not affected. This is validation only: every program
+that still compiles produces the same script bytes and hashes.</p>
+<p>Known limitation until <a href="https://github.com/bloxbean/julc/issues/204">#204</a> (planned for the next preview): a pattern variable with any
+name that is used outside that one position fails to compile, usually with
+<code dir="auto">Undefined variable</code>. Use a
+<code dir="auto">switch</code> on the sealed type, or the plain <code dir="auto">if (x instanceof T v) { ... }</code> form outside a loop.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-value-oriented-contract-code-guide-163">Upcoming preview: value-oriented contract code guide (#163)</h2><a class="sl-anchor-link" href="#upcoming-preview-value-oriented-contract-code-guide-163"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: value-oriented contract code guide (#163)”</span></a></div>
+<p>A new Best Practices page, <a href="/best-practices/value-oriented-code/">Value-Oriented Contract Code</a>,
+shows how to compute values in initializers, switch expressions, helper methods and list
+operations instead of updating variables across branches, and how to test the compiled
+validator. Every example is compiled and evaluated on the VM by tests in <code dir="auto">julc-examples</code>,
+and a test fails if the page and the tested code drift apart.</p>
+<p>The page records current list-operation behaviour that differs from Java:</p>
+<ul>
+<li>compiled <code dir="auto">any</code> and <code dir="auto">all</code> evaluate the predicate for every element, so a predicate that
+fails on a later element fails the script where Java would already have returned;</li>
+<li><code dir="auto">list.find(...)</code> returns an optional value in compiled code although its Java signature
+returns the element;</li>
+<li>the static <code dir="auto">ListsLib.any</code>, <code dir="auto">all</code>, <code dir="auto">filter</code>, <code dir="auto">map</code>, <code dir="auto">find</code>, <code dir="auto">foldl</code> and <code dir="auto">zip</code> forms
+compile only from source text, because <code dir="auto">ListsLib</code> does not declare them in Java.</li>
+</ul>
+<p>No compiler behaviour changes in this entry.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-a-source-name-can-never-resolve-to-a-compiler-generated-binder-adr-060">Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)</h2><a class="sl-anchor-link" href="#upcoming-preview-a-source-name-can-never-resolve-to-a-compiler-generated-binder-adr-060"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)”</span></a></div>
+<p>The compiler generates variables around your code for switch dispatch, loops, the
+validator wrapper, <code dir="auto">@Param</code> decoding and the list and map builders. Several of
+those names were legal Java identifiers, so a source variable with the same name
+silently resolved to the compiler’s variable instead:</p>
+<ul>
+<li><code dir="auto">BigInteger __match_tag = ...;</code> read inside a switch arm gave the constructor tag;</li>
+<li>a <code dir="auto">@Param</code> named <code dir="auto">datum__</code> compared the spent datum with itself, so any parameter
+value was accepted;</li>
+<li>a variable named <code dir="auto">xs__</code>, <code dir="auto">__acc_tuple</code> or <code dir="auto">loop__forEach__0</code> read inside a loop saw
+the loop’s remaining list, accumulator tuple or recursive function;</li>
+<li>a <code dir="auto">@Param</code> named <code dir="auto">redeemer__</code>, <code dir="auto">scriptContextData</code>, <code dir="auto">ctxFields__</code> or <code dir="auto">tag__</code>, or a
+pair of <code dir="auto">@Param</code>s <code dir="auto">cfg__raw</code> and <code dir="auto">cfg</code>, read the wrapper’s value.</li>
+</ul>
+<p>Every generated name now begins with <code dir="auto">#</code>, which no Java identifier can contain, and
+switch-dispatch names are also chosen away from every name a branch uses
+(<a href="https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md">ADR-060</a>).
+The same change fixes adjacent silent miscompiles:</p>
+<ul>
+<li><strong>Compound assignment in loops</strong> dropped the operator: <code dir="auto">count += 1</code> over three items
+returned 1 and <code dir="auto">while (k &lt; 3) { k += 1; }</code> never terminated. <code dir="auto">+=</code>, <code dir="auto">-=</code>, <code dir="auto">*=</code>, <code dir="auto">/=</code>
+and <code dir="auto">%=</code> on integers, and <code dir="auto">+=</code> on strings, now mean <code dir="auto">x = x op y</code>. <code dir="auto">&amp;=</code>, <code dir="auto">|=</code>, <code dir="auto">^=</code>
+and the shift operators are rejected (<code dir="auto">JULC0052</code>), because lowering <code dir="auto">&amp;=</code> as <code dir="auto">&amp;&amp;</code>
+would skip a check Java always evaluates.</li>
+<li><strong>Overloaded methods</strong>: the last declaration ran for every call, so <code dir="auto">check(BigInteger)</code>
+next to <code dir="auto">check(long)</code> used the wrong body. Overloads are rejected (<code dir="auto">JULC0054</code>) unless
+they compile to identical code, like the stdlib’s two <code dir="auto">integerToByteString</code> forms.</li>
+<li><strong>Declarations with several variables</strong>, <code dir="auto">BigInteger a = x, b = y;</code>, bound only the
+first, so a later <code dir="auto">b</code> could read a field <code dir="auto">b</code>. They are rejected (<code dir="auto">JULC0053</code>); fields
+may still declare several variables.</li>
+<li><strong>Methods now have their own namespace</strong>, as in Java: a local, parameter, field or
+<code dir="auto">@Param</code> may share a method’s name (<code dir="auto">BigInteger fee = fee(a); return fee(fee);</code>
+failed at run time, and a <code dir="auto">@Param limit</code> next to a method <code dir="auto">limit(...)</code> gave the
+wrong decision). <code dir="auto">x.name()</code> or <code dir="auto">x.name</code> on a value whose type is not known used to
+call whatever was named <code dir="auto">name</code>; it is now rejected (<code dir="auto">JULC0055</code>). A static field
+initializer that calls a method of its class now gets an explicit error (<code dir="auto">JULC0057</code>).</li>
+<li><strong>Fields updated in loops</strong>: a loop assignment to a static field or <code dir="auto">@Param</code> rebinds
+the name only inside that method, so another method reading the field saw the
+original value (a helper returned 0 after <code dir="auto">count += 1</code> three times), and every call of
+the updating method started again from the initial value (a helper called twice
+returned 6 where Java returns 9). Such an update is now rejected (<code dir="auto">JULC0056</code>) unless
+it is in an entry method (a validator entrypoint, a multi-validator handler or the
+<code dir="auto">compileMethod</code> target) that no method calls, outside any lambda, and no other method
+reads the field. Updating a field in a helper or a library method no longer compiles;
+copy the field into a local accumulator. A loop-body local that shadows a
+field and is reassigned was threaded out of the loop as if it were the field; it is
+now a local. So is a for-each variable that shadows a field: reassigning it updated
+the field, so the field read 1 after the loop where Java reads 10.</li>
+<li><strong>Reassignment in a loop without an accumulator</strong>: a for-each loop that updates no
+variable declared before it cannot reassign its loop variable or a body local. This
+was already rejected, with “Unsupported expression: AssignExpr”; it now reports
+<code dir="auto">JULC0058</code> and suggests declaring a new local.</li>
+</ul>
+<p><strong>Migration.</strong> Programs that use none of these shapes keep byte-identical scripts
+and hashes at every optimization level; this was checked on 1,432 in-repo corpus
+rows (all levels, with and without source maps, including <code dir="auto">@Param</code> and
+multi-validator programs) and the 344 external example artifacts. A recompiled script that used an affected shape changes its bytes, hash
+and budget, and its behaviour now matches Java: review it and redeploy if the old
+behaviour mattered. Deployed scripts never change. Code that is now rejected must
+be rewritten as the diagnostic describes. PIR and UPLC text output, such as the
+<code dir="auto">.uplc</code> file from <code dir="auto">julc build</code> and the playground pipeline view, now shows <code dir="auto">#</code>
+names; this is cosmetic. Code that drives <code dir="auto">PirGenerator</code> directly must register a
+method with <code dir="auto">SymbolTable.declareMethod</code>: a method registered as a variable with
+<code dir="auto">SymbolTable.define</code> is no longer callable. Diagnostic codes <code dir="auto">JULC0044</code>–<code dir="auto">JULC0051</code>
+are reserved for the generic backend work.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-builder-binders-no-longer-capture-user-variables-186">Upcoming preview: builder binders no longer capture user variables (#186)</h2><a class="sl-anchor-link" href="#upcoming-preview-builder-binders-no-longer-capture-user-variables-186"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: builder binders no longer capture user variables (#186)”</span></a></div>
+<p>A variable referenced inside a lambda or argument could silently resolve to an
+internal variable of the list, map or loop code the compiler generated around it.
+For example, <code dir="auto">outer.any(x -&gt; inner.any(y -&gt; y.equals(x)))</code> compared each inner
+element with itself and returned true whenever <code dir="auto">inner</code> was non-empty, so a
+validator could accept a transaction it should reject. Affected names were the
+builders’ internal binders: <code dir="auto">x</code>, <code dir="auto">acc</code>, <code dir="auto">lst</code>, <code dir="auto">go</code> and <code dir="auto">h</code> for <code dir="auto">any</code>, <code dir="auto">all</code>,
+<code dir="auto">find</code> and <code dir="auto">foldl</code>; <code dir="auto">x_map</code>, <code dir="auto">acc_map</code>, <code dir="auto">x_flt</code> and <code dir="auto">acc_flt</code> for <code dir="auto">map</code> and
+<code dir="auto">filter</code>; the <code dir="auto">*_get</code>, <code dir="auto">*_c</code>, <code dir="auto">go_*</code>, <code dir="auto">ps_*</code>, <code dir="auto">xs_*</code>, <code dir="auto">*__ao</code> and <code dir="auto">*__f</code> binders of
+<code dir="auto">get</code>, <code dir="auto">contains</code>, <code dir="auto">reverse</code>, <code dir="auto">concat</code>, <code dir="auto">take</code>, <code dir="auto">drop</code>, <code dir="auto">size</code>, <code dir="auto">keys</code>, <code dir="auto">values</code>,
+map lookups, <code dir="auto">ListsLib.contains</code>, <code dir="auto">MapLib.member/lookup/delete</code> and
+<code dir="auto">Value.assetOf</code>; and the statement binders <code dir="auto">_if</code>, <code dir="auto">_forEach</code>, <code dir="auto">_while</code>,
+<code dir="auto">_nested</code>, <code dir="auto">__t</code> and <code dir="auto">_u</code>. Instance and static <code dir="auto">ListsLib</code> forms were both affected.</p>
+<p>Each generated binder is now renamed only when a caller term actually refers to
+that name, so evaluation order is unchanged. Scripts without such a reference
+keep byte-identical output at every optimization level. Recompiling an affected
+script changes its bytes, hash and budget; review it and redeploy if its
+behaviour mattered. Deployed scripts never change. The generated names #186 did
+not reach, such as the loop and switch binders, are covered by ADR-060 below.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-release-regression-gates-and-profile-freeze-121">Upcoming preview: release regression gates and profile freeze (#121)</h2><a class="sl-anchor-link" href="#upcoming-preview-release-regression-gates-and-profile-freeze-121"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: release regression gates and profile freeze (#121)”</span></a></div>
+<p>The proposed pre17 <a href="/reference/hash-stability/">hash-stability policy</a> freezes
+existing optimization profiles, with explicit, reviewed exceptions for correctness
+fixes. It distinguishes script-hash changes from network execution-cost changes.</p>
+<p>Developer-node gates now support an explicitly configured native Haskell CLI/socket
+as well as an existing DevKit container. New Value/Array and G1/G2 MSM regressions
+pin script hashes, sizes and execution budgets and check confirmed node spends.
+Normal builds run only the offline regressions; node tests remain opt-in.
+This test/documentation change does not alter compiler output or deployed scripts.
+The documentation build dependencies are also updated to resolve known advisories.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-decode-boolean-and-string-switch-fields-166">Upcoming preview: decode boolean and String switch fields (#166)</h2><a class="sl-anchor-link" href="#upcoming-preview-decode-boolean-and-string-switch-fields-166"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: decode boolean and String switch fields (#166)”</span></a></div>
+<p>Switch case-pattern access such as <code dir="auto">case Sum s -&gt; s.enabled() ? ONE : ZERO</code>
+now decodes a boolean record field to native Bool. Previously the cached field
+remained raw Data and evaluation failed. String fields had the same missing decode.
+DataMatch field extraction now reuses the shared decoder used by other field-access
+paths rather than maintaining a separate incomplete type table (ADR-051).</p>
+<p>This is separate from the loop/switch validation fixes. Constructor encodings,
+branch selection, field order and #162’s rejection of case-pattern reassignment
+are unchanged. Only the selected arm’s bound fields are decoded, strictly before
+its body; malformed Bool/String fields can now fail there even when unused.
+The existing decoder’s permissive Bool tag handling is unchanged; this is not a
+new strict Data-validation boundary.</p>
+<p>Recompiling affected switches changes script bytes, hashes and budgets at <strong>all
+optimization levels</strong>, including NONE and BASELINE. Recompile and reassess affected
+scripts before deployment. Existing deployed scripts and ledger encodings do not
+change; switches without these field types retain their existing decoding.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-preserve-loop-state-across-enclosing-branches-161">Upcoming preview: preserve loop state across enclosing branches (#161)</h2><a class="sl-anchor-link" href="#upcoming-preview-preserve-loop-state-across-enclosing-branches-161"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: preserve loop state across enclosing branches (#161)”</span></a></div>
+<p>A loop inside an <code dir="auto">if</code> at method level or inside a switch-expression arm now
+preserves its accumulator updates for statements following the branch. Previously
+<code dir="auto">total = 0; if (condition) { for (...) { total = total.add(x); } } return total;</code>
+could silently return 0. The fix reuses existing continuation lowering with a
+shared join lambda for loop-containing branches, including
+for while loops, nested branches, multiple accumulators and break. Conditions and
+branches keep their evaluation order; early return/yield still short-circuit.
+Continuation-bearing branches also rename local and instanceof pattern bindings
+internally to protect join arguments when a local shadows a class field updated
+by the other branch, and to prevent capture in the existing inline return/yield
+lowering. Diagnostics display the original source names.</p>
+<p>The validation follow-up also accepts this pattern when the switch expression
+is inside an outer loop body. Previously the outer-loop guard conservatively
+rejected arm-local guarded-loop updates. It now validates the selector and leaves
+arm bodies to their ownership guard and nested loops’ own checks. Switch arms
+still cannot update enclosing variables, and conditional updates to actual
+loop-body locals remain unsupported. This validation-only change adds no lowering
+or encoding change for previously accepted programs.</p>
+<p>Recompiled sources with loop-containing branches or affected name captures may
+change script bytes, hashes,
+size and execution budgets at <strong>all optimization levels</strong>, including NONE and
+BASELINE. The following code is bound once outside the branches: sequential
+guarded loops grow linearly instead of exponentially duplicating their tails.
+Join calls add execution overhead; reassess budgets as well as size. Recompile and
+reassess affected scripts before deployment; existing deployed scripts do not
+change. Public APIs, ledger encoding and the restrictions below remain unchanged.</p>
+<p>This was a missed case in the older discarded-result path: #79 added continuations
+for returns and #137 extended them to yields. #157 explicitly left this case open.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-reject-lost-conditional-loop-local-updates-155">Upcoming preview: reject lost conditional loop-local updates (#155)</h2><a class="sl-anchor-link" href="#upcoming-preview-reject-lost-conditional-loop-local-updates-155"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: reject lost conditional loop-local updates (#155)”</span></a></div>
+<p>The compiler now rejects assignments inside an <code dir="auto">if</code>/<code dir="auto">else</code> branch to a variable
+declared in the loop body outside that branch. Previously the update could be
+silently lost. This applies to for-each and while loops at every optimization
+level, including nested and break-aware forms. The diagnostic identifies the
+variable and source location, and suggests a conditional initializer, moving
+the declaration before the loop (resetting it each iteration if necessary), or
+declaring it inside the branch when its value is only needed there.</p>
+<p>Switch-expression arms also reject updates to enclosing variables, including
+updates made by nested loops to either body locals or outer accumulators, with
+or without an enclosing <code dir="auto">if</code>. Declare the accumulator inside the arm and yield
+its result instead. This conservative rule also rejects previously correct code
+that updated an enclosing variable but consumed the update only via <code dir="auto">yield</code> inside
+the arm; move the accumulator declaration into the arm to preserve that behavior.</p>
+<p>Reassignment of a switch case-pattern binding is also rejected (#162), even if
+the arm only yields the record itself. Previously field projections could read
+the original record after reassignment. Copy the binding to a fresh arm-local
+accumulator instead. Supported <code dir="auto">instanceof</code> binding reassignment is unchanged.</p>
+<p>The separate enclosing-if/loop miscompile is fixed by #161, described above.</p>
+<p>This is a conservative restriction, including constant conditions and dead updates.
+This validation alone preserves accepted programs’ generated bytes; the separate
+#161 lowering fix may change them. Existing deployed scripts are
+unchanged. See <a href="/best-practices/conditionals/#conditional-loop-state">conditional loop state</a>
+for supported patterns.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-independent-compiler-and-evaluation-costs-153">Upcoming preview: independent compiler and evaluation costs (#153)</h2><a class="sl-anchor-link" href="#upcoming-preview-independent-compiler-and-evaluation-costs-153"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: independent compiler and evaluation costs (#153)”</span></a></div>
+<p><code dir="auto">pv11-costed</code> now needs no compiler cost profile. Its list-to-array rule uses
+structural eligibility; its transformations and the default <code dir="auto">pv11-safe</code> level
+are unchanged. Omitting an optional profile preserves generated script bytes,
+hashes and source maps.</p>
+<p>The immutable evaluation snapshot is now named <code dir="auto">plutus-v3-pv11-costs-v1</code>, with
+neutral Java constants <code dir="auto">OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1</code> (and
+<code dir="auto">_ID</code>/<code dir="auto">_PARAMETER_HASH</code>). The old ID remains accepted and the old constants are
+deprecated aliases to the same snapshot. The parameters and hash are unchanged.
+See the <a href="/reference/cost-model-profiles/">profile catalog</a> for the exact upstream mapping.</p>
+<p>Optional compiler profile settings remain accepted and validated for compatibility,
+but no longer appear as dependencies in compilation reports. Reports now also
+carry the compiler build version; target, optimization level and applied rules
+remain available. Benchmark reports independently retain the model actually
+used for evaluation. Runtime callers continue supplying cost parameters through
+the VM API or <code dir="auto">ProtocolParamsSupplier</code>; no named profile is required there.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-typed-bls12-381-values-and-multi-scalar-multiplication-adr-047">Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)</h2><a class="sl-anchor-link" href="#upcoming-preview-typed-bls12-381-values-and-multi-scalar-multiplication-adr-047"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)”</span></a></div>
+<p>BLS12-381 values now have their own types: <code dir="auto">JulcG1</code> and <code dir="auto">JulcG2</code> for points,
+<code dir="auto">JulcMlResult</code> for a Miller-loop result (all in <code dir="auto">org.julclang.core.types</code>).
+Every <code dir="auto">Builtins.bls12_381_*</code> method and every <code dir="auto">BlsLib</code> method now takes and
+returns these types wherever it took or returned a point or a Miller-loop
+result as <code dir="auto">byte[]</code>; only <code dir="auto">g1Compress</code>/<code dir="auto">g2Compress</code> produce bytes and only
+<code dir="auto">g1Uncompress</code>/<code dir="auto">g2Uncompress</code> consume them (messages, domain separation tags
+and scalars keep their <code dir="auto">byte[]</code>/<code dir="auto">BigInteger</code> types). A compressed byte string where a
+point is required, a G2 point where a G1 point is required, a point compared
+with <code dir="auto">==</code> or placed in a datum, redeemer, record or list is rejected at compile
+time (<code dir="auto">JULC0041</code>); a point at a validator or <code dir="auto">compileMethod</code> boundary is
+<code dir="auto">JULC0042</code>. Compress at the boundary and uncompress on the other side.</p>
+<p>Multi-scalar multiplication is now callable from source on the PV11 target:
+<code dir="auto">BlsLib.g1MultiScalarMul(JulcScalars, JulcG1Points)</code> and the G2 form take the
+native lists built by <code dir="auto">Builtins.scalars(...)</code>, <code dir="auto">Builtins.g1Points(...)</code>,
+<code dir="auto">Builtins.g2Points(...)</code> (literal or runtime elements) or decoded from Data
+lists by <code dir="auto">Builtins.scalarsFromList(JulcList&lt;BigInteger&gt;)</code>,
+<code dir="auto">Builtins.g1PointsFromCompressed(JulcList&lt;byte[]&gt;)</code> and the G2 form. Every
+scalar is validated first (512 bytes of two’s complement), the lists are
+zipped to the shorter one, and the empty sum is the identity. On the pinned
+PV11 costs one MSM call is smaller than the manual <code dir="auto">g1ScalarMul</code>/<code dir="auto">g1Add</code> chain
+from three points and cheaper in CPU from seven (about 322 million to enter
+plus 25 million per point against 77 million per point); nothing rewrites one
+into the other. An element of the wrong type in <code dir="auto">scalars(...)</code>, or a Data list
+of the wrong element type in a converter, is <code dir="auto">JULC0041</code>.</p>
+<p><strong>Migration.</strong> A local, helper parameter or return type that named a BLS value
+as <code dir="auto">byte[]</code> no longer compiles (<code dir="auto">JULC0041</code>, at the initializer, the helper
+call or the <code dir="auto">return</code>): declare it as <code dir="auto">JulcG1</code>/<code dir="auto">JulcG2</code>/<code dir="auto">JulcMlResult</code> or use
+<code dir="auto">var</code>. The same check covers the two branches of a conditional (<code dir="auto">b ? p : q</code>
+with a G2 <code dir="auto">q</code> where a G1 is required), declarations inside a loop body and
+assignments to a loop accumulator or a loop-body local; a native accumulator
+must be its loop’s only accumulator (a multi-accumulator loop packs its
+accumulators as Data). Two loop-body shapes that compiled with their update
+silently dropped are handled: an assignment inside a bare nested block now
+updates the accumulator, and an assignment in expression position or to an
+undeclared variable is rejected. Code that used <code dir="auto">var</code> for BLS values compiles unchanged and keeps its
+bytes; the compressed encodings are still <code dir="auto">byte[]</code>. The two
+<code dir="auto">bls12_381_*_multiScalarMul</code> signatures changed from <code dir="auto">PlutusData</code> to the typed
+lists (the old ones compiled but could not evaluate successfully).
+No program in the example corpus or the golden suites uses the BLS surface, so
+no existing script changes bytes or hash at any level.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-array-literals-and-literal-folding-adr-046">Upcoming preview: array literals and literal folding (ADR-046)</h2><a class="sl-anchor-link" href="#upcoming-preview-array-literals-and-literal-folding-adr-046"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: array literals and literal folding (ADR-046)”</span></a></div>
+<p><code dir="auto">JulcArray.of(a, b, ...)</code> writes a PV11 array down. On-chain it is
+<code dir="auto">JulcList.of(a, b, ...).toArray()</code>: the elements are Data-encoded as the
+declared element type requires (declare it: <code dir="auto">JulcArray&lt;BigInteger&gt; t = JulcArray.of(...)</code>) and the list is converted with <code dir="auto">ListToArray</code>, so <code dir="auto">get</code> and
+<code dir="auto">length</code> behave exactly as on an array converted from a list.</p>
+<p>At <code dir="auto">pv11-safe</code> (the default) and <code dir="auto">pv11-costed</code>, an array whose elements are all
+literals (integers, byte strings, strings, booleans, nested list literals)
+becomes one UPLC array constant; <code dir="auto">length()</code> on it folds to a constant and
+<code dir="auto">get(i)</code> with a literal index folds to the element, decode included
+(<code dir="auto">JulcArray.of(1, 2, 3).get(1)</code> is <code dir="auto">2</code>: 42 → 6 bytes, 1,238,594 → 16,100 CPU).
+A runtime index keeps the access over the embedded constant (a three-entry fee
+table indexed by a runtime tier: 57 → 46 bytes, 1,435,338 → 625,598 CPU on a
+valid tier and 809,740 CPU less on an invalid one, which fails exactly as
+before). The same folds apply to <code dir="auto">list.toArray()</code>
+and <code dir="auto">JulcArray.fromList(list)</code> over a <code dir="auto">JulcList.of</code> literal. An index outside
+the array, literal or runtime, fails at <code dir="auto">IndexArray</code> with the same text as
+before. Nothing changes at <code dir="auto">none</code>/<code dir="auto">baseline</code>; the optimization report records
+<code dir="auto">pv11.o10.array-literal-fold</code>, and the rule can be switched off with
+<code dir="auto">CompilerOptions.disableOptimizationRule</code>.</p>
+<p>This change is additive for the example corpus and every golden suite: no
+program there contains an array constant or converts a list literal to an
+array, so those scripts keep their bytes and hashes at every level. A program
+of your own that already spells <code dir="auto">JulcList.of(...).toArray()</code> or
+<code dir="auto">JulcArray.fromList(JulcList.of(...))</code> does change at <code dir="auto">pv11-safe</code> (it gains the
+array constant). A native Value cannot be an array element (<code dir="auto">JULC0041</code>, as for
+every Data-backed container). Spell a negative literal element as
+<code dir="auto">new BigInteger("-5")</code>. <code dir="auto">var t = JulcArray.of(...)</code> infers the element type from
+the elements, as javac does; elements of different types under <code dir="auto">var</code> are rejected
+with <code dir="auto">JULC0012</code> (declare <code dir="auto">JulcArray&lt;T&gt;</code>).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-native-value-literals-and-literal-folding-adr-045">Upcoming preview: native Value literals and literal folding (ADR-045)</h2><a class="sl-anchor-link" href="#upcoming-preview-native-value-literals-and-literal-folding-adr-045"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: native Value literals and literal folding (ADR-045)”</span></a></div>
+<p><code dir="auto">Builtins</code> gains three native Value literal producers on the PV11 target:
+<code dir="auto">emptyValue()</code> (a UPLC Value constant), <code dir="auto">singletonValue(policyId, tokenName, quantity)</code> and <code dir="auto">lovelaceValue(quantity)</code> (inserts into the empty Value, with
+<code dir="auto">insertCoin</code>’s rules: a zero quantity yields the empty Value, a non-zero
+quantity needs keys of at most 32 bytes and a quantity in the signed 128-bit
+range). They replace the <code dir="auto">unValueData(mapData(mkNilPairData()))</code> idiom for new
+code; the idiom keeps working and keeps its bytes. They are intrinsics rather
+than <code dir="auto">NativeValueLib</code> methods so that programs which do not call them keep
+their bytes at every level.</p>
+<p>At <code dir="auto">pv11-safe</code> (the default) and <code dir="auto">pv11-costed</code>, a call of <code dir="auto">insertCoin</code>,
+<code dir="auto">lookupCoin</code>, <code dir="auto">union</code>, <code dir="auto">contains</code>, <code dir="auto">scale</code>, <code dir="auto">toData</code> or <code dir="auto">fromData</code> whose arguments
+are all literals (constants, or locals bound once to a literal) is folded at
+compile time into the Value, integer, boolean or Data it evaluates to, by the
+same code the VM runs. A requirement such as one NFT plus two ADA becomes one
+constant in the script (40 → 7 bytes and 883,863 → 16,100 CPU for a literal
+lookup); the runtime part of a check (<code dir="auto">fromData(minted)</code>, <code dir="auto">contains</code>) stays. A
+literal call the builtin would reject (a 33-byte key, an overflow, a negative
+quantity under <code dir="auto">contains</code>) is left as written and fails at runtime with the
+same text. No algebraic identity is applied and nothing changes at
+<code dir="auto">none</code>/<code dir="auto">baseline</code>. The fold only fires when the literal is not larger than the
+call it replaces as it stands in the script, so <code dir="auto">toData(Builtins.emptyValue())</code>
+stays a call and a literal local shared by several calls is never copied into
+them (the calls stay, the local keeps its one constant). The optimization report
+records <code dir="auto">pv11.o14.value-literal-fold</code>, and the rule can be switched off with
+<code dir="auto">CompilerOptions.disableOptimizationRule</code>.</p>
+<p>This change is additive: no program compiled before it contains a Value
+literal, so existing scripts keep their bytes and hashes at every level.
+Spell a negative literal quantity as <code dir="auto">new BigInteger("-5")</code>
+(<code dir="auto">BigInteger.valueOf(-5)</code> compiles to a runtime subtraction).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-automatic-sharing-of-repeated-record-field-projections-adr-044">Upcoming preview: automatic sharing of repeated record field projections (ADR-044)</h2><a class="sl-anchor-link" href="#upcoming-preview-automatic-sharing-of-repeated-record-field-projections-adr-044"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: automatic sharing of repeated record field projections (ADR-044)”</span></a></div>
+<p><code dir="auto">PV11_SAFE</code> (the default) and <code dir="auto">PV11_COSTED</code> now share a repeated projection of
+the same record field of the same variable (<code dir="auto">txInfo.outputs()</code> on a <code dir="auto">TxInfo</code>
+local or parameter, <code dir="auto">b.amount()</code> on a cast local, <code dir="auto">out.value()</code> on a loop item)
+once per scope when that projection is already the first non-trivial
+evaluation of the scope, and share the record’s decoded fields list when two
+or more different fields of one variable are projected. The compiler binds the
+projection (or the fields list) as one strict <code dir="auto">let</code> and reuses it at every
+later occurrence, including occurrences inside a loop body and inside
+<code dir="auto">compareTo</code>, which evaluates its receiver twice on its own. A projection of a
+projection (<code dir="auto">b.inner().x()</code> and <code dir="auto">b.inner().y()</code>) shares the inner record first.
+The output for the motivating shape is byte-identical to writing
+<code dir="auto">BigInteger amount = b.amount();</code> yourself. The optimization report records
+<code dir="auto">pv11.o15.projection-sharing</code>.</p>
+<p>Nothing observable on-chain changes: the shared projection already ran first on
+every path, so results, traces, the failure point and the failure text are
+identical on Java, Truffle and Scalus for well-formed and malformed input, at
+every level. Budgets move, on failing paths too (a failing path that reaches
+only the leading site pays the binding, one that fails inside the shared unit
+pays a few machine steps less), so off-chain tests that pin a budget need
+refreshing. A path that reaches a later occurrence saves the whole projection (about
+462,000 CPU for an integer field at the first position, 1,058,000 CPU for a raw
+field at the sixth, 279,000 CPU for the fields list); a path that reaches none,
+such as an untaken branch or an empty loop, pays at most one lambda, one
+application and one variable lookup (48,000 CPU) per shared binding. A
+projection is never hoisted above a trace, an <code dir="auto">error</code>, a saturated call or a
+projection of another variable, and projections in exclusive branches of one
+conditional are left exactly as written. A validator that projects
+<code dir="auto">ctx.txInfo().outputs()</code> twice drops from 429 to 380 bytes and from 11.6 million
+to 8.8 million CPU on the path that uses both.</p>
+<p>Earlier safe-profile rules (Case on booleans, pairs and integers, list Case
+loops) already moved most <code dir="auto">pv11-safe</code> hashes; this is the first whose trigger
+shape is in most validators since the safe profile became the default: any
+program that projects one field of one variable twice in leading position, or
+two fields of one variable, compiles to a different (smaller) script. Deployed scripts are unaffected; recompiling changes the
+script hash and therefore the script address. Tests or deployments that pin a
+hash need to be refreshed. <code dir="auto">NONE</code>/<code dir="auto">BASELINE</code> retain historical bytes.</p>
+<p>One costed-only consequence: because the shared list projection is a variable,
+<code dir="auto">pv11-costed</code> now also promotes <code dir="auto">b.items().get(0)</code> beside <code dir="auto">b.items().get(1)</code>
+to a PV11 array (ADR-043), with ADR-043’s <code dir="auto">IndexArray</code> failure text for an
+out-of-range index on such sites.</p>
+<p>Each PIR-to-PIR rule can be switched off on its own for review and measurement:
+<code dir="auto">new CompilerOptions().disableOptimizationRule("pv11.o15.projection-sharing")</code>
+(also <code dir="auto">pv11.o8.value-sharing</code> and <code dir="auto">pv11.o9.list-to-array</code>); any other id fails
+with <code dir="auto">JULC0043</code>. The optimization level remains the supported rollout control,
+and the Gradle plugin and CLI do not expose the switch.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-list-to-array-promotion-at-pv11-costed-adr-043">Upcoming preview: list-to-array promotion at <code dir="auto">pv11-costed</code> (ADR-043)</h2><a class="sl-anchor-link" href="#upcoming-preview-list-to-array-promotion-at-pv11-costed-adr-043"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: list-to-array promotion at pv11-costed (ADR-043)”</span></a></div>
+<p><code dir="auto">PV11_COSTED</code> (opt-in; <code dir="auto">julc { optimization = 'pv11-costed' }</code>, no cost profile
+required) now converts a <code dir="auto">JulcList</code> variable that its scope indexes at two
+or more <code dir="auto">get</code> sites, or at a <code dir="auto">get</code> site inside a loop body, to a PV11 array once
+(<code dir="auto">ListToArray</code>) and rewrites those sites to <code dir="auto">IndexArray</code>. Every other use of the
+list (for-each, <code dir="auto">size</code>, <code dir="auto">head</code>, passing it to a helper) is untouched, the array
+binding is placed at the innermost sub-term that contains every index site (so a
+path on which the binding is not placed, such as a branch whose sibling holds all
+the sites, pays nothing), and for two sites in one expression the output is
+byte-identical to writing <code dir="auto">list.toArray()</code> by hand at that point. The
+optimization report records <code dir="auto">pv11.o9.list-to-array</code>. <code dir="auto">PV11_SAFE</code> (the default),
+<code dir="auto">BASELINE</code> and <code dir="auto">NONE</code> keep their bytes and hashes.</p>
+<p>The recursive <code dir="auto">get</code> costs about 620,000 CPU plus 683,000 CPU per index step and
+60 FLAT bytes per site; the array form costs 49,000 + 24,838 CPU per element
+once plus 312,000 CPU per site. Two sites at indexes 0 and 1 save CPU for lists
+of up to 44 elements, sites at indexes 3 and 7 for up to 291, and loops
+multiply the saving: a WingRiders-shaped request loop with sixteen requests
+drops from 349.6 million to 81.9 million CPU. A path that converts but then
+indexes less than twice pays at most the conversion plus one binding
+(97,000 + 24,838·n CPU per list): an empty loop, or an untaken branch when both
+branches index. The compiler assumes a promoted list is indexed at least twice
+per evaluation; this is why the rule is confined to the costed profile.</p>
+<p>Failure contract (costed profile only): a promoted <code dir="auto">get</code> with an index outside
+<code dir="auto">0..length-1</code> now fails at the <code dir="auto">IndexArray</code> builtin instead of inside the
+recursive traversal. Both fail after the index is evaluated and before any other
+effect, so results, traces and the failure point are unchanged; only the
+off-chain text and the failing path’s budget (smaller) differ. Because the typed
+boundary does not range-check integers, a redeemer- or datum-supplied index
+reaches <code dir="auto">get</code> unchecked and a validator compiled at <code dir="auto">pv11-costed</code> itself
+reports <code dir="auto">IndexArray: index I out of bounds for array of size N</code> (Scalus:
+<code dir="auto">… indexArray: index I out of bounds for array of length N</code>) instead of
+<code dir="auto">HeadList: empty list</code> (index equal to the length) or <code dir="auto">TailList: empty list</code>
+(negative or larger). You see it wherever the costed artifact is evaluated: the
+Gradle plugin or annotation processor with <code dir="auto">julc.optimization=pv11-costed</code>,
+<code dir="auto">julc build --optimization pv11-costed</code> followed by <code dir="auto">julc eval</code>, direct
+<code dir="auto">JulcCompiler</code> use, and the MCP tools. The testkit’s <code dir="auto">JulcEval</code>,
+<code dir="auto">MethodEvaluator</code> and <code dir="auto">ValidatorTest</code> compile at the default level and never
+show it. On-chain a failure is a failure. Tests that assert on that text under
+the costed profile need updating; nothing changes at the default level.
+<code dir="auto">MultiIndexArray</code> remains illegal at PV11.</p>
+<p>A <code dir="auto">JulcList</code> variable is promoted only when the compiler can prove it holds a
+list on every path: a value decoded at the typed boundary, a list built by a list
+operation, a helper parameter that every call in the program passes such a list,
+or a helper result whose body returns one. A local bound to an unchecked cast
+such as <code dir="auto">(JulcList&lt;T&gt;) (Object) somePlutusData</code>, every alias of it, a callback
+lambda’s list-typed parameter (which holds the raw element), and any helper
+parameter or result such a value can reach are never promoted, so a program that
+never indexes on some path keeps accepting on that path at the costed level. An
+earlier preview build trusted helper parameters by their declared type; review
+showed that a callback’s element passed into a helper could then turn acceptance
+into a <code dir="auto">ListToArray</code> failure. That is fixed, and no released artifact was built
+at the costed level.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-automatic-sharing-of-repeated-native-value-conversions-adr-042">Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)</h2><a class="sl-anchor-link" href="#upcoming-preview-automatic-sharing-of-repeated-native-value-conversions-adr-042"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)”</span></a></div>
+<p><code dir="auto">PV11_SAFE</code> (the default) and <code dir="auto">PV11_COSTED</code> now share a repeated native Value
+conversion of the same variable, <code dir="auto">NativeValueLib.fromData(x)</code> or
+<code dir="auto">Builtins.unValueData(x)</code>, once per scope when that conversion is already the
+first non-trivial evaluation of the scope. The compiler binds it as one strict
+<code dir="auto">let</code> and reuses the bound value at every later occurrence, including
+occurrences inside a loop body, which hoists a per-iteration conversion out of
+the loop. The output for the motivating shape is byte-identical to writing the
+<code dir="auto">JulcValue</code> binding by hand. The optimization report records
+<code dir="auto">pv11.o8.value-sharing</code>.</p>
+<p>Nothing observable changes: the conversion that is shared already ran first on
+every path, so results, traces, the failure point and the failure text are
+identical on Java, Truffle and Scalus for valid, malformed and non-canonical
+input. A path that reaches a second occurrence saves one full conversion
+(about 513,000 CPU for even a one-token Value, more for larger Values); a path
+that reaches none, such as an untaken branch or an empty loop, pays at most one
+lambda, one application and one variable lookup (48,000 CPU). A conversion is
+never hoisted above a trace, an <code dir="auto">error</code>, a saturated call or another partial
+conversion, and conversions in exclusive branches of one conditional are left
+exactly as written; binding <code dir="auto">JulcValue</code> explicitly remains the recommended style
+and applies at every level.</p>
+<p>Only safe-profile output of programs that convert one <code dir="auto">Data</code> variable at least
+twice changes bytes and hash; no shipped example uses native Values, and
+<code dir="auto">ValuesLib</code> is untouched. <code dir="auto">NONE</code>/<code dir="auto">BASELINE</code> retain historical bytes. <code dir="auto">ValueData</code>
+sinking, adjacent conversion cancellation and Data-side (<code dir="auto">ValuesLib</code>) sharing
+remain deferred (ADR-032 O8/O15).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-integer-case-dispatch-for-sealed-interface-switches-adr-041">Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)</h2><a class="sl-anchor-link" href="#upcoming-preview-integer-case-dispatch-for-sealed-interface-switches-adr-041"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)”</span></a></div>
+<p><code dir="auto">PV11_SAFE</code> (the default) and <code dir="auto">PV11_COSTED</code> now dispatch every <code dir="auto">switch</code> on a
+sealed interface with two or more constructors through one PV11 integer <code dir="auto">Case</code>
+on the decoded constructor tag instead of an <code dir="auto">equalsInteger</code> chain. Branch <code dir="auto">i</code>
+runs for tag <code dir="auto">i</code>; field decoding, branch bodies, traces and evaluation order are
+unchanged, and only the selected branch is evaluated. The dispatch cost is now
+flat instead of growing with the constructor’s position: in the ADR-041
+fixtures a five-way switch selecting its last constructor saves about 710,000
+CPU and 33 FLAT bytes, and a two-way switch saves 116,000 to 265,000 CPU and 12
+bytes (8 bytes on the ADR-038 on-chain validator). Single-constructor
+switches and <code dir="auto">instanceof</code> chains are untouched. The optimization report records
+<code dir="auto">pv11.o5.case-integer</code>.</p>
+<p>Failure contract: a constructor tag outside <code dir="auto">0..n-1</code> now fails at Case selection
+instead of reaching the chain’s terminal <code dir="auto">error</code>. Both fail at the same point
+with no branch effects and no traces; only the off-chain failure text and the
+failing path’s budget differ. The strict typed boundary already rejects invalid
+tags on datum, redeemer and nested typed fields before user logic runs, so
+validators observe no change. The change is observable where no boundary runs:
+<code dir="auto">JulcCompiler.compileMethod</code>, and therefore the testkit’s <code dir="auto">JulcEval</code> and
+<code dir="auto">MethodEvaluator</code>, now report <code dir="auto">Case: tag T out of range for N branches</code> (Scalus:
+<code dir="auto">Case index T out of bounds for N branches</code>) for a sealed argument with an
+out-of-range constructor tag instead of <code dir="auto">Error term encountered</code>; the same
+applies to direct-PIR consumers of <code dir="auto">compilePirToProgram</code> and to sealed values a
+program casts from raw <code dir="auto">PlutusData</code> without a typed boundary. Tests that assert
+on that failure text need updating. Both the Java and Truffle VMs now
+range-check integer Case scrutinees over the full integer domain before
+narrowing, so tags beyond the <code dir="auto">int</code> range fail as the same machine error.</p>
+<p>Recompiling an eligible validator with a safe profile changes its script bytes
+and hash. <code dir="auto">NONE</code>/<code dir="auto">BASELINE</code> retain historical bytes; deployed scripts and ledger
+Data encodings are unchanged. The decompiler recovers the new dispatch as the
+same <code dir="auto">DataMatch</code> HIR node. ADR-041 also closes the O6 unit Case question as
+rejected: JuLC emits no <code dir="auto">ChooseUnit</code>, and a census of shipped artifacts shows no
+typed-unit statement population worth a new PIR surface.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-conditional-yield-in-switch-case-blocks">Upcoming preview: conditional <code dir="auto">yield</code> in switch case blocks</h2><a class="sl-anchor-link" href="#upcoming-preview-conditional-yield-in-switch-case-blocks"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: conditional yield in switch case blocks”</span></a></div>
+<p>A <code dir="auto">yield</code> inside an <code dir="auto">if</code>/<code dir="auto">else</code> branch of a switch-expression case block was
+silently discarded when statements followed the conditional: the block lowered
+as “evaluate the <code dir="auto">if</code>, then run the rest”, so a guard such as
+<code dir="auto">if (cond) { yield false; } yield true;</code> always produced <code dir="auto">true</code>
+(<a href="https://github.com/bloxbean/julc/issues/137">#137</a>). The frontend now applies
+the same fall-through continuation lowering that #79 introduced for early
+<code dir="auto">return</code>, so a <code dir="auto">yield</code> exits its owning switch expression and the trailing
+statements only run for branches that fall through. A <code dir="auto">yield</code> inside a nested
+switch expression still belongs to that inner switch.</p>
+<p>Two diagnostics accompany the fix: a case block whose paths do not all end in a
+<code dir="auto">yield</code> is rejected instead of falling off the end, and a <code dir="auto">yield</code> inside a
+for-each or while loop body is rejected like <code dir="auto">return</code> already was.</p>
+<p>This is frontend statement lowering, so recompiling a source that uses the
+affected shape changes its script bytes and hash under every profile, including
+<code dir="auto">NONE</code> and <code dir="auto">BASELINE</code>. Sources that do not use the shape keep their bytes.
+Deployed scripts and ledger Data encodings are unchanged. The shipped stdlib and
+examples were scanned and do not use the shape. The two Blaster controlled-mint
+verification fixtures do; their locked artifacts and counterexample binding are
+refreshed for the corrected lowering with the same property outcomes.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-serialisedata-compiled-without-a-force-wrapper">Upcoming preview: <code dir="auto">serialiseData</code> compiled without a force wrapper</h2><a class="sl-anchor-link" href="#upcoming-preview-serialisedata-compiled-without-a-force-wrapper"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: serialiseData compiled without a force wrapper”</span></a></div>
+<p><code dir="auto">Builtins.serialiseData</code> and <code dir="auto">ByteStringLib.serialiseData</code> previously compiled
+to a forced <code dir="auto">SerialiseData</code> builtin. <code dir="auto">SerialiseData</code> is monomorphic and takes
+its Data argument directly, so the extra force made every generated program
+that reached the call fail at evaluation on the Java, Truffle and Scalus
+backends (<a href="https://github.com/bloxbean/julc/issues/132">#132</a>). The compiler
+now emits the builtin without the type-instantiation force.</p>
+<p>Recompiling a program that calls <code dir="auto">serialiseData</code> changes its script bytes and
+hash under every profile; programs that do not call it keep their bytes. The
+CBOR serialization format, VM behavior and ledger Data encodings are unchanged,
+and already deployed scripts are not modified. Any execution path that reached
+the old forced builtin failed, so the new hash only replaces scripts that could
+not have succeeded on that path.</p>
+<p>Two follow-ups guard against regression: an exhaustive comparison of all 102
+<code dir="auto">DefaultFun</code> force counts against the shared builtin metadata (PR #134), and a
+Java-source regression matrix for <code dir="auto">serialiseData</code> under <code dir="auto">BASELINE</code> and
+<code dir="auto">PV11_SAFE</code> on Java and Scalus with exact CBOR and BLAKE2b-256 vectors
+(PR #135).</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-lossless-data-map-decoding">Upcoming preview: lossless Data map decoding</h2><a class="sl-anchor-link" href="#upcoming-preview-lossless-data-map-decoding"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: lossless Data map decoding”</span></a></div>
+<p>CBOR decoding now preserves Plutus Data map entry order and duplicate keys,
+including nested maps and Data constants read from serialized FLAT programs.
+Previously, the decoder could collapse <code dir="auto">{1:10,1:20}</code> to <code dir="auto">{1:20}</code> before evaluation.
+Encoding and compiler lowering are unchanged. Re-encoding affected decoded data
+now retains entries that older versions lost; stored scripts are not modified.</p>
+<p>Incomplete map pairs, misplaced map breaks and impossible declared map lengths
+are rejected. This is a focused decoder correction, not a general strict-CBOR or
+resource-limits change. Converting an already deduplicated external cbor-java
+<code dir="auto">Map</code> cannot recover its missing entries; use <code dir="auto">PlutusDataCborDecoder.decode</code> when
+starting from bytes. See ADR-037 for design and validation scope.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-typed-native-pair-case-lowering">Upcoming preview: typed native Pair Case lowering</h2><a class="sl-anchor-link" href="#upcoming-preview-typed-native-pair-case-lowering"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: typed native Pair Case lowering”</span></a></div>
+<p><code dir="auto">PV11_SAFE</code> (the default) and <code dir="auto">PV11_COSTED</code> now destructure proven native pairs
+from strict constructor-boundary checks with a single PV11 <code dir="auto">Case</code>. The compiler
+requires both tag/fields projections of the same once-bound <code dir="auto">UnConstrData</code>
+result; it leaves field decoding and failure/trace order unchanged. Arbitrary
+pair values, aliases, map traversal and Data-encoded tuples are outside this rule.
+The optimization report records <code dir="auto">pv11.o4.case-pair</code>.</p>
+<p>Recompiling an eligible validator with a safe profile changes its script bytes
+and hash. NONE/BASELINE retain historical bytes; deployed scripts and ledger
+Data encodings are unchanged. The bounded rule has passed independent correctness
+review; JuLC remains experimental. <code dir="auto">compilePirToProgram</code> also applies this rule
+in safe profiles, so eligible caller-supplied PIR can produce new bytes/hashes.
+ADR-038 extends the same rule to sealed-interface switch decomposition during
+UPLC lowering. This preserves the integer tag-dispatch chain and selected-field
+decoding, including errors in unused fields. The measured switch fixtures save
+10 bytes per site compared with the previous safe output; NONE/BASELINE remain
+byte-identical. Direct PIR DataMatch callers also receive this safe-profile
+change. The switch extension passed its own independent correctness review in
+PR #129. The decompiler follow-up <a href="https://github.com/bloxbean/julc/issues/130">#130</a>
+recovers native pair and verified legacy constructor decomposition as explicit
+HIR <code dir="auto">DataMatch</code>, preserving raw fields, ordered integer tag tests and the final
+fallback. Readable output uses decomposition and if/else dispatch; it does not
+invent Java record schemas. FLAT-erased bindings are recovered from de Bruijn
+indices. External exhaustive HIR visitors must handle the new <code dir="auto">DataMatch</code> node;
+the compiler’s output bytes and costs are unaffected by this decompiler change.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-stable-typed-formal-verification-api-v1">Upcoming preview: stable typed formal-verification API v1</h2><a class="sl-anchor-link" href="#upcoming-preview-stable-typed-formal-verification-api-v1"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: stable typed formal-verification API v1”</span></a></div>
+<p>JuLC now provides a stable construction API for exact-artifact formal
+verification. API version 1 uses canonical property schema 1 and supports
+typed composition over compiler-projected contract data, four standard Plutus
+purposes (spending, minting, rewarding, and certifying), transaction context,
+authorization, certificates, multi-asset values, governance data, and reviewed
+raw-data adapters.</p>
+<p><code dir="auto">julc verify dsl-init</code> emits only schema 1. The unreleased E.2–E.4 milestone
+formats previously numbered 1 through 10 have been removed from public
+generation and replay rather than carried as compatibility aliases. Regenerate
+those experimental workspaces with the current CLI. Historical certificates
+remain hash-bound records of their original runs, but they are not accepted as
+current replay inputs. New semantic vocabulary requires a new schema rather
+than changing schema-1 meanings.</p>
+<p><code dir="auto">@RequiresSigner</code>, <code dir="auto">@ControlledMint</code>, and the complete
+<code dir="auto">@RequiresSigner + @PreservesValue + @Monotonic</code> stateful profile now lower to
+the same canonical DSL IR used by explicit Java specifications. The former
+annotation-specific duplicate Lean security formulas have been removed. These
+annotations remain UPLC-neutral: they state properties and do not add checks to
+validator execution.</p>
+<p>The stable API covers documented Java construction and canonical property
+semantics. It does not promise solver termination, complete CardanoLedgerApi
+coverage, general compiler correctness, or that a verified validator is safe
+under every unspecified property. Voting/proposing validator selection,
+parameter-derived authorities, arbitrary Lean in the DSL, and temporal
+verification are not included. The E.5 bounded temporal experiment did not
+meet its solver-calibration gate and was not promoted.</p>
+<p>See the <a href="/guides/formal-verification/">formal verification guide</a> for annotation
+and DSL workflows, local/Docker backends, exact certificate scope, outcome
+classification, and CI guidance.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-explicit-pv11-compiler-target">Upcoming preview: explicit PV11 compiler target</h2><a class="sl-anchor-link" href="#upcoming-preview-explicit-pv11-compiler-target"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: explicit PV11 compiler target”</span></a></div>
+<p>JuLC compilation now resolves one explicit, immutable compiler profile:
+<code dir="auto">plutus-v3-pv11-uplc-1.1.0</code>. The profile covers the Plutus language, ledger
+protocol version, and UPLC version together. Existing compile entry points
+select this named profile by default; unknown profiles, future protocol
+versions, and a <code dir="auto">latest</code> alias are rejected rather than interpreted as PV11.</p>
+<p><code dir="auto">CompileResult</code> now has a public <code dir="auto">target()</code> record component containing this
+provenance. Compatibility constructors preserve existing constructor call
+sites by assigning the documented PV11 target, but code that inspects the
+record shape, uses record patterns, or depends on generated record equality or
+string representation must account for the additional component. Compiler
+target plumbing and validation alone do not change generated UPLC, FLAT bytes,
+or script hashes.</p>
+<p>Testkit operations that retain a <code dir="auto">CompileResult</code> now pass its exact ledger
+target to the selected VM. With the Java VM, this means source-based validator
+and method evaluation uses explicit PV11 semantics and costs instead of the
+legacy language-only path, which defaults to PV10 when no protocol-aware cost
+model is configured. A caller may also provide an explicit evaluation target;
+it must match <code dir="auto">CompileResult.target()</code> or evaluation fails before VM execution.</p>
+<p>The Scalus adapter now implements JuLC’s explicit-target VM SPI. Scalus 1.1.0
+has no certified target in JuLC, so <code dir="auto">ValidatorTest.evaluate(result, ...)</code> with
+Scalus as the only provider throws <code dir="auto">UnsupportedOperationException</code> at the
+backend-capability gate. This prevents a testkit rejection assertion from
+mistaking an unevaluated profile for a rejected script. For a Scalus
+compatibility cross-check, evaluate <code dir="auto">result.program()</code> through the language-only overload.
+The Java VM supports both forms, although the raw <code dir="auto">Program</code> form cannot carry
+compiler-target provenance. See
+<a href="https://github.com/bloxbean/julc/blob/main/adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence">ADR-033’s certification evidence</a>.</p>
+<p>The CLI, Gradle plugin, annotation processor, JRL compiler, and MCP tools accept
+and report the same stable profile ID. Supporting a later protocol version will
+add and verify a separate pinned profile; it will not silently change the PV11
+default.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-scalus-protocol-aware-evaluation-adr-033">Upcoming preview: Scalus protocol-aware evaluation (ADR-033)</h2><a class="sl-anchor-link" href="#upcoming-preview-scalus-protocol-aware-evaluation-adr-033"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: Scalus protocol-aware evaluation (ADR-033)”</span></a></div>
+<p>The Scalus adapter now has atomic per-language configurations, target-bound
+V1/V2/V3 VM construction, and one validated explicit-target pipeline. Public
+explicit-target calls remain fail-closed because six reason-coded upstream
+Scalus 1.1.0 divergences prevent V3/PV10 and V3/PV11 certification.</p>
+<p>Cardano Client Lib continues to supply current protocol-parameter cost arrays
+for V1, V2, and V3. Configured Scalus language-only evaluation now passes all
+three arrays to <code dir="auto">MachineParams.fromCostModels</code> with the matching language and
+protocol. Compared with <code dir="auto">main</code>, this changes configured V1/V2 transaction
+evaluation from Scalus’s bundled mainnet defaults to the current live model.
+Scalus consumes the mapped live V1/V2 prices; its 1.1.0 V1/V2
+adapters still reference-fill PV11-only builtin costs and ignore audited
+Constr/Case positions, so that compatibility behavior is not a complete
+ledger-parity claim. Pinned conformance vectors are test evidence only and are
+never substituted for runtime protocol parameters.</p>
+<p>A non-null <code dir="auto">ExBudget</code> is now enforced; exceeding it returns
+<code dir="auto">EvalResult.BudgetExhausted</code>. Array and Value results now cross the Scalus
+bridge. Unconfigured language-only V3 retains Scalus 1.1.0’s PV11/E bundled
+default, which differs from Java/Truffle’s PV10 compatibility default. These VM
+changes do not modify compiled UPLC, FLAT bytes, or script hashes.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-strict-typed-datumredeemer-boundaries">Upcoming preview: strict typed datum/redeemer boundaries</h2><a class="sl-anchor-link" href="#upcoming-preview-strict-typed-datumredeemer-boundaries"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: strict typed datum/redeemer boundaries”</span></a></div>
+<p>Typed validator boundaries now reject non-canonical <code dir="auto">Data</code> before user code
+runs. Records and variants require exact constructor tags and arities;
+primitive, optional, list, map, nested, and productive recursive fields are
+checked eagerly. Explicit <code dir="auto">PlutusData</code> roots remain raw.</p>
+<p>Typed, non-record entrypoint arguments now reach validator code in their
+declared representation. In older compiler versions, a root declared as
+<code dir="auto">BigInteger</code>, <code dir="auto">byte[]</code>, <code dir="auto">String</code>, <code dir="auto">boolean</code>, <code dir="auto">List</code>, or <code dir="auto">Map</code> could remain raw
+<code dir="auto">Data</code> at runtime even though the PIR type said otherwise. Strict-boundary
+lowering fixes that compiler bug by decoding the root before invocation. Remove
+workarounds such as an explicit <code dir="auto">Builtins.unIData(redeemer)</code>, <code dir="auto">unBData</code>,
+<code dir="auto">asList</code>, or <code dir="auto">asMap</code> when the entrypoint argument is already declared with the
+corresponding typed Java form. This change concerns transaction-time entrypoint
+arguments; deployer-applied <code dir="auto">@Param</code> fields are a separate pipeline.</p>
+<p>A concrete record that implements a sealed interface cannot currently be used
+as an independent typed datum/redeemer root or nested boundary field. Declare
+the sealed interface instead. JuLC now rejects the concrete form at its Java
+parameter because constructor lowering uses the variant’s sum tag while the
+record schema does not yet carry that nominal tag.</p>
+<p>This is an intentional preview-language breaking change. Recompiling an
+affected validator changes its UPLC and script hash. There is no permissive
+mode: retain the old compiler to reproduce an old artifact. Before moving state
+to a new script address, decode and canonically re-encode existing datums so
+wrong-tag or trailing-field values accepted by a permissive-era script are not
+carried to the strict address.</p>
+<p>Strict traversal has a real execution cost. In the activation measurements, a
+250-element <code dir="auto">List&lt;BigInteger&gt;</code> guard used approximately 502 million CPU units
+(about 2 million per element and about 5% of the 10-billion transaction
+ceiling), compared with approximately 0.9 million for the legacy no-op path.
+Measure production maximum-size inputs; use an explicitly raw <code dir="auto">PlutusData</code>
+boundary with a reviewed manual check when full traversal is unsuitable.</p>
+<p>Blueprint compiler identities include <code dir="auto">+boundary.strict-data-v1</code>, and formal
+verification certificates record <code dir="auto">boundarySemantics: strict-data-v1</code>. See the
+<a href="../guides/strict-data-boundaries/">strict data boundary guide</a> for the exact
+coverage, cost guidance, raw-data escape, and migration checklist.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-purpose-indexed-multi-validator-blueprints">Upcoming preview: purpose-indexed multi-validator blueprints</h2><a class="sl-anchor-link" href="#upcoming-preview-purpose-indexed-multi-validator-blueprints"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: purpose-indexed multi-validator blueprints”</span></a></div>
+<p>An explicit <code dir="auto">@MultiValidator</code> with supported <code dir="auto">SPEND</code>, <code dir="auto">MINT</code>, <code dir="auto">WITHDRAW</code>, or
+<code dir="auto">CERTIFY</code> entrypoints now publish one standard CIP-57 validator entry per
+purpose. The titles are purpose-qualified—for example <code dir="auto">Protocol.spend</code> and
+<code dir="auto">Protocol.mint</code>—while every entry retains byte-identical compiled code and the
+same Cardano script hash because they describe one deployed script.</p>
+<p>Artifact consumers must migrate from the unsuffixed multi-validator title to
+the exact purpose-qualified entry. <code dir="auto">julc verify</code> and <code dir="auto">julc verify init</code> instead
+take the base Java title plus <code dir="auto">--purpose</code>. Normal single-purpose titles and
+script bytes are unchanged. Every newly generated blueprint now records an
+explicit purpose on its datum, redeemer, and parameter arguments, so its JSON
+changes even for an ordinary single-purpose validator.</p>
+<p><code dir="auto">CERTIFY</code> is emitted as CIP-57 <code dir="auto">publish</code>, following Aiken’s mapping of the
+ledger certificate purpose; the JuLC source-level name remains <code dir="auto">CERTIFY</code>.
+Manual dispatch remains fail-closed. Single-purpose and multi-purpose <code dir="auto">VOTE</code>
+or <code dir="auto">PROPOSE</code> validators now also fail strict blueprint generation: older
+previews emitted incomplete purpose-free metadata for these single-purpose
+validators, but the pinned CIP-57 vocabulary cannot name them truthfully. Use
+the blueprint opt-out to compile without metadata when needed. See the
+<a href="../guides/purpose-indexed-blueprints/">purpose-indexed blueprint guide</a> for
+examples and limitations.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-typed-list-case-lowering-110">Upcoming preview: typed List-case lowering (#110)</h2><a class="sl-anchor-link" href="#upcoming-preview-typed-list-case-lowering-110"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: typed List-case lowering (#110)”</span></a></div>
+<p><code dir="auto">pv11-safe</code> (the default) and <code dir="auto">pv11-costed</code> now use PV11 <code dir="auto">Case List</code> for
+eligible compiler-generated <code dir="auto">for-each</code> loops. The compiler binds the raw head
+and tail together and keeps element decoding at its original point. Nested
+loops, records, accumulators, conditional <code dir="auto">break</code>, and recursive methods retain
+their source behavior.</p>
+<p>The existing <code dir="auto">NullList</code> guard remains: it preserves failures for unchecked casts
+that carry a non-list value. Loops with an unconditional break and no tail use
+retain their prior projection form to avoid increasing script size. Map/native
+pair iteration, arbitrary <code dir="auto">while</code> traversals and HOF builders are outside this
+rule’s scope.</p>
+<p><code dir="auto">none</code> and <code dir="auto">baseline</code> preserve their prior bytes, checked against fixtures from
+commit <code dir="auto">8c9f1f63</code>, including source-map compilation. This does not add a PV10
+compiler target. Recompilation at <code dir="auto">pv11-safe</code> can change script bytes and hashes;
+existing deployed scripts are unaffected. Use <code dir="auto">baseline</code> when reproducing
+historical lowering, or retain the prior compiler version for exact reproduction
+of its <code dir="auto">pv11-safe</code> artifacts.</p>
+<p>The new <code dir="auto">PirTerm.ListMatch</code> variant is an internal compiler IR extension;
+consumers with exhaustive switches over PIR must handle it. Java validator APIs
+and ledger Data encodings are unchanged. See
+<a href="https://github.com/bloxbean/julc/blob/main/adr/034-typed-list-case-lowering.md">ADR-034</a>
+and its <a href="https://github.com/bloxbean/julc/blob/main/adr/evidence/034-list-case-measurements.md">measured evidence</a>
+for scope, failure analysis, pinned budgets and hash migration.
+The <a href="https://github.com/bloxbean/julc/blob/main/adr/evidence/034-list-case-onchain.md">on-chain validation</a>
+adds confirmed PV11 spending transactions, direct Haskell/Java budget agreement,
+and malformed-input checks. This completes the bounded rule’s node evidence gate
+without enabling additional traversal families.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-preview-target-aware-pv11-optimizations">Upcoming preview: target-aware PV11 optimizations</h2><a class="sl-anchor-link" href="#upcoming-preview-target-aware-pv11-optimizations"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming preview: target-aware PV11 optimizations”</span></a></div>
+<p>ADR-032 adds an explicit optimizer rollout boundary without adding another
+compiler target. The legal output target remains
+<code dir="auto">plutus-v3-pv11-uplc-1.1.0</code>. After the initial opt-in review window and full
+semantic, benchmark, repository, and hosted-verification gates, <code dir="auto">pv11-safe</code>
+is now the default and enables these reviewed rules:</p>
+<ul>
+<li><code dir="auto">JulcList.drop(...)</code> lowers directly to PV11 <code dir="auto">DropList</code>;</li>
+<li>typed boolean conditionals lower to UPLC 1.1.0 <code dir="auto">Case Bool</code>;</li>
+<li>successful all-literal <code dir="auto">ExpModInteger</code> calls fold at compile time while
+invalid literal calls retain their exact runtime failure.</li>
+</ul>
+<p>The experimental native Value surface now uses a distinct <code dir="auto">JulcValue</code> type.
+Conversion from and to ledger <code dir="auto">Data</code> is explicit, and the compiler rejects
+native/Data mixing at assignments, equality, Data-backed containers/records,
+and external method or validator boundaries. These checks apply at every
+optimization level, including <code dir="auto">baseline</code>. This type correction adds no UPLC
+cost by itself and does not automatically rewrite existing Data-encoded ledger
+Value operations.</p>
+<p>The Scalus backend is pinned to the stable 1.1.0 release. Focused PV11
+cross-checks now cover <code dir="auto">Case Bool</code> false/true branch order and confirm that an
+unselected failing branch is not evaluated. Scalus remains a language-only
+compatibility backend in JuLC; protocol/cost provenance still belongs to the
+canonical target-aware evaluation path. Cross-backend budget tests therefore
+configure one explicit cost profile on both VMs rather than treating Scalus’s
+version-dependent built-in default as ledger evidence.</p>
+<p>Measurements use the immutable
+<code dir="auto">plutus-v3-pv11-costs-v1</code> cost profile (parameter SHA-256
+<code dir="auto">40ea9e0b7df77a7bd2cb7d4e4d9da040f8bee7ff0324a7cdb7e51702330e43a8</code>).
+Java and Truffle produced identical results, failures, traces, and ledger
+budgets for these fixtures:</p>
+<table>
+<thead>
+<tr>
+<th>Fixture</th>
+<th style="text-align: right">FLAT bytes</th>
+<th style="text-align: right">CPU</th>
+<th style="text-align: right">Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>one-element <code dir="auto">drop</code> path</td>
+<td style="text-align: right">162 → 109</td>
+<td style="text-align: right">3,886,301 → 2,311,844</td>
+<td style="text-align: right">17,931 → 10,864</td>
+</tr>
+<tr>
+<td>three-condition Bool fixture</td>
+<td style="text-align: right">134 → 117</td>
+<td style="text-align: right">2,251,555 → 1,687,408</td>
+<td style="text-align: right">9,694 → 7,591</td>
+</tr>
+<tr>
+<td>three literal ExpMod calls</td>
+<td style="text-align: right">42 → 6</td>
+<td style="text-align: right">3,406,498 → 16,100</td>
+<td style="text-align: right">3,407 → 200</td>
+</tr>
+<tr>
+<td>aggregate validator-like accepted path</td>
+<td style="text-align: right">169 → 88</td>
+<td style="text-align: right">5,346,583 → 1,935,936</td>
+<td style="text-align: right">19,605 → 8,533</td>
+</tr>
+</tbody>
+</table>
+<p>The aggregate fixture’s script hash changes from
+<code dir="auto">3d1e9ac3561e68d3d0864705686adca6105ff5fc15f5a43e904de1f2</code> to
+<code dir="auto">2f2ea7f79a5dd083ed51e573dc247267ae7cb978ecc615692479c594</code>.
+These are exact fixture results rather than general percentage guarantees.
+Default recompilation now produces a new deployment artifact; it does not
+change an already deployed script. Select <code dir="auto">baseline</code> explicitly when
+reproducing the earlier ADR-031 lowering and hash.</p>
+<p>Raw <code dir="auto">JulcVm</code> language-only evaluation overloads retain the deliberate PV10
+compatibility default from ADR-030. Because default compiler output may now
+contain PV11-only <code dir="auto">Case Bool</code> or <code dir="auto">DropList</code>, evaluate a <code dir="auto">CompileResult</code> through
+its <code dir="auto">result.target().ledgerTarget()</code>. JuLC testkit and CLI evaluation propagate
+that target automatically; MCP test/evaluate and the playground do the same.
+The decompiler also recovers the PV11 <code dir="auto">Case Bool</code> form as a Java conditional
+only when its untyped UPLC scrutinee is provably Boolean, leaving ambiguous SOP
+cases as switches.</p>
+<p>Array promotion/folding, native Value algebra, BLS fusion, broader list traversal
+rewrites beyond #110, and general conversion sharing remain explicitly deferred
+(pair Case rewrites were later delivered by ADR-036/038, integer Case dispatch
+by ADR-041, unit Case sequencing was rejected by ADR-041, and strict-prefix
+native Value conversion sharing was delivered by ADR-042):
+the current compiler lacks the typed literal, representation, or use-analysis
+proof needed to preserve failures and strict evaluation. A future protocol
+target starts with ADR-032 rules disabled and enables each rule only after its
+legality and semantics are revalidated; cost-directed rules additionally need
+a new pinned cost profile.</p>
+<div class="sl-heading-wrapper level-h2"><h2 id="upcoming-release-pv11-builtin-contract-correction">Upcoming release: PV11 builtin contract correction</h2><a class="sl-anchor-link" href="#upcoming-release-pv11-builtin-contract-correction"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Upcoming release: PV11 builtin contract correction”</span></a></div>
 <p>JuLC’s current compiler targets the Plutus V3/PV11 feature set. This contract
 was verified against Plutus 1.63.0.0
 (<code dir="auto">f92b7d7d82622a26caf456a6be33859f697e2cfc</code>), as shipped by cardano-node 11.0.1.</p>
 <p>The released PV11 Batch 6 is exactly:</p>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<table><thead><tr><th>Tags</th><th>Builtins</th><th>Specification</th></tr></thead><tbody><tr><td>87</td><td><code dir="auto">ExpModInteger</code></td><td>CIP-109</td></tr><tr><td>88</td><td><code dir="auto">DropList</code></td><td>CIP-132</td></tr><tr><td>89-91</td><td><code dir="auto">LengthOfArray</code>, <code dir="auto">ListToArray</code>, <code dir="auto">IndexArray</code></td><td>CIP-138</td></tr><tr><td>92-93</td><td>BLS12-381 G1/G2 multi-scalar multiplication</td><td>CIP-133</td></tr><tr><td>94-100</td><td>Native MaryEraValue operations</td><td>CIP-153</td></tr></tbody></table>
-<div class="sl-heading-wrapper level-h3"><h3 id="multiindexarray-migration-warning"><code dir="auto">multiIndexArray</code> migration warning</h3><a class="sl-anchor-link" href="#multiindexarray-migration-warning"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24"><path fill="currentcolor" d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 0 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 1 0-1.42-1.42Zm8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 0 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 1 0 1.42 1.42l3.88-3.89a4.49 4.49 0 0 0 0-6.33ZM8.83 15.17a1 1 0 0 0 1.1.22 1 1 0 0 0 .32-.22l4.92-4.92a1 1 0 0 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42Z"></path></svg></span><span class="sr-only" data-pagefind-ignore="">Section titled “multiIndexArray migration warning”</span></a></div>
+<table>
+<thead>
+<tr>
+<th>Tags</th>
+<th>Builtins</th>
+<th>Specification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>87</td>
+<td><code dir="auto">ExpModInteger</code></td>
+<td>CIP-109</td>
+</tr>
+<tr>
+<td>88</td>
+<td><code dir="auto">DropList</code></td>
+<td>CIP-132</td>
+</tr>
+<tr>
+<td>89-91</td>
+<td><code dir="auto">LengthOfArray</code>, <code dir="auto">ListToArray</code>, <code dir="auto">IndexArray</code></td>
+<td>CIP-138</td>
+</tr>
+<tr>
+<td>92-93</td>
+<td>BLS12-381 G1/G2 multi-scalar multiplication</td>
+<td>CIP-133</td>
+</tr>
+<tr>
+<td>94-100</td>
+<td>Native MaryEraValue operations</td>
+<td>CIP-153</td>
+</tr>
+</tbody>
+</table>
+<div class="sl-heading-wrapper level-h3"><h3 id="multiindexarray-migration-warning"><code dir="auto">multiIndexArray</code> migration warning</h3><a class="sl-anchor-link" href="#multiindexarray-migration-warning"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “multiIndexArray migration warning”</span></a></div>
 <p>Earlier JuLC previews exposed <code dir="auto">Builtins.multiIndexArray</code> as if it were a PV11
 builtin and could generate FLAT tag 101. Tag 101 is the future CIP-156 operation;
 it is not part of PV11, and scripts containing it are not valid for that target.</p>
@@ -134,4 +937,5 @@ automatic bytecode migration for an already-generated tag-101 script.</p>
 experiments only. That experimental implementation does not make it ledger-valid
 for PV11. It also retains JuLC’s legacy <code dir="auto">(array, indices)</code> argument order rather
 than CIP-156’s proposed indices-first signature, so it is not a conformant preview
-of the future builtin.</p> </div> <footer class="sl-flex astro-3yyafb3n"> <div class="meta sl-flex astro-3yyafb3n"> <a href="https://github.com/bloxbean/julc/edit/main/docs/src/content/docs/reference/release-notes.md" class="sl-flex print:hidden astro-eez2twj6"><svg aria-hidden="true" class="astro-eez2twj6 astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>Edit page</a>  </div> <div class="pagination-links print:hidden astro-u2l5gyhi" dir="ltr"> <a href="/reference/api-reference/" rel="prev" class="astro-u2l5gyhi"> <svg aria-hidden="true" class="astro-u2l5gyhi astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg> <span class="astro-u2l5gyhi"> Previous <br class="astro-u2l5gyhi"> <span class="link-title astro-u2l5gyhi">API Reference</span> </span> </a> <a href="/reference/library-developer-guide/" rel="next" class="astro-u2l5gyhi"> <svg aria-hidden="true" class="astro-u2l5gyhi astro-c6vsoqas" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg> <span class="astro-u2l5gyhi"> Next <br class="astro-u2l5gyhi"> <span class="link-title astro-u2l5gyhi">Library Developer Guide</span> </span> </a> </div>  </footer> </div> </div>  </main> </div> </div> </div> </div> </body></html>
+of the future builtin.</p>
+</div><footer class="sl-flex astro-ddtxxk7k"><div class="meta sl-flex astro-ddtxxk7k"><a href="https://github.com/bloxbean/julc/edit/main/docs/src/content/docs/reference/release-notes.md" class="sl-flex print:hidden astro-qlekgd3o"><svg aria-hidden="true" class="astro-qlekgd3o astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.2em;"><path d="M22 7.24a1 1 0 0 0-.29-.71l-4.24-4.24a1 1 0 0 0-1.1-.22 1 1 0 0 0-.32.22l-2.83 2.83L2.29 16.05a1 1 0 0 0-.29.71V21a1 1 0 0 0 1 1h4.24a1 1 0 0 0 .76-.29l10.87-10.93L21.71 8c.1-.1.17-.2.22-.33a1 1 0 0 0 0-.24v-.14l.07-.05ZM6.83 20H4v-2.83l9.93-9.93 2.83 2.83L6.83 20ZM18.17 8.66l-2.83-2.83 1.42-1.41 2.82 2.82-1.41 1.42Z"/></svg>Edit page</a></div><div class="pagination-links print:hidden astro-b5raizh3" dir="ltr"><a href="/reference/api-reference/" rel="prev" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17 11H9.41l3.3-3.29a1.004 1.004 0 1 0-1.42-1.42l-5 5a1 1 0 0 0-.21.33 1 1 0 0 0 0 .76 1 1 0 0 0 .21.33l5 5a1.002 1.002 0 0 0 1.639-.325 1 1 0 0 0-.219-1.095L9.41 13H17a1 1 0 0 0 0-2Z"/></svg><span class="astro-b5raizh3">Previous<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">API Reference</span></span></a><a href="/reference/cost-model-profiles/" rel="next" class="astro-b5raizh3"><svg aria-hidden="true" class="astro-b5raizh3 astro-hkc32dio" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="--sl-icon-size: 1.5rem;"><path d="M17.92 11.62a1.001 1.001 0 0 0-.21-.33l-5-5a1.003 1.003 0 1 0-1.42 1.42l3.3 3.29H7a1 1 0 0 0 0 2h7.59l-3.3 3.29a1.002 1.002 0 0 0 .325 1.639 1 1 0 0 0 1.095-.219l5-5a1 1 0 0 0 .21-.33 1 1 0 0 0 0-.76Z"/></svg><span class="astro-b5raizh3">Next<br class="astro-b5raizh3"><span class="link-title astro-b5raizh3">Cost Model Profiles</span></span></a></div></footer></div></div></main></div></div></div></div></body></html>

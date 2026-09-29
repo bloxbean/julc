@@ -1,7 +1,7 @@
 # JuLC
 
-julcVersion: 0.1.0-pre16
-generatedAt: 2026-08-04T12:57:39.904Z
+julcVersion: 0.1.0-pre17
+generatedAt: 2026-09-29T12:09:58.214Z
 
 > JuLC compiles a safe subset of Java to Plutus V3 UPLC for Cardano smart contracts. Java developers write validators as ordinary classes (records, sealed interfaces, switch expressions); the compiler produces efficient Plutus scripts.
 
@@ -12,7 +12,7 @@ Key facts an AI agent should know before generating JuLC code:
 - Validators are annotated `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, or `@ProposingValidator`. The entrypoint is a `static` method annotated `@Entrypoint`.
 - **Always prefer high-level ledger type classes** — `TxOut`, `Value`, `Address`, `OutputDatum`, `Credential`, sealed-interface variants (e.g. `Vote.Yes`), `JulcList<T>`, `JulcMap<K,V>`, `Optional<T>`, `Tuple2`/`Tuple3` — over raw `PlutusData.ConstrData/IntData/BytesData/MapData/ListData`. Raw `PlutusData` constructors (subtypes: `ConstrData`, `IntData`, `BytesData`, `MapData`, `ListData`) are an **anti-pattern** in nearly all on-chain code.
 - The Java subset is restricted: no mutation after assignment, no lambda `.apply()`, no uninitialized variables, no `return` inside `while` loops, no reflection, no I/O.
-- Stdlib lives in `com.bloxbean.cardano.julc.stdlib.lib.*` and is imported per library: `ContextsLib`, `ListsLib`, `ValuesLib`, `MapLib`, `OutputLib`, `MathLib`, `IntervalLib`, `CryptoLib`, `ByteStringLib`, `BitwiseLib`, `AddressLib`, `BlsLib`, `NativeValueLib`.
+- Stdlib lives in `org.julclang.stdlib.lib.*` and is imported per library: `ContextsLib`, `ListsLib`, `ValuesLib`, `MapLib`, `OutputLib`, `MathLib`, `IntervalLib`, `CryptoLib`, `ByteStringLib`, `BitwiseLib`, `AddressLib`, `BlsLib`, `NativeValueLib`.
 
 ## Start here for AI agents
 
@@ -41,6 +41,24 @@ Key facts an AI agent should know before generating JuLC code:
 - [For-Each Loop Patterns](https://julc.dev/guides/for-loop-patterns/): For-Each Loop Patterns - JuLC documentation
 - [Testing Guide](https://julc.dev/guides/testing-guide/): Testing Guide - JuLC documentation
 - [Source Maps — Runtime Error Location Reporting](https://julc.dev/guides/source-maps/): Source Maps — Runtime Error Location Reporting - JuLC documentation
+- [Strict Data Boundaries](https://julc.dev/guides/strict-data-boundaries/): Canonical datum and redeemer decoding, costs, and migration
+- [Purpose-indexed multi-validator blueprints](https://julc.dev/guides/purpose-indexed-blueprints/): Use CIP-57 metadata for one JuLC script with multiple ledger purposes.
+- [JavaScript & WebAssembly](https://julc.dev/guides/javascript-wasm/): Use experimental JuLC WebAssembly from plain HTML and JavaScript to compile contracts, evaluate Plutus scripts, and debug locally.
+
+## Formal Verification (Experimental)
+
+- [Formal Verification (Experimental)](https://julc.dev/guides/formal-verification/): Verify exact JuLC validator artifacts with the stable typed Java DSL, Lean, and IOG Blaster
+- [Verification Pipeline Design](https://julc.dev/guides/formal-verification/design/): How JuLC binds typed Java properties to exact UPLC and verifies them with Lean, IOG Blaster, and Z3
+- [Annotation Profiles](https://julc.dev/guides/formal-verification/annotation-profiles/): Verify reviewed JuLC signer, state-transition, and controlled-mint properties
+- [Typed Java DSL](https://julc.dev/guides/formal-verification/typed-dsl/): Compose schema-1 JuLC verification properties over contract and Cardano ledger data
+- [Typed DSL Examples](https://julc.dev/guides/formal-verification/dsl-examples/): Examples for every supported JuLC verification DSL capability group
+- [API and DSL Reference](https://julc.dev/guides/formal-verification/api-reference/): Experimental JuLC formal-verification annotations, typed Java DSL, and CLI reference
+- [Troubleshooting](https://julc.dev/guides/formal-verification/troubleshooting/): Troubleshoot JuLC formal-verification workspaces, toolchains, solver runs, and results
+
+## Best Practices
+
+- [Conditionals and Script Size](https://julc.dev/best-practices/conditionals/): How to write clear and compact if/else and switch expressions in JuLC contracts
+- [Value-Oriented Contract Code](https://julc.dev/best-practices/value-oriented-code/): Compute values where they are declared, and test the compiled validator
 
 ## Standard Library
 
@@ -50,6 +68,7 @@ Key facts an AI agent should know before generating JuLC code:
 
 - [JuLC API Reference](https://julc.dev/reference/api-reference/): JuLC API Reference - JuLC documentation
 - [Release Notes](https://julc.dev/reference/release-notes/): JuLC release notes and migration guidance
+- [Cost model profiles](https://julc.dev/reference/cost-model-profiles/): Immutable cost snapshots for reproducible evaluation and benchmarks
 - [JuLC Library Developer Guide](https://julc.dev/reference/library-developer-guide/): JuLC Library Developer Guide - JuLC documentation
 - [Examples](https://julc.dev/reference/examples/): Example validators demonstrating JuLC features and patterns
 - [JuLC Compiler Troubleshooting Guide](https://julc.dev/reference/troubleshooting/): JuLC Compiler Troubleshooting Guide - JuLC documentation
@@ -63,6 +82,10 @@ Key facts an AI agent should know before generating JuLC code:
 ## Experimental
 
 - [JRL (JuLC Rule Language) Guide (Experimental)](https://julc.dev/experimental/jrl-guide/): JRL (JuLC Rule Language) Guide (Experimental) - JuLC documentation
+
+## Other
+
+- [Script hashes and cost stability](https://julc.dev/reference/hash-stability/): Reproducible compilation, the pre17 profile freeze, and on-chain cost regression checks.
 
 ## Source code and examples
 

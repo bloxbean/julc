@@ -1,4 +1,4 @@
-<!-- julcVersion: 0.1.0-pre16 -->
+<!-- julcVersion: 0.1.0-pre17 -->
 
 > **Read this entire document before generating any JuLC code.** It distills the JuLC subset of Java, the on-chain idioms, the compiler's known limitations, and the error patterns that AI agents most commonly get wrong. Following the rules here will save many compile-fail-retry cycles.
 
@@ -44,9 +44,15 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - **`if` / `else if` / `else`**, **ternary `? :`**.
 - **`for-each` loops** over `JulcList<T>`, `JulcMap<K,V>`, and ledger list types. Auto-desugared to recursive UPLC.
 - **`while` loops** with **explicit accumulators** (single or multi-variable). Desugared to `LetRec` fixed points.
-- **Local variables** declared with `var` or explicit type, **must be initialized at declaration**, and **are immutable after assignment** (single-assignment).
+- **Local variables** declared with `var` or explicit type **must be initialized at declaration**. Reassignment is supported only by specific loop paths, not generally: accumulator-carrying loops support direct loop-body/bare-block updates and accumulator updates; an `if` may not update a loop-body local declared outside that branch. Loops with no accumulator and single-accumulator loops with `break` do not support general body-local reassignment. Switch arms may not update enclosing variables, even through nested loops; compute and yield an arm-local result instead. See [complete scope rules and examples](/best-practices/conditionals/#loop-local-assignment-rules).
+- In a single-accumulator loop with `break`, branch-local updates can still work inside an `if` whose branches contain no break; that branch uses the normal body lowering.
+- An `if` at method level or inside a switch arm preserves a nested loop's accumulator updates after the branch (#161). Inside a switch arm, declare the accumulator in that arm and explicitly yield its result; this also works when the switch expression is inside an outer loop body. The separate restrictions on conditional loop-body local updates and switch-arm updates to enclosing variables still apply.
+- **Rejected:** reassignment of a switch case-pattern variable ([#162](https://github.com/bloxbean/julc/issues/162)); copy it to a fresh arm-local accumulator instead. Otherwise-supported `instanceof` binding reassignment is unchanged.
+- Where an assignment is supported, `x += y` (also `-=`, `*=`, `/=`, `%=`) means `x = x op y` on integers, and `+=` appends to a `String`. `&=`, `|=`, `^=` and shift compound operators are rejected (`JULC0052`): evaluate the check first, then write `ok = ok && c`. `x++` is rejected.
+- Declare one variable per statement (`BigInteger a = x, b = y;` is `JULC0053`). Overloaded methods are rejected unless every declaration compiles to the same code (`JULC0054`). A local, parameter or field may share a method's name. Calling a member on a value whose type is unknown, such as `d.amount()` on `PlutusData`, is `JULC0055`. Do not update a static field or `@Param` in a loop except in the entrypoint, and only when no other method reads it (`JULC0056`); copy it into a local accumulator. Do not reassign a for-each variable in a loop that updates no variable declared before it (`JULC0058`); declare a new local.
+- An `instanceof` pattern variable is bound only when `x instanceof T v` is the whole condition of an `if` outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In a loop body, an `&&` condition, a `!` guard, a ternary or a lambda, switch on the sealed type instead. A pattern variable may not reuse a field or `@Param` name (`JULC0059`).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
-- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`, `list.find(...)`, `ListsLib.foldl(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`.
+- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`. Compiled `any`/`all` evaluate the predicate for every element (no early exit), so guard a predicate that can fail with `&&`. Assign `map`'s result to a typed `JulcList<T>` local before a lambda uses its elements. In a javac-compiled project do **not** use `list.find(...)` (the compiled result is an optional value, not the element) or the static `ListsLib.any/all/filter/map/find/foldl/zip` forms (not declared in Java, so javac rejects them); write a fold as an accumulator loop.
 - **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
@@ -72,6 +78,37 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - 🚫 **`@Param PlutusData.BytesData/MapData/ListData/IntData`.** Use `byte[]`, `BigInteger`, typed records, or redeemers instead.
 - 🚫 **Same parameter name as a sealed-interface constructor field.** See limitation 6.4.
 - 🚫 **Calling `.hash()` on a value that is already a hash type** (double-unwrap).
+
+### 3.4 Conditional control flow and script size
+
+- An `if` does **not** need an `else`. Nested `if` statements and code following them
+  retain normal Java behavior.
+- Prefer linear guard clauses for independent validation rules:
+
+  ```java
+  if (!validAmount(datum)) {
+      return false;
+  }
+  if (!ownerSigned(ctx, datum)) {
+      return false;
+  }
+  return validateOutputs(ctx);
+  ```
+
+- Put cheap, safe checks before expensive checks so invalid transactions stop early.
+- When branches mix early returns with fallthrough, code after the conditional becomes
+  the continuation of every branch that can reach it. If several branches reach a large
+  common block, extract that block into a static helper so its generated body is defined
+  once.
+- Do **not** move unsafe operations (such as `list.head()`, division, indexing, or data
+  decoding) before their guards merely to reduce size. UPLC evaluation is strict.
+- For sealed types, prefer an exhaustive `switch` expression that produces a value.
+  Do not generate a statement-style switch containing `return` in its cases.
+
+Full examples and the reasoning behind these rules:
+[Conditionals and Script Size](/best-practices/conditionals/). Tested rewrites that
+compute values instead of updating them, and list-operation caveats:
+[Value-Oriented Contract Code](/best-practices/value-oriented-code/).
 
 ---
 
@@ -292,7 +329,7 @@ For the full troubleshooting guide, see [/reference/troubleshooting/](/reference
 
 ## 8. Stdlib API surface (one-line signatures)
 
-All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
+All imports are from `org.julclang.stdlib.lib.*`.
 
 ### ContextsLib
 `signedBy(txInfo, pkh)`, `findOwnInput(ctx)`, `getContinuingOutputs(ctx)`, `findDatum(txInfo, hash)`, `valueSpent(txInfo)`, `valuePaid(txInfo, addr)`, `ownHash(ctx)`, `scriptOutputsAt(txInfo, hash)`, `listIndex(list, n)`, `trace(msg)`. Field shorthands: `txInfoInputs`, `txInfoOutputs`, `txInfoSignatories`, `txInfoValidRange`, `txInfoMint`, `txInfoFee`, `txInfoId`, `txInfoRefInputs`, `txInfoWithdrawals`, `txInfoRedeemers`. **Prefer `ctx.txInfo().outputs()` etc. via type-class field access.**
@@ -329,12 +366,20 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 
 ### BlsLib (Plutus V3)
 G1/G2 add/scale/neg, pairing, and `bls12_381_finalVerify` are available on
-PV10+; multi-scalar multiplication (MSM) requires PV11.
+PV10+; multi-scalar multiplication (MSM) requires PV11. Points and Miller-loop
+results are the opaque types `JulcG1`, `JulcG2`, `JulcMlResult`
+(`org.julclang.core.types`), never `byte[]`: only `g1Compress`/`g2Compress`
+give bytes and only `g1Uncompress`/`g2Uncompress` take them back. MSM takes
+the native lists from `Builtins.scalars(...)`/`g1Points(...)`/`g2Points(...)`
+or `Builtins.scalarsFromList(JulcList<BigInteger>)`/
+`g1PointsFromCompressed(JulcList<byte[]>)`. Declare BLS locals with the typed
+names or `var`; a `byte[]` local holding a point is `JULC0041`.
 
 ### NativeValueLib (PV11)
-Native Mary-era `Value` operations.
+Native Mary-era `Value` operations use opaque `JulcValue`. Convert explicitly
+with `fromData(PlutusData)` and `toData(JulcValue)`; native Value is not Data.
 
-### Builtins (`com.bloxbean.cardano.julc.stdlib.Builtins`)
+### Builtins (`org.julclang.stdlib.Builtins`)
 Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`, `unBData`, `unIData`, `unMapData`, `unListData`, `unConstrData`, `iData`, `bData`, `mapData`, `listData`, `constrData`, `mkCons`, `mkNilData`, `mkNilPairData`, `nullList`, `headList`, `tailList`, `fstPair`, `sndPair`, `constrTag`, `constrFields`, `error`, `trace`, `replicateByte`, `serialiseData`, byte-string helpers such as `appendByteString`, `sliceByteString`, `integerToByteString`, `byteStringToInteger`, hashing (`sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, `ripemd_160`), and BLS helpers. Use Java operators / `BigInteger` methods for integer arithmetic; there is no public `Builtins.addInteger(...)` API.
 
 <!-- catalog:stdlib-start -->
@@ -370,25 +415,25 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 
 *BLS12-381 elliptic curve operations compiled from Java source to UPLC.*
 
-- `byte[] g1Add(byte[] a, byte[] b)` — Add two G1 elements.
-- `byte[] g1Neg(byte[] a)` — Negate a G1 element.
-- `byte[] g1ScalarMul(BigInteger scalar, byte[] g1)` — Scalar multiplication of a G1 element.
-- `boolean g1Equal(byte[] a, byte[] b)` — Check equality of two G1 elements.
-- `byte[] g1Compress(byte[] g1)` — Compress a G1 element to 48 bytes.
-- `byte[] g1Uncompress(byte[] compressed)` — Uncompress a 48-byte compressed G1 element.
-- `byte[] g1HashToGroup(byte[] msg, byte[] dst)` — Hash a message to a G1 element using the given domain separation tag.
-- `byte[] g2Add(byte[] a, byte[] b)` — Add two G2 elements.
-- `byte[] g2Neg(byte[] a)` — Negate a G2 element.
-- `byte[] g2ScalarMul(BigInteger scalar, byte[] g2)` — Scalar multiplication of a G2 element.
-- `boolean g2Equal(byte[] a, byte[] b)` — Check equality of two G2 elements.
-- `byte[] g2Compress(byte[] g2)` — Compress a G2 element to 96 bytes.
-- `byte[] g2Uncompress(byte[] compressed)` — Uncompress a 96-byte compressed G2 element.
-- `byte[] g2HashToGroup(byte[] msg, byte[] dst)` — Hash a message to a G2 element using the given domain separation tag.
-- `byte[] millerLoop(byte[] g1, byte[] g2)` — Compute the Miller loop pairing of a G1 and G2 element.
-- `byte[] mulMlResult(byte[] a, byte[] b)` — Multiply two Miller loop results.
-- `boolean finalVerify(byte[] a, byte[] b)` — Final verification of two Miller loop results. Returns true if the pairing check passes.
-- `byte[] g1MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G1. Takes scalar and point lists. PV11 only (CIP-133).
-- `byte[] g2MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G2. Takes scalar and point lists. PV11 only (CIP-133).
+- `JulcG1 g1Add(JulcG1 a, JulcG1 b)` — Add two G1 elements.
+- `JulcG1 g1Neg(JulcG1 a)` — Negate a G1 element.
+- `JulcG1 g1ScalarMul(BigInteger scalar, JulcG1 g1)` — Scalar multiplication of a G1 element.
+- `boolean g1Equal(JulcG1 a, JulcG1 b)` — Check equality of two G1 elements.
+- `byte[] g1Compress(JulcG1 g1)` — Compress a G1 element to 48 bytes.
+- `JulcG1 g1Uncompress(byte[] compressed)` — Uncompress a 48-byte compressed G1 element.
+- `JulcG1 g1HashToGroup(byte[] msg, byte[] dst)` — Hash a message to a G1 element using the given domain separation tag.
+- `JulcG2 g2Add(JulcG2 a, JulcG2 b)` — Add two G2 elements.
+- `JulcG2 g2Neg(JulcG2 a)` — Negate a G2 element.
+- `JulcG2 g2ScalarMul(BigInteger scalar, JulcG2 g2)` — Scalar multiplication of a G2 element.
+- `boolean g2Equal(JulcG2 a, JulcG2 b)` — Check equality of two G2 elements.
+- `byte[] g2Compress(JulcG2 g2)` — Compress a G2 element to 96 bytes.
+- `JulcG2 g2Uncompress(byte[] compressed)` — Uncompress a 96-byte compressed G2 element.
+- `JulcG2 g2HashToGroup(byte[] msg, byte[] dst)` — Hash a message to a G2 element using the given domain separation tag.
+- `JulcMlResult millerLoop(JulcG1 g1, JulcG2 g2)` — Compute the Miller loop pairing of a G1 and G2 element.
+- `JulcMlResult mulMlResult(JulcMlResult a, JulcMlResult b)` — Multiply two Miller loop results.
+- `boolean finalVerify(JulcMlResult a, JulcMlResult b)` — Final verification of two Miller loop results. Returns true if the pairing check passes.
+- `JulcG1 g1MultiScalarMul(JulcScalars scalars, JulcG1Points points)` — Multi-scalar multiplication on G1: `Σ scalars[i] · points[i]` over the shorter of the two lists (extra entries ignored, an empty list gives the identity); every scalar must fit in 512 bytes and all are checked before any pair is used. PV11 only (CIP-133).
+- `JulcG2 g2MultiScalarMul(JulcScalars scalars, JulcG2Points points)` — Multi-scalar multiplication on G2, with the same semantics as the G1 form. PV11 only (CIP-133).
 
 #### ByteStringLib
 
@@ -532,13 +577,13 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 
 *Native MaryEra Value operations using PV11 builtins (CIP-153).*
 
-- `PlutusData fromData(PlutusData mapData)` — Convert Map-encoded PlutusData to native Value.
-- `PlutusData toData(PlutusData value)` — Convert native Value back to Map-encoded PlutusData.
-- `PlutusData insertCoin(byte[] policyId, byte[] tokenName, BigInteger amount, PlutusData value)` — Insert or update a token quantity in a Value.
-- `BigInteger lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value)` — Look up a token quantity. Returns 0 if absent.
-- `PlutusData union(PlutusData a, PlutusData b)` — Merge two Values by adding quantities.
-- `boolean contains(PlutusData a, PlutusData b)` — Check if Value a contains at least Value b (a >= b element-wise).
-- `PlutusData scale(BigInteger scalar, PlutusData value)` — Scale all quantities by a scalar.
+- `JulcValue fromData(PlutusData mapData)` — Convert Map-encoded PlutusData to native Value.
+- `PlutusData toData(JulcValue value)` — Convert native Value back to Map-encoded PlutusData.
+- `JulcValue insertCoin(byte[] policyId, byte[] tokenName, BigInteger amount, JulcValue value)` — Insert or update a token quantity in a Value.
+- `BigInteger lookupCoin(byte[] policyId, byte[] tokenName, JulcValue value)` — Look up a token quantity. Returns 0 if absent.
+- `JulcValue union(JulcValue a, JulcValue b)` — Merge two Values by adding quantities.
+- `boolean contains(JulcValue a, JulcValue b)` — Check if Value a contains at least Value b (a >= b element-wise).
+- `JulcValue scale(BigInteger scalar, JulcValue value)` — Scale all quantities by a scalar.
 
 #### OutputLib
 
@@ -588,7 +633,7 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 
 ## 9. Ledger types (always prefer over raw PlutusData)
 
-All ledger types live in `com.bloxbean.cardano.julc.ledger.*`.
+All ledger types live in `org.julclang.ledger.*`.
 
 ### Core context
 - **`ScriptContext`** — `txInfo() : TxInfo`, `redeemer() : PlutusData`, `scriptInfo() : ScriptInfo`.
@@ -773,11 +818,11 @@ These are real, tested validators from [`julc-examples`](https://github.com/blox
 ```java
 package com.example.validators;
 
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.ledger.TxInfo;
-import com.bloxbean.cardano.julc.ledger.PubKeyHash;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.PubKeyHash;
 
 import java.math.BigInteger;
 
@@ -825,9 +870,9 @@ public class AuctionValidator {
 ### 10.3 Parameterized minting policy (one-shot mint)
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Param;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
+import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.stdlib.annotation.Param;
+import org.julclang.stdlib.Builtins;
 
 @MintingValidator
 public class OneShotMintPolicy {
@@ -950,6 +995,8 @@ For deeper patterns, consult [`julc-examples`](https://github.com/bloxbean/julc-
 - ❌ **`@Param PlutusData.BytesData/MapData/ListData/IntData`.** Banned.
 - ❌ **Three-way mutual recursion.** Refactor.
 - ❌ **Calling `.hash()` on a value that is already hash bytes.** Causes double-unwrap.
+- ❌ **Repeating a large common block after deeply branching early-return logic.** Keep
+  common work in one helper and use guard clauses where they express the rules clearly.
 
 ---
 
@@ -977,7 +1024,8 @@ Before writing any JuLC code, verify the agent can answer "yes" to each:
 7. ✅ Have I used `PubKeyHash.of(bytes)` style factories instead of `(PubKeyHash)(Object) bytes` casts?
 8. ✅ Are switch case binding names different from method parameter names?
 9. ✅ Am I using `@SpendingValidator` / `@MintingValidator` etc. correctly with a `static @Entrypoint` method?
-10. ✅ Have I imported from `com.bloxbean.cardano.julc.ledger.*` and `com.bloxbean.cardano.julc.stdlib.lib.*`?
+10. ✅ Have I imported from `org.julclang.ledger.*` and `org.julclang.stdlib.lib.*`?
+11. ✅ Have I used guard clauses and kept any large shared continuation in one helper?
 
 If yes to all → write the code. If unsure on any → re-read the relevant section above.
 

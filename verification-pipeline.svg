@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="850" viewBox="0 0 1280 850" role="img" aria-labelledby="title desc">
+  <title id="title">JuLC formal-verification pipeline</title>
+  <desc id="desc">Java validator source compiles to exact UPLC and a blueprint. Verification annotations or a typed Java DSL produce canonical property IR. Both are bound into a generated Lean workspace, checked through Lean, IOG Blaster and Z3, and classified in a hash-bound certificate.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .heading { font: 700 29px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f8fafc; }
+      .subtitle { font: 400 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #cbd5e1; }
+      .section { font: 700 19px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #cbd5e1; letter-spacing: .08em; }
+      .title { font: 700 21px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .body { font: 400 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .small { font: 500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .arrow { stroke: #64748b; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 7 7; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1280" height="850" rx="20" fill="#111827"/>
+  <text x="640" y="45" text-anchor="middle" class="heading">JuLC formal-verification pipeline</text>
+  <text x="640" y="72" text-anchor="middle" class="subtitle">One exact artifact + one canonical property + recorded model and bounds</text>
+
+  <text x="48" y="116" class="section">CONTRACT ARTIFACT</text>
+  <rect x="48" y="136" width="250" height="116" rx="13" fill="#fff7ed" stroke="#ea580c" stroke-width="2" filter="url(#shadow)"/>
+  <text x="173" y="169" text-anchor="middle" class="title">Java validator</text>
+  <text x="173" y="197" text-anchor="middle" class="body">datum, redeemer, logic</text>
+  <text x="173" y="220" text-anchor="middle" class="small">JuLC supported Java subset</text>
+
+  <rect x="375" y="136" width="250" height="116" rx="13" fill="#fff7ed" stroke="#ea580c" stroke-width="2" filter="url(#shadow)"/>
+  <text x="500" y="169" text-anchor="middle" class="title">JuLC compiler</text>
+  <text x="500" y="197" text-anchor="middle" class="body">strict typed boundaries</text>
+  <text x="500" y="220" text-anchor="middle" class="small">Java → PIR → Plutus V3 UPLC</text>
+
+  <rect x="702" y="112" width="300" height="164" rx="13" fill="#fff7ed" stroke="#ea580c" stroke-width="2" filter="url(#shadow)"/>
+  <text x="852" y="147" text-anchor="middle" class="title">Exact compiled artifact</text>
+  <text x="852" y="177" text-anchor="middle" class="body">UPLC compiled-code bytes</text>
+  <text x="852" y="201" text-anchor="middle" class="body">Cardano script hash</text>
+  <line x1="730" y1="218" x2="974" y2="218" stroke="#fed7aa" stroke-width="2"/>
+  <text x="852" y="244" text-anchor="middle" class="small">CIP-57 interface + ContractSchema</text>
+  <text x="852" y="263" text-anchor="middle" class="small">validator and purpose selected exactly</text>
+
+  <path d="M298 194 H365" class="arrow"/>
+  <path d="M625 194 H692" class="arrow"/>
+
+  <text x="48" y="344" class="section">SECURITY PROPERTY</text>
+  <rect x="48" y="364" width="250" height="116" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <text x="173" y="397" text-anchor="middle" class="title">Developer intent</text>
+  <text x="173" y="425" text-anchor="middle" class="body">reviewed annotation profile</text>
+  <text x="173" y="449" text-anchor="middle" class="body">or typed Java DSL</text>
+
+  <rect x="375" y="364" width="250" height="116" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <text x="500" y="397" text-anchor="middle" class="title">Closed validation</text>
+  <text x="500" y="425" text-anchor="middle" class="body">types, purpose, capabilities</text>
+  <text x="500" y="449" text-anchor="middle" class="small">no arbitrary Lean or AST nodes</text>
+
+  <rect x="702" y="364" width="300" height="116" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <text x="852" y="397" text-anchor="middle" class="title">Canonical property IR</text>
+  <text x="852" y="425" text-anchor="middle" class="body">stable schema 1 meaning</text>
+  <text x="852" y="449" text-anchor="middle" class="small">deterministically serialized + hashed</text>
+
+  <path d="M298 422 H365" class="arrow"/>
+  <path d="M625 422 H692" class="arrow"/>
+
+  <rect x="1060" y="221" width="172" height="174" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="1146" y="255" text-anchor="middle" class="title">Hash-bound</text>
+  <text x="1146" y="278" text-anchor="middle" class="title">Lean workspace</text>
+  <text x="1146" y="311" text-anchor="middle" class="small">exact UPLC</text>
+  <text x="1146" y="332" text-anchor="middle" class="small">property obligation</text>
+  <text x="1146" y="353" text-anchor="middle" class="small">schemas + codecs</text>
+  <text x="1146" y="374" text-anchor="middle" class="small">domain bridges + plan</text>
+
+  <path d="M1002 194 C1033 194 1020 270 1050 270" class="arrow"/>
+  <path d="M1002 422 C1033 422 1020 346 1050 346" class="arrow"/>
+
+  <text x="48" y="556" class="section">PINNED EXECUTION AND CHECKING</text>
+  <rect x="48" y="578" width="1184" height="150" rx="16" fill="#f0fdf4" stroke="#16a34a" stroke-width="2" filter="url(#shadow)"/>
+
+  <rect x="78" y="608" width="195" height="88" rx="11" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="175" y="640" text-anchor="middle" class="title">Runner preflight</text>
+  <text x="175" y="665" text-anchor="middle" class="small">hashes, pins, plan, limits</text>
+  <text x="175" y="685" text-anchor="middle" class="small">local or Docker backend</text>
+
+  <rect x="325" y="608" width="195" height="88" rx="11" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="422" y="640" text-anchor="middle" class="title">Lean 4</text>
+  <text x="422" y="665" text-anchor="middle" class="small">elaboration + kernel checks</text>
+  <text x="422" y="685" text-anchor="middle" class="small">codecs, bridges, corollaries</text>
+
+  <rect x="572" y="608" width="195" height="88" rx="11" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="669" y="640" text-anchor="middle" class="title">IOG Blaster</text>
+  <text x="669" y="665" text-anchor="middle" class="small">symbolic UPLC execution</text>
+  <text x="669" y="685" text-anchor="middle" class="small">Lean obligation → SMT</text>
+
+  <rect x="819" y="608" width="165" height="88" rx="11" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="901" y="640" text-anchor="middle" class="title">Z3</text>
+  <text x="901" y="665" text-anchor="middle" class="small">bounded validity</text>
+  <text x="901" y="685" text-anchor="middle" class="small">or countermodel</text>
+
+  <rect x="1036" y="608" width="166" height="88" rx="11" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="1119" y="640" text-anchor="middle" class="title">Controls</text>
+  <text x="1119" y="665" text-anchor="middle" class="small">non-vacuity</text>
+  <text x="1119" y="685" text-anchor="middle" class="small">negative controls</text>
+
+  <path d="M273 652 H315" class="arrow"/>
+  <path d="M520 652 H562" class="arrow"/>
+  <path d="M767 652 H809" class="arrow"/>
+  <path d="M984 652 H1026" class="dash"/>
+  <path d="M1146 395 V530 H28 V652 H68" class="arrow"/>
+
+  <rect x="314" y="769" width="652" height="58" rx="13" fill="#0f172a" filter="url(#shadow)"/>
+  <text x="640" y="794" text-anchor="middle" style="font:700 17px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill:#ffffff">Classified, hash-bound certificate</text>
+  <text x="640" y="816" text-anchor="middle" style="font:400 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill:#cbd5e1">SMT-VALID · KERNEL-PROVED · REFUTED · COULD-NOT-EVALUATE / UNDETERMINED</text>
+  <path d="M640 728 V759" class="arrow"/>
+</svg>
