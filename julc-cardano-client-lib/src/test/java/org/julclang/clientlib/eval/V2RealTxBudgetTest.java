@@ -153,7 +153,7 @@ class V2RealTxBudgetTest {
 
         // Build V2 ScriptContext
         PlutusData scriptContextData = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         // Resolve datum for spending (should be IntData(8) from inline datum)
         PlutusData datumData = resolveDatum(purpose, txInfo);
@@ -210,7 +210,7 @@ class V2RealTxBudgetTest {
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
 
         PlutusData scriptContextData = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         System.out.println("=== V2 Real Tx ScriptContext PlutusData Tree ===");
         System.out.println(scriptContextData.prettyPrint());
@@ -355,7 +355,7 @@ class V2RealTxBudgetTest {
         // Verify V2 TxOut encoding has 4 fields
         PlutusData refTxOutData = V1V2ScriptContextBuilder.build(
                 PlutusLanguage.PLUTUS_V2, txInfo,
-                new ScriptPurpose.Spending(refInput.outRef()), converter);
+                new ScriptPurpose.Spending(refInput.outRef()));
         System.out.println("Reference input TxOut in context:");
         System.out.println(refTxOutData.prettyPrint());
     }
@@ -433,7 +433,7 @@ class V2RealTxBudgetTest {
         PlutusData redeemerData = PlutusDataAdapter.fromClientLib(redeemer.getData());
 
         PlutusData scriptContextData = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         PlutusData datumData = resolveDatum(purpose, txInfo);
 
@@ -468,7 +468,7 @@ class V2RealTxBudgetTest {
         var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
         PlutusData julcCtx = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         // Convert JuLC PlutusData → CCL PlutusData → CBOR bytes
         var julcCclData = PlutusDataAdapter.toClientLib(julcCtx);
@@ -682,7 +682,7 @@ class V2RealTxBudgetTest {
         TxInfo txInfo = converter.buildTxInfo();
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
         PlutusData julcCtx = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         // Convert JuLC PlutusData → CCL PlutusData → CBOR bytes
         var julcCclData = PlutusDataAdapter.toClientLib(julcCtx);

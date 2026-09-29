@@ -10,7 +10,6 @@ import co.nstant.in.cbor.model.UnsignedInteger;
 import com.bloxbean.cardano.client.api.UtxoSupplier;
 import com.bloxbean.cardano.client.api.model.Utxo;
 import com.bloxbean.cardano.client.crypto.Blake2bUtil;
-import com.bloxbean.cardano.client.plutus.spec.PlutusData;
 import com.bloxbean.cardano.client.plutus.spec.Redeemer;
 import com.bloxbean.cardano.client.transaction.spec.MultiAsset;
 import com.bloxbean.cardano.client.transaction.spec.Transaction;
@@ -19,9 +18,9 @@ import com.bloxbean.cardano.client.transaction.spec.TransactionOutput;
 import com.bloxbean.cardano.client.transaction.spec.Withdrawal;
 import com.bloxbean.cardano.client.transaction.spec.cert.*;
 import com.bloxbean.cardano.client.transaction.spec.governance.actions.GovActionId;
-import org.julclang.clientlib.PlutusDataAdapter;
-import org.julclang.core.types.JulcArrayList;
+import org.julclang.core.PlutusData;
 import org.julclang.core.cbor.PlutusDataCborDecoder;
+import org.julclang.core.types.JulcArrayList;
 import org.julclang.core.types.JulcAssocMap;
 import org.julclang.core.types.JulcList;
 import org.julclang.core.types.JulcMap;
@@ -51,7 +50,11 @@ final class CclTxConverter {
 
     // Cached sorted inputs for redeemer index mapping
     private List<TransactionInput> sortedInputs;
+    // Derived once from the transaction (the context and the redeemer indexes read them)
+    private LinkedHashMap<Credential, BigInteger> withdrawals;
+    private TreeMap<Voter, TreeMap<GovernanceActionId, Vote>> votes;
     private List<ProposalProcedure> proposals;
+    private java.util.Map<Long, byte[]> redeemerData;
 
     /**
      * @param tx      the transaction
@@ -116,11 +119,11 @@ final class CclTxConverter {
         JulcList<PubKeyHash> signatories = convertSignatories(body.getRequiredSigners());
 
         // 10. Redeemers
-        JulcMap<ScriptPurpose, org.julclang.core.PlutusData> redeemers =
+        JulcMap<ScriptPurpose, PlutusData> redeemers =
                 convertRedeemers(tx.getWitnessSet().getRedeemers());
 
         // 11. Datums: the witness set's, keyed by the hash of their original bytes
-        JulcMap<DatumHash, org.julclang.core.PlutusData> datums = convertWitnessDatums();
+        JulcMap<DatumHash, PlutusData> datums = convertWitnessDatums();
 
         // 12. TxId: the hash of the original body bytes
         TxId txId = TxId.of(Blake2bUtil.blake2bHash256(original.body()));
@@ -218,10 +221,8 @@ final class CclTxConverter {
         OutputDatum datum;
         if (utxo.getInlineDatum() != null && !utxo.getInlineDatum().isEmpty()) {
             try {
-                byte[] datumBytes = HexFormat.of().parseHex(utxo.getInlineDatum());
-                PlutusData cclDatum = PlutusData.deserialize(datumBytes);
-                var julcDatum = PlutusDataAdapter.fromClientLib(cclDatum);
-                datum = new OutputDatum.OutputDatumInline(julcDatum);
+                datum = new OutputDatum.OutputDatumInline(
+                        PlutusDataCborDecoder.decode(HexFormat.of().parseHex(utxo.getInlineDatum())));
             } catch (Exception e) {
                 throw new IllegalStateException("Failed to deserialize inline datum for UTxO: "
                         + utxo.getTxHash() + "#" + utxo.getOutputIndex(), e);
@@ -249,15 +250,17 @@ final class CclTxConverter {
             return JulcList.empty();
         }
 
+        // Inline datums from the original bytes, like every datum the context holds
+        List<byte[]> inlineDatums = original.outputInlineDatums();
         var result = new ArrayList<TxOut>(outputs.size());
-        for (TransactionOutput txOut : outputs) {
+        for (int i = 0; i < outputs.size(); i++) {
+            TransactionOutput txOut = outputs.get(i);
             Address address = CclAddressConverter.fromBech32(txOut.getAddress());
             Value value = CclValueConverter.fromTransactionOutputValue(txOut.getValue());
 
             OutputDatum datum;
-            if (txOut.getInlineDatum() != null) {
-                datum = new OutputDatum.OutputDatumInline(
-                        PlutusDataAdapter.fromClientLib(txOut.getInlineDatum()));
+            if (inlineDatums.get(i) != null) {
+                datum = new OutputDatum.OutputDatumInline(PlutusDataCborDecoder.decode(inlineDatums.get(i)));
             } else if (txOut.getDatumHash() != null) {
                 datum = new OutputDatum.OutputDatumHash(
                         DatumHash.of(txOut.getDatumHash()));
@@ -287,14 +290,22 @@ final class CclTxConverter {
 
     /** The withdrawals in the ledger's {@code Map AccountAddress} order (redeemer indexes and the V3 map). */
     private LinkedHashMap<Credential, BigInteger> withdrawals() {
-        var byAccount = new TreeMap<byte[], BigInteger>(LedgerOrder.ACCOUNT);
-        List<Withdrawal> withdrawals = tx.getBody().getWithdrawals();
-        if (withdrawals != null) {
-            for (Withdrawal w : withdrawals) {
-                byAccount.put(new com.bloxbean.cardano.client.address.Address(w.getRewardAddress()).getBytes(),
-                        w.getCoin());
+        if (withdrawals == null) {
+            var byAccount = new TreeMap<byte[], BigInteger>(LedgerOrder.ACCOUNT);
+            List<Withdrawal> list = tx.getBody().getWithdrawals();
+            if (list != null) {
+                for (Withdrawal w : list) {
+                    byAccount.put(new com.bloxbean.cardano.client.address.Address(w.getRewardAddress()).getBytes(),
+                            w.getCoin());
+                }
             }
+            withdrawals = accountMap(byAccount);
         }
+        return withdrawals;
+    }
+
+    /** Reward accounts in ledger order, keyed by their credentials. */
+    private static LinkedHashMap<Credential, BigInteger> accountMap(TreeMap<byte[], BigInteger> byAccount) {
         var result = new LinkedHashMap<Credential, BigInteger>();
         byAccount.forEach((account, coin) -> result.put(accountCredential(account), coin));
         return result;
@@ -355,7 +366,7 @@ final class CclTxConverter {
         return new JulcArrayList<>(result);
     }
 
-    private JulcMap<ScriptPurpose, org.julclang.core.PlutusData> convertRedeemers(
+    private JulcMap<ScriptPurpose, PlutusData> convertRedeemers(
             List<Redeemer> redeemers) {
         if (redeemers == null || redeemers.isEmpty()) {
             return JulcAssocMap.empty();
@@ -364,13 +375,27 @@ final class CclTxConverter {
         // The ledger's Redeemers map, in (tag, index) order; a later duplicate replaces an earlier one
         var byPointer = new TreeMap<Long, Redeemer>();
         for (Redeemer redeemer : redeemers) {
-            byPointer.put(((long) redeemer.getTag().value << 32) | redeemer.getIndex().longValueExact(), redeemer);
+            byPointer.put(OriginalTxBytes.pointer(redeemer.getTag().value, redeemer.getIndex().longValueExact()),
+                    redeemer);
         }
-        var result = new LinkedHashMap<ScriptPurpose, org.julclang.core.PlutusData>();
+        var result = new LinkedHashMap<ScriptPurpose, PlutusData>();
         for (Redeemer redeemer : byPointer.values()) {
-            result.put(redeemerToScriptPurpose(redeemer), PlutusDataAdapter.fromClientLib(redeemer.getData()));
+            result.put(redeemerToScriptPurpose(redeemer), redeemerData(redeemer));
         }
         return LedgerOrder.assocMap(result);
+    }
+
+    /** A redeemer's data, decoded from its original bytes. */
+    PlutusData redeemerData(Redeemer redeemer) {
+        if (redeemerData == null) {
+            redeemerData = original.redeemerData();
+        }
+        byte[] data = redeemerData.get(
+                OriginalTxBytes.pointer(redeemer.getTag().value, redeemer.getIndex().longValueExact()));
+        if (data == null) {
+            throw new IllegalStateException("No redeemer " + redeemer.getTag() + "[" + redeemer.getIndex() + "]");
+        }
+        return PlutusDataCborDecoder.decode(data);
     }
 
     ScriptPurpose redeemerToScriptPurpose(Redeemer redeemer) {
@@ -575,19 +600,21 @@ final class CclTxConverter {
 
     /** The voting procedures: voters and action ids in ledger order. */
     private TreeMap<Voter, TreeMap<GovernanceActionId, Vote>> votes() {
-        var result = new TreeMap<Voter, TreeMap<GovernanceActionId, Vote>>(LedgerOrder.VOTER);
-        var votingProcs = tx.getBody().getVotingProcedures();
-        if (votingProcs == null || votingProcs.getVoting() == null) {
-            return result;
-        }
-        for (var entry : votingProcs.getVoting().entrySet()) {
-            var actions = result.computeIfAbsent(convertVoter(entry.getKey()),
-                    v -> new TreeMap<>(LedgerOrder.GOV_ACTION_ID));
-            for (var voteEntry : entry.getValue().entrySet()) {
-                actions.put(convertGovActionId(voteEntry.getKey()), convertVote(voteEntry.getValue().getVote()));
+        if (votes == null) {
+            votes = new TreeMap<>(LedgerOrder.VOTER);
+            var votingProcs = tx.getBody().getVotingProcedures();
+            if (votingProcs != null && votingProcs.getVoting() != null) {
+                for (var entry : votingProcs.getVoting().entrySet()) {
+                    var actions = votes.computeIfAbsent(convertVoter(entry.getKey()),
+                            v -> new TreeMap<>(LedgerOrder.GOV_ACTION_ID));
+                    for (var voteEntry : entry.getValue().entrySet()) {
+                        actions.put(convertGovActionId(voteEntry.getKey()),
+                                convertVote(voteEntry.getValue().getVote()));
+                    }
+                }
             }
         }
-        return result;
+        return votes;
     }
 
     private Voter convertVoter(com.bloxbean.cardano.client.transaction.spec.governance.Voter cclVoter) {
@@ -658,9 +685,8 @@ final class CclTxConverter {
                 for (DataItem account : withdrawals.getKeys()) {
                     byAccount.put(bytes(account), unsigned(withdrawals.get(account)));
                 }
-                var result = new LinkedHashMap<Credential, BigInteger>();
-                byAccount.forEach((account, coin) -> result.put(accountCredential(account), coin));
-                yield new GovernanceAction.TreasuryWithdrawals(LedgerOrder.assocMap(result), scriptHash(a.get(2)));
+                yield new GovernanceAction.TreasuryWithdrawals(LedgerOrder.assocMap(accountMap(byAccount)),
+                        scriptHash(a.get(2)));
             }
             case 3 -> new GovernanceAction.NoConfidence(prevActionId(a.get(1)));
             case 4 -> {
@@ -691,31 +717,31 @@ final class CclTxConverter {
      * {@code [n, d]} in lowest terms, arrays (ExUnits, prices, voting thresholds) become lists, and cost models a map
      * in key order.
      */
-    private static org.julclang.core.PlutusData changedParameter(DataItem item) {
+    private static PlutusData changedParameter(DataItem item) {
         if (isRational(item)) {
             BigInteger[] r = rational(item);
-            return new org.julclang.core.PlutusData.ListData(List.of(
-                    new org.julclang.core.PlutusData.IntData(r[0]), new org.julclang.core.PlutusData.IntData(r[1])));
+            return new PlutusData.ListData(List.of(
+                    new PlutusData.IntData(r[0]), new PlutusData.IntData(r[1])));
         }
         return switch (item) {
-            case UnsignedInteger u -> new org.julclang.core.PlutusData.IntData(u.getValue());
-            case NegativeInteger n -> new org.julclang.core.PlutusData.IntData(n.getValue());
+            case UnsignedInteger u -> new PlutusData.IntData(u.getValue());
+            case NegativeInteger n -> new PlutusData.IntData(n.getValue());
             case Array array -> {
-                var list = new ArrayList<org.julclang.core.PlutusData>();
+                var list = new ArrayList<PlutusData>();
                 for (DataItem element : items(array)) {
                     list.add(changedParameter(element));
                 }
-                yield new org.julclang.core.PlutusData.ListData(list);
+                yield new PlutusData.ListData(list);
             }
             case co.nstant.in.cbor.model.Map map -> {
-                var byKey = new TreeMap<BigInteger, org.julclang.core.PlutusData>();
+                var byKey = new TreeMap<BigInteger, PlutusData>();
                 for (DataItem key : map.getKeys()) {
                     byKey.put(integer(key), changedParameter(map.get(key)));
                 }
-                var entries = new ArrayList<org.julclang.core.PlutusData.Pair>();
-                byKey.forEach((key, value) -> entries.add(new org.julclang.core.PlutusData.Pair(
-                        new org.julclang.core.PlutusData.IntData(key), value)));
-                yield new org.julclang.core.PlutusData.MapData(entries);
+                var entries = new ArrayList<PlutusData.Pair>();
+                byKey.forEach((key, value) -> entries.add(new PlutusData.Pair(
+                        new PlutusData.IntData(key), value)));
+                yield new PlutusData.MapData(entries);
             }
             default -> throw new IllegalArgumentException("Unexpected CBOR in a parameter update: " + item);
         };
@@ -783,12 +809,12 @@ final class CclTxConverter {
      * The witness datums keyed by the hash of their original bytes ({@code TxDats}, {@code hashData}), in hash
      * order. Only witness datums: scripts read inline datums through the resolved outputs.
      */
-    private JulcMap<DatumHash, org.julclang.core.PlutusData> convertWitnessDatums() {
-        var byHash = new TreeMap<byte[], org.julclang.core.PlutusData>(LedgerOrder.BYTES);
+    private JulcMap<DatumHash, PlutusData> convertWitnessDatums() {
+        var byHash = new TreeMap<byte[], PlutusData>(LedgerOrder.BYTES);
         for (byte[] datum : original.witnessDatums()) {
             byHash.putIfAbsent(Blake2bUtil.blake2bHash256(datum), PlutusDataCborDecoder.decode(datum));
         }
-        var result = new LinkedHashMap<DatumHash, org.julclang.core.PlutusData>();
+        var result = new LinkedHashMap<DatumHash, PlutusData>();
         byHash.forEach((hash, datum) -> result.put(DatumHash.of(hash), datum));
         return LedgerOrder.assocMap(result);
     }

@@ -366,6 +366,149 @@ class LedgerParityTest {
         assertEquals(List.of(bytes("")), keysOf(info.outputs().get(0).value().toPlutusData()));
     }
 
+    // --- Regression guards (PR #221 review) ---
+
+    @Test
+    void indefiniteLengthBodyWitnessesAndListsAreRead() throws Exception {
+        // Indefinite body map, witness map, datum list, redeemer list, proposal list and action array
+        String proposals = "149f" + "841a000f4240" + account("e0", "00".repeat(28)) + "9f06ff" + ANCHOR + "ff";
+        String body = "bf" + INPUTS + NO_OUTPUTS + FEE + proposals + "ff";
+        String witnesses = "bf" + "04d901029f0102ff" + "059f840000a20101010282000 0ff".replace(" ", "") + "ff";
+        byte[] cbor = HexFormat.of().parseHex("84" + body + witnesses + "f5f6");
+        var converter = converter(cbor, 10);
+        TxInfo info = converter.buildTxInfo();
+
+        assertArrayEquals(Blake2bUtil.blake2bHash256(TransactionUtil.extractTransactionBodyFromTx(cbor)),
+                info.id().hash());
+        assertEquals(2, info.datums().size());
+        assertTrue(info.datums().containsKey(DatumHash.of(Blake2bUtil.blake2bHash256(b("01")))));
+        assertInstanceOf(GovernanceAction.InfoAction.class,
+                toList(info.proposalProcedures()).get(0).governanceAction());
+        var redeemer = info.redeemers().values().iterator().next();
+        assertEquals(2, ((PlutusData.MapData) redeemer).entries().size(), "the duplicate key survives");
+    }
+
+    @Test
+    void datumsAndRedeemersKeepDuplicateMapKeys() throws Exception {
+        String dupMap = "a2" + "0101" + "0102";   // {1: 1, 1: 2}
+        String outputs = "0181" + "a3" + "00581d61" + "00".repeat(28) + "011a001e8480" + "028201d818" + "45" + dupMap;
+        String witnesses = "a1" + "0581" + "840000" + dupMap + "820000";
+        byte[] cbor = tx(3, INPUTS + outputs + FEE, witnesses);
+        Utxo input = inputUtxo(null);
+        input.setInlineDatum(dupMap);
+        var converter = new CclTxConverter(Transaction.deserialize(cbor), cbor, Set.of(input), null, null, 10);
+        TxInfo info = converter.buildTxInfo();
+
+        var expected = new PlutusData.MapData(List.of(
+                new PlutusData.Pair(new PlutusData.IntData(1), new PlutusData.IntData(1)),
+                new PlutusData.Pair(new PlutusData.IntData(1), new PlutusData.IntData(2))));
+        assertEquals(new OutputDatum.OutputDatumInline(expected), info.outputs().get(0).datum());
+        assertEquals(new OutputDatum.OutputDatumInline(expected), info.inputs().get(0).resolved().datum());
+        assertEquals(expected, info.redeemers().values().iterator().next());
+    }
+
+    @Test
+    void mixedVoterKindsAndActionIdsFollowTheLedgerOrder() throws Exception {
+        String aa0 = "825820" + "aa".repeat(32) + "00";
+        String bb0 = "825820" + "bb".repeat(32) + "00";
+        String bb1 = "825820" + "bb".repeat(32) + "01";
+        String vote = "8201f6";
+        // body order: SPO (three actions, out of order), DRep key, committee key, committee script
+        String votes = "13a4"
+                + "8204" + h28("01") + "a3" + bb1 + vote + aa0 + vote + bb0 + vote
+                + "8202" + h28("02") + "a1" + aa0 + vote
+                + "8200" + h28("03") + "a1" + aa0 + vote
+                + "8201" + h28("04") + "a1" + aa0 + vote;
+        var converter = converter(tx(4, INPUTS + NO_OUTPUTS + FEE + votes, NO_WITNESSES), 10);
+        TxInfo info = converter.buildTxInfo();
+
+        var expected = List.of(
+                new Voter.CommitteeVoter(new Credential.ScriptCredential(ScriptHash.of(b("04".repeat(28))))),
+                new Voter.CommitteeVoter(new Credential.PubKeyCredential(PubKeyHash.of(b("03".repeat(28))))),
+                new Voter.DRepVoter(new Credential.PubKeyCredential(PubKeyHash.of(b("02".repeat(28))))),
+                new Voter.StakePoolVoter(PubKeyHash.of(b("01".repeat(28)))));
+        assertEquals(expected, converter.getSortedVoters());
+        assertEquals(expected, toList(info.votes().keys()));
+        var spoActions = toList(info.votes().get(expected.get(3)).keys());
+        assertEquals(List.of(
+                new GovernanceActionId(TxId.of(b("aa".repeat(32))), BigInteger.ZERO),
+                new GovernanceActionId(TxId.of(b("bb".repeat(32))), BigInteger.ZERO),
+                new GovernanceActionId(TxId.of(b("bb".repeat(32))), BigInteger.ONE)), spoActions);
+    }
+
+    @Test
+    void committeeUpdateMembersFollowTheLedgerOrder() throws Exception {
+        String action = "8504f6"
+                + "d9010283" + key("00") + script("22") + key("11")
+                + "a2" + key("33") + "05" + script("44") + "06"
+                + "d81e820304";
+        String proposals = "14d9010281841a000f4240" + account("e0", "00".repeat(28)) + action + ANCHOR;
+        TxInfo info = converter(tx(4, INPUTS + NO_OUTPUTS + FEE + proposals, NO_WITNESSES), 10).buildTxInfo();
+        var update = (GovernanceAction.UpdateCommittee) toList(info.proposalProcedures()).get(0).governanceAction();
+
+        assertEquals(List.of(new Credential.ScriptCredential(ScriptHash.of(b("22".repeat(28)))),
+                new Credential.PubKeyCredential(PubKeyHash.of(b("00".repeat(28)))),
+                new Credential.PubKeyCredential(PubKeyHash.of(b("11".repeat(28))))), toList(update.removedMembers()));
+        assertEquals(List.of(new Credential.ScriptCredential(ScriptHash.of(b("44".repeat(28)))),
+                new Credential.PubKeyCredential(PubKeyHash.of(b("33".repeat(28))))),
+                toList(update.addedMembers().keys()));
+        assertEquals(new Rational(BigInteger.valueOf(3), BigInteger.valueOf(4)), update.newQuorum());
+    }
+
+    @Test
+    void withdrawalsOrderByNetworkFirst() throws Exception {
+        String mainnetKey = "00".repeat(28);
+        String testnetScript = "11".repeat(28);
+        String testnetKey = "22".repeat(28);
+        String withdrawals = "05a3" + account("e1", mainnetKey) + "01" + account("f0", testnetScript) + "02"
+                + account("e0", testnetKey) + "03";
+        var converter = converter(tx(4, INPUTS + NO_OUTPUTS + FEE + withdrawals, NO_WITNESSES), 10);
+        assertEquals(List.of(new Credential.ScriptCredential(ScriptHash.of(b(testnetScript))),
+                new Credential.PubKeyCredential(PubKeyHash.of(b(testnetKey))),
+                new Credential.PubKeyCredential(PubKeyHash.of(b(mainnetKey)))),
+                converter.getSortedWithdrawalCredentials());
+    }
+
+    @Test
+    void cclBuiltTransactionRoundTrips() throws Exception {
+        var datum = com.bloxbean.cardano.client.plutus.spec.ConstrPlutusData.of(0,
+                com.bloxbean.cardano.client.plutus.spec.BigIntPlutusData.of(42),
+                com.bloxbean.cardano.client.plutus.spec.BytesPlutusData.of(b("cafe")));
+        var output = com.bloxbean.cardano.client.transaction.spec.TransactionOutput.builder()
+                .address(inputUtxo(null).getAddress())
+                .value(com.bloxbean.cardano.client.transaction.spec.Value.builder()
+                        .coin(BigInteger.valueOf(2_000_000)).build())
+                .inlineDatum(datum)
+                .build();
+        var redeemer = com.bloxbean.cardano.client.plutus.spec.Redeemer.builder()
+                .tag(com.bloxbean.cardano.client.plutus.spec.RedeemerTag.Spend).index(BigInteger.ZERO)
+                .data(datum)
+                .exUnits(com.bloxbean.cardano.client.plutus.spec.ExUnits.builder()
+                        .mem(BigInteger.ONE).steps(BigInteger.ONE).build())
+                .build();
+        var tx = Transaction.builder()
+                .body(com.bloxbean.cardano.client.transaction.spec.TransactionBody.builder()
+                        .inputs(List.of(new com.bloxbean.cardano.client.transaction.spec.TransactionInput(INPUT_TX, 0)))
+                        .outputs(List.of(output))
+                        .fee(BigInteger.valueOf(200_000))
+                        .requiredSigners(List.of(b("cc".repeat(28)), b("aa".repeat(28))))
+                        .build())
+                .witnessSet(com.bloxbean.cardano.client.transaction.spec.TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer)).plutusDataList(List.of(datum)).build())
+                .build();
+        byte[] cbor = tx.serialize();
+        TxInfo info = new CclTxConverter(Transaction.deserialize(cbor), cbor, Set.of(inputUtxo(null)), null, null, 10)
+                .buildTxInfo();
+
+        assertEquals(TransactionUtil.getTxHash(cbor), HexFormat.of().formatHex(info.id().hash()));
+        var expected = org.julclang.clientlib.PlutusDataAdapter.fromClientLib(datum);
+        assertEquals(new OutputDatum.OutputDatumInline(expected), info.outputs().get(0).datum());
+        assertEquals(expected, info.redeemers().values().iterator().next());
+        assertEquals(expected, info.datums().get(DatumHash.of(b(datum.getDatumHash()))));
+        assertEquals(List.of(PubKeyHash.of(b("aa".repeat(28))), PubKeyHash.of(b("cc".repeat(28)))),
+                toList(info.signatories()));
+    }
+
     // --- shared ---
 
     private static <T> List<T> toList(Iterable<T> items) {

@@ -366,12 +366,12 @@ class V1V2EncodingConformanceTest {
                                     org.julclang.core.types.JulcMap<Credential, BigInteger> withdrawals) {
         var txInfo = buildTxInfo(certs, withdrawals);
         var purpose = new ScriptPurpose.Spending(TX_OUT_REF);
-        return V1V2ScriptContextBuilder.build(language, txInfo, purpose, null);
+        return V1V2ScriptContextBuilder.build(language, txInfo, purpose);
     }
 
     private PlutusData buildContextWithPurpose(PlutusLanguage language, ScriptPurpose purpose) {
         var txInfo = buildTxInfo(List.of(), JulcAssocMap.empty());
-        return V1V2ScriptContextBuilder.build(language, txInfo, purpose, null);
+        return V1V2ScriptContextBuilder.build(language, txInfo, purpose);
     }
 
     private TxInfo buildTxInfo(List<TxCert> certs,
@@ -427,7 +427,7 @@ class V1V2EncodingConformanceTest {
         );
 
         var ctx = V1V2ScriptContextBuilder.build(PlutusLanguage.PLUTUS_V1, txInfo,
-                new ScriptPurpose.Spending(TX_OUT_REF), null);
+                new ScriptPurpose.Spending(TX_OUT_REF));
         var ctxConstr = extractTxInfo(ctx);
         // V1 TxInfo: field 1 = outputs
         var outputs = expectList(ctxConstr.fields().get(1));

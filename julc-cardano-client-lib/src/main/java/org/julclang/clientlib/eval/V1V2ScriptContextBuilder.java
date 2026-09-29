@@ -40,20 +40,6 @@ public final class V1V2ScriptContextBuilder {
      * @return the script context as PlutusData
      */
     public static PlutusData build(PlutusLanguage language, TxInfo txInfo, ScriptPurpose purpose) {
-        return build(language, txInfo, purpose, null);
-    }
-
-    /**
-     * Build a V1 or V2 ScriptContext as raw PlutusData.
-     *
-     * @param language  PLUTUS_V1 or PLUTUS_V2
-     * @param txInfo    the V3 TxInfo (fields will be down-converted)
-     * @param purpose   the V3 ScriptPurpose
-     * @param converter the converter for accessing tx data
-     * @return the script context as PlutusData
-     */
-    static PlutusData build(PlutusLanguage language, TxInfo txInfo,
-                            ScriptPurpose purpose, CclTxConverter converter) {
         PlutusData txInfoData = buildTxInfoData(language, txInfo);
         PlutusData scriptPurposeData = buildScriptPurposeData(purpose);
         return new PlutusData.ConstrData(0, List.of(txInfoData, scriptPurposeData));

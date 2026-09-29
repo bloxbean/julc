@@ -13,7 +13,6 @@ import com.bloxbean.cardano.client.plutus.spec.*;
 import com.bloxbean.cardano.client.transaction.spec.Transaction;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.clientlib.JulcScriptLoader;
-import org.julclang.clientlib.PlutusDataAdapter;
 import org.julclang.core.Constant;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
@@ -242,8 +241,7 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                             tx, scriptHash, inputUtxos, pvMajor, pvMinor);
 
                     // b. Build arguments based on script version
-                    org.julclang.core.PlutusData redeemerData =
-                            PlutusDataAdapter.fromClientLib(redeemer.getData());
+                    org.julclang.core.PlutusData redeemerData = converter.redeemerData(redeemer);
 
                     List<org.julclang.core.PlutusData> args;
                     if (resolved.language() == PlutusLanguage.PLUTUS_V3) {
@@ -254,8 +252,7 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     } else {
                         // V1/V2: [datum, redeemer, scriptContext] or [redeemer, scriptContext]
                         org.julclang.core.PlutusData scriptContextData =
-                                V1V2ScriptContextBuilder.build(resolved.language(), txInfo,
-                                        purpose, converter);
+                                V1V2ScriptContextBuilder.build(resolved.language(), txInfo, purpose);
                         if (purpose instanceof ScriptPurpose.Spending(var txOutRef)) {
                             // Spending: datum is the first argument. The ledger rejects a V1/V2 spend without
                             // one (UnspendableUTxONoDatumHash / MissingRequiredDatums) before running scripts.
