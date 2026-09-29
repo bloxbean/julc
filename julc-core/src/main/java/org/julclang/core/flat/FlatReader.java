@@ -115,18 +115,15 @@ public final class FlatReader {
         return value.longValue(); // correctly handles unsigned values via two's complement
     }
 
-    /** Maximum number of bytes for a vli7-encoded integer (prevents DoS from malicious input). */
-    private static final int MAX_VLI_BYTES = 128; // 128 * 7 = 896 bits, far exceeding any realistic use
-
+    /**
+     * Decode a vli7 integer of any size. plutus-core's {@code dUnsigned} checks the width only for
+     * fixed-width types, so {@code Integer} and {@code Natural} are unbounded; each group consumes
+     * an input byte, so the program's size bounds the result.
+     */
     private BigInteger decodeVli7() {
         var result = BigInteger.ZERO;
         int shift = 0;
-        int bytesRead = 0;
         while (true) {
-            if (bytesRead++ > MAX_VLI_BYTES) {
-                throw new FlatDecodingException(
-                        "Variable-length integer exceeded maximum size of " + MAX_VLI_BYTES + " bytes");
-            }
             int b = byte_();
             result = result.or(BigInteger.valueOf(b & 0x7F).shiftLeft(shift));
             shift += 7;

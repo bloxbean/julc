@@ -118,7 +118,7 @@ Custom implementation in `FlatWriter` / `FlatReader`. MSB-first bit orientation.
 - **VLI-7:** LEB128 variable-length integer encoding (7 data bits per byte, MSB continuation flag)
 - **Zigzag:** Signed integers encoded as non-negative via `n >= 0 ? n << 1 : (-n << 1) - 1`
 - **ByteString:** Filler to byte boundary, then 255-byte chunks with 1-byte length headers, terminated by `0x00`
-- **DoS protection:** `MAX_VLI_BYTES = 128` (896 bits). Reader throws `FlatDecodingException` beyond this limit.
+- **Integer size:** VLI-7 integers and naturals are unbounded, as in plutus-core (`dUnsigned` checks the width only for fixed-width types); the input size bounds them. `word64()` still rejects values over 64 bits.
 
 ### CBOR Encoding
 

@@ -3,6 +3,7 @@ package org.julclang.core.flat;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -223,6 +224,19 @@ class FlatWriterReaderTest {
         assertEquals(value, r.integer());
     }
 
+    /** Integer and Natural are unbounded in plutus-core's FLAT decoder (issue #225). */
+    @Test
+    void integersAndNaturalsBeyond896Bits() {
+        var w = new FlatWriter();
+        w.integer(BigInteger.ONE.shiftLeft(2047));
+        w.integer(BigInteger.ONE.shiftLeft(4096).negate());
+        w.natural(BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE));
+        var r = new FlatReader(w.toByteArray());
+        assertEquals(BigInteger.ONE.shiftLeft(2047), r.integer());
+        assertEquals(BigInteger.ONE.shiftLeft(4096).negate(), r.integer());
+        assertEquals(BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE), r.natural());
+    }
+
     // --- ZigZag encoding ---
 
     @Test
@@ -420,6 +434,23 @@ class FlatWriterReaderTest {
 
         var r = new FlatReader(bytes);
         assertEquals(-1L, r.word64()); // round-trips correctly
+    }
+
+    @Test
+    void word64RejectsValueOver64Bits() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE.shiftLeft(64));
+        var r = new FlatReader(w.toByteArray());
+        assertThrows(FlatDecodingException.class, r::word64);
+    }
+
+    @Test
+    void truncatedIntegerFails() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE.shiftLeft(2047));
+        byte[] bytes = w.toByteArray();
+        var r = new FlatReader(Arrays.copyOf(bytes, bytes.length / 2));
+        assertThrows(FlatDecodingException.class, r::natural);
     }
 
     // --- ByteString chunk edge cases ---
