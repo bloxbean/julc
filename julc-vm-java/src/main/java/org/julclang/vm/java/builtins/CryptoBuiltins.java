@@ -7,6 +7,7 @@ import org.bouncycastle.crypto.digests.RIPEMD160Digest;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.crypto.params.ECPublicKeyParameters;
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
+import org.bouncycastle.crypto.signers.ECDSASigner;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
@@ -115,21 +116,19 @@ public final class CryptoBuiltins {
         if (pubKey.length != 33) {
             throw new BuiltinException("VerifyEcdsaSecp256k1Signature: public key must be 33 bytes (compressed), got " + pubKey.length);
         }
-        if (msgHash.length != 32) {
-            throw new BuiltinException("VerifyEcdsaSecp256k1Signature: message hash must be 32 bytes, got " + msgHash.length);
-        }
-        if (sig.length != 64) {
-            throw new BuiltinException("VerifyEcdsaSecp256k1Signature: signature must be 64 bytes, got " + sig.length);
-        }
 
         try {
             ECParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp256k1");
             ECDomainParameters domain = new ECDomainParameters(spec.getCurve(), spec.getG(), spec.getN(), spec.getH());
 
-            // Plutus order: an invalid key is an error even when the signature would verify False.
+            // Plutus deserialises key, then signature, then message hash; any failure there is an error,
+            // so an invalid key is an error even when the signature would verify False.
             ECPoint point = spec.getCurve().decodePoint(pubKey);
             var keyParams = new ECPublicKeyParameters(point, domain);
 
+            if (sig.length != 64) {
+                throw new BuiltinException("VerifyEcdsaSecp256k1Signature: signature must be 64 bytes, got " + sig.length);
+            }
             // Decode r and s from 64-byte signature
             BigInteger r = new BigInteger(1, Arrays.copyOfRange(sig, 0, 32));
             BigInteger s = new BigInteger(1, Arrays.copyOfRange(sig, 32, 64));
@@ -141,13 +140,17 @@ public final class CryptoBuiltins {
                 throw new BuiltinException("VerifyEcdsaSecp256k1Signature: r or s out of range");
             }
 
+            if (msgHash.length != 32) {
+                throw new BuiltinException("VerifyEcdsaSecp256k1Signature: message hash must be 32 bytes, got " + msgHash.length);
+            }
+
             // Plutus requires low-s (BIP-146): s must be <= n/2
             BigInteger halfN = n.shiftRight(1);
             if (s.compareTo(halfN) > 0) {
                 return mkBool(false);
             }
 
-            var signer = new org.bouncycastle.crypto.signers.ECDSASigner();
+            var signer = new ECDSASigner();
             signer.init(false, keyParams);
 
             return mkBool(signer.verifySignature(msgHash, r, s));

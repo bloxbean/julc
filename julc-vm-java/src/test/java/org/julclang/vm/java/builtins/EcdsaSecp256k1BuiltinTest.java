@@ -10,6 +10,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -91,10 +92,28 @@ class EcdsaSecp256k1BuiltinTest {
             case "zeroPrefix" -> "00" + KEY.substring(2);
             default -> throw new IllegalArgumentException(key);
         };
-        assertError(keyHex, MSG, ZERO + ZERO);
-        assertError(keyHex, MSG, R + ZERO);
-        assertError(keyHex, MSG, HIGH_S_SIG);
-        assertError(keyHex, MSG, R + S);
+        assertKeyError(keyHex, MSG, ZERO + ZERO);
+        assertKeyError(keyHex, MSG, R + ZERO);
+        assertKeyError(keyHex, MSG, HIGH_S_SIG);
+        assertKeyError(keyHex, MSG, R + S);
+        assertKeyError(keyHex, MSG, N + S);
+    }
+
+    /**
+     * Message hashes not below n, signed with libsecp256k1. libsecp256k1 reduces the hash mod n;
+     * BouncyCastle's ECDSASigner must keep doing the same.
+     */
+    @ParameterizedTest(name = "msg={0}")
+    @CsvSource({
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, "
+                    + "7f854b9af4fb3b5ad09cb054d566356d1b2fdafdbed688aeca82aa405e294de7"
+                    + "05ade2001a85063742f4143b2bb14e5ce581023e84b54577f4d9f93c373bff5a",
+            N + ", "
+                    + "633d1263c570b149d2213d3acf7cd21d1cd77c87b928f1cff428987866df3720"
+                    + "351487b20424431dc64d19f32990cc84574e3572f54ac4663792cb972dd0cd08",
+    })
+    void messageHashNotBelowOrderVerifies(String msg, String sig) {
+        assertEquals(true, verify("024c76edd6cb9853ef0730bc89987bc973e14ae82485219fb9eb12794a8288a8a5", msg, sig));
     }
 
     @Test
@@ -123,6 +142,13 @@ class EcdsaSecp256k1BuiltinTest {
     private static void assertError(String key, String msg, String sig) {
         assertThrows(BuiltinException.class,
                 () -> CryptoBuiltins.verifyEcdsaSecp256k1Signature(args(key, msg, sig)));
+    }
+
+    /** The key fails to decode (BouncyCastle rejects the point) before the signature is looked at. */
+    private static void assertKeyError(String key, String msg, String sig) {
+        var e = assertThrows(BuiltinException.class,
+                () -> CryptoBuiltins.verifyEcdsaSecp256k1Signature(args(key, msg, sig)));
+        assertInstanceOf(IllegalArgumentException.class, e.getCause());
     }
 
     private static List<CekValue> args(String... hex) {
