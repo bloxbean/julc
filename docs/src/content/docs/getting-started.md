@@ -1159,7 +1159,9 @@ plugins {
 ```
 
 Validators in `src/main/plutus/` are compiled during `gradle build` and output to
-`build/plutus/`.
+`build/plutus/`. The directory is optional: when it is missing or empty, `compileJulc`
+is skipped (`NO-SOURCE`), so projects that compile validators with the annotation
+processor do not need it.
 
 ---
 

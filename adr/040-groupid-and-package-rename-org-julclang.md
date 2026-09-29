@@ -259,6 +259,11 @@ Executed on branch `rename/org-julclang-groupid-package`, commit `8fb33f4d`.
   even when unused, failing the build otherwise. Worked around locally by
   creating the (untracked, empty) directory in `julc-examples`; recommend
   filing an issue to make that `@InputDirectory` optional.
+  **Resolved by #216:** making it `@Optional` was the cause, not a fix — the
+  `sourceDir` convention always gives the property a value, so Gradle still
+  requires the directory. `@SkipWhenEmpty` is restored: a missing or empty
+  directory is NO-SOURCE, and Gradle deletes the task's previous outputs. The
+  empty-directory workaround is no longer needed.
 - **`julc-playground` test flakiness**: two different tests failed on two
   separate full-`./gradlew build` runs (`EvaluateControllerTest`, then
   `ScenariosControllerTest`), each passing when the module's tests ran
