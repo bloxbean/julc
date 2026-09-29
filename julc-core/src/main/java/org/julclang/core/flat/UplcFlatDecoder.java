@@ -41,12 +41,20 @@ public final class UplcFlatDecoder {
      * Decode a program: version triple + term + filler.
      */
     public Program readProgram() {
-        int major = reader.natural().intValueExact();
-        int minor = reader.natural().intValueExact();
-        int patch = reader.natural().intValueExact();
+        int major = readVersionNumber();
+        int minor = readVersionNumber();
+        int patch = readVersionNumber();
         Term term = readTerm();
         reader.filler();
         return new Program(major, minor, patch, term);
+    }
+
+    private int readVersionNumber() {
+        BigInteger number = reader.natural();
+        if (number.bitLength() > 31) {
+            throw new FlatDecodingException("Program version number exceeds 31 bits: " + number.bitLength() + " bits");
+        }
+        return number.intValue();
     }
 
     /**

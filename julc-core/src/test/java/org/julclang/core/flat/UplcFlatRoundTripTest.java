@@ -370,6 +370,15 @@ class UplcFlatRoundTripTest {
         assertArrayEquals(flat, UplcFlatEncoder.encodeProgram(program));
     }
 
+    @Test
+    void oversizedVersionNumberIsADecodingError() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE.shiftLeft(40));
+        w.natural(BigInteger.ONE);
+        w.natural(BigInteger.ZERO);
+        assertThrows(FlatDecodingException.class, () -> UplcFlatDecoder.decodeProgram(w.toByteArray()));
+    }
+
     private static int maxIntegerBitLength(Term term) {
         return switch (term) {
             case Term.Const c when c.value() instanceof Constant.IntegerConst i -> i.value().bitLength();

@@ -3,7 +3,9 @@ package org.julclang.core.flat;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -235,6 +237,46 @@ class FlatWriterReaderTest {
         assertEquals(BigInteger.ONE.shiftLeft(2047), r.integer());
         assertEquals(BigInteger.ONE.shiftLeft(4096).negate(), r.integer());
         assertEquals(BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE), r.natural());
+    }
+
+    /** Random sizes up to 4000 bits: the reader matches the writer and a direct group-by-group decode. */
+    @Test
+    void randomVli7RoundTripsMatchGroupByGroupDecode() {
+        var random = new Random(225);
+        for (int i = 0; i < 2000; i++) {
+            var value = new BigInteger(random.nextInt(4000), random);
+            var w = new FlatWriter();
+            w.natural(value);
+            byte[] bytes = w.toByteArray();
+            assertEquals(value, groupByGroup(bytes));
+            assertEquals(value, new FlatReader(bytes).natural());
+
+            var signed = random.nextBoolean() ? value : value.negate();
+            var ws = new FlatWriter();
+            ws.integer(signed);
+            assertEquals(signed, new FlatReader(ws.toByteArray()).integer());
+        }
+    }
+
+    private static BigInteger groupByGroup(byte[] bytes) {
+        var result = BigInteger.ZERO;
+        for (int i = 0; ; i++) {
+            result = result.or(BigInteger.valueOf(bytes[i] & 0x7F).shiftLeft(7 * i));
+            if ((bytes[i] & 0x80) == 0) {
+                return result;
+            }
+        }
+    }
+
+    /** Decoding is linear: a 1 MB natural (about 7.3 million bits) decodes in milliseconds, not minutes. */
+    @Test
+    void oneMegabyteNaturalDecodesQuickly() {
+        int groups = 1 << 20;
+        byte[] bytes = new byte[groups];
+        Arrays.fill(bytes, (byte) 0xFF);
+        bytes[groups - 1] = 0x7F;
+        var value = assertTimeoutPreemptively(Duration.ofSeconds(10), () -> new FlatReader(bytes).natural());
+        assertEquals(BigInteger.ONE.shiftLeft(7 * groups).subtract(BigInteger.ONE), value);
     }
 
     // --- ZigZag encoding ---
