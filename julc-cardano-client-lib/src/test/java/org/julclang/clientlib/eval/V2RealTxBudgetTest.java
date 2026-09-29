@@ -143,7 +143,7 @@ class V2RealTxBudgetTest {
 
         // Build TxInfo with PV 8 (Babbage V2)
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         // Get the redeemer: Spend[0] → IntData(36)
@@ -203,7 +203,7 @@ class V2RealTxBudgetTest {
     void dumpScriptContext_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
@@ -237,7 +237,7 @@ class V2RealTxBudgetTest {
     void verifyDatumsMap_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var datums = txInfo.datums();
@@ -266,7 +266,7 @@ class V2RealTxBudgetTest {
     void verifyFeeEncoding_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         BigInteger fee = txInfo.fee();
@@ -297,7 +297,7 @@ class V2RealTxBudgetTest {
     void verifyRedeemersEncoding_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var redeemers = txInfo.redeemers();
@@ -328,7 +328,7 @@ class V2RealTxBudgetTest {
     void verifyReferenceInputEncoding_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var refInputs = txInfo.referenceInputs();
@@ -369,7 +369,7 @@ class V2RealTxBudgetTest {
     void verifyInputOrdering_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var inputs = txInfo.inputs();
@@ -397,7 +397,7 @@ class V2RealTxBudgetTest {
     void verifyValidRange_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         Interval validRange = txInfo.validRange();
@@ -425,7 +425,7 @@ class V2RealTxBudgetTest {
     void javaVmOnly_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
@@ -463,7 +463,7 @@ class V2RealTxBudgetTest {
         var allUtxos = buildAllUtxos();
 
         // --- Build JuLC ScriptContext ---
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
         var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
@@ -678,7 +678,7 @@ class V2RealTxBudgetTest {
         var allUtxos = Set.of(inputUtxo);
 
         // --- Build JuLC ScriptContext ---
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = TestConverters.of(tx, allUtxos, 8);
         TxInfo txInfo = converter.buildTxInfo();
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
         PlutusData julcCtx = V1V2ScriptContextBuilder.build(

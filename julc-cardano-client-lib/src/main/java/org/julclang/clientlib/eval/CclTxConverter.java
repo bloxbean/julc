@@ -1,5 +1,12 @@
 package org.julclang.clientlib.eval;
 
+import co.nstant.in.cbor.model.Array;
+import co.nstant.in.cbor.model.ByteString;
+import co.nstant.in.cbor.model.DataItem;
+import co.nstant.in.cbor.model.NegativeInteger;
+import co.nstant.in.cbor.model.SimpleValue;
+import co.nstant.in.cbor.model.Special;
+import co.nstant.in.cbor.model.UnsignedInteger;
 import com.bloxbean.cardano.client.api.UtxoSupplier;
 import com.bloxbean.cardano.client.api.model.Utxo;
 import com.bloxbean.cardano.client.crypto.Blake2bUtil;
@@ -7,16 +14,14 @@ import com.bloxbean.cardano.client.plutus.spec.PlutusData;
 import com.bloxbean.cardano.client.plutus.spec.Redeemer;
 import com.bloxbean.cardano.client.transaction.spec.MultiAsset;
 import com.bloxbean.cardano.client.transaction.spec.Transaction;
-import com.bloxbean.cardano.client.transaction.spec.TransactionBody;
 import com.bloxbean.cardano.client.transaction.spec.TransactionInput;
 import com.bloxbean.cardano.client.transaction.spec.TransactionOutput;
 import com.bloxbean.cardano.client.transaction.spec.Withdrawal;
 import com.bloxbean.cardano.client.transaction.spec.cert.*;
-import com.bloxbean.cardano.client.transaction.spec.governance.VotingProcedures;
-import com.bloxbean.cardano.client.transaction.spec.governance.VotingProcedure;
 import com.bloxbean.cardano.client.transaction.spec.governance.actions.GovActionId;
 import org.julclang.clientlib.PlutusDataAdapter;
 import org.julclang.core.types.JulcArrayList;
+import org.julclang.core.cbor.PlutusDataCborDecoder;
 import org.julclang.core.types.JulcAssocMap;
 import org.julclang.core.types.JulcList;
 import org.julclang.core.types.JulcMap;
@@ -30,10 +35,15 @@ import java.util.*;
  */
 final class CclTxConverter {
 
+    private static final int BODY_TTL = 3;
+    private static final int BODY_VALIDITY_START = 8;
+    private static final int BODY_PROPOSAL_PROCEDURES = 20;
+
     private static final System.Logger LOG = System.getLogger(CclTxConverter.class.getName());
     private static volatile boolean slotConfigWarningLogged = false;
 
     private final Transaction tx;
+    private final OriginalTxBytes original;
     private final Set<Utxo> inputUtxos;
     private final UtxoSupplier utxoSupplier;
     private final SlotConfig slotConfig;
@@ -41,16 +51,17 @@ final class CclTxConverter {
 
     // Cached sorted inputs for redeemer index mapping
     private List<TransactionInput> sortedInputs;
+    private List<ProposalProcedure> proposals;
 
-    CclTxConverter(Transaction tx, Set<Utxo> inputUtxos,
-                   UtxoSupplier utxoSupplier, SlotConfig slotConfig) {
-        this(tx, inputUtxos, utxoSupplier, slotConfig, 10);
-    }
-
-    CclTxConverter(Transaction tx, Set<Utxo> inputUtxos,
+    /**
+     * @param tx      the transaction
+     * @param txCbor  the transaction's original bytes, which the ledger hashes (TxId, witness datums)
+     */
+    CclTxConverter(Transaction tx, byte[] txCbor, Set<Utxo> inputUtxos,
                    UtxoSupplier utxoSupplier, SlotConfig slotConfig,
                    int protocolMajorVersion) {
         this.tx = Objects.requireNonNull(tx);
+        this.original = new OriginalTxBytes(Objects.requireNonNull(txCbor));
         this.inputUtxos = inputUtxos != null ? inputUtxos : Set.of();
         this.utxoSupplier = utxoSupplier;
         this.slotConfig = slotConfig;
@@ -95,10 +106,11 @@ final class CclTxConverter {
         JulcList<TxCert> certificates = convertCertificatesList(body.getCerts());
 
         // 7. Withdrawals
-        JulcMap<Credential, BigInteger> withdrawals = convertWithdrawals(body.getWithdrawals());
+        JulcMap<Credential, BigInteger> withdrawals = convertWithdrawals();
 
-        // 8. Valid range
-        Interval validRange = convertValidRange(body.getValidityStartInterval(), body.getTtl());
+        // 8. Valid range (from the body's keys: CCL keeps an absent bound as slot 0)
+        Interval validRange = convertValidRange(
+                original.bodyUnsigned(BODY_VALIDITY_START), original.bodyUnsigned(BODY_TTL));
 
         // 9. Signatories
         JulcList<PubKeyHash> signatories = convertSignatories(body.getRequiredSigners());
@@ -107,26 +119,25 @@ final class CclTxConverter {
         JulcMap<ScriptPurpose, org.julclang.core.PlutusData> redeemers =
                 convertRedeemers(tx.getWitnessSet().getRedeemers());
 
-        // 11. Datums: witness set datums + inline datums from all inputs/refInputs/outputs
-        JulcMap<DatumHash, org.julclang.core.PlutusData> datums = convertAllDatums(
-                tx.getWitnessSet().getPlutusDataList(), inputs, referenceInputs, outputs);
+        // 11. Datums: the witness set's, keyed by the hash of their original bytes
+        JulcMap<DatumHash, org.julclang.core.PlutusData> datums = convertWitnessDatums();
 
-        // 12. TxId from body hash
-        TxId txId = computeTxId(body);
+        // 12. TxId: the hash of the original body bytes
+        TxId txId = TxId.of(Blake2bUtil.blake2bHash256(original.body()));
 
         // 13. Votes
-        JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> votes = convertVotingProcedures(
-                body.getVotingProcedures());
+        JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> votes = convertVotingProcedures();
 
         // 14. Proposal procedures
-        JulcList<ProposalProcedure> proposalProcedures = convertProposalProceduresList(
-                body.getProposalProcedures());
+        List<ProposalProcedure> proposalList = proposals();
+        JulcList<ProposalProcedure> proposalProcedures = proposalList.isEmpty()
+                ? JulcList.empty() : new JulcArrayList<>(proposalList);
 
         // 15-16. Treasury
         Optional<BigInteger> currentTreasuryAmount =
                 Optional.ofNullable(body.getCurrentTreasuryValue());
         Optional<BigInteger> treasuryDonation =
-                Optional.ofNullable(body.getDonation());
+                Optional.ofNullable(body.getDonation()).filter(d -> d.signum() != 0);
 
         return new TxInfo(inputs, referenceInputs, outputs, fee, mint,
                 certificates, withdrawals, validRange, signatories,
@@ -270,71 +281,63 @@ final class CclTxConverter {
         return new JulcArrayList<>(result);
     }
 
-    private JulcMap<Credential, BigInteger> convertWithdrawals(List<Withdrawal> withdrawals) {
-        if (withdrawals == null || withdrawals.isEmpty()) {
-            return JulcAssocMap.empty();
-        }
+    private JulcMap<Credential, BigInteger> convertWithdrawals() {
+        return LedgerOrder.assocMap(withdrawals());
+    }
 
-        JulcMap<Credential, BigInteger> result = JulcAssocMap.empty();
-        for (Withdrawal w : withdrawals) {
-            // Parse the reward address to extract the credential
-            var rewardAddr = new com.bloxbean.cardano.client.address.Address(w.getRewardAddress());
-            byte[] credHash = rewardAddr.getDelegationCredentialHash()
-                    .or(rewardAddr::getPaymentCredentialHash)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Cannot extract credential from reward address: " + w.getRewardAddress()));
-
-            Credential cred;
-            if (rewardAddr.isScriptHashInDelegationPart() || rewardAddr.isScriptHashInPaymentPart()) {
-                cred = new Credential.ScriptCredential(ScriptHash.of(credHash));
-            } else {
-                cred = new Credential.PubKeyCredential(PubKeyHash.of(credHash));
+    /** The withdrawals in the ledger's {@code Map AccountAddress} order (redeemer indexes and the V3 map). */
+    private LinkedHashMap<Credential, BigInteger> withdrawals() {
+        var byAccount = new TreeMap<byte[], BigInteger>(LedgerOrder.ACCOUNT);
+        List<Withdrawal> withdrawals = tx.getBody().getWithdrawals();
+        if (withdrawals != null) {
+            for (Withdrawal w : withdrawals) {
+                byAccount.put(new com.bloxbean.cardano.client.address.Address(w.getRewardAddress()).getBytes(),
+                        w.getCoin());
             }
-
-            result = result.insert(cred, w.getCoin());
         }
+        var result = new LinkedHashMap<Credential, BigInteger>();
+        byAccount.forEach((account, coin) -> result.put(accountCredential(account), coin));
         return result;
     }
 
-    private Interval convertValidRange(long validityStart, long ttl) {
-        if (slotConfig == null && (validityStart != 0 || ttl != 0) && !slotConfigWarningLogged) {
+    /** The credential of a reward account (header byte, then the 28-byte hash). */
+    private static Credential accountCredential(byte[] account) {
+        byte[] hash = Arrays.copyOfRange(account, 1, 29);
+        return (account[0] & 0x10) != 0
+                ? new Credential.ScriptCredential(ScriptHash.of(hash))
+                : new Credential.PubKeyCredential(PubKeyHash.of(hash));
+    }
+
+    /** Conway's {@code transValidityInterval}: a present bound (even slot 0) is finite. Null means absent. */
+    private Interval convertValidRange(BigInteger validityStart, BigInteger ttl) {
+        if (slotConfig == null && (validityStart != null || ttl != null) && !slotConfigWarningLogged) {
             slotConfigWarningLogged = true;
             LOG.log(System.Logger.Level.WARNING,
                     "SlotConfig is null — validity range will use raw slot numbers instead of POSIX time. "
                     + "Time-sensitive validators will likely fail. Pass a SlotConfig to JulcTransactionEvaluator.");
         }
 
-        IntervalBound from;
-        if (validityStart == 0) {
-            from = new IntervalBound(new IntervalBoundType.NegInf(), true);
-        } else {
-            BigInteger fromTime = slotConfig != null
-                    ? BigInteger.valueOf(slotConfig.slotToPosixMs(validityStart))
-                    : BigInteger.valueOf(validityStart);
-            from = new IntervalBound(new IntervalBoundType.Finite(fromTime), true);
-        }
+        IntervalBound from = validityStart == null
+                ? new IntervalBound(new IntervalBoundType.NegInf(), true)
+                : new IntervalBound(new IntervalBoundType.Finite(toTime(validityStart)), true);
 
         IntervalBound to;
-        if (ttl == 0) {
+        if (ttl == null) {
             to = new IntervalBound(new IntervalBoundType.PosInf(), true);
         } else {
-            BigInteger toTime = slotConfig != null
-                    ? BigInteger.valueOf(slotConfig.slotToPosixMs(ttl))
-                    : BigInteger.valueOf(ttl);
             // Scalus/Cardano ledger: when both bounds are set, upper is always exclusive.
             // When only TTL is set (no lower), closure depends on protocol version:
             //   PV <= 8 (V1/V2 Babbage): inclusive (true)
             //   PV >= 9 (V3 Conway+): exclusive (false)
-            boolean upperInclusive;
-            if (validityStart != 0) {
-                upperInclusive = false; // both bounds set → always exclusive
-            } else {
-                upperInclusive = protocolMajorVersion <= 8; // only TTL → PV-dependent
-            }
-            to = new IntervalBound(new IntervalBoundType.Finite(toTime), upperInclusive);
+            boolean upperInclusive = validityStart == null && protocolMajorVersion <= 8;
+            to = new IntervalBound(new IntervalBoundType.Finite(toTime(ttl)), upperInclusive);
         }
 
         return new Interval(from, to);
+    }
+
+    private BigInteger toTime(BigInteger slot) {
+        return slotConfig != null ? BigInteger.valueOf(slotConfig.slotToPosixMs(slot.longValueExact())) : slot;
     }
 
     private JulcList<PubKeyHash> convertSignatories(List<byte[]> requiredSigners) {
@@ -342,8 +345,11 @@ final class CclTxConverter {
             return JulcList.empty();
         }
 
-        var result = new ArrayList<PubKeyHash>(requiredSigners.size());
-        for (byte[] signer : requiredSigners) {
+        // A set in the ledger: hash order, no duplicates
+        var sorted = new TreeSet<byte[]>(LedgerOrder.BYTES);
+        sorted.addAll(requiredSigners);
+        var result = new ArrayList<PubKeyHash>(sorted.size());
+        for (byte[] signer : sorted) {
             result.add(PubKeyHash.of(signer));
         }
         return new JulcArrayList<>(result);
@@ -355,16 +361,16 @@ final class CclTxConverter {
             return JulcAssocMap.empty();
         }
 
-        JulcMap<ScriptPurpose, org.julclang.core.PlutusData> result = JulcAssocMap.empty();
-
+        // The ledger's Redeemers map, in (tag, index) order; a later duplicate replaces an earlier one
+        var byPointer = new TreeMap<Long, Redeemer>();
         for (Redeemer redeemer : redeemers) {
-            ScriptPurpose purpose = redeemerToScriptPurpose(redeemer);
-            org.julclang.core.PlutusData redeemerData =
-                    PlutusDataAdapter.fromClientLib(redeemer.getData());
-            result = result.insert(purpose, redeemerData);
+            byPointer.put(((long) redeemer.getTag().value << 32) | redeemer.getIndex().longValueExact(), redeemer);
         }
-
-        return result;
+        var result = new LinkedHashMap<ScriptPurpose, org.julclang.core.PlutusData>();
+        for (Redeemer redeemer : byPointer.values()) {
+            result.put(redeemerToScriptPurpose(redeemer), PlutusDataAdapter.fromClientLib(redeemer.getData()));
+        }
+        return LedgerOrder.assocMap(result);
     }
 
     ScriptPurpose redeemerToScriptPurpose(Redeemer redeemer) {
@@ -416,7 +422,7 @@ final class CclTxConverter {
                 yield new ScriptPurpose.Voting(sortedVoters.get(index));
             }
             case Proposing -> {
-                var proposals = convertProposalProcedures(tx.getBody().getProposalProcedures());
+                var proposals = proposals();
                 if (index >= proposals.size()) {
                     throw new IllegalArgumentException(
                             "Proposing redeemer index " + index + " out of range (proposals: "
@@ -430,48 +436,17 @@ final class CclTxConverter {
     // --- Governance conversion helpers ---
 
     /**
-     * Get sorted withdrawal credentials list (for Reward redeemer index mapping).
+     * Withdrawal credentials in ledger order (for Reward redeemer index mapping).
      */
     List<Credential> getSortedWithdrawalCredentials() {
-        List<Withdrawal> withdrawals = tx.getBody().getWithdrawals();
-        if (withdrawals == null || withdrawals.isEmpty()) {
-            return List.of();
-        }
-        // Sort by reward address (lexicographic) to match ledger ordering
-        var sorted = new ArrayList<>(withdrawals);
-        sorted.sort(Comparator.comparing(Withdrawal::getRewardAddress));
-        var result = new ArrayList<Credential>(sorted.size());
-        for (Withdrawal w : sorted) {
-            var rewardAddr = new com.bloxbean.cardano.client.address.Address(w.getRewardAddress());
-            byte[] credHash = rewardAddr.getDelegationCredentialHash()
-                    .or(rewardAddr::getPaymentCredentialHash)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Cannot extract credential from reward address: " + w.getRewardAddress()));
-            if (rewardAddr.isScriptHashInDelegationPart() || rewardAddr.isScriptHashInPaymentPart()) {
-                result.add(new Credential.ScriptCredential(ScriptHash.of(credHash)));
-            } else {
-                result.add(new Credential.PubKeyCredential(PubKeyHash.of(credHash)));
-            }
-        }
-        return result;
+        return new ArrayList<>(withdrawals().keySet());
     }
 
     /**
-     * Get sorted voters from voting procedures (for Voting redeemer index mapping).
+     * Voters in ledger order (for Voting redeemer index mapping).
      */
     List<Voter> getSortedVoters() {
-        var votingProcs = tx.getBody().getVotingProcedures();
-        if (votingProcs == null || votingProcs.getVoting() == null || votingProcs.getVoting().isEmpty()) {
-            return List.of();
-        }
-        // Convert and sort voters
-        var voters = new ArrayList<Voter>();
-        for (var cclVoter : votingProcs.getVoting().keySet()) {
-            voters.add(convertVoter(cclVoter));
-        }
-        // Sort by PlutusData encoding for deterministic ordering
-        voters.sort(Comparator.comparing(v -> v.toPlutusData().toString()));
-        return voters;
+        return new ArrayList<>(votes().keySet());
     }
 
     /**
@@ -510,12 +485,13 @@ final class CclTxConverter {
             case PoolRetirement pr -> new TxCert.PoolRetire(
                     PubKeyHash.of(pr.getPoolKeyHash()),
                     BigInteger.valueOf(pr.getEpoch()));
+            // PV9 (Conway bootstrap) omits these deposits: transTxCert, Conway/TxInfo.hs
             case RegCert rc -> new TxCert.RegStaking(
                     convertStakeCredential(rc.getStakeCredential()),
-                    Optional.ofNullable(rc.getCoin()));
+                    bootstrapDeposit(rc.getCoin()));
             case UnregCert uc -> new TxCert.UnRegStaking(
                     convertStakeCredential(uc.getStakeCredential()),
-                    Optional.ofNullable(uc.getCoin()));
+                    bootstrapDeposit(uc.getCoin()));
             case VoteDelegCert vdc -> new TxCert.DelegStaking(
                     convertStakeCredential(vdc.getStakeCredential()),
                     new Delegatee.Vote(convertCclDRep(vdc.getDrep())));
@@ -556,6 +532,10 @@ final class CclTxConverter {
         };
     }
 
+    private Optional<BigInteger> bootstrapDeposit(BigInteger deposit) {
+        return protocolMajorVersion == 9 ? Optional.empty() : Optional.ofNullable(deposit);
+    }
+
     private Credential convertStakeCredential(StakeCredential sc) {
         byte[] hash = sc.getHash();
         return switch (sc.getType()) {
@@ -587,21 +567,25 @@ final class CclTxConverter {
         };
     }
 
-    private JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> convertVotingProcedures(
-            VotingProcedures votingProcs) {
-        if (votingProcs == null || votingProcs.getVoting() == null || votingProcs.getVoting().isEmpty()) {
-            return JulcAssocMap.empty();
+    private JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> convertVotingProcedures() {
+        var result = new LinkedHashMap<Voter, JulcMap<GovernanceActionId, Vote>>();
+        votes().forEach((voter, actions) -> result.put(voter, LedgerOrder.assocMap(actions)));
+        return LedgerOrder.assocMap(result);
+    }
+
+    /** The voting procedures: voters and action ids in ledger order. */
+    private TreeMap<Voter, TreeMap<GovernanceActionId, Vote>> votes() {
+        var result = new TreeMap<Voter, TreeMap<GovernanceActionId, Vote>>(LedgerOrder.VOTER);
+        var votingProcs = tx.getBody().getVotingProcedures();
+        if (votingProcs == null || votingProcs.getVoting() == null) {
+            return result;
         }
-        JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> result = JulcAssocMap.empty();
         for (var entry : votingProcs.getVoting().entrySet()) {
-            Voter voter = convertVoter(entry.getKey());
-            JulcMap<GovernanceActionId, Vote> innerMap = JulcAssocMap.empty();
+            var actions = result.computeIfAbsent(convertVoter(entry.getKey()),
+                    v -> new TreeMap<>(LedgerOrder.GOV_ACTION_ID));
             for (var voteEntry : entry.getValue().entrySet()) {
-                GovernanceActionId actionId = convertGovActionId(voteEntry.getKey());
-                Vote vote = convertVote(voteEntry.getValue().getVote());
-                innerMap = innerMap.insert(actionId, vote);
+                actions.put(convertGovActionId(voteEntry.getKey()), convertVote(voteEntry.getValue().getVote()));
             }
-            result = result.insert(voter, innerMap);
         }
         return result;
     }
@@ -637,86 +621,175 @@ final class CclTxConverter {
         };
     }
 
-    List<ProposalProcedure> convertProposalProcedures(
-            List<com.bloxbean.cardano.client.transaction.spec.governance.ProposalProcedure> cclProposals) {
-        if (cclProposals == null || cclProposals.isEmpty()) {
-            return List.of();
-        }
-        var result = new ArrayList<ProposalProcedure>(cclProposals.size());
-        for (var cclProposal : cclProposals) {
-            var rewardAddr = new com.bloxbean.cardano.client.address.Address(cclProposal.getRewardAccount());
-            byte[] credHash = rewardAddr.getDelegationCredentialHash()
-                    .or(rewardAddr::getPaymentCredentialHash)
-                    .orElseThrow();
-            Credential returnAddr;
-            if (rewardAddr.isScriptHashInDelegationPart() || rewardAddr.isScriptHashInPaymentPart()) {
-                returnAddr = new Credential.ScriptCredential(ScriptHash.of(credHash));
-            } else {
-                returnAddr = new Credential.PubKeyCredential(PubKeyHash.of(credHash));
-            }
-            // Governance action is encoded as raw PlutusData since the CCL GovAction
-            // subtypes don't map 1:1 to julc GovernanceAction without significant conversion.
-            // Use InfoAction as a placeholder for now since it's the simplest variant.
-            GovernanceAction govAction = new GovernanceAction.InfoAction();
 
-            result.add(new ProposalProcedure(
-                    cclProposal.getDeposit(),
-                    returnAddr,
-                    govAction));
+    // --- Proposal procedures, from the body's original CBOR (key 20) ---
+
+    /** The proposal procedures in body order, each translated as Conway's {@code transProposal}. */
+    List<ProposalProcedure> proposals() {
+        if (proposals == null) {
+            var result = new ArrayList<ProposalProcedure>();
+            DataItem field = original.bodyField(BODY_PROPOSAL_PROCEDURES);
+            if (field != null) {
+                for (DataItem item : items(field)) {
+                    List<DataItem> p = items(item);
+                    result.add(new ProposalProcedure(unsigned(p.get(0)), accountCredential(bytes(p.get(1))),
+                            govAction(items(p.get(2)))));
+                }
+            }
+            proposals = List.copyOf(result);
         }
-        return result;
+        return proposals;
     }
 
-    private JulcList<ProposalProcedure> convertProposalProceduresList(
-            List<com.bloxbean.cardano.client.transaction.spec.governance.ProposalProcedure> cclProposals) {
-        if (cclProposals == null || cclProposals.isEmpty()) {
-            return JulcList.empty();
-        }
-        return new JulcArrayList<>(convertProposalProcedures(cclProposals));
+    /** Conway's {@code transGovAction}. */
+    private static GovernanceAction govAction(List<DataItem> a) {
+        int tag = unsigned(a.get(0)).intValueExact();
+        return switch (tag) {
+            case 0 -> new GovernanceAction.ParameterChange(prevActionId(a.get(1)),
+                    changedParameter(a.get(2)), scriptHash(a.get(3)));
+            case 1 -> {
+                List<DataItem> version = items(a.get(2));
+                yield new GovernanceAction.HardForkInitiation(prevActionId(a.get(1)),
+                        new ProtocolVersion(unsigned(version.get(0)), unsigned(version.get(1))));
+            }
+            case 2 -> {
+                var byAccount = new TreeMap<byte[], BigInteger>(LedgerOrder.ACCOUNT);
+                var withdrawals = (co.nstant.in.cbor.model.Map) a.get(1);
+                for (DataItem account : withdrawals.getKeys()) {
+                    byAccount.put(bytes(account), unsigned(withdrawals.get(account)));
+                }
+                var result = new LinkedHashMap<Credential, BigInteger>();
+                byAccount.forEach((account, coin) -> result.put(accountCredential(account), coin));
+                yield new GovernanceAction.TreasuryWithdrawals(LedgerOrder.assocMap(result), scriptHash(a.get(2)));
+            }
+            case 3 -> new GovernanceAction.NoConfidence(prevActionId(a.get(1)));
+            case 4 -> {
+                var removed = new TreeSet<Credential>(LedgerOrder.LEDGER_CREDENTIAL);
+                for (DataItem member : items(a.get(2))) {
+                    removed.add(credential(member));
+                }
+                var added = new TreeMap<Credential, BigInteger>(LedgerOrder.LEDGER_CREDENTIAL);
+                var terms = (co.nstant.in.cbor.model.Map) a.get(3);
+                for (DataItem member : terms.getKeys()) {
+                    added.put(credential(member), unsigned(terms.get(member)));
+                }
+                BigInteger[] quorum = rational(a.get(4));
+                yield new GovernanceAction.UpdateCommittee(prevActionId(a.get(1)),
+                        new JulcArrayList<>(new ArrayList<>(removed)), LedgerOrder.assocMap(added),
+                        new Rational(quorum[0], quorum[1]));
+            }
+            case 5 -> new GovernanceAction.NewConstitution(prevActionId(a.get(1)),
+                    scriptHash(items(a.get(2)).get(1)));
+            case 6 -> new GovernanceAction.InfoAction();
+            default -> throw new IllegalArgumentException("Unknown governance action tag: " + tag);
+        };
     }
 
     /**
-     * Collect datums from the transaction witness set.
-     * <p>
-     * Per the Cardano ledger specification, the txInfoData map in V1/V2/V3 ScriptContext
-     * contains ONLY witness set datums (from {@code datsTxWitsL}). Inline datums are
-     * NOT included — scripts access them through the resolved TxOut's OutputDatum field.
+     * {@code ChangedParameters}: the ledger's {@code ToPlutusData PParamsUpdate} (Conway/PParams.hs), a map from each
+     * present parameter's key to its value in ascending key order. Integers stay integers, rationals become
+     * {@code [n, d]} in lowest terms, arrays (ExUnits, prices, voting thresholds) become lists, and cost models a map
+     * in key order.
      */
-    private JulcMap<DatumHash, org.julclang.core.PlutusData> convertAllDatums(
-            List<PlutusData> witnessDatums,
-            JulcList<TxInInfo> inputs, JulcList<TxInInfo> referenceInputs,
-            JulcList<TxOut> outputs) {
-
-        JulcMap<DatumHash, org.julclang.core.PlutusData> result = JulcAssocMap.empty();
-
-        // Witness set datums only
-        if (witnessDatums != null) {
-            for (PlutusData cclDatum : witnessDatums) {
-                try {
-                    byte[] serializedBytes = com.bloxbean.cardano.client.common.cbor.CborSerializationUtil
-                            .serialize(cclDatum.serialize());
-                    byte[] datumHashBytes = Blake2bUtil.blake2bHash256(serializedBytes);
-                    DatumHash datumHash = DatumHash.of(datumHashBytes);
-                    org.julclang.core.PlutusData julcDatum =
-                            PlutusDataAdapter.fromClientLib(cclDatum);
-                    result = result.insert(datumHash, julcDatum);
-                } catch (Exception e) {
-                    throw new IllegalStateException("Failed to hash witness datum", e);
+    private static org.julclang.core.PlutusData changedParameter(DataItem item) {
+        if (isRational(item)) {
+            BigInteger[] r = rational(item);
+            return new org.julclang.core.PlutusData.ListData(List.of(
+                    new org.julclang.core.PlutusData.IntData(r[0]), new org.julclang.core.PlutusData.IntData(r[1])));
+        }
+        return switch (item) {
+            case UnsignedInteger u -> new org.julclang.core.PlutusData.IntData(u.getValue());
+            case NegativeInteger n -> new org.julclang.core.PlutusData.IntData(n.getValue());
+            case Array array -> {
+                var list = new ArrayList<org.julclang.core.PlutusData>();
+                for (DataItem element : items(array)) {
+                    list.add(changedParameter(element));
                 }
+                yield new org.julclang.core.PlutusData.ListData(list);
+            }
+            case co.nstant.in.cbor.model.Map map -> {
+                var byKey = new TreeMap<BigInteger, org.julclang.core.PlutusData>();
+                for (DataItem key : map.getKeys()) {
+                    byKey.put(integer(key), changedParameter(map.get(key)));
+                }
+                var entries = new ArrayList<org.julclang.core.PlutusData.Pair>();
+                byKey.forEach((key, value) -> entries.add(new org.julclang.core.PlutusData.Pair(
+                        new org.julclang.core.PlutusData.IntData(key), value)));
+                yield new org.julclang.core.PlutusData.MapData(entries);
+            }
+            default -> throw new IllegalArgumentException("Unexpected CBOR in a parameter update: " + item);
+        };
+    }
+
+    private static Optional<GovernanceActionId> prevActionId(DataItem item) {
+        if (SimpleValue.NULL.equals(item)) {
+            return Optional.empty();
+        }
+        List<DataItem> id = items(item);
+        return Optional.of(new GovernanceActionId(TxId.of(bytes(id.get(0))), unsigned(id.get(1))));
+    }
+
+    private static Optional<ScriptHash> scriptHash(DataItem item) {
+        return SimpleValue.NULL.equals(item)
+                ? Optional.empty() : Optional.of(ScriptHash.of(bytes(item)));
+    }
+
+    private static Credential credential(DataItem item) {
+        List<DataItem> c = items(item);
+        byte[] hash = bytes(c.get(1));
+        return unsigned(c.get(0)).signum() == 0
+                ? new Credential.PubKeyCredential(PubKeyHash.of(hash))
+                : new Credential.ScriptCredential(ScriptHash.of(hash));
+    }
+
+    private static boolean isRational(DataItem item) {
+        return item instanceof Array && item.getTag() != null && item.getTag().getValue() == 30;
+    }
+
+    /** A tag-30 rational in lowest terms (Haskell {@code Rational} is always normalised). */
+    private static BigInteger[] rational(DataItem item) {
+        List<DataItem> r = items(item);
+        BigInteger n = integer(r.get(0));
+        BigInteger d = integer(r.get(1));
+        BigInteger gcd = n.gcd(d);
+        return gcd.signum() == 0 ? new BigInteger[]{n, d} : new BigInteger[]{n.divide(gcd), d.divide(gcd)};
+    }
+
+    private static List<DataItem> items(DataItem item) {
+        var result = new ArrayList<DataItem>();
+        for (DataItem element : ((Array) item).getDataItems()) {
+            if (!Special.BREAK.equals(element)) {
+                result.add(element);
             }
         }
-
         return result;
     }
 
-    private TxId computeTxId(TransactionBody body) {
-        try {
-            byte[] bodyBytes = com.bloxbean.cardano.client.common.cbor.CborSerializationUtil
-                    .serialize(body.serialize());
-            byte[] hash = Blake2bUtil.blake2bHash256(bodyBytes);
-            return TxId.of(hash);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to compute TxId", e);
+    private static BigInteger unsigned(DataItem item) {
+        return ((UnsignedInteger) item).getValue();
+    }
+
+    private static BigInteger integer(DataItem item) {
+        return item instanceof NegativeInteger n ? n.getValue() : unsigned(item);
+    }
+
+    private static byte[] bytes(DataItem item) {
+        return ((ByteString) item).getBytes();
+    }
+
+    // --- Witness datums, from the original bytes ---
+
+    /**
+     * The witness datums keyed by the hash of their original bytes ({@code TxDats}, {@code hashData}), in hash
+     * order. Only witness datums: scripts read inline datums through the resolved outputs.
+     */
+    private JulcMap<DatumHash, org.julclang.core.PlutusData> convertWitnessDatums() {
+        var byHash = new TreeMap<byte[], org.julclang.core.PlutusData>(LedgerOrder.BYTES);
+        for (byte[] datum : original.witnessDatums()) {
+            byHash.putIfAbsent(Blake2bUtil.blake2bHash256(datum), PlutusDataCborDecoder.decode(datum));
         }
+        var result = new LinkedHashMap<DatumHash, org.julclang.core.PlutusData>();
+        byHash.forEach((hash, datum) -> result.put(DatumHash.of(hash), datum));
+        return LedgerOrder.assocMap(result);
     }
 }

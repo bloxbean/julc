@@ -14,7 +14,9 @@ import com.bloxbean.cardano.client.transaction.spec.Transaction;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.clientlib.JulcScriptLoader;
 import org.julclang.clientlib.PlutusDataAdapter;
+import org.julclang.core.Constant;
 import org.julclang.core.Program;
+import org.julclang.core.Term;
 import org.julclang.core.source.SourceMap;
 import org.julclang.ledger.*;
 import org.julclang.vm.EvalResult;
@@ -205,10 +207,11 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             int pvMajor = params.getProtocolMajorVer() != null ? params.getProtocolMajorVer() : 10;
 
             // 4. Build TxInfo (pass pvMajor for PV-dependent interval encoding)
-            var converter = new CclTxConverter(tx, inputUtxos, utxoSupplier, slotConfig, pvMajor);
+            var converter = new CclTxConverter(tx, cbor, inputUtxos, utxoSupplier, slotConfig, pvMajor);
             TxInfo txInfo = converter.buildTxInfo();
 
-            // 5. Get max script budget
+            // 5. Budget: every script may use up to the transaction maximum. This evaluator estimates ExUnits, so
+            //    the transaction's declared redeemer ExUnits (which the ledger enforces) are placeholders here.
             ExBudget maxBudget = new ExBudget(
                     Long.parseLong(params.getMaxTxExSteps()),
                     Long.parseLong(params.getMaxTxExMem()));
@@ -234,7 +237,7 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                 try {
                     // a. Resolve script (with language version detection)
                     ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
-                    String scriptHash = resolveScriptHash(purpose, inputUtxos, converter);
+                    String scriptHash = resolveScriptHash(purpose, inputUtxos);
                     ResolvedScript resolved = resolveScript(
                             tx, scriptHash, inputUtxos, pvMajor, pvMinor);
 
@@ -245,7 +248,7 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     List<org.julclang.core.PlutusData> args;
                     if (resolved.language() == PlutusLanguage.PLUTUS_V3) {
                         // V3: single ScriptContext argument
-                        ScriptInfo scriptInfo = buildScriptInfo(purpose, redeemer, txInfo);
+                        ScriptInfo scriptInfo = buildScriptInfo(purpose, txInfo);
                         ScriptContext scriptContext = new ScriptContext(txInfo, redeemerData, scriptInfo);
                         args = List.of(scriptContext.toPlutusData());
                     } else {
@@ -254,9 +257,12 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                                 V1V2ScriptContextBuilder.build(resolved.language(), txInfo,
                                         purpose, converter);
                         if (purpose instanceof ScriptPurpose.Spending(var txOutRef)) {
-                            // Spending: datum is the first argument
-                            org.julclang.core.PlutusData datumData =
-                                    resolveDatumForSpending(txOutRef, txInfo);
+                            // Spending: datum is the first argument. The ledger rejects a V1/V2 spend without
+                            // one (UnspendableUTxONoDatumHash / MissingRequiredDatums) before running scripts.
+                            org.julclang.core.PlutusData datumData = spendingDatum(txOutRef, txInfo)
+                                    .orElseThrow(() -> new IllegalStateException("No datum for the "
+                                            + resolved.language() + " spend of " + txOutRef
+                                            + ": the output has no datum, or its datum hash has no witness datum"));
                             args = List.of(datumData, redeemerData, scriptContextData);
                         } else {
                             args = List.of(redeemerData, scriptContextData);
@@ -287,6 +293,15 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     switch (evalResult) {
                         case EvalResult.Success success -> {
                             ExBudget consumed = success.consumed();
+                            if (resolved.language() == PlutusLanguage.PLUTUS_V3
+                                    && !(success.resultTerm() instanceof Term.Const(Constant.UnitConst _))) {
+                                // plutus-ledger-api (Common/Eval.hs): a V3 script must return ()
+                                lastTraces = collectedTraces != null
+                                        ? Collections.unmodifiableMap(collectedTraces) : Map.of();
+                                return Result.error("Script evaluation failed for " + redeemer.getTag() + "["
+                                        + redeemer.getIndex() + "]: InvalidReturnValue: a PlutusV3 script must "
+                                        + "return (), got " + success.resultTerm());
+                            }
                             results.add(EvaluationResult.builder()
                                     .redeemerTag(redeemer.getTag())
                                     .index(redeemer.getIndex().intValue())
@@ -342,32 +357,27 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         return provider;
     }
 
-    private org.julclang.core.PlutusData resolveDatumForSpending(
-            TxOutRef txOutRef, TxInfo txInfo) {
-        for (int i = 0; i < txInfo.inputs().size(); i++) {
-            TxInInfo input = txInfo.inputs().get(i);
+    /**
+     * The ledger's {@code getSpendingDatum}: the spent output's inline datum, else the witness datum of its datum
+     * hash, else none.
+     */
+    private static Optional<org.julclang.core.PlutusData> spendingDatum(TxOutRef txOutRef, TxInfo txInfo) {
+        for (TxInInfo input : txInfo.inputs()) {
             if (input.outRef().equals(txOutRef)) {
-                OutputDatum od = input.resolved().datum();
-                if (od instanceof OutputDatum.OutputDatumInline inlineDatum) {
-                    return inlineDatum.datum();
-                } else if (od instanceof OutputDatum.OutputDatumHash datumHashOd) {
-                    var d = txInfo.datums().get(datumHashOd.hash());
-                    if (d != null) {
-                        return d;
-                    }
-                }
-                break;
+                return switch (input.resolved().datum()) {
+                    case OutputDatum.OutputDatumInline(var datum) -> Optional.of(datum);
+                    case OutputDatum.OutputDatumHash(var hash) -> Optional.ofNullable(txInfo.datums().get(hash));
+                    case OutputDatum.NoOutputDatum _ -> Optional.empty();
+                };
             }
         }
-        // V1/V2 spending scripts require a datum; if not found, use unit
-        return new org.julclang.core.PlutusData.ConstrData(0, List.of());
+        return Optional.empty();
     }
 
     /** Resolved script: program + language version. */
     private record ResolvedScript(Program program, PlutusLanguage language) {}
 
-    private String resolveScriptHash(ScriptPurpose purpose, Set<Utxo> inputUtxos,
-                                     CclTxConverter converter) {
+    private String resolveScriptHash(ScriptPurpose purpose, Set<Utxo> inputUtxos) {
         return switch (purpose) {
             case ScriptPurpose.Spending(var txOutRef) -> {
                 // Find the UTxO being spent, get its address script hash
@@ -402,7 +412,15 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             case ScriptPurpose.Voting(var voter) ->
                     extractScriptHashFromVoter(voter);
             case ScriptPurpose.Proposing(var index, var procedure) ->
-                    extractScriptHashFromCredential(procedure.returnAddress());
+                    // The guardrails script of a ParameterChange or TreasuryWithdrawals (Conway/UTxO.hs)
+                    switch (procedure.governanceAction()) {
+                        case GovernanceAction.ParameterChange(var _, var _, var script) when script.isPresent() ->
+                                HexFormat.of().formatHex(script.get().hash());
+                        case GovernanceAction.TreasuryWithdrawals(var _, var script) when script.isPresent() ->
+                                HexFormat.of().formatHex(script.get().hash());
+                        default -> throw new IllegalStateException(
+                                "Proposal " + index + " has no guardrails script: " + procedure.governanceAction());
+                    };
         };
     }
 
@@ -503,20 +521,8 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             }
         }
 
-        // 4. Check reference input UTxOs with scriptRef
-        if (inputUtxos != null) {
-            for (Utxo utxo : inputUtxos) {
-                if (utxo.getReferenceScriptHash() != null
-                        && scriptHash.equals(utxo.getReferenceScriptHash())) {
-                    // The UTxO has the script — but we need the actual script bytes.
-                    // Reference scripts are resolved from the UTxO's scriptRef field.
-                    // For now, fall through to ScriptSupplier.
-                    break;
-                }
-            }
-        }
-
-        // 5. ScriptSupplier fallback
+        // 4. ScriptSupplier: reference scripts too, since a CCL Utxo carries only the reference script's hash
+        //    (Utxo.referenceScriptHash), not its bytes
         if (scriptSupplier != null) {
             Optional<PlutusScript> script = scriptSupplier.getScript(scriptHash);
             if (script.isPresent()) {
@@ -541,7 +547,7 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         }
 
         throw new IllegalStateException("Script not found: " + scriptHash
-                + ". Provide it in the witness set, reference inputs, or via ScriptSupplier.");
+                + ". Provide it in the witness set, or via a ScriptSupplier (reference scripts too).");
     }
 
     private Program decodeScript(
@@ -556,33 +562,10 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                                 protocolMajor, protocolMinor)));
     }
 
-    private ScriptInfo buildScriptInfo(ScriptPurpose purpose, Redeemer redeemer,
-                                       TxInfo txInfo) {
+    private static ScriptInfo buildScriptInfo(ScriptPurpose purpose, TxInfo txInfo) {
         return switch (purpose) {
-            case ScriptPurpose.Spending(var txOutRef) -> {
-                // Find the datum from the spent UTxO
-                Optional<org.julclang.core.PlutusData> datum = Optional.empty();
-
-                // Look for inline datum in the resolved input
-                for (int i = 0; i < txInfo.inputs().size(); i++) {
-                    TxInInfo input = txInfo.inputs().get(i);
-                    if (input.outRef().equals(txOutRef)) {
-                        OutputDatum od = input.resolved().datum();
-                        if (od instanceof OutputDatum.OutputDatumInline inlineDatum) {
-                            datum = Optional.of(inlineDatum.datum());
-                        } else if (od instanceof OutputDatum.OutputDatumHash datumHashOd) {
-                            // Look up in witness datums
-                            var d = txInfo.datums().get(datumHashOd.hash());
-                            if (d != null) {
-                                datum = Optional.of(d);
-                            }
-                        }
-                        break;
-                    }
-                }
-
-                yield new ScriptInfo.SpendingScript(txOutRef, datum);
-            }
+            case ScriptPurpose.Spending(var txOutRef) ->
+                    new ScriptInfo.SpendingScript(txOutRef, spendingDatum(txOutRef, txInfo));
             case ScriptPurpose.Minting(var policyId) ->
                     new ScriptInfo.MintingScript(policyId);
             case ScriptPurpose.Rewarding(var credential) ->
