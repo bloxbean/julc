@@ -44,7 +44,8 @@ public final class DataSerializer {
             // General encoding: tag 102, then [tag, fields]
             writeTag(out, 102);
             writeMajorArg(out, 4, 2); // outer definite array of 2: [tag, fields]
-            writeInteger(out, tag);
+            // plutus encodes this tag with cborg's encodeInteger, whose bignum bytes are never chunked
+            writeInteger(out, tag, false);
             writeDataArray(out, cd.fields());
             return;
         }
@@ -81,20 +82,30 @@ public final class DataSerializer {
     }
 
     private static void writeIntData(ByteArrayOutputStream out, PlutusData.IntData id) {
-        writeInteger(out, id.value());
+        writeInteger(out, id.value(), true);
     }
 
-    private static void writeInteger(ByteArrayOutputStream out, BigInteger value) {
+    /**
+     * Write an integer as a CBOR integer, or as a tag 2/3 bignum once it is outside the 64-bit range.
+     * With {@code chunkBignum}, the bignum's bytes go through {@link #writeBoundedBytes} as plutus-core's
+     * {@code encodeInteger} does for {@code I} data; without it they are one definite byte string, as
+     * cborg's {@code encodeInteger} writes them.
+     */
+    private static void writeInteger(ByteArrayOutputStream out, BigInteger value, boolean chunkBignum) {
         if (value.signum() >= 0) {
-            writeBigUnsigned(out, 0, value);
+            writeBigUnsigned(out, 0, value, chunkBignum);
         } else {
             // CBOR negative: -1 - n
-            writeBigUnsigned(out, 1, value.negate().subtract(BigInteger.ONE));
+            writeBigUnsigned(out, 1, value.negate().subtract(BigInteger.ONE), chunkBignum);
         }
     }
 
     private static void writeBytesData(ByteArrayOutputStream out, PlutusData.BytesData bd) {
-        byte[] bytes = bd.value();
+        writeBoundedBytes(out, bd.value());
+    }
+
+    /** plutus-core {@code encodeBs}: a byte string over 64 bytes is an indefinite string of 64-byte chunks. */
+    private static void writeBoundedBytes(ByteArrayOutputStream out, byte[] bytes) {
         if (bytes.length <= 64) {
             writeMajorArg(out, 2, bytes.length);
             out.write(bytes, 0, bytes.length);
@@ -154,7 +165,8 @@ public final class DataSerializer {
         }
     }
 
-    private static void writeBigUnsigned(ByteArrayOutputStream out, int major, BigInteger value) {
+    private static void writeBigUnsigned(
+            ByteArrayOutputStream out, int major, BigInteger value, boolean chunkBignum) {
         if (value.bitLength() <= 64) {
             writeUnsignedWord64(out, major, value.longValue());
         } else {
@@ -167,8 +179,12 @@ public final class DataSerializer {
                 System.arraycopy(bytes, 1, trimmed, 0, trimmed.length);
                 bytes = trimmed;
             }
-            writeMajorArg(out, 2, bytes.length);
-            out.write(bytes, 0, bytes.length);
+            if (chunkBignum) {
+                writeBoundedBytes(out, bytes);
+            } else {
+                writeMajorArg(out, 2, bytes.length);
+                out.write(bytes, 0, bytes.length);
+            }
         }
     }
 }
