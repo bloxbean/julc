@@ -250,9 +250,10 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                         ScriptContext scriptContext = new ScriptContext(txInfo, redeemerData, scriptInfo);
                         args = List.of(scriptContext.toPlutusData());
                     } else {
-                        // V1/V2: [datum, redeemer, scriptContext] or [redeemer, scriptContext]
+                        // V1/V2: [datum, redeemer, scriptContext] or [redeemer, scriptContext]; a transaction the
+                        // ledger cannot translate for the language fails with its BadTranslationException
                         org.julclang.core.PlutusData scriptContextData =
-                                V1V2ScriptContextBuilder.build(resolved.language(), txInfo, purpose);
+                                V1V2ScriptContextBuilder.build(resolved.language(), txInfo, purpose, pvMajor);
                         if (purpose instanceof ScriptPurpose.Spending(var txOutRef)) {
                             // Spending: datum is the first argument. The ledger rejects a V1/V2 spend without
                             // one (UnspendableUTxONoDatumHash / MissingRequiredDatums) before running scripts.

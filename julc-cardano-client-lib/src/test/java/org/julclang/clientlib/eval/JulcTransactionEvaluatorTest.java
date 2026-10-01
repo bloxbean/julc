@@ -956,6 +956,119 @@ class JulcTransactionEvaluatorTest {
         assertTrue(result.isSuccessful(), "Should succeed with TTL: " + result.getResponse());
     }
 
+    // --- Translation errors: the ledger's BadTranslation fails the evaluation before any script runs ---
+
+    private static final String BYRON_ADDR = "Ae2tdPwUPEZFRbyhz3cpfC2CumGzNkFBN2L42rcUc2yjQpEkxDbkPodpMAi";
+
+    @Test
+    void evaluateTx_v1_inlineDatumInput_failsInlineDatumsNotSupported() throws Exception {
+        var v1 = PlutusV1Script.builder().cborHex(JulcScriptAdapter.fromProgram(Program.plutusV1(
+                Term.lam("d", Term.lam("r", Term.lam("ctx", Term.const_(Constant.unit())))))).getCborHex()).build();
+        String txHash = "aa".repeat(32);
+        Utxo input = scriptUtxo(txHash, HexFormat.of().formatHex(v1.getScriptHash()));
+
+        var tx = spendTx(txHash, TransactionBody.builder(), TransactionWitnessSet.builder()
+                .plutusV1Scripts(List.of(v1)));
+        var result = createEvaluator(null).evaluateTx(tx.serialize(), Set.of(input));
+
+        assertFalse(result.isSuccessful());
+        assertTrue(result.getResponse().contains(
+                "BadTranslation InlineDatumsNotSupported: Input: " + txHash + "#0"), result.getResponse());
+    }
+
+    @Test
+    void evaluateTx_v2_treasuryDonation_failsTreasuryDonationFieldNotSupported() throws Exception {
+        String txHash = "aa".repeat(32);
+        Utxo input = scriptUtxo(txHash, v2AlwaysTrueHash);
+
+        var tx = spendTx(txHash, TransactionBody.builder().donation(BigInteger.valueOf(5)),
+                TransactionWitnessSet.builder().plutusV2Scripts(List.of(v2AlwaysTrueScript)));
+        var result = createEvaluator(null).evaluateTx(tx.serialize(), Set.of(input));
+
+        assertFalse(result.isSuccessful());
+        assertTrue(result.getResponse().contains("BadTranslation TreasuryDonationFieldNotSupported: 5"),
+                result.getResponse());
+    }
+
+    @Test
+    void evaluateTx_byronInputOrOutput_failsByronTxOutInContext() throws Exception {
+        // Every Plutus language from Babbage: transTxOutV2 / transTxOutV1 (Babbage/TxInfo.hs:124-125, :152-153)
+        String txHash = "ab".repeat(32);
+        Utxo byronInput = Utxo.builder().txHash(txHash).outputIndex(1).address(BYRON_ADDR)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(10_000_000)))).build();
+        var input = mintTx(List.of(new TransactionInput(txHash, 0), new TransactionInput(txHash, 1)), List.of());
+        var inputResult = createEvaluator(null).evaluateTx(input.serialize(), Set.of(dummyUtxo(txHash), byronInput));
+        assertFalse(inputResult.isSuccessful());
+        assertTrue(inputResult.getResponse().contains(
+                "BadTranslation ByronTxOutInContext: Input: " + txHash + "#1"), inputResult.getResponse());
+
+        var output = mintTx(List.of(new TransactionInput(txHash, 0)), List.of(
+                new TransactionOutput(DUMMY_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of())),
+                new TransactionOutput(BYRON_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of()))));
+        var outputResult = createEvaluator(null).evaluateTx(output.serialize(), Set.of(dummyUtxo(txHash)));
+        assertFalse(outputResult.isSuccessful());
+        assertTrue(outputResult.getResponse().contains("BadTranslation ByronTxOutInContext: Output: 1"),
+                outputResult.getResponse());
+    }
+
+    @Test
+    void byronInputsAndOutputs_beforeBabbage_areLeftOut() {
+        // Alonzo's PlutusV1 context filters Byron inputs and outputs out (Alonzo/Plutus/TxInfo.hs:145-149)
+        String txHash = "ab".repeat(32);
+        Utxo byronInput = Utxo.builder().txHash(txHash).outputIndex(1).address(BYRON_ADDR)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(10_000_000)))).build();
+        var tx = mintTx(List.of(new TransactionInput(txHash, 0), new TransactionInput(txHash, 1)), List.of(
+                new TransactionOutput(BYRON_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of())),
+                new TransactionOutput(DUMMY_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of()))));
+
+        var txInfo = TestConverters.of(tx, Set.of(dummyUtxo(txHash), byronInput), 6).buildTxInfo();
+
+        assertEquals(1, txInfo.inputs().size());
+        assertEquals(BigInteger.ZERO, txInfo.inputs().head().outRef().index());
+        assertEquals(1, txInfo.outputs().size());
+        assertEquals(BigInteger.valueOf(2_000_000), txInfo.outputs().head().value().lovelaceOf());
+    }
+
+    /** A UTxO at {@code scriptHash}'s address with an inline datum (CBOR integer 8). */
+    private static Utxo scriptUtxo(String txHash, String scriptHash) {
+        return Utxo.builder().txHash(txHash).outputIndex(0).address(buildScriptAddress(scriptHash))
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000)))).inlineDatum("08").build();
+    }
+
+    private static Utxo dummyUtxo(String txHash) {
+        return Utxo.builder().txHash(txHash).outputIndex(0).address(DUMMY_ADDR)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(10_000_000)))).build();
+    }
+
+    /** A spend of {@code txHash#0} with a Spend redeemer and the given body fields and scripts. */
+    private static Transaction spendTx(String txHash, TransactionBody.TransactionBodyBuilder body,
+                                       TransactionWitnessSet.TransactionWitnessSetBuilder witnesses) {
+        return Transaction.builder()
+                .body(body.inputs(List.of(new TransactionInput(txHash, 0))).outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000)).build())
+                .witnessSet(witnesses.redeemers(List.of(redeemer(RedeemerTag.Spend))).build())
+                .build();
+    }
+
+    /** A PlutusV3 always-true mint of one token, spending {@code inputs} into {@code outputs}. */
+    private static Transaction mintTx(List<TransactionInput> inputs, List<TransactionOutput> outputs) {
+        var multiAsset = new MultiAsset();
+        multiAsset.setPolicyId(alwaysTrueHash);
+        multiAsset.setAssets(List.of(new Asset("746f6b656e", BigInteger.ONE)));
+        return Transaction.builder()
+                .body(TransactionBody.builder().inputs(inputs).outputs(outputs)
+                        .fee(BigInteger.valueOf(200_000)).mint(List.of(multiAsset)).build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer(RedeemerTag.Mint)))
+                        .plutusV3Scripts(List.of(alwaysTrueScript)).build())
+                .build();
+    }
+
+    private static Redeemer redeemer(RedeemerTag tag) {
+        return Redeemer.builder().tag(tag).index(BigInteger.ZERO).data(new BigIntPlutusData(BigInteger.valueOf(36)))
+                .exUnits(ExUnits.builder().mem(BigInteger.ZERO).steps(BigInteger.ZERO).build()).build();
+    }
+
     private static final String DUMMY_TX_HASH = "ab".repeat(32);
     private static final String DUMMY_ADDR = "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp";
 

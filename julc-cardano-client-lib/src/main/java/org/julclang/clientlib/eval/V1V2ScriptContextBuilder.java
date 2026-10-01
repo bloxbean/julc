@@ -1,13 +1,16 @@
 package org.julclang.clientlib.eval;
 
 import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
 import org.julclang.core.types.JulcMap;
 import org.julclang.ledger.*;
 import org.julclang.vm.PlutusLanguage;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Builds V1/V2 ScriptContext as raw PlutusData.
@@ -31,16 +34,41 @@ public final class V1V2ScriptContextBuilder {
 
     private V1V2ScriptContextBuilder() {}
 
+    /** The first protocol major version of the Conway era. */
+    private static final int CONWAY_PROTOCOL_MAJOR = 9;
+
     /**
-     * Build a V1 or V2 ScriptContext as raw PlutusData from a V3 {@link TxInfo}.
+     * Build a V1 or V2 ScriptContext as raw PlutusData from a V3 {@link TxInfo}, under the Conway era's rules.
      *
-     * @param language PLUTUS_V1 or PLUTUS_V2
-     * @param txInfo   the V3 TxInfo (fields will be down-converted)
-     * @param purpose  the V3 ScriptPurpose (Voting and Proposing do not exist before V3)
-     * @return the script context as PlutusData
+     * @see #build(PlutusLanguage, TxInfo, ScriptPurpose, int)
      */
     public static PlutusData build(PlutusLanguage language, TxInfo txInfo, ScriptPurpose purpose) {
-        PlutusData txInfoData = buildTxInfoData(language, txInfo);
+        return build(language, txInfo, purpose, CONWAY_PROTOCOL_MAJOR);
+    }
+
+    /**
+     * Build a V1 or V2 ScriptContext as raw PlutusData from a V3 {@link TxInfo}.
+     * <p>
+     * A transaction the ledger cannot translate into this language's context fails with the ledger's error, the
+     * first one in the order the era's {@code toPlutusTxInfo} checks them (Conway/TxInfo.hs:404-417 for V1 and
+     * :444-458 for V2; Babbage/TxInfo.hs:324-339 and :366-378): the Conway-feature guard, (before Conway) the V1
+     * reference inputs, the inputs, the reference inputs, the outputs, the certificates, and then the purposes.
+     * Not checked here: {@code TimeTranslationPastHorizon} (the validity interval's slots past the ledger's forecast
+     * horizon, which a {@link TxInfo} does not carry), and Byron addresses, which the {@link TxInfo} conversion
+     * already rejects ({@code ByronTxOutInContext}) before this guard runs, so for a transaction that also has an
+     * error Haskell checks earlier, the Byron error is the one reported (the verdict is the same). A missing input
+     * fails earlier still, in the conversion's UTxO lookup (Haskell reports {@code BadInputsUTxO} first).
+     *
+     * @param language      PLUTUS_V1 or PLUTUS_V2
+     * @param txInfo        the V3 TxInfo (fields will be down-converted)
+     * @param purpose       the V3 ScriptPurpose (Voting and Proposing do not exist before V3)
+     * @param protocolMajor the protocol major version, which selects the era's rules (Babbage before 9)
+     * @return the script context as PlutusData
+     * @throws BadTranslationException when the ledger cannot translate the transaction for this language
+     */
+    public static PlutusData build(PlutusLanguage language, TxInfo txInfo, ScriptPurpose purpose,
+                                   int protocolMajor) {
+        PlutusData txInfoData = buildTxInfoData(language, txInfo, protocolMajor < CONWAY_PROTOCOL_MAJOR);
         PlutusData scriptPurposeData = buildScriptPurposeData(purpose);
         return new PlutusData.ConstrData(0, List.of(txInfoData, scriptPurposeData));
     }
@@ -64,8 +92,9 @@ public final class V1V2ScriptContextBuilder {
                     // V1/V2: no index field, uses DCert encoding (not V3 TxCert)
                     new PlutusData.ConstrData(3, List.of(encodeDCert(cert)));
             case ScriptPurpose.Voting _, ScriptPurpose.Proposing _ ->
-                    throw new UnsupportedOperationException(
-                            "Voting/Proposing purposes are not available in V1/V2 scripts");
+                    // transPlutusPurposeV1V2 (Conway/TxInfo.hs:724-739)
+                    throw new BadTranslationException(BadTranslationException.ContextError.PlutusPurposeNotSupported,
+                            purpose.toString());
         };
     }
 
@@ -77,15 +106,24 @@ public final class V1V2ScriptContextBuilder {
      * V2 TxInfo = Constr 0 [inputs, referenceInputs, outputs, fee, mint, dcert, wdrl,
      *                        validRange, signatories, redeemers, datums, id]
      */
-    private static PlutusData buildTxInfoData(PlutusLanguage language, TxInfo txInfo) {
-        // V1/V2: TxOut encoding differs — V1 has 3 fields, V2 has 4 fields
-        DataEncoder<TxOut> txOutEncoder = language == PlutusLanguage.PLUTUS_V1
-                ? V1V2ScriptContextBuilder::txOutToDataV1
-                : V1V2ScriptContextBuilder::txOutToDataV2;
+    private static PlutusData buildTxInfoData(PlutusLanguage language, TxInfo txInfo, boolean babbage) {
+        boolean v1 = language == PlutusLanguage.PLUTUS_V1;
+        guardConwayFeatures(txInfo);
+        if (v1 && babbage && !txInfo.referenceInputs().isEmpty()) {
+            // Babbage/TxInfo.hs:329, before the validity interval
+            throw new BadTranslationException(BadTranslationException.ContextError.ReferenceInputsNotSupported,
+                    sources(txInfo.referenceInputs()));
+        }
 
-        PlutusData inputsData = encodeList(txInfo.inputs(), i ->
-                new PlutusData.ConstrData(0, List.of(encodeTxOutRef(i.outRef()), txOutEncoder.encode(i.resolved()))));
-        PlutusData outputsData = encodeList(txInfo.outputs(), txOutEncoder);
+        PlutusData inputsData = encodeList(txInfo.inputs(), i -> encodeTxInInfo(language, babbage, i));
+        // V1 leaves the reference inputs out, but Conway translates them to check them (Conway/TxInfo.hs:411)
+        PlutusData refInputsData = encodeList(txInfo.referenceInputs(), i -> encodeTxInInfo(language, babbage, i));
+        var outputs = new ArrayList<PlutusData>();
+        long index = 0;
+        for (TxOut output : txInfo.outputs()) {
+            outputs.add(encodeTxOut(language, babbage, output, "Output: " + index++));
+        }
+        PlutusData outputsData = new PlutusData.ListData(outputs);
         PlutusData feeData = encodeValue(Value.lovelace(txInfo.fee()));
         PlutusData mintData = encodeMintValue(txInfo.mint());
         // V1/V2: uses DCert encoding (not V3 TxCert)
@@ -105,15 +143,13 @@ public final class V1V2ScriptContextBuilder {
         PlutusData signatoriesData = encodeList(txInfo.signatories(), PubKeyHash::toPlutusData);
         PlutusData txIdData = encodeTxId(txInfo.id());
 
-        if (language == PlutusLanguage.PLUTUS_V1) {
+        if (v1) {
             // V1: withdrawals and datums are lists of pairs, [(k, v)], not maps (V1/Contexts.hs)
             return new PlutusData.ConstrData(0, List.of(
                     inputsData, outputsData, feeData, mintData, certsData,
                     tupleList(withdrawals), validRangeData, signatoriesData, tupleList(datums), txIdData));
         } else {
             // V2: includes referenceInputs, redeemers map, datums
-            PlutusData refInputsData = encodeList(txInfo.referenceInputs(), i ->
-                    new PlutusData.ConstrData(0, List.of(encodeTxOutRef(i.outRef()), txOutEncoder.encode(i.resolved()))));
             PlutusData redeemersData = new PlutusData.MapData(
                     encodePairs(txInfo.redeemers(), V1V2ScriptContextBuilder::buildScriptPurposeData, d -> d));
             return new PlutusData.ConstrData(0, List.of(
@@ -124,10 +160,73 @@ public final class V1V2ScriptContextBuilder {
     }
 
     /**
+     * {@code guardConwayFeaturesForPlutusV1V2} (Conway/TxInfo.hs:352-381). A transaction before Conway has none of
+     * these fields.
+     */
+    private static void guardConwayFeatures(TxInfo txInfo) {
+        if (!txInfo.votes().isEmpty()) {
+            throw new BadTranslationException(
+                    BadTranslationException.ContextError.VotingProceduresFieldNotSupported,
+                    txInfo.votes().size() + " voter(s)");
+        }
+        if (!txInfo.proposalProcedures().isEmpty()) {
+            throw new BadTranslationException(
+                    BadTranslationException.ContextError.ProposalProceduresFieldNotSupported,
+                    txInfo.proposalProcedures().size() + " proposal(s)");
+        }
+        Optional<BigInteger> donation = txInfo.treasuryDonation().filter(d -> d.signum() != 0);
+        if (donation.isPresent()) {
+            throw new BadTranslationException(
+                    BadTranslationException.ContextError.TreasuryDonationFieldNotSupported,
+                    donation.get().toString());
+        }
+        if (txInfo.currentTreasuryAmount().isPresent()) {
+            throw new BadTranslationException(
+                    BadTranslationException.ContextError.CurrentTreasuryFieldNotSupported,
+                    txInfo.currentTreasuryAmount().get().toString());
+        }
+    }
+
+    /** {@code transTxInInfoV1}/{@code transTxInInfoV2}: Constr 0 [txOutRef, txOut]. */
+    private static PlutusData encodeTxInInfo(PlutusLanguage language, boolean babbage, TxInInfo input) {
+        return new PlutusData.ConstrData(0, List.of(encodeTxOutRef(input.outRef()),
+                encodeTxOut(language, babbage, input.resolved(), source(input.outRef()))));
+    }
+
+    private static PlutusData encodeTxOut(PlutusLanguage language, boolean babbage, TxOut txOut, String source) {
+        return language == PlutusLanguage.PLUTUS_V1 ? txOutToDataV1(txOut, babbage, source) : txOutToDataV2(txOut);
+    }
+
+    /** The ledger's {@code txOutSourceToText} of an input: {@code Input: <txId>#<index>}. */
+    private static String source(TxOutRef ref) {
+        return "Input: " + txIn(ref);
+    }
+
+    private static String sources(JulcList<TxInInfo> inputs) {
+        var refs = new ArrayList<String>();
+        for (TxInInfo input : inputs) {
+            refs.add(txIn(input.outRef()));
+        }
+        return String.join(", ", refs);
+    }
+
+    /** The ledger's {@code txInToText}: {@code <txId>#<index>}. */
+    private static String txIn(TxOutRef ref) {
+        return HexFormat.of().formatHex(ref.txId().hash()) + "#" + ref.index();
+    }
+
+    /**
      * V1 TxOut = Constr 0 [address, value, maybeDatumHash] — 3 fields.
      * V1 datum is Maybe DatumHash: Nothing=Constr(1,[]), Just=Constr(0,[B hash]).
+     * <p>
+     * The ledger's {@code transTxOutV1}: an inline datum fails (Conway/TxInfo.hs:306-320), and before Conway a
+     * reference script fails first (Babbage/TxInfo.hs:110-126); from Conway a reference script is left out.
      */
-    private static PlutusData txOutToDataV1(TxOut txOut) {
+    private static PlutusData txOutToDataV1(TxOut txOut, boolean babbage, String source) {
+        if (babbage && txOut.referenceScript().isPresent()) {
+            throw new BadTranslationException(BadTranslationException.ContextError.ReferenceScriptsNotSupported,
+                    source);
+        }
         // Convert V3 OutputDatum to V1 Maybe DatumHash
         PlutusData maybeDatumHash = switch (txOut.datum()) {
             case OutputDatum.NoOutputDatum() ->
@@ -137,8 +236,8 @@ public final class V1V2ScriptContextBuilder {
                     // Just hash = Constr 0 [B hash]
                     new PlutusData.ConstrData(0, List.of(hash.toPlutusData()));
             case OutputDatum.OutputDatumInline _ ->
-                    // V1 doesn't have inline datums — encode as Nothing
-                    new PlutusData.ConstrData(1, List.of());
+                    throw new BadTranslationException(BadTranslationException.ContextError.InlineDatumsNotSupported,
+                            source);
         };
         return new PlutusData.ConstrData(0, List.of(
                 txOut.address().toPlutusData(),
@@ -181,6 +280,8 @@ public final class V1V2ScriptContextBuilder {
      *   <li>DCertGenesis                           → Constr 5 []</li>
      *   <li>DCertMir                               → Constr 6 []</li>
      * </ul>
+     * Any other certificate fails with {@code CertificateNotSupported} ({@code transTxCertV1V2},
+     * Conway/TxInfo.hs:383-397).
      */
     private static PlutusData encodeDCert(TxCert cert) {
         return switch (cert) {
@@ -197,8 +298,8 @@ public final class V1V2ScriptContextBuilder {
                     yield new PlutusData.ConstrData(2, List.of(
                             encodeStakingHash(credential), poolId.toPlutusData()));
                 } else {
-                    throw new UnsupportedOperationException(
-                            "V1/V2 DCertDelegDelegate only supports pool delegation (Delegatee.Stake), got: " + delegatee);
+                    throw new BadTranslationException(BadTranslationException.ContextError.CertificateNotSupported,
+                            cert.toString());
                 }
             }
             case TxCert.PoolRegister(var poolId, var poolVfr) ->
@@ -210,8 +311,8 @@ public final class V1V2ScriptContextBuilder {
             // Conway governance certs are not available in V1/V2
             case TxCert.RegDeleg _, TxCert.RegDRep _, TxCert.UpdateDRep _,
                  TxCert.UnRegDRep _, TxCert.AuthHotCommittee _, TxCert.ResignColdCommittee _ ->
-                    throw new UnsupportedOperationException(
-                            "Conway governance certificates are not available in V1/V2 scripts: " + cert);
+                    throw new BadTranslationException(BadTranslationException.ContextError.CertificateNotSupported,
+                            cert.toString());
         };
     }
 
