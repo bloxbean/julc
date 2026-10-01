@@ -1,27 +1,39 @@
 package org.julclang.core.cbor;
 
-import co.nstant.in.cbor.CborEncoder;
-import co.nstant.in.cbor.CborException;
-import co.nstant.in.cbor.encoder.ByteStringEncoder;
-import co.nstant.in.cbor.model.*;
+import co.nstant.in.cbor.model.Array;
+import co.nstant.in.cbor.model.ByteString;
+import co.nstant.in.cbor.model.DataItem;
 import co.nstant.in.cbor.model.Map;
+import co.nstant.in.cbor.model.NegativeInteger;
+import co.nstant.in.cbor.model.Special;
+import co.nstant.in.cbor.model.UnsignedInteger;
 import org.julclang.core.PlutusData;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
- * Encodes {@link PlutusData} to CBOR bytes following the Cardano specification.
+ * Encodes {@link PlutusData} to CBOR bytes exactly as plutus-core's {@code encodeData} does
+ * (plutus 1.65.0.0, {@code plutus-core/plutus-core/src/PlutusCore/Data.hs:146-198}).
  * <p>
- * Uses cbor-java's high-level API with Plutus-compatible map ordering
- * and chunked byte strings for data &gt; 64 bytes (CDDL: bounded_bytes).
- * <p>
- * Constructor encoding uses compact form:
+ * {@link #encode(PlutusData)} is Julc's single Plutus Data serialisation: the on-chain
+ * {@code serialiseData} builtin, FLAT Data constants and the off-chain {@code Builtins.serialiseData}
+ * all use it.
  * <ul>
- *   <li>Tags 0-6: CBOR tag 121+tag, with fields as array</li>
- *   <li>Tags 7-127: CBOR tag 1280+(tag-7), with fields as array</li>
- *   <li>Tags 128+: CBOR tag 102, with [tag, fields] array</li>
+ *   <li>Constructor tags 0-6: CBOR tag 121+tag; tags 7-127: CBOR tag 1280+(tag-7); both followed by the
+ *       fields array.</li>
+ *   <li>Any other constructor tag, negative ones included: CBOR tag 102, then a definite array
+ *       {@code [tag, fields]}. The tag is written by cborg's {@code encodeInteger}: a CBOR integer, or a
+ *       tag 2/3 bignum with one definite byte string. It is never chunked.</li>
+ *   <li>Non-empty lists and constructor fields are indefinite arrays; empty ones are definite
+ *       ({@code 0x80}).</li>
+ *   <li>Maps are definite and keep entry order and duplicate keys.</li>
+ *   <li>Integers outside the 64-bit CBOR range are tag 2/3 bignums whose bytes, like byte strings,
+ *       go through plutus {@code encodeBs}: over 64 bytes they are an indefinite string of 64-byte
+ *       chunks.</li>
  * </ul>
  */
 public final class PlutusDataCborEncoder {
@@ -31,78 +43,238 @@ public final class PlutusDataCborEncoder {
     private PlutusDataCborEncoder() {}
 
     /**
-     * Encode PlutusData to CBOR bytes.
+     * Encode PlutusData to CBOR bytes, byte for byte as plutus-core's {@code serialiseData}.
      */
     public static byte[] encode(PlutusData data) {
-        DataItem dataItem = toDataItem(data);
-        return serializeDataItem(dataItem);
+        var out = new ByteArrayOutputStream();
+        writeData(out, data);
+        return out.toByteArray();
     }
 
     /**
-     * Convert PlutusData to a cbor-java DataItem tree.
-     * Useful for interop with libraries that work with cbor-java DataItems.
+     * Convert PlutusData to a cbor-java DataItem tree, for interop with libraries that work with
+     * cbor-java DataItems.
      *
-     * <p>For maps, {@link #encode(PlutusData)} is the authoritative Plutus serialization:
-     * it preserves entry order and duplicate keys. A standard cbor-java encoder can dispatch
-     * the returned map item without a type-cast failure, but cbor-java's map model may sort
-     * entries and collapse duplicate keys.
+     * <p>This tree is not the authoritative Plutus serialisation; {@link #encode(PlutusData)} is.
+     * Serialising the tree with a standard cbor-java encoder does not give the same bytes in general:
+     * cbor-java's map model may sort entries and collapse duplicate keys, and it cannot write a byte
+     * string or bignum over 64 bytes as 64-byte chunks.
      */
     public static DataItem toDataItem(PlutusData data) {
         return switch (data) {
             case PlutusData.ConstrData c -> constrToDataItem(c);
             case PlutusData.MapData m -> mapToDataItem(m);
-            case PlutusData.ListData l -> listToDataItem(l);
-            case PlutusData.IntData i -> intToDataItem(i.value());
-            case PlutusData.BytesData b -> bytesToDataItem(b.value());
+            case PlutusData.ListData l -> dataArray(l.items());
+            case PlutusData.IntData i -> intToDataItem(i.value(), true);
+            case PlutusData.BytesData b -> chunkByteString(b.value());
         };
     }
 
-    // --- Constr ---
+    // --- Byte encoding (plutus-core encodeData) ---
+
+    private static void writeData(ByteArrayOutputStream out, PlutusData data) {
+        switch (data) {
+            case PlutusData.ConstrData cd -> writeConstrData(out, cd);
+            case PlutusData.MapData md -> writeMapData(out, md);
+            case PlutusData.ListData ld -> writeDataArray(out, ld.items());
+            case PlutusData.IntData id -> writeDataInteger(out, id.value());
+            case PlutusData.BytesData bd -> writeBoundedBytes(out, bd.value());
+        }
+    }
+
+    private static void writeConstrData(ByteArrayOutputStream out, PlutusData.ConstrData cd) {
+        BigInteger tag = cd.constructorTag();
+        if (isCompactTag0To6(tag)) {
+            writeTag(out, 121 + tag.longValueExact());
+        } else if (isCompactTag7To127(tag)) {
+            writeTag(out, 1280 + (tag.longValueExact() - 7));
+        } else {
+            writeTag(out, 102);
+            writeMajorArg(out, 4, 2); // outer definite array of 2: [tag, fields]
+            // plutus writes this tag with cborg's encodeInteger (Data.hs:152-160), not the Data one
+            writeCborgInteger(out, tag);
+        }
+        writeDataArray(out, cd.fields());
+    }
+
+    /**
+     * Write a Plutus Data array (constructor fields or list items): serialise's {@code defaultEncodeList},
+     * an indefinite array ({@code 0x9f ... 0xff}) when non-empty and a definite empty array ({@code 0x80}).
+     */
+    private static void writeDataArray(ByteArrayOutputStream out, List<PlutusData> items) {
+        if (items.isEmpty()) {
+            writeMajorArg(out, 4, 0);
+        } else {
+            out.write(0x9f);
+            for (var item : items) {
+                writeData(out, item);
+            }
+            out.write(0xff);
+        }
+    }
+
+    /**
+     * A definite map in entry order. Canonical Plutus Data keeps entry order and duplicate keys (the
+     * on-chain serialiseData folds the entry list as-is); sorting and deduplication are a
+     * transaction-body concern, not this encoder's.
+     */
+    private static void writeMapData(ByteArrayOutputStream out, PlutusData.MapData md) {
+        writeMajorArg(out, 5, md.entries().size());
+        for (var entry : md.entries()) {
+            writeData(out, entry.key());
+            writeData(out, entry.value());
+        }
+    }
+
+    /**
+     * plutus-core {@code encodeInteger} (Data.hs:170-183): outside the 64-bit range, a tag 2/3 bignum
+     * whose bytes go through {@code encodeBs}, so over 64 bytes they are chunked.
+     */
+    private static void writeDataInteger(ByteArrayOutputStream out, BigInteger value) {
+        BigInteger arg = cborArgument(value);
+        if (arg.bitLength() <= 64) {
+            writeCborgInteger(out, value);
+        } else {
+            writeTag(out, value.signum() >= 0 ? 2 : 3);
+            writeBoundedBytes(out, unsignedBytes(arg));
+        }
+    }
+
+    /**
+     * cborg {@code encodeInteger}: a CBOR integer, or a tag 2/3 bignum whose bytes are one definite
+     * byte string.
+     */
+    private static void writeCborgInteger(ByteArrayOutputStream out, BigInteger value) {
+        int major = value.signum() >= 0 ? 0 : 1;
+        BigInteger arg = cborArgument(value);
+        if (arg.bitLength() <= 64) {
+            writeUnsignedWord64(out, major, arg.longValue());
+        } else {
+            writeTag(out, major == 0 ? 2 : 3);
+            byte[] bytes = unsignedBytes(arg);
+            writeMajorArg(out, 2, bytes.length);
+            out.write(bytes, 0, bytes.length);
+        }
+    }
+
+    /**
+     * plutus-core {@code encodeBs}: a byte string over 64 bytes is an indefinite string of 64-byte
+     * chunks.
+     */
+    private static void writeBoundedBytes(ByteArrayOutputStream out, byte[] bytes) {
+        if (bytes.length <= MAX_BYTESTRING_CHUNK) {
+            writeMajorArg(out, 2, bytes.length);
+            out.write(bytes, 0, bytes.length);
+        } else {
+            out.write(0x5f);
+            for (int offset = 0; offset < bytes.length; offset += MAX_BYTESTRING_CHUNK) {
+                int chunkLen = Math.min(MAX_BYTESTRING_CHUNK, bytes.length - offset);
+                writeMajorArg(out, 2, chunkLen);
+                out.write(bytes, offset, chunkLen);
+            }
+            out.write(0xff);
+        }
+    }
+
+    private static void writeTag(ByteArrayOutputStream out, long tag) {
+        writeMajorArg(out, 6, tag);
+    }
+
+    /** A CBOR head whose argument is an unsigned Word64 held in a signed long. */
+    private static void writeUnsignedWord64(ByteArrayOutputStream out, int major, long value) {
+        if (value >= 0) {
+            writeMajorArg(out, major, value);
+            return;
+        }
+        // Negative signed longs represent unsigned values 2^63..2^64-1.
+        out.write((major << 5) | 27);
+        for (int i = 56; i >= 0; i -= 8) {
+            out.write((int) ((value >>> i) & 0xff));
+        }
+    }
+
+    /** A CBOR head with the shortest argument encoding, for a non-negative {@code arg}. */
+    private static void writeMajorArg(ByteArrayOutputStream out, int major, long arg) {
+        int majorBits = major << 5;
+        if (arg < 24) {
+            out.write(majorBits | (int) arg);
+        } else if (arg < 0x100) {
+            out.write(majorBits | 24);
+            out.write((int) arg);
+        } else if (arg < 0x10000) {
+            out.write(majorBits | 25);
+            out.write((int) (arg >> 8));
+            out.write((int) (arg & 0xff));
+        } else if (arg < 0x100000000L) {
+            out.write(majorBits | 26);
+            out.write((int) (arg >> 24));
+            out.write((int) ((arg >> 16) & 0xff));
+            out.write((int) ((arg >> 8) & 0xff));
+            out.write((int) (arg & 0xff));
+        } else {
+            out.write(majorBits | 27);
+            for (int i = 56; i >= 0; i -= 8) {
+                out.write((int) ((arg >> i) & 0xff));
+            }
+        }
+    }
+
+    private static boolean isCompactTag0To6(BigInteger tag) {
+        return tag.signum() >= 0 && tag.compareTo(BigInteger.valueOf(6)) <= 0;
+    }
+
+    private static boolean isCompactTag7To127(BigInteger tag) {
+        return tag.compareTo(BigInteger.valueOf(7)) >= 0 && tag.compareTo(BigInteger.valueOf(127)) <= 0;
+    }
+
+    /** The CBOR argument of an integer: the value itself, or {@code -1 - value} when negative. */
+    private static BigInteger cborArgument(BigInteger value) {
+        return value.signum() >= 0 ? value : value.negate().subtract(BigInteger.ONE);
+    }
+
+    /** Big-endian bytes of a non-negative value, without a leading sign byte. */
+    private static byte[] unsignedBytes(BigInteger value) {
+        byte[] bytes = value.toByteArray();
+        return bytes.length > 1 && bytes[0] == 0 ? Arrays.copyOfRange(bytes, 1, bytes.length) : bytes;
+    }
+
+    // --- DataItem tree (interop) ---
 
     private static DataItem constrToDataItem(PlutusData.ConstrData c) {
         BigInteger tag = c.constructorTag();
-        Array fieldsArray = fieldsToArray(c.fields());
-
-        if (tag.signum() >= 0 && tag.compareTo(BigInteger.valueOf(6)) <= 0) {
+        Array fieldsArray = dataArray(c.fields());
+        if (isCompactTag0To6(tag)) {
             fieldsArray.setTag(121 + tag.longValueExact());
             return fieldsArray;
-        } else if (tag.compareTo(BigInteger.valueOf(7)) >= 0
-                && tag.compareTo(BigInteger.valueOf(127)) <= 0) {
+        } else if (isCompactTag7To127(tag)) {
             fieldsArray.setTag(1280 + (tag.longValueExact() - 7));
             return fieldsArray;
         } else {
-            // General form: tag 102, [constructor_tag, fields_array]
+            // General form: tag 102, [constructor_tag, fields_array]; the tag is a cborg integer, never chunked
             Array outer = new Array();
-            outer.add(intToDataItem(tag));
+            outer.add(intToDataItem(tag, false));
             outer.add(fieldsArray);
             outer.setTag(102);
             return outer;
         }
     }
 
-    private static Array fieldsToArray(List<PlutusData> fields) {
+    private static Array dataArray(List<PlutusData> items) {
         Array array = new Array();
-        for (var field : fields) {
-            array.add(toDataItem(field));
+        for (var item : items) {
+            array.add(toDataItem(item));
         }
-        // Canonical Plutus Data encodes non-empty constructor fields as an
-        // indefinite-length array (0x9f ... 0xff); empty stays definite (0x80).
-        if (!fields.isEmpty()) {
+        if (!items.isEmpty()) {
             array.setChunked(true);
-            // cbor-java models the closing break as an explicit array item.
+            // cbor-java models the closing break as an explicit array item, which keeps the tree
+            // serialisable by a standard CborEncoder.
             array.add(Special.BREAK);
         }
         return array;
     }
 
-    // --- Map (order- and duplicate-preserving) ---
-
     private static DataItem mapToDataItem(PlutusData.MapData m) {
-        // Canonical Plutus Data preserves map entry order and duplicate keys (the on-chain
-        // serialiseData folds the entry list as-is; the ledger memoizes Plutus-data bytes and
-        // does not require canonical form). Sorting/deduplication is a transaction-body concern
-        // handled by cardano-client-lib, NOT the Plutus-data encoder. cbor-java's Map reorders
-        // and drops duplicate keys, so use an order-preserving map DataItem instead.
+        // cbor-java's Map reorders and drops duplicate keys, so use an order-preserving map DataItem.
         var keys = new ArrayList<DataItem>(m.entries().size());
         var values = new ArrayList<DataItem>(m.entries().size());
         for (var entry : m.entries()) {
@@ -112,104 +284,30 @@ public final class PlutusDataCborEncoder {
         return new OrderedMap(keys, values);
     }
 
-    // --- List ---
-
-    private static DataItem listToDataItem(PlutusData.ListData l) {
-        Array array = new Array();
-        for (var item : l.items()) {
-            array.add(toDataItem(item));
+    /** An integer item; a bignum's byte string is chunked as Data integers are, or definite as cborg's. */
+    private static DataItem intToDataItem(BigInteger value, boolean chunkBignum) {
+        BigInteger arg = cborArgument(value);
+        if (arg.bitLength() <= 64) {
+            return value.signum() >= 0 ? new UnsignedInteger(value) : new NegativeInteger(value);
         }
-        // Canonical Plutus Data encodes a non-empty list as an indefinite-length
-        // array (0x9f ... 0xff); an empty list stays definite (0x80).
-        if (!l.items().isEmpty()) {
-            array.setChunked(true);
-            // Keep the public DataItem tree serializable by a standard CborEncoder.
-            array.add(Special.BREAK);
-        }
-        return array;
+        byte[] bytes = unsignedBytes(arg);
+        DataItem bs = chunkBignum ? chunkByteString(bytes) : new ByteString(bytes);
+        bs.setTag(value.signum() >= 0 ? 2 : 3);
+        return bs;
     }
 
-    // --- Integer ---
-
-    private static DataItem intToDataItem(BigInteger value) {
-        if (value.signum() >= 0 && value.bitLength() <= 64) {
-            return new UnsignedInteger(value);
-        } else if (value.signum() < 0 && value.negate().subtract(BigInteger.ONE).bitLength() <= 64) {
-            return new NegativeInteger(value);
-        } else if (value.signum() >= 0) {
-            // Positive BigNum: tag 2 + byte string
-            byte[] bytes = bigIntToMinimalBytes(value);
-            DataItem bs = chunkByteString(bytes);
-            bs.setTag(2);
-            return bs;
-        } else {
-            // Negative BigNum: tag 3 + byte string encoding -(1+n)
-            BigInteger n = value.negate().subtract(BigInteger.ONE);
-            byte[] bytes = bigIntToMinimalBytes(n);
-            DataItem bs = chunkByteString(bytes);
-            bs.setTag(3);
-            return bs;
-        }
-    }
-
-    private static byte[] bigIntToMinimalBytes(BigInteger value) {
-        if (value.signum() == 0) {
-            return new byte[0];
-        }
-        byte[] raw = value.toByteArray();
-        if (raw.length > 1 && raw[0] == 0) {
-            var stripped = new byte[raw.length - 1];
-            System.arraycopy(raw, 1, stripped, 0, stripped.length);
-            return stripped;
-        }
-        return raw;
-    }
-
-    // --- ByteString ---
-
-    private static DataItem bytesToDataItem(byte[] value) {
-        return chunkByteString(value);
-    }
-
-    /**
-     * Create a ByteString DataItem, chunking into 64-byte segments if needed.
-     */
+    /** A ByteString item, marked chunked when plutus writes it as 64-byte chunks. */
     private static DataItem chunkByteString(byte[] value) {
-        if (value.length <= MAX_BYTESTRING_CHUNK) {
-            return new ByteString(value);
-        }
-        List<byte[]> chunks = new ArrayList<>();
-        int offset = 0;
-        while (offset < value.length) {
-            int len = Math.min(value.length - offset, MAX_BYTESTRING_CHUNK);
-            byte[] chunk = new byte[len];
-            System.arraycopy(value, offset, chunk, 0, len);
-            chunks.add(chunk);
-            offset += len;
-        }
-        return new ChunkedByteString(chunks);
+        ByteString bs = new ByteString(value);
+        bs.setChunked(value.length > MAX_BYTESTRING_CHUNK);
+        return bs;
     }
-
-    // --- Serialization ---
-
-    static byte[] serializeDataItem(DataItem dataItem) {
-        try {
-            var baos = new ByteArrayOutputStream();
-            new PlutusDataCborCborEncoder(baos).encode(dataItem);
-            return baos.toByteArray();
-        } catch (CborException e) {
-            throw new CborDecodingException("CBOR encoding failed", e);
-        }
-    }
-
-    // --- Inner classes ---
 
     /**
      * A CBOR map with two representations: the raw entry sequence used by Julc to preserve
      * order and duplicate keys, and the inherited cbor-java {@link Map} view used for interop.
      * The latter necessarily follows cbor-java semantics and therefore deduplicates equal keys.
-     * Julc encodes the raw entries as a definite-length map via
-     * {@link PlutusDataCborCborEncoder}.
+     * {@link PlutusDataCborDecoder} reads the raw entries.
      */
     static final class OrderedMap extends Map {
         private final List<DataItem> orderedKeys;
@@ -239,133 +337,6 @@ public final class PlutusDataCborEncoder {
 
         List<DataItem> orderedValues() {
             return orderedValues;
-        }
-    }
-
-    /**
-     * A ByteString that has been split into chunks for indefinite-length encoding.
-     */
-    static final class ChunkedByteString extends ByteString {
-        private final List<byte[]> chunks;
-
-        ChunkedByteString(List<byte[]> chunks) {
-            super(new byte[0]);
-            this.chunks = chunks;
-            setChunked(true);
-        }
-
-        List<byte[]> getChunks() {
-            return chunks;
-        }
-
-        @Override
-        public byte[] getBytes() {
-            int total = 0;
-            for (byte[] chunk : chunks) total += chunk.length;
-            byte[] result = new byte[total];
-            int offset = 0;
-            for (byte[] chunk : chunks) {
-                System.arraycopy(chunk, 0, result, offset, chunk.length);
-                offset += chunk.length;
-            }
-            return result;
-        }
-    }
-
-    /**
-     * Custom ByteStringEncoder that encodes ChunkedByteString as indefinite-length
-     * CBOR byte strings (0x5F ... chunks ... 0xFF).
-     */
-    private static final class ChunkedByteStringEncoder extends ByteStringEncoder {
-
-        ChunkedByteStringEncoder(CborEncoder encoder, java.io.OutputStream outputStream) {
-            super(encoder, outputStream);
-        }
-
-        @Override
-        public void encode(ByteString byteString) throws CborException {
-            if (byteString instanceof ChunkedByteString chunked) {
-                encodeTypeChunked(MajorType.BYTE_STRING);
-                for (byte[] chunk : chunked.getChunks()) {
-                    super.encode(new ByteString(chunk));
-                }
-                encoder.encode(SimpleValue.BREAK);
-            } else {
-                super.encode(byteString);
-            }
-        }
-    }
-
-    /**
-     * Custom CborEncoder that dispatches BYTE_STRING encoding to our
-     * ChunkedByteStringEncoder while delegating everything else to the parent.
-     */
-    private static final class PlutusDataCborCborEncoder extends CborEncoder {
-        private final ChunkedByteStringEncoder chunkedByteStringEncoder;
-        private final java.io.OutputStream out;
-
-        PlutusDataCborCborEncoder(java.io.OutputStream outputStream) {
-            super(outputStream);
-            this.out = outputStream;
-            this.chunkedByteStringEncoder = new ChunkedByteStringEncoder(this, outputStream);
-        }
-
-        @Override
-        public void encode(DataItem dataItem) throws CborException {
-            if (dataItem instanceof OrderedMap om) {
-                // Definite-length map (major type 5) preserving entry order and duplicate keys,
-                // recursing through this encoder so nested items are handled.
-                try {
-                    if (om.hasTag()) {
-                        encode(om.getTag());
-                    }
-                    var keys = om.orderedKeys();
-                    var values = om.orderedValues();
-                    writeTypeAndLength(5, keys.size());
-                    for (int i = 0; i < keys.size(); i++) {
-                        encode(keys.get(i));
-                        encode(values.get(i));
-                    }
-                } catch (java.io.IOException e) {
-                    throw new CborException("Failed to encode map", e);
-                }
-                return;
-            }
-            if (dataItem != null && dataItem.getMajorType() == MajorType.BYTE_STRING) {
-                // Handle tag first, then dispatch to our custom byte string encoder
-                if (dataItem.hasTag()) {
-                    encode(dataItem.getTag());
-                }
-                chunkedByteStringEncoder.encode((ByteString) dataItem);
-            } else {
-                super.encode(dataItem);
-            }
-        }
-
-        /** Write a CBOR major-type byte and length argument (as {@code encodeTypeAndLength} would). */
-        private void writeTypeAndLength(int majorType, long length) throws java.io.IOException {
-            int mt = majorType << 5;
-            if (length < 24) {
-                out.write(mt | (int) length);
-            } else if (length < 0x100L) {
-                out.write(mt | 24);
-                out.write((int) length);
-            } else if (length < 0x10000L) {
-                out.write(mt | 25);
-                out.write((int) (length >> 8));
-                out.write((int) (length & 0xff));
-            } else if (length < 0x100000000L) {
-                out.write(mt | 26);
-                out.write((int) (length >> 24));
-                out.write((int) ((length >> 16) & 0xff));
-                out.write((int) ((length >> 8) & 0xff));
-                out.write((int) (length & 0xff));
-            } else {
-                out.write(mt | 27);
-                for (int shift = 56; shift >= 0; shift -= 8) {
-                    out.write((int) ((length >> shift) & 0xff));
-                }
-            }
         }
     }
 }

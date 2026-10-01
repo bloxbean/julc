@@ -2,6 +2,8 @@ package org.julclang.core.cbor;
 
 import co.nstant.in.cbor.CborException;
 import co.nstant.in.cbor.CborEncoder;
+import co.nstant.in.cbor.model.Array;
+import co.nstant.in.cbor.model.ByteString;
 import co.nstant.in.cbor.model.DataItem;
 import co.nstant.in.cbor.model.Map;
 import org.julclang.core.PlutusData;
@@ -804,6 +806,163 @@ class PlutusDataCborTest {
                     PlutusData.integer(1)));
             assertEquals("a1d8799f07ff01", HEX.formatHex(PlutusDataCborEncoder.encode(constrKey)));
             assertRoundTrip(constrKey);
+        }
+    }
+
+    /**
+     * Golden corpus for issue #229: the bytes plutus-core's {@code encodeData} writes for each shape.
+     * <p>
+     * Each value is derived by hand from plutus 1.65.0.0 {@code PlutusCore/Data.hs:146-198} and cborg
+     * {@code Codec/CBOR/Write.hs} (a CBOR head is {@code major << 5 | argument}, with the shortest argument),
+     * then cross-checked against the oracle in {@code src/test/resources/plutus-oracle} ({@code Golden.hs},
+     * output {@code golden.tsv}): that {@code encodeData} and {@code decodeData}, copied verbatim, run on the
+     * real cborg 0.2.8.0 and serialise 0.2.6.0. The decode column is the {@code decodeData} verdict: a tag 102
+     * constructor tag must be a Word64 ({@code Data.hs:296-299}), so a bignum or negative tag encodes but does
+     * not decode.
+     */
+    @Nested
+    class PlutusEncodeDataGoldenCorpus {
+
+        private static final BigInteger WORD64_MAX = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE);
+
+        record Case(String name, PlutusData data, String hex, boolean plutusDecodes) {}
+
+        private static BigInteger pow2(int exponent) {
+            return BigInteger.ONE.shiftLeft(exponent);
+        }
+
+        private static PlutusData constr(BigInteger tag, PlutusData... fields) {
+            return new PlutusData.ConstrData(tag, List.of(fields));
+        }
+
+        private static PlutusData integer(BigInteger value) {
+            return PlutusData.integer(value);
+        }
+
+        /** Bytes 0, 1, ..., n-1. */
+        private static byte[] sequence(int n) {
+            var bytes = new byte[n];
+            for (int i = 0; i < n; i++) bytes[i] = (byte) i;
+            return bytes;
+        }
+
+        private static String hexSequence(int from, int to) {
+            return HEX.formatHex(Arrays.copyOfRange(sequence(to), from, to));
+        }
+
+        private static List<Case> corpus() {
+            // 2^528 is 67 bytes, 01 then 66 zeros: two chunks, 64 bytes (5840) and 3 bytes (43)
+            String chunked2Pow528 = "c25f5840" + "01" + "00".repeat(63) + "43" + "00".repeat(3) + "ff";
+            return List.of(
+                    // I: in the 64-bit CBOR range cborg writes a plain integer (major 0, or major 1 with -1-n)
+                    new Case("int 0", integer(BigInteger.ZERO), "00", true),
+                    new Case("int 2^63", integer(pow2(63)), "1b8000000000000000", true),
+                    new Case("int -2^63", integer(pow2(63).negate()), "3b7fffffffffffffff", true),
+                    new Case("int 2^64-1", integer(WORD64_MAX), "1b" + "ff".repeat(8), true),
+                    new Case("int -(2^64-1)", integer(WORD64_MAX.negate()), "3b" + "ff".repeat(7) + "fe", true),
+                    new Case("int -2^64", integer(pow2(64).negate()), "3b" + "ff".repeat(8), true),
+                    // Outside it, tag 2 (c2) or tag 3 (c3, of -1-n) and encodeBs of the minimal big-endian bytes
+                    new Case("int 2^64", integer(pow2(64)), "c249" + "01" + "00".repeat(8), true),
+                    new Case("int -2^64-1", integer(pow2(64).negate().subtract(BigInteger.ONE)),
+                            "c349" + "01" + "00".repeat(8), true),
+                    new Case("int 2^511", integer(pow2(511)), "c25840" + "80" + "00".repeat(63), true),
+                    new Case("int 2^512", integer(pow2(512)),
+                            "c25f5840" + "01" + "00".repeat(63) + "4100" + "ff", true),
+                    new Case("int 2^528", integer(pow2(528)), chunked2Pow528, true),
+                    // -2^528 is stored as 2^528 - 1: 66 bytes of ff
+                    new Case("int -2^528", integer(pow2(528).negate()),
+                            "c35f5840" + "ff".repeat(64) + "42ffff" + "ff", true),
+                    // B: encodeBs, definite up to 64 bytes, then 5f, 64-byte chunks, ff
+                    new Case("bytes 0", PlutusData.bytes(new byte[0]), "40", true),
+                    new Case("bytes 64", PlutusData.bytes(sequence(64)), "5840" + hexSequence(0, 64), true),
+                    new Case("bytes 65", PlutusData.bytes(sequence(65)),
+                            "5f5840" + hexSequence(0, 64) + "4140" + "ff", true),
+                    new Case("bytes 128", PlutusData.bytes(sequence(128)),
+                            "5f5840" + hexSequence(0, 64) + "5840" + hexSequence(64, 128) + "ff", true),
+                    // Constr: tag 121+i (d879..d87f) for 0-6, tag 1280+(i-7) (d90500..d90578) for 7-127
+                    new Case("constr 0", constr(BigInteger.ZERO), "d87980", true),
+                    new Case("constr 6", constr(BigInteger.valueOf(6), PlutusData.integer(1)), "d87f9f01ff", true),
+                    new Case("constr 7", constr(BigInteger.valueOf(7), PlutusData.integer(1)), "d905009f01ff", true),
+                    new Case("constr 127", constr(BigInteger.valueOf(127)), "d9057880", true),
+                    // Otherwise tag 102 (d866), a definite pair (82), the tag, then the fields
+                    new Case("constr 128", constr(BigInteger.valueOf(128), PlutusData.integer(5)),
+                            "d8668218809f05ff", true),
+                    new Case("constr 2^64-1", constr(WORD64_MAX), "d866821b" + "ff".repeat(8) + "80", true),
+                    // Beyond Word64 the tag is cborg encodeInteger: one definite byte string, never chunked
+                    new Case("constr 2^64", constr(pow2(64)), "d86682c249" + "01" + "00".repeat(8) + "80", false),
+                    new Case("constr 2^511", constr(pow2(511)), "d86682c25840" + "80" + "00".repeat(63) + "80", false),
+                    new Case("constr 2^512", constr(pow2(512), PlutusData.integer(1)),
+                            "d86682c25841" + "01" + "00".repeat(64) + "9f01ff", false),
+                    new Case("constr 2^600", constr(pow2(600)), "d86682c2584c" + "01" + "00".repeat(75) + "80", false),
+                    // A negative tag is not in 0..127, so it takes the general form too (Data.hs:151-160)
+                    new Case("constr -1", constr(BigInteger.ONE.negate(), PlutusData.integer(1)),
+                            "d86682209f01ff", false),
+                    new Case("constr -2^64", constr(pow2(64).negate()), "d866823b" + "ff".repeat(8) + "80", false),
+                    new Case("constr -2^600", constr(pow2(600).negate()),
+                            "d86682c3584b" + "ff".repeat(75) + "80", false),
+                    // List: serialise defaultEncodeList, 80 when empty, else 9f ... ff
+                    new Case("list empty", PlutusData.list(), "80", true),
+                    new Case("list [1,2]", PlutusData.list(PlutusData.integer(1), PlutusData.integer(2)),
+                            "9f0102ff", true),
+                    // Map: definite (a0+n), entries in order, duplicates kept
+                    new Case("map empty", PlutusData.map(), "a0", true),
+                    new Case("map duplicate keys", PlutusData.map(
+                            new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                            new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(20))), "a2010a0114", true),
+                    new Case("map unsorted", PlutusData.map(
+                            new PlutusData.Pair(PlutusData.integer(3), PlutusData.integer(30)),
+                            new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10))), "a203181e010a", true),
+                    new Case("nested", constr(BigInteger.ZERO,
+                                    PlutusData.list(PlutusData.constr(1, PlutusData.integer(9))),
+                                    PlutusData.bytes(new byte[]{(byte) 0xab}),
+                                    PlutusData.map(new PlutusData.Pair(
+                                            PlutusData.bytes(sequence(65)), PlutusData.list(integer(pow2(528))))),
+                                    constr(pow2(600), PlutusData.map(), PlutusData.list())),
+                            "d8799f" + "9fd87a9f09ffff" + "41ab"
+                                    + "a1" + "5f5840" + hexSequence(0, 64) + "4140" + "ff"
+                                    + "9f" + chunked2Pow528 + "ff"
+                                    + "d86682c2584c" + "01" + "00".repeat(75) + "9fa080ff"
+                                    + "ff",
+                            false));
+        }
+
+        @Test
+        void encodeMatchesPlutus() {
+            for (var c : corpus()) {
+                assertEquals(c.hex(), HEX.formatHex(PlutusDataCborEncoder.encode(c.data())), c.name());
+            }
+        }
+
+        @Test
+        void decodeAcceptsAndRejectsTheCorpusAsPlutusDoes() {
+            for (var c : corpus()) {
+                byte[] bytes = HEX.parseHex(c.hex());
+                if (c.plutusDecodes()) {
+                    assertEquals(c.data(), PlutusDataCborDecoder.decode(bytes), c.name());
+                } else {
+                    assertThrows(CborDecodingException.class, () -> PlutusDataCborDecoder.decode(bytes), c.name());
+                }
+            }
+        }
+
+        @Test
+        void toDataItemRoundTrips() {
+            for (var c : corpus()) {
+                if (c.plutusDecodes()) {
+                    DataItem item = PlutusDataCborEncoder.toDataItem(c.data());
+                    assertEquals(c.data(), PlutusDataCborDecoder.fromDataItem(item), c.name());
+                }
+            }
+        }
+
+        @Test
+        void toDataItemWritesAGeneralFormBignumTagAsOneDefiniteByteString() {
+            var outer = assertInstanceOf(Array.class,
+                    PlutusDataCborEncoder.toDataItem(constr(pow2(600))));
+            var tag = assertInstanceOf(ByteString.class, outer.getDataItems().getFirst());
+            assertEquals(2, tag.getTag().getValue());
+            assertFalse(tag.isChunked());
+            assertEquals(76, tag.getBytes().length);
         }
     }
 
