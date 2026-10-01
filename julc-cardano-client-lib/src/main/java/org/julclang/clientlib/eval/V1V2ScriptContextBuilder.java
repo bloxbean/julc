@@ -1,6 +1,7 @@
 package org.julclang.clientlib.eval;
 
 import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcMap;
 import org.julclang.ledger.*;
 import org.julclang.vm.PlutusLanguage;
 
@@ -39,20 +40,6 @@ public final class V1V2ScriptContextBuilder {
      * @return the script context as PlutusData
      */
     public static PlutusData build(PlutusLanguage language, TxInfo txInfo, ScriptPurpose purpose) {
-        return build(language, txInfo, purpose, null);
-    }
-
-    /**
-     * Build a V1 or V2 ScriptContext as raw PlutusData.
-     *
-     * @param language  PLUTUS_V1 or PLUTUS_V2
-     * @param txInfo    the V3 TxInfo (fields will be down-converted)
-     * @param purpose   the V3 ScriptPurpose
-     * @param converter the converter for accessing tx data
-     * @return the script context as PlutusData
-     */
-    static PlutusData build(PlutusLanguage language, TxInfo txInfo,
-                            ScriptPurpose purpose, CclTxConverter converter) {
         PlutusData txInfoData = buildTxInfoData(language, txInfo);
         PlutusData scriptPurposeData = buildScriptPurposeData(purpose);
         return new PlutusData.ConstrData(0, List.of(txInfoData, scriptPurposeData));
@@ -103,30 +90,36 @@ public final class V1V2ScriptContextBuilder {
         PlutusData mintData = encodeMintValue(txInfo.mint());
         // V1/V2: uses DCert encoding (not V3 TxCert)
         PlutusData certsData = encodeList(txInfo.certificates(), V1V2ScriptContextBuilder::encodeDCert);
-        // V1/V2: withdrawal keys are StakingCredential (not raw Credential like V3)
-        PlutusData withdrawalsData = encodeAssocMap(txInfo.withdrawals(),
-                V1V2ScriptContextBuilder::encodeStakingHash, v -> new PlutusData.IntData(v));
+        // V1/V2: withdrawal keys are StakingCredential (not raw Credential like V3), in plutus-ledger-api's
+        // Credential order (PubKeyCredential first), not the ledger's (transWithdrawals, Alonzo/Plutus/TxInfo.hs)
+        List<PlutusData.Pair> withdrawals = new ArrayList<>();
+        var credentials = new ArrayList<Credential>();
+        txInfo.withdrawals().keys().forEach(credentials::add);
+        credentials.sort(LedgerOrder.PLUTUS_CREDENTIAL);
+        for (Credential credential : credentials) {
+            withdrawals.add(new PlutusData.Pair(encodeStakingHash(credential),
+                    new PlutusData.IntData(txInfo.withdrawals().get(credential))));
+        }
+        List<PlutusData.Pair> datums = encodePairs(txInfo.datums(), DatumHash::toPlutusData, d -> d);
         PlutusData validRangeData = txInfo.validRange().toPlutusData();
         PlutusData signatoriesData = encodeList(txInfo.signatories(), PubKeyHash::toPlutusData);
         PlutusData txIdData = encodeTxId(txInfo.id());
 
         if (language == PlutusLanguage.PLUTUS_V1) {
-            // V1: datums as assoc list (hash -> data)
-            PlutusData datumsData = encodeAssocMap(txInfo.datums(),
-                    DatumHash::toPlutusData, d -> d);
+            // V1: withdrawals and datums are lists of pairs, [(k, v)], not maps (V1/Contexts.hs)
             return new PlutusData.ConstrData(0, List.of(
                     inputsData, outputsData, feeData, mintData, certsData,
-                    withdrawalsData, validRangeData, signatoriesData, datumsData, txIdData));
+                    tupleList(withdrawals), validRangeData, signatoriesData, tupleList(datums), txIdData));
         } else {
             // V2: includes referenceInputs, redeemers map, datums
             PlutusData refInputsData = encodeList(txInfo.referenceInputs(), i ->
                     new PlutusData.ConstrData(0, List.of(encodeTxOutRef(i.outRef()), txOutEncoder.encode(i.resolved()))));
-            PlutusData redeemersData = encodeRedeemersForV2(txInfo.redeemers());
-            PlutusData datumsData = encodeAssocMap(txInfo.datums(),
-                    DatumHash::toPlutusData, d -> d);
+            PlutusData redeemersData = new PlutusData.MapData(
+                    encodePairs(txInfo.redeemers(), V1V2ScriptContextBuilder::buildScriptPurposeData, d -> d));
             return new PlutusData.ConstrData(0, List.of(
                     inputsData, refInputsData, outputsData, feeData, mintData, certsData,
-                    withdrawalsData, validRangeData, signatoriesData, redeemersData, datumsData, txIdData));
+                    new PlutusData.MapData(withdrawals), validRangeData, signatoriesData, redeemersData,
+                    new PlutusData.MapData(datums), txIdData));
         }
     }
 
@@ -261,23 +254,6 @@ public final class V1V2ScriptContextBuilder {
     }
 
     /**
-     * Convert the V3 redeemers map (ScriptPurpose -> Data) to V2 format,
-     * re-encoding ScriptPurpose keys to V1/V2 encoding.
-     */
-    private static PlutusData encodeRedeemersForV2(
-            org.julclang.core.types.JulcMap<ScriptPurpose, PlutusData> redeemers) {
-        var pairs = new ArrayList<PlutusData.Pair>();
-        var keys = redeemers.keys();
-        for (long i = 0; i < redeemers.size(); i++) {
-            ScriptPurpose sp = keys.get(i);
-            PlutusData redeemerData = redeemers.get(sp);
-            // Re-encode the ScriptPurpose using V1/V2 encoding
-            pairs.add(new PlutusData.Pair(buildScriptPurposeData(sp), redeemerData));
-        }
-        return new PlutusData.MapData(pairs);
-    }
-
-    /**
      * Encode TxId as Constr 0 [B hash] for V1/V2 compatibility.
      * PlutusTx uses {@code makeIsDataIndexed ''TxId [('TxId, 0)]} which wraps the
      * hash bytes in a ConstrData, unlike other hash newtypes that use
@@ -309,18 +285,23 @@ public final class V1V2ScriptContextBuilder {
         return new PlutusData.ListData(encoded);
     }
 
-    private static <K, V> PlutusData encodeAssocMap(
-            org.julclang.core.types.JulcMap<K, V> map,
+    /** The entries of a map, in its order, keys and values encoded. */
+    private static <K, V> List<PlutusData.Pair> encodePairs(
+            JulcMap<K, V> map,
             DataEncoder<K> keyEncoder, DataEncoder<V> valueEncoder) {
         var pairs = new ArrayList<PlutusData.Pair>();
-        var keys = map.keys();
-        for (long i = 0; i < map.size(); i++) {
-            K key = keys.get(i);
-            V value = map.get(key);
-            pairs.add(new PlutusData.Pair(
-                    keyEncoder.encode(key),
-                    valueEncoder.encode(value)));
+        for (K key : map.keys()) {
+            pairs.add(new PlutusData.Pair(keyEncoder.encode(key), valueEncoder.encode(map.get(key))));
         }
-        return new PlutusData.MapData(pairs);
+        return pairs;
+    }
+
+    /** A V1 {@code [(k, v)]}: a list of 2-tuples, each {@code Constr 0 [k, v]}. */
+    private static PlutusData tupleList(List<PlutusData.Pair> pairs) {
+        var items = new ArrayList<PlutusData>(pairs.size());
+        for (PlutusData.Pair pair : pairs) {
+            items.add(new PlutusData.ConstrData(0, List.of(pair.key(), pair.value())));
+        }
+        return new PlutusData.ListData(items);
     }
 }

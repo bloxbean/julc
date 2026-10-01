@@ -143,7 +143,7 @@ class V2RealTxBudgetTest {
 
         // Build TxInfo with PV 8 (Babbage V2)
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         // Get the redeemer: Spend[0] → IntData(36)
@@ -153,7 +153,7 @@ class V2RealTxBudgetTest {
 
         // Build V2 ScriptContext
         PlutusData scriptContextData = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         // Resolve datum for spending (should be IntData(8) from inline datum)
         PlutusData datumData = resolveDatum(purpose, txInfo);
@@ -203,14 +203,14 @@ class V2RealTxBudgetTest {
     void dumpScriptContext_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
 
         PlutusData scriptContextData = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         System.out.println("=== V2 Real Tx ScriptContext PlutusData Tree ===");
         System.out.println(scriptContextData.prettyPrint());
@@ -237,7 +237,7 @@ class V2RealTxBudgetTest {
     void verifyDatumsMap_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var datums = txInfo.datums();
@@ -266,7 +266,7 @@ class V2RealTxBudgetTest {
     void verifyFeeEncoding_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         BigInteger fee = txInfo.fee();
@@ -297,7 +297,7 @@ class V2RealTxBudgetTest {
     void verifyRedeemersEncoding_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var redeemers = txInfo.redeemers();
@@ -328,7 +328,7 @@ class V2RealTxBudgetTest {
     void verifyReferenceInputEncoding_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var refInputs = txInfo.referenceInputs();
@@ -355,7 +355,7 @@ class V2RealTxBudgetTest {
         // Verify V2 TxOut encoding has 4 fields
         PlutusData refTxOutData = V1V2ScriptContextBuilder.build(
                 PlutusLanguage.PLUTUS_V2, txInfo,
-                new ScriptPurpose.Spending(refInput.outRef()), converter);
+                new ScriptPurpose.Spending(refInput.outRef()));
         System.out.println("Reference input TxOut in context:");
         System.out.println(refTxOutData.prettyPrint());
     }
@@ -369,7 +369,7 @@ class V2RealTxBudgetTest {
     void verifyInputOrdering_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var inputs = txInfo.inputs();
@@ -397,7 +397,7 @@ class V2RealTxBudgetTest {
     void verifyValidRange_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         Interval validRange = txInfo.validRange();
@@ -425,7 +425,7 @@ class V2RealTxBudgetTest {
     void javaVmOnly_realV2Transaction() throws Exception {
         Transaction tx = Transaction.deserialize(HexFormat.of().parseHex(TX_CBOR));
         var allUtxos = buildAllUtxos();
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
 
         var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
@@ -433,7 +433,7 @@ class V2RealTxBudgetTest {
         PlutusData redeemerData = PlutusDataAdapter.fromClientLib(redeemer.getData());
 
         PlutusData scriptContextData = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         PlutusData datumData = resolveDatum(purpose, txInfo);
 
@@ -463,12 +463,12 @@ class V2RealTxBudgetTest {
         var allUtxos = buildAllUtxos();
 
         // --- Build JuLC ScriptContext ---
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = new CclTxConverter(tx, HexFormat.of().parseHex(TX_CBOR), allUtxos, null, null, 8);
         TxInfo txInfo = converter.buildTxInfo();
         var redeemer = tx.getWitnessSet().getRedeemers().getFirst();
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
         PlutusData julcCtx = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         // Convert JuLC PlutusData → CCL PlutusData → CBOR bytes
         var julcCclData = PlutusDataAdapter.toClientLib(julcCtx);
@@ -678,11 +678,11 @@ class V2RealTxBudgetTest {
         var allUtxos = Set.of(inputUtxo);
 
         // --- Build JuLC ScriptContext ---
-        var converter = new CclTxConverter(tx, allUtxos, null, null, 8);
+        var converter = TestConverters.of(tx, allUtxos, 8);
         TxInfo txInfo = converter.buildTxInfo();
         ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
         PlutusData julcCtx = V1V2ScriptContextBuilder.build(
-                PlutusLanguage.PLUTUS_V2, txInfo, purpose, converter);
+                PlutusLanguage.PLUTUS_V2, txInfo, purpose);
 
         // Convert JuLC PlutusData → CCL PlutusData → CBOR bytes
         var julcCclData = PlutusDataAdapter.toClientLib(julcCtx);

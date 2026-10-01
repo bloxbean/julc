@@ -106,12 +106,14 @@ class V1V2EncodingConformanceTest {
 
         var ctx = buildContext(PlutusLanguage.PLUTUS_V1, List.of(), withdrawals);
         var txInfo = extractTxInfo(ctx);
-        // V1 TxInfo: field 5 = withdrawals
-        var wdrlMap = expectMap(txInfo.fields().get(5));
-        assertEquals(1, wdrlMap.entries().size());
+        // V1 TxInfo: field 5 = withdrawals, a list of pairs [(StakingCredential, Integer)]
+        var wdrl = assertInstanceOf(PlutusData.ListData.class, txInfo.fields().get(5));
+        assertEquals(1, wdrl.items().size());
+        var pair = expectConstr(wdrl.items().getFirst(), 0);
+        assertEquals(new PlutusData.IntData(BigInteger.valueOf(1_000_000)), pair.fields().get(1));
 
         // Key should be StakingHash(Credential) = Constr 0 [Constr 0 [B hash]]
-        var key = expectConstr(wdrlMap.entries().getFirst().key(), 0);
+        var key = expectConstr(pair.fields().getFirst(), 0);
         // Inner = PubKeyCredential = Constr 0 [B hash]
         var innerCred = expectConstr(key.fields().getFirst(), 0);
         assertInstanceOf(PlutusData.BytesData.class, innerCred.fields().getFirst());
@@ -248,8 +250,7 @@ class V1V2EncodingConformanceTest {
     @Test
     void v2_ttlOnly_upperBoundInclusive_pv8() {
         // PV 8 (V2 Babbage): only TTL set → upper bound inclusive (true)
-        var converter = new CclTxConverter(
-                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 8);
+        var converter = TestConverters.of(buildTxWithBounds(0, 1000), dummyUtxoSet(), 8);
         var txInfo = converter.buildTxInfo();
         assertTrue(txInfo.validRange().to().isInclusive(),
                 "PV 8 with only TTL → upper bound should be inclusive");
@@ -258,8 +259,7 @@ class V1V2EncodingConformanceTest {
     @Test
     void v2_bothBounds_upperBoundExclusive_pv8() {
         // PV 8 (V2 Babbage): both bounds set → upper bound exclusive (false)
-        var converter = new CclTxConverter(
-                buildTxWithBounds(500, 1000), dummyUtxoSet(), null, null, 8);
+        var converter = TestConverters.of(buildTxWithBounds(500, 1000), dummyUtxoSet(), 8);
         var txInfo = converter.buildTxInfo();
         assertFalse(txInfo.validRange().to().isInclusive(),
                 "PV 8 with both bounds → upper bound should be exclusive");
@@ -268,8 +268,7 @@ class V1V2EncodingConformanceTest {
     @Test
     void v3_ttlOnly_upperBoundExclusive_pv10() {
         // PV 10 (V3 Conway+): only TTL set → upper bound exclusive (false)
-        var converter = new CclTxConverter(
-                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 10);
+        var converter = TestConverters.of(buildTxWithBounds(0, 1000), dummyUtxoSet(), 10);
         var txInfo = converter.buildTxInfo();
         assertFalse(txInfo.validRange().to().isInclusive(),
                 "PV 10 with only TTL → upper bound should be exclusive");
@@ -278,8 +277,7 @@ class V1V2EncodingConformanceTest {
     @Test
     void v2_ttlOnly_intervalDataEncoding_pv8() {
         // Verify the PlutusData encoding has closure=true for PV8 TTL-only
-        var converter = new CclTxConverter(
-                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 8);
+        var converter = TestConverters.of(buildTxWithBounds(0, 1000), dummyUtxoSet(), 8);
         var txInfo = converter.buildTxInfo();
         PlutusData intervalData = txInfo.validRange().toPlutusData();
         // Interval = Constr 0 [lowerBound, upperBound]
@@ -293,8 +291,7 @@ class V1V2EncodingConformanceTest {
     @Test
     void v3_ttlOnly_intervalDataEncoding_pv10() {
         // Verify the PlutusData encoding has closure=false for PV10 TTL-only
-        var converter = new CclTxConverter(
-                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 10);
+        var converter = TestConverters.of(buildTxWithBounds(0, 1000), dummyUtxoSet(), 10);
         var txInfo = converter.buildTxInfo();
         PlutusData intervalData = txInfo.validRange().toPlutusData();
         var intervalConstr = expectConstr(intervalData, 0);
@@ -369,12 +366,12 @@ class V1V2EncodingConformanceTest {
                                     org.julclang.core.types.JulcMap<Credential, BigInteger> withdrawals) {
         var txInfo = buildTxInfo(certs, withdrawals);
         var purpose = new ScriptPurpose.Spending(TX_OUT_REF);
-        return V1V2ScriptContextBuilder.build(language, txInfo, purpose, null);
+        return V1V2ScriptContextBuilder.build(language, txInfo, purpose);
     }
 
     private PlutusData buildContextWithPurpose(PlutusLanguage language, ScriptPurpose purpose) {
         var txInfo = buildTxInfo(List.of(), JulcAssocMap.empty());
-        return V1V2ScriptContextBuilder.build(language, txInfo, purpose, null);
+        return V1V2ScriptContextBuilder.build(language, txInfo, purpose);
     }
 
     private TxInfo buildTxInfo(List<TxCert> certs,
@@ -430,7 +427,7 @@ class V1V2EncodingConformanceTest {
         );
 
         var ctx = V1V2ScriptContextBuilder.build(PlutusLanguage.PLUTUS_V1, txInfo,
-                new ScriptPurpose.Spending(TX_OUT_REF), null);
+                new ScriptPurpose.Spending(TX_OUT_REF));
         var ctxConstr = extractTxInfo(ctx);
         // V1 TxInfo: field 1 = outputs
         var outputs = expectList(ctxConstr.fields().get(1));

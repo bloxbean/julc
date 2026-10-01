@@ -3,7 +3,6 @@ package org.julclang.clientlib.eval;
 import com.bloxbean.cardano.client.api.model.Amount;
 import com.bloxbean.cardano.client.transaction.spec.Asset;
 import com.bloxbean.cardano.client.transaction.spec.MultiAsset;
-import org.julclang.core.types.JulcAssocMap;
 import org.julclang.core.types.JulcMap;
 import org.julclang.ledger.PolicyId;
 import org.julclang.ledger.TokenName;
@@ -11,7 +10,9 @@ import org.julclang.ledger.Value;
 
 import java.math.BigInteger;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.TreeMap;
 
 import static com.bloxbean.cardano.client.common.CardanoConstants.LOVELACE;
 
@@ -32,66 +33,37 @@ final class CclValueConverter {
             return Value.zero();
         }
 
-        JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> result = JulcAssocMap.empty();
-
+        var assets = withLovelace(BigInteger.ZERO);
         for (Amount amount : amounts) {
             String unit = amount.getUnit();
             BigInteger qty = amount.getQuantity();
 
             if (LOVELACE.equals(unit)) {
-                result = insertToken(result, PolicyId.ADA, TokenName.EMPTY, qty);
+                add(assets, new byte[0], new byte[0], qty);
             } else {
                 // unit = policyIdHex (56 chars) + assetNameHex
                 if (unit.length() < 56) {
                     throw new IllegalArgumentException("Invalid Amount unit: " + unit);
                 }
-                String policyHex = unit.substring(0, 56);
-                String assetHex = unit.substring(56);
-
-                PolicyId policyId = PolicyId.of(HexFormat.of().parseHex(policyHex));
-                TokenName tokenName = new TokenName(
-                        assetHex.isEmpty() ? new byte[0] : HexFormat.of().parseHex(assetHex));
-
-                result = insertToken(result, policyId, tokenName, qty);
+                add(assets, HexFormat.of().parseHex(unit.substring(0, 56)),
+                        HexFormat.of().parseHex(unit.substring(56)), qty);
             }
         }
-
-        return new Value(result);
+        return toValue(assets);
     }
 
     /**
      * Convert CCL transaction output {@link com.bloxbean.cardano.client.transaction.spec.Value}
-     * to JuLC {@link Value}.
+     * to JuLC {@link Value}. The lovelace entry is always present, as in the ledger's {@code transValue}.
      */
     static Value fromTransactionOutputValue(com.bloxbean.cardano.client.transaction.spec.Value cclValue) {
         if (cclValue == null) {
             return Value.zero();
         }
 
-        JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> result = JulcAssocMap.empty();
-
-        // Add lovelace
-        BigInteger coin = cclValue.getCoin();
-        if (coin != null && coin.signum() != 0) {
-            result = insertToken(result, PolicyId.ADA, TokenName.EMPTY, coin);
-        }
-
-        // Add multi-assets
-        List<MultiAsset> multiAssets = cclValue.getMultiAssets();
-        if (multiAssets != null) {
-            for (MultiAsset ma : multiAssets) {
-                PolicyId policyId = PolicyId.of(HexFormat.of().parseHex(ma.getPolicyId()));
-                if (ma.getAssets() != null) {
-                    for (Asset asset : ma.getAssets()) {
-                        byte[] nameBytes = assetNameToBytes(asset.getName());
-                        TokenName tokenName = new TokenName(nameBytes);
-                        result = insertToken(result, policyId, tokenName, asset.getValue());
-                    }
-                }
-            }
-        }
-
-        return new Value(result);
+        var assets = withLovelace(cclValue.getCoin() != null ? cclValue.getCoin() : BigInteger.ZERO);
+        addMultiAssets(assets, cclValue.getMultiAssets());
+        return toValue(assets);
     }
 
     /**
@@ -102,43 +74,46 @@ final class CclValueConverter {
             return Value.zero();
         }
 
-        JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> result = JulcAssocMap.empty();
+        var assets = new TreeMap<byte[], TreeMap<byte[], BigInteger>>(LedgerOrder.BYTES);
+        addMultiAssets(assets, multiAssets);
+        return toValue(assets);
+    }
 
+    private static TreeMap<byte[], TreeMap<byte[], BigInteger>> withLovelace(BigInteger coin) {
+        var assets = new TreeMap<byte[], TreeMap<byte[], BigInteger>>(LedgerOrder.BYTES);
+        add(assets, new byte[0], new byte[0], coin);
+        return assets;
+    }
+
+    private static void addMultiAssets(TreeMap<byte[], TreeMap<byte[], BigInteger>> assets,
+                                       List<MultiAsset> multiAssets) {
+        if (multiAssets == null) {
+            return;
+        }
         for (MultiAsset ma : multiAssets) {
-            PolicyId policyId = PolicyId.of(HexFormat.of().parseHex(ma.getPolicyId()));
             if (ma.getAssets() != null) {
+                byte[] policy = HexFormat.of().parseHex(ma.getPolicyId());
                 for (Asset asset : ma.getAssets()) {
-                    byte[] nameBytes = assetNameToBytes(asset.getName());
-                    TokenName tokenName = new TokenName(nameBytes);
-                    result = insertToken(result, policyId, tokenName, asset.getValue());
+                    add(assets, policy, assetNameToBytes(asset.getName()), asset.getValue());
                 }
             }
         }
-
-        return new Value(result);
     }
 
-    private static JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> insertToken(
-            JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> map,
-            PolicyId policyId, TokenName tokenName, BigInteger qty) {
+    private static void add(TreeMap<byte[], TreeMap<byte[], BigInteger>> assets,
+                            byte[] policy, byte[] name, BigInteger qty) {
+        assets.computeIfAbsent(policy, p -> new TreeMap<>(LedgerOrder.BYTES)).merge(name, qty, BigInteger::add);
+    }
 
-        JulcMap<TokenName, BigInteger> existing = map.get(policyId);
-        if (existing == null) {
-            existing = JulcAssocMap.<TokenName, BigInteger>empty().insert(tokenName, qty);
-        } else {
-            BigInteger prev = existing.get(tokenName);
-            if (prev != null) {
-                existing = existing.delete(tokenName).insert(tokenName, prev.add(qty));
-            } else {
-                existing = existing.insert(tokenName, qty);
-            }
-        }
-
-        // Delete and re-insert to update the value
-        if (map.get(policyId) != null) {
-            map = map.delete(policyId);
-        }
-        return map.insert(policyId, existing);
+    /** The ledger's {@code transValue}/{@code transMultiAsset}: policies, then names, in byte order. */
+    private static Value toValue(TreeMap<byte[], TreeMap<byte[], BigInteger>> assets) {
+        var policies = new LinkedHashMap<PolicyId, JulcMap<TokenName, BigInteger>>();
+        assets.forEach((policy, names) -> {
+            var tokens = new LinkedHashMap<TokenName, BigInteger>();
+            names.forEach((name, qty) -> tokens.put(new TokenName(name), qty));
+            policies.put(PolicyId.of(policy), LedgerOrder.assocMap(tokens));
+        });
+        return new Value(LedgerOrder.assocMap(policies));
     }
 
     static byte[] assetNameToBytes(String assetName) {

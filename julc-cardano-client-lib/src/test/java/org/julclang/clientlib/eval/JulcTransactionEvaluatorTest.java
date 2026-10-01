@@ -870,24 +870,21 @@ class JulcTransactionEvaluatorTest {
         var utxos = dummyInputUtxos();
 
         // PV 8 (V2), only TTL → upper bound should be inclusive
-        var converter8 = new CclTxConverter(
-                buildMinimalTx(0, 1000), utxos, null, null, 8);
+        var converter8 = TestConverters.of(buildMinimalTx(0, 1000), utxos, 8);
         var txInfo8 = converter8.buildTxInfo();
         var interval8 = txInfo8.validRange();
         assertTrue(interval8.to().isInclusive(),
                 "PV 8 with only TTL → upper bound should be inclusive (true)");
 
         // PV 8 (V2), both bounds → upper bound should be exclusive
-        var converter8both = new CclTxConverter(
-                buildMinimalTx(500, 1000), utxos, null, null, 8);
+        var converter8both = TestConverters.of(buildMinimalTx(500, 1000), utxos, 8);
         var txInfo8both = converter8both.buildTxInfo();
         var interval8both = txInfo8both.validRange();
         assertFalse(interval8both.to().isInclusive(),
                 "PV 8 with both bounds → upper bound should be exclusive (false)");
 
         // PV 10 (V3), only TTL → upper bound should be exclusive
-        var converter10 = new CclTxConverter(
-                buildMinimalTx(0, 1000), utxos, null, null, 10);
+        var converter10 = TestConverters.of(buildMinimalTx(0, 1000), utxos, 10);
         var txInfo10 = converter10.buildTxInfo();
         var interval10 = txInfo10.validRange();
         assertFalse(interval10.to().isInclusive(),
@@ -899,8 +896,7 @@ class JulcTransactionEvaluatorTest {
         // Both bounds set → always exclusive regardless of PV
         var utxos = dummyInputUtxos();
         for (int pv : new int[]{7, 8, 9, 10}) {
-            var converter = new CclTxConverter(
-                    buildMinimalTx(500, 1000), utxos, null, null, pv);
+            var converter = TestConverters.of(buildMinimalTx(500, 1000), utxos, pv);
             var txInfo = converter.buildTxInfo();
             assertFalse(txInfo.validRange().to().isInclusive(),
                     "PV " + pv + " with both bounds → upper bound must be exclusive");
@@ -909,8 +905,7 @@ class JulcTransactionEvaluatorTest {
 
     @Test
     void convertValidRange_noTtl_upperIsPosInf() throws Exception {
-        var converter = new CclTxConverter(
-                buildMinimalTx(0, 0), dummyInputUtxos(), null, null, 8);
+        var converter = TestConverters.of(buildMinimalTx(0, 0), dummyInputUtxos(), 8);
         var txInfo = converter.buildTxInfo();
         assertInstanceOf(org.julclang.ledger.IntervalBoundType.PosInf.class,
                 txInfo.validRange().to().boundType(),
