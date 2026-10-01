@@ -1,0 +1,20 @@
+{
+  "resources": [
+    {"glob": "supranational/blst/Linux/amd64/libblst.so"},
+    {"glob": "supranational/blst/Linux/aarch64/libblst.so"},
+    {"glob": "supranational/blst/Mac/x86_64/libblst.dylib"},
+    {"glob": "supranational/blst/Mac/aarch64/libblst.dylib"}
+  ],
+  "foreign": {
+    "downcalls": [
+      {
+        "returnType": "void",
+        "parameterTypes": ["void*", "void*", "jlong", "void*", "jlong", "void*", "jlong"]
+      },
+      {
+        "returnType": "void",
+        "parameterTypes": ["void*", "void*"]
+      }
+    ]
+  }
+}
