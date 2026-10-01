@@ -1,6 +1,8 @@
 package org.julclang.compiler;
 
 import org.julclang.core.PlutusData;
+import org.julclang.core.Program;
+import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
@@ -573,6 +575,51 @@ class GovernanceTypeTest {
             var ctx = buildCtx(hfi);
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "HardForkInitiation major=10 should match. Got: " + result);
+        }
+
+        @Test
+        void newConstitutionGuardrailsScriptFieldAccess() {
+            // plutus-ledger-api V3: NewConstitution = Constr(5, [Maybe GovernanceActionId, Constitution]),
+            // Constitution = Constr(0, [Maybe ScriptHash])
+            var withScript = PlutusData.constr(5, optionalNone(),
+                    PlutusData.constr(0, optionalSome(PlutusData.bytes(new byte[28]))));
+            var withoutScript = PlutusData.constr(5, optionalNone(), PlutusData.constr(0, optionalNone()));
+
+            var present = compileNewConstitutionCheck(
+                    "c.script().isPresent() && Builtins.lengthOfByteString(c.script().get()) == 28");
+            var result = vm.evaluateWithArgs(present, List.of(buildCtx(withScript)));
+            assertTrue(result.isSuccess(), "Guardrails script should be present. Got: " + result);
+
+            // Succeeds, so the absent case is read as Nothing rather than failing on the layout
+            var absent = compileNewConstitutionCheck("!c.script().isPresent()");
+            result = vm.evaluateWithArgs(absent, List.of(buildCtx(withoutScript)));
+            assertTrue(result.isSuccess(), "Guardrails script should be absent. Got: " + result);
+        }
+
+        private Program compileNewConstitutionCheck(String check) {
+            var source = """
+                    import org.julclang.stdlib.Builtins;
+
+                    @MintingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(GovernanceAction ga, ScriptContext ctx) {
+                            return switch (ga) {
+                                case ParameterChange pc -> false;
+                                case HardForkInitiation hf -> false;
+                                case TreasuryWithdrawals tw -> false;
+                                case NoConfidence nc -> false;
+                                case UpdateCommittee uc -> false;
+                                case NewConstitution nc2 -> {
+                                    Constitution c = nc2.constitution();
+                                    yield %s;
+                                }
+                                case InfoAction ia -> false;
+                            };
+                        }
+                    }
+                    """.formatted(check);
+            return new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(source).program();
         }
     }
 

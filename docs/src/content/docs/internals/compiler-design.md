@@ -434,7 +434,7 @@ Tier 3: Composite records  → Address, TxOut, TxInInfo, Interval
 Tier 4: Top-level          → TxInfo (16 fields), ScriptContext
 ```
 
-Governance types (Conway era): `Vote`, `DRep`, `Voter`, `StakingCredential`, `Delegatee`, `TxCert`, `GovernanceAction`, `ProposalProcedure`, `Committee`, `ScriptPurpose`.
+Governance types (Conway era): `Vote`, `DRep`, `Voter`, `StakingCredential`, `Delegatee`, `TxCert`, `GovernanceAction`, `ProposalProcedure`, `Committee`, `Constitution`, `ScriptPurpose`.
 
 **Stage 2: User Types** (`TypeRegistrar`)
 

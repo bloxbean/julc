@@ -705,7 +705,7 @@ final class CclTxConverter {
                         new Rational(quorum[0], quorum[1]));
             }
             case 5 -> new GovernanceAction.NewConstitution(prevActionId(a.get(1)),
-                    scriptHash(items(a.get(2)).get(1)));
+                    new Constitution(scriptHash(items(a.get(2)).get(1))));
             case 6 -> new GovernanceAction.InfoAction();
             default -> throw new IllegalArgumentException("Unknown governance action tag: " + tag);
         };
