@@ -1,6 +1,7 @@
 package org.julclang.clientlib.eval;
 
 import com.bloxbean.cardano.client.address.AddressType;
+import com.bloxbean.cardano.client.address.util.AddressUtil;
 import org.julclang.ledger.Address;
 import org.julclang.ledger.Credential;
 import org.julclang.ledger.PubKeyHash;
@@ -22,6 +23,22 @@ final class CclAddressConverter {
     static Address fromBech32(String bech32) {
         var cclAddr = new com.bloxbean.cardano.client.address.Address(bech32);
         return fromCclAddress(cclAddr);
+    }
+
+    /**
+     * Whether {@code address} is a Byron (bootstrap) address, which a script context cannot express ({@code transAddr},
+     * cardano-ledger-core Plutus/TxInfo.hs). CCL renders one in base58, and its header's address type is 8.
+     */
+    static boolean isByron(String address) {
+        if (address == null || address.startsWith("addr")) {
+            return false; // a Shelley address in bech32
+        }
+        try {
+            byte[] bytes = AddressUtil.addressToBytes(address);
+            return bytes.length > 0 && (bytes[0] & 0xf0) == 0x80;
+        } catch (Exception e) {
+            return false; // not an address CCL can read: the conversion reports it
+        }
     }
 
     /**

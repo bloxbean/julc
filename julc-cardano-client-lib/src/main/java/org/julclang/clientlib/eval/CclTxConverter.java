@@ -37,6 +37,7 @@ final class CclTxConverter {
     private static final int BODY_TTL = 3;
     private static final int BODY_VALIDITY_START = 8;
     private static final int BODY_PROPOSAL_PROCEDURES = 20;
+    private static final int BABBAGE_PROTOCOL_MAJOR = 7;
 
     private static final System.Logger LOG = System.getLogger(CclTxConverter.class.getName());
     private static volatile boolean slotConfigWarningLogged = false;
@@ -188,17 +189,20 @@ final class CclTxConverter {
                     TxId.of(HexFormat.of().parseHex(input.getTransactionId())),
                     BigInteger.valueOf(input.getIndex()));
 
-            TxOut resolved = resolveUtxo(input.getTransactionId(), input.getIndex());
-            result.add(new TxInInfo(outRef, resolved));
+            Utxo utxo = resolveUtxo(input.getTransactionId(), input.getIndex());
+            if (isByron(utxo.getAddress(), "Input: " + input.getTransactionId() + "#" + input.getIndex())) {
+                continue;
+            }
+            result.add(new TxInInfo(outRef, convertUtxoToTxOut(utxo)));
         }
         return new JulcArrayList<>(result);
     }
 
-    private TxOut resolveUtxo(String txHash, int index) {
+    private Utxo resolveUtxo(String txHash, int index) {
         // Try the provided input UTxOs first
         for (Utxo utxo : inputUtxos) {
             if (txHash.equals(utxo.getTxHash()) && index == utxo.getOutputIndex()) {
-                return convertUtxoToTxOut(utxo);
+                return utxo;
             }
         }
 
@@ -206,12 +210,30 @@ final class CclTxConverter {
         if (utxoSupplier != null) {
             var result = utxoSupplier.getTxOutput(txHash, index);
             if (result.isPresent()) {
-                return convertUtxoToTxOut(result.get());
+                return result.get();
             }
         }
 
         throw new IllegalStateException("UTxO not found: " + txHash + "#" + index
                 + ". Ensure all input and reference UTxOs are provided.");
+    }
+
+    /**
+     * A Byron address, which no script context can express. From Babbage (protocol version 7) the ledger fails with
+     * {@code ByronTxOutInContext} (Babbage/TxInfo.hs:124-125, :152-153); Alonzo's PlutusV1 context leaves the input or
+     * output out (Alonzo/Plutus/TxInfo.hs:145-149).
+     *
+     * @return whether to leave the input or output out (a Byron address before Babbage)
+     * @throws BadTranslationException for a Byron address from Babbage
+     */
+    private boolean isByron(String address, String source) {
+        if (!CclAddressConverter.isByron(address)) {
+            return false;
+        }
+        if (protocolMajorVersion < BABBAGE_PROTOCOL_MAJOR) {
+            return true;
+        }
+        throw new BadTranslationException(BadTranslationException.ContextError.ByronTxOutInContext, source);
     }
 
     private TxOut convertUtxoToTxOut(Utxo utxo) {
@@ -255,6 +277,9 @@ final class CclTxConverter {
         var result = new ArrayList<TxOut>(outputs.size());
         for (int i = 0; i < outputs.size(); i++) {
             TransactionOutput txOut = outputs.get(i);
+            if (isByron(txOut.getAddress(), "Output: " + i)) {
+                continue;
+            }
             Address address = CclAddressConverter.fromBech32(txOut.getAddress());
             Value value = CclValueConverter.fromTransactionOutputValue(txOut.getValue());
 
