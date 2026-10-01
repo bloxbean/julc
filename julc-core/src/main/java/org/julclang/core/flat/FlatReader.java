@@ -2,6 +2,7 @@ package org.julclang.core.flat;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 /**
  * Low-level bit-oriented reader for FLAT binary decoding.
@@ -105,35 +106,64 @@ public final class FlatReader {
     }
 
     /**
-     * Decode an unsigned long (Word64) from vli7 encoding.
+     * Decode an unsigned long (Word64) from vli7 encoding as plutus-core's {@code dWord64} does: at most
+     * ten groups, no continuation bit on the tenth, and a tenth payload of at most one bit. A padded
+     * encoding within ten groups is accepted; a longer one is rejected whatever value it would denote.
      */
     public long word64() {
-        BigInteger value = decodeVli7();
-        if (value.bitLength() > 64) {
-            throw new FlatDecodingException("Word64 value exceeds 64 bits: " + value);
+        long value = 0;
+        for (int shift = 0; shift < 63; shift += 7) {
+            int b = byte_();
+            value |= (long) (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) {
+                return value;
+            }
         }
-        return value.longValue(); // correctly handles unsigned values via two's complement
+        int b = byte_();
+        if ((b & 0x80) != 0) {
+            throw new FlatDecodingException("Word64 encoding has more than ten vli7 groups");
+        }
+        if (b > 1) {
+            throw new FlatDecodingException("Word64 value exceeds 64 bits");
+        }
+        return value | (long) b << 63; // bit 63 set means a value above Long.MAX_VALUE, as two's complement
     }
 
-    /** Maximum number of bytes for a vli7-encoded integer (prevents DoS from malicious input). */
-    private static final int MAX_VLI_BYTES = 128; // 128 * 7 = 896 bits, far exceeding any realistic use
-
+    /**
+     * Decode a vli7 integer of any size. plutus-core's {@code dUnsigned} checks the width only for
+     * fixed-width types, so {@code Integer} and {@code Natural} are unbounded. Each group consumes an
+     * input byte, and decoding is linear in the number of groups.
+     */
     private BigInteger decodeVli7() {
-        var result = BigInteger.ZERO;
-        int shift = 0;
-        int bytesRead = 0;
-        while (true) {
-            if (bytesRead++ > MAX_VLI_BYTES) {
-                throw new FlatDecodingException(
-                        "Variable-length integer exceeded maximum size of " + MAX_VLI_BYTES + " bytes");
+        byte[] groups = new byte[10];
+        int count = 0;
+        int b;
+        do {
+            b = byte_();
+            if (count == groups.length) {
+                groups = Arrays.copyOf(groups, count * 2);
             }
-            int b = byte_();
-            result = result.or(BigInteger.valueOf(b & 0x7F).shiftLeft(shift));
-            shift += 7;
-            if ((b & 0x80) == 0) {
-                return result;
+            groups[count++] = (byte) (b & 0x7F);
+        } while ((b & 0x80) != 0);
+
+        // The groups come least significant first; pack them into a big-endian magnitude.
+        byte[] magnitude = new byte[(count * 7 + 7) / 8];
+        int pos = magnitude.length;
+        long acc = 0;
+        int bits = 0;
+        for (int i = 0; i < count; i++) {
+            acc |= (long) groups[i] << bits;
+            bits += 7;
+            if (bits >= 8) {
+                magnitude[--pos] = (byte) acc;
+                acc >>>= 8;
+                bits -= 8;
             }
         }
+        if (bits > 0) {
+            magnitude[--pos] = (byte) acc;
+        }
+        return new BigInteger(1, magnitude);
     }
 
     static BigInteger zigZagDecode(BigInteger encoded) {

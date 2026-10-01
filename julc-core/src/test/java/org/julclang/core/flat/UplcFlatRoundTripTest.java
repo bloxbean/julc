@@ -3,7 +3,10 @@ package org.julclang.core.flat;
 import org.julclang.core.*;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -341,6 +344,97 @@ class UplcFlatRoundTripTest {
         var big = BigInteger.TWO.pow(256);
         assertConstRoundTrip(Constant.integer(big));
         assertConstRoundTrip(Constant.integer(big.negate()));
+    }
+
+    /** plutus-core has no size limit for Integer constants (issue #225); 896 bits was julc's old cap. */
+    @Test
+    void constIntegerBeyond896Bits() {
+        assertConstRoundTrip(Constant.integer(BigInteger.ONE.shiftLeft(2047)));
+        assertConstRoundTrip(Constant.integer(BigInteger.ONE.shiftLeft(4096).negate()));
+        assertConstRoundTrip(Constant.integer(BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE)));
+    }
+
+    /**
+     * PlutusV3 script {@code 4f8c8e2263748472c48439bbeacc9de439ea3089b143c6a7c667b9b2} from preview tx
+     * {@code b0e24e31a5e7e5e6e7d2675288a4eb7190c0bce0d622c8b2f514fbcd18e835c9} holds a 2048-bit integer
+     * constant; the chain accepts it (issue #225).
+     */
+    @Test
+    void realScriptWith2048BitIntegerConstant() throws IOException {
+        byte[] flat;
+        try (var in = getClass().getResourceAsStream("/flat/preview-script-4f8c8e22.flat.hex")) {
+            flat = HexFormat.of().parseHex(new String(in.readAllBytes(), StandardCharsets.US_ASCII).strip());
+        }
+        var program = UplcFlatDecoder.decodeProgram(flat);
+        assertEquals(2048, maxIntegerBitLength(program.term()));
+        assertArrayEquals(flat, UplcFlatEncoder.encodeProgram(program));
+    }
+
+    @Test
+    void oversizedVersionNumberIsADecodingError() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE.shiftLeft(40));
+        w.natural(BigInteger.ONE);
+        w.natural(BigInteger.ZERO);
+        assertThrows(FlatDecodingException.class, () -> UplcFlatDecoder.decodeProgram(w.toByteArray()));
+    }
+
+    /** De Bruijn indices and constructor tags are Word64s: plutus-core's {@code dWord64} reads at most ten groups. */
+    @Test
+    void variableIndexAndConstructorTagAreBoundedWord64s() {
+        var tenGroups = (Term.Lam) UplcFlatDecoder.decodeProgram(lamVar(10)).term();
+        assertEquals(1, ((Term.Var) tenGroups.body()).name().index());
+        assertEquals(1L, ((Term.Constr) UplcFlatDecoder.decodeProgram(constr(10)).term()).tag());
+        assertThrows(FlatDecodingException.class, () -> UplcFlatDecoder.decodeProgram(lamVar(11)));
+        assertThrows(FlatDecodingException.class, () -> UplcFlatDecoder.decodeProgram(constr(11)));
+    }
+
+    /** Program 1.0.0 {@code (lam (var 1))} with the index written in {@code groups} vli7 groups. */
+    private static byte[] lamVar(int groups) {
+        var w = version100();
+        w.bits(4, 2);
+        w.bits(4, 0);
+        writePaddedOne(w, groups);
+        w.filler();
+        return w.toByteArray();
+    }
+
+    /** Program 1.0.0 {@code (constr 1)} with the tag written in {@code groups} vli7 groups. */
+    private static byte[] constr(int groups) {
+        var w = version100();
+        w.bits(4, 8);
+        writePaddedOne(w, groups);
+        w.listNil();
+        w.filler();
+        return w.toByteArray();
+    }
+
+    private static FlatWriter version100() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE);
+        w.natural(BigInteger.ZERO);
+        w.natural(BigInteger.ZERO);
+        return w;
+    }
+
+    private static void writePaddedOne(FlatWriter w, int groups) {
+        for (byte b : FlatWriterReaderTest.paddedOne(groups)) {
+            w.byte_(b & 0xFF);
+        }
+    }
+
+    private static int maxIntegerBitLength(Term term) {
+        return switch (term) {
+            case Term.Const c when c.value() instanceof Constant.IntegerConst i -> i.value().bitLength();
+            case Term.Lam l -> maxIntegerBitLength(l.body());
+            case Term.Apply a -> Math.max(maxIntegerBitLength(a.function()), maxIntegerBitLength(a.argument()));
+            case Term.Force f -> maxIntegerBitLength(f.term());
+            case Term.Delay d -> maxIntegerBitLength(d.term());
+            case Term.Constr c -> c.fields().stream().mapToInt(UplcFlatRoundTripTest::maxIntegerBitLength).max().orElse(0);
+            case Term.Case c -> Math.max(maxIntegerBitLength(c.scrutinee()),
+                    c.branches().stream().mapToInt(UplcFlatRoundTripTest::maxIntegerBitLength).max().orElse(0));
+            default -> 0;
+        };
     }
 
     @Test
