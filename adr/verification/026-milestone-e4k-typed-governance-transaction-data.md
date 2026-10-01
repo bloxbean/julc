@@ -233,6 +233,13 @@ unavailable to the typed DSL until a later reviewed adapter milestone.
 omitted. The DSL must name it accordingly and must not imply that it models a
 complete on-ledger constitution.
 
+The pinned model also omits the wrapper plutus-ledger-api puts around it:
+Haskell encodes `Constitution` as `Constr 0 [Maybe ScriptHash]`, while the model
+places the bare `Option ScriptHash` in `NewConstitution`'s second field. JuLC
+encodes the wrapper since julc #223, so a verified contract that reads
+`constitution().script()` is evaluated against the wrong data shape until the pin
+moves to a model revision with the wrapper (to be reported upstream).
+
 The pinned `isKnownProposal` is exact indexed equality over the full proposal,
 including raw governance-action `Data`. Negative indexes and out-of-range
 indexes return false. This dedicated helper may be exposed without admitting

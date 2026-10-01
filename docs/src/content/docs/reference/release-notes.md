@@ -3,6 +3,37 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: `NewConstitution` carries the `Constitution` wrapper (#223)
+
+`GovernanceAction.NewConstitution` now has the Plutus Data layout of plutus-ledger-api V3,
+`Constr 5 [Maybe GovernanceActionId, Constitution]` with
+`Constitution = Constr 0 [Maybe ScriptHash]`. JuLC encoded and read the second field as a
+bare `Maybe ScriptHash`, without the `Constr 0` that the ledger builds (`transConstitution`
+in cardano-ledger `Conway/TxInfo.hs`). A compiled V3 script that read a `NewConstitution`
+proposal from a real script context therefore read the wrong field: `constitution()` gave
+the `Constitution` value where the script expected the optional hash.
+
+The ledger API has a new record `Constitution(Optional<ScriptHash> script)`, and the
+second component of `NewConstitution` changes from `Optional<ScriptHash> constitution` to
+`Constitution constitution`. Read the guardrails script hash with
+`nc.constitution().script()`.
+
+**Contracts that read `constitution()` must be updated and recompiled.** Their script
+bytes and hashes change. Other contracts, including those that only match the
+`NewConstitution` case, compile to the same bytes as before. Off-chain code that
+constructs `NewConstitution` must pass a `Constitution`, and the script contexts the
+cardano-client-lib evaluator builds now contain the wrapper. The other six governance
+actions are unchanged; tests now compare each of them with hex written by hand from
+Haskell's `ToData`.
+
+Formal verification of this field is not yet sound: the pinned Lean model
+(CardanoLedgerApiBlaster `5dab3c43`) still omits the `Constitution` wrapper, so a verified
+contract that reads `constitution().script()` is checked against the old data shape.
+
+As with other ledger type names such as `Committee`, a type named `Constitution` declared
+inside a validator class now resolves to the ledger type. Rename such a type, or declare
+it at top level in the contract's package.
+
 ## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
 
 JuLC binds an `instanceof` pattern variable only when the pattern is the whole
