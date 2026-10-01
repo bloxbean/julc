@@ -19,15 +19,41 @@ public final class PlutusDataCborDecoder {
     private PlutusDataCborDecoder() {}
 
     /**
-     * Decode PlutusData from CBOR bytes, preserving map entry order and duplicate keys.
+     * Decode PlutusData from CBOR bytes that hold exactly one item, preserving map entry order
+     * and duplicate keys. Trailing bytes are rejected, as the ledger does for inline datums:
+     * {@code DecCBOR BinaryData} checks the bytes with {@code makeBinaryData}, which decodes
+     * them with {@code decodeFull'} (cardano-ledger-core {@code Cardano/Ledger/Plutus/Data.hs}),
+     * and that fails with {@code DecoderErrorLeftover}. Witness datums and redeemers are single
+     * items inside the transaction CBOR.
      */
     public static PlutusData decode(byte[] cborBytes) {
+        var input = new ByteArrayInputStream(cborBytes);
+        PlutusData data = decodeItem(input);
+        if (input.available() > 0) {
+            throw new CborDecodingException("Trailing bytes after PlutusData: " + input.available());
+        }
+        return data;
+    }
+
+    /**
+     * Decode the first PlutusData item of the CBOR bytes and ignore the rest, as a FLAT
+     * {@code data} constant does: {@code Flat Data} derives via {@code FlatViaSerialise}
+     * (plutus-core 1.65.0.0 {@code FlatInstances.hs:126}), which decodes with
+     * {@code deserialiseOrFail} ({@code Codec/Extras/FlatViaSerialise.hs:35-39}), and that
+     * returns the value with any leftover input (serialise 0.2.6.0
+     * {@code Codec/Serialise.hs:134-143}). Use it only for FLAT {@code data} constants.
+     */
+    public static PlutusData decodeFirst(byte[] cborBytes) {
+        return decodeItem(new ByteArrayInputStream(cborBytes));
+    }
+
+    private static PlutusData decodeItem(ByteArrayInputStream input) {
         try {
-            var items = new MapPreservingCborDecoder(new ByteArrayInputStream(cborBytes)).decode();
-            if (items.isEmpty()) {
+            DataItem item = new MapPreservingCborDecoder(input).decodeNext();
+            if (item == null) {
                 throw new CborDecodingException("Empty CBOR data");
             }
-            return fromDataItem(items.getFirst());
+            return fromDataItem(item);
         } catch (CborException e) {
             throw new CborDecodingException("CBOR decoding failed", e);
         }
@@ -41,6 +67,9 @@ public final class PlutusDataCborDecoder {
     public static PlutusData fromDataItem(DataItem item) {
         // Check for CBOR tags first
         if (item.hasTag()) {
+            if (item.getTag().hasTag()) {
+                throw new CborDecodingException("Nested CBOR tags are not PlutusData");
+            }
             long tag = item.getTag().getValue();
 
             // Constr compact: tags 121-127 → constructor 0-6
@@ -69,6 +98,9 @@ public final class PlutusDataCborDecoder {
                 BigInteger n = new BigInteger(1, bytes);
                 return new PlutusData.IntData(n.add(BigInteger.ONE).negate());
             }
+            // Plutus decodeConstr: "Unrecognized tag".
+            throw new CborDecodingException(
+                    "Unrecognized CBOR tag for PlutusData: " + Long.toUnsignedString(tag));
         }
 
         return switch (item.getMajorType()) {
@@ -84,7 +116,7 @@ public final class PlutusDataCborDecoder {
             case ARRAY -> {
                 var array = (Array) item;
                 var items = new ArrayList<PlutusData>();
-                for (var elem : filterBreaks(array.getDataItems())) {
+                for (var elem : elements(array)) {
                     items.add(fromDataItem(elem));
                 }
                 yield new PlutusData.ListData(items);
@@ -117,7 +149,7 @@ public final class PlutusDataCborDecoder {
     private static PlutusData decodeConstrFields(int constrTag, DataItem item) {
         if (item instanceof Array array) {
             var fields = new ArrayList<PlutusData>();
-            for (var elem : filterBreaks(array.getDataItems())) {
+            for (var elem : elements(array)) {
                 fields.add(fromDataItem(elem));
             }
             return new PlutusData.ConstrData(constrTag, fields);
@@ -127,22 +159,22 @@ public final class PlutusDataCborDecoder {
 
     private static PlutusData decodeConstrGeneral(DataItem item) {
         if (item instanceof Array outer) {
-            var items = filterBreaks(outer.getDataItems());
+            var items = elements(outer);
             if (items.size() != 2) {
                 throw new CborDecodingException(
                         "Constr general encoding expects [tag, fields], got " + items.size() + " elements");
             }
             BigInteger tagValue;
-            if (items.get(0) instanceof UnsignedInteger ui) {
+            if (items.get(0) instanceof UnsignedInteger ui && !ui.hasTag()) {
                 tagValue = ui.getValue();
             } else {
                 throw new CborDecodingException(
                         "Expected unsigned Word64 for Constr tag, got: "
                                 + items.get(0).getMajorType());
             }
-            if (items.get(1) instanceof Array fieldsArray) {
+            if (items.get(1) instanceof Array fieldsArray && !fieldsArray.hasTag()) {
                 var fields = new ArrayList<PlutusData>();
-                for (var elem : filterBreaks(fieldsArray.getDataItems())) {
+                for (var elem : elements(fieldsArray)) {
                     fields.add(fromDataItem(elem));
                 }
                 try {
@@ -158,14 +190,16 @@ public final class PlutusDataCborDecoder {
     }
 
     /**
-     * Filter out CBOR break codes (SPECIAL major type) from a list of data items.
-     * The cbor-java library includes the break code (0xFF) as an element in indefinite-length
-     * arrays, so we must filter it out before processing.
+     * The elements of an array. cbor-java ends an indefinite-length array with the break code
+     * (0xFF) as an element, so only that one is dropped; any other non-Data element, such as a
+     * break inside a definite array or a simple value, is rejected by {@link #fromDataItem}.
      */
-    private static List<DataItem> filterBreaks(List<DataItem> items) {
-        return items.stream()
-                .filter(i -> i.getMajorType() != MajorType.SPECIAL)
-                .toList();
+    private static List<DataItem> elements(Array array) {
+        List<DataItem> items = array.getDataItems();
+        if (array.isChunked() && !items.isEmpty() && Special.BREAK.equals(items.getLast())) {
+            return items.subList(0, items.size() - 1);
+        }
+        return items;
     }
 
     /**
