@@ -35,8 +35,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code is_valid = true}.
  *
  * <p>The expected ExUnits are what Yano's Haskell-faithful context translator (cardano-ledger {@code f649f975}) gives
- * on julc's CEK machine; for {@code 0037f55f} both redeemers and for {@code 050f838f} the spend they equal the ExUnits
- * the transaction declares (bloxbean/julc#220).</p>
+ * on julc's CEK machine; for {@code 0037f55f} and {@code 3f1e07e7} every redeemer and for {@code 050f838f} the spend
+ * they equal the ExUnits the transaction declares (bloxbean/julc#220).</p>
  */
 class PreprodTransactionTest {
 
@@ -64,6 +64,18 @@ class PreprodTransactionTest {
         assertBudget(results, 0, 1_784_012, 852_999_362);
         assertEquals(BigInteger.valueOf(321_017), find(results, "Mint", 0).getExUnits().getMem());
         assertEquals(BigInteger.valueOf(132_042_980), find(results, "Mint", 0).getExUnits().getSteps());
+    }
+
+    /**
+     * Tx {@code 3f1e07e7…} (slot 92286697, PV 10): three PlutusV2 spends; Spend[1] verifies a secp256k1 ECDSA
+     * signature whose r and s are zero, which must return False rather than fail (bloxbean/julc#219).
+     */
+    @Test
+    void secp256k1ZeroSignatureSpendsMatchTheLedgerBudget() throws Exception {
+        var results = evaluate("preprod-3f1e07e7-secp256k1-zero-signature.json");
+        assertBudget(results, 1, 5_644_299, 1_276_760_095);
+        assertBudget(results, 2, 1_536_184, 282_236_505);
+        assertBudget(results, 3, 1_536_184, 282_236_505);
     }
 
     /** The TxId the scripts see is the chain's transaction id: the hash of the original body bytes. */
