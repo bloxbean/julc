@@ -6,6 +6,7 @@ import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.cbor.PlutusDataCborDecoder;
+import org.julclang.core.cbor.PlutusDataCborEncoder;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
@@ -20,10 +21,11 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Golden-vector tests for the VM's PlutusData CBOR serializer (used by the {@code serialiseData}
- * builtin) — issue #48. Non-empty lists and constructor fields MUST encode as indefinite-length
- * arrays (0x9f ... 0xff); empty collections stay definite (0x80). Values are verified byte-for-byte
- * against cardano-client-lib 0.7.x and Scalus 0.17.0. A regression changes the on-chain result of
+ * Tests the {@code SerialiseData} builtin, which now encodes through {@link PlutusDataCborEncoder} (issue #229).
+ * <p>
+ * Golden vectors for issue #48. Non-empty lists and constructor fields MUST encode as
+ * indefinite-length arrays (0x9f ... 0xff); empty collections stay definite (0x80). Values are verified
+ * byte-for-byte against cardano-client-lib 0.7.x and Scalus 0.17.0. A regression changes the on-chain result of
  * {@code blake2b_256(serialiseData(datum))} (datum commitments, CIP-68 token names, ...).
  */
 class DataSerializerTest {
@@ -37,7 +39,7 @@ class DataSerializerTest {
     }
 
     private static String direct(PlutusData d) {
-        return HEX.formatHex(DataSerializer.serialize(d));
+        return HEX.formatHex(PlutusDataCborEncoder.encode(d));
     }
 
     /** Serialise via the actual serialiseData builtin through the CEK machine. */
@@ -50,7 +52,7 @@ class DataSerializerTest {
     }
 
     private void assertBytes(String expected, PlutusData d) {
-        assertEquals(expected, direct(d), "DataSerializer.serialize");
+        assertEquals(expected, direct(d), "PlutusDataCborEncoder.encode");
         assertEquals(expected, viaBuiltin(d), "serialiseData builtin");
     }
 

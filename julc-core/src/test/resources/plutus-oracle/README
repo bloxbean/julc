@@ -1,0 +1,4 @@
+Plutus Data CBOR oracle behind PlutusDataCborTest.PlutusEncodeDataGoldenCorpus (julc issue #229).
+Golden.hs runs plutus 1.65.0.0 Data.hs encodeData/decodeData verbatim on cborg 0.2.8.0 and serialise 0.2.6.0;
+golden.tsv is its output (name, encodeData hex, decodeData verdict). Regenerate with GHC and those packages, e.g.
+  ghc -package cborg-0.2.8.0 -package serialise-0.2.6.0 -package base16-bytestring Golden.hs -o golden && ./golden > golden.tsv
