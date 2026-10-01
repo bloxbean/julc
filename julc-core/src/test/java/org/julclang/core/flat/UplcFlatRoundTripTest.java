@@ -379,6 +379,50 @@ class UplcFlatRoundTripTest {
         assertThrows(FlatDecodingException.class, () -> UplcFlatDecoder.decodeProgram(w.toByteArray()));
     }
 
+    /** De Bruijn indices and constructor tags are Word64s: plutus-core's {@code dWord64} reads at most ten groups. */
+    @Test
+    void variableIndexAndConstructorTagAreBoundedWord64s() {
+        var tenGroups = (Term.Lam) UplcFlatDecoder.decodeProgram(lamVar(10)).term();
+        assertEquals(1, ((Term.Var) tenGroups.body()).name().index());
+        assertEquals(1L, ((Term.Constr) UplcFlatDecoder.decodeProgram(constr(10)).term()).tag());
+        assertThrows(FlatDecodingException.class, () -> UplcFlatDecoder.decodeProgram(lamVar(11)));
+        assertThrows(FlatDecodingException.class, () -> UplcFlatDecoder.decodeProgram(constr(11)));
+    }
+
+    /** Program 1.0.0 {@code (lam (var 1))} with the index written in {@code groups} vli7 groups. */
+    private static byte[] lamVar(int groups) {
+        var w = version100();
+        w.bits(4, 2);
+        w.bits(4, 0);
+        writePaddedOne(w, groups);
+        w.filler();
+        return w.toByteArray();
+    }
+
+    /** Program 1.0.0 {@code (constr 1)} with the tag written in {@code groups} vli7 groups. */
+    private static byte[] constr(int groups) {
+        var w = version100();
+        w.bits(4, 8);
+        writePaddedOne(w, groups);
+        w.listNil();
+        w.filler();
+        return w.toByteArray();
+    }
+
+    private static FlatWriter version100() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE);
+        w.natural(BigInteger.ZERO);
+        w.natural(BigInteger.ZERO);
+        return w;
+    }
+
+    private static void writePaddedOne(FlatWriter w, int groups) {
+        for (byte b : FlatWriterReaderTest.paddedOne(groups)) {
+            w.byte_(b & 0xFF);
+        }
+    }
+
     private static int maxIntegerBitLength(Term term) {
         return switch (term) {
             case Term.Const c when c.value() instanceof Constant.IntegerConst i -> i.value().bitLength();

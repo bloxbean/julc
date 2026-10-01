@@ -486,6 +486,34 @@ class FlatWriterReaderTest {
         assertThrows(FlatDecodingException.class, r::word64);
     }
 
+    /** plutus-core's {@code dWord64} reads at most ten groups and accepts a padded encoding within them. */
+    @Test
+    void word64AcceptsTenGroups() {
+        assertEquals(1L, new FlatReader(paddedOne(10)).word64());
+        var w = new FlatWriter();
+        w.word64(Long.MIN_VALUE); // 2^63: ten groups, tenth payload 1
+        assertEquals(Long.MIN_VALUE, new FlatReader(w.toByteArray()).word64());
+    }
+
+    /** {@code lastStep} rejects a continuation bit on the tenth group whatever follows; Natural has no such bound. */
+    @Test
+    void word64RejectsMoreThanTenGroups() {
+        for (int groups : new int[]{11, 130}) {
+            assertThrows(FlatDecodingException.class, () -> new FlatReader(paddedOne(groups)).word64(),
+                    groups + " groups");
+            assertEquals(BigInteger.ONE, new FlatReader(paddedOne(groups)).natural());
+        }
+    }
+
+    /** The value 1 in {@code groups} vli7 groups: the payload in the first, zero padding after it. */
+    static byte[] paddedOne(int groups) {
+        byte[] bytes = new byte[groups];
+        Arrays.fill(bytes, (byte) 0x80);
+        bytes[0] = (byte) 0x81;
+        bytes[groups - 1] = 0;
+        return bytes;
+    }
+
     @Test
     void truncatedIntegerFails() {
         var w = new FlatWriter();

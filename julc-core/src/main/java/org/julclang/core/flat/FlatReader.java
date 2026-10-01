@@ -106,14 +106,27 @@ public final class FlatReader {
     }
 
     /**
-     * Decode an unsigned long (Word64) from vli7 encoding.
+     * Decode an unsigned long (Word64) from vli7 encoding as plutus-core's {@code dWord64} does: at most
+     * ten groups, no continuation bit on the tenth, and a tenth payload of at most one bit. A padded
+     * encoding within ten groups is accepted; a longer one is rejected whatever value it would denote.
      */
     public long word64() {
-        BigInteger value = decodeVli7();
-        if (value.bitLength() > 64) {
-            throw new FlatDecodingException("Word64 value exceeds 64 bits: " + value.bitLength() + " bits");
+        long value = 0;
+        for (int shift = 0; shift < 63; shift += 7) {
+            int b = byte_();
+            value |= (long) (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) {
+                return value;
+            }
         }
-        return value.longValue(); // correctly handles unsigned values via two's complement
+        int b = byte_();
+        if ((b & 0x80) != 0) {
+            throw new FlatDecodingException("Word64 encoding has more than ten vli7 groups");
+        }
+        if (b > 1) {
+            throw new FlatDecodingException("Word64 value exceeds 64 bits");
+        }
+        return value | (long) b << 63; // bit 63 set means a value above Long.MAX_VALUE, as two's complement
     }
 
     /**
