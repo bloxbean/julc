@@ -26,6 +26,8 @@ final class OriginalTxBytes {
 
     private static final int MAJOR_ARRAY = 4;
     private static final int MAJOR_MAP = 5;
+    private static final int MAJOR_TAG = 6;
+    private static final int SET_TAG = 258;
     private static final int BODY_OUTPUTS = 1;
     private static final int OUTPUT_DATUM = 2;
     private static final int WITNESS_DATUMS = 4;
@@ -228,10 +230,10 @@ final class OriginalTxBytes {
         return false;
     }
 
-    /** Skips the Conway set tag 258 ({@code d9 0102}), if present. */
-    private static void skipSetTag(ByteArrayInputStream in) {
-        in.mark(3);
-        if (in.read() == 0xd9 && in.read() == 0x01 && in.read() == 0x02) return;
-        in.reset();
+    /** Skips the Conway set tag 258 ({@code #6.258}), however wide its argument is encoded, if present. */
+    private static void skipSetTag(ByteArrayInputStream in) throws CborException {
+        if (peekMajor(in) != MAJOR_TAG) return;
+        in.mark(9);
+        if (header(in, MAJOR_TAG) != SET_TAG) in.reset();
     }
 }

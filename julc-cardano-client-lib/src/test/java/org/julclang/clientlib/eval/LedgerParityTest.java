@@ -20,6 +20,8 @@ import org.julclang.core.Term;
 import org.julclang.ledger.*;
 import org.julclang.vm.PlutusLanguage;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -27,6 +29,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -104,12 +107,18 @@ class LedgerParityTest {
 
     // --- 1. TxId and witness-datum hashes from the original bytes ---
 
-    @Test
-    void txIdAndWitnessDatumHashesComeFromTheOriginalBytes() throws Exception {
+    /** The witness datum set untagged, and tagged 258 with a 2, 4 and 8 byte argument: the ledger reads them all. */
+    static Stream<String> setTags() {
+        return Stream.of("", "d90102", "da00000102", "db0000000000000102");
+    }
+
+    @ParameterizedTest
+    @MethodSource("setTags")
+    void txIdAndWitnessDatumHashesComeFromTheOriginalBytes(String setTag) throws Exception {
         // fee as a non-minimal uint64 and a datum map with keys out of canonical order: CCL re-encodes both
         String nonMinimalFee = "021b0000000000030d40";
         String datum = "a202000100";
-        byte[] cbor = tx(3, INPUTS + NO_OUTPUTS + nonMinimalFee, "a104d9010281" + datum);
+        byte[] cbor = tx(3, INPUTS + NO_OUTPUTS + nonMinimalFee, "a104" + setTag + "81" + datum);
         TxInfo info = converter(cbor, 10).buildTxInfo();
 
         byte[] body = TransactionUtil.extractTransactionBodyFromTx(cbor);
@@ -332,6 +341,20 @@ class LedgerParityTest {
         var result = evaluator(script, hash).evaluateTx(cbor, Set.of(inputUtxo(scriptAddress(hash))));
         assertFalse(result.isSuccessful());
         assertTrue(result.getResponse().contains("No datum"), result.getResponse());
+    }
+
+    @ParameterizedTest
+    @MethodSource("setTags")
+    void v2SpendFindsItsWitnessDatum(String setTag) throws Exception {
+        var program = Program.plutusV2(Term.lam("d", Term.lam("r", Term.lam("ctx", Term.const_(Constant.unit())))));
+        var script = PlutusV2Script.builder().cborHex(JulcScriptAdapter.fromProgram(program).getCborHex()).build();
+        String hash = HexFormat.of().formatHex(script.getScriptHash());
+        String datum = "a202000100";
+        Utxo input = inputUtxo(scriptAddress(hash));
+        input.setDataHash(HexFormat.of().formatHex(Blake2bUtil.blake2bHash256(b(datum))));
+        byte[] cbor = tx(3, INPUTS + NO_OUTPUTS + FEE, "a204" + setTag + "81" + datum + "0581840000008200" + "00");
+        var result = evaluator(script, hash).evaluateTx(cbor, Set.of(input));
+        assertTrue(result.isSuccessful(), result.getResponse());
     }
 
     // --- 12. The proposing script is the guardrails script ---
