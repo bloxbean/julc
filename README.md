@@ -174,7 +174,8 @@ silently change this default.
 ext.julcVersion = '0.1.0-pre16'
 ```
 
-Releases are on Maven Central and also in `https://repo.bloxbean.org/maven/releases`, with the same files.
+Releases are on Maven Central and, from the next release on, also in
+`https://repo.bloxbean.org/maven/releases`, with the same files.
 
 ### Using Snapshot Builds
 
