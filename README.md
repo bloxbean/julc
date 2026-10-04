@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/bloxbean/julc/actions/workflows/build.yml"><img src="https://github.com/bloxbean/julc/actions/workflows/build.yml/badge.svg" alt="Build & Test"/></a>
   <a href="https://central.sonatype.com/artifact/org.julclang/julc-core"><img src="https://img.shields.io/maven-central/v/org.julclang/julc-core.svg?label=Maven%20Central" alt="Maven Central"/></a>
+  <a href="#using-snapshot-builds"><img src="https://img.shields.io/maven-metadata/v?metadataUrl=https%3A%2F%2Frepo.bloxbean.org%2Fmaven%2Fsnapshots%2Forg%2Fjulclang%2Fjulc-core%2Fmaven-metadata.xml&strategy=latestProperty&label=snapshot" alt="Latest development snapshot"/></a>
   <a href="https://github.com/bloxbean/julc/releases"><img src="https://img.shields.io/github/v/release/bloxbean/julc?include_prereleases&label=release" alt="GitHub Release"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/bloxbean/julc.svg" alt="License"/></a>
   <img src="https://img.shields.io/badge/Java-25-orange.svg" alt="Java 25"/>
@@ -173,13 +174,17 @@ silently change this default.
 ext.julcVersion = '0.1.0-pre16'
 ```
 
+Releases are on Maven Central and also in `https://repo.bloxbean.org/maven/releases`, with the same files.
+
 ### Using Snapshot Builds
 
-Snapshot versions include the Git commit hash for traceability, e.g. `0.1.0-055d17f-SNAPSHOT`.
+Development snapshots are in the BloxBean Maven repository, one version per commit: the version carries the Git
+commit hash for traceability, e.g. `0.1.0-pre19-1a2b3c4-SNAPSHOT`. The newest one is on the snapshot badge above
+and in the [version list](https://repo.bloxbean.org/maven/snapshots/org/julclang/julc-core/maven-metadata.xml).
+Snapshot builds of the CLI, the playground, the WebAssembly bundles and the shadow jars, when published, are
+listed in `https://repo.bloxbean.org/dist/snapshots/julc/latest.json` and kept for 30 days.
 
-**Current snapshot version**: `0.1.0-055d17f-SNAPSHOT`. Check here for the latest snapshot commit ID: https://github.com/bloxbean/julc/actions/workflows/snapshot_manual.yml
-
-To use snapshots, add the Sonatype snapshot repository:
+To use snapshots, add the BloxBean snapshot repository:
 
 **Gradle**
 
@@ -187,7 +192,8 @@ To use snapshots, add the Sonatype snapshot repository:
 repositories {
     mavenCentral()
     maven {
-        url "https://central.sonatype.com/repository/maven-snapshots"
+        url = uri('https://repo.bloxbean.org/maven/snapshots')
+        mavenContent { snapshotsOnly() }
     }
 }
 ```
@@ -197,8 +203,8 @@ repositories {
 ```xml
 <repositories>
     <repository>
-        <id>snapshots-repo</id>
-        <url>https://central.sonatype.com/repository/maven-snapshots</url>
+        <id>bloxbean-snapshots</id>
+        <url>https://repo.bloxbean.org/maven/snapshots</url>
         <releases>
             <enabled>false</enabled>
         </releases>
