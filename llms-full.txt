@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre18
-Generated: 2026-09-29T13:27:28.315Z
+Generated: 2026-10-04T16:34:27.073Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -1996,8 +1996,10 @@ ext {
 
 repositories {
     mavenCentral()
+    // Development snapshots (one version per commit); not needed for releases.
     maven {
-        url "https://central.sonatype.com/repository/maven-snapshots"
+        url = uri('https://repo.bloxbean.org/maven/snapshots')
+        mavenContent { snapshotsOnly() }
     }
 }
 
@@ -2039,8 +2041,8 @@ test {
 <!-- Required for snapshot versions only -->
 <repositories>
     <repository>
-        <id>snapshots-repo</id>
-        <url>https://central.sonatype.com/repository/maven-snapshots</url>
+        <id>bloxbean-snapshots</id>
+        <url>https://repo.bloxbean.org/maven/snapshots</url>
         <releases>
             <enabled>false</enabled>
         </releases>
