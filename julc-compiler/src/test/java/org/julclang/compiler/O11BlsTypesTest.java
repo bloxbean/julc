@@ -66,8 +66,22 @@ class O11BlsTypesTest {
             Map.entry("CONS_RECURSION/invalid-encoding", "Bls12_381_G1_uncompress"),
             Map.entry("CONS_RECURSION/not-bytes", "UnBData"),
             Map.entry("CONS_RECURSION/not-an-integer", "UnIData"),
+            Map.entry("CONS_RECURSION/order-not-bytes-first", "UnBData"),
+            Map.entry("CONS_RECURSION/order-invalid-encoding-first", "Bls12_381_G1_uncompress"),
             Map.entry("VALIDATE_ONCE/infinity", "Error term encountered"),
             Map.entry("VALIDATE_ONCE/invalid-encoding", "Bls12_381_G1_uncompress"));
+    /**
+     * PV11_SAFE size and script hash of the #240 fixtures (ADR-047 Amendment 1 evidence), so a
+     * lowering change shows up here and not only in the printed artifact lines.
+     */
+    private static final Map<String, String> CONS_ARTIFACTS = Map.of(
+            "CONS_RECURSION", "222 8be19c3e5bb0d7295ea15e66fb4b7cbeab0ec099bc5421c4d4c104b6",
+            "VALIDATE_ONCE", "274 77949aa1bd08c80cf52d4f7822dbcff9d80ef347d57f5cdabcdd987e",
+            "CONS_ORDER", "402 3bea2d18afe9bacc7cce28dc633417047954cdf7f6e16a7e8128cd23",
+            "G2_CONS", "225 029e90c66f35d80475cff250026fb8c672b77617ddf725f4d7719192",
+            "CONS_EMPTY_AND_MIXED", "410 a0ce17903b087d903a320777989798b5f5af27cd6cc3c6fb32a763ce",
+            "CONS_LOOPS", "559 46f2ad09411eb12c4b558bbf3acd3ee19ea8b1616199851a54ab4968");
+
     /** ADR-043 (O9) promotes the repeatedly indexed boundary list at PV11_COSTED, so the chain's own get fails as IndexArray there. */
     private static final Map<String, String> COSTED_FAILURE_PREFIX = Map.of(
             "FROM_LISTS/one-scalar", "IndexArray: index 1 out of bounds for array of size 1",
@@ -115,7 +129,11 @@ class O11BlsTypesTest {
                     }
                 }
                 if (level == OptimizationLevel.PV11_SAFE) {
-                    System.out.println("BLS_TYPED_ARTIFACT " + fixture.name() + " " + bytes.length + " " + JulcScriptAdapter.scriptHash(result.program()));
+                    var artifact = bytes.length + " " + JulcScriptAdapter.scriptHash(result.program());
+                    System.out.println("BLS_TYPED_ARTIFACT " + fixture.name() + " " + artifact);
+                    if (CONS_ARTIFACTS.containsKey(fixture.name())) {
+                        assertEquals(CONS_ARTIFACTS.get(fixture.name()), artifact, label + " artifact");
+                    }
                 }
             }
         }
@@ -280,7 +298,29 @@ class O11BlsTypesTest {
                 new Bad("a native list in a record", "record Box(JulcG1Points ps) {}\n static boolean m() { var box = new Box(Builtins.g1PointsEmpty()); return true; }",
                         "JULC0041", "requires Data"),
                 new Bad("a native list accumulator among several (the Data pack)", "static boolean m(JulcList<byte[]> xs) { JulcG1Points acc = Builtins.g1PointsEmpty(); BigInteger n = BigInteger.ZERO; for (var b : xs) { acc = Builtins.g1PointsCons(BlsLib.g1Uncompress(b), acc); n = n.add(BigInteger.ONE); } return n.equals(BigInteger.ZERO); }",
-                        "JULC0041", "Data encoding received NativeList[G1], but requires Data"));
+                        "JULC0041", "Data encoding received NativeList[G1], but requires Data"),
+                // a cast lowers to the identity, so it is never a decoder or a group change (#241 review F1)
+                new Bad("a G2 list cast through Object to a G1 list", "static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), (JulcG1Points)(Object) Builtins.g2PointsEmpty()); }",
+                        "JULC0041", "Cast to JulcG1Points received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("a G2 list cast directly to a G1 list", "static JulcG1Points m() { JulcG1Points ps = (JulcG1Points) Builtins.g2PointsEmpty(); return ps; }",
+                        "JULC0041", "Cast to JulcG1Points received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("a Data byte-string list cast to a G1 list", "static JulcG1Points m(JulcList<byte[]> xs, byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), (JulcG1Points)(Object) xs); }",
+                        "JULC0041", "Cast to JulcG1Points received List[ByteString], but requires NativeList[G1]"),
+                new Bad("a Data integer list cast to scalars", "static JulcG1 m(JulcList<BigInteger> xs, byte[] dst) { return BlsLib.g1MultiScalarMul((JulcScalars)(Object) xs, Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst))); }",
+                        "JULC0041", "Cast to JulcScalars received List[Integer], but requires NativeList[Integer]"),
+                new Bad("PlutusData.cast to a G1 list", "static JulcG1Points m(PlutusData d, byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), PlutusData.cast(d, JulcG1Points.class)); }",
+                        "JULC0041", "PlutusData.cast to JulcG1Points received Data, but requires NativeList[G1]"),
+                new Bad("PlutusData.cast to a G1 point", "static JulcG1 m(PlutusData d) { return PlutusData.cast(d, JulcG1.class); }",
+                        "JULC0041", "PlutusData.cast to JulcG1 received Data, but requires G1"),
+                new Bad("a G2 point cast through Object to a G1 cons element", "static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons((JulcG1)(Object) Builtins.bls12_381_G2_hashToGroup(dst, dst), Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "Cast to JulcG1 received G2, but requires G1"),
+                new Bad("a G2 point cast through Object into a G1 literal list", "static JulcG1Points m(byte[] dst) { return Builtins.g1Points((JulcG1)(Object) Builtins.bls12_381_G2_hashToGroup(dst, dst)); }",
+                        "JULC0041", "Cast to JulcG1 received G2, but requires G1"),
+                // known limitations, pinned so they stay fail-closed (ADR-047 Amendment 1, Compatibility and risks)
+                new Bad("a switch expression yielding native lists", "sealed interface S permits A, B {}\n record A(BigInteger x) implements S {}\n record B(BigInteger y) implements S {}\n static JulcG1Points m(S s, byte[] dst) { JulcG1Points ps = switch (s) { case A a -> Builtins.g1PointsEmpty(); case B b -> Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst)); }; return ps; }",
+                        "JULC0041", "initializer received Data, but requires NativeList[G1]"),
+                new Bad("a G1 point cast to PlutusData", "static PlutusData m(byte[] dst) { return (PlutusData)(Object) Builtins.bls12_381_G1_hashToGroup(dst, dst); }",
+                        "JULC0041", "Cast to PlutusData received G1, but requires Data"));
         for (var bad : cases) {
             var error = assertThrows(CompilerException.class,
                     () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + "class Bad {\n" + bad.body() + "\n}\n", "m"),
@@ -289,6 +329,17 @@ class O11BlsTypesTest {
             assertEquals(bad.code(), diagnostic.code(), bad.name() + ": " + diagnostic.message());
             assertTrue(diagnostic.message().contains(bad.fragment()), bad.name() + ": " + diagnostic.message());
         }
+        // Known limitation, pinned fail-closed: foldl types its accumulator parameter as the element type.
+        var foldl = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(
+                IMPORTS + "import org.julclang.stdlib.lib.ListsLib;\n" + """
+                class Foldl {
+                    static JulcG1Points m(JulcList<byte[]> xs) {
+                        return ListsLib.foldl(xs, Builtins.g1PointsEmpty(), (a, b) -> Builtins.g1PointsCons(BlsLib.g1Uncompress(b), a));
+                    }
+                }
+                """, "m"));
+        assertEquals("JULC0041", foldl.diagnostics().getFirst().code(), foldl.getMessage());
+        assertTrue(foldl.getMessage().contains("but requires NativeList[G1]"), foldl.getMessage());
         // An assignment the loop body generators do not bind is rejected, never lowered to its right-hand side
         // with the update dropped: in expression position, and to a target with no declaration in scope
         // (PR #150 review round three).

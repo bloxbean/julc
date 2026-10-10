@@ -450,6 +450,51 @@ final class O11BlsTypesFixtures {
                     return empty && literal && converted;
                 }""");
 
+    /**
+     * 24 (#241 review): native accumulators in loop shapes ZeroJ-style verifiers use: a for-each
+     * that stops at a marker with {@code break}, and a nested for-each that writes the outer
+     * accumulator. Each list is checked against an independent {@code add}/{@code scalarMul} sum,
+     * and the break result against the first point alone.
+     */
+    static final String CONS_LOOPS = method("""
+                static boolean consLoops(JulcList<byte[]> encoded, JulcList<BigInteger> scalars, byte[] stop) {
+                    JulcG1Points prefix = Builtins.g1PointsEmpty();
+                    for (var b : encoded) {
+                        if (Builtins.equalsByteString(b, stop)) break;
+                        prefix = Builtins.g1PointsCons(BlsLib.g1Uncompress(b), prefix);
+                    }
+                    JulcScalars prefixOnes = Builtins.scalarsEmpty();
+                    for (var b : encoded) {
+                        if (Builtins.equalsByteString(b, stop)) break;
+                        prefixOnes = Builtins.scalarsCons(BigInteger.ONE, prefixOnes);
+                    }
+                    JulcG1 first = BlsLib.g1Uncompress(encoded.head());
+                    boolean stopped = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(prefixOnes, prefix), first);
+
+                    JulcG1Points terms = Builtins.g1PointsEmpty();
+                    for (var b : encoded) {
+                        for (var s : scalars) {
+                            terms = Builtins.g1PointsCons(BlsLib.g1ScalarMul(s, BlsLib.g1Uncompress(b)), terms);
+                        }
+                    }
+                    JulcScalars ones = Builtins.scalarsEmpty();
+                    for (var b : encoded) {
+                        for (var s : scalars) {
+                            ones = Builtins.scalarsCons(BigInteger.ONE, ones);
+                        }
+                    }
+                    JulcG1 pointSum = BlsLib.g1ScalarMul(BigInteger.ZERO, first);
+                    for (var b : encoded) {
+                        pointSum = BlsLib.g1Add(pointSum, BlsLib.g1Uncompress(b));
+                    }
+                    BigInteger scalarSum = BigInteger.ZERO;
+                    for (var s : scalars) {
+                        scalarSum = scalarSum.add(s);
+                    }
+                    boolean nested = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(ones, terms), BlsLib.g1ScalarMul(scalarSum, pointSum));
+                    return stopped && nested;
+                }""");
+
     private static final List<Input> RUN = List.of(Input.ok("run", DST));
 
     /** Three distinct points (G, 2G, −G) for the #240 fixtures; with the scalars 2, 3, 5 the sum is 3G, reversed points give 9G. */
@@ -507,7 +552,11 @@ final class O11BlsTypesFixtures {
                     Input.ok("empty", points(), integers()),
                     Input.fails("invalid-encoding", points(G1_GENERATOR, new byte[48]), integers(2, 3)),
                     Input.fails("not-bytes", PlutusData.list(PlutusData.bytes(G1_GENERATOR), PlutusData.integer(1)), integers(2, 3)),
-                    Input.fails("not-an-integer", THREE_POINTS, PlutusData.list(PlutusData.integer(2), PlutusData.bytes(new byte[]{1}))))),
+                    Input.fails("not-an-integer", THREE_POINTS, PlutusData.list(PlutusData.integer(2), PlutusData.bytes(new byte[]{1}))),
+                    // two bad elements with different failures: the first element's failure surfaces, so the
+                    // element is evaluated before the rest of the list (ADR-047 Amendment 1, invariant 4)
+                    Input.fails("order-not-bytes-first", PlutusData.list(PlutusData.integer(1), PlutusData.bytes(new byte[48])), integers(2, 3)),
+                    Input.fails("order-invalid-encoding-first", PlutusData.list(PlutusData.bytes(new byte[48]), PlutusData.integer(1)), integers(2, 3)))),
             new Fixture("VALIDATE_ONCE", VALIDATE_ONCE, "validateOnce", List.of(
                     Input.ok("three", THREE_POINTS, integers(2, 3, 5)),
                     Input.ok("empty", points(), integers(2)),
@@ -517,5 +566,7 @@ final class O11BlsTypesFixtures {
                     Input.ok("three", THREE_POINTS, integers(2, 3, 5)))),
             new Fixture("G2_CONS", G2_CONS, "g2Cons", RUN),
             new Fixture("CONS_EMPTY_AND_MIXED", CONS_EMPTY_AND_MIXED, "consEmptyAndMixed", List.of(
-                    Input.ok("one", integers(3), points(G1_GENERATOR), DST))));
+                    Input.ok("one", integers(3), points(G1_GENERATOR), DST))),
+            new Fixture("CONS_LOOPS", CONS_LOOPS, "consLoops", List.of(
+                    Input.ok("three", THREE_POINTS, integers(2, 3, 5), PlutusData.bytes(G1_DOUBLE)))));
 }

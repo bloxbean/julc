@@ -19,9 +19,9 @@ decompressing them a second time with `g1PointsFromCompressed`. On the pinned PV
 validating 24 compressed G1 points and then calling `g1PointsFromCompressed` and the
 multiplication costs 3,633,587,600 CPU; validating each point once and consing it costs
 2,342,911,604 CPU (one 52.9 million CPU decompression saved per point). Building the list by
-cons costs 48,000 CPU and 300 memory per element more than the converter or the literal
-`g1Points(...)` chain: each cons is bound once, as the literal chain is, so the compiler can
-type it.
+cons costs 48,000 CPU and 300 memory per element after the first more than the converter or
+the literal `g1Points(...)` chain: each cons is bound once, as the literal chain is, so the
+compiler can type it.
 
 The ADR-047 typing rules apply unchanged: the element must be a point of the list's group
 (or an integer for scalars) and the list must be the native list of that group, so a G2 point
@@ -29,6 +29,13 @@ on a G1 list, compressed bytes, Data, or a `JulcList` where a native list is req
 `JULC0041`. The lists stay opaque: no Data encoding, no datum, redeemer, record or Data
 list, no `==`, and no `isEmpty`/`head`/`tail`. This is an addition: programs that do not
 call the new methods compile to the same bytes and hashes.
+
+A Java cast or `PlutusData.cast` that changes a native type (for example
+`(JulcG1Points)(Object) g2PointsEmpty()` or `PlutusData.cast(d, JulcG1Points.class)`) is now
+`JULC0041`. Such casts compiled before, for the existing producers as well, and always failed
+at runtime; a cast is never a decoder. A `switch` expression cannot yield a native list, and
+`ListsLib.foldl` cannot carry a native accumulator (both `JULC0041`); use an `if` with
+`return`s, a for-each or a recursion.
 
 ## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
 

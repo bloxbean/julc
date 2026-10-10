@@ -394,8 +394,8 @@ as the literal `g1Points(e)` up to the binder name.
 
 ### Fixtures (`O11BlsTypesTest.typedBlsProgramsAgreeWithTheirManualChainsOnEveryBackend`)
 
-Five new fixtures, every level, Java, Truffle and Scalus with equal budgets; the pinned
-failure text on Java and Truffle. Budgets at `PV11_SAFE`, Java VM:
+Six new fixtures (five at `4cc63c24`, `CONS_LOOPS` in review r2), every level, Java,
+Truffle and Scalus with equal budgets; the pinned failure text on Java and Truffle. Budgets at `PV11_SAFE`, Java VM:
 
 | Fixture | Input | CPU | Memory | Outcome |
 |---|---|---:|---:|---|
@@ -406,6 +406,8 @@ failure text on Java and Truffle. Budgets at `PV11_SAFE`, Java VM:
 | CONS_RECURSION | invalid-encoding | 110,308,460 | 20,676 | fails: Bls12_381_G1_uncompress: G1 uncompress failed: BLST_ERROR: bad point encoding |
 | CONS_RECURSION | not-bytes | 57,280,338 | 20,158 | fails: UnBData: not BytesData |
 | CONS_RECURSION | not-an-integer | 2,272,350 | 11,656 | fails: UnIData: not IntData |
+| CONS_RECURSION | order-not-bytes-first (r2) | 3,432,828 | 16,012 | fails: UnBData: not BytesData |
+| CONS_RECURSION | order-invalid-encoding-first (r2) | 56,460,950 | 16,530 | fails: Bls12_381_G1_uncompress: G1 uncompress failed: BLST_ERROR: bad point encoding |
 | VALIDATE_ONCE | three | 1,365,747,247 | 64,935 | true |
 | VALIDATE_ONCE | empty | 698,490,636 | 20,549 | true |
 | VALIDATE_ONCE | infinity | 270,543,990 | 26,028 | fails: Error term encountered |
@@ -413,6 +415,7 @@ failure text on Java and Truffle. Budgets at `PV11_SAFE`, Java VM:
 | CONS_ORDER | three | 2,088,451,019 | 101,301 | true |
 | G2_CONS | run | 4,002,140,096 | 35,256 | true |
 | CONS_EMPTY_AND_MIXED | one | 2,339,396,249 | 37,963 | true |
+| CONS_LOOPS (r2) | three | 2,513,912,527 | 175,448 | true |
 
 `three` is G, 2·G, −G with the scalars 2, 3, 5 (sum 3·G; with the points reversed, 9·G, which
 `CONS_ORDER` requires to disagree). 2·G is checked to be G + G on the VM in
@@ -426,13 +429,24 @@ flag flipped. Artifacts at `PV11_SAFE`:
 | CONS_ORDER | 402 | `3bea2d18afe9bacc…` |
 | G2_CONS | 225 | `029e90c66f35d804…` |
 | CONS_EMPTY_AND_MIXED | 410 | `a0ce17903b087d90…` |
+| CONS_LOOPS (r2) | 559 | `46f2ad09411eb12c…` |
+
+Since r2 the test asserts these six sizes and full hashes (`CONS_ARTIFACTS`). The two
+`order-…` inputs carry two bad elements with different failures (an integer and 48 zero
+bytes, in both orders); in each, the first element's failure surfaces at every level on
+Java, Truffle and Scalus, which pins Invariant 4's element-first order. `CONS_LOOPS` uses
+`three` with the stop marker 2·G: the for-each with `break` keeps only G, and the nested
+for-each builds the nine terms `s·P` (sum `(2+3+5)·(G+2G−G)`).
 
 Additivity: in the same run the 18 original fixtures printed the 18 sizes and hash
 prefixes and the 34 budgets of the tables above, unchanged (compared programmatically).
+After r2's cast check the 23 fixtures of `4cc63c24` print the same sizes, hashes and
+budgets as before it.
 
 ### Diagnostics (`misuseIsRejectedAtCompileTimeWithTheNativeIsolationCodes`)
 
-Twenty-five new shapes, all `JULC0041`:
+Thirty-four new shapes, all `JULC0041` (twenty-five at `4cc63c24`; the nine casts and the
+pinned limitation below in review r2):
 
 | Shape | Message fragment |
 |---|---|
@@ -457,6 +471,26 @@ Twenty-five new shapes, all `JULC0041`:
 | `nullList` / `headList` / `mkCons` on a native list | `received NativeList[...], but requires Data` |
 | a native list as a record field | `requires Data` |
 | a native list accumulator next to a counter in one loop | `Data encoding received NativeList[G1], but requires Data` |
+| `(JulcG1Points)(Object) g2PointsEmpty()` as a cons list (r2) | `Cast to JulcG1Points received NativeList[G2], but requires NativeList[G1]` |
+| `(JulcG1Points) g2PointsEmpty()` (r2) | the same |
+| `(JulcG1Points)(Object) xs`, `xs` a `JulcList<byte[]>` (r2) | `Cast to JulcG1Points received List[ByteString], but requires NativeList[G1]` |
+| `(JulcScalars)(Object) xs` into MSM, `xs` a `JulcList<BigInteger>` (r2) | `Cast to JulcScalars received List[Integer], but requires NativeList[Integer]` |
+| `PlutusData.cast(d, JulcG1Points.class)` (r2) | `PlutusData.cast to JulcG1Points received Data, but requires NativeList[G1]` |
+| `PlutusData.cast(d, JulcG1.class)` (r2) | `PlutusData.cast to JulcG1 received Data, but requires G1` |
+| `(JulcG1)(Object)` of a G2 point as a cons element (r2) | `Cast to JulcG1 received G2, but requires G1` |
+| `(JulcG1)(Object)` of a G2 point in `g1Points(…)` (r2) | the same |
+| `(PlutusData)(Object)` of a G1 point (r2) | `Cast to PlutusData received G1, but requires Data` |
+| a `switch` expression with native-list arms (r2, known limitation) | `initializer received Data, but requires NativeList[G1]` |
+
+Before r2 the nine casts compiled (each cast lowers to the identity) and failed at runtime
+on Java, Truffle and Scalus (`MkCons: element type … does not match list element type …`,
+`MkCons: expected list, got VCon(Data)`, `scalar must be integer`): a pre-existing ADR-047
+gap, found by the review of `4cc63c24`, that the amendment's invariants did not exclude. A
+search of the repository, `julc-examples`, ZeroJ and zeroj-usecases found no cast to a
+native type, so no existing program is affected. Separately, a fold with a native
+accumulator (`ListsLib.foldl(xs, g1PointsEmpty(), …)`) is pinned as `JULC0041 … but requires
+NativeList[G1]` (the fold types its accumulator parameter as the element type; a known
+limitation).
 
 ### Producer shape (`incrementalProducersLowerToTheEmptyConstantAndOneMkConsPerElement`)
 
@@ -466,7 +500,11 @@ The three empty forms are the empty constant of their universe as the whole prog
 is `Let #__native_g1PointsCons = MkCons e (con (list bls12_381_G1_element) [])` with body
 `Var(#__native_g1PointsCons, NativeList[G1])`. `g1PointsCons(p, g1PointsEmpty())`,
 `g2PointsCons(q, g2PointsEmpty())` and `scalarsCons(x, scalarsEmpty())` are FLAT-identical to
-`g1Points(p)`, `g2Points(q)` and `scalars(x)` at all four levels. Three nested conses
+`g1Points(p)`, `g2Points(q)` and `scalars(x)` at all four levels for a non-constant element
+(`p`, `q`, `x` are runtime values). For a constant element they are not: `scalars(2)` folds to
+the 7-byte constant `[2]` (16,100 CPU), while `scalarsCons(2, scalarsEmpty())` stays an
+`MkCons` (16 bytes, 264,462 CPU); review r2, measured by the reviewer and noted under open
+question 4. Three nested conses
 contain three `MkCons` and one empty constant; the recursive helper one `MkCons`; no Data
 encoder in any of them.
 
@@ -509,8 +547,10 @@ validating each point once and consing it (candidate):
 | 16 | 2,531,578,944 / 273,821 / 242 | 1,670,755,420 / 221,534 / 182 | 860,823,524 |
 | 24 | 3,633,587,600 / 403,437 / 242 | 2,342,911,604 / 327,574 / 182 | 1,290,675,996 |
 
-The saving is 53.8 million CPU per point (one `G1_uncompress` plus its list step); the test
-asserts more than 50 million per point on Java and Truffle.
+The saving is 53,731,559 CPU per additional point (the n = 2 → 4 → 8 deltas: one
+`G1_uncompress` plus its list step) on top of a fixed 1,118,580 (n = 1 saves 54,850,139);
+the average at n = 24 is 53.78 million per point. The test asserts more than 50 million per
+point on Java and Truffle.
 
 The list building alone over a point already held: `g1Points(p, …, p)` (one `MkCons`
 chain) against `n` nested `g1PointsCons(p, …, g1PointsEmpty())`:
@@ -544,17 +584,33 @@ bytes, CPU, memory; both scenarios equal):
 | G2_CONS | PV11_SAFE, PV11_COSTED | `875ca17c308ba0e8…` | 207 | 1,589,973,723 | 26,304 |
 
 These rows were computed offline (Java VM). The `nativeConstantsOnChainTest` gate now
-requires 18 cases; it was **not** run for this amendment (no developer node was made
-available), so the node evidence for these six cases is outstanding. The 24 existing rows
-were reproduced unchanged.
+requires 18 cases. The 24 existing offline rows were reproduced unchanged.
+
+**Node gate attempt (2026-10-10, failed environmentally).** The gate was run against a
+local Yaci DevKit node instead of the developer `cardano-node-11.0.1` node:
+`JULC_E2E_CARDANO_CONTAINER=node1-yaci-cli-1 ./gradlew :julc-e2e-tests:nativeConstantsOnChainTest -Pe2e`
+at `4cc63c24`. All 18 cases failed with the same submission error,
+`{"status_code":500,"error":"Internal Server Error","message":"Error evaluating transaction"}`,
+including the 12 cases (`G1`, `G2`, `SCALARS`, `MSM` kinds) that ADR-052 had confirmed on the
+developer node. The DevKit's transaction evaluator on this machine (aarch64) does not
+evaluate BLS12-381 builtins (it cannot load its blst native library), so the run is
+evidence neither for nor against the new kinds. The node evidence for the six new cases is
+still outstanding; it needs the ADR-052 developer node, or a DevKit whose evaluator loads
+blst.
+
+**Target scope (review r2).** The ADR-052 node evidence is PV11 only. `BLS_CONSTANTS` is
+granted wherever the BLS builtins exist (`ProtocolFeatureProfile`), which includes V3 at PV9
+and PV10; no node run has covered an empty typed BLS list constant there.
 
 ### ADR-060 corpus
 
 `Adr060Corpus` includes every O11 fixture, so `BinderNameIndependenceTest` now renames over
-the five new ones too (5,670 renames, no program changed). The byte oracle
+the new ones too (5,670 renames at `4cc63c24`, no program changed). The byte oracle
 `Adr060ByteSnapshotTest` was captured at `ef932b21`, where the new producers did not exist; it
-now checks `Adr060Corpus.capturedEntries()` (the corpus without the O11 fixtures after the
-eighteenth), so its 144 O11 rows and every other row are compared unchanged.
+now checks `Adr060Corpus.capturedEntries()`, the corpus without the O11 fixtures named in
+`Adr060Corpus.O11_ADDED_AFTER_CAPTURE` (by name since r2, and every listed name must be a
+fixture), so its 144 O11 rows and every other row are compared unchanged. An O11 fixture
+added later and not listed stays in the captured set and fails the snapshot's row check.
 
 ### Repository validation
 
@@ -565,3 +621,14 @@ eighteenth), so its 144 O11 rows and every other row are compared unchanged.
 (`NativeConstantsRegressionTest` 18), `julc-benchmark` 136 (1 skipped),
 `julc-blueprint` 26, `julc-verification` 92: 0 failures, 0 errors. Not run: the full
 `./gradlew build`, the external `julc-examples`, the docs-site build and the PV11 node gates.
+
+Review r2 (cast check, order inputs, `CONS_LOOPS`, artifact pins), Java 25.0.2: the same
+tasks with `--rerun` plus `:julc-examples:test` and `:julc-annotation-processor:test`:
+`julc-core` 718, `julc-stdlib` 411, `julc-compiler` 1,781, `pairCaseTest` 72
+(`O11BlsTypesTest` 5), `onChainHarnessTest` 22, `julc-benchmark` 136 (1 skipped),
+`julc-blueprint` 26, `julc-verification` 92, `julc-examples` (in-repo module) 100,
+`julc-annotation-processor` 20; and, without `--rerun` on the r2 compiler, `julc-testkit`
+193, `julc-cardano-client-lib` 235, `julc-bls` 2: 0 failures, 0 errors. `Adr060ByteSnapshotTest`
+and `BinderNameIndependenceTest` pass with the name-based capture set. Still not run: the
+full `./gradlew build`, the external `julc-examples` repository, the docs-site build and the
+PV11 node gates.

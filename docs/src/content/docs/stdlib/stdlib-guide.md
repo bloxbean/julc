@@ -1345,7 +1345,11 @@ with `nullList`/`headList`/`tailList`: those builtins take the list itself, not
 the `PlutusData` that wraps it (`NullList: expected list` otherwise). The
 lists stay opaque: there is no `isEmpty`/`head`/`tail` on them, and a native
 list cannot be a second accumulator of the same loop (the loop packs several
-accumulators as Data), so give it a loop or a recursion of its own.
+accumulators as Data), so give it a loop or a recursion of its own. A cast never
+converts to or from a native type (`(JulcG1Points)(Object) xs` and
+`PlutusData.cast(d, JulcG1Points.class)` are `JULC0041`), a `switch` expression
+cannot yield a native list, and `ListsLib.foldl` cannot carry one as its
+accumulator; use an `if` with `return`s, a for-each or a recursion.
 
 ### Usage
 

@@ -959,16 +959,20 @@ public class PirGenerator {
             // Exception: if the inner expression is already a MapType (pair list), skip UnMapData
             // to avoid double-unwrap (e.g., (JulcMap)(Object) MapLib.empty() where empty() already
             // returns a pair list via MkNilPairData).
+            PirType castTargetType;
             try {
-                var castTargetType = typeResolver.resolve(ce.getType());
-                if (castTargetType instanceof PirType.MapType) {
-                    var innerType = inferPirType(inner);
-                    if (!(innerType instanceof PirType.MapType)) {
-                        return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
-                    }
-                }
+                castTargetType = typeResolver.resolve(ce.getType());
             } catch (IllegalArgumentException | CompilerException _) {
-                // Unknown cast target type (e.g., Object) — treat as no-op
+                // Unknown cast target type (e.g., Object) — treat as no-op; the enclosing
+                // boundary still sees the inner expression's type.
+                return inner;
+            }
+            checkNativeCast("Cast to " + ce.getType(), ce.getExpression(), inner, castTargetType, ce);
+            if (castTargetType instanceof PirType.MapType) {
+                var innerType = inferPirType(inner);
+                if (!(innerType instanceof PirType.MapType)) {
+                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                }
             }
             return inner;
         }
@@ -1310,16 +1314,20 @@ public class PirGenerator {
         var classExpr = (ClassExpr) args.get(1);
         context.logf("Resolved PlutusData.cast: %s", classExpr.getType());
         var inner = generateExpression(args.get(0));
+        PirType castTargetType;
         try {
-            var castTargetType = typeResolver.resolve(classExpr.getType());
-            if (castTargetType instanceof PirType.MapType) {
-                var innerType = inferPirType(inner);
-                if (!(innerType instanceof PirType.MapType)) {
-                    return new PirTerm.App(
-                        new PirTerm.Builtin(DefaultFun.UnMapData), inner);
-                }
+            castTargetType = typeResolver.resolve(classExpr.getType());
+        } catch (CompilerException _) {
+            return inner;
+        }
+        checkNativeCast("PlutusData.cast to " + classExpr.getType(), args.get(0), inner, castTargetType, mce);
+        if (castTargetType instanceof PirType.MapType) {
+            var innerType = inferPirType(inner);
+            if (!(innerType instanceof PirType.MapType)) {
+                return new PirTerm.App(
+                    new PirTerm.Builtin(DefaultFun.UnMapData), inner);
             }
-        } catch (CompilerException _) { }
+        }
         return inner;
     }
 
@@ -1832,6 +1840,16 @@ public class PirGenerator {
                 && !expected.equals(actual)) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(what, actual, expected, sourceLocation(source));
         }
+    }
+
+    /**
+     * {@link #checkNativeBoundary} for a Java cast or {@code PlutusData.cast}. Both lower to the
+     * identity, so neither may turn a value of one type into a native type (or a native value into
+     * another type): a cast is never a decoder. A cast to a type the compiler cannot resolve
+     * (e.g. {@code Object}) is not checked here; the enclosing boundary sees the inner type.
+     */
+    private void checkNativeCast(String what, Expression innerExpr, PirTerm inner, PirType target, Node source) {
+        checkNativeBoundary(what, expressionType(innerExpr, inner), target, source);
     }
 
     /** {@link #checkNativeBoundary} for a local's initializer against its declared or inferred type. */
