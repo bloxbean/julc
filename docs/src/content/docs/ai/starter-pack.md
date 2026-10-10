@@ -375,7 +375,10 @@ results are the opaque types `JulcG1`, `JulcG2`, `JulcMlResult`
 give bytes and only `g1Uncompress`/`g2Uncompress` take them back. MSM takes
 the native lists from `Builtins.scalars(...)`/`g1Points(...)`/`g2Points(...)`
 or `Builtins.scalarsFromList(JulcList<BigInteger>)`/
-`g1PointsFromCompressed(JulcList<byte[]>)`. Declare BLS locals with the typed
+`g1PointsFromCompressed(JulcList<byte[]>)`, or built one element at a time
+(e.g. in a recursive helper over points already uncompressed and checked) with
+`Builtins.g1PointsEmpty()`/`g1PointsCons(p, ps)`, the G2 forms and
+`scalarsEmpty()`/`scalarsCons(s, ss)`; a cons puts its element first. Declare BLS locals with the typed
 names or `var`; a `byte[]` local holding a point is `JULC0041`.
 
 ### NativeValueLib (PV11)

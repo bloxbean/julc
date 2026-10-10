@@ -27,7 +27,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Same source/input corpus for offline regression pins and real node transactions. */
 final class NativeConstantFixtures {
     private NativeConstantFixtures() {}
-    enum Kind { VALUE, ARRAY, G1, G2 }
+    /** G1_CONS/G2_CONS (#240): the point and scalar lists built one element at a time by a recursive helper. */
+    enum Kind { VALUE, ARRAY, G1, G2, G1_CONS, G2_CONS }
+
+    private static String group(Kind kind) {
+        return kind == Kind.G1 || kind == Kind.G1_CONS ? "g1" : "g2";
+    }
     record Scenario(String name, long datum, long redeemer) {}
     record Rejection(PlutusData data, String javaCause, String haskellCause) {}
 
@@ -66,7 +71,26 @@ final class NativeConstantFixtures {
                     var sum = BlsLib.GROUPMultiScalarMul(Builtins.scalars(redeemer, BigInteger.ONE), Builtins.GROUPPoints(p, q));
                     var expected = BlsLib.GROUPAdd(BlsLib.GROUPScalarMul(datum, p), q);
                     return BlsLib.GROUPEqual(sum, expected);
-                    """.replace("GROUP", kind == Kind.G1 ? "g1" : "g2");
+                    """.replace("GROUP", group(kind));
+            case G1_CONS, G2_CONS -> """
+                    var p = BlsLib.GROUPHashToGroup(new byte[]{1}, new byte[]{});
+                    var q = BlsLib.GROUPHashToGroup(new byte[]{2}, new byte[]{});
+                    var sum = BlsLib.GROUPMultiScalarMul(
+                            Builtins.scalarsCons(BigInteger.ONE, Builtins.scalarsCons(redeemer, Builtins.scalarsEmpty())), points(BigInteger.TWO));
+                    var expected = BlsLib.GROUPAdd(BlsLib.GROUPScalarMul(datum, p), q);
+                    return BlsLib.GROUPEqual(sum, expected);
+                    """.replace("GROUP", group(kind));
+        };
+        // The cons kinds build [H(2), H(1)] = [q, p] by recursion, one point per call.
+        String helpers = switch (kind) {
+            case G1_CONS, G2_CONS -> """
+                    static POINTS points(BigInteger i) {
+                        if (i.equals(BigInteger.ZERO)) return Builtins.GROUPPointsEmpty();
+                        return Builtins.GROUPPointsCons(BlsLib.GROUPHashToGroup(Builtins.integerToByteString(true, 0, i), new byte[]{}),
+                                points(i.subtract(BigInteger.ONE)));
+                    }
+                    """.replace("POINTS", kind == Kind.G1_CONS ? "JulcG1Points" : "JulcG2Points").replace("GROUP", group(kind));
+            default -> "";
         };
         return """
                 import java.math.BigInteger;
@@ -75,7 +99,12 @@ final class NativeConstantFixtures {
                 import org.julclang.stdlib.Builtins;
                 import org.julclang.stdlib.lib.NativeValueLib;
                 import org.julclang.stdlib.lib.BlsLib;
+                """ + (helpers.isEmpty() ? "" : """
+                import org.julclang.core.types.JulcG1Points;
+                import org.julclang.core.types.JulcG2Points;
+                """) + """
                 @SpendingValidator class NativeConstantGate {
+                """ + helpers + """
                     @Entrypoint static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
                 """ + body + "\n}}";
     }
@@ -84,7 +113,7 @@ final class NativeConstantFixtures {
         return switch (kind) {
             case VALUE -> List.of(new Scenario("zero", 0, 0), new Scenario("exact", 0, 7));
             case ARRAY -> List.of(new Scenario("first", 2, 0), new Scenario("last", 5, 2));
-            case G1, G2 -> List.of(new Scenario("zero-scalar", 0, 0), new Scenario("two", 2, 2));
+            case G1, G2, G1_CONS, G2_CONS -> List.of(new Scenario("zero-scalar", 0, 0), new Scenario("two", 2, 2));
         };
     }
 
@@ -96,8 +125,8 @@ final class NativeConstantFixtures {
                     "ValueContains", "(builtin valueContains)"), wrongKind);
             case ARRAY -> List.of(falseResult(1), new Rejection(PlutusData.integer(-1), "IndexArray", "(builtin indexArray)"),
                     new Rejection(PlutusData.integer(3), "IndexArray", "(builtin indexArray)"), wrongKind);
-            case G1, G2 -> List.of(falseResult(1), new Rejection(PlutusData.integer(BigInteger.ONE.shiftLeft(4095)),
-                    "scalar too large", kind == Kind.G1 ? "(builtin bls12_381_G1_multiScalarMul)"
+            case G1, G2, G1_CONS, G2_CONS -> List.of(falseResult(1), new Rejection(PlutusData.integer(BigInteger.ONE.shiftLeft(4095)),
+                    "scalar too large", group(kind).equals("g1") ? "(builtin bls12_381_G1_multiScalarMul)"
                             : "(builtin bls12_381_G2_multiScalarMul)"), wrongKind);
         };
     }
@@ -128,12 +157,17 @@ final class NativeConstantFixtures {
                 assertTrue(any(decoded.term(), t -> t instanceof Term.Builtin b && b.fun() == DefaultFun.IndexArray));
                 assertEquals(safe, compiled.optimizationReport().appliedRules().contains("pv11.o10.array-literal-fold"));
             }
-            case G1, G2 -> {
-                var group = kind == Kind.G1 ? DefaultUni.BLS12_381_G1 : DefaultUni.BLS12_381_G2;
-                var msm = kind == Kind.G1 ? DefaultFun.Bls12_381_G1_multiScalarMul : DefaultFun.Bls12_381_G2_multiScalarMul;
+            case G1, G2, G1_CONS, G2_CONS -> {
+                boolean g1 = group(kind).equals("g1");
+                var group = g1 ? DefaultUni.BLS12_381_G1 : DefaultUni.BLS12_381_G2;
+                var msm = g1 ? DefaultFun.Bls12_381_G1_multiScalarMul : DefaultFun.Bls12_381_G2_multiScalarMul;
                 assertTrue(any(decoded.term(), t -> t instanceof Term.Const c && c.value() instanceof Constant.ListConst l
                         && l.elemType().equals(group)), "native point-list constant must survive serialization");
                 assertTrue(any(decoded.term(), t -> t instanceof Term.Builtin b && b.fun() == msm));
+                if (kind == Kind.G1_CONS || kind == Kind.G2_CONS) {
+                    assertTrue(any(decoded.term(), t -> t instanceof Term.Builtin b && b.fun() == DefaultFun.MkCons),
+                            "the incremental list must be built by MkCons at runtime");
+                }
             }
         }
         return compiled;

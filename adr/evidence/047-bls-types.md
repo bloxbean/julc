@@ -371,3 +371,197 @@ results:
 - Additivity census: 41 of 41 validators unchanged (same size and hash as the ADR-046 run) at
   the default level and at `pv11-costed`.
 - Docs site (`npm run build`): 32 pages, no warnings.
+
+## Amendment 1 (#240): incremental native lists
+
+**Issue:** [#240](https://github.com/bloxbean/julc/issues/240) · **ADR:** [047 Amendment 1](../047-bls-types.md#amendment-1-240-incremental-native-lists) · **Branch:** `feat/240-native-bls-list-cons` (on `main` `a01a063f`)
+
+Every number below is from the tests named, run on this branch with the pinned
+`cardano-node-11.0.1` PV11 cost model (`plutus-v3-pv11-costs-v1`).
+
+### Probe
+
+The issue's snippet (`collect(PlutusData encodedList)` with `nullList`/`headList`/`tailList`
+on the parameter) compiles and fails at runtime with `NullList: expected list, got
+VCon(Data[])` at every level: a `PlutusData` holding a list is Data, and the list builtins
+take the builtin list. This predates the amendment. With `Builtins.unListData(...)` at the
+call site the same helper builds the list and the MSM evaluates `true`; so do the
+`JulcList<byte[]>` recursion (`isEmpty`/`head`/`tail`) and a single-accumulator for-each
+loop (`acc = g1PointsCons(uncompress(b), acc)`). Shapes at `BASELINE`, `PV11_SAFE` and
+`PV11_COSTED`: `g1PointsEmpty()` is the program `(con (list bls12_381_G1_element) [])`; a
+cons is `[(lam #__native_g1PointsCons i1) [[(force (builtin mkCons)) e] l]]`, the same shape
+as the literal `g1Points(e)` up to the binder name.
+
+### Fixtures (`O11BlsTypesTest.typedBlsProgramsAgreeWithTheirManualChainsOnEveryBackend`)
+
+Five new fixtures, every level, Java, Truffle and Scalus with equal budgets; the pinned
+failure text on Java and Truffle. Budgets at `PV11_SAFE`, Java VM:
+
+| Fixture | Input | CPU | Memory | Outcome |
+|---|---|---:|---:|---|
+| CONS_RECURSION | three | 1,088,465,074 | 53,323 | true |
+| CONS_RECURSION | extra-scalar-ignored | 902,867,926 | 43,367 | true |
+| CONS_RECURSION | extra-point-ignored | 930,733,344 | 43,853 | true |
+| CONS_RECURSION | empty | 453,462,268 | 12,079 | true |
+| CONS_RECURSION | invalid-encoding | 110,308,460 | 20,676 | fails: Bls12_381_G1_uncompress: G1 uncompress failed: BLST_ERROR: bad point encoding |
+| CONS_RECURSION | not-bytes | 57,280,338 | 20,158 | fails: UnBData: not BytesData |
+| CONS_RECURSION | not-an-integer | 2,272,350 | 11,656 | fails: UnIData: not IntData |
+| VALIDATE_ONCE | three | 1,365,747,247 | 64,935 | true |
+| VALIDATE_ONCE | empty | 698,490,636 | 20,549 | true |
+| VALIDATE_ONCE | infinity | 270,543,990 | 26,028 | fails: Error term encountered |
+| VALIDATE_ONCE | invalid-encoding | 190,370,225 | 23,002 | fails: Bls12_381_G1_uncompress: G1 uncompress failed: BLST_ERROR: bad point encoding |
+| CONS_ORDER | three | 2,088,451,019 | 101,301 | true |
+| G2_CONS | run | 4,002,140,096 | 35,256 | true |
+| CONS_EMPTY_AND_MIXED | one | 2,339,396,249 | 37,963 | true |
+
+`three` is G, 2·G, −G with the scalars 2, 3, 5 (sum 3·G; with the points reversed, 9·G, which
+`CONS_ORDER` requires to disagree). 2·G is checked to be G + G on the VM in
+`incrementalProducersLowerToTheEmptyConstantAndOneMkConsPerElement`; −G is G with the sign
+flag flipped. Artifacts at `PV11_SAFE`:
+
+| Fixture | Bytes | Hash |
+|---|---:|---|
+| CONS_RECURSION | 222 | `8be19c3e5bb0d729…` |
+| VALIDATE_ONCE | 274 | `77949aa1bd08c80c…` |
+| CONS_ORDER | 402 | `3bea2d18afe9bacc…` |
+| G2_CONS | 225 | `029e90c66f35d804…` |
+| CONS_EMPTY_AND_MIXED | 410 | `a0ce17903b087d90…` |
+
+Additivity: in the same run the 18 original fixtures printed the 18 sizes and hash
+prefixes and the 34 budgets of the tables above, unchanged (compared programmatically).
+
+### Diagnostics (`misuseIsRejectedAtCompileTimeWithTheNativeIsolationCodes`)
+
+Twenty-five new shapes, all `JULC0041`:
+
+| Shape | Message fragment |
+|---|---|
+| G2 point consed onto a G1 list | `Builtins.g1PointsCons argument 1 received G2, but requires G1` |
+| G1 point consed onto a G2 list | `Builtins.g2PointsCons argument 1 received G1, but requires G2` |
+| a G1 list under a G2 cons | `argument 2 received NativeList[G1], but requires NativeList[G2]` |
+| compressed bytes consed as a point | `argument 1 received ByteString, but requires G1` |
+| Data consed as a point | `argument 1 received Data, but requires G1` |
+| a `JulcList<byte[]>` as the list | `argument 2 received List[ByteString], but requires NativeList[G1]` |
+| a raw Data list (`unListData`) as the list | `but requires NativeList[G1]` |
+| scalars where a point list is required | `received NativeList[Integer], but requires NativeList[G1]` |
+| a point list under a scalars cons | `received NativeList[G1], but requires NativeList[Integer]` |
+| a `JulcList<BigInteger>` under a scalars cons | `received List[Integer], but requires NativeList[Integer]` |
+| bytes / Data / a point consed as a scalar | `received ByteString` / `Data` / `G1`, `but requires Integer` |
+| `g2PointsEmpty()` returned as `JulcG1Points` | `requires NativeList[G1]` |
+| a recursive helper returning a G2 cons as `JulcG1Points` | `received NativeList[G2], but requires NativeList[G1]` |
+| `JulcG2Points acc = g1PointsEmpty()` | `received NativeList[G1], but requires NativeList[G2]` |
+| `b ? g1PointsEmpty() : g2PointsEmpty()` | `Conditional else branch received NativeList[G2], but requires NativeList[G1]` |
+| `ps == g1PointsEmpty()` | `NativeList[G1]` |
+| `JulcList.of(g1PointsEmpty())` | `NativeList[G1]` |
+| `equalsData(scalarsEmpty(), d)` | `NativeList[Integer]` |
+| `nullList` / `headList` / `mkCons` on a native list | `received NativeList[...], but requires Data` |
+| a native list as a record field | `requires Data` |
+| a native list accumulator next to a counter in one loop | `Data encoding received NativeList[G1], but requires Data` |
+
+### Producer shape (`incrementalProducersLowerToTheEmptyConstantAndOneMkConsPerElement`)
+
+The three empty forms are the empty constant of their universe as the whole program at
+`BASELINE`, `PV11_SAFE` and `PV11_COSTED`, and FLAT-identical to `scalars()`, `g1Points()`,
+`g2Points()` at all four levels. The PIR of `g1PointsCons(hashToGroup(…), g1PointsEmpty())`
+is `Let #__native_g1PointsCons = MkCons e (con (list bls12_381_G1_element) [])` with body
+`Var(#__native_g1PointsCons, NativeList[G1])`. `g1PointsCons(p, g1PointsEmpty())`,
+`g2PointsCons(q, g2PointsEmpty())` and `scalarsCons(x, scalarsEmpty())` are FLAT-identical to
+`g1Points(p)`, `g2Points(q)` and `scalars(x)` at all four levels. Three nested conses
+contain three `MkCons` and one empty constant; the recursive helper one `MkCons`; no Data
+encoder in any of them.
+
+### Requirements
+
+`scalarsEmpty`, `scalarsCons`, `g1PointsCons`, `g2PointsCons`: none; `g1PointsEmpty`,
+`g2PointsEmpty`: `BLS_CONSTANTS`.
+
+### Cost (`O11BlsListConsBenchmarkTest`, `BASELINE`, Java = Truffle results)
+
+Inputs: `n` compressed points (G, −G alternating) and the scalars 3 … n+2 as Data lists;
+every program returns the compressed MSM, except the held-point rows, which return the list.
+
+Building the list while decompressing each point once: `g1PointsFromCompressed(xs)`
+(baseline) against the recursion `g1PointsCons(g1Uncompress(xs.head()), collect(xs.tail()))`
+(candidate):
+
+| n | Converter CPU / mem | Cons recursion CPU / mem | Bytes |
+|---:|---:|---:|---:|
+| 1 | 406,511,043 / 17,394 | 406,511,043 / 17,394 | 132 / 132 |
+| 2 | 486,579,034 / 25,334 | 486,627,034 / 25,634 | 132 / 132 |
+| 4 | 646,715,016 / 41,214 | 646,859,016 / 42,114 | 132 / 132 |
+| 8 | 966,986,980 / 72,974 | 967,322,980 / 75,074 | 132 / 132 |
+| 16 | 1,607,530,908 / 136,494 | 1,608,250,908 / 140,994 | 132 / 132 |
+| 24 | 2,248,074,836 / 200,014 | 2,249,178,836 / 206,914 | 132 / 132 |
+
+The cons recursion costs exactly 48,000 CPU and 300 memory more per element after the
+first (the identity application of each cons's binding: three machine steps).
+
+ZeroJ's shape: validate every point (uncompress, re-compress to the same bytes, first byte
+not 0xc0), then `g1PointsFromCompressed` (baseline: decompresses each point twice) against
+validating each point once and consing it (candidate):
+
+| n | Validate then convert CPU / mem / bytes | Validate and cons CPU / mem / bytes | CPU saved |
+|---:|---:|---:|---:|
+| 1 | 465,312,714 / 30,791 / 242 | 410,462,575 / 22,709 / 182 | 54,850,139 |
+| 2 | 603,063,796 / 46,993 / 242 | 494,482,098 / 35,964 / 182 | 108,581,698 |
+| 4 | 878,565,960 / 79,397 / 242 | 662,521,144 / 62,474 / 182 | 216,044,816 |
+| 8 | 1,429,570,288 / 144,205 / 242 | 998,599,236 / 115,494 / 182 | 430,971,052 |
+| 16 | 2,531,578,944 / 273,821 / 242 | 1,670,755,420 / 221,534 / 182 | 860,823,524 |
+| 24 | 3,633,587,600 / 403,437 / 242 | 2,342,911,604 / 327,574 / 182 | 1,290,675,996 |
+
+The saving is 53.8 million CPU per point (one `G1_uncompress` plus its list step); the test
+asserts more than 50 million per point on Java and Truffle.
+
+The list building alone over a point already held: `g1Points(p, …, p)` (one `MkCons`
+chain) against `n` nested `g1PointsCons(p, …, g1PointsEmpty())`:
+
+| n | Literal CPU / mem / bytes | Nested cons CPU / mem / bytes |
+|---:|---:|---:|
+| 1 | 53,114,415 / 3,182 / 33 | 53,114,415 / 3,182 / 33 |
+| 2 | 53,266,777 / 3,714 / 37 | 53,314,777 / 4,014 / 39 |
+| 4 | 53,571,501 / 4,778 / 46 | 53,715,501 / 5,678 / 53 |
+| 8 | 54,180,949 / 6,906 / 63 | 54,516,949 / 9,006 / 81 |
+| 16 | 55,399,845 / 11,162 / 98 | 56,119,845 / 15,662 / 136 |
+| 24 | 56,618,741 / 15,418 / 133 | 57,722,741 / 22,318 / 191 |
+
+Per element: 152,362 CPU and 532 memory for the literal chain, 200,362 CPU and 832 memory
+for a cons (`MkCons` and its application plus the binding's identity application). The
+fixed 53.1 million is the one `hashToGroup` both programs share.
+
+### Native-constant corpus (`NativeConstantsRegressionTest`)
+
+`G1_CONS`/`G2_CONS`: the G1/G2 gate program with the points built by a recursive helper
+(`points(2)` = `[H(2), H(1)]` by `g1PointsCons`/`g2PointsCons` over the empty forms) and the
+scalars by `scalarsCons` over `scalarsEmpty()`; the structural check requires the empty
+typed point-list constant, `MkCons` and the MSM builtin after FLAT decoding. Pins (hash, FLAT
+bytes, CPU, memory; both scenarios equal):
+
+| Kind | Level | Hash | Bytes | CPU | Memory |
+|---|---|---|---:|---:|---:|
+| G1_CONS | BASELINE | `31b83c5b9de94576…` | 223 | 669,801,860 | 30,384 |
+| G1_CONS | PV11_SAFE, PV11_COSTED | `fcc8cdd40524e50a…` | 207 | 668,673,566 | 26,178 |
+| G2_CONS | BASELINE | `d8ebc5fdc8697241…` | 223 | 1,591,102,017 | 30,510 |
+| G2_CONS | PV11_SAFE, PV11_COSTED | `875ca17c308ba0e8…` | 207 | 1,589,973,723 | 26,304 |
+
+These rows were computed offline (Java VM). The `nativeConstantsOnChainTest` gate now
+requires 18 cases; it was **not** run for this amendment (no developer node was made
+available), so the node evidence for these six cases is outstanding. The 24 existing rows
+were reproduced unchanged.
+
+### ADR-060 corpus
+
+`Adr060Corpus` includes every O11 fixture, so `BinderNameIndependenceTest` now renames over
+the five new ones too (5,670 renames, no program changed). The byte oracle
+`Adr060ByteSnapshotTest` was captured at `ef932b21`, where the new producers did not exist; it
+now checks `Adr060Corpus.capturedEntries()` (the corpus without the O11 fixtures after the
+eighteenth), so its 144 O11 rows and every other row are compared unchanged.
+
+### Repository validation
+
+`./gradlew :julc-core:test :julc-stdlib:test :julc-compiler:test :julc-compiler:pairCaseTest
+:julc-e2e-tests:onChainHarnessTest :julc-benchmark:test :julc-blueprint:test
+:julc-verification:test` (each with `--rerun`): `julc-core` 718, `julc-stdlib` 411,
+`julc-compiler` 1,781, `pairCaseTest` 72 (`O11BlsTypesTest` 5), `onChainHarnessTest` 22
+(`NativeConstantsRegressionTest` 18), `julc-benchmark` 136 (1 skipped),
+`julc-blueprint` 26, `julc-verification` 92: 0 failures, 0 errors. Not run: the full
+`./gradlew build`, the external `julc-examples`, the docs-site build and the PV11 node gates.

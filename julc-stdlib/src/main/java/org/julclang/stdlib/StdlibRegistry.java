@@ -144,6 +144,13 @@ public final class StdlibRegistry implements StdlibLookup {
                 case "scalars" -> { return Optional.of(nativeListLiteral("scalars", args, DefaultUni.INTEGER, SCALARS)); }
                 case "g1Points" -> { return Optional.of(nativeListLiteral("g1Points", args, DefaultUni.BLS12_381_G1, G1_POINTS)); }
                 case "g2Points" -> { return Optional.of(nativeListLiteral("g2Points", args, DefaultUni.BLS12_381_G2, G2_POINTS)); }
+                // ADR-047 amendment (#240): incremental native lists, typed by the signature table above
+                case "scalarsEmpty" -> { return Optional.of(nativeListEmpty("scalarsEmpty", args, DefaultUni.INTEGER)); }
+                case "g1PointsEmpty" -> { return Optional.of(nativeListEmpty("g1PointsEmpty", args, DefaultUni.BLS12_381_G1)); }
+                case "g2PointsEmpty" -> { return Optional.of(nativeListEmpty("g2PointsEmpty", args, DefaultUni.BLS12_381_G2)); }
+                case "scalarsCons" -> { return Optional.of(nativeListCons("scalarsCons", args, SCALARS)); }
+                case "g1PointsCons" -> { return Optional.of(nativeListCons("g1PointsCons", args, G1_POINTS)); }
+                case "g2PointsCons" -> { return Optional.of(nativeListCons("g2PointsCons", args, G2_POINTS)); }
                 case "scalarsFromList" -> {
                     requireArgs("Builtins.scalarsFromList", args, 1);
                     requireDataListOf("Builtins.scalarsFromList", safeArgType(argTypes, 0), new PirType.IntegerType());
@@ -269,6 +276,9 @@ public final class StdlibRegistry implements StdlibLookup {
             case "bls12_381_mulMlResult", "bls12_381_finalVerify" -> java.util.Arrays.asList(ML, ML);
             case "bls12_381_G1_multiScalarMul" -> java.util.Arrays.asList(SCALARS, G1_POINTS);
             case "bls12_381_G2_multiScalarMul" -> java.util.Arrays.asList(SCALARS, G2_POINTS);
+            case "scalarsCons" -> java.util.Arrays.asList(new PirType.IntegerType(), SCALARS);
+            case "g1PointsCons" -> java.util.Arrays.asList(G1, G1_POINTS);
+            case "g2PointsCons" -> java.util.Arrays.asList(G2, G2_POINTS);
             default -> null;
         };
     }
@@ -367,6 +377,29 @@ public final class StdlibRegistry implements StdlibLookup {
         }
         String bound = "#__native_" + name;
         return new PirTerm.Let(bound, result, new PirTerm.Var(bound, listType));
+    }
+
+    /**
+     * ADR-047 amendment (#240): the empty native list of the universe, the same constant the
+     * {@code MkCons} chain of {@link #nativeListLiteral} ends in (and {@code g1Points()} is).
+     */
+    private static PirTerm nativeListEmpty(String name, List<PirTerm> args, DefaultUni elemUni) {
+        requireArgs("Builtins." + name, args, 0);
+        return new PirTerm.Const(new Constant.ListConst(elemUni, List.of()));
+    }
+
+    /**
+     * ADR-047 amendment (#240): {@code MkCons element list}, the element first. Both arguments
+     * are typed by {@link #nativeArgumentSignature} before this runs (the element of the list's
+     * universe, the list the native list of that universe), so no Data encoder can be inserted
+     * and no list of another universe reaches the {@code MkCons}. Bound once, as the literal
+     * chain is, so that inference reads the native list type off the {@code Var}.
+     */
+    private static PirTerm nativeListCons(String name, List<PirTerm> args, PirType listType) {
+        requireArgs("Builtins." + name, args, 2);
+        String bound = "#__native_" + name;
+        return new PirTerm.Let(bound, builtinApp2(DefaultFun.MkCons, args.get(0), args.get(1)),
+                new PirTerm.Var(bound, listType));
     }
 
     /**
@@ -828,6 +861,17 @@ public final class StdlibRegistry implements StdlibLookup {
         reg.register(B, "g2PointsFromCompressed", args -> nativeListFromData("g2Points", args.get(0), DefaultUni.BLS12_381_G2, G2_POINTS,
                 e -> builtinApp1(DefaultFun.Bls12_381_G2_uncompress, builtinApp1(DefaultFun.UnBData, e))),
                 new LoweringRequirements(Set.of(DefaultFun.Bls12_381_G2_uncompress), Set.of(ProtocolCapability.BLS_CONSTANTS)));
+
+        // ADR-047 amendment (#240): incremental native lists. The empty point lists are BLS
+        // constants (the same empty constant g1Points()/g2Points() emit); a cons emits only MkCons.
+        reg.register(B, "scalarsEmpty", args -> nativeListEmpty("scalarsEmpty", args, DefaultUni.INTEGER));
+        reg.register(B, "scalarsCons", args -> nativeListCons("scalarsCons", args, SCALARS));
+        reg.register(B, "g1PointsEmpty", args -> nativeListEmpty("g1PointsEmpty", args, DefaultUni.BLS12_381_G1),
+                LoweringRequirements.capability(ProtocolCapability.BLS_CONSTANTS));
+        reg.register(B, "g1PointsCons", args -> nativeListCons("g1PointsCons", args, G1_POINTS));
+        reg.register(B, "g2PointsEmpty", args -> nativeListEmpty("g2PointsEmpty", args, DefaultUni.BLS12_381_G2),
+                LoweringRequirements.capability(ProtocolCapability.BLS_CONSTANTS));
+        reg.register(B, "g2PointsCons", args -> nativeListCons("g2PointsCons", args, G2_POINTS));
 
         // PV11 InsertCoin: 4-arg builtin (special case, not in tables)
         reg.register(B, "insertCoin", args -> {

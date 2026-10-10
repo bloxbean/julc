@@ -9,6 +9,7 @@ import org.julclang.core.Term;
 import org.julclang.vm.OptimizationCostProfiles;
 
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 
 /** Reproducible ADR-032 evidence fixtures and release-note table entry point. */
@@ -383,6 +384,14 @@ public final class OptimizationEvidenceMain {
         for (int n = 1; n <= 8; n++) {
             System.out.println();
             System.out.print(o11MsmCrossoverComparison(n).toMarkdown());
+        }
+        for (int n : new int[]{1, 2, 4, 8, 16, 24}) {
+            System.out.println();
+            System.out.print(o11ConsBuildComparison(n).toMarkdown());
+            System.out.println();
+            System.out.print(o11ValidateOnceComparison(n).toMarkdown());
+            System.out.println();
+            System.out.print(o11ConsHeldPointsComparison(n).toMarkdown());
         }
         System.out.println();
         System.out.print(o12ExpModIdiomExperiment().toMarkdown());
@@ -775,6 +784,142 @@ public final class OptimizationEvidenceMain {
                 new OptimizationBenchmarkRunner.Fixture("o11-g1-chain-n" + n, chainSource, "sum", cases),
                 new OptimizationBenchmarkRunner.Fixture("o11-g1-msm-n" + n, msmSource, "sum", cases),
                 "adr-047.explicit-msm",
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+    }
+
+    private static final String O11_LIST_IMPORTS = """
+            import org.julclang.core.types.JulcG1;
+            import org.julclang.core.types.JulcG1Points;
+            import org.julclang.core.types.JulcList;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.lib.BlsLib;
+            import java.math.BigInteger;
+            """;
+
+    /** The compressed BLS12-381 G1 generator; its negation differs only in the sign flag (0x20). */
+    private static final byte[] G1_GENERATOR = HexFormat.of().parseHex(
+            "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb");
+
+    /** {@code n} compressed points (G, −G, G, …) and the scalars 3, 4, …, n+2, as the two Data-list arguments. */
+    private static List<OptimizationBenchmarkRunner.InputCase> o11ListCases(int n) {
+        var points = new ArrayList<PlutusData>();
+        var scalars = new ArrayList<PlutusData>();
+        for (int i = 0; i < n; i++) {
+            var point = G1_GENERATOR.clone();
+            if (i % 2 == 1) point[0] ^= 0x20;
+            points.add(PlutusData.bytes(point));
+            scalars.add(PlutusData.integer(3 + i));
+        }
+        return List.of(OptimizationBenchmarkRunner.InputCase.of("n" + n,
+                PlutusData.list(points.toArray(PlutusData[]::new)), PlutusData.list(scalars.toArray(PlutusData[]::new))));
+    }
+
+    /**
+     * #240 (ADR-047 amendment): the cost of building the G1 point list of a multi-scalar
+     * multiplication from {@code n} compressed points with a source recursion that uncompresses
+     * each point and conses it ({@code Builtins.g1PointsCons} over {@code g1PointsEmpty()},
+     * candidate) against the {@code g1PointsFromCompressed} converter (baseline). Both decompress
+     * every point once and return the compressed sum, so the difference is the list building.
+     */
+    public static OptimizationBenchmarkRunner.Comparison o11ConsBuildComparison(int n) {
+        if (n < 1) throw new IllegalArgumentException("n must be positive");
+        var converter = O11_LIST_IMPORTS + """
+                class Converter {
+                    static byte[] sum(JulcList<byte[]> xs, JulcList<BigInteger> ss) {
+                        return BlsLib.g1Compress(BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(ss), Builtins.g1PointsFromCompressed(xs)));
+                    }
+                }
+                """;
+        var cons = O11_LIST_IMPORTS + """
+                class Cons {
+                    static JulcG1Points collect(JulcList<byte[]> xs) {
+                        if (xs.isEmpty()) return Builtins.g1PointsEmpty();
+                        return Builtins.g1PointsCons(BlsLib.g1Uncompress(xs.head()), collect(xs.tail()));
+                    }
+                    static byte[] sum(JulcList<byte[]> xs, JulcList<BigInteger> ss) {
+                        return BlsLib.g1Compress(BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(ss), collect(xs)));
+                    }
+                }
+                """;
+        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
+                "o11-g1-points-cons-build-n" + n,
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-points-from-compressed-n" + n, converter, "sum", o11ListCases(n)),
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-points-cons-n" + n, cons, "sum", o11ListCases(n)),
+                "adr-047.incremental-native-list",
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+    }
+
+    /**
+     * #240 (ADR-047 amendment): the cost of the list building alone, over a point the program
+     * already holds: {@code n} nested {@code g1PointsCons} over {@code g1PointsEmpty()}
+     * (candidate) against the literal {@code g1Points(p, …, p)} (baseline, one {@code MkCons}
+     * chain). Both return the list; the difference is what a cons adds beyond its {@code MkCons}.
+     */
+    public static OptimizationBenchmarkRunner.Comparison o11ConsHeldPointsComparison(int n) {
+        if (n < 1) throw new IllegalArgumentException("n must be positive");
+        var literal = new StringBuilder("Builtins.g1Points(p");
+        var nested = new StringBuilder("Builtins.g1PointsEmpty()");
+        for (int i = 1; i < n; i++) literal.append(", p");
+        literal.append(")");
+        for (int i = 0; i < n; i++) nested.insert(0, "Builtins.g1PointsCons(p, ").append(")");
+        String body = "    static JulcG1Points points(byte[] dst) {\n        JulcG1 p = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);\n        return ";
+        var cases = List.of(OptimizationBenchmarkRunner.InputCase.of("empty-dst", PlutusData.bytes(new byte[]{})));
+        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
+                "o11-g1-points-cons-held-n" + n,
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-points-literal-n" + n,
+                        O11_LIST_IMPORTS + "class Literal {\n" + body + literal + ";\n    }\n}\n", "points", cases),
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-points-nested-cons-n" + n,
+                        O11_LIST_IMPORTS + "class Nested {\n" + body + nested + ";\n    }\n}\n", "points", cases),
+                "adr-047.incremental-native-list",
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+    }
+
+    /**
+     * #240 (ADR-047 amendment): the shape of an on-chain verifier that must validate every point
+     * before multiplying (uncompress, re-compress to the same bytes, not infinity). Baseline:
+     * validate, then build the list with {@code g1PointsFromCompressed}, which decompresses every
+     * point a second time. Candidate: validate each point once and cons the validated point.
+     */
+    public static OptimizationBenchmarkRunner.Comparison o11ValidateOnceComparison(int n) {
+        if (n < 1) throw new IllegalArgumentException("n must be positive");
+        var twice = O11_LIST_IMPORTS + """
+                class Twice {
+                    static boolean valid(JulcList<byte[]> xs) {
+                        if (xs.isEmpty()) return true;
+                        byte[] b = xs.head();
+                        JulcG1 p = BlsLib.g1Uncompress(b);
+                        return Builtins.equalsByteString(BlsLib.g1Compress(p), b) && Builtins.indexByteString(b, 0) != 192
+                                && valid(xs.tail());
+                    }
+                    static byte[] sum(JulcList<byte[]> xs, JulcList<BigInteger> ss) {
+                        if (!valid(xs)) {
+                            Builtins.error();
+                        }
+                        return BlsLib.g1Compress(BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(ss), Builtins.g1PointsFromCompressed(xs)));
+                    }
+                }
+                """;
+        var once = O11_LIST_IMPORTS + """
+                class Once {
+                    static JulcG1Points validated(JulcList<byte[]> xs) {
+                        if (xs.isEmpty()) return Builtins.g1PointsEmpty();
+                        byte[] b = xs.head();
+                        JulcG1 p = BlsLib.g1Uncompress(b);
+                        if (!Builtins.equalsByteString(BlsLib.g1Compress(p), b) || Builtins.indexByteString(b, 0) == 192) {
+                            Builtins.error();
+                        }
+                        return Builtins.g1PointsCons(p, validated(xs.tail()));
+                    }
+                    static byte[] sum(JulcList<byte[]> xs, JulcList<BigInteger> ss) {
+                        return BlsLib.g1Compress(BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(ss), validated(xs)));
+                    }
+                }
+                """;
+        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
+                "o11-g1-validate-once-n" + n,
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-validate-then-convert-n" + n, twice, "sum", o11ListCases(n)),
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-validate-and-cons-n" + n, once, "sum", o11ListCases(n)),
+                "adr-047.incremental-native-list",
                 OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 

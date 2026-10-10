@@ -23,6 +23,9 @@ final class Adr060Corpus {
         boolean validator() { return method == null; }
     }
 
+    /** The number of {@link O11BlsTypesFixtures#FIXTURES} that existed when the byte oracle was captured. */
+    static final int O11_FIXTURES_AT_CAPTURE = 18;
+
     static final List<OptimizationLevel> LEVELS = List.of(OptimizationLevel.NONE, OptimizationLevel.BASELINE,
             OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED);
 
@@ -49,6 +52,16 @@ final class Adr060Corpus {
         // @Param validators, a multi-validator and the construct-shaped programs of the G1 oracle.
         entries.addAll(BinderNameIndependenceTest.CLASS_LEVEL);
         return entries;
+    }
+
+    /**
+     * The entries the byte oracle was captured for: every entry except the O11 fixtures added
+     * after the capture (the #240 fixtures use producers that did not exist at {@code ef932b21}).
+     * The binder-name test still renames over all of {@link #entries()}.
+     */
+    static List<Entry> capturedEntries() {
+        return entries().stream().filter(e -> !e.id().startsWith("o11-")
+                || Integer.parseInt(e.id().substring("o11-".length())) < O11_FIXTURES_AT_CAPTURE).toList();
     }
 
     private static <F> void addFixtures(List<Entry> entries, String prefix, List<F> fixtures, Function<F, Entry> map) {

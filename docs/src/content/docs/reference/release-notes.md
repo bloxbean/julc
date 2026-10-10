@@ -3,6 +3,33 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: build native BLS point and scalar lists one element at a time (#240)
+
+`Builtins` gains six producers for the native lists that `bls12_381_G1_multiScalarMul`
+and `bls12_381_G2_multiScalarMul` take ([#240](https://github.com/bloxbean/julc/issues/240), ADR-047 amendment):
+
+| Method | Lowering |
+|---|---|
+| `scalarsEmpty()`, `g1PointsEmpty()`, `g2PointsEmpty()` | the empty native list constant, the same one `scalars()`, `g1Points()`, `g2Points()` produce |
+| `scalarsCons(BigInteger, JulcScalars)`, `g1PointsCons(JulcG1, JulcG1Points)`, `g2PointsCons(JulcG2, JulcG2Points)` | one `MkCons`, the new element first |
+
+They can be used inside recursive helpers and returned from them, so a contract that has
+already uncompressed and checked each point can multiply those same points instead of
+decompressing them a second time with `g1PointsFromCompressed`. On the pinned PV11 costs,
+validating 24 compressed G1 points and then calling `g1PointsFromCompressed` and the
+multiplication costs 3,633,587,600 CPU; validating each point once and consing it costs
+2,342,911,604 CPU (one 52.9 million CPU decompression saved per point). Building the list by
+cons costs 48,000 CPU and 300 memory per element more than the converter or the literal
+`g1Points(...)` chain: each cons is bound once, as the literal chain is, so the compiler can
+type it.
+
+The ADR-047 typing rules apply unchanged: the element must be a point of the list's group
+(or an integer for scalars) and the list must be the native list of that group, so a G2 point
+on a G1 list, compressed bytes, Data, or a `JulcList` where a native list is required is
+`JULC0041`. The lists stay opaque: no Data encoding, no datum, redeemer, record or Data
+list, no `==`, and no `isEmpty`/`head`/`tail`. This is an addition: programs that do not
+call the new methods compile to the same bytes and hashes.
+
 ## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
 
 JuLC binds an `instanceof` pattern variable only when the pattern is the whole

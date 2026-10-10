@@ -32,7 +32,7 @@ class Adr060ByteSnapshotTest {
     @Test
     void generatedNamesDoNotChangeBytes() throws IOException {
         var rows = new LinkedHashMap<String, String>();
-        for (var entry : Adr060Corpus.entries())
+        for (var entry : Adr060Corpus.capturedEntries())
             for (var level : Adr060Corpus.LEVELS)
                 for (boolean maps : new boolean[] {false, true}) {
                     String row;

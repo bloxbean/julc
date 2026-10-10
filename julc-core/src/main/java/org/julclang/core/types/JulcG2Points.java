@@ -3,7 +3,8 @@ package org.julclang.core.types;
 /**
  * Opaque native UPLC value: a native list of G2 points (`list bls12_381_G2_element`) (ADR-047).
  *
- * <p>Built by `Builtins.g2Points(...)` or `Builtins.g2PointsFromCompressed(list)`.
+ * <p>Built by `Builtins.g2Points(...)`, `Builtins.g2PointsFromCompressed(list)`, or one point
+ * at a time with `Builtins.g2PointsEmpty()` and `Builtins.g2PointsCons(point, points)`.
  * This type is deliberately not {@code byte[]} and not {@code PlutusData}: it cannot be
  * Data-encoded, stored in a datum, redeemer, record or list of Data, or compared with
  * {@code ==}; the compiler rejects such uses. There is no JVM constructor because the
