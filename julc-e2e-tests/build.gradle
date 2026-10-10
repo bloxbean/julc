@@ -42,7 +42,7 @@ tasks.named('check') { dependsOn tasks.named('onChainHarnessTest') }
 [
     listCaseOnChainTest: ['list-case-onchain', 2],
     switchPairCaseOnChainTest: ['switch-pair-case-onchain', 2],
-    nativeConstantsOnChainTest: ['native-constants-onchain', 12]
+    nativeConstantsOnChainTest: ['native-constants-onchain', 18]
 ].each { taskName, gate ->
     tasks.register(taskName, Test) {
         group = 'verification'

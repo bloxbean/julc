@@ -930,6 +930,41 @@ public final class Builtins {
         throw new UnsupportedOperationException("Builtins.g2PointsFromCompressed: on-chain only — use Julc VM for off-chain evaluation");
     }
 
+    // ---- Incremental native lists (ADR-047 amendment, #240) ----
+    // Build a native list one element at a time from values the program already holds (for
+    // example points it has uncompressed and checked), typically inside a recursive helper.
+    // The empty forms are the empty native list constants; the cons forms are MkCons.
+
+    /** The empty native {@code list integer}. */
+    public static JulcScalars scalarsEmpty() {
+        throw new UnsupportedOperationException("Builtins.scalarsEmpty: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** The native {@code list integer} {@code scalar : scalars} (MkCons; the new scalar is first). */
+    public static JulcScalars scalarsCons(BigInteger scalar, JulcScalars scalars) {
+        throw new UnsupportedOperationException("Builtins.scalarsCons: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** The empty native {@code list bls12_381_G1_element}. */
+    public static JulcG1Points g1PointsEmpty() {
+        throw new UnsupportedOperationException("Builtins.g1PointsEmpty: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** The native {@code list bls12_381_G1_element} {@code point : points} (MkCons; the new point is first). */
+    public static JulcG1Points g1PointsCons(JulcG1 point, JulcG1Points points) {
+        throw new UnsupportedOperationException("Builtins.g1PointsCons: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** The empty native {@code list bls12_381_G2_element}. */
+    public static JulcG2Points g2PointsEmpty() {
+        throw new UnsupportedOperationException("Builtins.g2PointsEmpty: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** The native {@code list bls12_381_G2_element} {@code point : points} (MkCons; the new point is first). */
+    public static JulcG2Points g2PointsCons(JulcG2 point, JulcG2Points points) {
+        throw new UnsupportedOperationException("Builtins.g2PointsCons: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
     /**
      * Multi-scalar multiplication on BLS12-381 G1: {@code Σ scalars[i] · points[i]} over the
      * shorter of the two lists (extra entries are ignored, an empty list gives the identity);

@@ -1329,6 +1329,27 @@ The native lists come from `Builtins`:
 | `Builtins.scalarsFromList(JulcList<BigInteger>)` | Decode a Data list of integers element by element (fails at a non-integer element) |
 | `Builtins.g1Points(JulcG1...)` / `g2Points(JulcG2...)` | A native point list from points |
 | `Builtins.g1PointsFromCompressed(JulcList<byte[]>)` / `g2PointsFromCompressed(...)` | Uncompress each element of a Data list of compressed points, in order (fails at a non-bytes element or an invalid encoding) |
+| `Builtins.scalarsEmpty()` / `g1PointsEmpty()` / `g2PointsEmpty()` | The empty native list (the same constant as `scalars()`/`g1Points()`/`g2Points()`) |
+| `Builtins.scalarsCons(BigInteger, JulcScalars)` | Prepend a scalar (`MkCons`; the new scalar is first) |
+| `Builtins.g1PointsCons(JulcG1, JulcG1Points)` / `g2PointsCons(JulcG2, JulcG2Points)` | Prepend a point the program already holds (`MkCons`; the new point is first) |
+
+The empty and cons forms build a list one element at a time, typically in a
+recursive helper that returns it, so a contract that has already uncompressed
+and checked each point can pass those same points to the multiplication
+instead of decompressing them again with `g1PointsFromCompressed`. A cons puts
+its element first: a recursion that conses the head onto the result for the
+tail keeps the source order, a loop accumulator (`acc = g1PointsCons(p, acc)`)
+reverses it, and the scalars must be built the same way as the points. To walk
+a raw Data list held as `PlutusData`, recurse over `Builtins.unListData(data)`
+with `nullList`/`headList`/`tailList`: those builtins take the list itself, not
+the `PlutusData` that wraps it (`NullList: expected list` otherwise). The
+lists stay opaque: there is no `isEmpty`/`head`/`tail` on them, and a native
+list cannot be a second accumulator of the same loop (the loop packs several
+accumulators as Data), so give it a loop or a recursion of its own. A cast never
+converts to or from a native type (`(JulcG1Points)(Object) xs` and
+`PlutusData.cast(d, JulcG1Points.class)` are `JULC0041`), a `switch` expression
+cannot yield a native list, and `ListsLib.foldl` cannot carry one as its
+accumulator; use an `if` with `return`s, a for-each or a recursion.
 
 ### Usage
 
@@ -1336,6 +1357,7 @@ The native lists come from `Builtins`:
 import org.julclang.core.types.JulcG1;
 import org.julclang.core.types.JulcG2;
 import org.julclang.core.types.JulcMlResult;
+import org.julclang.core.types.JulcG1Points;
 import org.julclang.core.types.JulcList;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.lib.BlsLib;
@@ -1375,6 +1397,23 @@ class BlsExamples {
         JulcG1 sum = BlsLib.g1MultiScalarMul(
                 Builtins.scalarsFromList(scalars),
                 Builtins.g1PointsFromCompressed(compressedPoints));
+        return BlsLib.g1Equal(sum, BlsLib.g1Uncompress(expected));
+    }
+
+    // Check every point once and keep the checked point: built one element at a time,
+    // in source order, and returned from a recursive helper
+    static JulcG1Points checked(JulcList<byte[]> encoded) {
+        if (encoded.isEmpty()) return Builtins.g1PointsEmpty();
+        byte[] b = encoded.head();
+        JulcG1 p = BlsLib.g1Uncompress(b); // fails on an invalid encoding or a point outside G1
+        if (!Builtins.equalsByteString(BlsLib.g1Compress(p), b)) {
+            Builtins.error();               // not the canonical encoding
+        }
+        return Builtins.g1PointsCons(p, checked(encoded.tail()));
+    }
+
+    static boolean verifyChecked(JulcList<BigInteger> scalars, JulcList<byte[]> compressedPoints, byte[] expected) {
+        JulcG1 sum = BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(scalars), checked(compressedPoints));
         return BlsLib.g1Equal(sum, BlsLib.g1Uncompress(expected));
     }
 }

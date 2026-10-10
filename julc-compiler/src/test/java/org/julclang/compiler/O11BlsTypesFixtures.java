@@ -55,7 +55,31 @@ final class O11BlsTypesFixtures {
     static final byte[] G1_GENERATOR = HexFormat.of().parseHex(
             "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb");
 
+    /** The compressed point 2·G; {@code O11BlsTypesTest} checks it is G + G on chain (48 bytes). */
+    static final byte[] G1_DOUBLE = HexFormat.of().parseHex(
+            "a572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e");
+
+    /** The compressed point at infinity: the compression and infinity flags, then 47 zero bytes. */
+    static final byte[] G1_INFINITY = infinity();
+
     static final PlutusData DST = PlutusData.bytes(new byte[]{});
+
+    /** The compressed negation of a compressed point: the sign flag (0x20 of the first byte) flipped. */
+    static byte[] negated(byte[] compressed) {
+        var out = compressed.clone();
+        out[0] ^= 0x20;
+        return out;
+    }
+
+    private static byte[] infinity() {
+        var out = new byte[48];
+        out[0] = (byte) 0xc0;
+        return out;
+    }
+
+    static PlutusData points(byte[]... compressed) {
+        return PlutusData.list(Arrays.stream(compressed).map(PlutusData::bytes).toArray(PlutusData[]::new));
+    }
 
     static PlutusData integers(long... values) {
         return PlutusData.list(Arrays.stream(values).mapToObj(PlutusData::integer).toArray(PlutusData[]::new));
@@ -291,7 +315,190 @@ final class O11BlsTypesFixtures {
                             && BlsLib.g2Equal(BlsLib.g2MultiScalarMul(s, qs), BlsLib.g2ScalarMul(__native_scalars, go__g2Points));
                 }""");
 
+    /**
+     * 19 (#240): the native lists built one element at a time by recursive helpers over raw
+     * Data lists, the shape of ZeroJ's verifier (each point uncompressed once and kept); the
+     * multi-scalar multiplication equals an independent {@code scalarMul}/{@code add} recursion
+     * over the same lists, zipped to the shorter one.
+     */
+    static final String CONS_RECURSION = method("""
+                static JulcG1Points collect(PlutusData encodedList) {
+                    if (Builtins.nullList(encodedList)) return Builtins.g1PointsEmpty();
+                    byte[] b = Builtins.unBData(Builtins.headList(encodedList));
+                    JulcG1 p = Builtins.bls12_381_G1_uncompress(b);
+                    return Builtins.g1PointsCons(p, collect(Builtins.tailList(encodedList)));
+                }
+
+                static JulcScalars collectScalars(PlutusData xs) {
+                    if (Builtins.nullList(xs)) return Builtins.scalarsEmpty();
+                    return Builtins.scalarsCons(Builtins.unIData(Builtins.headList(xs)), collectScalars(Builtins.tailList(xs)));
+                }
+
+                static JulcG1 chain(PlutusData ss, PlutusData ps, JulcG1 acc) {
+                    if (Builtins.nullList(ss) || Builtins.nullList(ps)) return acc;
+                    JulcG1 term = BlsLib.g1ScalarMul(Builtins.unIData(Builtins.headList(ss)),
+                            BlsLib.g1Uncompress(Builtins.unBData(Builtins.headList(ps))));
+                    return chain(Builtins.tailList(ss), Builtins.tailList(ps), BlsLib.g1Add(acc, term));
+                }
+
+                static boolean consRecursion(PlutusData encoded, PlutusData scalars) {
+                    JulcG1 msm = Builtins.bls12_381_G1_multiScalarMul(
+                            collectScalars(Builtins.unListData(scalars)), collect(Builtins.unListData(encoded)));
+                    JulcG1 zero = BlsLib.g1ScalarMul(BigInteger.ZERO, Builtins.bls12_381_G1_hashToGroup(new byte[]{}, new byte[]{}));
+                    return BlsLib.g1Equal(msm, chain(Builtins.unListData(scalars), Builtins.unListData(encoded), zero));
+                }""");
+
+    /**
+     * 20 (#240): validate each point once (uncompress, re-compress to the same bytes, not
+     * infinity) and keep the validated point in the list, instead of decompressing every
+     * element a second time with {@code g1PointsFromCompressed}, which is the oracle here.
+     */
+    static final String VALIDATE_ONCE = method("""
+                static JulcG1Points validated(JulcList<byte[]> encoded) {
+                    if (encoded.isEmpty()) {
+                        return Builtins.g1PointsEmpty();
+                    }
+                    byte[] b = encoded.head();
+                    JulcG1 p = BlsLib.g1Uncompress(b);
+                    boolean canonical = Builtins.equalsByteString(BlsLib.g1Compress(p), b);
+                    boolean infinity = BlsLib.g1Equal(p, BlsLib.g1ScalarMul(BigInteger.ZERO, p));
+                    if (!canonical || infinity) {
+                        Builtins.error();
+                    }
+                    return Builtins.g1PointsCons(p, validated(encoded.tail()));
+                }
+
+                static boolean validateOnce(JulcList<byte[]> encoded, JulcList<BigInteger> scalars) {
+                    JulcG1 msm = BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(scalars), validated(encoded));
+                    JulcG1 oracle = BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(scalars), Builtins.g1PointsFromCompressed(encoded));
+                    return BlsLib.g1Equal(msm, oracle);
+                }""");
+
+    /**
+     * 21 (#240): a cons puts its element first, so a recursion builds the list in source order
+     * and a loop accumulator builds it reversed; each agrees with the converters only when its
+     * scalars are built the same way, and pairing forward scalars with reversed points does not.
+     */
+    static final String CONS_ORDER = method("""
+                static JulcG1Points forward(JulcList<byte[]> xs) {
+                    if (xs.isEmpty()) return Builtins.g1PointsEmpty();
+                    return Builtins.g1PointsCons(BlsLib.g1Uncompress(xs.head()), forward(xs.tail()));
+                }
+
+                static JulcScalars forwardScalars(JulcList<BigInteger> xs) {
+                    if (xs.isEmpty()) return Builtins.scalarsEmpty();
+                    return Builtins.scalarsCons(xs.head(), forwardScalars(xs.tail()));
+                }
+
+                static boolean consOrder(JulcList<byte[]> encoded, JulcList<BigInteger> scalars) {
+                    JulcG1Points reversed = Builtins.g1PointsEmpty();
+                    for (var b : encoded) {
+                        reversed = Builtins.g1PointsCons(BlsLib.g1Uncompress(b), reversed);
+                    }
+                    JulcScalars reversedScalars = Builtins.scalarsEmpty();
+                    for (var s : scalars) {
+                        reversedScalars = Builtins.scalarsCons(s, reversedScalars);
+                    }
+                    JulcG1 oracle = BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(scalars), Builtins.g1PointsFromCompressed(encoded));
+                    boolean forwardAgrees = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(forwardScalars(scalars), forward(encoded)), oracle);
+                    boolean reversedAgrees = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(reversedScalars, reversed), oracle);
+                    boolean mixedDiffers = !BlsLib.g1Equal(BlsLib.g1MultiScalarMul(forwardScalars(scalars), reversed), oracle);
+                    return forwardAgrees && reversedAgrees && mixedDiffers;
+                }""");
+
+    /** 22 (#240): the G2 forms, through a recursive helper and directly; the empty G2 list and the empty scalars give the identity. */
+    static final String G2_CONS = method("""
+                static JulcG2Points g2Collect(JulcList<byte[]> xs) {
+                    if (xs.isEmpty()) return Builtins.g2PointsEmpty();
+                    return Builtins.g2PointsCons(BlsLib.g2Uncompress(xs.head()), g2Collect(xs.tail()));
+                }
+
+                static boolean g2Cons(byte[] dst) {
+                    JulcG2 q1 = Builtins.bls12_381_G2_hashToGroup(new byte[]{1}, dst);
+                    JulcG2 q2 = Builtins.bls12_381_G2_hashToGroup(new byte[]{2}, dst);
+                    JulcList<byte[]> encoded = JulcList.of(BlsLib.g2Compress(q1), BlsLib.g2Compress(q2));
+                    JulcScalars s = Builtins.scalarsCons(BigInteger.valueOf(4), Builtins.scalarsCons(BigInteger.valueOf(7), Builtins.scalarsEmpty()));
+                    JulcG2 chain = BlsLib.g2Add(BlsLib.g2ScalarMul(BigInteger.valueOf(4), q1), BlsLib.g2ScalarMul(BigInteger.valueOf(7), q2));
+                    JulcG2 collected = BlsLib.g2MultiScalarMul(s, g2Collect(encoded));
+                    JulcG2 direct = BlsLib.g2MultiScalarMul(s, Builtins.g2PointsCons(q1, Builtins.g2PointsCons(q2, Builtins.g2PointsEmpty())));
+                    JulcG2 zero = BlsLib.g2ScalarMul(BigInteger.ZERO, q1);
+                    boolean empty = BlsLib.g2Equal(BlsLib.g2MultiScalarMul(s, Builtins.g2PointsEmpty()), zero)
+                            && BlsLib.g2Equal(BlsLib.g2MultiScalarMul(Builtins.scalarsEmpty(), g2Collect(encoded)), zero);
+                    return BlsLib.g2Equal(collected, chain) && BlsLib.g2Equal(direct, chain) && empty;
+                }""");
+
+    /**
+     * 23 (#240): the empty forms give the identity against empty and non-empty other lists;
+     * a cons onto a literal list, onto {@code scalarsFromList} and onto
+     * {@code g1PointsFromCompressed} puts its element first; {@code var} infers the cons type.
+     */
+    static final String CONS_EMPTY_AND_MIXED = method("""
+                static boolean consEmptyAndMixed(JulcList<BigInteger> xs, JulcList<byte[]> encoded, byte[] dst) {
+                    JulcG1 p = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);
+                    JulcG1 q = Builtins.bls12_381_G1_hashToGroup(new byte[]{2}, dst);
+                    JulcG1 zero = BlsLib.g1ScalarMul(BigInteger.ZERO, p);
+                    boolean empty = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(Builtins.scalarsEmpty(), Builtins.g1PointsEmpty()), zero)
+                            && BlsLib.g1Equal(BlsLib.g1MultiScalarMul(Builtins.scalars(BigInteger.ONE), Builtins.g1PointsEmpty()), zero)
+                            && BlsLib.g1Equal(BlsLib.g1MultiScalarMul(Builtins.scalarsEmpty(), Builtins.g1Points(p)), zero);
+                    var onLiteral = Builtins.g1PointsCons(p, Builtins.g1Points(q));
+                    JulcScalars onConverter = Builtins.scalarsCons(BigInteger.TWO, Builtins.scalarsFromList(xs));
+                    JulcG1Points onDecoded = Builtins.g1PointsCons(q, Builtins.g1PointsFromCompressed(encoded));
+                    boolean literal = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(Builtins.scalars(BigInteger.valueOf(3), BigInteger.valueOf(5)), onLiteral),
+                            BlsLib.g1Add(BlsLib.g1ScalarMul(BigInteger.valueOf(3), p), BlsLib.g1ScalarMul(BigInteger.valueOf(5), q)));
+                    boolean converted = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(onConverter, onDecoded),
+                            BlsLib.g1Add(BlsLib.g1ScalarMul(BigInteger.TWO, q), BlsLib.g1ScalarMul(xs.get(0), BlsLib.g1Uncompress(encoded.get(0)))));
+                    return empty && literal && converted;
+                }""");
+
+    /**
+     * 24 (#241 review): native accumulators in loop shapes ZeroJ-style verifiers use: a for-each
+     * that stops at a marker with {@code break}, and a nested for-each that writes the outer
+     * accumulator. Each list is checked against an independent {@code add}/{@code scalarMul} sum,
+     * and the break result against the first point alone.
+     */
+    static final String CONS_LOOPS = method("""
+                static boolean consLoops(JulcList<byte[]> encoded, JulcList<BigInteger> scalars, byte[] stop) {
+                    JulcG1Points prefix = Builtins.g1PointsEmpty();
+                    for (var b : encoded) {
+                        if (Builtins.equalsByteString(b, stop)) break;
+                        prefix = Builtins.g1PointsCons(BlsLib.g1Uncompress(b), prefix);
+                    }
+                    JulcScalars prefixOnes = Builtins.scalarsEmpty();
+                    for (var b : encoded) {
+                        if (Builtins.equalsByteString(b, stop)) break;
+                        prefixOnes = Builtins.scalarsCons(BigInteger.ONE, prefixOnes);
+                    }
+                    JulcG1 first = BlsLib.g1Uncompress(encoded.head());
+                    boolean stopped = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(prefixOnes, prefix), first);
+
+                    JulcG1Points terms = Builtins.g1PointsEmpty();
+                    for (var b : encoded) {
+                        for (var s : scalars) {
+                            terms = Builtins.g1PointsCons(BlsLib.g1ScalarMul(s, BlsLib.g1Uncompress(b)), terms);
+                        }
+                    }
+                    JulcScalars ones = Builtins.scalarsEmpty();
+                    for (var b : encoded) {
+                        for (var s : scalars) {
+                            ones = Builtins.scalarsCons(BigInteger.ONE, ones);
+                        }
+                    }
+                    JulcG1 pointSum = BlsLib.g1ScalarMul(BigInteger.ZERO, first);
+                    for (var b : encoded) {
+                        pointSum = BlsLib.g1Add(pointSum, BlsLib.g1Uncompress(b));
+                    }
+                    BigInteger scalarSum = BigInteger.ZERO;
+                    for (var s : scalars) {
+                        scalarSum = scalarSum.add(s);
+                    }
+                    boolean nested = BlsLib.g1Equal(BlsLib.g1MultiScalarMul(ones, terms), BlsLib.g1ScalarMul(scalarSum, pointSum));
+                    return stopped && nested;
+                }""");
+
     private static final List<Input> RUN = List.of(Input.ok("run", DST));
+
+    /** Three distinct points (G, 2G, −G) for the #240 fixtures; with the scalars 2, 3, 5 the sum is 3G, reversed points give 9G. */
+    private static final PlutusData THREE_POINTS = points(G1_GENERATOR, G1_DOUBLE, negated(G1_GENERATOR));
 
     static final List<Fixture> FIXTURES = List.of(
             new Fixture("MSM_VS_CHAIN", MSM_VS_CHAIN, "msmVsChain", RUN),
@@ -337,5 +544,29 @@ final class O11BlsTypesFixtures {
                     Input.ok("first", integers(1, 3), DST, PlutusData.constr(1)),
                     Input.ok("second", integers(1, 3), DST, PlutusData.constr(0)))),
             new Fixture("NAME_CAPTURE", NAME_CAPTURE, "nameCapture", List.of(
-                    Input.ok("three", integers(3), DST))));
+                    Input.ok("three", integers(3), DST))),
+            new Fixture("CONS_RECURSION", CONS_RECURSION, "consRecursion", List.of(
+                    Input.ok("three", THREE_POINTS, integers(2, 3, 5)),
+                    Input.ok("extra-scalar-ignored", points(G1_GENERATOR, G1_DOUBLE), integers(2, 3, 5)),
+                    Input.ok("extra-point-ignored", THREE_POINTS, integers(2, 3)),
+                    Input.ok("empty", points(), integers()),
+                    Input.fails("invalid-encoding", points(G1_GENERATOR, new byte[48]), integers(2, 3)),
+                    Input.fails("not-bytes", PlutusData.list(PlutusData.bytes(G1_GENERATOR), PlutusData.integer(1)), integers(2, 3)),
+                    Input.fails("not-an-integer", THREE_POINTS, PlutusData.list(PlutusData.integer(2), PlutusData.bytes(new byte[]{1}))),
+                    // two bad elements with different failures: the first element's failure surfaces, so the
+                    // element is evaluated before the rest of the list (ADR-047 Amendment 1, invariant 4)
+                    Input.fails("order-not-bytes-first", PlutusData.list(PlutusData.integer(1), PlutusData.bytes(new byte[48])), integers(2, 3)),
+                    Input.fails("order-invalid-encoding-first", PlutusData.list(PlutusData.bytes(new byte[48]), PlutusData.integer(1)), integers(2, 3)))),
+            new Fixture("VALIDATE_ONCE", VALIDATE_ONCE, "validateOnce", List.of(
+                    Input.ok("three", THREE_POINTS, integers(2, 3, 5)),
+                    Input.ok("empty", points(), integers(2)),
+                    Input.fails("infinity", points(G1_GENERATOR, G1_INFINITY), integers(2, 3)),
+                    Input.fails("invalid-encoding", points(G1_GENERATOR, new byte[48]), integers(2, 3)))),
+            new Fixture("CONS_ORDER", CONS_ORDER, "consOrder", List.of(
+                    Input.ok("three", THREE_POINTS, integers(2, 3, 5)))),
+            new Fixture("G2_CONS", G2_CONS, "g2Cons", RUN),
+            new Fixture("CONS_EMPTY_AND_MIXED", CONS_EMPTY_AND_MIXED, "consEmptyAndMixed", List.of(
+                    Input.ok("one", integers(3), points(G1_GENERATOR), DST))),
+            new Fixture("CONS_LOOPS", CONS_LOOPS, "consLoops", List.of(
+                    Input.ok("three", THREE_POINTS, integers(2, 3, 5), PlutusData.bytes(G1_DOUBLE)))));
 }

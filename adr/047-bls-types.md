@@ -1,7 +1,7 @@
 # ADR-047: Typed BLS12-381 values, native scalar and point lists, and explicit multi-scalar multiplication (O11)
 
 **Date:** 2026-09-14
-**Status:** Merged in PR #150; G1/G2 native point-list constant and MSM node acceptance and pinned-budget regressions recorded in ADR-052 evidence
+**Status:** Merged in PR #150; G1/G2 native point-list constant and MSM node acceptance and pinned-budget regressions recorded in ADR-052 evidence. Amended 2026-10-10 by [Amendment 1](#amendment-1-240-incremental-native-lists) ([#240](https://github.com/bloxbean/julc/issues/240), incremental native lists); see [Revision history](#revision-history)
 **Issues:** [#117](https://github.com/bloxbean/julc/issues/117) (O11), research decision [#96](https://github.com/bloxbean/julc/issues/96), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O11 (a typed BLS API before any fusion; never fuse over `byte[]`/`PlutusData`), the O11 deferral evidence (`adr/evidence/032-o11-bls-msm-deferral.md`), ADR-032 O7 (the opaque native-type discipline this ADR reuses), ADR-045/046 (intrinsic producers keep library bindings additive)
 
@@ -68,7 +68,11 @@ intrinsic (an integer-list constant when every element is a constant, otherwise 
 the elements over the empty `list integer` constant) and `scalarsFromList` (a recursion that
 decodes each `I` node with `UnIData` and conses it onto the empty native list, in order);
 point lists likewise over `uncompress`/`hashToGroup` results and `UnBData` then `uncompress`
-of each element. The producers are `Builtins` intrinsics, so no Data encoder can be inserted
+of each element. Since Amendment 1 (#240) the empty forms (`scalarsEmpty`, `g1PointsEmpty`,
+`g2PointsEmpty`: the empty constant of the universe) and the cons forms (`scalarsCons`,
+`g1PointsCons`, `g2PointsCons`: `MkCons` of an element of the universe over a list of the
+same native type) are producers too; by induction every native list term is still a list
+of its universe. The producers are `Builtins` intrinsics, so no Data encoder can be inserted
 between an element and its list.
 
 **Builtin typing.** `TypeInferenceHelper` gives every BLS builtin its group type (add, neg,
@@ -116,7 +120,9 @@ programs importing `BlsLib` are unchanged.
    when every element is a constant and a `MkCons` chain otherwise; the converters decode a
    Data list element by element (`UnIData`; `UnBData` then `uncompress`) and fail where the
    element is not what the list claims. An element or list whose static type is wrong is
-   rejected at compile time (`JULC0041`).
+   rejected at compile time (`JULC0041`). Amendment 1 (#240) adds six more:
+   `scalarsEmpty()`, `scalarsCons(BigInteger, JulcScalars)`, `g1PointsEmpty()`,
+   `g1PointsCons(JulcG1, JulcG1Points)`, `g2PointsEmpty()`, `g2PointsCons(JulcG2, JulcG2Points)`.
 4. No fusion, no pass, no optimization rule, no switch: this is a typing and lowering ADR;
    the crossover is documented so that authors choose MSM knowingly.
 5. The experimental `byte[]` BLS API is replaced; see Compatibility.
@@ -329,3 +335,186 @@ One milestone on `feat/117-bls-types`, stacked on ADR-046:
    corpus (ADR-032 O11, still deferred).
 3. A boundary helper that compresses a point list back to a `JulcList<byte[]>` (the inverse
    of `g1PointsFromCompressed`) has no user yet.
+
+## Amendment 1 (#240): incremental native lists
+
+**Date:** 2026-10-10 · **Issue:** [#240](https://github.com/bloxbean/julc/issues/240) · **Branch:** `feat/240-native-bls-list-cons`
+
+### Context
+
+The six producers of the Decision build a native list either from a fixed number of
+elements (`g1Points(p1, …, pk)`) or from a Data list by decoding every element
+(`g1PointsFromCompressed`). Neither serves a contract that has already uncompressed and
+checked a runtime-length list of points: ZeroJ's Groth16 verifier validates every IC point
+(length, `uncompress`, canonical re-compression, not infinity) before any multiplication,
+and calling `g1PointsFromCompressed` afterwards decompresses every point a second time
+(52.9 million CPU each on the pinned profile). The contract needs to keep the point it
+validated and put it in the list, one element at a time, inside its recursive walk.
+
+### Decision
+
+Six more `Builtins` intrinsics, registered and typed exactly like the existing producers
+(`StdlibRegistry`: the typed lookup, the per-builtin native signature table, the
+registrations that carry the requirements):
+
+| Method | Lowering | Argument types (`JULC0041` otherwise) | Requirements |
+|---|---|---|---|
+| `scalarsEmpty()` | `(con (list integer) [])` | none | none |
+| `g1PointsEmpty()` | `(con (list bls12_381_G1_element) [])` | none | `BLS_CONSTANTS` |
+| `g2PointsEmpty()` | `(con (list bls12_381_G2_element) [])` | none | `BLS_CONSTANTS` |
+| `scalarsCons(s, ss)` | `MkCons s ss` | `Integer`, `NativeList[Integer]` | none |
+| `g1PointsCons(p, ps)` | `MkCons p ps` | `G1`, `NativeList[G1]` | none |
+| `g2PointsCons(q, qs)` | `MkCons q qs` | `G2`, `NativeList[G2]` | none |
+
+The empty forms are the very constant the literal producers already emit (`g1Points()` is
+`(con (list bls12_381_G1_element) [])`, and every non-constant literal chain ends in it). A
+cons is one `MkCons`, bound once (`Let #__native_<name> = MkCons e l in #__native_<name>`)
+exactly as the literal chain is, so that inference reads the native list type off the
+`Var`; the binder is in the reserved `#` namespace and its body is the bare variable, so
+nothing can capture it (ADR-060). `BlsLib` gains no method (the producers stay `Builtins`
+intrinsics, as the Decision's additivity requires).
+
+### Invariants
+
+1. **Representation (extends the invariant above).** A `NativeListType(e)` term still
+   evaluates to a list constant of the universe of `e`: the empty forms are that constant,
+   and a cons is `MkCons` of a term of type `e` (checked) over a term of type
+   `NativeListType(e)` (checked), whose result is a list of the same universe. No other
+   producer is added.
+2. **Typing.** Both cons arguments go through `validateNativeValueArguments` with a
+   signature, so the element must be exactly the list's element type (`Integer` for
+   scalars; `Data`, `ByteString`, a point of the other group or a point where an integer is
+   expected are rejected) and the list exactly the native list of that universe (a
+   `JulcList`, a raw Data list, scalars where points are expected, or the other group's list
+   are rejected). The existing isolation rules apply to the results unchanged: no Data
+   encoding, no datum, redeemer, record or Data list, no `==`, no `compileMethod` or
+   validator boundary; a Data-list builtin (`nullList`, `headList`, `mkCons`) given a native
+   list is rejected as before. **Casts (review r2).** A Java cast and `PlutusData.cast` lower
+   to the identity, so before r2 they bypassed this typing: `(JulcG1Points)(Object) g2PointsEmpty()`,
+   `(JulcScalars)(Object) xs` or `PlutusData.cast(d, JulcG1Points.class)` compiled and failed
+   only at runtime (`MkCons`/MSM universe checks, identically on Java, Truffle and Scalus).
+   This gap predates the amendment (it applied to the original producers and to points). A
+   cast is now a typed boundary like the others: when its target or its operand's type
+   contains a native type and the two differ, it is `JULC0041` (`Cast to T received …` /
+   `PlutusData.cast to T received …`); a cast is never a decoder. A cast to a type the
+   compiler cannot resolve (`Object`) is not itself checked, and the enclosing boundary sees
+   the operand's type, so `(JulcG1Points)(Object) g1PointsEmpty()` still compiles and the
+   G2 form does not. No other bypass of Invariants 1–2 is known.
+3. **Order.** `cons(e, l)` puts `e` first. A recursion `cons(f(head), recurse(tail))` keeps
+   source order; a loop accumulator `acc = cons(f(x), acc)` reverses it. MSM pairs the lists
+   position by position, so scalars and points must be built the same way.
+4. **Evaluation order and failure.** A cons is strict application of `MkCons` to its two
+   arguments, element first, as written; it adds no failure of its own on a well-typed
+   program (the arguments' universes are checked at compile time). Every failure is the
+   producer of the element (`uncompress` on an invalid encoding, `UnBData`/`UnIData` on a
+   wrong Data element) at that element's position in the walk, or MSM's own scalar bound.
+   Pinned by two `CONS_RECURSION` inputs with two different bad elements: the failure is
+   the first element's (`UnBData` before `uncompress`, and `uncompress` before `UnBData`).
+5. **Additivity.** No existing lowering changes: programs that do not call the new methods
+   produce the same bytes. The 18 ADR-047 fixtures keep their sizes, hashes and 34 budgets,
+   and the 24 ADR-052 native-constant rows are unchanged.
+
+### Target legality
+
+The empty G1/G2 forms emit the same empty typed point-list constant that `g1Points()`,
+`g2Points()` and every non-constant literal chain already emit; `UplcTargetValidator`
+requires `BLS_CONSTANTS` for it (as it does for any constant mentioning a BLS universe),
+and the registrations declare it, so a target without the BLS builtins fails closed. That
+constant in serialized V3 scripts was confirmed on the developer **PV11** node in the
+ADR-052 gate ("the empty typed point lists emitted by source lowering"). That is the only
+node evidence: `ProtocolFeatureProfile` grants `BLS_CONSTANTS` wherever the BLS builtins
+exist, which includes V3 targets at PV9 and PV10, and no node run has accepted an empty
+typed BLS list constant there (a pre-existing ADR-047 gap; PV9/PV10 are unevidenced, not
+known to fail). The amendment adds `G1_CONS`/`G2_CONS` kinds to the ADR-052 gate's corpus
+(`NativeConstantFixtures`), whose offline pins are recorded; the node run for those two
+kinds is still to be done. One attempt on a Yaci DevKit node (2026-10-10) failed
+environmentally for all 18 cases, the 12 previously confirmed ones included, so it is
+evidence neither way (see the evidence).
+`MkCons` is a base builtin; a cons needs nothing beyond what its arguments' producers need.
+
+### Alternatives rejected
+
+- **`BlsLib` wrappers for the new producers.** The existing producers are `Builtins`
+  intrinsics only; a `BlsLib` method is a library binding and would break the additivity
+  guarantee for programs importing `BlsLib` (ADR-045's lesson).
+- **Typing the bare `MkCons` by an inference rule (the list argument's native type) instead
+  of the bound `Var`.** It would save the identity application per element (48,000 CPU and
+  300 memory on the pinned profile), but it is a second typing mechanism for native lists,
+  and it depends on PIR-level inference recovering the type of the list argument (a
+  recursive helper's result, a loop accumulator) that the call-site check read from the
+  source; where that fails the cons would silently become Data-typed. The bound `Var` is the
+  mechanism the literal producers already use. An optimizer rule that removes identity
+  applications would benefit both and belongs to the costed profile.
+- **`isEmpty`/`head`/`tail` on native lists.** Not needed to build a list for MSM (the
+  issue marks it optional). Walking a native list would be the first consumer of these
+  types other than MSM and needs its own failure contract (`HeadList` on the empty list);
+  left out.
+- **A native-list accumulator among several in one loop.** Not changed: the
+  multi-accumulator loop packs its accumulators as Data, which rejects a native list
+  (`Data encoding received NativeList[G1], but requires Data`); build the list in a loop or a
+  recursion of its own. A single native accumulator works in a for-each with `break` and
+  when written from a nested for-each (`CONS_LOOPS`).
+
+### Compatibility and risks
+
+- Source and bytes: additive (invariant 5).
+- A `PlutusData` that holds a list is Data, not a builtin list: `nullList`/`headList`/
+  `tailList` over it fail at runtime (`NullList: expected list, got VCon(Data…)`), as before
+  this amendment; a recursion over a raw Data list walks `Builtins.unListData(data)`. The
+  issue's illustrative snippet passes the `PlutusData` directly; the fixtures use
+  `unListData` at the call site.
+- Cost: a cons is one `MkCons` plus the identity application of its binding: 200,362 CPU
+  and 832 memory per element against 152,362 and 532 for the literal chain, and 48,000 CPU
+  and 300 memory per element after the first more than `g1PointsFromCompressed` when both
+  decompress each point once (the converter binds once, a cons binds per element).
+- Casts: r2 rejects casts that changed a native type (Invariant 2). Such programs compiled
+  before and always failed at runtime, so no program that could succeed is rejected; the
+  bytes of every program that still compiles are unchanged.
+- Known limitations (pre-existing, fail closed, not changed here):
+  - A `switch` expression cannot yield a native value or list, even when every arm is
+    well typed: it is typed as Data, so `JulcG1Points ps = switch (…) { … }` is
+    `JULC0041 … initializer received Data, but requires NativeList[G1]` (the message names
+    Data although no arm is Data). Use an `if` statement with `return`s in a helper.
+  - `ListsLib.foldl` types its lambda's accumulator parameter as the list's element type,
+    so a fold with a native accumulator (`foldl(xs, g1PointsEmpty(), (a, b) -> g1PointsCons(…, a))`)
+    is `JULC0041 … received ByteString, but requires NativeList[G1]`. Use a for-each or a
+    recursion.
+
+### Verification
+
+`O11BlsTypesTest` (`pair-case-backends`; every fixture at four levels on Java, Truffle and
+Scalus with equal budgets): five new fixtures (`CONS_RECURSION`, the issue's recursion over
+raw Data lists against an independent `scalarMul`/`add` recursion, uneven and empty inputs,
+the converters' failures at uncompress, `UnBData` and `UnIData`; `VALIDATE_ONCE`, validate
+and keep each point against `g1PointsFromCompressed`, failing on infinity and an invalid
+encoding; `CONS_ORDER`, recursion keeps order, a loop reverses it, forward scalars with
+reversed points disagree; `G2_CONS`; `CONS_EMPTY_AND_MIXED`, the identity from empty forms
+and conses onto a literal list and onto both converters, a `var` local; `CONS_LOOPS` (r2),
+a native accumulator in a for-each with `break` and written from a nested for-each);
+thirty-four new misuse shapes, nine of them casts (r2); the producer shape (the empty forms
+are the constant at every level and byte-identical to `g1Points()`/`g2Points()`/`scalars()`;
+a one-element cons of a non-constant element over the empty form is byte-identical to the
+one-element literal at every level (a constant element is not: `scalars(2)` folds to the
+constant `[2]`, while `scalarsCons(2, scalarsEmpty())` stays an `MkCons`); one `MkCons` per
+cons; no Data encoder); the requirements. `O11BlsListConsBenchmarkTest`: the cons-built list against
+the converter, validate-once against validate-then-convert, and nested conses against the
+literal chain, for n = 1, 2, 4, 8, 16, 24, equivalent on Java and Truffle.
+`NativeConstantsRegressionTest`: the `G1_CONS`/`G2_CONS` kinds at three levels. Numbers and
+commands are in the [evidence](evidence/047-bls-types.md#amendment-1-240-incremental-native-lists).
+
+### Open questions
+
+4. Whether to remove the identity application of native-list producer bindings (an optimizer
+   rule or a typed ascription in PIR); it would change the bytes of existing `g1Points`
+   chains as well, so it is a separate, costed decision. The same decision could fold
+   `MkCons c l` of constants into one list constant, as the literal producers already do.
+5. Whether native lists should get `isEmpty`/`head`/`tail` (the issue's optional request).
+6. The node run of the `G1_CONS`/`G2_CONS` native-constant gate kinds.
+
+## Revision history
+
+| Date | Revision | Change |
+|---|---|---|
+| 2026-09-14 | Original | Typed BLS values, six native-list producers, explicit MSM (PR #150). |
+| 2026-10-10 | Amendment 1 (#240) | `scalarsEmpty`/`scalarsCons`, `g1PointsEmpty`/`g1PointsCons`, `g2PointsEmpty`/`g2PointsCons`: incremental native lists for MSM over points the program already holds; typing and isolation unchanged; additive. |
+| 2026-10-11 | Amendment 1 r2 (review of `4cc63c24`) | Casts and `PlutusData.cast` are typed native boundaries (closes a pre-existing ADR-047 gap); evaluation order pinned; `CONS_LOOPS`; PV11-only node evidence and the failed DevKit gate attempt recorded; switch/foldl limitations listed; wording. |

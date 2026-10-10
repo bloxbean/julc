@@ -672,7 +672,9 @@ multi-scalar multiplication requires PV11 and takes the native lists
 `JulcScalars` and `JulcG1Points`/`JulcG2Points` built by `Builtins.scalars`,
 `Builtins.g1Points`/`g2Points` or decoded from Data lists by
 `Builtins.scalarsFromList` and `Builtins.g1PointsFromCompressed`/
-`g2PointsFromCompressed` (ADR-047). See
+`g2PointsFromCompressed`, or built one element at a time with
+`Builtins.scalarsEmpty`/`scalarsCons`, `g1PointsEmpty`/`g1PointsCons` and
+`g2PointsEmpty`/`g2PointsCons` (ADR-047 and its #240 amendment). See
 [Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations)
 for full documentation.
 

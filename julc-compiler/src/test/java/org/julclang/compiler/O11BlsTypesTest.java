@@ -62,7 +62,26 @@ class O11BlsTypesTest {
             Map.entry("SCALAR_BOUND/max-plus-one", "Bls12_381_G1_multiScalarMul: multiScalarMul: scalar too large (513 bytes, max 512)"),
             Map.entry("SCALAR_BOUND/min-minus-one", "Bls12_381_G1_multiScalarMul: multiScalarMul: scalar too large (513 bytes, max 512)"),
             Map.entry("SCALAR_BEYOND_ZIP/beyond-bound", "Bls12_381_G1_multiScalarMul: multiScalarMul: scalar too large (513 bytes, max 512)"),
-            Map.entry("TRACE_ORDER/fail", "Error term encountered"));
+            Map.entry("TRACE_ORDER/fail", "Error term encountered"),
+            Map.entry("CONS_RECURSION/invalid-encoding", "Bls12_381_G1_uncompress"),
+            Map.entry("CONS_RECURSION/not-bytes", "UnBData"),
+            Map.entry("CONS_RECURSION/not-an-integer", "UnIData"),
+            Map.entry("CONS_RECURSION/order-not-bytes-first", "UnBData"),
+            Map.entry("CONS_RECURSION/order-invalid-encoding-first", "Bls12_381_G1_uncompress"),
+            Map.entry("VALIDATE_ONCE/infinity", "Error term encountered"),
+            Map.entry("VALIDATE_ONCE/invalid-encoding", "Bls12_381_G1_uncompress"));
+    /**
+     * PV11_SAFE size and script hash of the #240 fixtures (ADR-047 Amendment 1 evidence), so a
+     * lowering change shows up here and not only in the printed artifact lines.
+     */
+    private static final Map<String, String> CONS_ARTIFACTS = Map.of(
+            "CONS_RECURSION", "222 8be19c3e5bb0d7295ea15e66fb4b7cbeab0ec099bc5421c4d4c104b6",
+            "VALIDATE_ONCE", "274 77949aa1bd08c80cf52d4f7822dbcff9d80ef347d57f5cdabcdd987e",
+            "CONS_ORDER", "402 3bea2d18afe9bacc7cce28dc633417047954cdf7f6e16a7e8128cd23",
+            "G2_CONS", "225 029e90c66f35d80475cff250026fb8c672b77617ddf725f4d7719192",
+            "CONS_EMPTY_AND_MIXED", "410 a0ce17903b087d903a320777989798b5f5af27cd6cc3c6fb32a763ce",
+            "CONS_LOOPS", "559 46f2ad09411eb12c4b558bbf3acd3ee19ea8b1616199851a54ab4968");
+
     /** ADR-043 (O9) promotes the repeatedly indexed boundary list at PV11_COSTED, so the chain's own get fails as IndexArray there. */
     private static final Map<String, String> COSTED_FAILURE_PREFIX = Map.of(
             "FROM_LISTS/one-scalar", "IndexArray: index 1 out of bounds for array of size 1",
@@ -110,7 +129,11 @@ class O11BlsTypesTest {
                     }
                 }
                 if (level == OptimizationLevel.PV11_SAFE) {
-                    System.out.println("BLS_TYPED_ARTIFACT " + fixture.name() + " " + bytes.length + " " + JulcScriptAdapter.scriptHash(result.program()));
+                    var artifact = bytes.length + " " + JulcScriptAdapter.scriptHash(result.program());
+                    System.out.println("BLS_TYPED_ARTIFACT " + fixture.name() + " " + artifact);
+                    if (CONS_ARTIFACTS.containsKey(fixture.name())) {
+                        assertEquals(CONS_ARTIFACTS.get(fixture.name()), artifact, label + " artifact");
+                    }
                 }
             }
         }
@@ -224,7 +247,80 @@ class O11BlsTypesTest {
                 new Bad("G2 assigned to a G1 accumulator inside a nested block", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); for (var x : xs) { { acc = Builtins.bls12_381_G2_hashToGroup(dst, dst); } } return BlsLib.g1Equal(acc, acc); }",
                         "JULC0041", "Assignment to 'acc' received G2, but requires G1"),
                 new Bad("G2 into a loop-local G1 declaration inside a nested block", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { { JulcG1 p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); } } return ok; }",
-                        "JULC0041", "Variable 'p' initializer received G2, but requires G1"));
+                        "JULC0041", "Variable 'p' initializer received G2, but requires G1"),
+                // incremental native lists (#240): the element and the list are typed like every other native argument
+                new Bad("G2 point consed onto a G1 list", "static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G2_hashToGroup(dst, dst), Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "Builtins.g1PointsCons argument 1 received G2, but requires G1"),
+                new Bad("G1 point consed onto a G2 list", "static JulcG2Points m(byte[] dst) { return Builtins.g2PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), Builtins.g2PointsEmpty()); }",
+                        "JULC0041", "Builtins.g2PointsCons argument 1 received G1, but requires G2"),
+                new Bad("a G1 list under a G2 cons", "static JulcG2Points m(byte[] dst) { return Builtins.g2PointsCons(Builtins.bls12_381_G2_hashToGroup(dst, dst), Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "Builtins.g2PointsCons argument 2 received NativeList[G1], but requires NativeList[G2]"),
+                new Bad("compressed bytes consed as a point", "static JulcG1Points m(byte[] b) { return Builtins.g1PointsCons(b, Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "Builtins.g1PointsCons argument 1 received ByteString, but requires G1"),
+                new Bad("Data consed as a point", "static JulcG1Points m(PlutusData d) { return Builtins.g1PointsCons(d, Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "Builtins.g1PointsCons argument 1 received Data, but requires G1"),
+                new Bad("a Data list where a native point list is required", "static JulcG1Points m(JulcList<byte[]> xs, byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), xs); }",
+                        "JULC0041", "Builtins.g1PointsCons argument 2 received List[ByteString], but requires NativeList[G1]"),
+                new Bad("a raw Data list where a native point list is required", "static JulcG1Points m(PlutusData xs, byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), Builtins.unListData(xs)); }",
+                        "JULC0041", "but requires NativeList[G1]"),
+                new Bad("scalars where a point list is required", "static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), Builtins.scalarsEmpty()); }",
+                        "JULC0041", "Builtins.g1PointsCons argument 2 received NativeList[Integer], but requires NativeList[G1]"),
+                new Bad("a point list under a scalars cons", "static JulcScalars m() { return Builtins.scalarsCons(BigInteger.ONE, Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "Builtins.scalarsCons argument 2 received NativeList[G1], but requires NativeList[Integer]"),
+                new Bad("a Data integer list under a scalars cons", "static JulcScalars m(JulcList<BigInteger> xs) { return Builtins.scalarsCons(BigInteger.ONE, xs); }",
+                        "JULC0041", "Builtins.scalarsCons argument 2 received List[Integer], but requires NativeList[Integer]"),
+                new Bad("bytes consed as a scalar", "static JulcScalars m(byte[] b) { return Builtins.scalarsCons(b, Builtins.scalarsEmpty()); }",
+                        "JULC0041", "Builtins.scalarsCons argument 1 received ByteString, but requires Integer"),
+                new Bad("Data consed as a scalar", "static JulcScalars m(PlutusData d) { return Builtins.scalarsCons(Builtins.headList(d), Builtins.scalarsEmpty()); }",
+                        "JULC0041", "Builtins.scalarsCons argument 1 received Data, but requires Integer"),
+                new Bad("a point consed as a scalar", "static JulcScalars m(byte[] dst) { return Builtins.scalarsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), Builtins.scalarsEmpty()); }",
+                        "JULC0041", "Builtins.scalarsCons argument 1 received G1, but requires Integer"),
+                new Bad("the empty G2 list returned as a G1 list", "static JulcG1Points m() { return Builtins.g2PointsEmpty(); }",
+                        "JULC0041", "requires NativeList[G1]"),
+                new Bad("a recursive helper returning the wrong group", "static JulcG1Points h(JulcList<byte[]> xs) { if (xs.isEmpty()) return Builtins.g1PointsEmpty(); return Builtins.g2PointsCons(BlsLib.g2Uncompress(xs.head()), Builtins.g2PointsEmpty()); }\n static JulcG1Points m(JulcList<byte[]> xs) { return h(xs); }",
+                        "JULC0041", "received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("an empty G1 list into a G2 accumulator", "static boolean m(JulcList<byte[]> xs) { JulcG2Points acc = Builtins.g1PointsEmpty(); for (var b : xs) { acc = Builtins.g2PointsCons(BlsLib.g2Uncompress(b), acc); } return true; }",
+                        "JULC0041", "received NativeList[G1], but requires NativeList[G2]"),
+                new Bad("mixed empty lists in a conditional", "static JulcG1 m(boolean b) { return BlsLib.g1MultiScalarMul(Builtins.scalarsEmpty(), b ? Builtins.g1PointsEmpty() : Builtins.g2PointsEmpty()); }",
+                        "JULC0041", "Conditional else branch received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("native lists compared with ==", "static boolean m(byte[] dst) { JulcG1Points ps = Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), Builtins.g1PointsEmpty()); return ps == Builtins.g1PointsEmpty(); }",
+                        "JULC0041", "NativeList[G1]"),
+                new Bad("a native list in a Data list", "static boolean m() { JulcList<JulcG1Points> xs = JulcList.of(Builtins.g1PointsEmpty()); return true; }",
+                        "JULC0041", "NativeList[G1]"),
+                new Bad("a native list as Data (equalsData)", "static boolean m(PlutusData d) { return Builtins.equalsData(Builtins.scalarsEmpty(), d); }",
+                        "JULC0041", "NativeList[Integer]"),
+                new Bad("the Data-list nullList on a native list", "static boolean m() { return Builtins.nullList(Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "received NativeList[G1], but requires Data"),
+                new Bad("the Data-list headList on a native list", "static PlutusData m() { return Builtins.headList(Builtins.scalarsCons(BigInteger.ONE, Builtins.scalarsEmpty())); }",
+                        "JULC0041", "received NativeList[Integer], but requires Data"),
+                new Bad("the Data-list mkCons onto a native list", "static PlutusData m(PlutusData d) { return Builtins.mkCons(d, Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "received NativeList[G1], but requires Data"),
+                new Bad("a native list in a record", "record Box(JulcG1Points ps) {}\n static boolean m() { var box = new Box(Builtins.g1PointsEmpty()); return true; }",
+                        "JULC0041", "requires Data"),
+                new Bad("a native list accumulator among several (the Data pack)", "static boolean m(JulcList<byte[]> xs) { JulcG1Points acc = Builtins.g1PointsEmpty(); BigInteger n = BigInteger.ZERO; for (var b : xs) { acc = Builtins.g1PointsCons(BlsLib.g1Uncompress(b), acc); n = n.add(BigInteger.ONE); } return n.equals(BigInteger.ZERO); }",
+                        "JULC0041", "Data encoding received NativeList[G1], but requires Data"),
+                // a cast lowers to the identity, so it is never a decoder or a group change (#241 review F1)
+                new Bad("a G2 list cast through Object to a G1 list", "static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), (JulcG1Points)(Object) Builtins.g2PointsEmpty()); }",
+                        "JULC0041", "Cast to JulcG1Points received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("a G2 list cast directly to a G1 list", "static JulcG1Points m() { JulcG1Points ps = (JulcG1Points) Builtins.g2PointsEmpty(); return ps; }",
+                        "JULC0041", "Cast to JulcG1Points received NativeList[G2], but requires NativeList[G1]"),
+                new Bad("a Data byte-string list cast to a G1 list", "static JulcG1Points m(JulcList<byte[]> xs, byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), (JulcG1Points)(Object) xs); }",
+                        "JULC0041", "Cast to JulcG1Points received List[ByteString], but requires NativeList[G1]"),
+                new Bad("a Data integer list cast to scalars", "static JulcG1 m(JulcList<BigInteger> xs, byte[] dst) { return BlsLib.g1MultiScalarMul((JulcScalars)(Object) xs, Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst))); }",
+                        "JULC0041", "Cast to JulcScalars received List[Integer], but requires NativeList[Integer]"),
+                new Bad("PlutusData.cast to a G1 list", "static JulcG1Points m(PlutusData d, byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), PlutusData.cast(d, JulcG1Points.class)); }",
+                        "JULC0041", "PlutusData.cast to JulcG1Points received Data, but requires NativeList[G1]"),
+                new Bad("PlutusData.cast to a G1 point", "static JulcG1 m(PlutusData d) { return PlutusData.cast(d, JulcG1.class); }",
+                        "JULC0041", "PlutusData.cast to JulcG1 received Data, but requires G1"),
+                new Bad("a G2 point cast through Object to a G1 cons element", "static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons((JulcG1)(Object) Builtins.bls12_381_G2_hashToGroup(dst, dst), Builtins.g1PointsEmpty()); }",
+                        "JULC0041", "Cast to JulcG1 received G2, but requires G1"),
+                new Bad("a G2 point cast through Object into a G1 literal list", "static JulcG1Points m(byte[] dst) { return Builtins.g1Points((JulcG1)(Object) Builtins.bls12_381_G2_hashToGroup(dst, dst)); }",
+                        "JULC0041", "Cast to JulcG1 received G2, but requires G1"),
+                // known limitations, pinned so they stay fail-closed (ADR-047 Amendment 1, Compatibility and risks)
+                new Bad("a switch expression yielding native lists", "sealed interface S permits A, B {}\n record A(BigInteger x) implements S {}\n record B(BigInteger y) implements S {}\n static JulcG1Points m(S s, byte[] dst) { JulcG1Points ps = switch (s) { case A a -> Builtins.g1PointsEmpty(); case B b -> Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst)); }; return ps; }",
+                        "JULC0041", "initializer received Data, but requires NativeList[G1]"),
+                new Bad("a G1 point cast to PlutusData", "static PlutusData m(byte[] dst) { return (PlutusData)(Object) Builtins.bls12_381_G1_hashToGroup(dst, dst); }",
+                        "JULC0041", "Cast to PlutusData received G1, but requires Data"));
         for (var bad : cases) {
             var error = assertThrows(CompilerException.class,
                     () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + "class Bad {\n" + bad.body() + "\n}\n", "m"),
@@ -233,6 +329,17 @@ class O11BlsTypesTest {
             assertEquals(bad.code(), diagnostic.code(), bad.name() + ": " + diagnostic.message());
             assertTrue(diagnostic.message().contains(bad.fragment()), bad.name() + ": " + diagnostic.message());
         }
+        // Known limitation, pinned fail-closed: foldl types its accumulator parameter as the element type.
+        var foldl = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(
+                IMPORTS + "import org.julclang.stdlib.lib.ListsLib;\n" + """
+                class Foldl {
+                    static JulcG1Points m(JulcList<byte[]> xs) {
+                        return ListsLib.foldl(xs, Builtins.g1PointsEmpty(), (a, b) -> Builtins.g1PointsCons(BlsLib.g1Uncompress(b), a));
+                    }
+                }
+                """, "m"));
+        assertEquals("JULC0041", foldl.diagnostics().getFirst().code(), foldl.getMessage());
+        assertTrue(foldl.getMessage().contains("but requires NativeList[G1]"), foldl.getMessage());
         // An assignment the loop body generators do not bind is rejected, never lowered to its right-hand side
         // with the update dropped: in expression position, and to a target with no declaration in scope
         // (PR #150 review round three).
@@ -323,6 +430,83 @@ class O11BlsTypesTest {
         assertTrue(mentions(msm, DefaultFun.Bls12_381_G1_multiScalarMul));
     }
 
+    /**
+     * #240: the empty forms are exactly the empty native list constant of their universe (the
+     * one {@code g1Points()} is), at every level; a cons is one {@code MkCons} of the element
+     * over the list, bound once and typed by the bound {@code Var}, so a one-element cons over
+     * the empty form serializes to the same bytes as the one-element literal; no Data encoder
+     * appears; each cons adds exactly one {@code MkCons}.
+     */
+    @Test
+    void incrementalProducersLowerToTheEmptyConstantAndOneMkConsPerElement() {
+        var empties = Map.of(
+                "static JulcScalars m() { return Builtins.scalarsEmpty(); }", DefaultUni.INTEGER,
+                "static JulcG1Points m() { return Builtins.g1PointsEmpty(); }", DefaultUni.BLS12_381_G1,
+                "static JulcG2Points m() { return Builtins.g2PointsEmpty(); }", DefaultUni.BLS12_381_G2);
+        var literalEmpties = Map.of(
+                DefaultUni.INTEGER, "static JulcScalars m() { return Builtins.scalars(); }",
+                DefaultUni.BLS12_381_G1, "static JulcG1Points m() { return Builtins.g1Points(); }",
+                DefaultUni.BLS12_381_G2, "static JulcG2Points m() { return Builtins.g2Points(); }");
+        for (var empty : empties.entrySet()) {
+            for (var level : OptimizationLevel.values()) {
+                var program = compile(IMPORTS + "class P {\n" + empty.getKey() + "\n}\n", "m", level, false).program();
+                if (level != OptimizationLevel.NONE) {
+                    assertEquals(Term.const_(new Constant.ListConst(empty.getValue(), List.of())), program.term(), empty.getKey() + " " + level);
+                }
+                var literal = compile(IMPORTS + "class P {\n" + literalEmpties.get(empty.getValue()) + "\n}\n", "m", level, false).program();
+                assertArrayEquals(UplcFlatEncoder.encodeProgram(literal), UplcFlatEncoder.encodeProgram(program), empty.getKey() + " " + level);
+            }
+        }
+        // A cons: Let #__native_<name> = MkCons element list in #__native_<name>, the Var typed as the native list.
+        var cons = pir("static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), Builtins.g1PointsEmpty()); }");
+        var binding = nodes(cons).stream().filter(t -> t instanceof PirTerm.Let l && l.name().equals("#__native_g1PointsCons"))
+                .map(t -> (PirTerm.Let) t).findFirst().orElseThrow(() -> new AssertionError(cons.toString()));
+        var outer = assertInstanceOf(PirTerm.App.class, binding.value());
+        var inner = assertInstanceOf(PirTerm.App.class, outer.function());
+        assertEquals(DefaultFun.MkCons, assertInstanceOf(PirTerm.Builtin.class, inner.function()).fun());
+        assertTrue(mentions(inner.argument(), DefaultFun.Bls12_381_G1_hashToGroup), inner.argument().toString());
+        assertEquals(new PirTerm.Const(new Constant.ListConst(DefaultUni.BLS12_381_G1, List.of())), outer.argument());
+        assertEquals(new PirTerm.Var("#__native_g1PointsCons", new PirType.NativeListType(new PirType.NativeG1Type())), binding.body());
+        // One element over the empty form is the one-element literal, byte for byte (binder names are not serialized).
+        var sameAsLiteral = Map.of(
+                "static JulcG1Points m(byte[] dst) { return Builtins.g1PointsCons(Builtins.bls12_381_G1_hashToGroup(dst, dst), Builtins.g1PointsEmpty()); }",
+                "static JulcG1Points m(byte[] dst) { return Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst)); }",
+                "static JulcG2Points m(byte[] dst) { return Builtins.g2PointsCons(Builtins.bls12_381_G2_hashToGroup(dst, dst), Builtins.g2PointsEmpty()); }",
+                "static JulcG2Points m(byte[] dst) { return Builtins.g2Points(Builtins.bls12_381_G2_hashToGroup(dst, dst)); }",
+                "static JulcScalars m(BigInteger x) { return Builtins.scalarsCons(x, Builtins.scalarsEmpty()); }",
+                "static JulcScalars m(BigInteger x) { return Builtins.scalars(x); }");
+        for (var pair : sameAsLiteral.entrySet()) {
+            for (var level : OptimizationLevel.values()) {
+                assertArrayEquals(
+                        UplcFlatEncoder.encodeProgram(compile(IMPORTS + "class P {\n" + pair.getValue() + "\n}\n", "m", level, false).program()),
+                        UplcFlatEncoder.encodeProgram(compile(IMPORTS + "class P {\n" + pair.getKey() + "\n}\n", "m", level, false).program()),
+                        pair.getKey() + " " + level);
+            }
+        }
+        // Each cons is one MkCons; a recursive helper conses once per call; none of them encodes Data.
+        var nested = pir("static JulcScalars m(BigInteger x) { return Builtins.scalarsCons(x, Builtins.scalarsCons(BigInteger.ONE, Builtins.scalarsCons(x, Builtins.scalarsEmpty()))); }");
+        assertEquals(3, nodes(nested).stream().filter(t -> t instanceof PirTerm.Builtin b && b.fun() == DefaultFun.MkCons).count(), nested.toString());
+        assertEquals(1, constants(nested).stream().filter(c -> c.equals(new Constant.ListConst(DefaultUni.INTEGER, List.of()))).count(), nested.toString());
+        var recursive = pir("""
+                static JulcG1Points collect(PlutusData xs) {
+                    if (Builtins.nullList(xs)) return Builtins.g1PointsEmpty();
+                    return Builtins.g1PointsCons(Builtins.bls12_381_G1_uncompress(Builtins.unBData(Builtins.headList(xs))), collect(Builtins.tailList(xs)));
+                }
+                static JulcG1Points m(PlutusData xs) { return collect(Builtins.unListData(xs)); }""");
+        assertEquals(1, nodes(recursive).stream().filter(t -> t instanceof PirTerm.Builtin b && b.fun() == DefaultFun.MkCons).count(), recursive.toString());
+        for (var term : List.of(cons, nested, recursive)) {
+            for (var encoder : DATA_ENCODERS) assertFalse(mentions(term, encoder), encoder + " in " + term);
+        }
+        // 2·G, the second point of the #240 fixtures, is G + G.
+        var doubled = compile(IMPORTS + """
+                class Doubled {
+                    static boolean m(byte[] g, byte[] d) { return BlsLib.g1Equal(BlsLib.g1Uncompress(d), BlsLib.g1Add(BlsLib.g1Uncompress(g), BlsLib.g1Uncompress(g))); }
+                }
+                """, "m", OptimizationLevel.BASELINE, false);
+        assertEquals(Term.const_(Constant.bool(true)), assertInstanceOf(EvalResult.Success.class, evaluate(doubled.program(),
+                List.of(PlutusData.bytes(O11BlsTypesFixtures.G1_GENERATOR), PlutusData.bytes(O11BlsTypesFixtures.G1_DOUBLE)), "Java")).resultTerm());
+    }
+
     /** MSM needs the PV11 builtins; point lists need BLS constants; scalars need nothing beyond the base builtins. A pre-PV11 target fails closed. */
     @Test
     void requirementsNameThePv11BuiltinsAndBlsConstantsAndAPrePv11TargetFailsClosed() {
@@ -335,6 +519,13 @@ class O11BlsTypesTest {
                 registry.requirements(BUILTINS, "g1PointsFromCompressed"));
         assertEquals(new LoweringRequirements(Set.of(DefaultFun.Bls12_381_G2_uncompress), Set.of(ProtocolCapability.BLS_CONSTANTS)),
                 registry.requirements(BUILTINS, "g2PointsFromCompressed"));
+        // #240: the empty point lists emit the BLS list constant; scalars and a cons (one MkCons) need nothing more.
+        assertEquals(LoweringRequirements.NONE, registry.requirements(BUILTINS, "scalarsEmpty"));
+        assertEquals(LoweringRequirements.NONE, registry.requirements(BUILTINS, "scalarsCons"));
+        assertEquals(LoweringRequirements.capability(ProtocolCapability.BLS_CONSTANTS), registry.requirements(BUILTINS, "g1PointsEmpty"));
+        assertEquals(LoweringRequirements.capability(ProtocolCapability.BLS_CONSTANTS), registry.requirements(BUILTINS, "g2PointsEmpty"));
+        assertEquals(LoweringRequirements.NONE, registry.requirements(BUILTINS, "g1PointsCons"));
+        assertEquals(LoweringRequirements.NONE, registry.requirements(BUILTINS, "g2PointsCons"));
         assertEquals(LoweringRequirements.builtin(DefaultFun.Bls12_381_G1_multiScalarMul), registry.requirements(BUILTINS, "bls12_381_G1_multiScalarMul"));
         assertEquals(LoweringRequirements.builtin(DefaultFun.Bls12_381_G2_multiScalarMul), registry.requirements(BUILTINS, "bls12_381_G2_multiScalarMul"));
 
