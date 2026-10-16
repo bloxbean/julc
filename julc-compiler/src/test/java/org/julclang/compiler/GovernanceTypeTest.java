@@ -596,6 +596,39 @@ class GovernanceTypeTest {
             assertTrue(result.isSuccess(), "Guardrails script should be absent. Got: " + result);
         }
 
+        @Test
+        void typedNewConstitutionBoundaryAcceptsOnlyTheLedgerLayout() {
+            // The typed-parameter check validates the Constitution wrapper: ledger-shaped data is
+            // accepted and the bare Maybe ScriptHash julc used to expect is rejected
+            var source = """
+                    @MintingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(GovernanceAction ga, ScriptContext ctx) {
+                            return switch (ga) {
+                                case NewConstitution nc -> true;
+                                default -> false;
+                            };
+                        }
+                    }
+                    """;
+            var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(source).program();
+            var hash = optionalSome(PlutusData.bytes(new byte[28]));
+
+            for (var ledger : List.of(
+                    PlutusData.constr(5, optionalNone(), PlutusData.constr(0, hash)),
+                    PlutusData.constr(5, optionalNone(), PlutusData.constr(0, optionalNone())))) {
+                var result = vm.evaluateWithArgs(program, List.of(buildCtx(ledger)));
+                assertTrue(result.isSuccess(), "Ledger layout should be accepted. Got: " + result);
+            }
+            for (var bare : List.of(
+                    PlutusData.constr(5, optionalNone(), hash),
+                    PlutusData.constr(5, optionalNone(), optionalNone()))) {
+                var result = vm.evaluateWithArgs(program, List.of(buildCtx(bare)));
+                assertFalse(result.isSuccess(), "Bare Maybe ScriptHash should be rejected. Got: " + result);
+            }
+        }
+
         private Program compileNewConstitutionCheck(String check) {
             var source = """
                     import org.julclang.stdlib.Builtins;
@@ -975,6 +1008,86 @@ class GovernanceTypeTest {
             var result = compiler.compile(source);
             assertFalse(result.hasErrors(),
                     "Nested ScriptPurpose -> TxCert switch should compile: " + result);
+        }
+    }
+
+    // =======================================================================
+    // A member type of the validator class shadows the bundled ledger type
+    // with the same simple name, as javac binds it (JLS 6.4.1).
+    // =======================================================================
+
+    @Nested
+    class MemberTypeShadowing {
+
+        private Program compileWithNestedRecord(String typeName, String packageLine) {
+            return compileWithNestedRecord(typeName, packageLine, "c.value() == 42");
+        }
+
+        private Program compileWithNestedRecord(String typeName, String packageLine, String check) {
+            var source = """
+                    %s
+                    import java.math.BigInteger;
+
+                    @MintingValidator
+                    class TestValidator {
+                        record %s(BigInteger value) {}
+
+                        @Entrypoint
+                        static boolean validate(%s c, ScriptContext ctx) {
+                            return %s;
+                        }
+                    }
+                    """.formatted(packageLine, typeName, typeName, check);
+            return new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(source).program();
+        }
+
+        private void assertBindsNestedRecord(Program program) {
+            var nested = vm.evaluateWithArgs(program,
+                    List.of(buildCtx(PlutusData.constr(0, PlutusData.integer(42)))));
+            assertTrue(nested.isSuccess(), "Nested record payload should be accepted. Got: " + nested);
+            var ledgerShaped = vm.evaluateWithArgs(program,
+                    List.of(buildCtx(PlutusData.constr(0, optionalNone()))));
+            assertFalse(ledgerShaped.isSuccess(), "Ledger-shaped payload should be rejected. Got: " + ledgerShaped);
+        }
+
+        @Test
+        void nestedConstitutionBindsToNestedRecord() {
+            assertBindsNestedRecord(compileWithNestedRecord("Constitution", ""));
+        }
+
+        @Test
+        void unusedNestedConstitutionParameterValidatesNestedSchema() {
+            // The typed boundary alone decides acceptance: no member access forces the binding
+            assertBindsNestedRecord(compileWithNestedRecord("Constitution", "", "true"));
+        }
+
+        @Test
+        void nestedCommitteeBindsToNestedRecord() {
+            assertBindsNestedRecord(compileWithNestedRecord("Committee", ""));
+        }
+
+        @Test
+        void nestedConstitutionInPackageBindsToNestedRecord() {
+            assertBindsNestedRecord(compileWithNestedRecord("Constitution", "package com.example;"));
+        }
+
+        @Test
+        void withoutNestedTypeConstitutionBindsToLedgerType() {
+            var source = """
+                    @MintingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(Constitution c, ScriptContext ctx) {
+                            return !c.script().isPresent();
+                        }
+                    }
+                    """;
+            var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(source).program();
+            var ledger = vm.evaluateWithArgs(program, List.of(buildCtx(PlutusData.constr(0, optionalNone()))));
+            assertTrue(ledger.isSuccess(), "Ledger Constitution payload should be accepted. Got: " + ledger);
+            var integer = vm.evaluateWithArgs(program,
+                    List.of(buildCtx(PlutusData.constr(0, PlutusData.integer(42)))));
+            assertFalse(integer.isSuccess(), "Integer payload should be rejected. Got: " + integer);
         }
     }
 }

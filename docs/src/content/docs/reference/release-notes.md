@@ -19,20 +19,35 @@ second component of `NewConstitution` changes from `Optional<ScriptHash> constit
 `nc.constitution().script()`.
 
 **Contracts that read `constitution()` must be updated and recompiled.** Their script
-bytes and hashes change. Other contracts, including those that only match the
-`NewConstitution` case, compile to the same bytes as before. Off-chain code that
+bytes and hashes change. **Contracts that take a `GovernanceAction` or
+`ProposalProcedure` as a typed parameter or datum also get new bytes and a new hash**,
+even if they only match the `NewConstitution` case, because the typed-boundary check now
+validates the `Constitution` wrapper. Before, that check rejected the ledger's
+`NewConstitution` payload and accepted the bare `Maybe ScriptHash`, which no ledger
+produces. It now does the reverse. Contracts that read proposals from the `ScriptContext`
+and only match the case compile to the same bytes as before. Off-chain code that
 constructs `NewConstitution` must pass a `Constitution`, and the script contexts the
 cardano-client-lib evaluator builds now contain the wrapper. The other six governance
 actions are unchanged; tests now compare each of them with hex written by hand from
 Haskell's `ToData`.
 
-Formal verification of this field is not yet sound: the pinned Lean model
-(CardanoLedgerApiBlaster `5dab3c43`) still omits the `Constitution` wrapper, so a verified
-contract that reads `constitution().script()` is checked against the old data shape.
+The pinned Lean model for formal verification (CardanoLedgerApiBlaster `5dab3c43`) still
+omits the wrapper, so its strict decoder cannot read the ledger's `NewConstitution`
+payload. The verification DSL now rejects, at admission, a property that reads the
+`whenNewConstitution` script. The guard and its `previous` argument stay admitted, but
+they match only the old bare layout, never ledger-shaped data. Both limits lift when the
+pin moves to a model with the wrapper.
 
-As with other ledger type names such as `Committee`, a type named `Constitution` declared
-inside a validator class now resolves to the ledger type. Rename such a type, or declare
-it at top level in the contract's package.
+## Upcoming preview: nested types shadow ledger types of the same name
+
+A record or sealed interface declared directly inside a validator or library class now
+shadows a bundled ledger type with the same simple name, as javac binds it (JLS 6.4.1).
+Before, the implicit `org.julclang.ledger.*` import won: a nested `record Committee` (or,
+with #223, `record Constitution`) resolved to the ledger type without a diagnostic, so a
+typed parameter or datum accepted the ledger schema instead of the declared one. Such
+contracts now get the schema they declare and a new hash. Contracts without such a name
+collision compile to the same bytes. If two top-level classes in one source declare a
+nested type with the same name, an unqualified use of that name is reported as ambiguous.
 
 ## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
 

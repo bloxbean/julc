@@ -312,6 +312,55 @@ class FqcnResolutionTest {
         }
 
         @Test
+        void explicitImportWinsOverWildcard() {
+            var knownFqcns = java.util.Set.of(
+                    "org.julclang.ledger.Value",
+                    "com.thirdparty.Value");
+            var cu = com.github.javaparser.StaticJavaParser.parse("""
+                    package com.myapp;
+                    import com.thirdparty.Value;
+                    class Foo {}
+                    """);
+            assertEquals("com.thirdparty.Value", new ImportResolver(cu, knownFqcns).resolve("Value"));
+        }
+
+        @Test
+        void memberTypeShadowsImports() {
+            var knownFqcns = java.util.Set.of(
+                    "org.julclang.ledger.Constitution",
+                    "com.thirdparty.Value",
+                    "com.myapp.Foo.Constitution",
+                    "com.myapp.Foo.Value");
+            var cu = com.github.javaparser.StaticJavaParser.parse("""
+                    package com.myapp;
+                    import com.thirdparty.Value;
+                    class Foo {
+                        record Constitution(java.math.BigInteger value) {}
+                        record Value(java.math.BigInteger value) {}
+                    }
+                    """);
+            var resolver = new ImportResolver(cu, knownFqcns);
+            assertEquals("com.myapp.Foo.Constitution", resolver.resolve("Constitution"));
+            assertEquals("com.myapp.Foo.Value", resolver.resolve("Value"));
+        }
+
+        @Test
+        void sameMemberTypeNameInTwoTopLevelTypesIsAmbiguous() {
+            var knownFqcns = java.util.Set.of(
+                    "org.julclang.ledger.Constitution",
+                    "com.myapp.A.Constitution",
+                    "com.myapp.B.Constitution");
+            var cu = com.github.javaparser.StaticJavaParser.parse("""
+                    package com.myapp;
+                    class A { record Constitution(java.math.BigInteger value) {} }
+                    class B { record Constitution(java.math.BigInteger value) {} }
+                    """);
+            var resolver = new ImportResolver(cu, knownFqcns);
+            var ex = assertThrows(CompilerException.class, () -> resolver.resolve("Constitution"));
+            assertTrue(ex.getMessage().contains("Ambiguous type"), ex.getMessage());
+        }
+
+        @Test
         void noPackageCodeResolves() {
             var knownFqcns = java.util.Set.of("org.julclang.ledger.TxInfo");
             var resolver = new ImportResolver(knownFqcns);

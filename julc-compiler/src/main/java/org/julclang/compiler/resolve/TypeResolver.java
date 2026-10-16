@@ -133,15 +133,17 @@ public class TypeResolver {
         return newTypes.containsKey(resolved);
     }
 
-    /** Get all registered @NewType names (returns simple names for backward compat). */
+    /** Get all registered @NewType names, as FQCNs and simple names. */
     public Set<String> getNewTypeNames() {
-        // Return simple names for backward compatibility with wrapWithNewTypeLookup
-        var simpleNames = new LinkedHashSet<String>();
+        // Matched against resolveClassName: the FQCN when the import resolver finds the type,
+        // the simple name otherwise (e.g. a type nested in a library class)
+        var names = new LinkedHashSet<String>();
         for (var fqcn : newTypes.keySet()) {
             var dot = fqcn.lastIndexOf('.');
-            simpleNames.add(dot >= 0 ? fqcn.substring(dot + 1) : fqcn);
+            names.add(fqcn);
+            names.add(dot >= 0 ? fqcn.substring(dot + 1) : fqcn);
         }
-        return Collections.unmodifiableSet(simpleNames);
+        return Collections.unmodifiableSet(names);
     }
 
     public void registerSealedInterface(ClassOrInterfaceDeclaration decl, String fqcn) {

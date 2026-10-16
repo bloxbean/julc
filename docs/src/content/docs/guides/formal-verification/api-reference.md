@@ -300,6 +300,14 @@ proposing validator selection.
 `whenNewConstitution`, and `isInfo`. No action payload is available outside its
 matching guard.
 
+The `whenNewConstitution` script argument is withheld: a property that reads it
+is rejected at admission. The pinned Lean model (CardanoLedgerApiBlaster
+`5dab3c43`) declares `Constitution` as a bare `Option ScriptHash`, without the
+`Constr 0` wrapper the ledger encodes, so its strict decoder cannot read the
+ledger's `NewConstitution` payload. Until the pin moves to a model with the
+wrapper, the guard and its `previous` argument only match the old bare layout,
+never ledger-shaped data.
+
 ## Reviewed raw-data adapters
 
 | Adapter | Supported operations |

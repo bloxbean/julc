@@ -6,7 +6,10 @@ import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-/** Guarded pinned V3 governance action; raw changed-parameter/quorum fields stay hidden. */
+/**
+ * Guarded pinned V3 governance action; raw changed-parameter/quorum fields and the
+ * NewConstitution script (mismodelled by the pinned model) stay hidden.
+ */
 public record GovernanceActionExpr(PropertyNode node) implements Expr {
     public GovernanceActionExpr { node = Objects.requireNonNull(node, "node"); }
     public BoolExpr whenParameterChange(BiFunction<TypedOptionExpr, TypedOptionExpr, BoolExpr> p) {
