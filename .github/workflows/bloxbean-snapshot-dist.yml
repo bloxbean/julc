@@ -1,0 +1,159 @@
+# From the release-ops standard (templates/workflows/bloxbean-snapshot-dist.yml, 2026-10-04), adapted for JuLC:
+# native-image-dev.yml builds the distributions, and there is no Development snapshot release job yet.
+name: Publish snapshot distributions
+
+# Builds the distribution files of a snapshot commit with native-image-dev.yml - the same files
+# native-image-release.yml attaches to a GitHub release - and, once a release owner approves, publishes exactly
+# those files to the BloxBean repository bucket, read anonymously at https://repo.bloxbean.org/dist/snapshots/julc/.
+# Independent of native-image-release.yml and of the Maven snapshot repository. See bloxbean/release-ops
+# docs/12-bloxbean-maven-repository.md, Snapshot distributions.
+#
+# Each commit gets <version>/ with its zips, SHA256SUMS and manifest.json; latest.json names the most recently
+# published one. A version directory is never overwritten: manifest.json, uploaded last, marks it as published.
+# Every project writes only dist/snapshots/<project>/; one bucket lifecycle rule on dist/snapshots/ expires them.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  # Fails before the native image builds: only a -SNAPSHOT commit whose push CI passed, the same rule as the Maven
+  # snapshots (bloxbean-snapshot.yml), is published.
+  check:
+    if: >-
+      github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require green CI for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_WORKFLOWS: build.yml
+        run: bash .github/scripts/require-green-ci.sh
+      - name: Require a SNAPSHOT version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' gradle.properties \
+            | head -1 | tr -d '[:space:]')
+          if [[ "$VERSION" != *-SNAPSHOT ]]; then
+            echo "::error::Snapshot distributions require a -SNAPSHOT version. Got: $VERSION" >&2
+            exit 1
+          fi
+
+  # The CLI and playground native images, the WebAssembly bundles and the shadow jars, uploaded as workflow
+  # artifacts whose names match `pattern:` in the publish job.
+  build:
+    needs: check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/native-image-dev.yml
+
+  # The approval gate, after the build so the reviewer approves files that were built (the WebAssembly engine is
+  # parity-checked against the JVM). The `release` environment holds no secrets; its reviewers are the
+  # release-owners team, and the person who started the run can't approve it. Waiting for approval costs no runner
+  # time.
+  approve:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: release
+    steps:
+      - name: Approved
+        run: echo "Publishing the snapshot distributions of $GITHUB_SHA approved."
+
+  publish:
+    needs: approve
+    # The bucket credentials are secrets of this environment, which only accepts main, release/** and v* tags.
+    environment: release-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # Only latest.json is shared between runs; serialize the uploads so it names the most recently published build.
+    concurrency:
+      group: bloxbean-snapshot-dist
+      cancel-in-progress: false
+    env:
+      BUCKET: ${{ vars.R2_BUCKET }}
+      PREFIX: dist/snapshots/julc
+      PUBLIC_URL: https://repo.bloxbean.org
+      DIST_DIR: dist
+      AWS_ENDPOINT_URL: ${{ vars.R2_ENDPOINT }}
+      AWS_DEFAULT_REGION: auto
+      # AWS CLI 2.23+ sends request checksums R2 does not accept by default; send them only when an API needs one.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download the built distributions
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*dist*'
+          path: dist
+          merge-multiple: true
+
+      # JuLC's layout, the GitHub release's: the CLI and playground native images of four platforms, the three
+      # WebAssembly bundles with their checksums, and the two shadow jars. Every name carries the version, which for
+      # a snapshot has the short commit id, as the Maven version does. Exactly this commit's files, nothing else.
+      - name: Verify the distributions
+        id: dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          cli=(julc-[0-9]*-linux-x86_64.zip)
+          VERSION=${cli[0]#julc-}
+          VERSION=${VERSION%-linux-x86_64.zip}
+          if [[ ${#cli[@]} != 1 || "$VERSION" != *"-${GITHUB_SHA:0:7}-SNAPSHOT" ]]; then
+            echo "::error::Expected one Linux x86_64 CLI zip of commit ${GITHUB_SHA:0:7}; found: ${cli[*]}" >&2
+            exit 1
+          fi
+          expected="julc-wasm-$VERSION.tar.gz"
+          expected+=$'\n'"julc-vm-wasm-$VERSION.tar.gz"
+          expected+=$'\n'"julc-playground-static-$VERSION.tar.gz"
+          expected+=$'\n'"julc-wasm-$VERSION-SHA256SUMS.txt"
+          expected+=$'\n'"julc-compiler-all-$VERSION-all.jar"
+          expected+=$'\n'"julc-vm-java-all-$VERSION-all.jar"
+          for platform in linux-arm64 linux-x86_64 macos-aarch64 windows-x86_64; do
+            expected+=$'\n'"julc-$VERSION-$platform.zip"
+            expected+=$'\n'"julc-playground-$VERSION-$platform.zip"
+          done
+          found=$(find . -maxdepth 1 -type f -printf '%f\n' | sort)
+          if [[ "$found" != "$(sort <<< "$expected")" ]]; then
+            echo "::error::Unexpected distribution set: $(tr '\n' ' ' <<< "$found")" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Write the manifest
+        env:
+          VERSION: ${{ steps.dist.outputs.version }}
+        run: bash .github/scripts/bloxbean-dist.sh manifest
+
+      # Files and SHA256SUMS first, then manifest.json, which marks the build as published, then latest.json. A
+      # published build is never overwritten, so its URLs and checksums stay valid until it expires; a run that
+      # stopped before the manifest is completed by running again.
+      - name: Upload to the bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          VERSION: ${{ steps.dist.outputs.version }}
+        run: bash .github/scripts/bloxbean-dist.sh upload
+
+      - name: Verify the public files
+        env:
+          VERSION: ${{ steps.dist.outputs.version }}
+        run: bash .github/scripts/bloxbean-dist.sh verify
+
+      - name: Record the publication
+        env:
+          VERSION: ${{ steps.dist.outputs.version }}
+        run: bash .github/scripts/bloxbean-dist.sh summary

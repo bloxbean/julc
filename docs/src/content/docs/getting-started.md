@@ -52,8 +52,10 @@ ext {
 
 repositories {
     mavenCentral()
+    // Development snapshots (one version per commit); not needed for releases.
     maven {
-        url "https://central.sonatype.com/repository/maven-snapshots"
+        url = uri('https://repo.bloxbean.org/maven/snapshots')
+        mavenContent { snapshotsOnly() }
     }
 }
 
@@ -95,8 +97,8 @@ test {
 <!-- Required for snapshot versions only -->
 <repositories>
     <repository>
-        <id>snapshots-repo</id>
-        <url>https://central.sonatype.com/repository/maven-snapshots</url>
+        <id>bloxbean-snapshots</id>
+        <url>https://repo.bloxbean.org/maven/snapshots</url>
         <releases>
             <enabled>false</enabled>
         </releases>
