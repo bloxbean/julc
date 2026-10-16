@@ -37,7 +37,7 @@ class GovernanceSchemaNineAdmissionTest {
                 normalized.properties().getFirst().expression(),
                 ContractTypeProjection.project(schema));
         assertTrue(lean.contains("txInfoVotes"), lean);
-        assertTrue(lean.contains("IsData.fromData"), lean);
+        assertTrue(lean.contains("julcDecodeGovernanceAction"), lean);
         assertTrue(lean.contains("HardForkInitiation"), lean);
     }
 
@@ -77,7 +77,7 @@ class GovernanceSchemaNineAdmissionTest {
     }
 
     @Test
-    void newConstitutionScriptIsWithheldUntilTheModelMatchesTheLedger() {
+    void strictActionsDecodeThroughTheConstitutionWrapperAdapter() {
         ContractSchema schema = schema();
         String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
         BoolExpr script = LedgerExpressions.context().txInfo().proposals().exists(p ->
@@ -87,29 +87,16 @@ class GovernanceSchemaNineAdmissionTest {
                 VerificationDsl.property("governance.new-constitution-script",
                         DslDomain.VALID_SPENDING_V3_PINNED, script));
 
-        var rejected = assertThrows(IllegalArgumentException.class,
-                () -> DslPropertyValidator.validateAndNormalize(candidate, schema, 10_000));
-        assertTrue(rejected.getMessage().contains("NewConstitution.constitutionScript"),
-                rejected.getMessage());
-        assertTrue(rejected.getMessage().contains("Constitution wrapper"), rejected.getMessage());
-    }
-
-    @Test
-    void guardrailScriptOfOtherActionsIsStillAdmitted() {
-        ContractSchema schema = schema();
-        String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
-        BoolExpr script = LedgerExpressions.context().txInfo().proposals().exists(p ->
-                p.actionStrict().exists(a -> a.whenTreasuryWithdrawals(
-                        (withdrawals, constitutionScript) -> constitutionScript.isPresent())
-                        .or(a.whenParameterChange(
-                                (previous, constitutionScript) -> constitutionScript.isPresent()))));
-        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
-                VerificationDsl.property("governance.guardrail-script",
-                        DslDomain.VALID_SPENDING_V3_PINNED, script));
-
         var normalized = DslPropertyValidator.validateAndNormalize(candidate, schema, 10_000);
-        assertNotNull(ComposedDslPromotion.promote(normalized, schema,
-                "GovernanceGate", "GovernanceProperties.java"));
+        var promoted = ComposedDslPromotion.promote(normalized, schema,
+                "GovernanceGate", "GovernanceProperties.java");
+        assertTrue(promoted.claims().getFirst().capabilities()
+                .contains("adapter.new-constitution.ledger-wrapper"));
+        String lean = TypedPropertyLeanRenderer.renderExpression(
+                normalized.properties().getFirst().expression(),
+                ContractTypeProjection.project(schema));
+        assertTrue(lean.contains("julcDecodeGovernanceAction"), lean);
+        assertFalse(lean.contains("IsData.fromData"), lean);
     }
 
     private static ContractSchema schema() {

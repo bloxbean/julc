@@ -379,7 +379,7 @@ public class JulcCompiler {
                 : wrapWithNewTypeLookup(stdlibLookup, newTypeNames);
 
         // 5d. Set import resolver for validator CU (used for type resolution)
-        var validatorImportResolver = new ImportResolver(validatorCu, knownFqcns);
+        var validatorImportResolver = new ImportResolver(validatorClass, knownFqcns);
         typeResolver.setCurrentImportResolver(validatorImportResolver);
 
         // 6. Detect @Param fields
@@ -901,7 +901,7 @@ public class JulcCompiler {
                 ? stdlibLookup
                 : wrapWithNewTypeLookup(stdlibLookup, newTypeNames);
 
-        var importResolver = new ImportResolver(cu, knownFqcns);
+        var importResolver = new ImportResolver(targetClass, knownFqcns);
         typeResolver.setCurrentImportResolver(importResolver);
 
         // 7. Detect @Param fields

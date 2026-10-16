@@ -3009,6 +3009,39 @@ public final class VerificationProjectGenerator {
                 example : CardanoLedgerApi.V3.Contexts.isKnownProposal
                     proposal 2 [proposal, proposal] = false := by native_decide
 
+                /- adapter.new-constitution.ledger-wrapper: the ledger layout decodes, the bare
+                   pinned layout does not, and every other action passes through unchanged. -/
+                def priorData : Data := IsData.toData optionalPrior
+                def ledgerScriptPresent : Data := Data.Constr 5
+                  [priorData, Data.Constr 0 [Data.Constr 0 [Data.B "constitution"]]]
+                def ledgerScriptAbsent : Data := Data.Constr 5
+                  [priorData, Data.Constr 0 [Data.Constr 1 []]]
+                def bareScriptPresent : Data := Data.Constr 5
+                  [priorData, Data.Constr 0 [Data.B "constitution"]]
+                def bareScriptAbsent : Data := Data.Constr 5 [priorData, Data.Constr 1 []]
+                example : [julcDecodeGovernanceAction ledgerScriptPresent,
+                    julcDecodeGovernanceAction ledgerScriptAbsent,
+                    julcDecodeGovernanceAction bareScriptPresent,
+                    julcDecodeGovernanceAction bareScriptAbsent] =
+                    [some (.NewConstitution optionalPrior (some "constitution")),
+                     some (.NewConstitution optionalPrior none), none, none] := by
+                  native_decide
+                example : [julcDecodeGovernanceAction (IsData.toData action0),
+                    julcDecodeGovernanceAction (IsData.toData action1),
+                    julcDecodeGovernanceAction (IsData.toData action2),
+                    julcDecodeGovernanceAction (IsData.toData action3),
+                    julcDecodeGovernanceAction (IsData.toData action4),
+                    julcDecodeGovernanceAction (IsData.toData action6)] =
+                    [some action0, some action1, some action2, some action3,
+                     some action4, some action6] := by native_decide
+                example : julcDecodeGovernanceAction (Data.Constr 5
+                    [priorData, Data.Constr 0 [Data.Constr 1 [], Data.I 0]]) = none := by
+                  native_decide
+                /- The pinned decoder still rejects the ledger layout. Once the pin carries the
+                   Constitution wrapper this control fails: remove the adapter then. -/
+                example : [decodeAction ledgerScriptPresent, decodeAction ledgerScriptAbsent] =
+                    [none, none] := by native_decide
+
                 end JulcGenerated.GovernanceSemanticsTests
                 """;
     }
@@ -3867,6 +3900,16 @@ public final class VerificationProjectGenerator {
                     def julcIsKnownVoter (voter : Voter)
                         (votes : JulcMap Voter (JulcMap GovernanceActionId Vote)) : Bool :=
                       votes.entries.any (fun entry => entry.1 == voter)
+
+                    /- Reviewed adapter adapter.new-constitution.ledger-wrapper: the ledger encodes
+                       NewConstitution as Constr 5 [prior, Constr 0 [Maybe ScriptHash]], but the
+                       pinned model types Constitution as a bare Option ScriptHash. Remove the
+                       wrapper before the pinned decoder; any other tag-5 shape is malformed. -/
+                    def julcDecodeGovernanceAction : Data → Option GovernanceAction
+                      | Data.Constr 5 [prior, Data.Constr 0 [script]] =>
+                          IsData.fromData (Data.Constr 5 [prior, script])
+                      | Data.Constr 5 _ => none
+                      | raw => IsData.fromData raw
 
                     """);
         }

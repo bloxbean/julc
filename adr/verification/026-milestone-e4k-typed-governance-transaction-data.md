@@ -236,13 +236,15 @@ complete on-ledger constitution.
 The pinned model also omits the wrapper plutus-ledger-api puts around it:
 Haskell encodes `Constitution` as `Constr 0 [Maybe ScriptHash]`, while the model
 places the bare `Option ScriptHash` in `NewConstitution`'s second field. JuLC
-encodes the wrapper since julc #223, and the model's strict decoder cannot read
-either ledger shape (`Constr 0 [Just h]`, `Constr 0 [Nothing]`). Admission
-therefore withholds the `whenNewConstitution` script argument: a property that
-reads it is rejected, the same way the raw quorum is withheld. The guard and its
-`previous` argument stay admitted, but the pinned decoder only recognizes the old
-bare layout, so they never match ledger-shaped data. Both lift when the pin moves
-to a model revision with the wrapper.
+encodes the wrapper since julc #223, and the model's strict decoder returns
+`none` for both ledger shapes (`Constr 0 [Just h]`, `Constr 0 [Nothing]`). Strict
+action decoding therefore goes through the JuLC-owned reviewed adapter
+`adapter.new-constitution.ledger-wrapper` (`julcDecodeGovernanceAction`). It removes
+the `Constr 0` wrapper of a tag-5 action before the pinned decoder, rejects every
+other tag-5 shape (including the bare pinned layout), and leaves the other actions
+to the pinned decoder unchanged. Generated `GovernanceSemanticsTests` check all four
+payloads, and include a control on the pinned decoder that fails once the pin
+carries the wrapper; the adapter is removed then.
 
 The pinned `isKnownProposal` is exact indexed equality over the full proposal,
 including raw governance-action `Data`. Negative indexes and out-of-range

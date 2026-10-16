@@ -78,8 +78,8 @@ public final class JavaLibraryProvider implements LibraryProvider {
         registry = LibraryMethodRegistry.forCompilation(context);
         new LibraryCompiler(context).compile(units, resolver, registry, lookup, known);
         for (var cu : units) {
-            descriptions.scope(cu);
-            for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class))
+            for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+                descriptions.scope(cls);
                 for (var method : cls.getMethods()) {
                     if (!method.isPublic() || !method.isStatic() || cls.isInterface()) continue;
                     var symbol =
@@ -108,6 +108,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                         unsupported.put(symbol, e.getMessage());
                     }
                 }
+            }
         }
     }
 

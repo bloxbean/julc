@@ -339,25 +339,38 @@ class FqcnResolutionTest {
                         record Value(java.math.BigInteger value) {}
                     }
                     """);
-            var resolver = new ImportResolver(cu, knownFqcns);
+            var resolver = new ImportResolver(cu.getType(0), knownFqcns);
             assertEquals("com.myapp.Foo.Constitution", resolver.resolve("Constitution"));
             assertEquals("com.myapp.Foo.Value", resolver.resolve("Value"));
+            // Without a scope type only the imports apply
+            assertEquals("com.thirdparty.Value", new ImportResolver(cu, knownFqcns).resolve("Value"));
         }
 
         @Test
-        void sameMemberTypeNameInTwoTopLevelTypesIsAmbiguous() {
+        void memberTypesAreScopedToTheEnclosingTypes() {
             var knownFqcns = java.util.Set.of(
                     "org.julclang.ledger.Constitution",
                     "com.myapp.A.Constitution",
-                    "com.myapp.B.Constitution");
+                    "com.myapp.A.Inner",
+                    "com.myapp.A.Inner.Constitution",
+                    "com.myapp.B.Other");
             var cu = com.github.javaparser.StaticJavaParser.parse("""
                     package com.myapp;
-                    class A { record Constitution(java.math.BigInteger value) {} }
-                    class B { record Constitution(java.math.BigInteger value) {} }
+                    class A {
+                        record Constitution(java.math.BigInteger value) {}
+                        record Inner(java.math.BigInteger value) {
+                            record Constitution(byte[] value) {}
+                        }
+                    }
+                    class B { record Other() {} }
                     """);
-            var resolver = new ImportResolver(cu, knownFqcns);
-            var ex = assertThrows(CompilerException.class, () -> resolver.resolve("Constitution"));
-            assertTrue(ex.getMessage().contains("Ambiguous type"), ex.getMessage());
+            var a = cu.getType(0);
+            var inner = (com.github.javaparser.ast.body.TypeDeclaration<?>) a.getMember(1);
+            assertEquals("com.myapp.A.Constitution", new ImportResolver(a, knownFqcns).resolve("Constitution"));
+            assertEquals("com.myapp.A.Inner.Constitution",
+                    new ImportResolver(inner, knownFqcns).resolve("Constitution"));
+            assertEquals("org.julclang.ledger.Constitution",
+                    new ImportResolver(cu.getType(1), knownFqcns).resolve("Constitution"));
         }
 
         @Test

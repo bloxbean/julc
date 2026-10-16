@@ -32,22 +32,25 @@ actions are unchanged; tests now compare each of them with hex written by hand f
 Haskell's `ToData`.
 
 The pinned Lean model for formal verification (CardanoLedgerApiBlaster `5dab3c43`) still
-omits the wrapper, so its strict decoder cannot read the ledger's `NewConstitution`
-payload. The verification DSL now rejects, at admission, a property that reads the
-`whenNewConstitution` script. The guard and its `previous` argument stay admitted, but
-they match only the old bare layout, never ledger-shaped data. Both limits lift when the
-pin moves to a model with the wrapper.
+omits the wrapper, so its strict decoder returns `none` for every ledger `NewConstitution`
+payload. Formal verification now decodes proposal actions through a reviewed adapter,
+`adapter.new-constitution.ledger-wrapper`, which removes the wrapper before the pinned
+decoder and rejects the bare layout. Properties about `NewConstitution` proposals,
+including `whenNewConstitution`'s script, therefore have the ledger's meaning. The
+adapter goes once the pin carries the wrapper.
 
 ## Upcoming preview: nested types shadow ledger types of the same name
 
-A record or sealed interface declared directly inside a validator or library class now
-shadows a bundled ledger type with the same simple name, as javac binds it (JLS 6.4.1).
-Before, the implicit `org.julclang.ledger.*` import won: a nested `record Committee` (or,
-with #223, `record Constitution`) resolved to the ledger type without a diagnostic, so a
-typed parameter or datum accepted the ledger schema instead of the declared one. Such
-contracts now get the schema they declare and a new hash. Contracts without such a name
-collision compile to the same bytes. If two top-level classes in one source declare a
-nested type with the same name, an unqualified use of that name is reported as ambiguous.
+A record or sealed interface declared inside a validator or library class now shadows a
+bundled ledger type with the same simple name within that class, as javac binds it
+(JLS 6.4.1). Before, the implicit `org.julclang.ledger.*` import won: a nested
+`record Committee` (or, with #223, `record Constitution`) resolved to the ledger type
+without a diagnostic, so a typed parameter or datum accepted the ledger schema instead of
+the declared one. Such contracts now get the schema they declare and a new hash. A type
+nested in another top-level class (`Helper.Committee`) does not capture the name, and a
+qualified name such as `Inner.Constitution` resolves to the type it names, or is reported
+as unknown; it no longer falls back to a ledger type with the same simple name. Contracts
+without such a name collision compile to the same bytes.
 
 ## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
 

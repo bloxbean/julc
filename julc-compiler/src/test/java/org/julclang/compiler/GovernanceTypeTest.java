@@ -1072,6 +1072,56 @@ class GovernanceTypeTest {
         }
 
         @Test
+        void qualifiedTypeNestedInPlainClassBindsToThatType() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @MintingValidator
+                    class TestValidator {
+                        static class Inner {
+                            record Constitution(BigInteger value) {}
+                        }
+
+                        @Entrypoint
+                        static boolean validate(Inner.Constitution c, ScriptContext ctx) {
+                            return %s;
+                        }
+                    }
+                    """;
+            for (var check : List.of("c.value() == 42", "true")) {
+                assertBindsNestedRecord(new JulcCompiler(StdlibRegistry.defaultRegistry())
+                        .compile(source.formatted(check)).program());
+            }
+        }
+
+        @Test
+        void typeNestedInAnotherTopLevelClassDoesNotCaptureTheName() {
+            // javac: Helper.Committee is not in scope in TestValidator, so Committee is the ledger type
+            var source = """
+                    import java.math.BigInteger;
+
+                    class Helper {
+                        record Committee(BigInteger value) {}
+                    }
+
+                    @MintingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(Committee c, ScriptContext ctx) {
+                            return true;
+                        }
+                    }
+                    """;
+            var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(source).program();
+            var ledger = vm.evaluateWithArgs(program,
+                    List.of(buildCtx(PlutusData.constr(0, PlutusData.map(), rational(2, 3)))));
+            assertTrue(ledger.isSuccess(), "Ledger Committee payload should be accepted. Got: " + ledger);
+            var helper = vm.evaluateWithArgs(program,
+                    List.of(buildCtx(PlutusData.constr(0, PlutusData.integer(42)))));
+            assertFalse(helper.isSuccess(), "Helper.Committee payload should be rejected. Got: " + helper);
+        }
+
+        @Test
         void withoutNestedTypeConstitutionBindsToLedgerType() {
             var source = """
                     @MintingValidator

@@ -3,6 +3,7 @@ package org.julclang.compiler.resolve;
 import org.julclang.compiler.CompilerException;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.TypeDeclaration;
 
 import java.util.*;
@@ -13,7 +14,8 @@ import java.util.*;
  * <p>
  * Resolution order, following Java's shadowing rules (JLS 6.4.1):
  * <ol>
- *   <li>Member types of the unit's top-level types (e.g., a record nested in the validator class)</li>
+ *   <li>Member types of the scope type and its enclosing types, innermost first (e.g., a record
+ *       nested in the validator class), when the resolver is created for a scope type</li>
  *   <li>Explicit imports (e.g., {@code import com.myapp.Token;})</li>
  *   <li>Same-package types</li>
  *   <li>Wildcard imports (including implicit {@code org.julclang.ledger.*})</li>
@@ -27,7 +29,7 @@ public class ImportResolver {
     private static final String STDLIB_LIB_PKG = "org.julclang.stdlib.lib";
 
     private final String packageName;
-    private final Map<String, Set<String>> memberTypes;    // "Datum" -> {"com.myapp.Validator.Datum"}
+    private final Map<String, String> memberTypes;        // "Datum" -> "com.myapp.Validator.Datum"
     private final Map<String, String> explicitImports;   // "Value" -> "org.julclang.ledger.Value"
     private final List<String> wildcardPackages;          // ["org.julclang.ledger"]
     private final Set<String> knownFqcns;                 // all registered type FQCNs
@@ -39,6 +41,18 @@ public class ImportResolver {
      * @param knownFqcns all known type FQCNs (ledger + user-defined)
      */
     public ImportResolver(CompilationUnit cu, Set<String> knownFqcns) {
+        this(cu, null, knownFqcns);
+    }
+
+    /**
+     * Create an ImportResolver for code inside {@code scope}: the imports of its compilation unit,
+     * plus the member types in scope there (those of {@code scope} and of its enclosing types).
+     */
+    public ImportResolver(TypeDeclaration<?> scope, Set<String> knownFqcns) {
+        this(scope.findCompilationUnit().orElse(null), scope, knownFqcns);
+    }
+
+    private ImportResolver(CompilationUnit cu, TypeDeclaration<?> scope, Set<String> knownFqcns) {
         this.knownFqcns = knownFqcns != null ? knownFqcns : Set.of();
         this.explicitImports = new LinkedHashMap<>();
         this.wildcardPackages = new ArrayList<>();
@@ -59,21 +73,21 @@ public class ImportResolver {
                     explicitImports.put(simpleName, fqcn);
                 }
             }
-
-            // A top-level type's member types are in scope throughout its body. Resolution is per
-            // unit, so they shadow imports for the whole unit.
-            for (TypeDeclaration<?> type : cu.getTypes()) {
-                for (var member : type.getMembers()) {
-                    if (member instanceof TypeDeclaration<?> memberType) {
-                        memberType.getFullyQualifiedName()
-                                .filter(this.knownFqcns::contains)
-                                .ifPresent(fqcn -> memberTypes.computeIfAbsent(
-                                        memberType.getNameAsString(), k -> new LinkedHashSet<>()).add(fqcn));
-                    }
-                }
-            }
         } else {
             this.packageName = null;
+        }
+
+        // A type's member types are in scope in its body and in the bodies of its nested types;
+        // an inner declaration shadows an outer one
+        for (Node node = scope; node != null; node = node.getParentNode().orElse(null)) {
+            if (!(node instanceof TypeDeclaration<?> type)) continue;
+            for (var member : type.getMembers()) {
+                if (member instanceof TypeDeclaration<?> memberType) {
+                    memberType.getFullyQualifiedName()
+                            .filter(this.knownFqcns::contains)
+                            .ifPresent(fqcn -> memberTypes.putIfAbsent(memberType.getNameAsString(), fqcn));
+                }
+            }
         }
 
         // Always add implicit wildcards (like Java's java.lang.*)
@@ -88,7 +102,7 @@ public class ImportResolver {
      * No-CU constructor for packageless inline code.
      */
     public ImportResolver(Set<String> knownFqcns) {
-        this(null, knownFqcns);
+        this((CompilationUnit) null, knownFqcns);
     }
 
     /**
@@ -99,13 +113,10 @@ public class ImportResolver {
      * @throws CompilerException if the name is ambiguous (matches multiple wildcard packages)
      */
     public String resolve(String simpleName) {
-        // 1. Check member types of the unit's top-level types
-        var members = memberTypes.get(simpleName);
-        if (members != null) {
-            if (members.size() > 1) {
-                throw ambiguous(simpleName, members);
-            }
-            return members.iterator().next();
+        // 1. Check member types in scope
+        var member = memberTypes.get(simpleName);
+        if (member != null) {
+            return member;
         }
 
         // 2. Check explicit imports (only if the import points to a known type)
@@ -134,16 +145,12 @@ public class ImportResolver {
             return wildcardMatches.get(0);
         }
         if (wildcardMatches.size() > 1) {
-            throw ambiguous(simpleName, wildcardMatches);
+            throw new CompilerException("Ambiguous type '" + simpleName
+                    + "'. Could be: " + String.join(", ", wildcardMatches)
+                    + ". Use an explicit import to disambiguate.");
         }
 
         // 5. Fallback: return simple name (for packageless code where FQCN = simple name)
         return simpleName;
-    }
-
-    private static CompilerException ambiguous(String simpleName, Collection<String> candidates) {
-        return new CompilerException("Ambiguous type '" + simpleName
-                + "'. Could be: " + String.join(", ", candidates)
-                + ". Use an explicit import to disambiguate.");
     }
 }
