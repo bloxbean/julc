@@ -9,6 +9,7 @@ import co.nstant.in.cbor.model.Special;
 import co.nstant.in.cbor.model.UnsignedInteger;
 import com.bloxbean.cardano.client.api.UtxoSupplier;
 import com.bloxbean.cardano.client.api.model.Utxo;
+import com.bloxbean.cardano.client.api.util.ReferenceScriptUtil;
 import com.bloxbean.cardano.client.crypto.Blake2bUtil;
 import com.bloxbean.cardano.client.plutus.spec.Redeemer;
 import com.bloxbean.cardano.client.transaction.spec.MultiAsset;
@@ -295,12 +296,14 @@ final class CclTxConverter {
 
             Optional<ScriptHash> refScript = Optional.empty();
             if (txOut.getScriptRef() != null) {
+                // Any language, native too; one that can't be decoded fails the evaluation. Known limitation: CCL
+                // 0.7 hashes a native script's re-encoding, which is the ledger's hash (of the original bytes) only
+                // for a canonically encoded script; CCL 0.8's raw-view RawScript.hash() is exact (julc #243).
                 try {
-                    var script = com.bloxbean.cardano.client.plutus.spec.PlutusScript
-                            .deserializeScriptRef(txOut.getScriptRef());
-                    refScript = Optional.of(ScriptHash.of(script.getScriptHash()));
+                    refScript = Optional.of(ScriptHash.of(
+                            ReferenceScriptUtil.deserializeScriptRef(txOut.getScriptRef()).getScriptHash()));
                 } catch (Exception e) {
-                    // If we can't extract hash, skip reference script
+                    throw new IllegalStateException("Failed to deserialize the reference script of output " + i, e);
                 }
             }
 

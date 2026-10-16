@@ -8,6 +8,7 @@ import com.bloxbean.cardano.client.api.model.ProtocolParams;
 import com.bloxbean.cardano.client.api.model.Utxo;
 import com.bloxbean.cardano.client.plutus.spec.*;
 import com.bloxbean.cardano.client.transaction.spec.*;
+import com.bloxbean.cardano.client.transaction.spec.script.ScriptPubkey;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -1029,6 +1030,104 @@ class JulcTransactionEvaluatorTest {
         assertEquals(BigInteger.valueOf(2_000_000), txInfo.outputs().head().value().lovelaceOf());
     }
 
+    // --- Reference scripts in outputs: every language, native too (the ledger's TxOut reference script hash) ---
+
+    /** blake2b-224 of 0x00 ‖ the native script {@code [0, h'11' * 28]} (a ScriptPubkey). */
+    private static final String NATIVE_REF_HASH = "5334c8c55ec6518f2e262da617d3170bf0722f43813d64dbaf0ff0b9";
+
+    @Test
+    void evaluateTx_v1_babbage_nativeReferenceScriptOutput_failsReferenceScriptsNotSupported() throws Exception {
+        // Babbage's transTxOutV1 rejects any reference script, native too (Babbage/TxInfo.hs:120-126)
+        var result = createEvaluator(null, 8).evaluateTx(v1NativeRefScriptMint().serialize(),
+                Set.of(dummyUtxo(DUMMY_TX_HASH)));
+
+        assertFalse(result.isSuccessful());
+        assertTrue(result.getResponse().contains("BadTranslation ReferenceScriptsNotSupported: Output: 0"),
+                result.getResponse());
+    }
+
+    @Test
+    void evaluateTx_v1_conway_nativeReferenceScriptOutput_translates() throws Exception {
+        // From Conway a V1 context leaves the reference script out
+        for (int pv : new int[]{9, 10}) {
+            var result = createEvaluator(null, pv).evaluateTx(v1NativeRefScriptMint().serialize(),
+                    Set.of(dummyUtxo(DUMMY_TX_HASH)));
+            assertTrue(result.isSuccessful(), "PV " + pv + ": " + result.getResponse());
+        }
+    }
+
+    @Test
+    void nativeAndPlutusReferenceScriptOutputs_encodeTheirHashesInV2AndV3Contexts() throws Exception {
+        var tx = mintTx(List.of(new TransactionInput(DUMMY_TX_HASH, 0)), List.of(
+                refScriptOutput(new ScriptPubkey("11".repeat(28)).scriptRefBytes()),
+                refScriptOutput(v2AlwaysTrueScript.scriptRefBytes())));
+        for (int pv : new int[]{8, 10}) {
+            var converter = TestConverters.of(tx, Set.of(dummyUtxo(DUMMY_TX_HASH)), pv);
+            var txInfo = converter.buildTxInfo();
+            var purpose = converter.redeemerToScriptPurpose(tx.getWitnessSet().getRedeemers().getFirst());
+            var v2Context = (org.julclang.core.PlutusData.ConstrData)
+                    V1V2ScriptContextBuilder.build(PlutusLanguage.PLUTUS_V2, txInfo, purpose, pv);
+
+            // The outputs are field 2 of both the V2 and the V3 TxInfo
+            for (var txInfoData : List.of(v2Context.fields().getFirst(), txInfo.toPlutusData())) {
+                var outputs = ((org.julclang.core.PlutusData.ListData)
+                        ((org.julclang.core.PlutusData.ConstrData) txInfoData).fields().get(2)).items();
+                assertEquals(justHash(NATIVE_REF_HASH), referenceScriptField(outputs.get(0)),
+                        "native reference script at PV " + pv);
+                assertEquals(justHash(v2AlwaysTrueHash), referenceScriptField(outputs.get(1)),
+                        "PlutusV2 reference script at PV " + pv);
+            }
+        }
+    }
+
+    @Test
+    void evaluateTx_undecodableReferenceScriptOutput_failsTheEvaluation() throws Exception {
+        // An unknown script language ([4, h'00']), or bytes that are no script: an error, never a context without
+        // the output's reference script hash
+        for (String scriptRef : List.of("82044100", "00")) {
+            var tx = mintTx(List.of(new TransactionInput(DUMMY_TX_HASH, 0)),
+                    List.of(refScriptOutput(HexFormat.of().parseHex(scriptRef))));
+            var result = createEvaluator(null).evaluateTx(tx.serialize(), Set.of(dummyUtxo(DUMMY_TX_HASH)));
+
+            assertFalse(result.isSuccessful(), scriptRef);
+            assertTrue(result.getResponse().contains("Failed to deserialize the reference script of output 0"),
+                    result.getResponse());
+        }
+    }
+
+    /** A PlutusV1 always-true mint of one token whose output 0 carries a native reference script. */
+    private static Transaction v1NativeRefScriptMint() throws Exception {
+        var v1 = PlutusV1Script.builder().cborHex(JulcScriptAdapter.fromProgram(Program.plutusV1(
+                Term.lam("r", Term.lam("ctx", Term.const_(Constant.unit()))))).getCborHex()).build();
+        var multiAsset = new MultiAsset();
+        multiAsset.setPolicyId(HexFormat.of().formatHex(v1.getScriptHash()));
+        multiAsset.setAssets(List.of(new Asset("746f6b656e", BigInteger.ONE)));
+        return Transaction.builder()
+                .body(TransactionBody.builder().inputs(List.of(new TransactionInput(DUMMY_TX_HASH, 0)))
+                        .outputs(List.of(refScriptOutput(new ScriptPubkey("11".repeat(28)).scriptRefBytes())))
+                        .fee(BigInteger.valueOf(200_000)).mint(List.of(multiAsset)).build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer(RedeemerTag.Mint)))
+                        .plutusV1Scripts(List.of(v1)).build())
+                .build();
+    }
+
+    private static TransactionOutput refScriptOutput(byte[] scriptRef) {
+        return TransactionOutput.builder().address(DUMMY_ADDR)
+                .value(new Value(BigInteger.valueOf(2_000_000), List.of())).scriptRef(scriptRef).build();
+    }
+
+    /** The reference script field (index 3) of an encoded V2/V3 TxOut. */
+    private static org.julclang.core.PlutusData referenceScriptField(org.julclang.core.PlutusData txOut) {
+        return ((org.julclang.core.PlutusData.ConstrData) txOut).fields().get(3);
+    }
+
+    /** {@code Just hash}: {@code Constr 0 [B hash]}. */
+    private static org.julclang.core.PlutusData justHash(String hex) {
+        return new org.julclang.core.PlutusData.ConstrData(0,
+                List.of(new org.julclang.core.PlutusData.BytesData(HexFormat.of().parseHex(hex))));
+    }
+
     /** A UTxO at {@code scriptHash}'s address with an inline datum (CBOR integer 8). */
     private static Utxo scriptUtxo(String txHash, String scriptHash) {
         return Utxo.builder().txHash(txHash).outputIndex(0).address(buildScriptAddress(scriptHash))
@@ -1196,6 +1295,11 @@ class JulcTransactionEvaluatorTest {
     }
 
     private JulcTransactionEvaluator createEvaluator(ScriptSupplier scriptSupplier) {
+        return createEvaluator(scriptSupplier, null);
+    }
+
+    /** @param protocolMajor the protocol parameters' major version; {@code null} for the evaluator's default */
+    private JulcTransactionEvaluator createEvaluator(ScriptSupplier scriptSupplier, Integer protocolMajor) {
         UtxoSupplier utxoSupplier = new UtxoSupplier() {
             @Override
             public List<com.bloxbean.cardano.client.api.model.Utxo> getPage(
@@ -1215,6 +1319,7 @@ class JulcTransactionEvaluatorTest {
             var params = new ProtocolParams();
             params.setMaxTxExMem("14000000");
             params.setMaxTxExSteps("10000000000");
+            params.setProtocolMajorVer(protocolMajor);
             return params;
         };
 
