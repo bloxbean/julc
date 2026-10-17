@@ -122,10 +122,10 @@ Custom implementation in `FlatWriter` / `FlatReader`. MSB-first bit orientation.
 
 ### CBOR Encoding
 
-`PlutusDataCborEncoder` — direct CBOR encoding (no external library for the encoder) with canonical Cardano rules:
+`PlutusDataCborEncoder.encode` — direct CBOR encoding (no external library for the encoder), byte for byte plutus-core's `encodeData`. It is the only Plutus Data encoder: the `serialiseData` builtin, FLAT Data constants and the off-chain `Builtins.serialiseData` all use it. `toDataItem` builds a cbor-java tree for interop only.
 
-- Chunked bytestrings for data > 64 bytes (`MAX_BYTESTRING_CHUNK = 64`)
-- ConstrData tag ranges: tags 0-6 use CBOR tag `121+tag`; tags 7-127 use CBOR tag `1280+(tag-7)`; tags 128+ use CBOR tag 102 with `[tag, fields]` array
+- Chunked bytestrings for data > 64 bytes (`MAX_BYTESTRING_CHUNK = 64`), and for the bytes of integer bignums
+- ConstrData tag ranges: tags 0-6 use CBOR tag `121+tag`; tags 7-127 use CBOR tag `1280+(tag-7)`; any other tag, negative ones included, uses CBOR tag 102 with a `[tag, fields]` array, the tag written by cborg's `encodeInteger` (a bignum tag is one definite byte string, never chunked)
 - `PlutusDataCborDecoder` uses `co.nstant.in:cbor` (v0.9) for parsing
 
 ---

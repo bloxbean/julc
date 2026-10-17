@@ -1,192 +1,20 @@
 package org.julclang.vm.java.builtins;
 
 import org.julclang.core.PlutusData;
-
-import java.io.ByteArrayOutputStream;
-import java.math.BigInteger;
-import java.util.Arrays;
-import java.util.List;
+import org.julclang.core.cbor.PlutusDataCborEncoder;
 
 /**
- * Minimal CBOR serializer for PlutusData (used by SerialiseData builtin).
- * <p>
- * Follows the Cardano CBOR encoding specification for Plutus Data.
+ * @deprecated Use {@link PlutusDataCborEncoder#encode(PlutusData)}, Julc's single Plutus Data encoder. Kept
+ * because it shipped in 0.1.0-pre17 and pre18; it will be removed in a later pre-release.
  */
+@Deprecated(forRemoval = true)
 public final class DataSerializer {
 
     private DataSerializer() {}
 
+    /** @deprecated Use {@link PlutusDataCborEncoder#encode(PlutusData)}. */
+    @Deprecated(forRemoval = true)
     public static byte[] serialize(PlutusData data) {
-        var out = new ByteArrayOutputStream();
-        writeData(out, data);
-        return out.toByteArray();
-    }
-
-    private static void writeData(ByteArrayOutputStream out, PlutusData data) {
-        switch (data) {
-            case PlutusData.ConstrData cd -> writeConstrData(out, cd);
-            case PlutusData.MapData md -> writeMapData(out, md);
-            case PlutusData.ListData ld -> writeListData(out, ld);
-            case PlutusData.IntData id -> writeIntData(out, id);
-            case PlutusData.BytesData bd -> writeBytesData(out, bd);
-        }
-    }
-
-    private static void writeConstrData(ByteArrayOutputStream out, PlutusData.ConstrData cd) {
-        BigInteger tag = cd.constructorTag();
-        if (tag.signum() >= 0 && tag.compareTo(BigInteger.valueOf(6)) <= 0) {
-            // Compact encoding: tag 121-127
-            writeTag(out, 121 + tag.longValueExact());
-        } else if (tag.compareTo(BigInteger.valueOf(7)) >= 0
-                && tag.compareTo(BigInteger.valueOf(127)) <= 0) {
-            // Compact encoding: tag 1280-1400
-            writeTag(out, 1280 + (tag.longValueExact() - 7));
-        } else {
-            // General encoding: tag 102, then [tag, fields]
-            writeTag(out, 102);
-            writeMajorArg(out, 4, 2); // outer definite array of 2: [tag, fields]
-            // plutus writes this tag with cborg's encodeInteger (Data.hs:152-160), not the Data one
-            writeCborgInteger(out, tag);
-            writeDataArray(out, cd.fields());
-            return;
-        }
-        writeDataArray(out, cd.fields());
-    }
-
-    /**
-     * Write a Plutus Data array (constructor fields or list items). Canonical Plutus Data uses
-     * an indefinite-length array (0x9f ... 0xff) for non-empty collections and a definite empty
-     * array (0x80) for empty ones. Shared by Constr fields and List so the two cannot drift.
-     */
-    private static void writeDataArray(ByteArrayOutputStream out, List<PlutusData> items) {
-        if (items.isEmpty()) {
-            writeMajorArg(out, 4, 0); // empty definite array 0x80
-        } else {
-            out.write(0x9f); // indefinite-length array
-            for (var item : items) {
-                writeData(out, item);
-            }
-            out.write(0xff); // break
-        }
-    }
-
-    private static void writeMapData(ByteArrayOutputStream out, PlutusData.MapData md) {
-        writeMajorArg(out, 5, md.entries().size());
-        for (var entry : md.entries()) {
-            writeData(out, entry.key());
-            writeData(out, entry.value());
-        }
-    }
-
-    private static void writeListData(ByteArrayOutputStream out, PlutusData.ListData ld) {
-        writeDataArray(out, ld.items());
-    }
-
-    private static void writeIntData(ByteArrayOutputStream out, PlutusData.IntData id) {
-        writeDataInteger(out, id.value());
-    }
-
-    /**
-     * plutus-core {@code encodeInteger} (Data.hs:170-183): outside the 64-bit range, a tag 2/3 bignum whose
-     * bytes go through {@code encodeBs}, so over 64 bytes they are chunked.
-     */
-    private static void writeDataInteger(ByteArrayOutputStream out, BigInteger value) {
-        BigInteger arg = cborArgument(value);
-        if (arg.bitLength() <= 64) {
-            writeCborgInteger(out, value);
-        } else {
-            writeTag(out, value.signum() >= 0 ? 2 : 3);
-            writeBoundedBytes(out, unsignedBytes(arg));
-        }
-    }
-
-    /** cborg {@code encodeInteger}: a CBOR integer, or a tag 2/3 bignum whose bytes are one definite byte string. */
-    private static void writeCborgInteger(ByteArrayOutputStream out, BigInteger value) {
-        int major = value.signum() >= 0 ? 0 : 1;
-        BigInteger arg = cborArgument(value);
-        if (arg.bitLength() <= 64) {
-            writeUnsignedWord64(out, major, arg.longValue());
-        } else {
-            writeTag(out, major == 0 ? 2 : 3);
-            byte[] bytes = unsignedBytes(arg);
-            writeMajorArg(out, 2, bytes.length);
-            out.write(bytes, 0, bytes.length);
-        }
-    }
-
-    /** The CBOR argument of an integer: the value itself, or {@code -1 - value} when negative. */
-    private static BigInteger cborArgument(BigInteger value) {
-        return value.signum() >= 0 ? value : value.negate().subtract(BigInteger.ONE);
-    }
-
-    /** Big-endian bytes of a non-negative value, without a leading sign byte. */
-    private static byte[] unsignedBytes(BigInteger value) {
-        byte[] bytes = value.toByteArray();
-        return bytes.length > 1 && bytes[0] == 0 ? Arrays.copyOfRange(bytes, 1, bytes.length) : bytes;
-    }
-
-    private static void writeBytesData(ByteArrayOutputStream out, PlutusData.BytesData bd) {
-        writeBoundedBytes(out, bd.value());
-    }
-
-    /** plutus-core {@code encodeBs}: a byte string over 64 bytes is an indefinite string of 64-byte chunks. */
-    private static void writeBoundedBytes(ByteArrayOutputStream out, byte[] bytes) {
-        if (bytes.length <= 64) {
-            writeMajorArg(out, 2, bytes.length);
-            out.write(bytes, 0, bytes.length);
-        } else {
-            // Chunked encoding for >64 bytes
-            out.write(0x5f); // indefinite-length bytestring
-            int offset = 0;
-            while (offset < bytes.length) {
-                int chunkLen = Math.min(64, bytes.length - offset);
-                writeMajorArg(out, 2, chunkLen);
-                out.write(bytes, offset, chunkLen);
-                offset += chunkLen;
-            }
-            out.write(0xff); // break
-        }
-    }
-
-    private static void writeTag(ByteArrayOutputStream out, long tag) {
-        writeMajorArg(out, 6, tag);
-    }
-
-    private static void writeUnsignedWord64(
-            ByteArrayOutputStream out, int major, long value) {
-        if (value >= 0) {
-            writeMajorArg(out, major, value);
-            return;
-        }
-        // Negative signed longs represent unsigned values 2^63..2^64-1.
-        out.write((major << 5) | 27);
-        for (int i = 56; i >= 0; i -= 8) {
-            out.write((int) ((value >>> i) & 0xff));
-        }
-    }
-
-    private static void writeMajorArg(ByteArrayOutputStream out, int major, long arg) {
-        int majorBits = major << 5;
-        if (arg < 24) {
-            out.write(majorBits | (int) arg);
-        } else if (arg < 0x100) {
-            out.write(majorBits | 24);
-            out.write((int) arg);
-        } else if (arg < 0x10000) {
-            out.write(majorBits | 25);
-            out.write((int) (arg >> 8));
-            out.write((int) (arg & 0xff));
-        } else if (arg < 0x100000000L) {
-            out.write(majorBits | 26);
-            out.write((int) (arg >> 24));
-            out.write((int) ((arg >> 16) & 0xff));
-            out.write((int) ((arg >> 8) & 0xff));
-            out.write((int) (arg & 0xff));
-        } else {
-            out.write(majorBits | 27);
-            for (int i = 56; i >= 0; i -= 8) {
-                out.write((int) ((arg >> i) & 0xff));
-            }
-        }
+        return PlutusDataCborEncoder.encode(data);
     }
 }
