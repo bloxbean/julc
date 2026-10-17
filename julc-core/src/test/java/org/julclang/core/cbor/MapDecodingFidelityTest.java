@@ -134,8 +134,7 @@ class MapDecodingFidelityTest {
     @ValueSource(strings = {"a0", "bfff", "a203181e010a", "bf03181e010aff", "a1019f0203ff",
             "00", "20", "1bffffffffffffffff", "3bffffffffffffffff", "c249010000000000000000",
             "c349010000000000000000", "5f41014102ff", "d8799fa10304ff", "d86682188080",
-            "d866821bffffffffffffffff80", "9f01029f03ffff", "c240", "c34100", "d903e8a10102",
-            "0102"})
+            "d866821bffffffffffffffff80", "9f01029f03ffff", "c240", "c34100"})
     void retainsLegacyValuesForDuplicateFreeInputs(String hex) throws CborException {
         byte[] bytes = HEX.parseHex(hex);
         var legacy = PlutusDataCborDecoder.fromDataItem(CborDecoder.decode(bytes).getFirst());

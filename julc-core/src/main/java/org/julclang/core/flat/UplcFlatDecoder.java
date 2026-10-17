@@ -253,10 +253,11 @@ public final class UplcFlatDecoder {
      * Decode PlutusData from FLAT format.
      * <p>
      * Per the Plutus spec, Data constants are stored as CBOR-encoded bytestrings
-     * in FLAT format.
+     * in FLAT format. Bytes after the first CBOR item are ignored, as in Plutus
+     * (see {@link PlutusDataCborDecoder#decodeFirst(byte[])}).
      */
     public PlutusData readData() {
         byte[] cborBytes = reader.byteString();
-        return PlutusDataCborDecoder.decode(cborBytes);
+        return PlutusDataCborDecoder.decodeFirst(cborBytes);
     }
 }
