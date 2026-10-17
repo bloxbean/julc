@@ -690,6 +690,8 @@ All ledger types live in `org.julclang.ledger.*`.
   - Fields: `Credential credential`, `Optional<StakingCredential> stakingCredential`
 - **`Committee`** — A governance committee.
   - Fields: `JulcMap<Credential, BigInteger> members`, `Rational quorum`
+- **`Constitution`** — A constitution: the optional guardrails script hash. The anchor is omitted, as in plutus-ledger-api V3. Encoded as `Constr 0 [Maybe ScriptHash]`.
+  - Fields: `Optional<ScriptHash> script`
 - **`DatumHash`** — A datum hash (typically 32 bytes). No byte-length validation — length enforcement is a ledger rule, not a type invariant.
   - Fields: `byte[] hash`
   - Methods: `byte[] hash()`, `DatumHash of(byte[] hash)`
@@ -757,7 +759,7 @@ All ledger types live in `org.julclang.ledger.*`.
   - `TreasuryWithdrawals(JulcMap<Credential, BigInteger> withdrawals, Optional<ScriptHash> constitutionScript)`
   - `NoConfidence(Optional<GovernanceActionId> id)`
   - `UpdateCommittee(Optional<GovernanceActionId> id, JulcList<Credential> removedMembers, JulcMap<Credential, BigInteger> addedMembers, Rational newQuorum)`
-  - `NewConstitution(Optional<GovernanceActionId> id, Optional<ScriptHash> constitution)`
+  - `NewConstitution(Optional<GovernanceActionId> id, Constitution constitution)`
   - `InfoAction()`
 - **`IntervalBoundType`** — The type of an interval bound: negative infinity, finite, or positive infinity.
   - `NegInf()`

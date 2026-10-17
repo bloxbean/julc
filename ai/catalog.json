@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "julcVersion": "0.1.0-pre18",
-  "generatedAt": "2026-10-04T16:34:27.125Z",
+  "generatedAt": "2026-10-17T03:56:28.420Z",
   "counts": {
     "stdlibClasses": 13,
     "stdlibMethods": 174,
-    "ledgerTypes": 33,
+    "ledgerTypes": 34,
     "diagnostics": 51,
     "examples": 47
   },
@@ -2668,6 +2668,19 @@
       ],
       "methods": []
     },
+    "Constitution": {
+      "name": "Constitution",
+      "kind": "record",
+      "fqcn": "org.julclang.ledger.Constitution",
+      "doc": "A constitution: the optional guardrails script hash. The anchor is omitted, as in plutus-ledger-api V3. Encoded as `Constr 0 [Maybe ScriptHash]`.",
+      "fields": [
+        {
+          "name": "script",
+          "type": "Optional<ScriptHash>"
+        }
+      ],
+      "methods": []
+    },
     "Credential": {
       "name": "Credential",
       "kind": "sealed",
@@ -2894,7 +2907,7 @@
             },
             {
               "name": "constitution",
-              "type": "Optional<ScriptHash>"
+              "type": "Constitution"
             }
           ],
           "doc": null
