@@ -67,12 +67,12 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
     }
 
     record NewConstitution(Optional<GovernanceActionId> id,
-                           Optional<ScriptHash> constitution) implements GovernanceAction {
+                           Constitution constitution) implements GovernanceAction {
         @Override
         public PlutusData.ConstrData toPlutusData() {
             return new PlutusData.ConstrData(5, List.of(
                     PlutusDataHelper.encodeOptional(id, GovernanceActionId::toPlutusData),
-                    PlutusDataHelper.encodeOptional(constitution, ScriptHash::toPlutusData)));
+                    constitution.toPlutusData()));
         }
     }
 
@@ -106,7 +106,7 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
                     Rational.fromPlutusData(f.get(3)));
             case 5 -> new NewConstitution(
                     PlutusDataHelper.decodeOptional(f.get(0), GovernanceActionId::fromPlutusData),
-                    PlutusDataHelper.decodeOptional(f.get(1), ScriptHash::fromPlutusData));
+                    Constitution.fromPlutusData(f.get(1)));
             case 6 -> new InfoAction();
             default -> throw new IllegalArgumentException("Invalid GovernanceAction tag: " + c.tag());
         };

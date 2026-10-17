@@ -188,6 +188,81 @@ class PlutusDataCborConformanceTest {
         }
     }
 
+    /**
+     * Every {@link GovernanceAction} constructor against hex written by hand from Haskell's {@code ToData}:
+     * {@code makeIsDataSchemaIndexed} in plutus-ledger-api 1.65 {@code PlutusLedgerApi/V3/Contexts.hs}
+     * ({@code GovernanceAction} tags 0-6, {@code GovernanceActionId}, {@code ProtocolVersion} and
+     * {@code Constitution} are {@code Constr 0}), {@code Maybe} ({@code Just} = {@code Constr 0},
+     * {@code Nothing} = {@code Constr 1}), V3 {@code TxId} a bare {@code B}, {@code Rational} the pair
+     * {@code Constr 0 [n, d]} (PlutusTx.Ratio), {@code Map} a CBOR map and a list an indefinite array.
+     * cardano-ledger's {@code transGovAction} (Conway/TxInfo.hs) fills these fields.
+     */
+    @Nested
+    class GovernanceActionHaskellGoldens {
+        static final String TX_ID = "02".repeat(32);
+        static final String HASH = "01".repeat(28);
+        static final String NOTHING = "d87a80";
+        static final String JUST_ACTION_ID = "d8799f" + "d8799f5820" + TX_ID + "01ff" + "ff";
+        static final String JUST_HASH = "d8799f581c" + HASH + "ff";
+        static final String KEY = "d8799f581c" + HASH + "ff";
+        static final String SCRIPT = "d87a9f581c" + HASH + "ff";
+
+        static final Optional<GovernanceActionId> ACTION_ID =
+                Optional.of(new GovernanceActionId(new TxId(bytes32()), BigInteger.ONE));
+        static final Optional<ScriptHash> GUARDRAILS = Optional.of(new ScriptHash(bytes28()));
+
+        private void assertGolden(String hex, GovernanceAction action) {
+            assertEquals(hex, HexFormat.of().formatHex(PlutusDataCborEncoder.encode(action.toPlutusData())));
+            assertEquals(action, GovernanceAction.fromPlutusData(
+                    PlutusDataCborDecoder.decode(HexFormat.of().parseHex(hex))));
+        }
+
+        @Test void parameterChange() {
+            var params = new PlutusData.MapData(List.of(
+                    new PlutusData.Pair(new PlutusData.IntData(0), new PlutusData.IntData(44))));
+            assertGolden("d8799f" + JUST_ACTION_ID + "a100182c" + NOTHING + "ff",
+                    new GovernanceAction.ParameterChange(ACTION_ID, params, Optional.empty()));
+        }
+
+        @Test void hardForkInitiation() {
+            assertGolden("d87a9f" + NOTHING + "d8799f0a00ff" + "ff",
+                    new GovernanceAction.HardForkInitiation(Optional.empty(),
+                            new ProtocolVersion(BigInteger.TEN, BigInteger.ZERO)));
+        }
+
+        @Test void treasuryWithdrawals() {
+            assertGolden("d87b9f" + "a1" + SCRIPT + "1a000f4240" + JUST_HASH + "ff",
+                    new GovernanceAction.TreasuryWithdrawals(JulcMap.of(
+                            new Credential.ScriptCredential(new ScriptHash(bytes28())),
+                            BigInteger.valueOf(1_000_000)), GUARDRAILS));
+        }
+
+        @Test void noConfidence() {
+            assertGolden("d87c9f" + JUST_ACTION_ID + "ff", new GovernanceAction.NoConfidence(ACTION_ID));
+        }
+
+        @Test void updateCommittee() {
+            assertGolden("d87d9f" + NOTHING + "9f" + KEY + "ff" + "a1" + SCRIPT + "1901f4" + "d8799f0203ff" + "ff",
+                    new GovernanceAction.UpdateCommittee(Optional.empty(),
+                            JulcList.of(new Credential.PubKeyCredential(new PubKeyHash(bytes28()))),
+                            JulcMap.of(new Credential.ScriptCredential(new ScriptHash(bytes28())),
+                                    BigInteger.valueOf(500)),
+                            new Rational(BigInteger.TWO, BigInteger.valueOf(3))));
+        }
+
+        @Test void newConstitution() {
+            // Constr 5 [Maybe GovernanceActionId, Constitution], Constitution = Constr 0 [Maybe ScriptHash]
+            assertGolden("d87e9f" + JUST_ACTION_ID + "d8799f" + JUST_HASH + "ff" + "ff",
+                    new GovernanceAction.NewConstitution(ACTION_ID, new Constitution(GUARDRAILS)));
+            assertGolden("d87e9f" + NOTHING + "d8799f" + NOTHING + "ff" + "ff",
+                    new GovernanceAction.NewConstitution(Optional.empty(), new Constitution(Optional.empty())));
+        }
+
+        @Test void infoAction() {
+            assertGolden("d87f80", new GovernanceAction.InfoAction());
+        }
+    }
+
     @Nested
     class ScriptContextCbor {
         @Test

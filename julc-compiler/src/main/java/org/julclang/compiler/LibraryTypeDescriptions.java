@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.type.Type;
 import org.julclang.compiler.backend.LibraryType;
 import org.julclang.compiler.pir.PirType;
@@ -26,7 +27,7 @@ final class LibraryTypeDescriptions {
             var record = entry.getValue();
             if (!record.getTypeParameters().isEmpty())
                 throw new IllegalArgumentException("Generic record type is not yet supported by library descriptions: " + identity);
-            scope(record.findCompilationUnit().orElseThrow());
+            scope(record);
             var representation = resolver.resolveNameToType(identity).orElseThrow();
             var fields = fields(record);
             boolean newType = resolver.isNewType(identity);
@@ -47,7 +48,7 @@ final class LibraryTypeDescriptions {
         for (var unit : units) for (var sum : unit.findAll(ClassOrInterfaceDeclaration.class)) {
             if (!sum.isInterface()) continue;
             String identity = sum.getFullyQualifiedName().orElseThrow();
-            scope(unit);
+            scope(sum);
             var representation = resolver.resolveNameToType(identity).orElse(null);
             if (!(representation instanceof PirType.SumType s)) continue;
             var constructors = new ArrayList<LibraryType.Constructor>();
@@ -55,13 +56,13 @@ final class LibraryTypeDescriptions {
                 var candidates = records.entrySet().stream().filter(e ->
                         e.getValue().getNameAsString().equals(ctor.name()) &&
                         e.getValue().getImplementedTypes().stream().anyMatch(t -> {
-                            scope(e.getValue().findCompilationUnit().orElseThrow());
+                            scope(e.getValue());
                             return reference(t).name().equals(identity);
                         })).toList();
                 if (candidates.size() != 1)
                     throw new IllegalArgumentException("Cannot identify source constructor " + identity + "." + ctor.name());
                 var record = candidates.getFirst().getValue();
-                scope(record.findCompilationUnit().orElseThrow());
+                scope(record);
                 constructors.add(new LibraryType.Constructor(ctor.name(), ctor.tag(), fields(record)));
                 // A sum variant must not advertise independent tag-zero record operations.
                 types.remove(candidates.getFirst().getKey());
@@ -75,10 +76,10 @@ final class LibraryTypeDescriptions {
 
     Map<String, LibraryType> types() { return Collections.unmodifiableMap(types); }
 
-    void scope(CompilationUnit unit) {
+    void scope(TypeDeclaration<?> type) {
         var known = new LinkedHashSet<>(resolver.allRegisteredFqcns());
         known.addAll(TypeResolver.ledgerHashFqcns());
-        resolver.setCurrentImportResolver(new ImportResolver(unit, known));
+        resolver.setCurrentImportResolver(new ImportResolver(type, known));
     }
 
     private List<LibraryType.Field> fields(RecordDeclaration record) {

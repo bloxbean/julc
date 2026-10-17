@@ -295,6 +295,9 @@ public final class DslSemanticDependencies {
                 state.capabilities.add("helper.valueMerge");
             }
             helper.arguments().forEach(argument -> visit(argument, state));
+            if (helper.helper() == LedgerHelperNode.LedgerHelperKind.DECODE_GOVERNANCE_ACTION) {
+                state.capabilities.add("adapter.new-constitution.ledger-wrapper");
+            }
             if (helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_BALANCED) {
                 state.rules.add("domain-implied:is-balanced");
             }

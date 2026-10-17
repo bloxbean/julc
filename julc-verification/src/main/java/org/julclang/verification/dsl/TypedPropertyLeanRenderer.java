@@ -318,8 +318,8 @@ public final class TypedPropertyLeanRenderer {
                                 + arguments.getFirst() + ".items⟩";
                 case IS_BALANCED -> "isBalanced " + arguments.getFirst();
                 case DECODE_GOVERNANCE_ACTION ->
-                        "(IsData.fromData " + arguments.getFirst()
-                                + ".ppGovernanceAction : Option GovernanceAction)";
+                        "julcDecodeGovernanceAction " + arguments.getFirst()
+                                + ".ppGovernanceAction";
                 case IS_KNOWN_VOTER -> "julcIsKnownVoter " + arguments.get(0)
                         + " " + arguments.get(1);
                 case IS_KNOWN_PROPOSAL -> "isKnownProposal " + arguments.get(0)

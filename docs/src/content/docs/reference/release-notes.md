@@ -3,6 +3,55 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: `NewConstitution` carries the `Constitution` wrapper (#223)
+
+`GovernanceAction.NewConstitution` now has the Plutus Data layout of plutus-ledger-api V3,
+`Constr 5 [Maybe GovernanceActionId, Constitution]` with
+`Constitution = Constr 0 [Maybe ScriptHash]`. JuLC encoded and read the second field as a
+bare `Maybe ScriptHash`, without the `Constr 0` that the ledger builds (`transConstitution`
+in cardano-ledger `Conway/TxInfo.hs`). A compiled V3 script that read a `NewConstitution`
+proposal from a real script context therefore read the wrong field: `constitution()` gave
+the `Constitution` value where the script expected the optional hash.
+
+The ledger API has a new record `Constitution(Optional<ScriptHash> script)`, and the
+second component of `NewConstitution` changes from `Optional<ScriptHash> constitution` to
+`Constitution constitution`. Read the guardrails script hash with
+`nc.constitution().script()`.
+
+**Contracts that read `constitution()` must be updated and recompiled.** Their script
+bytes and hashes change. **Contracts that take a `GovernanceAction` or
+`ProposalProcedure` as a typed parameter or datum also get new bytes and a new hash**,
+even if they only match the `NewConstitution` case, because the typed-boundary check now
+validates the `Constitution` wrapper. Before, that check rejected the ledger's
+`NewConstitution` payload and accepted the bare `Maybe ScriptHash`, which no ledger
+produces. It now does the reverse. Contracts that read proposals from the `ScriptContext`
+and only match the case compile to the same bytes as before. Off-chain code that
+constructs `NewConstitution` must pass a `Constitution`, and the script contexts the
+cardano-client-lib evaluator builds now contain the wrapper. The other six governance
+actions are unchanged; tests now compare each of them with hex written by hand from
+Haskell's `ToData`.
+
+The pinned Lean model for formal verification (CardanoLedgerApiBlaster `5dab3c43`) still
+omits the wrapper, so its strict decoder returns `none` for every ledger `NewConstitution`
+payload. Formal verification now decodes proposal actions through a reviewed adapter,
+`adapter.new-constitution.ledger-wrapper`, which removes the wrapper before the pinned
+decoder and rejects the bare layout. Properties about `NewConstitution` proposals,
+including `whenNewConstitution`'s script, therefore have the ledger's meaning. The
+adapter goes once the pin carries the wrapper.
+
+## Upcoming preview: nested types shadow ledger types of the same name
+
+A record or sealed interface declared inside a validator or library class now shadows a
+bundled ledger type with the same simple name within that class, as javac binds it
+(JLS 6.4.1). Before, the implicit `org.julclang.ledger.*` import won: a nested
+`record Committee` (or, with #223, `record Constitution`) resolved to the ledger type
+without a diagnostic, so a typed parameter or datum accepted the ledger schema instead of
+the declared one. Such contracts now get the schema they declare and a new hash. A type
+nested in another top-level class (`Helper.Committee`) does not capture the name, and a
+qualified name such as `Inner.Constitution` resolves to the type it names, or is reported
+as unknown; it no longer falls back to a ledger type with the same simple name. Contracts
+without such a name collision compile to the same bytes.
+
 ## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
 
 JuLC binds an `instanceof` pattern variable only when the pattern is the whole

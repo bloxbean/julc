@@ -23,7 +23,8 @@ class ReviewedRawDataAdapterAuditTest {
                         "adapter.current-treasury.strict-optional-integer",
                         "adapter.treasury-donation.strict-optional-integer",
                         "adapter.changed-parameters.integer-key-index",
-                        "adapter.quorum.plutus-rational-v1"),
+                        "adapter.quorum.plutus-rational-v1",
+                        "adapter.new-constitution.ledger-wrapper"),
                 audit.adapters().stream().map(
                         ReviewedRawDataAdapterAudit.Adapter::id).collect(
                                 java.util.stream.Collectors.toSet()));
@@ -36,6 +37,8 @@ class ReviewedRawDataAdapterAuditTest {
                 .discrepancies().stream().anyMatch(value -> value.contains("raw Integer")));
         assertTrue(audit.require("adapter.quorum.plutus-rational-v1").constraints()
                 .stream().anyMatch(value -> value.contains("unit-interval")));
+        assertTrue(audit.require("adapter.new-constitution.ledger-wrapper").discrepancies()
+                .stream().anyMatch(value -> value.contains("Option ScriptHash")));
 
         var capabilities = LedgerCapabilityInventories.pinnedV3();
         for (String raw : Set.of(
