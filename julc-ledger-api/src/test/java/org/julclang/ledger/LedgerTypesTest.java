@@ -601,7 +601,7 @@ class LedgerTypesTest {
 
         @Test
         void newConstitutionRoundTrip() {
-            var ga = new GovernanceAction.NewConstitution(Optional.empty(), Optional.of(sh()));
+            var ga = new GovernanceAction.NewConstitution(Optional.empty(), new Constitution(Optional.of(sh())));
             assertEquals(ga, GovernanceAction.fromPlutusData(ga.toPlutusData()));
         }
 

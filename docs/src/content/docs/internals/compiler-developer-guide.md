@@ -565,7 +565,7 @@ Defined in `TypeResolver.resolve(Type)`:
 | `JulcArray<T>` | `ArrayType(resolve(T))` | PV11 only; O(1) random access (CIP-138) |
 | `PubKeyHash`, `ScriptHash`, `ValidatorHash`, `PolicyId`, `TokenName`, `DatumHash`, `TxId` | `ByteStringType` | Ledger hash types |
 | `StakingCredential`, `ScriptPurpose`, `Vote`, `Voter`, `DRep`, `Delegatee`, `GovernanceActionId`, `GovernanceAction`, `ProposalProcedure`, `TxCert`, `Rational`, `ProtocolVersion`, `Committee` | `DataType` | Opaque ledger types |
-| Registered records | `RecordType(...)` | User-defined or ledger records |
+| Registered records | `RecordType(...)` | User-defined or ledger records (e.g. `Constitution`) |
 | Registered sealed interfaces | `SumType(...)` | User-defined or ledger sum types |
 
 ### 4.3 Type Registration

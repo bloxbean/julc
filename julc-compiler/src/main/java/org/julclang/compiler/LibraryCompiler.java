@@ -67,11 +67,9 @@ final class LibraryCompiler {
     private void compileSingleCu(CompilationUnit libCu, TypeResolver typeResolver,
                                   LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
                                   Set<String> knownFqcns) {
-        var libImportResolver = new ImportResolver(libCu, knownFqcns);
-        typeResolver.setCurrentImportResolver(libImportResolver);
-
         for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
             if (cls.isInterface()) continue;
+            typeResolver.setCurrentImportResolver(new ImportResolver(cls, knownFqcns));
             var className = cls.getNameAsString();
             var classNameFqcn = cls.getFullyQualifiedName().orElse(className);
 

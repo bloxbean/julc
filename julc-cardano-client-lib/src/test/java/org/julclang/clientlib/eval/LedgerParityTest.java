@@ -15,6 +15,7 @@ import com.bloxbean.cardano.client.transaction.util.TransactionUtil;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
+import org.julclang.core.cbor.PlutusDataCborEncoder;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.ledger.*;
@@ -264,29 +265,34 @@ class LedgerParityTest {
             proposals.append("841a000f4240").append(returnAccount).append(action).append(ANCHOR);
         }
         TxInfo info = converter(tx(4, INPUTS + NO_OUTPUTS + FEE + proposals, NO_WITNESSES), 10).buildTxInfo();
-        var got = toList(info.proposalProcedures()).stream().map(ProposalProcedure::governanceAction).toList();
+        var got = toList(info.proposalProcedures()).stream()
+                .map(p -> HexFormat.of().formatHex(PlutusDataCborEncoder.encode(p.governanceAction().toPlutusData())))
+                .toList();
 
-        var params = new PlutusData.MapData(List.of(
-                new PlutusData.Pair(new PlutusData.IntData(0), new PlutusData.IntData(44)),
-                new PlutusData.Pair(new PlutusData.IntData(9), new PlutusData.ListData(List.of(
-                        new PlutusData.IntData(3), new PlutusData.IntData(10))))));
-        var prev = Optional.of(new GovernanceActionId(TxId.of(b("cc".repeat(32))), BigInteger.ONE));
-        var guardrails = Optional.of(ScriptHash.of(b(policy)));
-        assertEquals(new GovernanceAction.ParameterChange(Optional.empty(), params, guardrails).toPlutusData(),
-                got.get(0).toPlutusData());
-        assertEquals(new GovernanceAction.HardForkInitiation(prev,
-                new ProtocolVersion(BigInteger.TEN, BigInteger.ZERO)).toPlutusData(), got.get(1).toPlutusData());
-        var treasury = (GovernanceAction.TreasuryWithdrawals) got.get(2);
-        assertEquals(List.of(new Credential.ScriptCredential(ScriptHash.of(b("11".repeat(28)))),
-                new Credential.PubKeyCredential(PubKeyHash.of(b("40".repeat(28))))),
-                toList(treasury.withdrawals().keys()), "ledger AccountAddress order");
-        assertInstanceOf(GovernanceAction.NoConfidence.class, got.get(3));
-        var committee = (GovernanceAction.UpdateCommittee) got.get(4);
-        assertEquals(new Rational(BigInteger.ONE, BigInteger.TWO), committee.newQuorum(), "in lowest terms");
-        assertEquals(BigInteger.TEN, committee.addedMembers().get(
-                new Credential.ScriptCredential(ScriptHash.of(b("22".repeat(28))))));
-        assertEquals(new GovernanceAction.NewConstitution(prev, guardrails), got.get(5));
-        assertInstanceOf(GovernanceAction.InfoAction.class, got.get(6));
+        // Written by hand from Haskell's ToData (plutus-ledger-api 1.65 V3 Contexts.hs makeIsDataSchemaIndexed;
+        // Maybe: Just = Constr 0, Nothing = Constr 1; Rational = Constr 0 [n, d]) of transGovAction's output.
+        String nothing = "d87a80";
+        String justPrev = "d8799f" + "d8799f5820" + "cc".repeat(32) + "01ff" + "ff";
+        String justPolicy = "d8799f581c" + policy + "ff";
+        String[] expected = {
+                // Constr 0 [Nothing, Map [(0, 44), (9, List [3, 10])], Just policy]: keys ascending, ratio reduced
+                "d8799f" + nothing + "a200182c099f030aff" + justPolicy + "ff",
+                // Constr 1 [Just prev, ProtocolVersion 10 0]
+                "d87a9f" + justPrev + "d8799f0a00ff" + "ff",
+                // Constr 2 [Map in AccountAddress order (script credential first), Nothing]
+                "d87b9f" + "a2" + "d87a9f581c" + "11".repeat(28) + "ff06" + "d8799f581c" + "40".repeat(28) + "ff05"
+                        + nothing + "ff",
+                // Constr 3 [Nothing]
+                "d87c9f" + nothing + "ff",
+                // Constr 4 [Nothing, [key 00], Map [(script 22, 10)], Rational 1 2]
+                "d87d9f" + nothing + "9fd8799f581c" + "00".repeat(28) + "ffff" + "a1d87a9f581c" + "22".repeat(28)
+                        + "ff0a" + "d8799f0102ff" + "ff",
+                // Constr 5 [Just prev, Constitution (Just policy)]: the anchor is dropped, the Constr 0 kept
+                "d87e9f" + justPrev + "d8799f" + justPolicy + "ff" + "ff",
+                // Constr 6 []
+                "d87f80"
+        };
+        assertEquals(List.of(expected), got);
         assertEquals(new Credential.PubKeyCredential(PubKeyHash.of(b("00".repeat(28)))),
                 toList(info.proposalProcedures()).get(0).returnAddress());
     }

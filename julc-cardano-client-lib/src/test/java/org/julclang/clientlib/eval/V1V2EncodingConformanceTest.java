@@ -3,6 +3,8 @@ package org.julclang.clientlib.eval;
 import org.julclang.core.PlutusData;
 import org.julclang.core.types.JulcArrayList;
 import org.julclang.core.types.JulcAssocMap;
+import org.julclang.core.types.JulcMap;
+import org.julclang.clientlib.eval.BadTranslationException.ContextError;
 import org.julclang.ledger.*;
 import org.julclang.vm.PlutusLanguage;
 import org.junit.jupiter.api.Test;
@@ -59,12 +61,11 @@ class V1V2EncodingConformanceTest {
     }
 
     @Test
-    void v1TxOut_inlineDatum_encodedAsNothing() {
-        // V1 doesn't support inline datums — should degrade to Nothing
-        var txOut = buildSingleV1TxOut(new OutputDatum.OutputDatumInline(
-                new PlutusData.IntData(BigInteger.valueOf(42))));
-        var maybeDatum = expectConstr(txOut.fields().get(2), 1); // Nothing
-        assertTrue(maybeDatum.fields().isEmpty());
+    void v1TxOut_inlineDatum_failsInlineDatumsNotSupported() {
+        // V1 has no inline datums: the ledger rejects the transaction (transTxOutV1, Conway/TxInfo.hs:315-317)
+        var e = assertThrows(BadTranslationException.class, () -> buildSingleV1TxOut(
+                new OutputDatum.OutputDatumInline(new PlutusData.IntData(BigInteger.valueOf(42)))));
+        assertEquals(BadTranslationException.ContextError.InlineDatumsNotSupported, e.contextError());
     }
 
     @Test
@@ -208,16 +209,18 @@ class V1V2EncodingConformanceTest {
     @Test
     void dcert_conwayCerts_throwUnsupported() {
         var conwayCert = new TxCert.RegDRep(PK_CRED, BigInteger.valueOf(500_000_000));
-        assertThrows(UnsupportedOperationException.class, () ->
+        var e = assertThrows(BadTranslationException.class, () ->
                 buildContext(PlutusLanguage.PLUTUS_V2, List.of(conwayCert), JulcAssocMap.empty()));
+        assertEquals(BadTranslationException.ContextError.CertificateNotSupported, e.contextError());
     }
 
     @Test
     void dcert_delegStaking_nonPoolDelegatee_throwUnsupported() {
         var cert = new TxCert.DelegStaking(PK_CRED,
                 new Delegatee.Vote(new DRep.AlwaysAbstain()));
-        assertThrows(UnsupportedOperationException.class, () ->
+        var e = assertThrows(BadTranslationException.class, () ->
                 buildContext(PlutusLanguage.PLUTUS_V2, List.of(cert), JulcAssocMap.empty()));
+        assertEquals(BadTranslationException.ContextError.CertificateNotSupported, e.contextError());
     }
 
     // --- ScriptPurpose encoding ---
@@ -358,6 +361,278 @@ class V1V2EncodingConformanceTest {
         // Field 1 of TxInInfo = resolved TxOut
         var resolvedTxOut = expectConstr(txInInfo.fields().get(1), 0);
         assertEquals(3, resolvedTxOut.fields().size(), "V1 resolved TxOut in inputs should also have 3 fields");
+    }
+
+    // --- Translation errors: the ledger's BadTranslation, first in toPlutusTxInfo's order ---
+
+    private static final TxOutRef REF_A = new TxOutRef(new TxId(filled(32, 0x0a)), BigInteger.ZERO);
+    private static final TxOutRef REF_B = new TxOutRef(new TxId(filled(32, 0x0b)), BigInteger.ONE);
+    private static final TxOut PLAIN = txOut(new OutputDatum.NoOutputDatum(), Optional.empty());
+    private static final TxOut INLINE = txOut(new OutputDatum.OutputDatumInline(PlutusData.integer(42)),
+            Optional.empty());
+    private static final TxOut REF_SCRIPT = txOut(new OutputDatum.NoOutputDatum(), Optional.of(SCRIPT_HASH));
+    private static final TxOut INLINE_AND_REF_SCRIPT = txOut(
+            new OutputDatum.OutputDatumInline(PlutusData.integer(42)), Optional.of(SCRIPT_HASH));
+    private static final TxCert DREP_CERT = new TxCert.RegDRep(PK_CRED, BigInteger.valueOf(500_000_000));
+    private static final ScriptPurpose SPEND_A = new ScriptPurpose.Spending(REF_A);
+
+    /** A transaction the V1/V2 contexts can express; each test changes the fields it needs. */
+    private record Tx(List<TxInInfo> inputs, List<TxInInfo> referenceInputs, List<TxOut> outputs,
+                      List<TxCert> certificates, boolean votes, boolean proposals,
+                      Optional<BigInteger> treasury, Optional<BigInteger> donation) {
+
+        static Tx plain() {
+            return new Tx(List.of(new TxInInfo(REF_A, PLAIN)), List.of(), List.of(PLAIN), List.of(),
+                    false, false, Optional.empty(), Optional.empty());
+        }
+
+        Tx inputs(TxInInfo... v) {
+            return new Tx(List.of(v), referenceInputs, outputs, certificates, votes, proposals, treasury, donation);
+        }
+
+        Tx referenceInputs(TxInInfo... v) {
+            return new Tx(inputs, List.of(v), outputs, certificates, votes, proposals, treasury, donation);
+        }
+
+        Tx outputs(TxOut... v) {
+            return new Tx(inputs, referenceInputs, List.of(v), certificates, votes, proposals, treasury, donation);
+        }
+
+        Tx certificates(TxCert... v) {
+            return new Tx(inputs, referenceInputs, outputs, List.of(v), votes, proposals, treasury, donation);
+        }
+
+        Tx withVotes() {
+            return new Tx(inputs, referenceInputs, outputs, certificates, true, proposals, treasury, donation);
+        }
+
+        Tx withProposals() {
+            return new Tx(inputs, referenceInputs, outputs, certificates, votes, true, treasury, donation);
+        }
+
+        Tx treasury(long v) {
+            return new Tx(inputs, referenceInputs, outputs, certificates, votes, proposals,
+                    Optional.of(BigInteger.valueOf(v)), donation);
+        }
+
+        Tx donation(long v) {
+            return new Tx(inputs, referenceInputs, outputs, certificates, votes, proposals, treasury,
+                    Optional.of(BigInteger.valueOf(v)));
+        }
+
+        TxInfo txInfo() {
+            var voter = new Voter.DRepVoter(PK_CRED);
+            var actionId = new GovernanceActionId(TX_ID, BigInteger.ZERO);
+            var proposal = new ProposalProcedure(BigInteger.valueOf(100_000_000_000L), PK_CRED,
+                    new GovernanceAction.InfoAction());
+            JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> voteMap = votes
+                    ? JulcAssocMap.of(voter, JulcAssocMap.of(actionId, new Vote.VoteYes()))
+                    : JulcAssocMap.empty();
+            return new TxInfo(
+                    new JulcArrayList<>(inputs), new JulcArrayList<>(referenceInputs), new JulcArrayList<>(outputs),
+                    BigInteger.valueOf(200_000), Value.zero(), new JulcArrayList<>(certificates),
+                    JulcAssocMap.empty(), Interval.always(), new JulcArrayList<>(List.of(PKH)),
+                    JulcAssocMap.empty(), JulcAssocMap.empty(), TX_ID,
+                    voteMap,
+                    new JulcArrayList<>(proposals ? List.of(proposal) : List.of()),
+                    treasury, donation);
+        }
+    }
+
+    @Test
+    void guard_votingProcedures() {
+        assertTranslationError(ContextError.VotingProceduresFieldNotSupported, "1 voter(s)",
+                PlutusLanguage.PLUTUS_V1, 10, Tx.plain().withVotes());
+        assertTranslationError(ContextError.VotingProceduresFieldNotSupported, "1 voter(s)",
+                PlutusLanguage.PLUTUS_V2, 10, Tx.plain().withVotes());
+    }
+
+    @Test
+    void guard_proposalProcedures() {
+        assertTranslationError(ContextError.ProposalProceduresFieldNotSupported, "1 proposal(s)",
+                PlutusLanguage.PLUTUS_V2, 10, Tx.plain().withProposals());
+    }
+
+    @Test
+    void guard_treasuryDonation() {
+        assertTranslationError(ContextError.TreasuryDonationFieldNotSupported, "5",
+                PlutusLanguage.PLUTUS_V2, 10, Tx.plain().donation(5));
+        // treasuryDonation == Coin 0 passes the guard (Conway/TxInfo.hs:374)
+        assertDoesNotThrow(() -> build(PlutusLanguage.PLUTUS_V2, 10, Tx.plain().donation(0)));
+    }
+
+    @Test
+    void guard_currentTreasuryValue() {
+        assertTranslationError(ContextError.CurrentTreasuryFieldNotSupported, "7",
+                PlutusLanguage.PLUTUS_V1, 10, Tx.plain().treasury(7));
+    }
+
+    @Test
+    void guard_checksInLedgerOrder() {
+        Tx all = Tx.plain().withVotes().withProposals().donation(5).treasury(7);
+        assertTranslationError(ContextError.VotingProceduresFieldNotSupported, null, PlutusLanguage.PLUTUS_V2, 10,
+                all);
+        assertTranslationError(ContextError.ProposalProceduresFieldNotSupported, null, PlutusLanguage.PLUTUS_V2, 10,
+                Tx.plain().withProposals().donation(5).treasury(7));
+        assertTranslationError(ContextError.TreasuryDonationFieldNotSupported, null, PlutusLanguage.PLUTUS_V2, 10,
+                Tx.plain().donation(5).treasury(7));
+    }
+
+    @Test
+    void v1_inlineDatumInInput() {
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Input: " + "0a".repeat(32) + "#0",
+                PlutusLanguage.PLUTUS_V1, 10, Tx.plain().inputs(new TxInInfo(REF_A, INLINE)));
+    }
+
+    @Test
+    void v1_inlineDatumInReferenceInput() {
+        // Conway translates a V1 reference input to check it (Conway/TxInfo.hs:411)
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Input: " + "0b".repeat(32) + "#1",
+                PlutusLanguage.PLUTUS_V1, 10, Tx.plain().referenceInputs(new TxInInfo(REF_B, INLINE)));
+    }
+
+    @Test
+    void v1_inlineDatumInOutput() {
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Output: 1",
+                PlutusLanguage.PLUTUS_V1, 10, Tx.plain().outputs(PLAIN, INLINE));
+    }
+
+    @Test
+    void v1_conway_referenceInputAndReferenceScriptAreLeftOut() {
+        // From Conway a V1 context checks reference inputs but leaves them out, and drops reference scripts
+        Tx tx = Tx.plain().referenceInputs(new TxInInfo(REF_B, REF_SCRIPT)).outputs(REF_SCRIPT);
+        var txInfo = extractTxInfo(build(PlutusLanguage.PLUTUS_V1, 10, tx));
+        assertEquals(10, txInfo.fields().size());
+        var output = expectConstr(expectList(txInfo.fields().get(1)).items().getFirst(), 0);
+        assertEquals(3, output.fields().size());
+    }
+
+    @Test
+    void v1_babbage_referenceInputs() {
+        assertTranslationError(ContextError.ReferenceInputsNotSupported, "0b".repeat(32) + "#1",
+                PlutusLanguage.PLUTUS_V1, 8, Tx.plain().referenceInputs(new TxInInfo(REF_B, PLAIN)));
+    }
+
+    @Test
+    void v1_babbage_referenceScriptInInputAndOutput() {
+        assertTranslationError(ContextError.ReferenceScriptsNotSupported, "Input: " + "0a".repeat(32) + "#0",
+                PlutusLanguage.PLUTUS_V1, 8, Tx.plain().inputs(new TxInInfo(REF_A, REF_SCRIPT)));
+        assertTranslationError(ContextError.ReferenceScriptsNotSupported, "Output: 0",
+                PlutusLanguage.PLUTUS_V1, 7, Tx.plain().outputs(REF_SCRIPT));
+    }
+
+    @Test
+    void v1_babbage_inlineDatum() {
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Output: 0",
+                PlutusLanguage.PLUTUS_V1, 8, Tx.plain().outputs(INLINE));
+    }
+
+    @Test
+    void v2_inlineDatumsReferenceScriptsAndReferenceInputsTranslate() {
+        Tx tx = Tx.plain().inputs(new TxInInfo(REF_A, INLINE_AND_REF_SCRIPT))
+                .referenceInputs(new TxInInfo(REF_B, INLINE_AND_REF_SCRIPT)).outputs(INLINE_AND_REF_SCRIPT);
+        for (int pv : new int[]{8, 10}) {
+            var txInfo = extractTxInfo(build(PlutusLanguage.PLUTUS_V2, pv, tx));
+            assertEquals(1, expectList(txInfo.fields().get(1)).items().size(), "reference inputs at PV " + pv);
+            var output = expectConstr(expectList(txInfo.fields().get(2)).items().getFirst(), 0);
+            expectConstr(output.fields().get(2), 2); // OutputDatum
+            expectConstr(output.fields().get(3), 0); // Just scriptHash
+        }
+    }
+
+    @Test
+    void certificateNotSupported_forEveryLanguageAndEra() {
+        for (var language : List.of(PlutusLanguage.PLUTUS_V1, PlutusLanguage.PLUTUS_V2)) {
+            assertTranslationError(ContextError.CertificateNotSupported, null, language, 10,
+                    Tx.plain().certificates(new TxCert.RegStaking(PK_CRED, Optional.empty()),
+                            new TxCert.RegDeleg(PK_CRED, new Delegatee.Stake(PKH), BigInteger.TWO)));
+        }
+    }
+
+    @Test
+    void plutusPurposeNotSupported_votingAndProposing() {
+        var voting = new ScriptPurpose.Voting(new Voter.DRepVoter(SC_CRED));
+        var e = assertThrows(BadTranslationException.class, () -> V1V2ScriptContextBuilder.build(
+                PlutusLanguage.PLUTUS_V2, Tx.plain().txInfo(), voting, 10));
+        assertEquals(ContextError.PlutusPurposeNotSupported, e.contextError());
+    }
+
+    @Test
+    void order_guardBeforeInputs() {
+        assertTranslationError(ContextError.TreasuryDonationFieldNotSupported, null, PlutusLanguage.PLUTUS_V1, 10,
+                Tx.plain().donation(1).inputs(new TxInInfo(REF_A, INLINE)));
+    }
+
+    @Test
+    void order_inputsBeforeReferenceInputs() {
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Input: " + "0a".repeat(32) + "#0",
+                PlutusLanguage.PLUTUS_V1, 10,
+                Tx.plain().inputs(new TxInInfo(REF_A, INLINE)).referenceInputs(new TxInInfo(REF_B, INLINE)));
+    }
+
+    @Test
+    void order_referenceInputsBeforeOutputs() {
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Input: " + "0b".repeat(32) + "#1",
+                PlutusLanguage.PLUTUS_V1, 10, Tx.plain().referenceInputs(new TxInInfo(REF_B, INLINE)).outputs(INLINE));
+    }
+
+    @Test
+    void order_outputsBeforeCertificates() {
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Output: 0", PlutusLanguage.PLUTUS_V1, 10,
+                Tx.plain().outputs(INLINE).certificates(DREP_CERT));
+    }
+
+    @Test
+    void order_certificatesBeforePurpose() {
+        var voting = new ScriptPurpose.Voting(new Voter.DRepVoter(SC_CRED));
+        var e = assertThrows(BadTranslationException.class, () -> V1V2ScriptContextBuilder.build(
+                PlutusLanguage.PLUTUS_V2, Tx.plain().certificates(DREP_CERT).txInfo(), voting, 10));
+        assertEquals(ContextError.CertificateNotSupported, e.contextError());
+    }
+
+    @Test
+    void order_babbageReferenceInputsBeforeInputs() {
+        assertTranslationError(ContextError.ReferenceInputsNotSupported, null, PlutusLanguage.PLUTUS_V1, 8,
+                Tx.plain().inputs(new TxInInfo(REF_A, INLINE)).referenceInputs(new TxInInfo(REF_B, PLAIN)));
+    }
+
+    @Test
+    void order_perOutput_babbageReferenceScriptFirst_conwayInlineDatumOnly() {
+        Tx tx = Tx.plain().outputs(INLINE_AND_REF_SCRIPT);
+        assertTranslationError(ContextError.ReferenceScriptsNotSupported, "Output: 0", PlutusLanguage.PLUTUS_V1, 8,
+                tx);
+        assertTranslationError(ContextError.InlineDatumsNotSupported, "Output: 0", PlutusLanguage.PLUTUS_V1, 9, tx);
+    }
+
+    @Test
+    void threeArgumentBuildUsesConwayRules() {
+        Tx tx = Tx.plain().referenceInputs(new TxInInfo(REF_B, PLAIN));
+        assertEquals(build(PlutusLanguage.PLUTUS_V1, 9, tx),
+                V1V2ScriptContextBuilder.build(PlutusLanguage.PLUTUS_V1, tx.txInfo(), SPEND_A));
+    }
+
+    private static PlutusData build(PlutusLanguage language, int protocolMajor, Tx tx) {
+        return V1V2ScriptContextBuilder.build(language, tx.txInfo(), SPEND_A, protocolMajor);
+    }
+
+    private static void assertTranslationError(ContextError expected, String detail, PlutusLanguage language,
+                                               int protocolMajor, Tx tx) {
+        var e = assertThrows(BadTranslationException.class, () -> build(language, protocolMajor, tx));
+        assertEquals(expected, e.contextError(), e.getMessage());
+        if (detail != null) {
+            assertEquals("BadTranslation " + expected + ": " + detail, e.getMessage());
+        }
+    }
+
+    private static TxOut txOut(OutputDatum datum, Optional<ScriptHash> referenceScript) {
+        return new TxOut(new Address(PK_CRED, Optional.empty()), Value.lovelace(BigInteger.valueOf(2_000_000)),
+                datum, referenceScript);
+    }
+
+    private static byte[] filled(int length, int value) {
+        var bytes = new byte[length];
+        java.util.Arrays.fill(bytes, (byte) value);
+        return bytes;
     }
 
     // --- Helpers ---

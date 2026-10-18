@@ -8,6 +8,7 @@ import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.MarkerAnnotationExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 
@@ -41,7 +42,6 @@ public class TypeRegistrar {
         // PASS 1: Collect all type declarations with FQCNs
         var allRecords = new LinkedHashMap<String, RecordDeclaration>();  // FQCN -> RD
         var allSealed = new LinkedHashMap<String, ClassOrInterfaceDeclaration>(); // FQCN -> CD
-        var typeToCu = new LinkedHashMap<String, CompilationUnit>(); // FQCN -> source CU
         // For implicit permits: map sealed interface FQCN -> ordered list of inner variant FQCNs
         var implicitVariants = new LinkedHashMap<String, List<String>>();
 
@@ -54,7 +54,6 @@ public class TypeRegistrar {
                     throw errorAt(rd, "Duplicate record type '" + fqcn + "' found across compilation units");
                 }
                 allRecords.put(fqcn, rd);
-                typeToCu.put(fqcn, cu);
             }
             for (var cd : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cd.isInterface()) continue;
@@ -70,8 +69,7 @@ public class TypeRegistrar {
                         throw errorAt(cd, "Duplicate sealed interface '" + fqcn + "' found across compilation units");
                     }
                     allSealed.put(fqcn, cd);
-                    typeToCu.put(fqcn, cu);
-
+    
                     // For implicit permits, find inner records implementing this interface
                     if (!hasExplicitPermits && hasSealedModifier) {
                         var variants = new ArrayList<String>();
@@ -119,8 +117,7 @@ public class TypeRegistrar {
         // Record dependencies: field types that are other records or sealed interfaces
         for (var entry : allRecords.entrySet()) {
             var fqcn = entry.getKey();
-            var cu = typeToCu.get(fqcn);
-            var importResolver = new ImportResolver(cu, knownFqcns);
+            var importResolver = new ImportResolver(entry.getValue(), knownFqcns);
             var typeDeps = new LinkedHashSet<String>();
             for (var param : entry.getValue().getParameters()) {
                 extractTypeDependencies(param.getType().asString(), allTypeNames, simpleToFqcn, importResolver, typeDeps);
@@ -131,8 +128,7 @@ public class TypeRegistrar {
         // Sealed interface dependencies: their variant records must be registered first
         for (var entry : allSealed.entrySet()) {
             var fqcn = entry.getKey();
-            var cu = typeToCu.get(fqcn);
-            var importResolver = new ImportResolver(cu, knownFqcns);
+            var importResolver = new ImportResolver(entry.getValue(), knownFqcns);
             var typeDeps = new LinkedHashSet<String>();
 
             if (!entry.getValue().getPermittedTypes().isEmpty()) {
@@ -164,7 +160,7 @@ public class TypeRegistrar {
                     || deps.getOrDefault(group.getFirst(), Set.of()).contains(group.getFirst());
             if (!recursive) {
                 registerType(group.getFirst(), allRecords, allSealed, implicitVariants,
-                        typeToCu, knownFqcns, typeResolver);
+                        knownFqcns, typeResolver);
                 continue;
             }
 
@@ -191,16 +187,16 @@ public class TypeRegistrar {
                 for (String fqcn : pending) {
                     if (allRecords.containsKey(fqcn)) {
                         registerType(fqcn, allRecords, allSealed, implicitVariants,
-                                typeToCu, knownFqcns, typeResolver);
+                                knownFqcns, typeResolver);
                     }
                 }
                 for (String fqcn : pending) {
                     if (allSealed.containsKey(fqcn)) {
                         registerType(fqcn, allRecords, allSealed, implicitVariants,
-                                typeToCu, knownFqcns, typeResolver);
+                                knownFqcns, typeResolver);
                     }
                 }
-                validateProductive(group, allRecords, allSealed, typeToCu, typeResolver);
+                validateProductive(group, allRecords, allSealed, typeResolver);
             } catch (RuntimeException e) {
                 typeResolver.discardForwardTypes(pending);
                 throw e;
@@ -214,7 +210,6 @@ public class TypeRegistrar {
             Map<String, RecordDeclaration> allRecords,
             Map<String, ClassOrInterfaceDeclaration> allSealed,
             Map<String, List<String>> implicitVariants,
-            Map<String, CompilationUnit> typeToCu,
             Set<String> knownFqcns,
             TypeResolver typeResolver) {
         if (typeResolver.isRegistered(fqcn)
@@ -224,9 +219,9 @@ public class TypeRegistrar {
             return;
         }
 
-        var cu = typeToCu.get(fqcn);
-        if (cu != null) {
-            typeResolver.setCurrentImportResolver(new ImportResolver(cu, knownFqcns));
+        TypeDeclaration<?> declaration = allRecords.containsKey(fqcn) ? allRecords.get(fqcn) : allSealed.get(fqcn);
+        if (declaration != null) {
+            typeResolver.setCurrentImportResolver(new ImportResolver(declaration, knownFqcns));
         }
 
         if (allRecords.containsKey(fqcn)) {
@@ -497,7 +492,6 @@ public class TypeRegistrar {
             List<String> group,
             Map<String, RecordDeclaration> allRecords,
             Map<String, ClassOrInterfaceDeclaration> allSealed,
-            Map<String, CompilationUnit> typeToCu,
             TypeResolver typeResolver) {
         var definitions = typeResolver.namedDefinitions();
         var productive = new LinkedHashSet<String>();

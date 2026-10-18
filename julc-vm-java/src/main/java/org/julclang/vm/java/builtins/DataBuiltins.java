@@ -3,6 +3,7 @@ package org.julclang.vm.java.builtins;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultUni;
 import org.julclang.core.PlutusData;
+import org.julclang.core.cbor.PlutusDataCborEncoder;
 import org.julclang.vm.java.CekValue;
 
 import java.math.BigInteger;
@@ -138,7 +139,7 @@ public final class DataBuiltins {
     public static CekValue serialiseData(List<CekValue> args) {
         var d = asData(args.get(0), "SerialiseData");
         try {
-            byte[] cbor = org.julclang.vm.java.builtins.DataSerializer.serialize(d);
+            byte[] cbor = PlutusDataCborEncoder.encode(d);
             return mkByteString(cbor);
         } catch (Exception e) {
             throw new BuiltinException("SerialiseData: CBOR encoding failed: " + e.getMessage(), e);

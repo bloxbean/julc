@@ -29,7 +29,7 @@ public final class LedgerCatalog {
      * also adding it here is a deliberate choice the maintainer makes.
      */
     private static final List<String> TYPES = List.of(
-            "Address", "Committee", "Credential", "DRep", "DatumHash",
+            "Address", "Committee", "Constitution", "Credential", "DRep", "DatumHash",
             "Delegatee", "GovernanceAction", "GovernanceActionId", "Interval",
             "IntervalBound", "IntervalBoundType", "OutputDatum", "PolicyId",
             "ProposalProcedure", "ProtocolVersion", "PubKeyHash", "Rational",

@@ -209,6 +209,7 @@
     {"type": "org.julclang.stdlib.lib.ValuesLib", "allDeclaredMethods": true},
     {"type": "org.julclang.ledger.Address", "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "org.julclang.ledger.Committee", "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "org.julclang.ledger.Constitution", "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "org.julclang.ledger.Credential", "allDeclaredMethods": true},
     {"type": "org.julclang.ledger.Credential$PubKeyCredential", "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "org.julclang.ledger.Credential$ScriptCredential", "allDeclaredMethods": true, "allDeclaredFields": true},
