@@ -3,6 +3,34 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
+
+`PlutusDataCborDecoder` now accepts exactly the CBOR that plutus `decodeData` accepts.
+JuLC used to accept Data that the ledger rejects, so a FLAT program, inline datum or
+redeemer could decode in JuLC and fail on chain.
+
+- **`decode()` rejects trailing bytes.** It requires exactly one Data item, as the ledger
+  decodes inline datums. The new `decodeFirst()` decodes one item and ignores what
+  follows, as plutus reads FLAT `data` constants (`FlatViaSerialise` /
+  `deserialiseOrFail`); `UplcFlatDecoder` uses it.
+- **Newly rejected by `decode()` and `decodeFirst()`:**
+  - byte strings or byte-string chunks over 64 bytes;
+  - tags other than bignums (`c2`/`c3` headers only) and constructors (102, 121–127,
+    1280–1400);
+  - nested tags, and tags that don't wrap a byte string (bignum) or an array
+    (constructor);
+  - indefinite integers and tags;
+  - text strings and simple values, also inside lists and maps.
+- **Newly rejected by `fromDataItem()`, which sees an already-decoded cbor-java tree:**
+  unrecognized and nested tags, and simple values inside lists (previously dropped
+  silently).
+- **Untrusted headers don't allocate.** Lengths that exceed the remaining input are
+  rejected before any allocation, so a short malformed input raises
+  `CborDecodingException` rather than `OutOfMemoryError`.
+- **julc-tools.** The `cbor` Data input of julc-tools is strict in the same way.
+
+Map order and duplicate keys are still preserved. Encoding is unchanged.
+
 ## Upcoming preview: `NewConstitution` carries the `Constitution` wrapper (#223)
 
 `GovernanceAction.NewConstitution` now has the Plutus Data layout of plutus-ledger-api V3,

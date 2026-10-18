@@ -16,7 +16,8 @@ import java.util.ArrayList;
 /**
  * Keeps CBOR map associations intact before PlutusData conversion, and applies the CBOR
  * rules of Plutus {@code decodeData} that the converted items no longer show: the 64-byte
- * byte string limit and the header forms of integers, arrays and tags. All other CBOR
+ * byte string limit, the header forms of integers, arrays and tags, and the rejection of text
+ * strings (before cbor-java would allocate their declared length). All other CBOR
  * parsing stays with cbor-java; its array/tag decoders recurse through decodeNext.
  */
 final class MapPreservingCborDecoder extends CborDecoder {
@@ -40,6 +41,10 @@ final class MapPreservingCborDecoder extends CborDecoder {
                     return entriesDecoder.decode(initialByte);
                 case BYTE_STRING:
                     return entriesDecoder.decodeBytes(initialByte);
+                case UNICODE_STRING:
+                    // Plutus decodeData: "Unrecognized value of type TypeString". Rejected at the
+                    // header, before cbor-java preallocates the declared length.
+                    throw new CborException("Text strings are not PlutusData");
                 case UNSIGNED_INTEGER, NEGATIVE_INTEGER, ARRAY, TAG:
                     entriesDecoder.checkHeader(initialByte);
                     break;

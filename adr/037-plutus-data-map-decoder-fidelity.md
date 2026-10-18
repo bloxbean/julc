@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented and validated; implementer review complete. Independent review pending before merge.
+Implemented and validated; independently reviewed (PR #238).
 
 ## Superseding decoder contract — PR #238
 
@@ -21,7 +21,9 @@ change; the subsequent decoder contract is:
   bignums, constructor tags and fields, and container members. Unknown or nested
   tags, unsupported values and malformed headers are rejected. The decoder now
   intercepts byte strings and checks integer, array and tag headers as well as
-  preserving map associations.
+  preserving map associations. Text strings are rejected at their header, as
+  `decodeData` rejects `TypeString`, so cbor-java never allocates an untrusted
+  declared text length.
 
 Map order and duplicate-key preservation remain invariant. Encoder output,
 compiler lowering and constructor Word64 handling are unchanged. General

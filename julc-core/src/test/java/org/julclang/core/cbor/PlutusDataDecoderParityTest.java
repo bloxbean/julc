@@ -103,7 +103,7 @@ class PlutusDataDecoderParityTest {
                     "d904ff80",
                     "d9057980",
                     "dbffffffffffffffff80",
-                "d903e8a10102",
+                    "d903e8a10102",
                     // Constructor fields and the general form's members are untagged arrays and words.
                     "d879d87a80",
                     "d879c180",
@@ -129,6 +129,12 @@ class PlutusDataDecoderParityTest {
                     "a101c100",
                     "f5",
                     "6161",
+                    // A text header is rejected before its declared length is allocated (no OutOfMemoryError).
+                    "7a7fffffff",
+                    "7a7ffffff0",
+                    "817a7fffffff",
+                    "a17a7fffffff00",
+                    "7f6161ff",
                     // Integers and tags have no indefinite form; lengths are unsigned.
                     "1f",
                     "3f",
