@@ -133,7 +133,7 @@ public final class PlutusDataAdapter {
             return tag;
         } catch (ArithmeticException e) {
             throw new IllegalArgumentException(
-                    "cardano-client-lib 0.7.2 cannot represent constructor tag "
+                    "cardano-client-lib cannot represent constructor tag "
                             + constr.constructorTag() + " outside signed non-negative long",
                     e);
         }
