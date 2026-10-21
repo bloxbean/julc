@@ -1,0 +1,888 @@
+# ADR-059: Generic backend revision 2
+
+Status: Accepted for implementation in stacked milestones (#185, #180, #184, #183, #181, #182)
+
+Extends [ADR-056](056-language-neutral-compiler-backend.md) (neutral backend) and
+[ADR-050](050-library-source-type-descriptions.md) (library source descriptions). Public
+text describes generic DSL frontends and does not name any consumer.
+
+## Context
+
+Revision 1 of the neutral backend accepts one closed, specialized PIR term with a FUNCTION,
+SPEND or MINT entrypoint, checks lexical closure and handler shape, and exposes concrete
+Java-source library exports. A typed DSL built on it currently has to:
+
+- inline `LibraryProvider.materialize(symbol)` at every use, duplicating library code;
+- build imported record projections itself from `LibraryType.fields`, and guess equality
+  from erased representations;
+- give up on withdrawal/certifying/voting/proposing handlers, multi-purpose scripts,
+  deployment parameters and datum policies, although the Java frontend has them;
+- trust that PIR which passes the closure check also agrees with its declared types.
+
+Repository facts that constrain the design (verified at `c95ee610`):
+
+- `UplcGenerator` erases PIR types except `DataConstr.dataType` (fields are encoded by
+  their declared types; a count mismatch is not detected) and `MatchBranch.bindingTypes`
+  (eager field decoding). `DataMatch` dispatches by **branch position**; one branch
+  performs no tag check. It injects fixed `__match_*` and `__rest_N` binders, and a
+  `Var` whose name starts with `.` is a field-accessor pseudo-variable.
+- Under the PV11 profile `IfThenElse` lowers to `Case`. A non-Bool condition silently
+  selects a branch instead of failing. A single-binding `LetRec` uses a Z combinator and
+  its value must be a function.
+- Java-generated PIR uses `DataType` as a placeholder for polymorphic slots (for example
+  fold accumulators holding integers). Library bodies produced by the Java compiler
+  therefore cannot pass a strict type checker.
+- Single-purpose Java wrappers do not inspect the ScriptInfo tag;
+  `ValidatorWrapper.wrapMultiValidator` does and decodes only the selected handler.
+- No generic on-chain library method exists; the Java compiler rejects type variables.
+- Programmatic stdlib builders inline their arguments, re-evaluate function arguments per
+  element and bind fixed names around them (see #186).
+
+## Goals
+
+- One explicit, versioned revision policy and capability discovery for all new descriptors.
+- A practical structural verifier for producer PIR, run before any lowering.
+- Purpose-indexed validators, deployment parameters and datum profiles through the
+  existing Julc wrapper and parameter machinery.
+- Explicit, verified operations for imported types.
+- Generic library exports specialized through the actual Java compiler, and programmatic
+  PIR exports through the same consumer contract.
+
+## Non-goals
+
+- A proof system, semantic equivalence checking, or a sandbox for untrusted PIR.
+- Arbitrary JVM generics, persistent caches or a serialized PIR interchange format.
+- CIP-57 generation, source-position transport, or changes to Java validator semantics.
+- Changes to ledger encodings, the VM, or existing Java script bytes.
+
+## Invariants
+
+1. Existing Java compilation and revision-1 neutral compilation produce identical bytes.
+2. Strict evaluation order, captures and failure behaviour of producer PIR are preserved.
+   Julc-owned boundary code runs exactly once and only for the selected purpose.
+3. Nominal identities, constructor tags, field order and Data encodings are unchanged.
+   No unsupported type or operation is approximated through erased `Data`.
+4. Every new check fails before provider materialization or lowering, with a catalogued
+   diagnostic that names the producer symbol or descriptor.
+5. Generated artifacts are deterministic; handler order in a descriptor never matters.
+
+## Decision
+
+### Revision and capabilities (#185)
+
+`BackendContract.REVISION = 2`. Revision 1 remains supported. Every revision-2
+descriptor states the revision it was produced for and the capabilities it requires.
+`CompilerBackend.capabilities(CompilerOptions)` reports the revision range, the resolved
+target, boundary policies, supported entry kinds, purposes, datum profiles, library
+request kinds and target protocol features (`target.*`). Capabilities are stable string
+identifiers (`BackendCapability`) rather than enum constants, so a producer built for a
+newer backend receives an actionable diagnostic from an older one instead of a linkage
+error. The backend checks, in order: revision, required capabilities, target and
+boundary policy, descriptor shape, verification, then lowering.
+
+Diagnostics are catalogued in `diagnostics.json` and thrown as `BackendException`, which
+extends `IllegalArgumentException` for revision-1 compatibility:
+
+| Code | Meaning |
+| --- | --- |
+| JULC0044 | unsupported descriptor or provider revision |
+| JULC0045 | required capability unavailable |
+| JULC0046 | producer target differs from the backend target |
+| JULC0047 | invalid descriptor (names, duplicates, conflicting types, signatures) |
+| JULC0048 | invalid PIR binding (reserved name, unbound or duplicate symbol) |
+| JULC0049 | PIR type disagreement |
+| JULC0050 | PIR structure unsupported by lowering |
+| JULC0051 | unsupported library request (operation or instantiation) |
+
+### Revision-2 programs and trusted imports (#185)
+
+A revision-2 program has four parts:
+
+- **imports**: `LibraryImports` groups returned by providers. A group is closed as a
+  unit, is linked once, and is trusted at the declared types of its exports.
+- **definitions**: producer definitions, each with a declared type. They are strict,
+  linked in encounter order with `PirLinker`, and may be mutually recursive functions.
+- **entry**: a `FunctionProgram` term and type (#185), or `ValidatorProgram` handlers (#180).
+- **namedTypes**: named definitions for the producer's types. Imported named types come
+  from their import groups; an id defined twice must have equal definitions.
+
+A provider materializes a list of `LibraryRequest`s as one group, so private dependencies
+shared by several exports are linked once. Each group exposes a map from request to
+binding name. The producer references imports only through those names. The existing
+`LibraryProvider.materialize(String)` remains; a default adapter builds a group from it.
+
+Linking is a single `PirLinker` pass over import definitions followed by producer
+definitions, so dependencies are bound before their users. Imports and definitions are
+evaluated once per script execution, before parameter decoding and purpose dispatch.
+Work that must run only for one purpose belongs inside that handler's lambda.
+
+Revision-1 `FrontendProgram` keeps its existing path and checks unchanged. A revision-1
+producer cannot separate trusted library bodies from its own PIR, so it cannot receive
+the structural verifier without false rejections.
+
+### Structural verifier contract (#185)
+
+`PirVerifier` checks producer-authored terms: definitions, entries and handlers.
+Imported bodies are trusted and are checked only at their exported types.
+
+Checked invariants:
+
+- **Names:** binders are non-blank and do not use reserved forms. Reserved forms are a
+  `.` or `__` prefix, a `$julc$` prefix, or `#` anywhere. Every free reference resolves
+  to an import export, a definition, or an enclosing binder. Program-level names are
+  pairwise disjoint.
+- **Variables and applications:**
+  - A `Var` annotation agrees with its binder's type. Where one is a Data view of the
+    other, the reference has the more specific type; otherwise it has the binder's type.
+  - `Lam` has type `param -> body`.
+  - `App` applies a function type to an agreeing argument.
+- **Builtins:** each application agrees with a representation-level signature. The table
+  has an entry for every `DefaultFun`; a test anchors its value arity and type-variable
+  count to `BuiltinSemantics`. Polymorphic builtins are fully applied. Unreleased
+  builtins (`MultiIndexArray`) are rejected.
+- **Conditionals and traces:**
+  - `IfThenElse` conditions are exactly `Bool`, and both branches agree.
+  - `Trace` messages are `String`.
+- **Recursion and generator-local terms:**
+  - `LetRec` binding values are lambdas.
+  - `IntegerCase` is generator-local and is rejected.
+- **`DataConstr`:**
+  - Its type resolves to a record, a sum, or an `Optional` whose payload is already
+    Data-represented and agrees with the raw view of its element type. Records use tag 0;
+    a sum constructor must exist for the tag.
+  - The arity is exact, field terms agree, and field types are Data-encodable. Unit,
+    function, pair, array and native types are not.
+- **`DataMatch`:**
+  - The scrutinee resolves to a record or sum whose tags are dense (`constructors[i].tag() == i`).
+  - There is exactly one branch per constructor, in tag order, with matching names.
+  - There are no more bindings than fields, and binding types agree with field types.
+  - A pattern variable is in scope outside the field bindings, as lowering binds it, so a
+    field binding of the same name shadows it.
+- **`ListMatch` and `PairMatch`:**
+  - A `ListMatch` scrutinee is a Data list. Its head has the element's raw view; its
+    tail has the scrutinee type.
+  - A `PairMatch` scrutinee agrees with the declared pair.
+- **Named types and declarations:**
+  - Every `NamedTypeRef` resolves, and its kind agrees with its definition.
+  - Each declared entry or definition type agrees with its term.
+  - Imported named types are opaque to `DataMatch`/`DataConstr` unless their descriptor
+    approves the operation (#183).
+
+Agreement is equality after `NamedTypeRef` resolution, plus documented Data views:
+
+- At the top level, `Data` agrees with Data-represented types (records, sums, `Optional`).
+- In Data-encoded positions (list, map and array elements, `Optional` payloads), `Data`
+  agrees with any Data-encodable type.
+- `Map k v` agrees with `List (Pair Data Data)`.
+
+Native versus Data, `Bool` versus Data, `Int` versus Data, distinct nominal types, and
+`List Int` versus `List Bytes` are rejected.
+
+Producer obligations, which are not checked:
+
+- the provenance of opaque Data viewed as a typed value;
+- that elements pushed into a typed list are correctly encoded;
+- semantic equivalence and termination;
+- purity of imports from custom providers.
+
+### Typed multi-purpose handlers (#180)
+
+`ValidatorProgram` adds these fields to the program parts: identity, boundary policy
+(`julc-strict-v1`), parameters (#184) and handlers.
+
+A `Handler` has a `ContractSchema.Purpose` (MINT, SPEND, WITHDRAW, CERTIFY, VOTE,
+PROPOSE; ledger tags 0–5, mapped by an explicit switch), a producer symbol, a term, a
+declared type and a `DatumProfile`. A descriptor produces one script; independent
+descriptors produce independent scripts.
+
+The backend binds each handler term to a fresh `#julc-handler$…` name outside the
+wrapper, so wrapper binders cannot capture producer names. It always uses
+`wrapMultiValidator`, even for one handler:
+
+- unconfigured purposes fail explicitly;
+- handlers dispatch in tag order, so descriptor order is irrelevant;
+- only the selected handler's datum and redeemer are decoded and strictly checked.
+
+The legacy single-entrypoint API keeps its single-purpose wrapper and its hashes. A
+one-handler descriptor therefore does not reproduce a legacy script hash; that is
+intentional.
+
+Each handler must have the type `parameters -> [datum ->] redeemer -> context -> Bool`.
+The context is `Data` or the ledger `ScriptContext` type. Datum and redeemer types must
+be accepted by `StrictBoundaryGenerator.ensureSupported`, and native types are rejected.
+
+`Unit` datum and redeemer values keep the existing strict `Constr 0 []` check, but the
+handler receives native `()`. Julc's shared decoder passes the raw Data through for
+`Unit`, which would contradict the native representation elsewhere.
+
+The result carries a `ValidatorAbi`: identity, target, boundary, purpose-indexed
+handlers with tags, datum profiles and boundary types, parameters and named types.
+
+### Parameters and datum profiles (#184)
+
+`Parameter(name, type)` values are listed in ABI order. Every handler receives all
+parameters as leading arguments. Roles come from the descriptor, never from names.
+
+The wrapper has the Java `@Param` shape, applied once outside the context lambda:
+`\#julc-param$i$raw -> let #julc-param$i = decode(raw) in …`.
+
+Parameters are decoded but not validated on-chain, exactly as in Java. Their types are
+restricted to types with a Data decoding: Int, Bytes, String, Bool, Data, records, sums,
+`Optional`, lists and maps. `BoundaryPrograms.check` compiles the strict boundary check
+for a type as a standalone program, so a consumer can validate parameter Data with any
+VM before `Program.applyParams`, at no on-chain cost.
+
+`DatumProfile` values for SPEND handlers:
+
+- `REQUIRED` keeps the existing force-unwrap: a missing datum fails.
+- `OPTIONAL` passes the ledger `Maybe` as `Optional D`, strictly checked.
+- `ABSENT` passes no datum argument and never inspects the datum.
+
+Other purposes use `ABSENT`. The profile is recorded explicitly in the ABI, so an
+`Optional` datum type is never ambiguous.
+
+### Imported-type operations and codecs (#183)
+
+`LibraryType` gains `operations`, derived only from metadata the provider has verified:
+
+| Kind | Enabled for |
+| --- | --- |
+| CONSTRUCT | regular records, constructor-encoded sums, newtypes, ledger hashes |
+| PROJECT | regular record fields and newtype values |
+| MATCH | constructor-encoded sums and regular records with dense tags |
+| EQUALS | Java `equals` semantics: `EqualsInteger`/`EqualsByteString`/`EqualsString`, Bool comparison, and `EqualsData` for constructor-encoded types |
+| ENCODE, DECODE_STRICT, BOUNDARY | types accepted by `StrictBoundaryGenerator` |
+
+Special layouts, such as the map-backed ledger `Value` or records with custom codecs,
+get no operations. `LibraryRequest.Operation(type, kind, member)` materializes closed,
+Julc-built PIR, which the verifier treats as trusted imports:
+
+- constructors are built with `DataConstr`;
+- projections use the Java field-access lowering;
+- strict decoders use `StrictBoundaryGenerator`;
+- encoders use `wrapEncode`;
+- explicit container adapters convert between computational and serialized forms.
+
+Unsupported requests fail with JULC0051. Type descriptions carry a representation revision.
+
+### Generic export schemes and specialization (#181)
+
+`LibraryExport` adds a stable identity, target requirements (`ProtocolCapability`) and a
+`LibraryScheme`. A scheme has type parameters with explicit constraints, ordered source
+parameters and a result. `LibraryType.Reference` can name a type variable.
+
+Java generic `@OnchainLibrary` static methods become templates. Julc compiles them only
+when a request supplies concrete type arguments:
+
+- `TypeResolver` binds the method's type variables while it compiles the method's
+  signature and body. Static fields and sibling methods keep the class's type scope, so a
+  type variable never replaces a class of the same name in their types.
+- The specialization is registered under a provider-local key, never in a Java
+  validator's registry, so Java output is unchanged.
+- The rejected forms are bounds, wildcards and raw types; calls from one template to
+  another template; and native, function, pair or `Unit` type arguments.
+- Java validators that call a template receive a diagnostic.
+
+`SpecializationKey` combines the library content hash, export identity, nominal type
+arguments, representation revision, API revision and target profile. It deduplicates
+materializations within one provider instance.
+
+### Programmatic providers (#182)
+
+`StdlibLibraryProvider` (julc-stdlib) describes a catalogue of real programmatic exports
+with schemes. It starts with the list higher-order functions (`map`, `filter`, `any`,
+`all`, `find`, `foldl`).
+
+- **Hygiene and evaluation:** each export materializes as a closed lambda over fresh
+  `#julc-arg$i` parameters. Arguments are evaluated once, strictly, and cannot be
+  captured.
+- **Calling convention:** Julc-generated adapters decode Data elements for typed function
+  arguments and encode results. The frontend passes ordinary typed functions.
+- **Deliberate difference from Java:** Java inlines the function argument, so it is
+  evaluated per element, and never for an empty list. Here it is evaluated once, before
+  the traversal.
+
+`LibraryProviders.compose` owns symbols deterministically. It rejects duplicate symbols
+and conflicting type identities, and checks provider revisions before materialization.
+
+### Producer-owned type arguments (follow-up to #181/#182)
+
+A generic export can be instantiated at a nominal type that the producer defines and the
+provider does not describe, such as a DSL record or union.
+
+- **Request:** `LibraryRequest.Instantiate` carries `producerTypes`, the representations
+  of such types keyed by the reference names used in its type arguments. The existing
+  two-argument constructor means "none".
+- **Validation:** each producer type must be a constructor-encoded record or sum. A
+  name the provider already describes is rejected (JULC0051) rather than shadowed.
+- **Resolution:** providers resolve type arguments against their own descriptions plus
+  the request's producer types, through `TypeReferences.withProducerTypes`. The same
+  path serves the Java-source templates (`JavaLibraryProvider`) and the programmatic
+  catalogue (`StdlibLibraryProvider`).
+- **Keys:** `SpecializationKey` gains the producer representations. Two producer types
+  with one name but different representations never share an implementation. Keys
+  without producer types keep their historical digests, so existing binding names and
+  script bytes are unchanged.
+
+### Typed maps, library overloads and map order (follow-up)
+
+- **Typed maps.** `TypedMapLib` (julc-stdlib) adds generic templates over
+  `JulcMap<K,V>`: `empty`, `lookup`, `member`, `insert`, `remove`, `keys`, `values`,
+  `size` and `isEmpty`. Frontends instantiate them at their key and value types,
+  including producer-owned types.
+  - Each template is a one-line call to the corresponding `JulcMap` method, so it
+    compiles through the same `TypeMethodRegistry` lowering that Java validators use.
+    Java and DSL map semantics cannot diverge.
+  - `insert` removes an existing binding first, keeping one entry per key.
+- **Overloads.** Library methods are registered and called by `Class.method`, so an
+  overload used to abort the whole provider.
+  - Overloads whose source signatures agree now compile to one method and are
+    exported once. `ByteStringLib.integerToByteString`, with `long` and `BigInteger`
+    variants, is an example. This makes `ByteStringLib` importable.
+  - Overloads that compile to different code are rejected with JULC0054 when the
+    provider compiles the library, as for Java validators (ADR-060). One rule applies
+    to every frontend. This replaces the earlier per-class fallback, which predates
+    ADR-060: then the last declaration silently won, so a caller in another class
+    could bind to the wrong overload.
+  - Overloads that compile to the same code but have different source signatures
+    make only their own class unsupported, because an export needs one description.
+- **Map order.** On-chain `JulcMap.keys()` and `values()` used a left fold with cons,
+  so they returned the entries in reverse. The off-chain `JulcAssocMap` keeps map
+  order. The lowering now uses a right fold, matching off-chain behavior.
+  - This correctness fix changes the script bytes of Java programs that call
+    `keys()` or `values()`, directly or through `MapLib.keys`/`MapLib.values`.
+    Builds that keep unused library methods also change when they import `MapLib`:
+    level `NONE`, and any level with source maps. Optimized builds without source maps
+    drop the unused methods and are unchanged.
+
+### Schema-driven test data (follow-up)
+
+A producer knows each boundary's PIR type: parameters, datums, redeemers, and the
+arguments of its own functions. Test data can therefore be derived from those types
+instead of written by hand for each type.
+
+- **`DataGenerators.forType`** (julc-testkit, package `property`) derives a seeded
+  `DataGenerator` from a PIR type and its named types.
+  - Every value is a valid Data encoding of the type: it passes the same
+    `StrictBoundaryGenerator` check that guards validator boundaries. Map keys are
+    distinct.
+  - Values grow with a size parameter.
+  - Shrinking is type-directed. It shortens lists, moves integers toward 0, moves
+    to earlier constructors and uses recursive subterms (`Cons x rest` → `rest`).
+    Every shrink candidate is still a valid value of the type.
+  - Callers can replace any named type's generator by stable id or name, for
+    example with 28-byte key hashes.
+  - Types without a Data encoding are rejected when the generator is built: pairs,
+    arrays, functions and native values.
+- **`PropertyCheck`** runs a property over generated arguments from one seed.
+  Sizes grow from 0 to a maximum. The first failure is shrunk greedily, one argument
+  at a time, and the result reports the seed that reproduces it. It uses only
+  `SplittableRandom` and no reflection, so producers can embed it in native tools.
+- **`SchemaArbitraries`** (julc-testkit-jqwik) is the jqwik counterpart for JUnit
+  properties:
+  - `forType` gives the same encodings as jqwik `Arbitrary`s, with jqwik's own
+    shrinking and edge cases;
+  - `redeemer`, `datum` and `parameters` read the types from a `ValidatorAbi`.
+- **Recursive types.** `DataShapes` computes each type's *height*: the least number
+  of named references in its smallest value. Recursive types are unrolled to a
+  size-dependent depth. Past that depth only the shallowest constructors are used,
+  and lists, maps and optionals are empty. The height strictly decreases at every
+  reference, so every value is finite. A recursive type with no finite value is
+  rejected.
+
+### Arrays in library signatures (follow-up)
+
+`JulcArray<T>` lowers to `ArrayType`, a PV11 (CIP-138) array of Data-encoded
+elements. The library contract could not name it: a Java library method that took or
+returned an array was unsupported, and generic code could not be instantiated over
+arrays.
+
+- **Reference.** `LibraryTypeDescriptions` maps `JulcArray<T>` to the reference
+  `Array<T>`, and `TypeReferences` represents it as `ArrayType`.
+  - Arrays have no Data encoding, so they are not `DATA_ENCODABLE`. They cannot
+    instantiate a constrained type variable or pass through a codec.
+  - The verifier already types the array builtins.
+- **`TypedArrayLib`** (julc-stdlib) adds generic templates: `fromList`
+  (`ListToArray`), `get` (`IndexArray` with the element decode) and `length`
+  (`LengthOfArray`).
+  - They are the three `JulcArray` operations, lowered by the same
+    `TypeMethodRegistry` entries that Java validators use.
+  - Frontends instantiate them at their element types, including producer-owned
+    records.
+
+## Alternatives rejected
+
+- **Verify inlined library bodies.** Java PIR uses `Data` placeholders, so either every
+  program would be rejected or the checks would be weakened for everything.
+- **Share producer definitions per handler,** as the Java multi-validator does. That
+  duplicates code; program-level definitions make the eager rule explicit instead.
+- **Reuse the single-purpose wrapper for one-handler descriptors.** It cannot reject
+  unconfigured purposes.
+- **Validate parameters on-chain by default.** Every execution would pay the cost, and
+  it diverges from Java. The off-chain check program covers this need.
+- **Erase generics to `Data` and add call-site coercions.** Forbidden by #181; it
+  changes the equality and decoding semantics of the source.
+- **Rewrite the Java AST for specialization.** A type-variable environment at the single
+  `TypeResolver` choke point is smaller and avoids string reconstruction of types.
+- **Represent capabilities as an enum.** Unknown capabilities from newer producers would
+  become linkage errors rather than diagnostics.
+
+## Affected modules and stages
+
+- `julc-compiler`: backend package, verifier, `ValidatorWrapper` reuse,
+  `JavaLibraryProvider`, `LibraryCompiler`/`TypeResolver` (templates only), and the
+  diagnostics catalog.
+- `julc-stdlib`: the programmatic provider.
+- No changes to the VM, the ledger API or the core.
+
+## Compatibility
+
+All additions are additive. `FrontendProgram`, `CompilerBackend.compile(FrontendProgram,
+CompilerOptions)`, `LibraryProvider.materialize(String)` and existing records keep their
+constructors and behaviour. Java script bytes are unchanged, except for the map-order
+correctness fix described under "Typed maps, library overloads and map order"; each
+milestone compares its artifacts. A generic method in a library source changes from a compile error to a
+template that Java validators cannot call.
+
+## Risks
+
+- A verifier that is too strict rejects valid producer output. Test it against realistic
+  DSL-shaped PIR and the existing neutral fixtures.
+- A verifier that is too permissive misses representation errors. Give every rule a
+  negative test.
+- Builtin signature drift. The table is anchored to `BuiltinSemantics` and the VM tables.
+- Specialization and Java type resolution interact. Environment state is scoped and
+  restored, and Java validator output is compared.
+- Eager evaluation of shared definitions makes a failing definition fail every purpose.
+  This is documented, and producers keep per-purpose work inside handlers.
+
+## Milestones and verification
+
+| PR | Issue | Deliverable | Evidence |
+| --- | --- | --- | --- |
+| 1 | #185 | contract, capabilities, imports, verifier, `FunctionProgram` | negative test per invariant, valid recursive/imported/higher-order fixtures, revision-1 byte stability, overhead measurement |
+| 2 | #180 | `ValidatorProgram`, six purposes, ABI | every purpose on full ledger contexts, wrong-purpose rejection, inactive-schema isolation, Java `@MultiValidator` parity, order independence |
+| 3 | #184 | parameters, datum profiles, boundary programs | Java `@Param` parity, parameter order and hashes, present/missing/malformed datum per profile |
+| 4 | #183 | type operations and codecs | record/sum round trips, wrong tag/arity/kind rejection, container adapter, special layouts stay opaque |
+| 5 | #181 | schemes, templates, specialization | real Java generic source at two types, invalid substitutions, nominal separation, dedup keys |
+| 6 | #182 | programmatic provider, composition | HOF exports through the same contract, strict capture/ordering, duplicate ownership |
+
+Each milestone runs the compiler, stdlib, testkit, examples and annotation-processor
+suites with `--rerun`, compares Java artifacts against main, and runs a DSL-consumer
+build against a locally published snapshot.
+
+## Open questions
+
+- Source-position transport for producer diagnostics beyond symbol and descriptor names.
+- Whether shared program definitions should also get a per-purpose-lazy form.
+- A serialized form of descriptors for tooling; out of scope for this revision.
+
+## Implementation evidence
+
+### Milestone 1 (#185)
+
+- **New code:** backend contract, capability and diagnostic types; `LibraryRequest`,
+  `LibraryImports` and group materialization (default adapter plus native
+  `JavaLibraryProvider` linking); `FunctionProgram`; `PirVerifier` with `BuiltinTyping`.
+  Catalogue entries JULC0044–JULC0051 are added.
+- **Verifier tests:**
+  - `BuiltinTypingTest`: all 102 `DefaultFun` values, with value and type arity anchored
+    to `BuiltinSemantics`.
+  - `FunctionProgramTest`: a negative test per verifier invariant, plus recursive,
+    mutually recursive, higher-order, partial-application, sum, record, list, `Optional`
+    and pair fixtures evaluated on the VM.
+  - Also covered: shared-helper deduplication in import groups, unreachable private
+    dependencies, imported types that are opaque to `DataMatch`, and revision-1
+    provider adapters.
+- **Named `DataConstr` types:** testing found a latent lowering hazard. A `DataConstr`
+  whose type is a `NamedTypeRef` is lowered without encoding its fields, because
+  `UplcGenerator` does not resolve named references. The verifier now rejects that form.
+  Revision-1 programs are unverified and keep this producer obligation.
+- **Real DSL output:** a consumer frontend's full test suite was compiled a second time
+  as revision-2 programs, with library functions referenced as imports instead of
+  inlined. All 68 generated programs were verified and lowered, with 0 rejections. The
+  54 function programs evaluate to identical results under revision 1 (inlined
+  libraries) and revision 2 (shared imports).
+- **Overhead:** verification takes about 2% of backend compile time and scales
+  linearly: 0.5 ms for 15k nodes, 1.9 ms for 60k nodes, 19.7 ms for 242k nodes
+  (JVM warm, single run).
+- **Regression runs** (fresh, `--rerun`):
+  - `julc-compiler` 1839/0/0 and `pairCaseTest` 71/0/0;
+  - `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0;
+  - `julc-annotation-processor` 20/0/0.
+
+  The revision-1 path and every Java compilation path are unchanged.
+
+### Milestone 2 (#180)
+
+- **New code:**
+  - `ValidatorProgram` (with `Handler`), `DatumProfile`, `Parameter`, `ValidatorAbi` and
+    `ValidatorResult`.
+  - `ValidatorCompiler`, which checks the role and signature of each handler, verifies
+    producer PIR, and dispatches through `ValidatorWrapper.wrapMultiValidator`.
+  - Capabilities `program.validator`, `purpose.*` and `spend.datum.required`. Parameters
+    and optional or absent spending datums are declared, but their capabilities are
+    withheld until #184, so descriptors that use them fail with JULC0045.
+- **`ValidatorProgramTest` covers:**
+  - each of the six purposes on full `ScriptContextBuilder` contexts, rejecting wrong
+    redeemers and every other purpose's context;
+  - spending with a required datum: present, missing and malformed datums, and a
+    malformed redeemer;
+  - spend+mint and spend+withdraw groups;
+  - inactive-schema isolation: a withdrawal with an integer redeemer succeeds although
+    the spending redeemer is a record, and the reverse is rejected;
+  - byte-identical scripts for reordered handlers;
+  - the native `Unit` redeemer adaptation;
+  - a context typed as the ledger `ScriptContext`, the ABI in tag order, and ledger tags
+    matching the ScriptInfo encodings;
+  - descriptor, signature, boundary, capability and verifier rejections.
+- **Java parity:** a Java `@MultiValidator` with SPEND (record redeemer), MINT and
+  WITHDRAW handlers agrees with the neutral descriptor on all 81 matrix cases. The matrix
+  covers purposes × redeemers (valid, wrong tag, wrong arity, wrong kind) × datums
+  (present, missing, malformed), with 4 accepting cases. The neutral script is 271 bytes
+  against 321 for Java. Budgets are within 15%:
+
+  | Purpose | Java CPU/mem | Neutral CPU/mem |
+  | --- | --- | --- |
+  | SPEND | 5,218,511 / 20,413 | 5,955,284 / 23,509 |
+  | MINT | 2,074,195 / 7,623 | 2,314,195 / 9,123 |
+  | WITHDRAW | 2,749,441 / 10,627 | 2,603,818 / 10,325 |
+- **Cost of explicit purpose dispatch:** a one-handler minting descriptor costs 75 bytes
+  and 2,218,195 CPU / 8,523 mem, against 41 bytes and 1,128,903 / 4,462 for the legacy
+  single-purpose wrapper. The difference is the ScriptInfo tag check that rejects
+  unconfigured purposes.
+- **Regression runs** (fresh): `julc-compiler` 1854/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 3 (#184)
+
+- **Capabilities:** `validator.parameters`, `spend.datum.optional`, `spend.datum.absent`
+  and `boundary.check-program`.
+- **Parameters:**
+  - Parameters become outer lambdas in ABI order with the Java `@Param` shape. Each raw
+    Data argument is decoded once and passed as a leading argument to every handler.
+  - Parameter types need a Data decoding. `Unit`, native, function and pair parameters
+    are rejected, as are duplicate or blank names and handlers whose leading argument
+    types differ from the parameter types.
+  - `BoundaryPrograms.check` compiles the `StrictBoundaryGenerator` check for a type as a
+    standalone one-argument program, for off-chain parameter validation.
+- **Datum profiles:** `OPTIONAL` passes the strictly checked ledger `Maybe`; `ABSENT`
+  compiles the two-argument spending call and never inspects the datum.
+- **`ValidatorParametersTest` (12 tests):**
+  - Java `@Param` parity: `threshold`/`owner` applied with `Program.applyParams`,
+    including a too-short owner and parameters in the wrong order. There are 9 cases,
+    2 of which accept.
+  - Applied script hashes are deterministic, change with parameter values and order,
+    and differ from the unapplied hash. The ABI is deterministic.
+  - All handlers receive the parameters.
+  - `OPTIONAL` datums, present or missing, pass while a malformed present datum is
+    rejected. `ABSENT` accepts any datum or none. A missing `REQUIRED` datum still fails.
+  - Inactive-handler isolation, ABI profiles, check programs for primitive, record, list
+    and `Optional` types, and every rejection above.
+- **Regression runs** (fresh): `julc-compiler` 1866/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 4 (#183)
+
+- **Audit before adding metadata.** `LibraryTypeDescriptions` already verified which
+  records are regular: they have constructor-encoded components and no custom codec.
+  `LibraryType.operations` is derived from that fact, newtype and sum flags, and a
+  `StrictBoundaryGenerator` check. Nothing is inferred from erased representations.
+- **Special layouts.** A special layout is a declared record whose runtime encoding is
+  not constructor data; the map-encoded ledger `Value` is the example.
+  - Special layouts get no operations.
+  - A type that contains one (`TxOut`, `TxInfo`, a user record with a `Value` field)
+    keeps CONSTRUCT/PROJECT/MATCH/ENCODE, but loses EQUALS, DECODE_STRICT and BOUNDARY.
+    The strict checker would treat the `Value` record as constructor data and reject a
+    correct map encoding, and `EqualsData` would be order-sensitive.
+  - Validator datum, redeemer and parameter types, and `BoundaryPrograms`, now reject
+    such types at compile time with JULC0047.
+- **Pre-existing Java issue found (out of scope).** A Java validator whose datum record
+  contains a ledger `Value` rejects the correct map encoding under strict boundaries and
+  accepts only `Constr 0 [map]`. It is reported separately; this milestone does not
+  change the Java path.
+- **Materialization.** `LibraryRequest.Operation` and `LibraryRequest.Codec` go through
+  `TypeOperations`, which a provider exposing types reuses:
+  - constructors use `DataConstr`;
+  - projections use the Java field-access lowering;
+  - equality follows Java `equals` semantics;
+  - encoders use `wrapEncode` and strict decoders use `StrictBoundaryGenerator`;
+  - MATCH and BOUNDARY are permissions rather than terms.
+- **Opacity and deduplication.** Imported types are now opaque per operation: producer
+  PIR can `DataMatch` or `DataConstr` an imported type only if its description approves
+  MATCH or CONSTRUCT. Identical definitions requested in separate groups are linked once.
+- **Capabilities:** `library.request.operation`, `library.request.codec` and
+  `library.type-operations.1`. `LibraryType.REPRESENTATION_REVISION` is 1.
+- **`TypeOperationsTest` (11 tests) covers:**
+  - the operation audit for custom and ledger types, including `Value`, `TxOut`,
+    `Credential` and `PubKeyHash`;
+  - record round trips and the fixed encoding `Quote(5, true) = Constr 0 [I 5, Constr 1 []]`;
+  - strict decoding rejecting a wrong tag, wrong arity, extra fields, nested kinds and
+    Bool tags;
+  - sum construction, matching and decoding;
+  - parity of equality and projection with the Java library's own `equals` and accessor
+    methods;
+  - a ledger `Credential` encoding identical to `julc-ledger-api` `toPlutusData`;
+  - `List Quote` and `Map Bytes Int` codecs;
+  - special layouts staying opaque in every form;
+  - rejection of boundaries that contain `Value`, and of incompatible nominal layouts;
+  - cross-group deduplication.
+- **Compatibility:** an unmodified DSL-consumer suite built against this snapshot gives
+  84/86, where the 2 failures are its pinned-version string check. This matches the
+  baseline, so the API is compatible.
+- **Regression runs** (fresh): `julc-compiler` 1877/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 5 (#181)
+
+- **Repository fact recorded before implementation:** no generic on-chain library method
+  existed, and the Java compiler rejected method type variables. The accepted plan adds
+  specialization-only support, proven with a real Java library source compiled by the
+  real compiler. It adds no public stdlib API.
+- **Compiler changes:**
+  - `TypeResolver` gains a scoped type-variable environment, checked first in
+    `resolveClassType` and `resolveNameToType`. It is bound and restored in `finally`.
+  - `LibraryCompiler` registers generic static methods as templates and does not
+    compile them for Java callers. `LibraryMethodRegistry` rejects a Java call to a
+    template with an explicit diagnostic.
+  - `LibraryCompiler.compileSpecialization` compiles one generic method as an ordinary
+    method of its class, with its type variables bound. It returns the generator's
+    collected errors instead of dropping them.
+- **Pre-existing issue found (out of scope).** Ordinary library compilation ignores
+  collected generator errors, so an unresolved call in a library method compiles to a
+  runtime `Error` with no diagnostic. It is reported separately. Specialization checks
+  the collected errors.
+- **Neutral API:**
+  - `LibraryScheme`: stable identity, ordered source parameters with `Reference.variable`,
+    result, `DATA_ENCODABLE` type parameters and target.
+  - `LibraryProvider.schemes(module)`.
+  - `LibraryRequest.Instantiate`.
+  - `SpecializationKey`: content hash including the compiler version, identity, nominal
+    type arguments, representation and API revisions, and target profile.
+  - Generic methods do not appear in `describe`, so revision-1 consumers are unaffected;
+    `unsupportedExports` explains how to instantiate them.
+- **Specialization:**
+  - It checks the substituted source signature against the compiled representation.
+  - It renames self-recursion to the specialization binding and links non-generic
+    dependencies.
+  - It rejects bounds, wildcards, raw or ill-formed type arguments, variables, `Unit`,
+    unknown types, template-to-template calls and arity mismatches with JULC0051.
+- **`GenericExportsTest` (9 tests):**
+  - schemes, including a backward-compatible `describe`;
+  - `firstOr` at Int and Bytes;
+  - `pair<Bool>` encoding its elements as `Constr 1`/`Constr 0`, which erasure to Data
+    would not;
+  - `contains` equality at Int and Bytes;
+  - self-recursive `count` at a record type, plus dependency closure;
+  - distinct keys for the `Price` and `Quantity` newtypes despite equal representations;
+  - deduplication within a group and across isolated providers, and a new key when the
+    content changes;
+  - key sensitivity to every identity input;
+  - arguments captured once under partial application (a single trace);
+  - invalid instantiations;
+  - a Java validator calling a template is rejected, while the same library's concrete
+    methods still compile for Java.
+- **Java byte stability:** all 86 compiled artifacts from the 43 external example
+  validators are byte-identical to `main`.
+- **Compatibility:** the unmodified DSL-consumer suite gives 84/86, matching the
+  baseline.
+- **Regression runs** (fresh): `julc-compiler` 1886/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 6 (#182)
+
+- **`StdlibLibraryProvider`** (`julc-stdlib`) describes the programmatic list
+  higher-order functions `map`, `filter`, `any`, `all`, `find` and `foldl` as schemes.
+  A `Function[a,b]` reference expresses the function arguments.
+  - Each instantiation materializes a closed lambda over reserved `#julc-arg$i`
+    parameters wrapped around the existing `PirHofBuilders`. Producer terms are never
+    placed under builder binders, and arguments are evaluated once, strictly, and left
+    to right.
+  - Julc-generated adapters decode Data list elements for the typed function argument
+    and encode results.
+  - Nominal element types resolve against the bundled ledger descriptions and any
+    descriptions supplied at construction.
+- **`TypeReferences`** is now the single reference-to-representation mapping, and
+  `LibraryTypeDescriptions` delegates to it.
+- **Target checks:** import groups record the target they were materialized for, and
+  `ProgramUnit` rejects a mismatch with JULC0046.
+- **`LibraryProviders.compose`:**
+  - checks provider revisions before any materialization;
+  - merges type descriptions and named definitions, rejecting conflicting identities;
+  - rejects a symbol described by more than one provider rather than ordering them;
+  - routes each request to its single owner and merges the owners' groups into one.
+- **Capability:** `library.compose`.
+- **`StdlibLibraryProviderTest` (8 tests) covers:**
+  - the catalogue;
+  - every function evaluated with typed functions, including Bool results, the
+    `Optional` result of `find`, and a nominal ledger element type (`TxOutRef`);
+  - freedom from capture for outer names `x`, `acc`, `lst`, `go`, `h` and `x_map`;
+  - left-to-right single evaluation, with the documented empty-list difference from
+    Java (the function argument is still evaluated once);
+  - failure ordering;
+  - Java-source `ListsLib.concat`, with its private `reverse` dependency, and
+    programmatic `map` in one composed group and one program;
+  - duplicate ownership, bad instantiations, provider revisions and target mismatch.
+- **Regression runs** (fresh): `julc-compiler` 1886/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 419/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+- **Whole-stack checks at the final branch:**
+  - `./gradlew build -PskipSigning=true` passes: 11,483 tests in 27 modules, 0 failures,
+    530 skipped.
+  - The unmodified DSL-consumer suite gives 84/86, matching the baseline.
+  - The revision-2 compilation of that suite, with imports instead of inlined libraries,
+    accepts all 68 programs (0 rejected), and all 54 function programs evaluate
+    identically to revision 1.
+
+### Milestone 7 (producer-owned type arguments)
+
+- **New code:** the `producerTypes` component of `LibraryRequest.Instantiate`,
+  `TypeReferences.withProducerTypes` and `producerFingerprints`, and the
+  producer-type component of `SpecializationKey`. `JavaLibraryProvider` and
+  `StdlibLibraryProvider` resolve type arguments through them.
+- **`GenericExportsTest` (3 new tests):**
+  - `firstOr`, `count` and `contains` are specialized by the Java compiler at a
+    producer record and a producer sum. Equality follows the constructor encoding.
+  - Producer representations are part of the key: a wider record with the same name
+    gets a new binding, and an isolated provider reproduces the same binding name.
+  - Keys without producer types keep their digest.
+  - Collisions with described types, non-constructor representations and missing
+    producer types are rejected with JULC0051.
+- **`StdlibLibraryProviderTest` (1 new test):** programmatic `any` at a producer record,
+  and rejection without its representation.
+- **Compatibility:**
+  - Requests without producer types use the unchanged two-argument constructor and
+    key digest. Their binding names, and every Java compilation path, are untouched.
+  - The DSL-consumer suite built against this branch instantiates Java-source templates
+    and programmatic exports at its own records and unions.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 420/0/0, `julc-testkit` 193/0/0,
+  `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
+
+### Milestone 8 (typed maps, overloads, map order)
+
+- **`MapOrderTest`:** a Java validator reading a map's first key and value. It fails
+  before the fix and passes after it.
+- **`TypedMapLibTest`:**
+  - the catalogue;
+  - lookup, member, insert-replaces, remove, size, isEmpty and empty at `Bytes`/`Int`;
+  - keys and values in map order, which also fails before the fix;
+  - a producer record used as a key.
+- **`LibraryOverloadTest`:**
+  - `ByteStringLib` is described, with `integerToByteString` exported once, and an
+    `integerToByteString`/`byteStringToInteger` round trip evaluates;
+  - a class with conflicting overloads is unsupported while another class in the same
+    provider stays available (superseded by the ADR-060 merge: now JULC0054).
+- **`NeutralBackendTest`:** its overload case now expects per-class unsupported exports
+  instead of a provider failure (superseded by the ADR-060 merge: now JULC0054).
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 193/0/0,
+  `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
+
+### Milestone 9 (schema-driven test data)
+
+- **`DataGeneratorsTest`** (julc-testkit, 11 tests):
+  - **Validity:** values of a record, a sum with sparse tags, nested
+    maps/lists/optionals, `Data`, unit and two recursive types pass
+    `StrictBoundaryGenerator`'s check when evaluated on the VM. So does every
+    shrink candidate.
+  - **Determinism:** a seed reproduces values and whole runs.
+  - **Recursion:** size 0 yields the shallowest values, and recursive values stay
+    bounded at size 1000.
+  - **Constraints:** map keys are distinct even for `Bool` keys, and ranges and
+    fixed lengths hold under generation and shrinking.
+  - **Shrinking** reaches minimal counterexamples:
+    - `x < 100` shrinks to `100`;
+    - a list whose sum reaches 10 shrinks to one that sums to exactly 10;
+    - a tree with a big leaf shrinks to that leaf alone;
+    - two arguments shrink independently.
+  - **Failures and rejections:** exceptions count as failures. Overrides apply by
+    name and by id. Pairs, arrays, functions, native values and endless recursive
+    types are rejected.
+- **`SchemaArbitrariesTest`** (julc-testkit-jqwik, 6 tests): jqwik-generated records,
+  recursive types and a `ValidatorAbi`'s datum, redeemers and parameters pass the
+  same strict check. Map keys are distinct, overrides replace named types, and
+  unsupported types and a missing datum are rejected.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 204/0/0,
+  `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 10 (arrays in library signatures)
+
+- **`TypedArrayLibTest`** (julc-stdlib, 6 tests):
+  - the catalogue is generic, and `get` takes an `Array` reference;
+  - `fromList`, `get` and `length` at `Int` and `Bytes` evaluate and decode their
+    elements;
+  - indexing at `length` or `-1` fails evaluation;
+  - a producer-owned record is an element type;
+  - a Java library whose methods take and return `JulcArray<BigInteger>` is
+    described, linked and evaluated;
+  - `Array` is not Data-encodable and needs exactly one type argument.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 432/0/0, `julc-testkit` 204/0/0,
+  `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Merge with `main` (ADR-060)
+
+The stack was based on `c95ee610`; `main` meanwhile gained ADR-060 (generated binder
+namespace), on-chain overload rejection and per-class import scoping. Merging `main`
+reconciles the two as ADR-060's Risks section anticipated:
+
+- **Binder names.** The backend's `$julc$…` binders become `#julc-…` with the rest of the
+  name kept (`ValidatorCompiler`, `BoundaryPrograms`, `StdlibLibraryProvider`). The
+  `TypeOperations` codec parameters become `#value`, `#left`, `#right`, `#field<i>` and
+  `#data`. `projectPairs` names its recursion with `PirHelpers.hygienicName`, because the
+  receiver is applied inside it. Specialization definitions are named
+  `#<symbol>#<digest>` in both providers. Producers still receive these names only through
+  `binding(request)`; the digest and its key are unchanged.
+- **Reservations.** `PirVerifier` keeps rejecting producer binders that start with `$julc$`
+  or contain `#`, and still runs only on producer definitions, before linking. Import
+  definition names starting with `#julc-` are rejected, as `$julc$` names were, so a
+  provider cannot shadow a backend binder.
+- **Overloads.** See "Typed maps, library overloads and map order": overloads that compile to
+  different code are rejected with JULC0054 by every frontend.
+- **Library specialization.** `LibraryCompiler.compileSpecialization` follows the library
+  method loop on `main`: per-class `ImportResolver`, `SymbolTable.declareMethod`, and no
+  entry methods (JULC0056).
+- **Bytes.** With the map-order fix reverted, the merge leaves every row of the ADR-060
+  snapshot (1,432 rows) and every external example artifact (43 validators, 4 levels, with
+  and without source maps) byte-identical to `main`. With the fix, optimized artifacts
+  without source maps change only for the 2 validators that call `keys()`/`values()`.
+  `NONE` and source-map artifacts of 20 external validators also change, because they keep
+  unused library methods. In the ADR-060 snapshot the same applies to the 22 hygiene
+  validators, which import `MapLib`; `Adr060ByteSnapshotTest` lists those rows as explained.
+
+### Review of the merged PR
+
+An independent review of `2822ad8a` found five defects in functionality this stack adds. It
+found no change to the existing Java or revision-1 compilation paths. Each fix has a
+regression test that fails without it.
+
+- **Type-variable scope.** `compileSpecialization` resolved static fields and sibling
+  signatures with the method's type variables bound. A method type variable `T` therefore
+  replaced a record `T` in a sibling's return type, and the specialization miscompiled
+  (`EqualsInteger` over record Data). Class members are now resolved and their initializers
+  compiled before the type variables are bound.
+- **`Var` refinement.** A reference annotated with a record over a Data binder agreed, but
+  synthesized `Data`, so a valid `DataMatch` was rejected. It now synthesizes the more
+  specific of the two types, so a Data annotation also cannot hide what a binder is known
+  to hold.
+- **`Optional` payloads.** The payload was checked only for being Data-represented. It now
+  has to agree with the element's raw view.
+- **Pattern-variable scope.** The verifier let a pattern variable shadow a same-named field
+  binding, the reverse of lowering. It now binds the pattern variable first, so a term
+  that would fail at runtime is rejected.
+- **Schema test data.** A map nested in a recursive type built its children before the depth
+  check and overflowed the stack. The depth check now comes first, as for lists.
+
+Remaining limitation: `PirLinker` requires recursive definitions to be lambdas, but
+`LibraryCompiler` wraps a method body in `Let`s for its class's static fields. A recursive
+library method in a class with static fields therefore cannot be exported through a provider
+(JULC0050). This predates the stack and also affects revision-1 `materialize`. Java validators
+are unaffected. The failure happens at compile time; no wrong script is produced.

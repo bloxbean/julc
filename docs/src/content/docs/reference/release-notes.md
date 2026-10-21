@@ -3,6 +3,22 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
+
+On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
+`JulcAssocMap` returns them in map order. A test run off chain could therefore pass while
+the deployed script read a different first key. Both now return map order on chain too.
+
+- **Script bytes change** for validators that call `keys()` or `values()`, directly or
+  through `MapLib.keys`/`MapLib.values`. A new hash means a new script address or policy
+  ID. Keep the previously compiled script to spend UTxOs locked at the old address.
+- **Builds that keep unused library methods** also change when they import `MapLib`:
+  optimization level `NONE`, and any level with source maps enabled. Optimized builds
+  without source maps are unchanged unless they use `keys()`/`values()`.
+- **Results change** only for logic that depends on position, such as `keys().head()` or
+  comparing against an ordered list. Membership checks, `all`/`any` and totals give the
+  same answer either way.
+
 ## Upcoming preview: Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
 
 `PlutusDataCborDecoder` now accepts exactly the CBOR that plutus `decodeData` accepts.

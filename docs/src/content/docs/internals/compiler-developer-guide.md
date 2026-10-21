@@ -1577,8 +1577,8 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 | `containsKey(key)` | LetRec search | BoolType |
 | `size()` | `generateListLength(UnMapData(map))` | IntegerType |
 | `isEmpty()` | `NullList(map)` | BoolType |
-| `keys()` | Foldl-based key extraction | ListType(keyType) |
-| `values()` | Foldl-based value extraction | ListType(valueType) |
+| `keys()` | Recursive key extraction, in map order | ListType(keyType) |
+| `values()` | Recursive value extraction, in map order | ListType(valueType) |
 | `insert(k, v)` | `MkCons(MkPairData(k, v), map)` | same MapType |
 | `delete(k)` | LetRec filtering | same MapType |
 

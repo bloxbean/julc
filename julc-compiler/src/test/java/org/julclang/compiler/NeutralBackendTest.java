@@ -197,20 +197,20 @@ class NeutralBackendTest {
     }
 
     @Test
-    void rejectsOverloadedExports() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () ->
-                        new JavaLibraryProvider(
-                                List.of(
-                                        """
-                                        @OnchainLibrary class Overloaded {
-                                            public static long f(long x) { return x; }
-                                            public static long f(long x, long y) { return x; }
-                                        }
-                                        """),
-                                null,
-                                new CompilerOptions()));
+    void rejectsOverloadsThatCannotBeToldApart() {
+        // Overloads that compile to different code are rejected, as for Java validators (JULC0054, ADR-060).
+        var e = assertThrows(CompilerException.class, () ->
+                new JavaLibraryProvider(
+                        List.of(
+                                """
+                                @OnchainLibrary class Overloaded {
+                                    public static long f(long x) { return x; }
+                                    public static long f(long x, long y) { return x; }
+                                }
+                                """),
+                        null,
+                        new CompilerOptions()));
+        assertEquals("JULC0054", e.diagnostics().getFirst().code());
     }
 
     @Test

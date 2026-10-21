@@ -4,24 +4,47 @@ import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 
 import org.julclang.compiler.backend.*;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 /** Java implementation details stay behind LibraryProvider. No JVM library evaluation. */
 public final class JavaLibraryProvider implements LibraryProvider {
+    /** A generic method, specialized on request; {@code scheme} is null when it cannot be described. */
+    private record Template(ClassOrInterfaceDeclaration owner, MethodDeclaration method, LibraryScheme scheme) {}
+
+    /** One compiled specialization. */
+    private record Specialized(String name, PirTerm body, PirType type) {}
+
+    private final CompilationContext context;
+    private final TypeResolver resolver;
     private final LibraryMethodRegistry registry;
+    private final StdlibLookup lookup;
+    private final Set<String> known;
+    private final LibraryTypeDescriptions descriptions;
+    private final String contentHash;
     private final Map<String, LibraryExport> exports = new LinkedHashMap<>();
+    private final Map<String, Template> templates = new LinkedHashMap<>();
+    private final Map<SpecializationKey, Specialized> specializations = new HashMap<>();
     private final Map<String, String> unsupported = new LinkedHashMap<>();
+    /** {@code Class.method} names declared more than once. */
+    private final Set<String> overloaded = new LinkedHashSet<>();
     private final Map<String, LibraryType> types;
     private final Map<String, PirType> definitions;
 
     public JavaLibraryProvider(List<String> sources, StdlibLookup lookup, CompilerOptions options) {
-        var context = CompilationContext.resolve(options);
+        context = CompilationContext.resolve(options);
+        this.lookup = lookup;
+        contentHash = contentHash(sources);
         var parser =
                 new JavaParser(
                         new ParserConfiguration()
@@ -39,7 +62,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
             String identity = declaration.getFullyQualifiedName().orElseThrow();
             if (!owners.add(identity)) throw new IllegalArgumentException("Duplicate library type ownership: " + identity);
         }
-        var resolver = new TypeResolver();
+        resolver = new TypeResolver();
         var ledgerSources = LedgerSourceLoader.loadLedgerSources(
                                 getClass().getClassLoader(),
                                 source -> parser.parse(source).getResult().orElseThrow());
@@ -50,10 +73,10 @@ public final class JavaLibraryProvider implements LibraryProvider {
         new TypeRegistrar().registerAll(units, resolver);
         var allSources = new ArrayList<>(ledgerSources);
         allSources.addAll(units);
-        var descriptions = new LibraryTypeDescriptions(allSources, resolver);
+        descriptions = new LibraryTypeDescriptions(allSources, resolver);
         types = descriptions.types();
         definitions = Map.copyOf(resolver.namedDefinitions());
-        var known = new LinkedHashSet<>(resolver.allRegisteredFqcns());
+        known = new LinkedHashSet<>(resolver.allRegisteredFqcns());
         known.addAll(TypeResolver.ledgerHashFqcns());
         if (lookup != null) known.addAll(lookup.registeredClassNames());
         for (var cu : units)
@@ -66,31 +89,34 @@ public final class JavaLibraryProvider implements LibraryProvider {
                             "Only @OnchainLibrary sources can be exported: " + fqcn);
                 var names = new HashSet<String>();
                 for (var method : cls.getMethods())
-                    if (method.isStatic()) {
-                        if (!names.add(method.getNameAsString()))
-                            throw new IllegalArgumentException(
-                                    "Ambiguous overloaded library export: "
-                                            + fqcn
-                                            + "."
-                                            + method.getNameAsString());
-                    }
+                    if (method.isStatic() && !names.add(method.getNameAsString()))
+                        overloaded.add(fqcn + "." + method.getNameAsString());
             }
         registry = LibraryMethodRegistry.forCompilation(context);
         new LibraryCompiler(context).compile(units, resolver, registry, lookup, known);
         for (var cu : units) {
             for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+                if (cls.isInterface()) continue;
                 descriptions.scope(cls);
+                String conflict = overloadConflict(cls);
+                var exported = new HashSet<String>();
                 for (var method : cls.getMethods()) {
                     if (!method.isPublic() || !method.isStatic() || cls.isInterface()) continue;
                     var symbol =
                             cls.getFullyQualifiedName().orElseThrow()
                                     + "."
                                     + method.getNameAsString();
-                    var compiled = registry.lookupMethod(symbol).orElseThrow();
-                    if (!method.getTypeParameters().isEmpty()) {
-                        unsupported.put(symbol, "Polymorphic Java methods require provider specialization, which is not yet supported");
+                    if (conflict != null) {
+                        unsupported.put(symbol, conflict);
                         continue;
                     }
+                    // Identical overloads compile to one method: export it once.
+                    if (!exported.add(symbol)) continue;
+                    if (!method.getTypeParameters().isEmpty()) {
+                        describeTemplate(cls, method, symbol);
+                        continue;
+                    }
+                    var compiled = registry.lookupMethod(symbol).orElseThrow();
                     try {
                         var parameters = method.getParameters().stream().map(p -> descriptions.reference(p.getType())).toList();
                         var result = descriptions.reference(method.getType());
@@ -112,7 +138,73 @@ public final class JavaLibraryProvider implements LibraryProvider {
         }
     }
 
+    /**
+     * Library methods are registered and called by {@code Class.method}. {@link LibraryCompiler}
+     * already rejects overloads that compile to different code (JULC0054, ADR-060); an export
+     * also needs one source description, so every overload of a name must have the same source
+     * signature (for example {@code long} and {@code BigInteger} parameters, both {@code Int}).
+     * Otherwise every export of the class is unsupported; other classes are unaffected.
+     *
+     * @return the reason the class cannot be exported, or null
+     */
+    private String overloadConflict(ClassOrInterfaceDeclaration cls) {
+        String fqcn = cls.getFullyQualifiedName().orElseThrow();
+        var signatures = new LinkedHashMap<String, String>();
+        for (var method : cls.getMethods()) {
+            if (!method.isStatic() || !overloaded.contains(fqcn + "." + method.getNameAsString())) continue;
+            String signature;
+            try {
+                signature = String.join(",", method.getParameters().stream()
+                        .map(p -> descriptions.reference(p.getType()).canonical()).toList())
+                        + "->" + descriptions.reference(method.getType()).canonical()
+                        + (method.getTypeParameters().isEmpty() ? "" : "<generic>");
+            } catch (IllegalArgumentException e) {
+                signature = "unsupported:" + method.getDeclarationAsString();
+            }
+            var previous = signatures.putIfAbsent(method.getNameAsString(), signature);
+            if (previous != null && !previous.equals(signature))
+                return "Ambiguous overloaded library export " + fqcn + "." + method.getNameAsString()
+                        + ": overloads with different signatures cannot be told apart on-chain; give them distinct names";
+        }
+        return null;
+    }
+
+    /**
+     * Describe a generic method as a scheme (ADR-059, #181). Bounded type parameters,
+     * wildcards and raw containers have no supported substitution and stay unsupported.
+     */
+    private void describeTemplate(ClassOrInterfaceDeclaration cls, MethodDeclaration method, String symbol) {
+        var names = method.getTypeParameters().stream().map(p -> p.getNameAsString()).toList();
+        var bounded = method.getTypeParameters().stream().filter(p -> !p.getTypeBound().isEmpty()).findFirst();
+        if (bounded.isPresent()) {
+            unsupported.put(symbol, "Type parameter " + bounded.get() + " has a bound; generic library "
+                    + "methods support only unbounded type parameters");
+            templates.put(symbol, new Template(cls, method, null));
+            return;
+        }
+        try {
+            descriptions.variables(Set.copyOf(names));
+            var parameters = method.getParameters().stream().map(p -> descriptions.reference(p.getType())).toList();
+            var result = descriptions.reference(method.getType());
+            var typeParameters = names.stream().map(name -> new LibraryScheme.TypeParameter(name,
+                    Set.of(LibraryScheme.Constraint.DATA_ENCODABLE))).toList();
+            String identity = symbol + "<" + String.join(",", names) + ">("
+                    + String.join(",", parameters.stream().map(LibraryType.Reference::canonical).toList())
+                    + ")" + result.canonical();
+            var scheme = new LibraryScheme(identity, symbol, typeParameters, parameters, result, context.target());
+            templates.put(symbol, new Template(cls, method, scheme));
+            unsupported.put(symbol, "Polymorphic Java method: describe it with schemes(module) and "
+                    + "instantiate it with LibraryRequest.Instantiate (ADR-059)");
+        } catch (IllegalArgumentException e) {
+            unsupported.put(symbol, e.getMessage());
+            templates.put(symbol, new Template(cls, method, null));
+        } finally {
+            descriptions.variables(Set.of());
+        }
+    }
+
     @Override public Map<String, LibraryType> types() { return types; }
+    @Override public int revision() { return BackendContract.REVISION_2; }
     @Override public Map<String, PirType> namedDefinitions() { return definitions; }
     @Override public Map<String, String> unsupportedExports() { return Collections.unmodifiableMap(unsupported); }
 
@@ -120,6 +212,15 @@ public final class JavaLibraryProvider implements LibraryProvider {
     public List<LibraryExport> describe(String module) {
         return exports.values().stream()
                 .filter(e -> e.symbol().substring(0, e.symbol().lastIndexOf('.')).equals(module))
+                .toList();
+    }
+
+    @Override
+    public List<LibraryScheme> schemes(String module) {
+        return templates.values().stream()
+                .map(Template::scheme)
+                .filter(Objects::nonNull)
+                .filter(s -> s.symbol().substring(0, s.symbol().lastIndexOf('.')).equals(module))
                 .toList();
     }
 
@@ -133,6 +234,149 @@ public final class JavaLibraryProvider implements LibraryProvider {
         PirTerm term = PirLinker.link(reachable, new PirTerm.Var(symbol, root.type()));
         PirClosure.check(term);
         return term;
+    }
+
+    /**
+     * Materialize the requested exports and their private dependencies as one group, so a
+     * dependency shared by several exports is linked once (ADR-059).
+     */
+    @Override
+    public LibraryImports materialize(List<LibraryRequest> requests) {
+        var reachable = new LinkedHashMap<String, PirTerm>();
+        var bindings = new LinkedHashMap<LibraryRequest, LibraryImports.Binding>();
+        for (var request : requests) {
+            switch (request) {
+                case LibraryRequest.Export export -> {
+                    var described = exports.get(export.symbol());
+                    if (described == null)
+                        throw new BackendException(DiagnosticCodes.BACKEND_UNSUPPORTED_REQUEST,
+                                export.symbol(), export.symbol(),
+                                unsupported.getOrDefault(export.symbol(), "no public on-chain export with this symbol"));
+                    gather(export.symbol(), reachable);
+                    bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
+                }
+                case LibraryRequest.Instantiate instantiate -> {
+                    var specialized = specialize(instantiate);
+                    for (String dependency : PirClosure.freeVariables(specialized.body()))
+                        if (!dependency.equals(specialized.name())) gather(dependency, reachable);
+                    reachable.putIfAbsent(specialized.name(), specialized.body());
+                    bindings.put(request, new LibraryImports.Binding(specialized.name(), specialized.type()));
+                }
+                case LibraryRequest.Operation operation -> bind(reachable, bindings, request,
+                        new TypeOperations(types, definitions).operation(operation));
+                case LibraryRequest.Codec codec -> bind(reachable, bindings, request,
+                        new TypeOperations(types, definitions).codec(codec));
+            }
+        }
+        return new LibraryImports(JavaLibraryProvider.class.getName(), revision(), context.target(),
+                reachable, bindings, definitions, types);
+    }
+
+    /**
+     * Compile the actual generic method with its type parameters bound to the requested
+     * concrete types (ADR-059, #181). Nothing is erased to Data: the specialization is
+     * ordinary Java-source compilation at those types. Results are memoized by
+     * {@link SpecializationKey} within this provider instance.
+     */
+    private Specialized specialize(LibraryRequest.Instantiate request) {
+        var template = templates.get(request.symbol());
+        if (template == null)
+            throw unsupported(request, unsupported.getOrDefault(request.symbol(), "no generic export with this symbol"));
+        var scheme = template.scheme();
+        if (scheme == null) throw unsupported(request, unsupported.get(request.symbol()));
+        if (request.typeArguments().size() != scheme.typeParameters().size())
+            throw unsupported(request, scheme.identity() + " takes " + scheme.typeParameters().size()
+                    + " type arguments, not " + request.typeArguments().size());
+        Map<String, LibraryType> visible;
+        try {
+            visible = TypeReferences.withProducerTypes(types, request);
+        } catch (IllegalArgumentException e) {
+            throw unsupported(request, e.getMessage());
+        }
+        var substitution = new LinkedHashMap<String, LibraryType.Reference>();
+        var environment = new LinkedHashMap<String, PirType>();
+        for (int i = 0; i < request.typeArguments().size(); i++) {
+            var argument = request.typeArguments().get(i);
+            var parameter = scheme.typeParameters().get(i);
+            if (argument.isGeneric())
+                throw unsupported(request, "type arguments must be concrete, not " + argument.canonical());
+            PirType representation;
+            try {
+                representation = TypeReferences.representation(argument, visible);
+            } catch (IllegalArgumentException e) {
+                throw unsupported(request, "type argument " + argument.canonical() + " is not a supported type: "
+                        + e.getMessage());
+            }
+            if (!TypeReferences.dataEncodable(representation))
+                throw unsupported(request, "type argument " + argument.canonical() + " for " + parameter.name()
+                        + " does not satisfy " + LibraryScheme.Constraint.DATA_ENCODABLE);
+            substitution.put(parameter.name(), argument);
+            environment.put(parameter.name(), representation);
+        }
+        var key = new SpecializationKey(contentHash, scheme.identity(), request.typeArguments(),
+                LibraryType.REPRESENTATION_REVISION, BackendContract.REVISION, context.target().profileId(),
+                TypeReferences.producerFingerprints(request));
+        var cached = specializations.get(key);
+        if (cached != null) return cached;
+        String name = "#" + request.symbol() + "#" + key.digest();
+        LibraryCompiler.Specialization compiled;
+        try {
+            compiled = new LibraryCompiler(context).compileSpecialization(template.owner(),
+                    template.method(), environment, resolver, registry, lookup, known);
+        } catch (CompilerException e) {
+            throw unsupported(request, "specialization does not compile: " + e.getMessage());
+        }
+        if (!compiled.errors().isEmpty())
+            throw unsupported(request, "specialization does not compile: " + compiled.errors().stream()
+                    .map(d -> d.message()).toList());
+        PirType signature = TypeReferences.representation(scheme.result().substitute(substitution), visible);
+        for (int i = scheme.parameters().size() - 1; i >= 0; i--)
+            signature = new PirType.FunType(
+                    TypeReferences.representation(scheme.parameters().get(i).substitute(substitution), visible),
+                    signature);
+        if (!signature.equals(compiled.type()))
+            throw unsupported(request, "the specialized source signature disagrees with its compiled representation");
+        // Recursive calls were compiled against Class.method at the specialized type.
+        var body = PirSubstitution.substitute(compiled.body(), request.symbol(),
+                new PirTerm.Var(name, compiled.type()));
+        var specialized = new Specialized(name, body, compiled.type());
+        specializations.put(key, specialized);
+        return specialized;
+    }
+
+    /** SHA-256 of the compiler version and every source, length-prefixed in the supplied order. */
+    private static String contentHash(List<String> sources) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            for (String part : prepend(CompilerVersion.VERSION, sources)) {
+                var bytes = part.getBytes(StandardCharsets.UTF_8);
+                digest.update(Integer.toString(bytes.length).getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) ':');
+                digest.update(bytes);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static List<String> prepend(String first, List<String> rest) {
+        var all = new ArrayList<String>();
+        all.add(first);
+        all.addAll(rest);
+        return all;
+    }
+
+    private static BackendException unsupported(LibraryRequest request, String detail) {
+        return new BackendException(DiagnosticCodes.BACKEND_UNSUPPORTED_REQUEST, request.describe(),
+                request.describe(), detail);
+    }
+
+    private static void bind(Map<String, PirTerm> definitions,
+                             Map<LibraryRequest, LibraryImports.Binding> bindings,
+                             LibraryRequest request, TypeOperations.Materialized materialized) {
+        definitions.putIfAbsent(materialized.name(), materialized.term());
+        bindings.put(request, new LibraryImports.Binding(materialized.name(), materialized.type()));
     }
 
     private void gather(String symbol, Map<String, PirTerm> found) {

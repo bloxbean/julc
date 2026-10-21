@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -28,6 +29,17 @@ class Adr060ByteSnapshotTest {
 
     /** Row id (or id prefix ending in '-') to the reason its bytes differ from the base commit. */
     static final Map<String, String> EXPLAINED = new LinkedHashMap<>();
+
+    static {
+        // The hygiene validators import MapLib, whose unused methods stay in the program at NONE
+        // and with source maps; optimized builds without source maps drop them and keep their bytes.
+        for (var entry : Adr060Corpus.entries()) {
+            if (!entry.id().startsWith("hygiene-")) continue;
+            for (var row : List.of("NONE-false", "NONE-true", "BASELINE-true", "PV11_SAFE-true", "PV11_COSTED-true"))
+                EXPLAINED.put(entry.id() + "-" + row,
+                        "MapLib.keys/values lower JulcMap keys()/values() with a right fold that keeps map order");
+        }
+    }
 
     @Test
     void generatedNamesDoNotChangeBytes() throws IOException {
