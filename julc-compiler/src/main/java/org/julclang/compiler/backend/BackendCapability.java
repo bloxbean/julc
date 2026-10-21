@@ -73,6 +73,9 @@ public record BackendCapability(String id) implements Comparable<BackendCapabili
     public static final BackendCapability LIBRARY_REQUEST_INSTANTIATE =
             new BackendCapability("library.request.instantiate");
 
+    /** Deterministic provider composition ({@link LibraryProviders#compose}). */
+    public static final BackendCapability LIBRARY_COMPOSITION = new BackendCapability("library.compose");
+
     public BackendCapability {
         Objects.requireNonNull(id, "id");
         if (!FORMAT.matcher(id).matches())

@@ -299,6 +299,103 @@ with schemes. It starts with the list higher-order functions (`map`, `filter`, `
 `LibraryProviders.compose` owns symbols deterministically. It rejects duplicate symbols
 and conflicting type identities, and checks provider revisions before materialization.
 
+### Producer-owned type arguments (follow-up to #181/#182)
+
+A generic export can be instantiated at a nominal type that the producer defines and the
+provider does not describe, such as a DSL record or union.
+
+- **Request:** `LibraryRequest.Instantiate` carries `producerTypes`, the representations
+  of such types keyed by the reference names used in its type arguments. The existing
+  two-argument constructor means "none".
+- **Validation:** each producer type must be a constructor-encoded record or sum. A
+  name the provider already describes is rejected (JULC0051) rather than shadowed.
+- **Resolution:** providers resolve type arguments against their own descriptions plus
+  the request's producer types, through `TypeReferences.withProducerTypes`. The same
+  path serves the Java-source templates (`JavaLibraryProvider`) and the programmatic
+  catalogue (`StdlibLibraryProvider`).
+- **Keys:** `SpecializationKey` gains the producer representations. Two producer types
+  with one name but different representations never share an implementation. Keys
+  without producer types keep their historical digests, so existing binding names and
+  script bytes are unchanged.
+
+### Typed maps, library overloads and map order (follow-up)
+
+- **Typed maps.** `TypedMapLib` (julc-stdlib) adds generic templates over
+  `JulcMap<K,V>`: `empty`, `lookup`, `member`, `insert`, `remove`, `keys`, `values`,
+  `size` and `isEmpty`. Frontends instantiate them at their key and value types,
+  including producer-owned types.
+  - Each template is a one-line call to the corresponding `JulcMap` method, so it
+    compiles through the same `TypeMethodRegistry` lowering that Java validators use.
+    Java and DSL map semantics cannot diverge.
+  - `insert` removes an existing binding first, keeping one entry per key.
+- **Overloads.** Library methods are registered and called by `Class.method`, so an
+  overload used to abort the whole provider.
+  - Overloads whose source signatures agree now compile to one method and are
+    exported once. `ByteStringLib.integerToByteString`, with `long` and `BigInteger`
+    variants, is an example. This makes `ByteStringLib` importable.
+  - Overloads with different signatures make only their own class unsupported, with
+    an explanation. Other classes are unaffected.
+- **Map order.** On-chain `JulcMap.keys()` and `values()` used a left fold with cons,
+  so they returned the entries in reverse. The off-chain `JulcAssocMap` keeps map
+  order. The lowering now uses a right fold, matching off-chain behavior.
+  - This correctness fix changes the script bytes of Java programs that call
+    `keys()` or `values()`. Nothing else changes.
+
+### Schema-driven test data (follow-up)
+
+A producer knows each boundary's PIR type: parameters, datums, redeemers, and the
+arguments of its own functions. Test data can therefore be derived from those types
+instead of written by hand for each type.
+
+- **`DataGenerators.forType`** (julc-testkit, package `property`) derives a seeded
+  `DataGenerator` from a PIR type and its named types.
+  - Every value is a valid Data encoding of the type: it passes the same
+    `StrictBoundaryGenerator` check that guards validator boundaries. Map keys are
+    distinct.
+  - Values grow with a size parameter.
+  - Shrinking is type-directed. It shortens lists, moves integers toward 0, moves
+    to earlier constructors and uses recursive subterms (`Cons x rest` → `rest`).
+    Every shrink candidate is still a valid value of the type.
+  - Callers can replace any named type's generator by stable id or name, for
+    example with 28-byte key hashes.
+  - Types without a Data encoding are rejected when the generator is built: pairs,
+    arrays, functions and native values.
+- **`PropertyCheck`** runs a property over generated arguments from one seed.
+  Sizes grow from 0 to a maximum. The first failure is shrunk greedily, one argument
+  at a time, and the result reports the seed that reproduces it. It uses only
+  `SplittableRandom` and no reflection, so producers can embed it in native tools.
+- **`SchemaArbitraries`** (julc-testkit-jqwik) is the jqwik counterpart for JUnit
+  properties:
+  - `forType` gives the same encodings as jqwik `Arbitrary`s, with jqwik's own
+    shrinking and edge cases;
+  - `redeemer`, `datum` and `parameters` read the types from a `ValidatorAbi`.
+- **Recursive types.** `DataShapes` computes each type's *height*: the least number
+  of named references in its smallest value. Recursive types are unrolled to a
+  size-dependent depth. Past that depth only the shallowest constructors are used,
+  and lists, maps and optionals are empty. The height strictly decreases at every
+  reference, so every value is finite. A recursive type with no finite value is
+  rejected.
+
+### Arrays in library signatures (follow-up)
+
+`JulcArray<T>` lowers to `ArrayType`, a PV11 (CIP-138) array of Data-encoded
+elements. The library contract could not name it: a Java library method that took or
+returned an array was unsupported, and generic code could not be instantiated over
+arrays.
+
+- **Reference.** `LibraryTypeDescriptions` maps `JulcArray<T>` to the reference
+  `Array<T>`, and `TypeReferences` represents it as `ArrayType`.
+  - Arrays have no Data encoding, so they are not `DATA_ENCODABLE`. They cannot
+    instantiate a constrained type variable or pass through a codec.
+  - The verifier already types the array builtins.
+- **`TypedArrayLib`** (julc-stdlib) adds generic templates: `fromList`
+  (`ListToArray`), `get` (`IndexArray` with the element decode) and `length`
+  (`LengthOfArray`).
+  - They are the three `JulcArray` operations, lowered by the same
+    `TypeMethodRegistry` entries that Java validators use.
+  - Frontends instantiate them at their element types, including producer-owned
+    records.
+
 ## Alternatives rejected
 
 - **Verify inlined library bodies.** Java PIR uses `Data` placeholders, so either every
@@ -579,4 +676,139 @@ build against a locally published snapshot.
   baseline.
 - **Regression runs** (fresh): `julc-compiler` 1886/0/0, `pairCaseTest` 71/0/0,
   `julc-stdlib` 411/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 6 (#182)
+
+- **`StdlibLibraryProvider`** (`julc-stdlib`) describes the programmatic list
+  higher-order functions `map`, `filter`, `any`, `all`, `find` and `foldl` as schemes.
+  A `Function[a,b]` reference expresses the function arguments.
+  - Each instantiation materializes a closed lambda over reserved `$julc$arg$i`
+    parameters wrapped around the existing `PirHofBuilders`. Producer terms are never
+    placed under builder binders, and arguments are evaluated once, strictly, and left
+    to right.
+  - Julc-generated adapters decode Data list elements for the typed function argument
+    and encode results.
+  - Nominal element types resolve against the bundled ledger descriptions and any
+    descriptions supplied at construction.
+- **`TypeReferences`** is now the single reference-to-representation mapping, and
+  `LibraryTypeDescriptions` delegates to it.
+- **Target checks:** import groups record the target they were materialized for, and
+  `ProgramUnit` rejects a mismatch with JULC0046.
+- **`LibraryProviders.compose`:**
+  - checks provider revisions before any materialization;
+  - merges type descriptions and named definitions, rejecting conflicting identities;
+  - rejects a symbol described by more than one provider rather than ordering them;
+  - routes each request to its single owner and merges the owners' groups into one.
+- **Capability:** `library.compose`.
+- **`StdlibLibraryProviderTest` (8 tests) covers:**
+  - the catalogue;
+  - every function evaluated with typed functions, including Bool results, the
+    `Optional` result of `find`, and a nominal ledger element type (`TxOutRef`);
+  - freedom from capture for outer names `x`, `acc`, `lst`, `go`, `h` and `x_map`;
+  - left-to-right single evaluation, with the documented empty-list difference from
+    Java (the function argument is still evaluated once);
+  - failure ordering;
+  - Java-source `ListsLib.concat`, with its private `reverse` dependency, and
+    programmatic `map` in one composed group and one program;
+  - duplicate ownership, bad instantiations, provider revisions and target mismatch.
+- **Regression runs** (fresh): `julc-compiler` 1886/0/0, `pairCaseTest` 71/0/0,
+  `julc-stdlib` 419/0/0, `julc-testkit` 193/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+- **Whole-stack checks at the final branch:**
+  - `./gradlew build -PskipSigning=true` passes: 11,483 tests in 27 modules, 0 failures,
+    530 skipped.
+  - The unmodified DSL-consumer suite gives 84/86, matching the baseline.
+  - The revision-2 compilation of that suite, with imports instead of inlined libraries,
+    accepts all 68 programs (0 rejected), and all 54 function programs evaluate
+    identically to revision 1.
+
+### Milestone 7 (producer-owned type arguments)
+
+- **New code:** the `producerTypes` component of `LibraryRequest.Instantiate`,
+  `TypeReferences.withProducerTypes` and `producerFingerprints`, and the
+  producer-type component of `SpecializationKey`. `JavaLibraryProvider` and
+  `StdlibLibraryProvider` resolve type arguments through them.
+- **`GenericExportsTest` (3 new tests):**
+  - `firstOr`, `count` and `contains` are specialized by the Java compiler at a
+    producer record and a producer sum. Equality follows the constructor encoding.
+  - Producer representations are part of the key: a wider record with the same name
+    gets a new binding, and an isolated provider reproduces the same binding name.
+  - Keys without producer types keep their digest.
+  - Collisions with described types, non-constructor representations and missing
+    producer types are rejected with JULC0051.
+- **`StdlibLibraryProviderTest` (1 new test):** programmatic `any` at a producer record,
+  and rejection without its representation.
+- **Compatibility:**
+  - Requests without producer types use the unchanged two-argument constructor and
+    key digest. Their binding names, and every Java compilation path, are untouched.
+  - The DSL-consumer suite built against this branch instantiates Java-source templates
+    and programmatic exports at its own records and unions.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 420/0/0, `julc-testkit` 193/0/0,
+  `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
+
+### Milestone 8 (typed maps, overloads, map order)
+
+- **`MapOrderTest`:** a Java validator reading a map's first key and value. It fails
+  before the fix and passes after it.
+- **`TypedMapLibTest`:**
+  - the catalogue;
+  - lookup, member, insert-replaces, remove, size, isEmpty and empty at `Bytes`/`Int`;
+  - keys and values in map order, which also fails before the fix;
+  - a producer record used as a key.
+- **`LibraryOverloadTest`:**
+  - `ByteStringLib` is described, with `integerToByteString` exported once, and an
+    `integerToByteString`/`byteStringToInteger` round trip evaluates;
+  - a class with conflicting overloads is unsupported while another class in the same
+    provider stays available.
+- **`NeutralBackendTest`:** its overload case now expects per-class unsupported exports
+  instead of a provider failure.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 193/0/0,
+  `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
+
+### Milestone 9 (schema-driven test data)
+
+- **`DataGeneratorsTest`** (julc-testkit, 11 tests):
+  - **Validity:** values of a record, a sum with sparse tags, nested
+    maps/lists/optionals, `Data`, unit and two recursive types pass
+    `StrictBoundaryGenerator`'s check when evaluated on the VM. So does every
+    shrink candidate.
+  - **Determinism:** a seed reproduces values and whole runs.
+  - **Recursion:** size 0 yields the shallowest values, and recursive values stay
+    bounded at size 1000.
+  - **Constraints:** map keys are distinct even for `Bool` keys, and ranges and
+    fixed lengths hold under generation and shrinking.
+  - **Shrinking** reaches minimal counterexamples:
+    - `x < 100` shrinks to `100`;
+    - a list whose sum reaches 10 shrinks to one that sums to exactly 10;
+    - a tree with a big leaf shrinks to that leaf alone;
+    - two arguments shrink independently.
+  - **Failures and rejections:** exceptions count as failures. Overrides apply by
+    name and by id. Pairs, arrays, functions, native values and endless recursive
+    types are rejected.
+- **`SchemaArbitrariesTest`** (julc-testkit-jqwik, 6 tests): jqwik-generated records,
+  recursive types and a `ValidatorAbi`'s datum, redeemers and parameters pass the
+  same strict check. Map keys are distinct, overrides replace named types, and
+  unsupported types and a missing datum are rejected.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 204/0/0,
+  `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
+  `julc-annotation-processor` 20/0/0.
+
+### Milestone 10 (arrays in library signatures)
+
+- **`TypedArrayLibTest`** (julc-stdlib, 6 tests):
+  - the catalogue is generic, and `get` takes an `Array` reference;
+  - `fromList`, `get` and `length` at `Int` and `Bytes` evaluate and decode their
+    elements;
+  - indexing at `length` or `-1` fails evaluation;
+  - a producer-owned record is an element type;
+  - a Java library whose methods take and return `JulcArray<BigInteger>` is
+    described, linked and evaluated;
+  - `Array` is not Data-encodable and needs exactly one type argument.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 432/0/0, `julc-testkit` 204/0/0,
+  `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
   `julc-annotation-processor` 20/0/0.

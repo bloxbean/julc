@@ -5,6 +5,7 @@ import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.Type;
 import org.julclang.compiler.backend.LibraryType;
+import org.julclang.compiler.backend.TypeReferences;
 import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.ImportResolver;
@@ -135,6 +136,7 @@ final class LibraryTypeDescriptions {
                     || containsSpecial(map.valueType(), specialRepresentations, namedDefinitions, visiting);
             case PirType.OptionalType optional ->
                     containsSpecial(optional.elemType(), specialRepresentations, namedDefinitions, visiting);
+            case PirType.ArrayType array -> containsSpecial(array.elemType(), specialRepresentations, namedDefinitions, visiting);
             default -> false;
         };
     }
@@ -202,41 +204,16 @@ final class LibraryTypeDescriptions {
             case "List", "java.util.List", "JulcList", "org.julclang.core.types.JulcList" -> "List";
             case "Map", "java.util.Map", "JulcMap", "org.julclang.core.types.JulcMap" -> "Map";
             case "Optional", "java.util.Optional" -> "JulcOptional";
+            case "JulcArray", "org.julclang.core.types.JulcArray" -> "Array";
             default -> throw unsupported(type);
         };
-        int arity = switch(mapped) { case "List", "JulcOptional" -> 1; case "Map" -> 2; default -> 0; };
+        int arity = switch(mapped) { case "List", "JulcOptional", "Array" -> 1; case "Map" -> 2; default -> 0; };
         if (args.size() != arity) throw new IllegalArgumentException("Raw or invalid container signature: " + type);
         return ref(mapped, args);
     }
 
     PirType representation(LibraryType.Reference ref) {
-        if (ref.variable()) throw new IllegalArgumentException("Unbound type variable " + ref.name());
-        if (types.containsKey(ref.name())) {
-            if (!ref.arguments().isEmpty())
-                throw new IllegalArgumentException("Nominal type " + ref.name() + " takes no type arguments");
-            return types.get(ref.name()).representation();
-        }
-        var args = ref.arguments();
-        int arity = switch (ref.name()) {
-            case "List", "JulcOptional" -> 1;
-            case "Map" -> 2;
-            default -> 0;
-        };
-        if (args.size() != arity)
-            throw new IllegalArgumentException("Type " + ref.name() + " takes " + arity + " type arguments, not "
-                    + args.size());
-        return switch (ref.name()) {
-            case "Int" -> new PirType.IntegerType();
-            case "Bool" -> new PirType.BoolType();
-            case "String" -> new PirType.StringType();
-            case "Bytes" -> new PirType.ByteStringType();
-            case "Unit" -> new PirType.UnitType();
-            case "Data" -> new PirType.DataType();
-            case "List" -> new PirType.ListType(representation(args.getFirst()));
-            case "Map" -> new PirType.MapType(representation(args.get(0)), representation(args.get(1)));
-            case "JulcOptional" -> new PirType.OptionalType(representation(args.getFirst()));
-            default -> throw new IllegalArgumentException("No source type description for " + ref.name());
-        };
+        return TypeReferences.representation(ref, types);
     }
 
     private static LibraryType.Reference ref(String name, List<LibraryType.Reference> args) {
