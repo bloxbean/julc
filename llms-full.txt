@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre19
-Generated: 2026-10-20T14:23:12.502Z
+Generated: 2026-10-21T00:42:39.797Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -322,7 +322,7 @@ JuLC is a compiler from a **safe subset of Java 25** to **Plutus V3 UPLC** (Unty
 Key facts:
 
 - **On-chain only.** JuLC code runs on the Cardano CEK machine. It is the validator/minting-policy code, not the off-chain transaction-building code.
-- **Off-chain Java** (using cardano-client-lib `0.7.1`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
+- **Off-chain Java** (using cardano-client-lib `0.8.0-pre6`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
 - **Plutus V3 only** (Conway era). No V1/V2 support.
 - **The Java source is the authoring surface; UPLC is what runs.** Many "weird" rules below exist because UPLC has no notion of mutable state, no exceptions (except `error`), and no general recursion (only fixed-point combinators).
 
@@ -1993,7 +1993,7 @@ version = '1.0-SNAPSHOT'
 
 ext {
     julcVersion = '<version>'
-    cardanoClientLibVersion = '0.7.1'
+    cardanoClientLibVersion = '0.8.0-pre6'
 }
 
 repositories {
@@ -21012,7 +21012,7 @@ sealed interface Shape {
 | `julc-testkit` | `ValidatorTest` base class, `SourceDiscovery` for test-time compilation |
 | `julc-annotation-processor` | Java annotation processor — compiles validators at build time |
 | `julc-gradle-plugin` | Gradle plugin wrapping the annotation processor |
-| `julc-cardano-client-lib` | Integration with cardano-client-lib v0.7.1 |
+| `julc-cardano-client-lib` | Integration with cardano-client-lib v0.8.0-pre6 |
 | `julc-examples` | Example validators and library code |
 | `julc-e2e-tests` | End-to-end integration tests (CIP-113, etc.) |
 | `julc-plugin-test` | Tests for the Gradle plugin |
