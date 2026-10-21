@@ -2,7 +2,34 @@
 
 ## Status
 
-Implemented and validated; implementer review complete. Independent review pending before merge.
+Implemented and validated; independently reviewed (PR #238).
+
+## Superseding decoder contract — PR #238
+
+[PR #238](https://github.com/bloxbean/julc/pull/238), fixing
+[issue #237](https://github.com/bloxbean/julc/issues/237), supersedes the original
+decision below to preserve top-level sequence handling, unknown-tag behavior and
+non-map permissiveness. The original sections record the scope of the map-fidelity
+change; the subsequent decoder contract is:
+
+- `PlutusDataCborDecoder.decode` requires exactly one Plutus Data item and rejects
+  all trailing bytes, matching the ledger's full decoding of inline datums.
+- The new `decodeFirst` entry point decodes one Plutus Data item and ignores any
+  trailing bytes, including malformed ones. Only `UplcFlatDecoder.readData` uses
+  it, matching Plutus's `FlatViaSerialise` / `deserialiseOrFail` behavior.
+- Byte decoding enforces Plutus `decodeData` rules for bounded byte strings,
+  bignums, constructor tags and fields, and container members. Unknown or nested
+  tags, unsupported values and malformed headers are rejected. The decoder now
+  intercepts byte strings and checks integer, array and tag headers as well as
+  preserving map associations. Text strings are rejected at their header, as
+  `decodeData` rejects `TypeString`, so cbor-java never allocates an untrusted
+  declared text length.
+
+Map order and duplicate-key preservation remain invariant. Encoder output,
+compiler lowering and constructor Word64 handling are unchanged. General
+depth/total-size limits remain outside this change. `PlutusDataDecoderParityTest`
+records accepted and rejected vectors and tests both trailing-byte modes through
+the CBOR API and FLAT program decoding.
 
 ## Context and current behavior
 

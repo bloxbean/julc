@@ -3,6 +3,229 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
+
+On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
+`JulcAssocMap` returns them in map order. A test run off chain could therefore pass while
+the deployed script read a different first key. Both now return map order on chain too.
+
+- **Script bytes change** for validators that call `keys()` or `values()`, directly or
+  through `MapLib.keys`/`MapLib.values`. A new hash means a new script address or policy
+  ID. Keep the previously compiled script to spend UTxOs locked at the old address.
+- **Builds that keep unused library methods** also change when they import `MapLib`:
+  optimization level `NONE`, and any level with source maps enabled. Optimized builds
+  without source maps are unchanged unless they use `keys()`/`values()`.
+- **Results change** only for logic that depends on position, such as `keys().head()` or
+  comparing against an ordered list. Membership checks, `all`/`any` and totals give the
+  same answer either way.
+
+## Upcoming preview: Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
+
+`PlutusDataCborDecoder` now accepts exactly the CBOR that plutus `decodeData` accepts.
+JuLC used to accept Data that the ledger rejects, so a FLAT program, inline datum or
+redeemer could decode in JuLC and fail on chain.
+
+- **`decode()` rejects trailing bytes.** It requires exactly one Data item, as the ledger
+  decodes inline datums. The new `decodeFirst()` decodes one item and ignores what
+  follows, as plutus reads FLAT `data` constants (`FlatViaSerialise` /
+  `deserialiseOrFail`); `UplcFlatDecoder` uses it.
+- **Newly rejected by `decode()` and `decodeFirst()`:**
+  - byte strings or byte-string chunks over 64 bytes;
+  - tags other than bignums (`c2`/`c3` headers only) and constructors (102, 121–127,
+    1280–1400);
+  - nested tags, and tags that don't wrap a byte string (bignum) or an array
+    (constructor);
+  - indefinite integers and tags;
+  - text strings and simple values, also inside lists and maps.
+- **Newly rejected by `fromDataItem()`, which sees an already-decoded cbor-java tree:**
+  unrecognized and nested tags, and simple values inside lists (previously dropped
+  silently).
+- **Untrusted headers don't allocate.** Lengths that exceed the remaining input are
+  rejected before any allocation, so a short malformed input raises
+  `CborDecodingException` rather than `OutOfMemoryError`.
+- **julc-tools.** The `cbor` Data input of julc-tools is strict in the same way.
+
+Map order and duplicate keys are still preserved. Encoding is unchanged.
+
+## Upcoming preview: `NewConstitution` carries the `Constitution` wrapper (#223)
+
+`GovernanceAction.NewConstitution` now has the Plutus Data layout of plutus-ledger-api V3,
+`Constr 5 [Maybe GovernanceActionId, Constitution]` with
+`Constitution = Constr 0 [Maybe ScriptHash]`. JuLC encoded and read the second field as a
+bare `Maybe ScriptHash`, without the `Constr 0` that the ledger builds (`transConstitution`
+in cardano-ledger `Conway/TxInfo.hs`). A compiled V3 script that read a `NewConstitution`
+proposal from a real script context therefore read the wrong field: `constitution()` gave
+the `Constitution` value where the script expected the optional hash.
+
+The ledger API has a new record `Constitution(Optional<ScriptHash> script)`, and the
+second component of `NewConstitution` changes from `Optional<ScriptHash> constitution` to
+`Constitution constitution`. Read the guardrails script hash with
+`nc.constitution().script()`.
+
+**Contracts that read `constitution()` must be updated and recompiled.** Their script
+bytes and hashes change. **Contracts that take a `GovernanceAction` or
+`ProposalProcedure` as a typed parameter or datum also get new bytes and a new hash**,
+even if they only match the `NewConstitution` case, because the typed-boundary check now
+validates the `Constitution` wrapper. Before, that check rejected the ledger's
+`NewConstitution` payload and accepted the bare `Maybe ScriptHash`, which no ledger
+produces. It now does the reverse. Contracts that read proposals from the `ScriptContext`
+and only match the case compile to the same bytes as before. Off-chain code that
+constructs `NewConstitution` must pass a `Constitution`, and the script contexts the
+cardano-client-lib evaluator builds now contain the wrapper. The other six governance
+actions are unchanged; tests now compare each of them with hex written by hand from
+Haskell's `ToData`.
+
+The pinned Lean model for formal verification (CardanoLedgerApiBlaster `5dab3c43`) still
+omits the wrapper, so its strict decoder returns `none` for every ledger `NewConstitution`
+payload. Formal verification now decodes proposal actions through a reviewed adapter,
+`adapter.new-constitution.ledger-wrapper`, which removes the wrapper before the pinned
+decoder and rejects the bare layout. Properties about `NewConstitution` proposals,
+including `whenNewConstitution`'s script, therefore have the ledger's meaning. The
+adapter goes once the pin carries the wrapper.
+
+## Upcoming preview: nested types shadow ledger types of the same name
+
+A record or sealed interface declared inside a validator or library class now shadows a
+bundled ledger type with the same simple name within that class, as javac binds it
+(JLS 6.4.1). Before, the implicit `org.julclang.ledger.*` import won: a nested
+`record Committee` (or, with #223, `record Constitution`) resolved to the ledger type
+without a diagnostic, so a typed parameter or datum accepted the ledger schema instead of
+the declared one. Such contracts now get the schema they declare and a new hash. A type
+nested in another top-level class (`Helper.Committee`) does not capture the name, and a
+qualified name such as `Inner.Constitution` resolves to the type it names, or is reported
+as unknown; it no longer falls back to a ledger type with the same simple name. Contracts
+without such a name collision compile to the same bytes.
+
+## Upcoming preview: instanceof pattern variables may not reuse a field name (JULC0059, #207)
+
+JuLC binds an `instanceof` pattern variable only when the pattern is the whole
+condition of an `if` statement outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In every other position (a loop
+body, an `&&` condition, a negated guard such as `if (!(x instanceof T v)) return ...;`,
+a ternary, a lambda, a boolean `return`) the variable is not bound. When a field of the
+class, including a `@Param` field, has the same name, those positions silently read or
+updated the field. For example, with a field `q` holding 40,
+`if (s instanceof Sq q && q.s() > 1) { return q.s(); }` returned 40 where Java returns 3.
+This behaviour dates back to the first preview.
+
+The compiler now rejects a pattern variable that reuses the name of a field of an
+enclosing class (`JULC0059`) in every position, including the one where the variable is
+bound correctly. Rename the variable. `switch` case patterns (`case Sq q ->`) bind their
+variables in every position and are not affected. This is validation only: every program
+that still compiles produces the same script bytes and hashes.
+
+Known limitation until [#204](https://github.com/bloxbean/julc/issues/204) (planned for the next preview): a pattern variable with any
+name that is used outside that one position fails to compile, usually with
+`Undefined variable`. Use a
+`switch` on the sealed type, or the plain `if (x instanceof T v) { ... }` form outside a loop.
+
+## Upcoming preview: value-oriented contract code guide (#163)
+
+A new Best Practices page, [Value-Oriented Contract Code](/best-practices/value-oriented-code/),
+shows how to compute values in initializers, switch expressions, helper methods and list
+operations instead of updating variables across branches, and how to test the compiled
+validator. Every example is compiled and evaluated on the VM by tests in `julc-examples`,
+and a test fails if the page and the tested code drift apart.
+
+The page records current list-operation behaviour that differs from Java:
+
+- compiled `any` and `all` evaluate the predicate for every element, so a predicate that
+  fails on a later element fails the script where Java would already have returned;
+- `list.find(...)` returns an optional value in compiled code although its Java signature
+  returns the element;
+- the static `ListsLib.any`, `all`, `filter`, `map`, `find`, `foldl` and `zip` forms
+  compile only from source text, because `ListsLib` does not declare them in Java.
+
+No compiler behaviour changes in this entry.
+
+## Upcoming preview: a source name can never resolve to a compiler-generated binder (ADR-060)
+
+The compiler generates variables around your code for switch dispatch, loops, the
+validator wrapper, `@Param` decoding and the list and map builders. Several of
+those names were legal Java identifiers, so a source variable with the same name
+silently resolved to the compiler's variable instead:
+
+- `BigInteger __match_tag = ...;` read inside a switch arm gave the constructor tag;
+- a `@Param` named `datum__` compared the spent datum with itself, so any parameter
+  value was accepted;
+- a variable named `xs__`, `__acc_tuple` or `loop__forEach__0` read inside a loop saw
+  the loop's remaining list, accumulator tuple or recursive function;
+- a `@Param` named `redeemer__`, `scriptContextData`, `ctxFields__` or `tag__`, or a
+  pair of `@Param`s `cfg__raw` and `cfg`, read the wrapper's value.
+
+Every generated name now begins with `#`, which no Java identifier can contain, and
+switch-dispatch names are also chosen away from every name a branch uses
+([ADR-060](https://github.com/bloxbean/julc/blob/main/adr/060-generated-binder-namespace.md)).
+The same change fixes adjacent silent miscompiles:
+
+- **Compound assignment in loops** dropped the operator: `count += 1` over three items
+  returned 1 and `while (k < 3) { k += 1; }` never terminated. `+=`, `-=`, `*=`, `/=`
+  and `%=` on integers, and `+=` on strings, now mean `x = x op y`. `&=`, `|=`, `^=`
+  and the shift operators are rejected (`JULC0052`), because lowering `&=` as `&&`
+  would skip a check Java always evaluates.
+- **Overloaded methods**: the last declaration ran for every call, so `check(BigInteger)`
+  next to `check(long)` used the wrong body. Overloads are rejected (`JULC0054`) unless
+  they compile to identical code, like the stdlib's two `integerToByteString` forms.
+- **Declarations with several variables**, `BigInteger a = x, b = y;`, bound only the
+  first, so a later `b` could read a field `b`. They are rejected (`JULC0053`); fields
+  may still declare several variables.
+- **Methods now have their own namespace**, as in Java: a local, parameter, field or
+  `@Param` may share a method's name (`BigInteger fee = fee(a); return fee(fee);`
+  failed at run time, and a `@Param limit` next to a method `limit(...)` gave the
+  wrong decision). `x.name()` or `x.name` on a value whose type is not known used to
+  call whatever was named `name`; it is now rejected (`JULC0055`). A static field
+  initializer that calls a method of its class now gets an explicit error (`JULC0057`).
+- **Fields updated in loops**: a loop assignment to a static field or `@Param` rebinds
+  the name only inside that method, so another method reading the field saw the
+  original value (a helper returned 0 after `count += 1` three times), and every call of
+  the updating method started again from the initial value (a helper called twice
+  returned 6 where Java returns 9). Such an update is now rejected (`JULC0056`) unless
+  it is in an entry method (a validator entrypoint, a multi-validator handler or the
+  `compileMethod` target) that no method calls, outside any lambda, and no other method
+  reads the field. Updating a field in a helper or a library method no longer compiles;
+  copy the field into a local accumulator. A loop-body local that shadows a
+  field and is reassigned was threaded out of the loop as if it were the field; it is
+  now a local. So is a for-each variable that shadows a field: reassigning it updated
+  the field, so the field read 1 after the loop where Java reads 10.
+- **Reassignment in a loop without an accumulator**: a for-each loop that updates no
+  variable declared before it cannot reassign its loop variable or a body local. This
+  was already rejected, with "Unsupported expression: AssignExpr"; it now reports
+  `JULC0058` and suggests declaring a new local.
+
+**Migration.** Programs that use none of these shapes keep byte-identical scripts
+and hashes at every optimization level; this was checked on 1,432 in-repo corpus
+rows (all levels, with and without source maps, including `@Param` and
+multi-validator programs) and the 344 external example artifacts. A recompiled script that used an affected shape changes its bytes, hash
+and budget, and its behaviour now matches Java: review it and redeploy if the old
+behaviour mattered. Deployed scripts never change. Code that is now rejected must
+be rewritten as the diagnostic describes. PIR and UPLC text output, such as the
+`.uplc` file from `julc build` and the playground pipeline view, now shows `#`
+names; this is cosmetic. Code that drives `PirGenerator` directly must register a
+method with `SymbolTable.declareMethod`: a method registered as a variable with
+`SymbolTable.define` is no longer callable. Diagnostic codes `JULC0044`–`JULC0051`
+are reserved for the generic backend work.
+
+## Upcoming preview: builder binders no longer capture user variables (#186)
+
+A variable referenced inside a lambda or argument could silently resolve to an
+internal variable of the list, map or loop code the compiler generated around it.
+For example, `outer.any(x -> inner.any(y -> y.equals(x)))` compared each inner
+element with itself and returned true whenever `inner` was non-empty, so a
+validator could accept a transaction it should reject. Affected names were the
+builders' internal binders: `x`, `acc`, `lst`, `go` and `h` for `any`, `all`,
+`find` and `foldl`; `x_map`, `acc_map`, `x_flt` and `acc_flt` for `map` and
+`filter`; the `*_get`, `*_c`, `go_*`, `ps_*`, `xs_*`, `*__ao` and `*__f` binders of
+`get`, `contains`, `reverse`, `concat`, `take`, `drop`, `size`, `keys`, `values`,
+map lookups, `ListsLib.contains`, `MapLib.member/lookup/delete` and
+`Value.assetOf`; and the statement binders `_if`, `_forEach`, `_while`,
+`_nested`, `__t` and `_u`. Instance and static `ListsLib` forms were both affected.
+
+Each generated binder is now renamed only when a caller term actually refers to
+that name, so evaluation order is unchanged. Scripts without such a reference
+keep byte-identical output at every optimization level. Recompiling an affected
+script changes its bytes, hash and budget; review it and redeploy if its
+behaviour mattered. Deployed scripts never change. The generated names #186 did
+not reach, such as the loop and switch binders, are covered by ADR-060 below.
+
 ## Upcoming preview: release regression gates and profile freeze (#121)
 
 The proposed pre17 [hash-stability policy](/reference/hash-stability/) freezes

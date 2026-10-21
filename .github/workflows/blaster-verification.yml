@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4
@@ -36,7 +38,7 @@ jobs:
           distribution: temurin
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
       - name: Install verification tools
         run: |
@@ -44,7 +46,7 @@ jobs:
           sudo apt-get install --yes ripgrep
 
       - name: Set up pinned Lean toolchain
-        uses: leanprover/lean-action@v1
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1.6.0
         with:
           auto-config: false
           use-github-cache: false

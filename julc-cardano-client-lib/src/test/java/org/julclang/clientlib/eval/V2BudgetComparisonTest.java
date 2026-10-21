@@ -201,7 +201,7 @@ class V2BudgetComparisonTest {
                         .ttl(1000)
                         .build())
                 .build();
-        var converterTtlOnly = new CclTxConverter(txTtlOnly, dummyUtxos, null, null, 8);
+        var converterTtlOnly = TestConverters.of(txTtlOnly, dummyUtxos, 8);
         var infoTtlOnly = converterTtlOnly.buildTxInfo();
         assertTrue(infoTtlOnly.validRange().to().isInclusive(),
                 "PV 8, TTL-only → upper bound should be inclusive (matches Scalus)");
@@ -217,7 +217,7 @@ class V2BudgetComparisonTest {
                         .validityStartInterval(500)
                         .build())
                 .build();
-        var converterBoth = new CclTxConverter(txBoth, dummyUtxos, null, null, 8);
+        var converterBoth = TestConverters.of(txBoth, dummyUtxos, 8);
         var infoBoth = converterBoth.buildTxInfo();
         assertFalse(infoBoth.validRange().to().isInclusive(),
                 "PV 8, both bounds → upper bound should be exclusive (matches Scalus)");

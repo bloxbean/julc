@@ -55,7 +55,7 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__forEach__"));
+            assertTrue(letRec.bindings().getFirst().name().startsWith("#loop__forEach__"));
         }
 
         @Test
@@ -68,7 +68,7 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__while__"));
+            assertTrue(letRec.bindings().getFirst().name().startsWith("#loop__while__"));
         }
 
         @Test
@@ -793,7 +793,7 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__while__"));
+            assertTrue(letRec.bindings().getFirst().name().startsWith("#loop__while__"));
         }
 
         @Test
@@ -871,7 +871,7 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__while__"));
+            assertTrue(letRec.bindings().getFirst().name().startsWith("#loop__while__"));
         }
     }
 

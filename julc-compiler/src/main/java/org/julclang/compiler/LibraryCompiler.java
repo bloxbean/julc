@@ -68,11 +68,9 @@ final class LibraryCompiler {
     private void compileSingleCu(CompilationUnit libCu, TypeResolver typeResolver,
                                   LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
                                   Set<String> knownFqcns) {
-        var libImportResolver = new ImportResolver(libCu, knownFqcns);
-        typeResolver.setCurrentImportResolver(libImportResolver);
-
         for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
             if (cls.isInterface()) continue;
+            typeResolver.setCurrentImportResolver(new ImportResolver(cls, knownFqcns));
             var className = cls.getNameAsString();
             var classNameFqcn = cls.getFullyQualifiedName().orElse(className);
 
@@ -85,7 +83,8 @@ final class LibraryCompiler {
             for (var method : cls.getMethods()) {
                 if (method.isStatic() && method.getTypeParameters().isEmpty()) {
                     var mType = computeMethodType(method, typeResolver);
-                    libSymbolTable.define(classNameFqcn + "." + method.getNameAsString(), mType);
+                    libSymbolTable.declareMethod(method.getNameAsString(),
+                            classNameFqcn + "." + method.getNameAsString(), mType);
                 }
             }
 
@@ -93,6 +92,8 @@ final class LibraryCompiler {
             var libPirGenerator = PirGenerator.forCompilation(
                     typeResolver, libSymbolTable, composedLookup,
                     TypeMethodRegistry.defaultRegistry(), classNameFqcn, context);
+            // A library method can run any number of times: no entry methods (JULC0056, ADR-060).
+            libPirGenerator.setEntryMethods(List.of());
 
             record LibCompiledField(String name, PirTerm initPir) {}
             var compiledLibFields = new ArrayList<LibCompiledField>();
@@ -101,6 +102,7 @@ final class LibraryCompiler {
                 compiledLibFields.add(new LibCompiledField(sf.name(), initPir));
             }
 
+            var overloads = new OnchainOverloads(classNameFqcn, Set.of());
             for (var method : cls.getMethods()) {
                 if (method.isStatic() && !method.getTypeParameters().isEmpty()) {
                     // Generic methods are templates, specialized on request (ADR-059).
@@ -114,6 +116,7 @@ final class LibraryCompiler {
                         pirBody = new PirTerm.Let(sf.name(), sf.initPir(), pirBody);
                     }
                     var mType = computeMethodType(method, typeResolver);
+                    overloads.check(method, mType, pirBody);
                     registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
                 }
             }
@@ -129,24 +132,25 @@ final class LibraryCompiler {
      * reference {@code Class.method} at the specialized type; the caller renames them to the
      * specialization's binding. Generator errors are returned rather than dropped.
      */
-    Specialization compileSpecialization(CompilationUnit cu, ClassOrInterfaceDeclaration cls,
-                                         MethodDeclaration method, TypeResolver typeResolver,
-                                         LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
-                                         Set<String> knownFqcns) {
-        typeResolver.setCurrentImportResolver(new ImportResolver(cu, knownFqcns));
+    Specialization compileSpecialization(ClassOrInterfaceDeclaration cls, MethodDeclaration method,
+                                         TypeResolver typeResolver, LibraryMethodRegistry registry,
+                                         StdlibLookup effectiveLookup, Set<String> knownFqcns) {
+        typeResolver.setCurrentImportResolver(new ImportResolver(cls, knownFqcns));
         var classNameFqcn = cls.getFullyQualifiedName().orElse(cls.getNameAsString());
         var staticFields = findStaticFields(cls, typeResolver);
         var symbolTable = new SymbolTable();
         for (var sf : staticFields) symbolTable.define(sf.name(), sf.pirType());
         for (var other : cls.getMethods())
             if (other.isStatic() && other.getTypeParameters().isEmpty())
-                symbolTable.define(classNameFqcn + "." + other.getNameAsString(),
-                        computeMethodType(other, typeResolver));
+                symbolTable.declareMethod(other.getNameAsString(),
+                        classNameFqcn + "." + other.getNameAsString(), computeMethodType(other, typeResolver));
         var type = computeMethodType(method, typeResolver);
-        symbolTable.define(classNameFqcn + "." + method.getNameAsString(), type);
+        symbolTable.declareMethod(method.getNameAsString(), classNameFqcn + "." + method.getNameAsString(), type);
         var generator = PirGenerator.forCompilation(typeResolver, symbolTable,
                 new CompositeStdlibLookup(effectiveLookup, registry), TypeMethodRegistry.defaultRegistry(),
                 classNameFqcn, context);
+        // A library method can run any number of times: no entry methods (JULC0056, ADR-060).
+        generator.setEntryMethods(List.of());
         var initializers = new ArrayList<PirTerm>();
         for (var sf : staticFields) initializers.add(generator.generateExpression(sf.initExpr()));
         var body = generator.generateMethod(method);

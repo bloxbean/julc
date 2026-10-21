@@ -186,7 +186,7 @@ class GenericExportsTest {
         // Equal representations, distinct nominal specializations.
         assertEquals(group.binding(atPrice).type(), group.binding(atQuantity).type());
         assertNotEquals(group.binding(atPrice).name(), group.binding(atQuantity).name());
-        assertEquals(2, group.definitions().keySet().stream().filter(n -> n.startsWith("demo.Seq.firstOr#")).count());
+        assertEquals(2, group.definitions().keySet().stream().filter(n -> n.startsWith("#demo.Seq.firstOr#")).count());
         // An isolated provider over the same content produces the same keys; changed content does not.
         var again = provider(SEQ).materialize(List.of(atPrice));
         assertEquals(group.binding(atPrice).name(), again.binding(atPrice).name());

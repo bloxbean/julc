@@ -102,36 +102,37 @@ class SwitchPairCasePirTest {
     }
 
     @Test
-    void removedPrivateBinderReferenceRetainsLegacyExpansion() {
-        var pair = new PirTerm.Var("__match_pair", DATA);
-        var term = new PirTerm.DataMatch(data(PlutusData.constr(0)),
-                List.of(branch(List.of(), new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), pair))));
-        for (var level : OptimizationLevel.values()) {
-            var context = context(level);
-            var generated = new UplcGenerator(context, null).generate(term);
-            assertFalse(context.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_PAIR_RULE));
-            assertFalse(generated.toString().contains("Case["));
+    void variablesNamedLikeHistoricalDispatchBindersAreNotCaptured() {
+        // ADR-060: the dispatch binders are reserved '#' names chosen against the branches, so a
+        // variable literally named like the old __match_pair / __match_tag binders keeps its own
+        // value, and the O4 pair lowering no longer falls back to the legacy expansion for it.
+        for (var name : List.of("__match_pair", "__match_tag", "__match_fields", "__match_data")) {
+            var outer = new PirTerm.Var(name, INT);
+            var term = new PirTerm.Let(name, integer(10), new PirTerm.DataMatch(data(PlutusData.constr(1)),
+                    List.of(branch(List.of(), integer(0)), branch(List.of(), outer))));
+            for (var level : OptimizationLevel.values()) {
+                var context = context(level);
+                var generated = new UplcGenerator(context, null).generate(term);
+                assertEquals(level.pv11SafeRulesEnabled(),
+                        context.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_PAIR_RULE),
+                        name + " " + level);
+                assertEquals(level.pv11SafeRulesEnabled(), generated.toString().contains("Case["), name + " " + level);
+            }
+            assertEquals(Term.const_(Constant.integer(10)), ((EvalResult.Success) equivalent(term)).resultTerm(), name);
         }
-        assertEquals(Term.const_(Constant.integer(0)), ((EvalResult.Success) equivalent(term)).resultTerm());
     }
 
     @Test
-    void legacyBinderExpansionStillDispatchesWithIntegerCase() {
-        // ADR-041: the integer Case applies inside the legacy __match_pair expansion too, since
-        // the dispatch is independent of the binder shape. O4 stays off, O5 is recorded.
-        var pair = new PirTerm.Var("__match_pair", DATA);
-        var term = new PirTerm.DataMatch(data(PlutusData.constr(1)),
-                List.of(branch(List.of(), new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), pair)),
-                        branch(List.of(), integer(42))));
-        for (var level : OptimizationLevel.values()) {
-            var context = context(level);
-            var generated = new UplcGenerator(context, null).generate(term);
-            assertFalse(context.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_PAIR_RULE));
-            assertEquals(level.pv11SafeRulesEnabled(),
-                    context.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_INTEGER_RULE), level.toString());
-            assertEquals(level.pv11SafeRulesEnabled(), generated.toString().contains("Case["), level.toString());
-        }
-        assertEquals(Term.const_(Constant.integer(42)), ((EvalResult.Success) equivalent(term)).resultTerm());
+    void branchBindersNamedLikeGeneratedBindersDoNotInterceptFieldExtraction() {
+        // A field binding or pattern variable with a generated binder's spelling sits between
+        // that binder and its later references. Frontends must not bind '#' names (ADR-060 R4);
+        // the dispatch names still avoid them (R2), so extraction reads the right fields.
+        var fields = List.of("#__match_fields", "#__rest_0", "third");
+        var body = new PirTerm.Var("third", INT);
+        var term = new PirTerm.DataMatch(data(PlutusData.constr(0, PlutusData.integer(1), PlutusData.integer(2),
+                PlutusData.integer(3))), List.of(new PirTerm.MatchBranch("A", fields,
+                List.of(INT, INT, INT), body, "#__match_data")));
+        assertEquals(Term.const_(Constant.integer(3)), ((EvalResult.Success) equivalent(term)).resultTerm());
     }
 
     @Test

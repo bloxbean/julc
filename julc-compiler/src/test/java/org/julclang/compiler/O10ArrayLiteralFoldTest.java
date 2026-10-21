@@ -556,11 +556,11 @@ class O10ArrayLiteralFoldTest {
             case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> { }
             case PirTerm.Lam l -> walkUser(l.body(), false, visit);
             case PirTerm.Let l -> {
-                if (!l.name().contains(".")) walkUser(l.value(), false, visit);
+                if (!isLibraryMethod(l.name())) walkUser(l.value(), false, visit);
                 walkUser(l.body(), false, visit);
             }
             case PirTerm.LetRec r -> {
-                r.bindings().forEach(b -> { if (!b.name().contains(".")) walkUser(b.value(), false, visit); });
+                r.bindings().forEach(b -> { if (!isLibraryMethod(b.name())) walkUser(b.value(), false, visit); });
                 walkUser(r.body(), false, visit);
             }
             case PirTerm.App a -> { walkUser(a.function(), true, visit); walkUser(a.argument(), false, visit); }
@@ -588,5 +588,14 @@ class O10ArrayLiteralFoldTest {
         return args.isEmpty()
                 ? vm.evaluate(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), null, EvalOptions.DEFAULT)
                 : vm.evaluateWithArgs(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), args, null, EvalOptions.DEFAULT);
+    }
+
+    /**
+     * Stdlib method bindings are qualified by their package. Since ADR-060 the fixture's own
+     * methods are qualified too, by the default-package fixture class, so a dot alone no longer
+     * separates library code from user code.
+     */
+    private static boolean isLibraryMethod(String binder) {
+        return binder.startsWith("org.julclang.");
     }
 }

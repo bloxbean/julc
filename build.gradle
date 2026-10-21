@@ -14,6 +14,11 @@ allprojects {
     repositories {
         mavenCentral()
         mavenLocal()
+        // BloxBean Maven repository: development snapshots of BloxBean projects (release-ops docs/12).
+        maven {
+            url "https://repo.bloxbean.org/maven/snapshots"
+            mavenContent { snapshotsOnly() }
+        }
     }
 }
 
@@ -40,6 +45,23 @@ nmcpAggregation {
 }
 
 // Root project does not publish artifacts (subprojects + BOM handle this)
+
+// Signing. CI signs with an ASCII-armored signing subkey held in memory, passed as the project
+// properties signingInMemoryKey, signingInMemoryKeyId (last 8 hex chars of the subkey id) and
+// signingInMemoryKeyPassword (ORG_GRADLE_PROJECT_* environment variables in release.yml). Without them,
+// local builds keep using the signing.* properties from ~/.gradle/gradle.properties.
+// An `ext` property rather than a local closure so julc-bom, which configures its own publication,
+// signs the same way (julc-bom/build.gradle).
+ext.configureReleaseSigning = { Project candidate ->
+    candidate.signing {
+        def inMemoryKey = candidate.findProperty('signingInMemoryKey')
+        if (inMemoryKey) {
+            useInMemoryPgpKeys(candidate.findProperty('signingInMemoryKeyId'), inMemoryKey,
+                    candidate.findProperty('signingInMemoryKeyPassword'))
+        }
+        sign candidate.publishing.publications
+    }
+}
 
 // Modules that are applications, test harnesses or aggregators rather than
 // published libraries. Declared here, not inside `subprojects`, because the
@@ -77,6 +99,8 @@ subprojects {
 //        jvmArgs '--enable-preview'
         jvmArgs '--enable-native-access=ALL-UNNAMED'
         maxHeapSize = '1g'
+        // ADR-060 G2: every compilation in tests checks the generated-binder namespace.
+        systemProperty 'julc.verifyBinderNamespace', 'true'
     }
 
     tasks.withType(Javadoc).configureEach {
@@ -154,8 +178,23 @@ subprojects {
 
         ext.isReleaseVersion = !version.endsWith("SNAPSHOT")
         if (isReleaseVersion && !project.hasProperty("skipSigning")) {
-            signing {
-                sign publishing.publications
+            configureReleaseSigning(project)
+        }
+    }
+}
+
+// The `stagingRepository` hook (release-ops docs/12-bloxbean-maven-repository.md). Publishes the same
+// MavenPublications as the Central deployment to an isolated repository - no second publication definition. CI
+// passes an absolute path: `./gradlew publishAllPublicationsToStagingRepository -PstagingRepository=$PWD/...`.
+def stagingRepository = providers.gradleProperty('stagingRepository')
+allprojects { candidate ->
+    candidate.pluginManager.withPlugin('maven-publish') {
+        if (stagingRepository.isPresent()) {
+            candidate.publishing.repositories {
+                maven {
+                    name = 'staging'
+                    url = candidate.uri(stagingRepository.get())
+                }
             }
         }
     }
@@ -195,6 +234,7 @@ tasks.register('verifyMavenReleasePublicationScope') {
                             "Publishing but not deployed: ${missing.sort()}; " +
                             "deployed but publishes nothing: ${extra.sort()}")
         }
+        logger.lifecycle("Central deployment scope: ${expected.size()} projects")
     }
 }
 

@@ -413,7 +413,7 @@ function ledgerTypes(monaco: typeof Monaco, range: Monaco.IRange): Monaco.langua
     'OutputDatum', 'Interval', 'IntervalBound',
     'ScriptInfo', 'ScriptPurpose',
     'Vote', 'DRep', 'Voter', 'TxCert', 'GovernanceAction',
-    'ProposalProcedure', 'Committee', 'StakingCredential', 'Delegatee',
+    'ProposalProcedure', 'Committee', 'Constitution', 'StakingCredential', 'Delegatee',
   ].map(t => ({
     label: t,
     kind: monaco.languages.CompletionItemKind.Class,

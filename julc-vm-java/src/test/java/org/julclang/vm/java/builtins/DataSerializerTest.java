@@ -5,20 +5,27 @@ import org.julclang.core.DefaultFun;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
+import org.julclang.core.cbor.PlutusDataCborDecoder;
+import org.julclang.core.cbor.PlutusDataCborEncoder;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Golden-vector tests for the VM's PlutusData CBOR serializer (used by the {@code serialiseData}
- * builtin) — issue #48. Non-empty lists and constructor fields MUST encode as indefinite-length
- * arrays (0x9f ... 0xff); empty collections stay definite (0x80). Values are verified byte-for-byte
- * against cardano-client-lib 0.7.x and Scalus 0.17.0. A regression changes the on-chain result of
+ * Tests the {@code SerialiseData} builtin, which now encodes through {@link PlutusDataCborEncoder} (issue #229).
+ * <p>
+ * Golden vectors for issue #48. Non-empty lists and constructor fields MUST encode as
+ * indefinite-length arrays (0x9f ... 0xff); empty collections stay definite (0x80). Values are verified
+ * byte-for-byte against cardano-client-lib 0.7.x and Scalus 0.17.0. A regression changes the on-chain result of
  * {@code blake2b_256(serialiseData(datum))} (datum commitments, CIP-68 token names, ...).
  */
 class DataSerializerTest {
@@ -32,7 +39,7 @@ class DataSerializerTest {
     }
 
     private static String direct(PlutusData d) {
-        return HEX.formatHex(DataSerializer.serialize(d));
+        return HEX.formatHex(PlutusDataCborEncoder.encode(d));
     }
 
     /** Serialise via the actual serialiseData builtin through the CEK machine. */
@@ -45,7 +52,7 @@ class DataSerializerTest {
     }
 
     private void assertBytes(String expected, PlutusData d) {
-        assertEquals(expected, direct(d), "DataSerializer.serialize");
+        assertEquals(expected, direct(d), "PlutusDataCborEncoder.encode");
         assertEquals(expected, viaBuiltin(d), "serialiseData builtin");
     }
 
@@ -108,5 +115,47 @@ class DataSerializerTest {
         assertEquals("d8799f", hex.substring(0, 6));
         assertEquals("ffff", hex.substring(hex.length() - 4));
         assertEquals(hex, viaBuiltin(PlutusData.constr(0, PlutusData.bytes(big))));
+    }
+
+    /**
+     * plutus-core {@code encodeInteger} puts a bignum's bytes through {@code encodeBs}: over 64 bytes they
+     * become an indefinite byte string of 64-byte chunks (issue #226).
+     */
+    @Test
+    void bignumOver64BytesIsChunked() {
+        // 2^528 is 67 bytes: 01 then 66 zero bytes
+        assertBytes("c25f5840" + "01" + "00".repeat(63) + "43" + "00".repeat(3) + "ff",
+                PlutusData.integer(BigInteger.ONE.shiftLeft(528)));
+        // -2^528 is stored as 2^528 - 1: 66 bytes of ff
+        assertBytes("c35f5840" + "ff".repeat(64) + "42" + "ffff" + "ff",
+                PlutusData.integer(BigInteger.ONE.shiftLeft(528).negate()));
+    }
+
+    @Test
+    void bignumOfExactly64BytesIsDefinite() {
+        assertBytes("c25840" + "80" + "00".repeat(63), PlutusData.integer(BigInteger.ONE.shiftLeft(511)));
+        assertBytes("c25f5840" + "01" + "00".repeat(63) + "4100" + "ff",
+                PlutusData.integer(BigInteger.ONE.shiftLeft(512)));
+    }
+
+    /** A general-form constructor tag is written by cborg's {@code encodeInteger}, which never chunks. */
+    @Test
+    void constrGeneralFormBignumTagIsNotChunked() {
+        assertBytes("d86682c2584c" + "01" + "00".repeat(75) + "80",
+                new PlutusData.ConstrData(BigInteger.ONE.shiftLeft(600), List.of()));
+    }
+
+    /**
+     * Redeemer of preview tx {@code 511fb35074242cd923fd51cd5b0759e75b8f5bfb49e69db0ec68861a041843f4}
+     * (withdrawal script {@code b39623ec...}): its integers are about 2000 bits and the chain encoded it
+     * canonically, so {@code serialiseData} must reproduce the witness bytes exactly.
+     */
+    @Test
+    void realRedeemerWithBignumsRoundTrips() throws IOException {
+        String hex;
+        try (var in = getClass().getResourceAsStream("/serialise-data/preview-511fb350-redeemer.hex")) {
+            hex = new String(in.readAllBytes(), StandardCharsets.US_ASCII).strip();
+        }
+        assertBytes(hex, PlutusDataCborDecoder.decode(HEX.parseHex(hex)));
     }
 }

@@ -16,7 +16,7 @@ JuLC is a compiler from a **safe subset of Java 25** to **Plutus V3 UPLC** (Unty
 Key facts:
 
 - **On-chain only.** JuLC code runs on the Cardano CEK machine. It is the validator/minting-policy code, not the off-chain transaction-building code.
-- **Off-chain Java** (using cardano-client-lib `0.7.1`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
+- **Off-chain Java** (using cardano-client-lib `0.8.0-pre6`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
 - **Plutus V3 only** (Conway era). No V1/V2 support.
 - **The Java source is the authoring surface; UPLC is what runs.** Many "weird" rules below exist because UPLC has no notion of mutable state, no exceptions (except `error`), and no general recursion (only fixed-point combinators).
 
@@ -51,8 +51,11 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - In a single-accumulator loop with `break`, branch-local updates can still work inside an `if` whose branches contain no break; that branch uses the normal body lowering.
 - An `if` at method level or inside a switch arm preserves a nested loop's accumulator updates after the branch (#161). Inside a switch arm, declare the accumulator in that arm and explicitly yield its result; this also works when the switch expression is inside an outer loop body. The separate restrictions on conditional loop-body local updates and switch-arm updates to enclosing variables still apply.
 - **Rejected:** reassignment of a switch case-pattern variable ([#162](https://github.com/bloxbean/julc/issues/162)); copy it to a fresh arm-local accumulator instead. Otherwise-supported `instanceof` binding reassignment is unchanged.
+- Where an assignment is supported, `x += y` (also `-=`, `*=`, `/=`, `%=`) means `x = x op y` on integers, and `+=` appends to a `String`. `&=`, `|=`, `^=` and shift compound operators are rejected (`JULC0052`): evaluate the check first, then write `ok = ok && c`. `x++` is rejected.
+- Declare one variable per statement (`BigInteger a = x, b = y;` is `JULC0053`). Overloaded methods are rejected unless every declaration compiles to the same code (`JULC0054`). A local, parameter or field may share a method's name. Calling a member on a value whose type is unknown, such as `d.amount()` on `PlutusData`, is `JULC0055`. Do not update a static field or `@Param` in a loop except in the entrypoint, and only when no other method reads it (`JULC0056`); copy it into a local accumulator. Do not reassign a for-each variable in a loop that updates no variable declared before it (`JULC0058`); declare a new local.
+- An `instanceof` pattern variable is bound only when `x instanceof T v` is the whole condition of an `if` outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In a loop body, an `&&` condition, a `!` guard, a ternary or a lambda, switch on the sealed type instead. A pattern variable may not reuse a field or `@Param` name (`JULC0059`).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
-- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`, `list.find(...)`, `ListsLib.foldl(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`.
+- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`. Compiled `any`/`all` evaluate the predicate for every element (no early exit), so guard a predicate that can fail with `&&`. Assign `map`'s result to a typed `JulcList<T>` local before a lambda uses its elements. In a javac-compiled project do **not** use `list.find(...)` (the compiled result is an optional value, not the element) or the static `ListsLib.any/all/filter/map/find/foldl/zip` forms (not declared in Java, so javac rejects them); write a fold as an accumulator loop.
 - **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
@@ -106,7 +109,9 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
   Do not generate a statement-style switch containing `return` in its cases.
 
 Full examples and the reasoning behind these rules:
-[Conditionals and Script Size](/best-practices/conditionals/).
+[Conditionals and Script Size](/best-practices/conditionals/). Tested rewrites that
+compute values instead of updating them, and list-operation caveats:
+[Value-Oriented Contract Code](/best-practices/value-oriented-code/).
 
 ---
 

@@ -83,6 +83,7 @@ export default defineConfig({
           label: 'Best Practices',
           items: [
             { label: 'Conditionals and Script Size', slug: 'best-practices/conditionals' },
+            { label: 'Value-Oriented Contract Code', slug: 'best-practices/value-oriented-code' },
           ],
         },
         {

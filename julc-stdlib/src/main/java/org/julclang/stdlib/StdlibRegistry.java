@@ -365,7 +365,7 @@ public final class StdlibRegistry implements StdlibLookup {
         for (int i = args.size() - 1; i >= 0; i--) {
             result = builtinApp2(DefaultFun.MkCons, args.get(i), result);
         }
-        String bound = "__native_" + name;
+        String bound = "#__native_" + name;
         return new PirTerm.Let(bound, result, new PirTerm.Var(bound, listType));
     }
 
@@ -374,14 +374,13 @@ public final class StdlibRegistry implements StdlibLookup {
      * {@code go xs = if null xs then [] else mkCons (decode (head xs)) (go (tail xs))}.
      * <p>
      * The caller's list expression is applied <em>outside</em> the {@code LetRec} that binds
-     * {@code go}: the generated names are not hygienic, and a user variable of the same name
-     * referenced by the argument (a parameter called {@code go__scalars}) must resolve to the
-     * user's binding, not to the loop (PR #150 review).
+     * {@code go}, so it never sees the loop's binders (PR #150 review); the binders are also in
+     * the reserved {@code #} namespace (ADR-060), so no source name can equal them.
      */
     private static PirTerm nativeListFromData(String name, PirTerm dataList, DefaultUni elemUni, PirType listType,
                                               java.util.function.UnaryOperator<PirTerm> decode) {
         var dataListType = new PirType.ListType(new PirType.DataType());
-        String go = "go__" + name, lst = "lst__" + name, bound = "__native_" + name;
+        String go = "#go__" + name, lst = "#lst__" + name, bound = "#__native_" + name;
         var lstVar = new PirTerm.Var(lst, dataListType);
         var goVar = new PirTerm.Var(go, new PirType.FunType(dataListType, listType));
         var empty = new PirTerm.Const(new Constant.ListConst(elemUni, List.of()));

@@ -47,13 +47,15 @@ version = '1.0-SNAPSHOT'
 
 ext {
     julcVersion = '<version>'
-    cardanoClientLibVersion = '0.7.1'
+    cardanoClientLibVersion = '0.8.0-pre6'
 }
 
 repositories {
     mavenCentral()
+    // Development snapshots (one version per commit); not needed for releases.
     maven {
-        url "https://central.sonatype.com/repository/maven-snapshots"
+        url = uri('https://repo.bloxbean.org/maven/snapshots')
+        mavenContent { snapshotsOnly() }
     }
 }
 
@@ -95,8 +97,8 @@ test {
 <!-- Required for snapshot versions only -->
 <repositories>
     <repository>
-        <id>snapshots-repo</id>
-        <url>https://central.sonatype.com/repository/maven-snapshots</url>
+        <id>bloxbean-snapshots</id>
+        <url>https://repo.bloxbean.org/maven/snapshots</url>
         <releases>
             <enabled>false</enabled>
         </releases>
@@ -805,6 +807,12 @@ if (datum instanceof OutputDatum.OutputDatumInline inline) {
 }
 ```
 
+The pattern variable (`inline` above) is bound when the `instanceof` test is the whole
+condition of an `if` statement outside a loop. In other positions (a loop body, an `&&`
+condition, a negated guard, a ternary or a lambda) it is not bound yet ([#204](https://github.com/bloxbean/julc/issues/204)) and
+compilation fails, usually with `Undefined variable`; use a `switch` on the sealed type there.
+A pattern variable may not reuse the name of a field or `@Param` (`JULC0059`).
+
 ### 8.4 For-Each Loops
 
 For-each loops over lists are desugared into tail-recursive functions with
@@ -1153,7 +1161,9 @@ plugins {
 ```
 
 Validators in `src/main/plutus/` are compiled during `gradle build` and output to
-`build/plutus/`.
+`build/plutus/`. The directory is optional: when it is missing or empty, `compileJulc`
+is skipped (`NO-SOURCE`), so projects that compile validators with the annotation
+processor do not need it.
 
 ---
 

@@ -20,7 +20,7 @@ import java.util.Map;
  * raw container representation.</p>
  */
 public final class StrictBoundaryGenerator {
-    private static final String CHECK = "__julc-boundary-check";
+    private static final String CHECK = "#__julc-boundary-check";
     private static final PirType BOOL = new PirType.BoolType();
     private static final PirType DATA = new PirType.DataType();
     private static final PirType INTEGER = new PirType.IntegerType();
@@ -102,8 +102,8 @@ public final class StrictBoundaryGenerator {
 
     private PirTerm withDispatcher(PirTerm rootCheck) {
 
-        var idVar = new PirTerm.Var("__boundary-type", INTEGER);
-        var dataVar = new PirTerm.Var("__boundary-data", DATA);
+        var idVar = new PirTerm.Var("#__boundary-type", INTEGER);
+        var dataVar = new PirTerm.Var("#__boundary-data", DATA);
         PirTerm dispatch = bool(false);
         var nodes = new ArrayList<>(typeIds.entrySet());
         for (int i = nodes.size() - 1; i >= 0; i--) {
@@ -114,8 +114,8 @@ public final class StrictBoundaryGenerator {
                     dispatch);
         }
 
-        var checker = new PirTerm.Lam("__boundary-type", INTEGER,
-                new PirTerm.Lam("__boundary-data", DATA, dispatch));
+        var checker = new PirTerm.Lam("#__boundary-type", INTEGER,
+                new PirTerm.Lam("#__boundary-data", DATA, dispatch));
         return new PirTerm.LetRec(List.of(new PirTerm.Binding(CHECK, checker)), rootCheck);
     }
 
@@ -182,7 +182,7 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirTerm checkBoolean(PirTerm data) {
-        var pairName = "__bool-pair";
+        var pairName = "#__bool-pair";
         var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
@@ -193,7 +193,7 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirTerm checkOptional(PirTerm data, PirType elementType) {
-        var pairName = "__optional-pair";
+        var pairName = "#__optional-pair";
         var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
@@ -204,7 +204,7 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirTerm checkSum(PirTerm data, PirType.SumType sum) {
-        var pairName = "__sum-pair";
+        var pairName = "#__sum-pair";
         var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
@@ -221,7 +221,7 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirTerm checkConstructor(PirTerm data, int expectedTag, List<PirType> fields) {
-        var pairName = "__record-pair";
+        var pairName = "#__record-pair";
         var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fieldList = builtin1(DefaultFun.SndPair, pair);
@@ -233,8 +233,8 @@ public final class StrictBoundaryGenerator {
         if (index == expected.size()) {
             return builtin1(DefaultFun.NullList, fields);
         }
-        String headName = "__field-" + index;
-        String tailName = "__fields-" + (index + 1);
+        String headName = "#__field-" + index;
+        String tailName = "#__fields-" + (index + 1);
         var head = new PirTerm.Var(headName, DATA);
         var tail = new PirTerm.Var(tailName, new PirType.ListType(DATA));
         return new PirTerm.Let(headName, builtin1(DefaultFun.HeadList, fields),
@@ -249,8 +249,8 @@ public final class StrictBoundaryGenerator {
 
     private PirTerm checkListItems(PirTerm decodedItems, PirType elementType, int nodeId) {
         int elementId = register(elementType);
-        String goName = "__boundary-list-" + nodeId;
-        String itemsName = "__items-" + nodeId;
+        String goName = "#__boundary-list-" + nodeId;
+        String itemsName = "#__items-" + nodeId;
         var listType = new PirType.ListType(DATA);
         var items = new PirTerm.Var(itemsName, listType);
         var go = new PirTerm.Var(goName, new PirType.FunType(listType, BOOL));
@@ -273,8 +273,8 @@ public final class StrictBoundaryGenerator {
             PirTerm decodedEntries, PirType keyType, PirType valueType, int nodeId) {
         int keyId = register(keyType);
         int valueId = register(valueType);
-        String goName = "__boundary-map-" + nodeId;
-        String entriesName = "__entries-" + nodeId;
+        String goName = "#__boundary-map-" + nodeId;
+        String entriesName = "#__entries-" + nodeId;
         var pairType = new PirType.PairType(DATA, DATA);
         var listType = new PirType.ListType(pairType);
         var entries = new PirTerm.Var(entriesName, listType);
@@ -294,21 +294,21 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirTerm forceInteger(PirTerm data) {
-        String name = "__integer";
+        String name = "#__integer";
         var value = new PirTerm.Var(name, INTEGER);
         return new PirTerm.Let(name, builtin1(DefaultFun.UnIData, data),
                 builtin2(DefaultFun.EqualsInteger, value, value));
     }
 
     private PirTerm forceBytes(PirTerm data) {
-        String name = "__bytes";
+        String name = "#__bytes";
         var value = new PirTerm.Var(name, new PirType.ByteStringType());
         return new PirTerm.Let(name, builtin1(DefaultFun.UnBData, data),
                 builtin2(DefaultFun.EqualsByteString, value, value));
     }
 
     private PirTerm forceString(PirTerm data) {
-        String name = "__string";
+        String name = "#__string";
         var value = new PirTerm.Var(name, new PirType.StringType());
         var decoded = builtin1(DefaultFun.DecodeUtf8, builtin1(DefaultFun.UnBData, data));
         return new PirTerm.Let(name, decoded,

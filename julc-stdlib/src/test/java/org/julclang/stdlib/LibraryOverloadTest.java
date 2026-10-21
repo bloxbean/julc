@@ -1,5 +1,6 @@
 package org.julclang.stdlib;
 
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.JavaLibraryProvider;
@@ -66,7 +67,7 @@ class LibraryOverloadTest {
     }
 
     @Test
-    void conflictingOverloadsDisableOnlyTheirClass() {
+    void conflictingOverloadsAreRejected() {
         var conflicting = """
                 package demo;
                 import java.math.BigInteger;
@@ -87,11 +88,13 @@ class LibraryOverloadTest {
                     public static BigInteger twice(BigInteger a) { return a.add(a); }
                 }
                 """;
-        var provider = new JavaLibraryProvider(List.of(conflicting, fine), StdlibRegistry.defaultRegistry(),
-                new CompilerOptions());
-        assertTrue(provider.describe("demo.Clash").isEmpty());
-        assertTrue(provider.unsupportedExports().get("demo.Clash.pick").contains("different signatures"));
-        assertTrue(provider.unsupportedExports().containsKey("demo.Clash.other"));
+        // One rule everywhere: the provider rejects them as a Java validator does (JULC0054, ADR-060).
+        var e = assertThrows(CompilerException.class, () -> new JavaLibraryProvider(List.of(conflicting, fine),
+                StdlibRegistry.defaultRegistry(), new CompilerOptions()));
+        assertEquals("JULC0054", e.diagnostics().getFirst().code());
+        assertTrue(e.getMessage().contains("demo.Clash"), e.getMessage());
+        // Without the conflicting class the rest of the library exports normally.
+        var provider = new JavaLibraryProvider(List.of(fine), StdlibRegistry.defaultRegistry(), new CompilerOptions());
         assertEquals(List.of("demo.Fine.twice"), provider.describe("demo.Fine").stream().map(LibraryExport::symbol).toList());
     }
 }

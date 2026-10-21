@@ -74,7 +74,8 @@ final class ProgramUnit {
                     addOnce(uncheckable, definition);
             });
             group.definitions().forEach((name, term) -> {
-                if (name.startsWith(".") || name.startsWith("__") || name.startsWith("$julc$"))
+                if (name.startsWith(".") || name.startsWith("__") || name.startsWith("$julc$")
+                        || name.startsWith("#julc-"))
                     throw invalid(groupSubject, "import definition name '" + name + "' is reserved");
                 // Identical closed terms from several groups (the same export or operation
                 // requested twice) are linked once; differing ones conflict.

@@ -48,6 +48,8 @@ public class JulcPlugin implements Plugin<Project> {
             task.getTarget().set(extension.getTarget());
             task.getOptimization().set(extension.getOptimization());
             task.getCostProfile().set(extension.getCostProfile());
+            task.getProjectName().set(project.getName());
+            task.getProjectVersion().set(project.provider(() -> project.getVersion().toString()));
         });
 
         // 3. Register bundleJulcSources task

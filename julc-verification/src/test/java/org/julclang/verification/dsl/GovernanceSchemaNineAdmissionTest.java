@@ -37,7 +37,7 @@ class GovernanceSchemaNineAdmissionTest {
                 normalized.properties().getFirst().expression(),
                 ContractTypeProjection.project(schema));
         assertTrue(lean.contains("txInfoVotes"), lean);
-        assertTrue(lean.contains("IsData.fromData"), lean);
+        assertTrue(lean.contains("julcDecodeGovernanceAction"), lean);
         assertTrue(lean.contains("HardForkInitiation"), lean);
     }
 
@@ -74,6 +74,29 @@ class GovernanceSchemaNineAdmissionTest {
                         DslDomain.VALID_SPENDING_V3_PINNED, forgedEquality));
         assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(forged, schema, 10_000));
+    }
+
+    @Test
+    void strictActionsDecodeThroughTheConstitutionWrapperAdapter() {
+        ContractSchema schema = schema();
+        String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
+        BoolExpr script = LedgerExpressions.context().txInfo().proposals().exists(p ->
+                p.actionStrict().exists(a -> a.whenNewConstitution(
+                        (previous, constitutionScript) -> constitutionScript.isPresent())));
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                VerificationDsl.property("governance.new-constitution-script",
+                        DslDomain.VALID_SPENDING_V3_PINNED, script));
+
+        var normalized = DslPropertyValidator.validateAndNormalize(candidate, schema, 10_000);
+        var promoted = ComposedDslPromotion.promote(normalized, schema,
+                "GovernanceGate", "GovernanceProperties.java");
+        assertTrue(promoted.claims().getFirst().capabilities()
+                .contains("adapter.new-constitution.ledger-wrapper"));
+        String lean = TypedPropertyLeanRenderer.renderExpression(
+                normalized.properties().getFirst().expression(),
+                ContractTypeProjection.project(schema));
+        assertTrue(lean.contains("julcDecodeGovernanceAction"), lean);
+        assertFalse(lean.contains("IsData.fromData"), lean);
     }
 
     private static ContractSchema schema() {

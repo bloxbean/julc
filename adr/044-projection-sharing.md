@@ -4,6 +4,7 @@
 **Status:** Implemented and locally validated on `feat/120-projection-sharing` (stacked on ADR-043's `feat/115-list-to-array-promotion`); independent agent reviews and advisor passes applied; maintainer review pending
 **Issues:** [#120](https://github.com/bloxbean/julc/issues/120) (O15), research decision [#105](https://github.com/bloxbean/julc/issues/105), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O15 (representation-aware let sharing, no general CSE), ADR-042 (the leading rule, its proof and the pass it lives in), ADR-036 (PIR-to-PIR pass placement before UPLC generation), ADR-015 (strict typed boundaries), ADR-043 (the costed promotion that consumes O15's bindings)
+**Names:** ADR-060 renamed every generated binder, including the boundary binders, to reserved `#` names; the sharing units and decisions below are unchanged.
 
 ## Context and current behavior
 

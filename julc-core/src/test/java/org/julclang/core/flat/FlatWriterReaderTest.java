@@ -3,6 +3,9 @@ package org.julclang.core.flat;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -223,6 +226,59 @@ class FlatWriterReaderTest {
         assertEquals(value, r.integer());
     }
 
+    /** Integer and Natural are unbounded in plutus-core's FLAT decoder (issue #225). */
+    @Test
+    void integersAndNaturalsBeyond896Bits() {
+        var w = new FlatWriter();
+        w.integer(BigInteger.ONE.shiftLeft(2047));
+        w.integer(BigInteger.ONE.shiftLeft(4096).negate());
+        w.natural(BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE));
+        var r = new FlatReader(w.toByteArray());
+        assertEquals(BigInteger.ONE.shiftLeft(2047), r.integer());
+        assertEquals(BigInteger.ONE.shiftLeft(4096).negate(), r.integer());
+        assertEquals(BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE), r.natural());
+    }
+
+    /** Random sizes up to 4000 bits: the reader matches the writer and a direct group-by-group decode. */
+    @Test
+    void randomVli7RoundTripsMatchGroupByGroupDecode() {
+        var random = new Random(225);
+        for (int i = 0; i < 2000; i++) {
+            var value = new BigInteger(random.nextInt(4000), random);
+            var w = new FlatWriter();
+            w.natural(value);
+            byte[] bytes = w.toByteArray();
+            assertEquals(value, groupByGroup(bytes));
+            assertEquals(value, new FlatReader(bytes).natural());
+
+            var signed = random.nextBoolean() ? value : value.negate();
+            var ws = new FlatWriter();
+            ws.integer(signed);
+            assertEquals(signed, new FlatReader(ws.toByteArray()).integer());
+        }
+    }
+
+    private static BigInteger groupByGroup(byte[] bytes) {
+        var result = BigInteger.ZERO;
+        for (int i = 0; ; i++) {
+            result = result.or(BigInteger.valueOf(bytes[i] & 0x7F).shiftLeft(7 * i));
+            if ((bytes[i] & 0x80) == 0) {
+                return result;
+            }
+        }
+    }
+
+    /** Decoding is linear: a 1 MB natural (about 7.3 million bits) decodes in milliseconds, not minutes. */
+    @Test
+    void oneMegabyteNaturalDecodesQuickly() {
+        int groups = 1 << 20;
+        byte[] bytes = new byte[groups];
+        Arrays.fill(bytes, (byte) 0xFF);
+        bytes[groups - 1] = 0x7F;
+        var value = assertTimeoutPreemptively(Duration.ofSeconds(10), () -> new FlatReader(bytes).natural());
+        assertEquals(BigInteger.ONE.shiftLeft(7 * groups).subtract(BigInteger.ONE), value);
+    }
+
     // --- ZigZag encoding ---
 
     @Test
@@ -420,6 +476,51 @@ class FlatWriterReaderTest {
 
         var r = new FlatReader(bytes);
         assertEquals(-1L, r.word64()); // round-trips correctly
+    }
+
+    @Test
+    void word64RejectsValueOver64Bits() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE.shiftLeft(64));
+        var r = new FlatReader(w.toByteArray());
+        assertThrows(FlatDecodingException.class, r::word64);
+    }
+
+    /** plutus-core's {@code dWord64} reads at most ten groups and accepts a padded encoding within them. */
+    @Test
+    void word64AcceptsTenGroups() {
+        assertEquals(1L, new FlatReader(paddedOne(10)).word64());
+        var w = new FlatWriter();
+        w.word64(Long.MIN_VALUE); // 2^63: ten groups, tenth payload 1
+        assertEquals(Long.MIN_VALUE, new FlatReader(w.toByteArray()).word64());
+    }
+
+    /** {@code lastStep} rejects a continuation bit on the tenth group whatever follows; Natural has no such bound. */
+    @Test
+    void word64RejectsMoreThanTenGroups() {
+        for (int groups : new int[]{11, 130}) {
+            assertThrows(FlatDecodingException.class, () -> new FlatReader(paddedOne(groups)).word64(),
+                    groups + " groups");
+            assertEquals(BigInteger.ONE, new FlatReader(paddedOne(groups)).natural());
+        }
+    }
+
+    /** The value 1 in {@code groups} vli7 groups: the payload in the first, zero padding after it. */
+    static byte[] paddedOne(int groups) {
+        byte[] bytes = new byte[groups];
+        Arrays.fill(bytes, (byte) 0x80);
+        bytes[0] = (byte) 0x81;
+        bytes[groups - 1] = 0;
+        return bytes;
+    }
+
+    @Test
+    void truncatedIntegerFails() {
+        var w = new FlatWriter();
+        w.natural(BigInteger.ONE.shiftLeft(2047));
+        byte[] bytes = w.toByteArray();
+        var r = new FlatReader(Arrays.copyOf(bytes, bytes.length / 2));
+        assertThrows(FlatDecodingException.class, r::natural);
     }
 
     // --- ByteString chunk edge cases ---

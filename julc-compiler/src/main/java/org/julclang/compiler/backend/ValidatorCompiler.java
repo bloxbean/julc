@@ -27,8 +27,8 @@ import java.util.Set;
  * selected handler's datum and redeemer are decoded.
  */
 final class ValidatorCompiler {
-    private static final String HANDLER_PREFIX = "$julc$handler$";
-    private static final String PARAMETER_PREFIX = "$julc$param$";
+    private static final String HANDLER_PREFIX = "#julc-handler$";
+    private static final String PARAMETER_PREFIX = "#julc-param$";
     private static final String CONTEXT_TYPE_ID = "org.julclang.ledger.ScriptContext";
 
     private ValidatorCompiler() {}
@@ -186,12 +186,12 @@ final class ValidatorCompiler {
         var unit = new PirTerm.Const(Constant.unit());
         PirTerm body = invocation;
         if (shape.datum() != null)
-            body = new PirTerm.App(body, unitDatum ? unit : new PirTerm.Var("$julc$datum", shape.datum()));
-        body = new PirTerm.App(body, unitRedeemer ? unit : new PirTerm.Var("$julc$redeemer", shape.redeemer()));
-        body = new PirTerm.App(body, new PirTerm.Var("$julc$context", shape.context()));
-        body = new PirTerm.Lam("$julc$context", shape.context(), body);
-        body = new PirTerm.Lam("$julc$redeemer", shape.redeemer(), body);
-        if (shape.datum() != null) body = new PirTerm.Lam("$julc$datum", shape.datum(), body);
+            body = new PirTerm.App(body, unitDatum ? unit : new PirTerm.Var("#julc-datum", shape.datum()));
+        body = new PirTerm.App(body, unitRedeemer ? unit : new PirTerm.Var("#julc-redeemer", shape.redeemer()));
+        body = new PirTerm.App(body, new PirTerm.Var("#julc-context", shape.context()));
+        body = new PirTerm.Lam("#julc-context", shape.context(), body);
+        body = new PirTerm.Lam("#julc-redeemer", shape.redeemer(), body);
+        if (shape.datum() != null) body = new PirTerm.Lam("#julc-datum", shape.datum(), body);
         return body;
     }
 

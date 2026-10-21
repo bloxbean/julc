@@ -137,15 +137,17 @@ public class TypeResolver {
         return newTypes.containsKey(resolved);
     }
 
-    /** Get all registered @NewType names (returns simple names for backward compat). */
+    /** Get all registered @NewType names, as FQCNs and simple names. */
     public Set<String> getNewTypeNames() {
-        // Return simple names for backward compatibility with wrapWithNewTypeLookup
-        var simpleNames = new LinkedHashSet<String>();
+        // Matched against resolveClassName: the FQCN when the import resolver finds the type,
+        // the simple name otherwise (e.g. a type nested in a library class)
+        var names = new LinkedHashSet<String>();
         for (var fqcn : newTypes.keySet()) {
             var dot = fqcn.lastIndexOf('.');
-            simpleNames.add(dot >= 0 ? fqcn.substring(dot + 1) : fqcn);
+            names.add(fqcn);
+            names.add(dot >= 0 ? fqcn.substring(dot + 1) : fqcn);
         }
-        return Collections.unmodifiableSet(simpleNames);
+        return Collections.unmodifiableSet(names);
     }
 
     public void registerSealedInterface(ClassOrInterfaceDeclaration decl, String fqcn) {
@@ -513,6 +515,7 @@ public class TypeResolver {
      * For "ProofStep.Branch": resolves scope "ProofStep" → "com.a.ProofStep",
      * then returns "com.a.ProofStep.Branch".
      * Falls back to resolveName(simpleName) when no scope present.
+     * A qualified name never resolves to a registered type it does not name.
      */
     public String resolveTypeWithScope(ClassOrInterfaceType ct) {
         if (ct.getScope().isPresent()) {
@@ -529,9 +532,33 @@ public class TypeResolver {
             if (fqcns != null && fqcns.contains(candidate)) {
                 return candidate;
             }
-            // Scope resolved but candidate not found — fall through to standard resolution
+            // The scope is not a registered type (e.g. a plain nested class): match the qualified
+            // name against the end of the registered FQCNs. It must never bind to an unrelated type
+            // that merely shares the simple name.
+            var qualified = ct.getNameWithScope();
+            var registered = allRegisteredFqcns();
+            var matches = registered.stream()
+                    .filter(fqcn -> fqcn.equals(qualified) || fqcn.endsWith("." + qualified))
+                    .toList();
+            if (matches.size() == 1) return matches.getFirst();
+            if (matches.size() > 1) {
+                throw new CompilerException("Ambiguous type '" + qualified
+                        + "'. Could be: " + String.join(", ", matches));
+            }
+            // Legacy leniency: Shape.Circle may name a Circle declared beside Shape
+            var unscoped = resolveName(ct.getNameAsString());
+            if (registered.contains(unscoped) && !enclosingName(unscoped).equals(enclosingName(scopeFqcn))) {
+                throw new CompilerException("Unknown type: " + qualified
+                        + " (its simple name resolves to the unrelated type " + unscoped + ")");
+            }
+            return unscoped;
         }
         return resolveName(ct.getNameAsString());
+    }
+
+    private static String enclosingName(String fqcn) {
+        int dot = fqcn.lastIndexOf('.');
+        return dot >= 0 ? fqcn.substring(0, dot) : "";
     }
 
     /**

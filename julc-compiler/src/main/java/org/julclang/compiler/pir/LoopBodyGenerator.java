@@ -229,7 +229,12 @@ final class LoopBodyGenerator {
     }
 
     PirTerm unpackAccumulators(PirTerm tuple, List<String> names, List<PirType> types, PirTerm body) {
-        var tupleVar = new PirTerm.Var("__t", new PirType.ListType(new PirType.DataType()));
+        // The body and every later accessor are in the tuple binder's scope, and an
+        // accumulator of the same name would shadow the tuple for later accessors.
+        var avoid = PirHelpers.freeVariables(body);
+        avoid.addAll(names);
+        var tupleVar = new PirTerm.Var(PirHelpers.hygienicName("#__t", avoid),
+                new PirType.ListType(new PirType.DataType()));
         PirTerm result = body;
         for (int i = names.size() - 1; i >= 0; i--) {
             PirTerm accessor = tupleVar;
@@ -240,7 +245,7 @@ final class LoopBodyGenerator {
             var decoded = PirHelpers.wrapDecode(accessor, types.get(i));
             result = new PirTerm.Let(names.get(i), decoded, result);
         }
-        return new PirTerm.Let("__t", tuple, result);
+        return new PirTerm.Let(tupleVar.name(), tuple, result);
     }
 
     // ===== Single-accumulator body =====
@@ -280,7 +285,7 @@ final class LoopBodyGenerator {
             }
             var expr = gen.generateExpression(es.getExpression());
             var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-            return new PirTerm.Let("_", expr, rest);
+            return new PirTerm.Let("#_", expr, rest);
         }
         if (stmt instanceof IfStmt is) {
             var cond = gen.generateExpression(is.getCondition());
@@ -306,7 +311,7 @@ final class LoopBodyGenerator {
         var term = gen.generateStatement(stmt);
         if (index + 1 < stmts.size()) {
             var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-            return new PirTerm.Let("_", term, rest);
+            return new PirTerm.Let("#_", term, rest);
         }
         return new PirTerm.Var(accName, accType);
     }
@@ -352,7 +357,7 @@ final class LoopBodyGenerator {
             }
             var expr = gen.generateExpression(es.getExpression());
             var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
-            return new PirTerm.Let("_", expr, rest);
+            return new PirTerm.Let("#_", expr, rest);
         }
         if (stmt instanceof IfStmt is) {
             return generateBreakAwareIf(is, stmts, index, accName, accType, continueFn);
@@ -403,7 +408,7 @@ final class LoopBodyGenerator {
             if (!thenBreaks && !elseBreaks) {
                 return new PirTerm.Let(accName, ifExpr, rest);
             }
-            return new PirTerm.Let("_if", ifExpr, rest);
+            return new PirTerm.Let(PirHelpers.hygienicName("#_if", PirHelpers.freeVariables(rest)), ifExpr, rest);
         }
 
         if (!thenBreaks && !elseBreaks) {
@@ -449,7 +454,7 @@ final class LoopBodyGenerator {
             }
             var expr = gen.generateExpression(es.getExpression());
             var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-            return new PirTerm.Let("_", expr, rest);
+            return new PirTerm.Let("#_", expr, rest);
         }
         if (stmt instanceof IfStmt is) {
             var cond = gen.generateExpression(is.getCondition());
@@ -524,7 +529,7 @@ final class LoopBodyGenerator {
             }
             var expr = gen.generateExpression(es.getExpression());
             var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-            return new PirTerm.Let("_", expr, rest);
+            return new PirTerm.Let("#_", expr, rest);
         }
         if (stmt instanceof IfStmt is) {
             var cond = gen.generateExpression(is.getCondition());
@@ -767,7 +772,8 @@ final class LoopBodyGenerator {
     /**
      * Lower an assignment's value and check it against the target's type: an accumulator or a
      * loop-body local keeps the type it was declared with (ADR-047 isolation, PR #150 review).
-     * A target with no declaration in scope is an error, not a fresh binding.
+     * A target with no declaration in scope is an error, not a fresh binding. A compound
+     * assignment stores {@code target op value} (ADR-060).
      */
     private PirTerm assigned(AssignExpr ae, PirType target) {
         var name = ((NameExpr) ae.getTarget()).getNameAsString();
@@ -775,15 +781,15 @@ final class LoopBodyGenerator {
             throw gen.enrichedError("Assignment to undeclared variable '" + sourceName(name) + "'",
                     "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.", ae);
         }
-        var value = gen.generateExpression(ae.getValue());
-        gen.checkNativeAssignment(name, ae.getValue(), value, target);
-        return value;
+        if (symbolTable.isClassLevel(name)) gen.requireUnsharedField(name, ae);
+        return gen.assignmentValue(ae, name, target);
     }
 
     /** Compile a variable declaration and continue with the provided continuation. */
     private PirTerm compileVarDeclThenContinue(VariableDeclarationExpr vde,
                                                 List<Statement> stmts, int index,
                                                 StmtContinuation continuation) {
+        PirGenerator.requireSingleDeclarator(vde);
         var decl = vde.getVariable(0);
         var name = decl.getNameAsString();
         var initExpr = decl.getInitializer().orElseThrow(
@@ -805,7 +811,7 @@ final class LoopBodyGenerator {
     /** Handle a nested WhileStmt inside a loop body. */
     private PirTerm handleNestedLoop(WhileStmt ws, List<Statement> stmts, int index,
                                       StmtContinuation continuation) {
-        var innerAccs = gen.detectForEachAccumulators(ws.getBody());
+        var innerAccs = gen.detectLoopAccumulators(ws);
         var innerResult = gen.generateWhileStmt(ws, List.of(ws), 0, null);
         return bindNestedLoopResult(innerAccs, innerResult, stmts, index, continuation);
     }
@@ -813,7 +819,7 @@ final class LoopBodyGenerator {
     /** Handle a nested ForEachStmt inside a loop body. */
     private PirTerm handleNestedForEach(ForEachStmt fes, List<Statement> stmts, int index,
                                          StmtContinuation continuation) {
-        var innerAccs = gen.detectForEachAccumulators(fes.getBody());
+        var innerAccs = gen.detectLoopAccumulators(fes);
         var innerResult = gen.generateForEachStmt(fes, List.of(fes), 0, null);
         return bindNestedLoopResult(innerAccs, innerResult, stmts, index, continuation);
     }
@@ -833,7 +839,8 @@ final class LoopBodyGenerator {
             return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
         } else {
             var rest = continuation.apply(stmts, index + 1);
-            return new PirTerm.Let("_nested", innerResult, rest);
+            return new PirTerm.Let(PirHelpers.hygienicName("#_nested", PirHelpers.freeVariables(rest)),
+                    innerResult, rest);
         }
     }
 }

@@ -4,6 +4,7 @@
 **Status:** Implemented and locally validated on `feat/115-list-to-array-promotion` (stacked on ADR-042's `feat/114-value-conversion-motion`); independent agent reviews and advisor passes applied; PR #144 review finding (helper parameters trusted by type) fixed by call-site provenance on 2026-09-15; maintainer review pending
 **Issues:** [#115](https://github.com/bloxbean/julc/issues/115) (O9), research decision [#103](https://github.com/bloxbean/julc/issues/103), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O9 and its issue #153 policy amendment (structural heuristic with pinned benchmark evidence), ADR-036 (PIR-to-PIR pass placement before UPLC generation), ADR-041 (narrow failure-contract precedent), ADR-042 (typed-PIR pass conventions)
+**Names:** ADR-060 renamed the shared recursive binding to `#go_get` / `#lst_get` / `#idx_get`; recognition and every decision below are unchanged.
 
 **2026-09-18 policy amendment (#153):** O9 reads no numeric cost parameters.
 Selecting `pv11-costed` no longer requires a compiler cost profile. The measured

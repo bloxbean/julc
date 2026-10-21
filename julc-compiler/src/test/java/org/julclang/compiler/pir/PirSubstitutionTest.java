@@ -50,13 +50,13 @@ class PirSubstitutionTest {
                 new PirTerm.Lam(
                         "x",
                         INT,
-                        new PirTerm.Lam("$pir$subst$0", INT, new PirTerm.App(v("target"), v("x"))));
-        var replacement = new PirTerm.App(v("x"), v("$pir$subst$1"));
+                        new PirTerm.Lam("#$pir$subst$0", INT, new PirTerm.App(v("target"), v("x"))));
+        var replacement = new PirTerm.App(v("x"), v("#$pir$subst$1"));
         var result = (PirTerm.Lam) PirSubstitution.substitute(term, "target", replacement);
-        assertEquals("$pir$subst$2", result.param());
+        assertEquals("#$pir$subst$2", result.param());
         var inner = (PirTerm.Lam) result.body();
         assertEquals(v(result.param()), ((PirTerm.App) inner.body()).argument());
-        assertEquals(Set.of("x", "$pir$subst$1"), PirSubstitution.collectFreeVarNames(result));
+        assertEquals(Set.of("x", "#$pir$subst$1"), PirSubstitution.collectFreeVarNames(result));
     }
 
     @Test

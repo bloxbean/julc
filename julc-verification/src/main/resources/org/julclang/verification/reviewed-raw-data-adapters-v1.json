@@ -27,7 +27,7 @@
       "revision": "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
       "path": "CardanoLedgerApi/V3/Governance.lean",
       "sha256": null,
-      "authority": "Pinned ChangedParameters and Quorum raw aliases"
+      "authority": "Pinned ChangedParameters, Quorum and Constitution aliases and the GovernanceAction decoder"
     },
     {
       "id": "plutus-v3-contexts",
@@ -35,7 +35,7 @@
       "revision": "f424a79ade53b427fb1e5adc0f8cc9a9689c81f7",
       "path": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
       "sha256": null,
-      "authority": "Typed V3 context and ChangedParameters Data format"
+      "authority": "Typed V3 context, ChangedParameters and Constitution Data formats"
     },
     {
       "id": "plutus-ratio",
@@ -59,7 +59,7 @@
       "revision": "61eaa7fb670e6367b7603b3fabcb2cb56b86dc13",
       "path": "julc-ledger-api/src/main/java/org/julclang/ledger",
       "sha256": null,
-      "authority": "JuLC Interval, Optional<Integer>, Rational, and TxInfo codecs"
+      "authority": "JuLC Interval, Optional<Integer>, Rational, Constitution, and TxInfo codecs"
     }
   ],
   "adapters": [
@@ -132,6 +132,21 @@
         "JuLC Rational currently decodes the pair structurally without enforcing or normalizing Plutus Rational invariants"
       ],
       "sourceIds": ["blaster-v3-governance", "plutus-v3-contexts", "plutus-ratio", "cardano-conway-cddl", "julc-ledger-v3"]
+    },
+    {
+      "id": "adapter.new-constitution.ledger-wrapper",
+      "rawFieldCapability": "constructor.governance.newConstitution",
+      "status": "READY_FOR_IMPLEMENTATION",
+      "acceptedShape": "Constr 5 [Maybe GovernanceActionId, Constr 0 [Maybe ScriptHash]]: the Constr 0 wrapper is removed before the pinned decoder; every other tag-5 shape, including the bare pinned layout, decodes to none; other tags use the pinned decoder unchanged",
+      "canonicalForm": "plutus-ledger-api Constitution record (makeIsDataSchemaIndexed, index 0) as built by cardano-ledger transConstitution",
+      "constraints": [
+        "Only tag 5 (NewConstitution) is rewritten",
+        "Removed once the pinned model encodes the Constitution wrapper; a pinned-decoder control fails then"
+      ],
+      "discrepancies": [
+        "Pinned Governance.lean declares Constitution as Option ScriptHash, so its decoder returns none for every ledger NewConstitution payload and accepts only the bare layout"
+      ],
+      "sourceIds": ["blaster-v3-governance", "plutus-v3-contexts", "julc-ledger-v3"]
     }
   ]
 }

@@ -198,8 +198,8 @@ class NeutralBackendTest {
 
     @Test
     void rejectsOverloadsThatCannotBeToldApart() {
-        // Overloads with different signatures make their class unsupported, not the provider.
-        var provider =
+        // Overloads that compile to different code are rejected, as for Java validators (JULC0054, ADR-060).
+        var e = assertThrows(CompilerException.class, () ->
                 new JavaLibraryProvider(
                         List.of(
                                 """
@@ -209,9 +209,8 @@ class NeutralBackendTest {
                                 }
                                 """),
                         null,
-                        new CompilerOptions());
-        assertTrue(provider.describe("Overloaded").isEmpty());
-        assertTrue(provider.unsupportedExports().get("Overloaded.f").contains("different signatures"));
+                        new CompilerOptions()));
+        assertEquals("JULC0054", e.diagnostics().getFirst().code());
     }
 
     @Test

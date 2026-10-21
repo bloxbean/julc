@@ -300,6 +300,14 @@ proposing validator selection.
 `whenNewConstitution`, and `isInfo`. No action payload is available outside its
 matching guard.
 
+`actionStrict` decodes `NewConstitution` in the ledger layout,
+`Constr 5 [prior, Constr 0 [Maybe ScriptHash]]`. The pinned Lean model
+(CardanoLedgerApiBlaster `5dab3c43`) declares `Constitution` as a bare
+`Option ScriptHash`, without the `Constr 0` wrapper, so a reviewed adapter
+(`adapter.new-constitution.ledger-wrapper`) removes the wrapper before the pinned
+decoder and rejects the bare layout. Claims that decode actions list the adapter
+among their capabilities. It is removed once the pin carries the wrapper.
+
 ## Reviewed raw-data adapters
 
 | Adapter | Supported operations |

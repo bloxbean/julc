@@ -8,6 +8,7 @@ import com.bloxbean.cardano.client.api.model.ProtocolParams;
 import com.bloxbean.cardano.client.api.model.Utxo;
 import com.bloxbean.cardano.client.plutus.spec.*;
 import com.bloxbean.cardano.client.transaction.spec.*;
+import com.bloxbean.cardano.client.transaction.spec.script.ScriptPubkey;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -870,24 +871,21 @@ class JulcTransactionEvaluatorTest {
         var utxos = dummyInputUtxos();
 
         // PV 8 (V2), only TTL → upper bound should be inclusive
-        var converter8 = new CclTxConverter(
-                buildMinimalTx(0, 1000), utxos, null, null, 8);
+        var converter8 = TestConverters.of(buildMinimalTx(0, 1000), utxos, 8);
         var txInfo8 = converter8.buildTxInfo();
         var interval8 = txInfo8.validRange();
         assertTrue(interval8.to().isInclusive(),
                 "PV 8 with only TTL → upper bound should be inclusive (true)");
 
         // PV 8 (V2), both bounds → upper bound should be exclusive
-        var converter8both = new CclTxConverter(
-                buildMinimalTx(500, 1000), utxos, null, null, 8);
+        var converter8both = TestConverters.of(buildMinimalTx(500, 1000), utxos, 8);
         var txInfo8both = converter8both.buildTxInfo();
         var interval8both = txInfo8both.validRange();
         assertFalse(interval8both.to().isInclusive(),
                 "PV 8 with both bounds → upper bound should be exclusive (false)");
 
         // PV 10 (V3), only TTL → upper bound should be exclusive
-        var converter10 = new CclTxConverter(
-                buildMinimalTx(0, 1000), utxos, null, null, 10);
+        var converter10 = TestConverters.of(buildMinimalTx(0, 1000), utxos, 10);
         var txInfo10 = converter10.buildTxInfo();
         var interval10 = txInfo10.validRange();
         assertFalse(interval10.to().isInclusive(),
@@ -899,8 +897,7 @@ class JulcTransactionEvaluatorTest {
         // Both bounds set → always exclusive regardless of PV
         var utxos = dummyInputUtxos();
         for (int pv : new int[]{7, 8, 9, 10}) {
-            var converter = new CclTxConverter(
-                    buildMinimalTx(500, 1000), utxos, null, null, pv);
+            var converter = TestConverters.of(buildMinimalTx(500, 1000), utxos, pv);
             var txInfo = converter.buildTxInfo();
             assertFalse(txInfo.validRange().to().isInclusive(),
                     "PV " + pv + " with both bounds → upper bound must be exclusive");
@@ -909,8 +906,7 @@ class JulcTransactionEvaluatorTest {
 
     @Test
     void convertValidRange_noTtl_upperIsPosInf() throws Exception {
-        var converter = new CclTxConverter(
-                buildMinimalTx(0, 0), dummyInputUtxos(), null, null, 8);
+        var converter = TestConverters.of(buildMinimalTx(0, 0), dummyInputUtxos(), 8);
         var txInfo = converter.buildTxInfo();
         assertInstanceOf(org.julclang.ledger.IntervalBoundType.PosInf.class,
                 txInfo.validRange().to().boundType(),
@@ -959,6 +955,217 @@ class JulcTransactionEvaluatorTest {
         var result = evaluator.evaluateTx(cbor, Set.of(inputUtxo));
 
         assertTrue(result.isSuccessful(), "Should succeed with TTL: " + result.getResponse());
+    }
+
+    // --- Translation errors: the ledger's BadTranslation fails the evaluation before any script runs ---
+
+    private static final String BYRON_ADDR = "Ae2tdPwUPEZFRbyhz3cpfC2CumGzNkFBN2L42rcUc2yjQpEkxDbkPodpMAi";
+
+    @Test
+    void evaluateTx_v1_inlineDatumInput_failsInlineDatumsNotSupported() throws Exception {
+        var v1 = PlutusV1Script.builder().cborHex(JulcScriptAdapter.fromProgram(Program.plutusV1(
+                Term.lam("d", Term.lam("r", Term.lam("ctx", Term.const_(Constant.unit())))))).getCborHex()).build();
+        String txHash = "aa".repeat(32);
+        Utxo input = scriptUtxo(txHash, HexFormat.of().formatHex(v1.getScriptHash()));
+
+        var tx = spendTx(txHash, TransactionBody.builder(), TransactionWitnessSet.builder()
+                .plutusV1Scripts(List.of(v1)));
+        var result = createEvaluator(null).evaluateTx(tx.serialize(), Set.of(input));
+
+        assertFalse(result.isSuccessful());
+        assertTrue(result.getResponse().contains(
+                "BadTranslation InlineDatumsNotSupported: Input: " + txHash + "#0"), result.getResponse());
+    }
+
+    @Test
+    void evaluateTx_v2_treasuryDonation_failsTreasuryDonationFieldNotSupported() throws Exception {
+        String txHash = "aa".repeat(32);
+        Utxo input = scriptUtxo(txHash, v2AlwaysTrueHash);
+
+        var tx = spendTx(txHash, TransactionBody.builder().donation(BigInteger.valueOf(5)),
+                TransactionWitnessSet.builder().plutusV2Scripts(List.of(v2AlwaysTrueScript)));
+        var result = createEvaluator(null).evaluateTx(tx.serialize(), Set.of(input));
+
+        assertFalse(result.isSuccessful());
+        assertTrue(result.getResponse().contains("BadTranslation TreasuryDonationFieldNotSupported: 5"),
+                result.getResponse());
+    }
+
+    @Test
+    void evaluateTx_byronInputOrOutput_failsByronTxOutInContext() throws Exception {
+        // Every Plutus language from Babbage: transTxOutV2 / transTxOutV1 (Babbage/TxInfo.hs:124-125, :152-153)
+        String txHash = "ab".repeat(32);
+        Utxo byronInput = Utxo.builder().txHash(txHash).outputIndex(1).address(BYRON_ADDR)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(10_000_000)))).build();
+        var input = mintTx(List.of(new TransactionInput(txHash, 0), new TransactionInput(txHash, 1)), List.of());
+        var inputResult = createEvaluator(null).evaluateTx(input.serialize(), Set.of(dummyUtxo(txHash), byronInput));
+        assertFalse(inputResult.isSuccessful());
+        assertTrue(inputResult.getResponse().contains(
+                "BadTranslation ByronTxOutInContext: Input: " + txHash + "#1"), inputResult.getResponse());
+
+        var output = mintTx(List.of(new TransactionInput(txHash, 0)), List.of(
+                new TransactionOutput(DUMMY_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of())),
+                new TransactionOutput(BYRON_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of()))));
+        var outputResult = createEvaluator(null).evaluateTx(output.serialize(), Set.of(dummyUtxo(txHash)));
+        assertFalse(outputResult.isSuccessful());
+        assertTrue(outputResult.getResponse().contains("BadTranslation ByronTxOutInContext: Output: 1"),
+                outputResult.getResponse());
+    }
+
+    @Test
+    void byronInputsAndOutputs_beforeBabbage_areLeftOut() {
+        // Alonzo's PlutusV1 context filters Byron inputs and outputs out (Alonzo/Plutus/TxInfo.hs:145-149)
+        String txHash = "ab".repeat(32);
+        Utxo byronInput = Utxo.builder().txHash(txHash).outputIndex(1).address(BYRON_ADDR)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(10_000_000)))).build();
+        var tx = mintTx(List.of(new TransactionInput(txHash, 0), new TransactionInput(txHash, 1)), List.of(
+                new TransactionOutput(BYRON_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of())),
+                new TransactionOutput(DUMMY_ADDR, new Value(BigInteger.valueOf(2_000_000), List.of()))));
+
+        var txInfo = TestConverters.of(tx, Set.of(dummyUtxo(txHash), byronInput), 6).buildTxInfo();
+
+        assertEquals(1, txInfo.inputs().size());
+        assertEquals(BigInteger.ZERO, txInfo.inputs().head().outRef().index());
+        assertEquals(1, txInfo.outputs().size());
+        assertEquals(BigInteger.valueOf(2_000_000), txInfo.outputs().head().value().lovelaceOf());
+    }
+
+    // --- Reference scripts in outputs: every language, native too (the ledger's TxOut reference script hash) ---
+
+    /** blake2b-224 of 0x00 ‖ the native script {@code [0, h'11' * 28]} (a ScriptPubkey). */
+    private static final String NATIVE_REF_HASH = "5334c8c55ec6518f2e262da617d3170bf0722f43813d64dbaf0ff0b9";
+
+    @Test
+    void evaluateTx_v1_babbage_nativeReferenceScriptOutput_failsReferenceScriptsNotSupported() throws Exception {
+        // Babbage's transTxOutV1 rejects any reference script, native too (Babbage/TxInfo.hs:120-126)
+        var result = createEvaluator(null, 8).evaluateTx(v1NativeRefScriptMint().serialize(),
+                Set.of(dummyUtxo(DUMMY_TX_HASH)));
+
+        assertFalse(result.isSuccessful());
+        assertTrue(result.getResponse().contains("BadTranslation ReferenceScriptsNotSupported: Output: 0"),
+                result.getResponse());
+    }
+
+    @Test
+    void evaluateTx_v1_conway_nativeReferenceScriptOutput_translates() throws Exception {
+        // From Conway a V1 context leaves the reference script out
+        for (int pv : new int[]{9, 10}) {
+            var result = createEvaluator(null, pv).evaluateTx(v1NativeRefScriptMint().serialize(),
+                    Set.of(dummyUtxo(DUMMY_TX_HASH)));
+            assertTrue(result.isSuccessful(), "PV " + pv + ": " + result.getResponse());
+        }
+    }
+
+    @Test
+    void nativeAndPlutusReferenceScriptOutputs_encodeTheirHashesInV2AndV3Contexts() throws Exception {
+        var tx = mintTx(List.of(new TransactionInput(DUMMY_TX_HASH, 0)), List.of(
+                refScriptOutput(new ScriptPubkey("11".repeat(28)).scriptRefBytes()),
+                refScriptOutput(v2AlwaysTrueScript.scriptRefBytes())));
+        for (int pv : new int[]{8, 10}) {
+            var converter = TestConverters.of(tx, Set.of(dummyUtxo(DUMMY_TX_HASH)), pv);
+            var txInfo = converter.buildTxInfo();
+            var purpose = converter.redeemerToScriptPurpose(tx.getWitnessSet().getRedeemers().getFirst());
+            var v2Context = (org.julclang.core.PlutusData.ConstrData)
+                    V1V2ScriptContextBuilder.build(PlutusLanguage.PLUTUS_V2, txInfo, purpose, pv);
+
+            // The outputs are field 2 of both the V2 and the V3 TxInfo
+            for (var txInfoData : List.of(v2Context.fields().getFirst(), txInfo.toPlutusData())) {
+                var outputs = ((org.julclang.core.PlutusData.ListData)
+                        ((org.julclang.core.PlutusData.ConstrData) txInfoData).fields().get(2)).items();
+                assertEquals(justHash(NATIVE_REF_HASH), referenceScriptField(outputs.get(0)),
+                        "native reference script at PV " + pv);
+                assertEquals(justHash(v2AlwaysTrueHash), referenceScriptField(outputs.get(1)),
+                        "PlutusV2 reference script at PV " + pv);
+            }
+        }
+    }
+
+    @Test
+    void evaluateTx_undecodableReferenceScriptOutput_failsTheEvaluation() throws Exception {
+        // An unknown script language ([4, h'00']), or bytes that are no script: an error, never a context without
+        // the output's reference script hash
+        for (String scriptRef : List.of("82044100", "00")) {
+            var tx = mintTx(List.of(new TransactionInput(DUMMY_TX_HASH, 0)),
+                    List.of(refScriptOutput(HexFormat.of().parseHex(scriptRef))));
+            var result = createEvaluator(null).evaluateTx(tx.serialize(), Set.of(dummyUtxo(DUMMY_TX_HASH)));
+
+            assertFalse(result.isSuccessful(), scriptRef);
+            assertTrue(result.getResponse().contains("Failed to deserialize the reference script of output 0"),
+                    result.getResponse());
+        }
+    }
+
+    /** A PlutusV1 always-true mint of one token whose output 0 carries a native reference script. */
+    private static Transaction v1NativeRefScriptMint() throws Exception {
+        var v1 = PlutusV1Script.builder().cborHex(JulcScriptAdapter.fromProgram(Program.plutusV1(
+                Term.lam("r", Term.lam("ctx", Term.const_(Constant.unit()))))).getCborHex()).build();
+        var multiAsset = new MultiAsset();
+        multiAsset.setPolicyId(HexFormat.of().formatHex(v1.getScriptHash()));
+        multiAsset.setAssets(List.of(new Asset("746f6b656e", BigInteger.ONE)));
+        return Transaction.builder()
+                .body(TransactionBody.builder().inputs(List.of(new TransactionInput(DUMMY_TX_HASH, 0)))
+                        .outputs(List.of(refScriptOutput(new ScriptPubkey("11".repeat(28)).scriptRefBytes())))
+                        .fee(BigInteger.valueOf(200_000)).mint(List.of(multiAsset)).build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer(RedeemerTag.Mint)))
+                        .plutusV1Scripts(List.of(v1)).build())
+                .build();
+    }
+
+    private static TransactionOutput refScriptOutput(byte[] scriptRef) {
+        return TransactionOutput.builder().address(DUMMY_ADDR)
+                .value(new Value(BigInteger.valueOf(2_000_000), List.of())).scriptRef(scriptRef).build();
+    }
+
+    /** The reference script field (index 3) of an encoded V2/V3 TxOut. */
+    private static org.julclang.core.PlutusData referenceScriptField(org.julclang.core.PlutusData txOut) {
+        return ((org.julclang.core.PlutusData.ConstrData) txOut).fields().get(3);
+    }
+
+    /** {@code Just hash}: {@code Constr 0 [B hash]}. */
+    private static org.julclang.core.PlutusData justHash(String hex) {
+        return new org.julclang.core.PlutusData.ConstrData(0,
+                List.of(new org.julclang.core.PlutusData.BytesData(HexFormat.of().parseHex(hex))));
+    }
+
+    /** A UTxO at {@code scriptHash}'s address with an inline datum (CBOR integer 8). */
+    private static Utxo scriptUtxo(String txHash, String scriptHash) {
+        return Utxo.builder().txHash(txHash).outputIndex(0).address(buildScriptAddress(scriptHash))
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000)))).inlineDatum("08").build();
+    }
+
+    private static Utxo dummyUtxo(String txHash) {
+        return Utxo.builder().txHash(txHash).outputIndex(0).address(DUMMY_ADDR)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(10_000_000)))).build();
+    }
+
+    /** A spend of {@code txHash#0} with a Spend redeemer and the given body fields and scripts. */
+    private static Transaction spendTx(String txHash, TransactionBody.TransactionBodyBuilder body,
+                                       TransactionWitnessSet.TransactionWitnessSetBuilder witnesses) {
+        return Transaction.builder()
+                .body(body.inputs(List.of(new TransactionInput(txHash, 0))).outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000)).build())
+                .witnessSet(witnesses.redeemers(List.of(redeemer(RedeemerTag.Spend))).build())
+                .build();
+    }
+
+    /** A PlutusV3 always-true mint of one token, spending {@code inputs} into {@code outputs}. */
+    private static Transaction mintTx(List<TransactionInput> inputs, List<TransactionOutput> outputs) {
+        var multiAsset = new MultiAsset();
+        multiAsset.setPolicyId(alwaysTrueHash);
+        multiAsset.setAssets(List.of(new Asset("746f6b656e", BigInteger.ONE)));
+        return Transaction.builder()
+                .body(TransactionBody.builder().inputs(inputs).outputs(outputs)
+                        .fee(BigInteger.valueOf(200_000)).mint(List.of(multiAsset)).build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer(RedeemerTag.Mint)))
+                        .plutusV3Scripts(List.of(alwaysTrueScript)).build())
+                .build();
+    }
+
+    private static Redeemer redeemer(RedeemerTag tag) {
+        return Redeemer.builder().tag(tag).index(BigInteger.ZERO).data(new BigIntPlutusData(BigInteger.valueOf(36)))
+                .exUnits(ExUnits.builder().mem(BigInteger.ZERO).steps(BigInteger.ZERO).build()).build();
     }
 
     private static final String DUMMY_TX_HASH = "ab".repeat(32);
@@ -1088,6 +1295,11 @@ class JulcTransactionEvaluatorTest {
     }
 
     private JulcTransactionEvaluator createEvaluator(ScriptSupplier scriptSupplier) {
+        return createEvaluator(scriptSupplier, null);
+    }
+
+    /** @param protocolMajor the protocol parameters' major version; {@code null} for the evaluator's default */
+    private JulcTransactionEvaluator createEvaluator(ScriptSupplier scriptSupplier, Integer protocolMajor) {
         UtxoSupplier utxoSupplier = new UtxoSupplier() {
             @Override
             public List<com.bloxbean.cardano.client.api.model.Utxo> getPage(
@@ -1107,6 +1319,7 @@ class JulcTransactionEvaluatorTest {
             var params = new ProtocolParams();
             params.setMaxTxExMem("14000000");
             params.setMaxTxExSteps("10000000000");
+            params.setProtocolMajorVer(protocolMajor);
             return params;
         };
 

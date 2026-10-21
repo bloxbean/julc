@@ -109,6 +109,14 @@ public final class DiagnosticCodes {
             "Compiler stage {0} emitted target-illegal feature {1} for {2}",
             "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer.");
 
+    public static final DiagnosticInfo COMPOUND_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0052",
+            "COMPOUND_ASSIGNMENT_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Compound assignment operator {0} is not supported on-chain",
+            "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;");
+
     public static final DiagnosticInfo C_STYLE_FOR_UNSUPPORTED = new DiagnosticInfo(
             "JULC0018",
             "C_STYLE_FOR_UNSUPPORTED",
@@ -149,6 +157,14 @@ public final class DiagnosticCodes {
             "{0} entrypoint must have {1} parameters{2}, found {3} in {4}.{5}(){6}",
             "Adjust the entrypoint signature to match the validator annotation. Spending: `(Datum, Redeemer, ScriptContext)`. Others: `(Redeemer, ScriptContext)`.");
 
+    public static final DiagnosticInfo FIELD_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0056",
+            "FIELD_ASSIGNMENT_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Assignment to field ''{0}'' in a loop is not supported: {1}",
+            "Copy the field into a local accumulator before the loop, update the local, and pass it to the methods that need it.");
+
     public static final DiagnosticInfo FLOATING_POINT_UNSUPPORTED = new DiagnosticInfo(
             "JULC0020",
             "FLOATING_POINT_UNSUPPORTED",
@@ -164,6 +180,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "Lambda cannot be stored in a variable",
             "Pass the lambda directly: `list.map(x -> ...)`, `list.filter(p -> ...)`. If you need to share lambda logic, extract it as a regular static method (not as a lambda).");
+
+    public static final DiagnosticInfo LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
+            "JULC0058",
+            "LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Reassigning {0} ''{1}'' is not supported in a loop that updates no variable declared before the loop",
+            "Declare a new local for the new value instead of reassigning, for example var adjusted = amount.subtract(fee);");
 
     public static final DiagnosticInfo METHOD_BODY_MISSING = new DiagnosticInfo(
             "JULC0001",
@@ -181,6 +205,14 @@ public final class DiagnosticCodes {
             "Method {0} may not return a value on all execution paths",
             "Ensure every if/else branch returns, or add a fallthrough return at the end of the method.");
 
+    public static final DiagnosticInfo METHOD_OVERLOAD_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0054",
+            "METHOD_OVERLOAD_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Method {0} is declared more than once in {1}; on-chain methods are bound by name, so declarations sharing a name must compile to identical code",
+            "Give each method a distinct name.");
+
     public static final DiagnosticInfo MISSING_OPTIMIZATION_COST_PROFILE = new DiagnosticInfo(
             "JULC0037",
             "MISSING_OPTIMIZATION_COST_PROFILE",
@@ -188,6 +220,14 @@ public final class DiagnosticCodes {
             "CONFIG",
             "Optimization level {0} requires an explicit pinned optimization cost profile",
             "Current compilation needs no cost profile. Configure cost parameters on the evaluator for budget measurements.");
+
+    public static final DiagnosticInfo MULTIPLE_DECLARATORS_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0053",
+            "MULTIPLE_DECLARATORS_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Declare one variable per statement: {0}",
+            "Split the declaration into one statement per variable.");
 
     public static final DiagnosticInfo MUTUAL_RECURSION_TOO_LARGE = new DiagnosticInfo(
             "JULC0023",
@@ -253,6 +293,14 @@ public final class DiagnosticCodes {
             "@Param type ''{0}'' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpret the runtime representation.",
             "Use byte[], BigInteger, typed records, redeemers, or @Param PlutusData only for opaque data.");
 
+    public static final DiagnosticInfo PATTERN_VARIABLE_SHADOWS_FIELD = new DiagnosticInfo(
+            "JULC0059",
+            "PATTERN_VARIABLE_SHADOWS_FIELD",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Pattern variable ''{0}'' has the same name as a field of {1}",
+            "Rename the pattern variable, for example `if (action instanceof Bid bid)`, so it does not reuse a field name.");
+
     public static final DiagnosticInfo PIR_INVALID_BINDING = new DiagnosticInfo(
             "JULC0048",
             "PIR_INVALID_BINDING",
@@ -292,6 +340,14 @@ public final class DiagnosticCodes {
             "PIR",
             "Failed to parse {0} source: {1}",
             "Check the file with a Java IDE or `javac` \u2014 the JuLC compiler relies on JavaParser to produce a clean AST.");
+
+    public static final DiagnosticInfo STATIC_INITIALIZER_CALLS_METHOD = new DiagnosticInfo(
+            "JULC0057",
+            "STATIC_INITIALIZER_CALLS_METHOD",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Static field ''{0}'' calls method {1}; static field initializers cannot call methods of their class",
+            "Call the method where the value is used, or initialise the field with an expression that does not call a method of this class.");
 
     public static final DiagnosticInfo STDLIB_METHOD_WRONG_ARITY = new DiagnosticInfo(
             "JULC0025",
@@ -373,6 +429,14 @@ public final class DiagnosticCodes {
             "Optimization rule {0} cannot be disabled. Rules that can be disabled: {1}",
             "Use one of the listed rule identifiers exactly as reported in the optimization report, or lower the optimization level to disable a whole class of rules.");
 
+    public static final DiagnosticInfo UNRESOLVED_MEMBER_ACCESS = new DiagnosticInfo(
+            "JULC0055",
+            "UNRESOLVED_MEMBER_ACCESS",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Cannot resolve {0}: the receiver's type does not declare it as a record field, accessor or supported method",
+            "Give the receiver its record or ledger type instead of var or PlutusData, or call a static helper as helper(x) rather than x.helper().");
+
     public static final DiagnosticInfo UNSUPPORTED_COMPILER_TARGET = new DiagnosticInfo(
             "JULC0031",
             "UNSUPPORTED_COMPILER_TARGET",
@@ -428,16 +492,21 @@ public final class DiagnosticCodes {
             COMPILER_FEATURE_UNAVAILABLE,
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,
+            COMPOUND_ASSIGNMENT_UNSUPPORTED,
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
             ENTRYPOINT_MISSING,
             ENTRYPOINT_WRONG_PARAMETER_COUNT,
+            FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
+            LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
+            METHOD_OVERLOAD_UNSUPPORTED,
             MISSING_OPTIMIZATION_COST_PROFILE,
+            MULTIPLE_DECLARATORS_UNSUPPORTED,
             MUTUAL_RECURSION_TOO_LARGE,
             NATIVE_TYPE_AT_DATA_BOUNDARY,
             NATIVE_TYPE_MISMATCH,
@@ -446,11 +515,13 @@ public final class DiagnosticCodes {
             NULL_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
             PARAM_RAW_PLUTUS_DATA,
+            PATTERN_VARIABLE_SHADOWS_FIELD,
             PIR_INVALID_BINDING,
             PIR_TYPE_MISMATCH,
             PIR_UNSUPPORTED_STRUCTURE,
             RETURN_INSIDE_WHILE,
             SOURCE_PARSE_FAILED,
+            STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,
             SWITCH_FIELD_SHADOWS_PARAMETER,
             SWITCH_NOT_EXHAUSTIVE,
@@ -461,6 +532,7 @@ public final class DiagnosticCodes {
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,
             UNKNOWN_OPTIMIZATION_RULE,
+            UNRESOLVED_MEMBER_ACCESS,
             UNSUPPORTED_COMPILER_TARGET,
             UNSUPPORTED_OPTIMIZATION_COST_PROFILE,
             UNSUPPORTED_OPTIMIZATION_LEVEL,

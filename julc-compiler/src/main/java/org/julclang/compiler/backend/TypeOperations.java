@@ -54,10 +54,10 @@ public final class TypeOperations {
             case PROJECT -> project(request, type, name);
             case EQUALS -> {
                 requireNoMember(request);
-                var a = new PirTerm.Var("left", representation);
-                var b = new PirTerm.Var("right", representation);
+                var a = new PirTerm.Var("#left", representation);
+                var b = new PirTerm.Var("#right", representation);
                 yield new Materialized(name,
-                        new PirTerm.Lam("left", representation, new PirTerm.Lam("right", representation,
+                        new PirTerm.Lam("#left", representation, new PirTerm.Lam("#right", representation,
                                 equality(a, b, representation))),
                         new PirType.FunType(representation, new PirType.FunType(representation, BOOL)));
             }
@@ -93,8 +93,8 @@ public final class TypeOperations {
         var representation = type.representation();
         if (type.newType()) {
             requireNoMember(request);
-            return new Materialized(name, new PirTerm.Lam("value", representation,
-                    new PirTerm.Var("value", representation)), new PirType.FunType(representation, representation));
+            return new Materialized(name, new PirTerm.Lam("#value", representation,
+                    new PirTerm.Var("#value", representation)), new PirType.FunType(representation, representation));
         }
         return switch (representation) {
             case PirType.RecordType record -> {
@@ -115,11 +115,11 @@ public final class TypeOperations {
     private static Materialized constructor(String name, int tag, PirType type, List<PirType.Field> fields) {
         var arguments = new ArrayList<PirTerm>();
         for (int i = 0; i < fields.size(); i++)
-            arguments.add(new PirTerm.Var("field" + i, fields.get(i).type()));
+            arguments.add(new PirTerm.Var("#field" + i, fields.get(i).type()));
         PirTerm term = new PirTerm.DataConstr(tag, type, arguments);
         PirType result = type;
         for (int i = fields.size() - 1; i >= 0; i--) {
-            term = new PirTerm.Lam("field" + i, fields.get(i).type(), term);
+            term = new PirTerm.Lam("#field" + i, fields.get(i).type(), term);
             result = new PirType.FunType(fields.get(i).type(), result);
         }
         return new Materialized(name, term, result);
@@ -130,8 +130,8 @@ public final class TypeOperations {
         if (type.newType()) {
             if (request.member() != null && type.fields().stream().noneMatch(f -> f.name().equals(request.member())))
                 throw unsupported(request, "no field " + request.member());
-            return new Materialized(name, new PirTerm.Lam("value", representation,
-                    new PirTerm.Var("value", representation)), new PirType.FunType(representation, representation));
+            return new Materialized(name, new PirTerm.Lam("#value", representation,
+                    new PirTerm.Var("#value", representation)), new PirType.FunType(representation, representation));
         }
         if (!(representation instanceof PirType.RecordType record))
             throw unsupported(request, "only records and newtypes have projections");
@@ -142,21 +142,21 @@ public final class TypeOperations {
         if (index < 0) throw unsupported(request, "no field " + request.member());
         var fieldType = record.fields().get(index).type();
         // The same field-access lowering the Java frontend emits for record.field().
-        PirTerm fields = call(DefaultFun.SndPair, call(DefaultFun.UnConstrData, new PirTerm.Var("value", record)));
+        PirTerm fields = call(DefaultFun.SndPair, call(DefaultFun.UnConstrData, new PirTerm.Var("#value", record)));
         for (int i = 0; i < index; i++) fields = call(DefaultFun.TailList, fields);
         var projected = PirHelpers.wrapDecode(call(DefaultFun.HeadList, fields), fieldType);
-        return new Materialized(name, new PirTerm.Lam("value", record, projected),
+        return new Materialized(name, new PirTerm.Lam("#value", record, projected),
                 new PirType.FunType(record, fieldType));
     }
 
     private PirTerm encoder(PirType type) {
-        return new PirTerm.Lam("value", type, PirHelpers.wrapEncode(new PirTerm.Var("value", type), resolve(type)));
+        return new PirTerm.Lam("#value", type, PirHelpers.wrapEncode(new PirTerm.Var("#value", type), resolve(type)));
     }
 
     private PirTerm decoder(PirType type) {
-        var data = new PirTerm.Var("data", DATA);
+        var data = new PirTerm.Var("#data", DATA);
         var check = new StrictBoundaryGenerator(namedDefinitions).check(data, type);
-        return new PirTerm.Lam("data", DATA, new PirTerm.IfThenElse(check,
+        return new PirTerm.Lam("#data", DATA, new PirTerm.IfThenElse(check,
                 PirHelpers.wrapDecode(data, resolve(type)), new PirTerm.Error(type)));
     }
 

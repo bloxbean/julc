@@ -19,7 +19,7 @@ import java.util.function.Function;
  *
  * <p>The list higher-order functions of {@code ListsLib} have no Java source; the Java frontend
  * builds them with {@link PirHofBuilders}. This provider describes them as generic schemes and
- * materializes each instantiation as a closed lambda over reserved {@code $julc$arg$i}
+ * materializes each instantiation as a closed lambda over reserved {@code #julc-arg$i}
  * parameters: arguments are evaluated once, strictly and left to right, and cannot be captured
  * by builder binders. Julc-generated adapters decode each Data list element for the typed
  * function argument and encode results, so a producer passes ordinary typed functions.
@@ -100,9 +100,9 @@ public final class StdlibLibraryProvider implements LibraryProvider {
             var step = new PirType.FunType(accumulator, new PirType.FunType(element, accumulator));
             return hof(List.of(step, accumulator, new PirType.ListType(element)), accumulator, args -> {
                 // \acc -> \item -> f acc (decode item)
-                var acc = new PirTerm.Var("$julc$acc", accumulator);
-                var item = new PirTerm.Var("$julc$item", new PirType.DataType());
-                var fold = new PirTerm.Lam("$julc$acc", accumulator, new PirTerm.Lam("$julc$item",
+                var acc = new PirTerm.Var("#julc-acc", accumulator);
+                var item = new PirTerm.Var("#julc-item", new PirType.DataType());
+                var fold = new PirTerm.Lam("#julc-acc", accumulator, new PirTerm.Lam("#julc-item",
                         new PirType.DataType(), new PirTerm.App(new PirTerm.App(args.get(0), acc),
                                 PirHelpers.wrapDecode(item, element))));
                 return PirHofBuilders.foldl(fold, args.get(1), args.get(2));
@@ -123,17 +123,17 @@ public final class StdlibLibraryProvider implements LibraryProvider {
     }
 
     /**
-     * A closed lambda over {@code $julc$arg$i}; the builder only sees parameter variables, so no
+     * A closed lambda over {@code #julc-arg$i}; the builder only sees parameter variables, so no
      * producer term is ever placed under a builder binder.
      */
     private static Built hof(List<PirType> parameters, PirType result,
                              Function<List<PirTerm>, PirTerm> body) {
         var arguments = new ArrayList<PirTerm>();
-        for (int i = 0; i < parameters.size(); i++) arguments.add(new PirTerm.Var("$julc$arg$" + i, parameters.get(i)));
+        for (int i = 0; i < parameters.size(); i++) arguments.add(new PirTerm.Var("#julc-arg$" + i, parameters.get(i)));
         PirTerm term = body.apply(arguments);
         PirType type = result;
         for (int i = parameters.size() - 1; i >= 0; i--) {
-            term = new PirTerm.Lam("$julc$arg$" + i, parameters.get(i), term);
+            term = new PirTerm.Lam("#julc-arg$" + i, parameters.get(i), term);
             type = new PirType.FunType(parameters.get(i), type);
         }
         return new Built(term, type);
@@ -141,8 +141,8 @@ public final class StdlibLibraryProvider implements LibraryProvider {
 
     /** {@code \e:Data -> finish (f (decode e))}: the builders pass raw Data list elements. */
     private static PirTerm adapter(PirTerm function, PirType element, Function<PirTerm, PirTerm> finish) {
-        var raw = new PirTerm.Var("$julc$element", new PirType.DataType());
-        return new PirTerm.Lam("$julc$element", new PirType.DataType(),
+        var raw = new PirTerm.Var("#julc-element", new PirType.DataType());
+        return new PirTerm.Lam("#julc-element", new PirType.DataType(),
                 finish.apply(new PirTerm.App(function, PirHelpers.wrapDecode(raw, element))));
     }
 
@@ -225,7 +225,7 @@ public final class StdlibLibraryProvider implements LibraryProvider {
         var cached = bindings.get(key);
         if (cached != null) return cached;
         var built = hof.builder().apply(representations);
-        var binding = new LibraryImports.Binding(request.symbol() + "#" + key.digest(), built.type());
+        var binding = new LibraryImports.Binding("#" + request.symbol() + "#" + key.digest(), built.type());
         terms.put(binding.name(), built.term());
         bindings.put(key, binding);
         return binding;

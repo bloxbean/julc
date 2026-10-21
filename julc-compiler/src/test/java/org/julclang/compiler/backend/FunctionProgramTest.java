@@ -282,6 +282,16 @@ class FunctionProgramTest {
                             List.of(new PirType.Field("x", BYTES)))));
             rejects("JULC0047", program(integer(1), INT, new LinkedHashMap<>(), List.of(group)));
         }
+
+        @Test
+        void importDefinitionsCannotTakeBackendBinderNames() {
+            // The backend's own binders are #julc-… (formerly $julc$…); no provider may shadow them.
+            for (var name : List.of("$julc$handler$spend", "#julc-handler$spend", "#julc-param$0")) {
+                var group = new LibraryImports("p", 2, new LinkedHashMap<>(Map.of(name, integer(1))), Map.of(),
+                        Map.of());
+                rejects("JULC0047", program(integer(1), INT, new LinkedHashMap<>(), List.of(group)));
+            }
+        }
     }
 
     // ---- verifier invariants ----

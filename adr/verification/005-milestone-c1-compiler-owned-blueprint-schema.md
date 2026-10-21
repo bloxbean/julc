@@ -293,7 +293,9 @@ Milestone C.1 was implemented on 2026-08-12.
   Playground, includes the pinned `cip57/**` resources.
 - The Gradle task validates all contract schemas before publishing individual
   validator JSON and cleans outputs belonging to removed validators after a
-  successful build.
+  successful build. When the source directory is missing or empty, the task is
+  NO-SOURCE (`@SkipWhenEmpty`) and Gradle deletes its previous outputs; the
+  task action cleans up only when sources exist but no validator remains (#216).
 
 The tests include byte-identity checks between ordinary and schema-aware
 compilation, top-level ledger-optional semantics, exact nested schema

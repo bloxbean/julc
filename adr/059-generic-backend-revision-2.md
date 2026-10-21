@@ -191,7 +191,7 @@ PROPOSE; ledger tags 0–5, mapped by an explicit switch), a producer symbol, a 
 declared type and a `DatumProfile`. A descriptor produces one script; independent
 descriptors produce independent scripts.
 
-The backend binds each handler term to a fresh `$julc$handler$…` name outside the
+The backend binds each handler term to a fresh `#julc-handler$…` name outside the
 wrapper, so wrapper binders cannot capture producer names. It always uses
 `wrapMultiValidator`, even for one handler:
 
@@ -220,7 +220,7 @@ handlers with tags, datum profiles and boundary types, parameters and named type
 parameters as leading arguments. Roles come from the descriptor, never from names.
 
 The wrapper has the Java `@Param` shape, applied once outside the context lambda:
-`\$julc$param$i$raw -> let $julc$param$i = decode(raw) in …`.
+`\#julc-param$i$raw -> let #julc-param$i = decode(raw) in …`.
 
 Parameters are decoded but not validated on-chain, exactly as in Java. Their types are
 restricted to types with a Data decoding: Int, Bytes, String, Bool, Data, records, sums,
@@ -288,7 +288,7 @@ with schemes. It starts with the list higher-order functions (`map`, `filter`, `
 `all`, `find`, `foldl`).
 
 - **Hygiene and evaluation:** each export materializes as a closed lambda over fresh
-  `$julc$arg$i` parameters. Arguments are evaluated once, strictly, and cannot be
+  `#julc-arg$i` parameters. Arguments are evaluated once, strictly, and cannot be
   captured.
 - **Calling convention:** Julc-generated adapters decode Data elements for typed function
   arguments and encode results. The frontend passes ordinary typed functions.
@@ -333,13 +333,21 @@ provider does not describe, such as a DSL record or union.
   - Overloads whose source signatures agree now compile to one method and are
     exported once. `ByteStringLib.integerToByteString`, with `long` and `BigInteger`
     variants, is an example. This makes `ByteStringLib` importable.
-  - Overloads with different signatures make only their own class unsupported, with
-    an explanation. Other classes are unaffected.
+  - Overloads that compile to different code are rejected with JULC0054 when the
+    provider compiles the library, as for Java validators (ADR-060). One rule applies
+    to every frontend. This replaces the earlier per-class fallback, which predates
+    ADR-060: then the last declaration silently won, so a caller in another class
+    could bind to the wrong overload.
+  - Overloads that compile to the same code but have different source signatures
+    make only their own class unsupported, because an export needs one description.
 - **Map order.** On-chain `JulcMap.keys()` and `values()` used a left fold with cons,
   so they returned the entries in reverse. The off-chain `JulcAssocMap` keeps map
   order. The lowering now uses a right fold, matching off-chain behavior.
   - This correctness fix changes the script bytes of Java programs that call
-    `keys()` or `values()`. Nothing else changes.
+    `keys()` or `values()`, directly or through `MapLib.keys`/`MapLib.values`.
+    Builds that keep unused library methods also change when they import `MapLib`:
+    level `NONE`, and any level with source maps. Optimized builds without source maps
+    drop the unused methods and are unchanged.
 
 ### Schema-driven test data (follow-up)
 
@@ -425,8 +433,9 @@ arrays.
 
 All additions are additive. `FrontendProgram`, `CompilerBackend.compile(FrontendProgram,
 CompilerOptions)`, `LibraryProvider.materialize(String)` and existing records keep their
-constructors and behaviour. Java script bytes are unchanged; each milestone compares its
-artifacts. A generic method in a library source changes from a compile error to a
+constructors and behaviour. Java script bytes are unchanged, except for the map-order
+correctness fix described under "Typed maps, library overloads and map order"; each
+milestone compares its artifacts. A generic method in a library source changes from a compile error to a
 template that Java validators cannot call.
 
 ## Risks
@@ -683,7 +692,7 @@ build against a locally published snapshot.
 - **`StdlibLibraryProvider`** (`julc-stdlib`) describes the programmatic list
   higher-order functions `map`, `filter`, `any`, `all`, `find` and `foldl` as schemes.
   A `Function[a,b]` reference expresses the function arguments.
-  - Each instantiation materializes a closed lambda over reserved `$julc$arg$i`
+  - Each instantiation materializes a closed lambda over reserved `#julc-arg$i`
     parameters wrapped around the existing `PirHofBuilders`. Producer terms are never
     placed under builder binders, and arguments are evaluated once, strictly, and left
     to right.
@@ -761,9 +770,9 @@ build against a locally published snapshot.
   - `ByteStringLib` is described, with `integerToByteString` exported once, and an
     `integerToByteString`/`byteStringToInteger` round trip evaluates;
   - a class with conflicting overloads is unsupported while another class in the same
-    provider stays available.
+    provider stays available (superseded by the ADR-060 merge: now JULC0054).
 - **`NeutralBackendTest`:** its overload case now expects per-class unsupported exports
-  instead of a provider failure.
+  instead of a provider failure (superseded by the ADR-060 merge: now JULC0054).
 - **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
   `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 193/0/0,
   `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
@@ -812,3 +821,33 @@ build against a locally published snapshot.
   `pairCaseTest` 71/0/0, `julc-stdlib` 432/0/0, `julc-testkit` 204/0/0,
   `julc-testkit-jqwik` 66/0/0, `julc-examples` 81/0/0,
   `julc-annotation-processor` 20/0/0.
+
+### Merge with `main` (ADR-060)
+
+The stack was based on `c95ee610`; `main` meanwhile gained ADR-060 (generated binder
+namespace), on-chain overload rejection and per-class import scoping. Merging `main`
+reconciles the two as ADR-060's Risks section anticipated:
+
+- **Binder names.** The backend's `$julc$…` binders become `#julc-…` with the rest of the
+  name kept (`ValidatorCompiler`, `BoundaryPrograms`, `StdlibLibraryProvider`). The
+  `TypeOperations` codec parameters become `#value`, `#left`, `#right`, `#field<i>` and
+  `#data`. `projectPairs` names its recursion with `PirHelpers.hygienicName`, because the
+  receiver is applied inside it. Specialization definitions are named
+  `#<symbol>#<digest>` in both providers. Producers still receive these names only through
+  `binding(request)`; the digest and its key are unchanged.
+- **Reservations.** `PirVerifier` keeps rejecting producer binders that start with `$julc$`
+  or contain `#`, and still runs only on producer definitions, before linking. Import
+  definition names starting with `#julc-` are rejected, as `$julc$` names were, so a
+  provider cannot shadow a backend binder.
+- **Overloads.** See "Typed maps, library overloads and map order": overloads that compile to
+  different code are rejected with JULC0054 by every frontend.
+- **Library specialization.** `LibraryCompiler.compileSpecialization` follows the library
+  method loop on `main`: per-class `ImportResolver`, `SymbolTable.declareMethod`, and no
+  entry methods (JULC0056).
+- **Bytes.** With the map-order fix reverted, the merge leaves every row of the ADR-060
+  snapshot (1,432 rows) and every external example artifact (43 validators, 4 levels, with
+  and without source maps) byte-identical to `main`. With the fix, optimized artifacts
+  without source maps change only for the 2 validators that call `keys()`/`values()`.
+  `NONE` and source-map artifacts of 20 external validators also change, because they keep
+  unused library methods. In the ADR-060 snapshot the same applies to the 22 hygiene
+  validators, which import `MapLib`; `Adr060ByteSnapshotTest` lists those rows as explained.

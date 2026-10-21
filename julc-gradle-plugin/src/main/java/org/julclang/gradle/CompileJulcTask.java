@@ -39,8 +39,15 @@ import java.util.Set;
  */
 public abstract class CompileJulcTask extends DefaultTask {
 
+    /**
+     * Directory of validator and library sources. A missing or empty directory has no
+     * sources: Gradle skips the task as NO-SOURCE and deletes the outputs of its previous
+     * execution, so no validator JSON or {@code plutus.json} outlives its sources.
+     * {@code @Optional} cannot replace {@code @SkipWhenEmpty}: the property always has a
+     * value, so {@code @InputDirectory} would then require the directory to exist (#216).
+     */
     @InputDirectory
-    @Optional
+    @SkipWhenEmpty
     @PathSensitive(PathSensitivity.RELATIVE)
     public abstract DirectoryProperty getSourceDir();
 
@@ -64,6 +71,14 @@ public abstract class CompileJulcTask extends DefaultTask {
     @Input
     @Optional
     public abstract Property<String> getCostProfile();
+
+    /** Blueprint preamble title. */
+    @Input
+    public abstract Property<String> getProjectName();
+
+    /** Blueprint preamble version. */
+    @Input
+    public abstract Property<String> getProjectVersion();
 
     @TaskAction
     public void compile() throws IOException {
@@ -171,7 +186,7 @@ public abstract class CompileJulcTask extends DefaultTask {
         String blueprintJson = null;
         if (blueprintEnabled && !compiledList.isEmpty()) {
             var config = new BlueprintConfig(
-                    getProject().getName(), getProject().getVersion().toString());
+                    getProjectName().get(), getProjectVersion().get());
             var blueprint = BlueprintGenerator.generate(config, compiledList);
             blueprintJson = blueprint.toJson();
         }

@@ -64,7 +64,7 @@ const SECTIONS = [
   },
   {
     title: 'Best Practices',
-    files: ['best-practices/conditionals.md'],
+    files: ['best-practices/conditionals.md', 'best-practices/value-oriented-code.md'],
   },
   {
     title: 'Standard Library',

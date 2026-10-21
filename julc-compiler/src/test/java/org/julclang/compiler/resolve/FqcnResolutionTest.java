@@ -312,6 +312,68 @@ class FqcnResolutionTest {
         }
 
         @Test
+        void explicitImportWinsOverWildcard() {
+            var knownFqcns = java.util.Set.of(
+                    "org.julclang.ledger.Value",
+                    "com.thirdparty.Value");
+            var cu = com.github.javaparser.StaticJavaParser.parse("""
+                    package com.myapp;
+                    import com.thirdparty.Value;
+                    class Foo {}
+                    """);
+            assertEquals("com.thirdparty.Value", new ImportResolver(cu, knownFqcns).resolve("Value"));
+        }
+
+        @Test
+        void memberTypeShadowsImports() {
+            var knownFqcns = java.util.Set.of(
+                    "org.julclang.ledger.Constitution",
+                    "com.thirdparty.Value",
+                    "com.myapp.Foo.Constitution",
+                    "com.myapp.Foo.Value");
+            var cu = com.github.javaparser.StaticJavaParser.parse("""
+                    package com.myapp;
+                    import com.thirdparty.Value;
+                    class Foo {
+                        record Constitution(java.math.BigInteger value) {}
+                        record Value(java.math.BigInteger value) {}
+                    }
+                    """);
+            var resolver = new ImportResolver(cu.getType(0), knownFqcns);
+            assertEquals("com.myapp.Foo.Constitution", resolver.resolve("Constitution"));
+            assertEquals("com.myapp.Foo.Value", resolver.resolve("Value"));
+            // Without a scope type only the imports apply
+            assertEquals("com.thirdparty.Value", new ImportResolver(cu, knownFqcns).resolve("Value"));
+        }
+
+        @Test
+        void memberTypesAreScopedToTheEnclosingTypes() {
+            var knownFqcns = java.util.Set.of(
+                    "org.julclang.ledger.Constitution",
+                    "com.myapp.A.Constitution",
+                    "com.myapp.A.Inner",
+                    "com.myapp.A.Inner.Constitution",
+                    "com.myapp.B.Other");
+            var cu = com.github.javaparser.StaticJavaParser.parse("""
+                    package com.myapp;
+                    class A {
+                        record Constitution(java.math.BigInteger value) {}
+                        record Inner(java.math.BigInteger value) {
+                            record Constitution(byte[] value) {}
+                        }
+                    }
+                    class B { record Other() {} }
+                    """);
+            var a = cu.getType(0);
+            var inner = (com.github.javaparser.ast.body.TypeDeclaration<?>) a.getMember(1);
+            assertEquals("com.myapp.A.Constitution", new ImportResolver(a, knownFqcns).resolve("Constitution"));
+            assertEquals("com.myapp.A.Inner.Constitution",
+                    new ImportResolver(inner, knownFqcns).resolve("Constitution"));
+            assertEquals("org.julclang.ledger.Constitution",
+                    new ImportResolver(cu.getType(1), knownFqcns).resolve("Constitution"));
+        }
+
+        @Test
         void noPackageCodeResolves() {
             var knownFqcns = java.util.Set.of("org.julclang.ledger.TxInfo");
             var resolver = new ImportResolver(knownFqcns);

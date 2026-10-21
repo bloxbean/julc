@@ -20,8 +20,7 @@ import java.util.*;
 /** Java implementation details stay behind LibraryProvider. No JVM library evaluation. */
 public final class JavaLibraryProvider implements LibraryProvider {
     /** A generic method, specialized on request; {@code scheme} is null when it cannot be described. */
-    private record Template(CompilationUnit unit, ClassOrInterfaceDeclaration owner, MethodDeclaration method,
-                            LibraryScheme scheme) {}
+    private record Template(ClassOrInterfaceDeclaration owner, MethodDeclaration method, LibraryScheme scheme) {}
 
     /** One compiled specialization. */
     private record Specialized(String name, PirTerm body, PirType type) {}
@@ -96,9 +95,9 @@ public final class JavaLibraryProvider implements LibraryProvider {
         registry = LibraryMethodRegistry.forCompilation(context);
         new LibraryCompiler(context).compile(units, resolver, registry, lookup, known);
         for (var cu : units) {
-            descriptions.scope(cu);
             for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (cls.isInterface()) continue;
+                descriptions.scope(cls);
                 String conflict = overloadConflict(cls);
                 var exported = new HashSet<String>();
                 for (var method : cls.getMethods()) {
@@ -114,7 +113,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     // Identical overloads compile to one method: export it once.
                     if (!exported.add(symbol)) continue;
                     if (!method.getTypeParameters().isEmpty()) {
-                        describeTemplate(cu, cls, method, symbol);
+                        describeTemplate(cls, method, symbol);
                         continue;
                     }
                     var compiled = registry.lookupMethod(symbol).orElseThrow();
@@ -140,11 +139,11 @@ public final class JavaLibraryProvider implements LibraryProvider {
     }
 
     /**
-     * Library methods are registered and called by {@code Class.method}, so overloads are
-     * usable only when they cannot be told apart on-chain: every overload of a name has the
-     * same source signature (for example {@code long} and {@code BigInteger} parameters, both
-     * {@code Int}). Otherwise a call inside the class could reach the wrong body, and every
-     * export of the class is unsupported; other classes are unaffected.
+     * Library methods are registered and called by {@code Class.method}. {@link LibraryCompiler}
+     * already rejects overloads that compile to different code (JULC0054, ADR-060); an export
+     * also needs one source description, so every overload of a name must have the same source
+     * signature (for example {@code long} and {@code BigInteger} parameters, both {@code Int}).
+     * Otherwise every export of the class is unsupported; other classes are unaffected.
      *
      * @return the reason the class cannot be exported, or null
      */
@@ -174,14 +173,13 @@ public final class JavaLibraryProvider implements LibraryProvider {
      * Describe a generic method as a scheme (ADR-059, #181). Bounded type parameters,
      * wildcards and raw containers have no supported substitution and stay unsupported.
      */
-    private void describeTemplate(CompilationUnit cu, ClassOrInterfaceDeclaration cls, MethodDeclaration method,
-                                  String symbol) {
+    private void describeTemplate(ClassOrInterfaceDeclaration cls, MethodDeclaration method, String symbol) {
         var names = method.getTypeParameters().stream().map(p -> p.getNameAsString()).toList();
         var bounded = method.getTypeParameters().stream().filter(p -> !p.getTypeBound().isEmpty()).findFirst();
         if (bounded.isPresent()) {
             unsupported.put(symbol, "Type parameter " + bounded.get() + " has a bound; generic library "
                     + "methods support only unbounded type parameters");
-            templates.put(symbol, new Template(cu, cls, method, null));
+            templates.put(symbol, new Template(cls, method, null));
             return;
         }
         try {
@@ -194,12 +192,12 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     + String.join(",", parameters.stream().map(LibraryType.Reference::canonical).toList())
                     + ")" + result.canonical();
             var scheme = new LibraryScheme(identity, symbol, typeParameters, parameters, result, context.target());
-            templates.put(symbol, new Template(cu, cls, method, scheme));
+            templates.put(symbol, new Template(cls, method, scheme));
             unsupported.put(symbol, "Polymorphic Java method: describe it with schemes(module) and "
                     + "instantiate it with LibraryRequest.Instantiate (ADR-059)");
         } catch (IllegalArgumentException e) {
             unsupported.put(symbol, e.getMessage());
-            templates.put(symbol, new Template(cu, cls, method, null));
+            templates.put(symbol, new Template(cls, method, null));
         } finally {
             descriptions.variables(Set.of());
         }
@@ -320,11 +318,11 @@ public final class JavaLibraryProvider implements LibraryProvider {
                 TypeReferences.producerFingerprints(request));
         var cached = specializations.get(key);
         if (cached != null) return cached;
-        String name = request.symbol() + "#" + key.digest();
+        String name = "#" + request.symbol() + "#" + key.digest();
         var previous = resolver.bindTypeVariables(environment);
         LibraryCompiler.Specialization compiled;
         try {
-            compiled = new LibraryCompiler(context).compileSpecialization(template.unit(), template.owner(),
+            compiled = new LibraryCompiler(context).compileSpecialization(template.owner(),
                     template.method(), resolver, registry, lookup, known);
         } catch (CompilerException e) {
             throw unsupported(request, "specialization does not compile: " + e.getMessage());

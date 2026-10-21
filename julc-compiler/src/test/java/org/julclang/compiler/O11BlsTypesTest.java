@@ -373,8 +373,8 @@ class O11BlsTypesTest {
         switch (term) {
             case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> { }
             case PirTerm.Lam l -> collect(l.body(), out);
-            case PirTerm.Let l -> { if (!l.name().contains(".")) collect(l.value(), out); collect(l.body(), out); }
-            case PirTerm.LetRec r -> { r.bindings().forEach(b -> { if (!b.name().contains(".")) collect(b.value(), out); }); collect(r.body(), out); }
+            case PirTerm.Let l -> { if (!isLibraryMethod(l.name())) collect(l.value(), out); collect(l.body(), out); }
+            case PirTerm.LetRec r -> { r.bindings().forEach(b -> { if (!isLibraryMethod(b.name())) collect(b.value(), out); }); collect(r.body(), out); }
             case PirTerm.App a -> { collect(a.function(), out); collect(a.argument(), out); }
             case PirTerm.IfThenElse i -> { collect(i.cond(), out); collect(i.thenBranch(), out); collect(i.elseBranch(), out); }
             case PirTerm.Trace t -> { collect(t.message(), out); collect(t.body(), out); }
@@ -399,5 +399,14 @@ class O11BlsTypesTest {
         return args.isEmpty()
                 ? vm.evaluate(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), null, EvalOptions.DEFAULT)
                 : vm.evaluateWithArgs(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), args, null, EvalOptions.DEFAULT);
+    }
+
+    /**
+     * Stdlib method bindings are qualified by their package. Since ADR-060 the fixture's own
+     * methods are qualified too, by the default-package fixture class, so a dot alone no longer
+     * separates library code from user code.
+     */
+    private static boolean isLibraryMethod(String binder) {
+        return binder.startsWith("org.julclang.");
     }
 }
