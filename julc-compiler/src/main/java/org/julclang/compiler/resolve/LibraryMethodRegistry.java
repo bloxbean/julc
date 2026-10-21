@@ -32,6 +32,8 @@ public class LibraryMethodRegistry implements StdlibLookup {
     }
 
     private final Map<String, LibraryMethod> methods = new LinkedHashMap<>();
+    // Generic methods: compiled only by language-neutral specialization (ADR-059).
+    private final Set<String> templates = new LinkedHashSet<>();
     // Simple class name -> set of FQCNs (for backward-compat lookup)
     private final Map<String, Set<String>> classNameIndex = new LinkedHashMap<>();
     private final CompilationContext context;
@@ -69,8 +71,38 @@ public class LibraryMethodRegistry implements StdlibLookup {
         classNameIndex.computeIfAbsent(simpleName, k -> new LinkedHashSet<>()).add(className);
     }
 
+    /**
+     * Record a generic method that is not compiled for Java callers. Generic
+     * {@code @OnchainLibrary} methods are specialized only by language-neutral library
+     * providers (ADR-059); a Java call to one fails with a diagnostic.
+     */
+    public void registerTemplate(String className, String methodName) {
+        templates.add(className + "." + methodName);
+        var simpleName = className.contains(".")
+                ? className.substring(className.lastIndexOf('.') + 1) : className;
+        classNameIndex.computeIfAbsent(simpleName, k -> new LinkedHashSet<>()).add(className);
+    }
+
+    /** Whether a qualified method name is a generic template. */
+    public boolean isTemplate(String qualifiedName) {
+        return templates.contains(qualifiedName);
+    }
+
+    private void rejectTemplateCall(String className, String methodName) {
+        String key = className + "." + methodName;
+        if (!className.contains(".")) {
+            var fqcns = classNameIndex.get(className);
+            if (fqcns != null && fqcns.size() == 1) key = fqcns.iterator().next() + "." + methodName;
+        }
+        if (templates.contains(key))
+            throw new CompilerException("Generic library method " + key + " cannot be called from Java yet: "
+                    + "generic @OnchainLibrary methods are specialized only by language-neutral library "
+                    + "providers (ADR-059). Provide a concrete overload-free method for Java callers.");
+    }
+
     @Override
     public Optional<PirTerm> lookup(String className, String methodName, List<PirTerm> args) {
+        rejectTemplateCall(className, methodName);
         var method = resolveMethod(className, methodName);
         if (method == null) {
             return Optional.empty();
@@ -86,6 +118,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
     @Override
     public Optional<PirTerm> lookup(String className, String methodName,
                                       List<PirTerm> args, List<PirType> argTypes) {
+        rejectTemplateCall(className, methodName);
         var method = resolveMethod(className, methodName);
         if (method == null) {
             return Optional.empty();

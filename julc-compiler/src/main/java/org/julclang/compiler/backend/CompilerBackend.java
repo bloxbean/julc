@@ -33,6 +33,14 @@ public final class CompilerBackend {
         return PirBackend.lower(unit.link(new LinkedHashMap<>(), program.term()), context, null, true);
     }
 
+    /**
+     * Compile a revision-2 validator (ADR-059): one script that dispatches on the ledger
+     * purpose to typed handlers through the shared validator wrapper.
+     */
+    public ValidatorResult compile(ValidatorProgram program, CompilerOptions options) {
+        return ValidatorCompiler.compile(program, CompilationContext.resolve(options));
+    }
+
     static void requireTarget(CompilerTarget produced, CompilationContext context, String subject) {
         if (!produced.equals(context.target()))
             throw new BackendException(DiagnosticCodes.BACKEND_TARGET_MISMATCH, subject, subject,

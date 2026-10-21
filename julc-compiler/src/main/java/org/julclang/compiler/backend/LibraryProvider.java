@@ -23,6 +23,11 @@ public interface LibraryProvider {
     /** Public exports that cannot currently be materialized, with actionable reasons. */
     default Map<String, String> unsupportedExports() { return Map.of(); }
 
+    /** Generic exports of a module, described before specialization (#181). */
+    default List<LibraryScheme> schemes(String module) {
+        return List.of();
+    }
+
     /** The backend contract revision this provider implements (ADR-059). */
     default int revision() {
         return BackendContract.REVISION_1;
@@ -50,9 +55,23 @@ public interface LibraryProvider {
                     definitions.putIfAbsent(symbol, materialize(symbol));
                     bindings.put(request, new LibraryImports.Binding(symbol, described.type()));
                 }
+                case LibraryRequest.Instantiate instantiate -> throw new BackendException(
+                        DiagnosticCodes.BACKEND_UNSUPPORTED_REQUEST, instantiate.describe(),
+                        instantiate.describe(), "this provider describes no generic exports");
+                case LibraryRequest.Operation operation -> bind(definitions, bindings, request,
+                        new TypeOperations(types(), namedDefinitions()).operation(operation));
+                case LibraryRequest.Codec codec -> bind(definitions, bindings, request,
+                        new TypeOperations(types(), namedDefinitions()).codec(codec));
             }
         }
         return new LibraryImports(getClass().getName(), revision(), definitions, bindings,
-                namedDefinitions());
+                namedDefinitions(), types());
+    }
+
+    private static void bind(Map<String, PirTerm> definitions,
+                             Map<LibraryRequest, LibraryImports.Binding> bindings,
+                             LibraryRequest request, TypeOperations.Materialized materialized) {
+        definitions.putIfAbsent(materialized.name(), materialized.term());
+        bindings.put(request, new LibraryImports.Binding(materialized.name(), materialized.type()));
     }
 }

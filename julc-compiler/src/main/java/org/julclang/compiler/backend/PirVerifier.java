@@ -28,20 +28,23 @@ import java.util.Map;
  */
 public final class PirVerifier {
     private final Map<String, PirType> namedTypes;
-    private final List<PirType> opaqueTypes;
+    private final List<PirType> unmatchable;
+    private final List<PirType> unconstructible;
     private final boolean builtinCase;
     private final Map<String, PirType> scope = new HashMap<>();
     private String subject = "";
 
     /**
-     * @param namedTypes  every named type definition visible to the producer
-     * @param opaqueTypes resolved imported types without approved constructor/match operations
-     * @param builtinCase whether the lowering profile supports {@code ListMatch}/{@code PairMatch}
+     * @param namedTypes      every named type definition visible to the producer
+     * @param unmatchable     resolved imported types without an approved MATCH operation
+     * @param unconstructible resolved imported types without an approved CONSTRUCT operation
+     * @param builtinCase     whether the lowering profile supports {@code ListMatch}/{@code PairMatch}
      */
-    public PirVerifier(Map<String, PirType> namedTypes, Collection<PirType> opaqueTypes,
-                       boolean builtinCase) {
+    public PirVerifier(Map<String, PirType> namedTypes, Collection<PirType> unmatchable,
+                       Collection<PirType> unconstructible, boolean builtinCase) {
         this.namedTypes = Map.copyOf(namedTypes);
-        this.opaqueTypes = List.copyOf(opaqueTypes);
+        this.unmatchable = List.copyOf(unmatchable);
+        this.unconstructible = List.copyOf(unconstructible);
         this.builtinCase = builtinCase;
         this.subject = "named types";
         for (var entry : this.namedTypes.entrySet()) {
@@ -338,7 +341,7 @@ public final class PirVerifier {
             throw structure("DataConstr must carry the resolved definition of " + ref.stableId()
                     + ", not a named reference; fields are encoded from its declared field types");
         var resolved = resolve(c.dataType());
-        requireTransparent(resolved, "construct");
+        requireTransparent(resolved, unconstructible, "construct");
         var fields = new ArrayList<PirType>();
         for (var field : c.fields()) fields.add(synth(field));
         List<PirType.Field> layout;
@@ -386,7 +389,7 @@ public final class PirVerifier {
     private PirType dataMatch(PirTerm.DataMatch m) {
         var scrutinee = synth(m.scrutinee());
         var resolved = resolve(scrutinee);
-        requireTransparent(resolved, "match");
+        requireTransparent(resolved, unmatchable, "match");
         List<PirType.Constructor> constructors = switch (resolved) {
             case PirType.RecordType record ->
                     List.of(new PirType.Constructor(record.name(), 0, record.fields()));
@@ -585,7 +588,7 @@ public final class PirVerifier {
                         + "; constructor tags must be 0..n-1 in declaration order");
     }
 
-    private void requireTransparent(PirType resolved, String operation) {
+    private void requireTransparent(PirType resolved, List<PirType> opaqueTypes, String operation) {
         for (var opaque : opaqueTypes)
             if (opaque.equals(resolved))
                 throw structure("imported type " + show(resolved) + " has no approved " + operation

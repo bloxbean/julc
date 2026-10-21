@@ -197,20 +197,21 @@ class NeutralBackendTest {
     }
 
     @Test
-    void rejectsOverloadedExports() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () ->
-                        new JavaLibraryProvider(
-                                List.of(
-                                        """
-                                        @OnchainLibrary class Overloaded {
-                                            public static long f(long x) { return x; }
-                                            public static long f(long x, long y) { return x; }
-                                        }
-                                        """),
-                                null,
-                                new CompilerOptions()));
+    void rejectsOverloadsThatCannotBeToldApart() {
+        // Overloads with different signatures make their class unsupported, not the provider.
+        var provider =
+                new JavaLibraryProvider(
+                        List.of(
+                                """
+                                @OnchainLibrary class Overloaded {
+                                    public static long f(long x) { return x; }
+                                    public static long f(long x, long y) { return x; }
+                                }
+                                """),
+                        null,
+                        new CompilerOptions());
+        assertTrue(provider.describe("Overloaded").isEmpty());
+        assertTrue(provider.unsupportedExports().get("Overloaded.f").contains("different signatures"));
     }
 
     @Test
