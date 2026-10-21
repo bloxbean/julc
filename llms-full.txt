@@ -3,7 +3,7 @@
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
 julcVersion: 0.1.0-pre19
-Generated: 2026-10-21T00:45:06.130Z
+Generated: 2026-10-21T12:20:49.158Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -912,6 +912,28 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `PlutusData resolveDatum(TxOut txOut, JulcMap<PlutusData, PlutusData> datumsMap)` — Resolve the datum from a TxOut: inline datum is returned directly, datum hash is looked up in the datums map, NoDatum aborts.
 - `TxOut findOutputWithToken(JulcList<TxOut> outputs, byte[] scriptHash, byte[] policyId, byte[] tokenName)` — Find the first output at a script address (identified by scriptHash) containing the specified token with inline datum. Aborts if not found.
 - `TxInInfo findInputWithToken(JulcList<TxInInfo> inputs, byte[] scriptHash, byte[] policyId, byte[] tokenName)` — Find the first input at a script address containing the specified token with inline datum. Aborts if not found.
+
+###### TypedArrayLib
+
+*Typed array operations for language frontends (ADR-059 generic exports).*
+
+- `<T> JulcArray<T> fromList(JulcList<T> list)` — An array of the list's elements, in order.
+- `<T> T get(JulcArray<T> array, long index)` — The element at a 0-based index; evaluation fails outside `[0, length)`.
+- `<T> long length(JulcArray<T> array)` — The number of elements.
+
+###### TypedMapLib
+
+*Typed association-map operations for language frontends (ADR-059 generic exports).*
+
+- `<K, V> JulcMap<K, V> empty()` — The empty map.
+- `<K, V> Optional<V> lookup(JulcMap<K, V> map, K key)` — The value for `key`, if present.
+- `<K, V> boolean member(JulcMap<K, V> map, K key)` — Whether `key` is present.
+- `<K, V> JulcMap<K, V> insert(JulcMap<K, V> map, K key, V value)` — The map with `key` bound to `value`, replacing any existing binding.
+- `<K, V> JulcMap<K, V> remove(JulcMap<K, V> map, K key)` — The map without `key`.
+- `<K, V> JulcList<K> keys(JulcMap<K, V> map)` — The keys, in map order.
+- `<K, V> JulcList<V> values(JulcMap<K, V> map)` — The values, in map order.
+- `<K, V> long size(JulcMap<K, V> map)` — The number of entries.
+- `<K, V> boolean isEmpty(JulcMap<K, V> map)` — Whether the map has no entries.
 
 ###### ValuesLib
 
@@ -6795,6 +6817,52 @@ Arbitrary<PlutusData> vestingDatum() {
                 PlutusData.integer(deadline)));
 }
 ```
+
+##### Schema-Driven Generators
+
+When a boundary type is known as a PIR type, derive its generators instead of writing
+them by hand. A validator ABI records its datum, redeemer and parameter types.
+`SchemaArbitraries` turns them into jqwik arbitraries whose values are always valid
+Data encodings. Records are `Constr 0`, sums use their tags, and maps have distinct
+keys. Recursive types stay finite.
+
+```java
+@Provide
+Arbitrary<PlutusData> redeemers() {
+    return SchemaArbitraries.redeemer(abi, ContractSchema.Purpose.SPEND);
+}
+
+@Provide
+Arbitrary<PlutusData> datums() {
+    // Replace a named type's generator, here with exact 28-byte key hashes
+    return SchemaArbitraries.forType(datumType, abi.namedTypes(), Map.of("KeyHash",
+            Arbitraries.bytes().array(byte[].class).ofSize(28).map(PlutusData.BytesData::new)));
+}
+```
+
+`SchemaArbitraries.parameters(abi)` generates whole parameter lists, in the order that
+`Program.applyParams` takes them.
+
+##### Properties Without jqwik
+
+`julc-testkit` has a small, seeded property runner that needs no test engine. You
+can call it from a plain JUnit test or embed it in a tool, including a native
+image. `DataGenerators.forType` derives generators from the same PIR types.
+`PropertyCheck` shrinks a failure to a minimal counterexample and reports the seed
+that reproduces it:
+
+```java
+var amounts = DataGenerators.integers(0, 1_000_000);
+var owners = DataGenerators.bytes(28);
+var result = PropertyCheck.check(List.of(owners, amounts), args -> {
+    var outcome = evaluate(program, args);          // e.g. ValidatorTest.evaluate
+    return Verdict.of(outcome.isSuccess(), "rejected: " + outcome);
+}, Settings.seeded(42).withTries(200));
+assertTrue(result.passed(), result::describe);
+```
+
+`Settings.defaults()` uses a fresh seed. Every result reports its seed; pass it to
+`Settings.seeded(..)` to reproduce a failure exactly.
 
 ##### Property Design Tips
 
@@ -13926,6 +13994,22 @@ class VestingValidator {
 Source: https://julc.dev/reference/release-notes/
 
 > JuLC release notes and migration guidance
+
+#### Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
+
+On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
+`JulcAssocMap` returns them in map order. A test run off chain could therefore pass while
+the deployed script read a different first key. Both now return map order on chain too.
+
+- **Script bytes change** for validators that call `keys()` or `values()`, directly or
+  through `MapLib.keys`/`MapLib.values`. A new hash means a new script address or policy
+  ID. Keep the previously compiled script to spend UTxOs locked at the old address.
+- **Builds that keep unused library methods** also change when they import `MapLib`:
+  optimization level `NONE`, and any level with source maps enabled. Optimized builds
+  without source maps are unchanged unless they use `keys()`/`values()`.
+- **Results change** only for logic that depends on position, such as `keys().head()` or
+  comparing against an ordered list. Membership checks, `all`/`any` and totals give the
+  same answer either way.
 
 #### Upcoming preview: Plutus Data byte decoding is as strict as plutus `decodeData` (#237)
 
@@ -22125,8 +22209,8 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 | `containsKey(key)` | LetRec search | BoolType |
 | `size()` | `generateListLength(UnMapData(map))` | IntegerType |
 | `isEmpty()` | `NullList(map)` | BoolType |
-| `keys()` | Foldl-based key extraction | ListType(keyType) |
-| `values()` | Foldl-based value extraction | ListType(valueType) |
+| `keys()` | Recursive key extraction, in map order | ListType(keyType) |
+| `values()` | Recursive value extraction, in map order | ListType(valueType) |
 | `insert(k, v)` | `MkCons(MkPairData(k, v), map)` | same MapType |
 | `delete(k)` | LetRec filtering | same MapType |
 

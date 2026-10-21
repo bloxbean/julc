@@ -604,6 +604,28 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `TxOut findOutputWithToken(JulcList<TxOut> outputs, byte[] scriptHash, byte[] policyId, byte[] tokenName)` — Find the first output at a script address (identified by scriptHash) containing the specified token with inline datum. Aborts if not found.
 - `TxInInfo findInputWithToken(JulcList<TxInInfo> inputs, byte[] scriptHash, byte[] policyId, byte[] tokenName)` — Find the first input at a script address containing the specified token with inline datum. Aborts if not found.
 
+#### TypedArrayLib
+
+*Typed array operations for language frontends (ADR-059 generic exports).*
+
+- `<T> JulcArray<T> fromList(JulcList<T> list)` — An array of the list's elements, in order.
+- `<T> T get(JulcArray<T> array, long index)` — The element at a 0-based index; evaluation fails outside `[0, length)`.
+- `<T> long length(JulcArray<T> array)` — The number of elements.
+
+#### TypedMapLib
+
+*Typed association-map operations for language frontends (ADR-059 generic exports).*
+
+- `<K, V> JulcMap<K, V> empty()` — The empty map.
+- `<K, V> Optional<V> lookup(JulcMap<K, V> map, K key)` — The value for `key`, if present.
+- `<K, V> boolean member(JulcMap<K, V> map, K key)` — Whether `key` is present.
+- `<K, V> JulcMap<K, V> insert(JulcMap<K, V> map, K key, V value)` — The map with `key` bound to `value`, replacing any existing binding.
+- `<K, V> JulcMap<K, V> remove(JulcMap<K, V> map, K key)` — The map without `key`.
+- `<K, V> JulcList<K> keys(JulcMap<K, V> map)` — The keys, in map order.
+- `<K, V> JulcList<V> values(JulcMap<K, V> map)` — The values, in map order.
+- `<K, V> long size(JulcMap<K, V> map)` — The number of entries.
+- `<K, V> boolean isEmpty(JulcMap<K, V> map)` — Whether the map has no entries.
+
 #### ValuesLib
 
 *Value manipulation operations compiled from Java source to UPLC.*
