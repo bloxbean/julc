@@ -318,6 +318,29 @@ provider does not describe, such as a DSL record or union.
   without producer types keep their historical digests, so existing binding names and
   script bytes are unchanged.
 
+### Typed maps, library overloads and map order (follow-up)
+
+- **Typed maps.** `TypedMapLib` (julc-stdlib) adds generic templates over
+  `JulcMap<K,V>`: `empty`, `lookup`, `member`, `insert`, `remove`, `keys`, `values`,
+  `size` and `isEmpty`. Frontends instantiate them at their key and value types,
+  including producer-owned types.
+  - Each template is a one-line call to the corresponding `JulcMap` method, so it
+    compiles through the same `TypeMethodRegistry` lowering that Java validators use.
+    Java and DSL map semantics cannot diverge.
+  - `insert` removes an existing binding first, keeping one entry per key.
+- **Overloads.** Library methods are registered and called by `Class.method`, so an
+  overload used to abort the whole provider.
+  - Overloads whose source signatures agree now compile to one method and are
+    exported once. `ByteStringLib.integerToByteString`, with `long` and `BigInteger`
+    variants, is an example. This makes `ByteStringLib` importable.
+  - Overloads with different signatures make only their own class unsupported, with
+    an explanation. Other classes are unaffected.
+- **Map order.** On-chain `JulcMap.keys()` and `values()` used a left fold with cons,
+  so they returned the entries in reverse. The off-chain `JulcAssocMap` keeps map
+  order. The lowering now uses a right fold, matching off-chain behavior.
+  - This correctness fix changes the script bytes of Java programs that call
+    `keys()` or `values()`. Nothing else changes.
+
 ## Alternatives rejected
 
 - **Verify inlined library bodies.** Java PIR uses `Data` placeholders, so either every
@@ -668,4 +691,24 @@ build against a locally published snapshot.
     and programmatic exports at its own records and unions.
 - **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
   `pairCaseTest` 71/0/0, `julc-stdlib` 420/0/0, `julc-testkit` 193/0/0,
+  `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
+
+### Milestone 8 (typed maps, overloads, map order)
+
+- **`MapOrderTest`:** a Java validator reading a map's first key and value. It fails
+  before the fix and passes after it.
+- **`TypedMapLibTest`:**
+  - the catalogue;
+  - lookup, member, insert-replaces, remove, size, isEmpty and empty at `Bytes`/`Int`;
+  - keys and values in map order, which also fails before the fix;
+  - a producer record used as a key.
+- **`LibraryOverloadTest`:**
+  - `ByteStringLib` is described, with `integerToByteString` exported once, and an
+    `integerToByteString`/`byteStringToInteger` round trip evaluates;
+  - a class with conflicting overloads is unsupported while another class in the same
+    provider stays available.
+- **`NeutralBackendTest`:** its overload case now expects per-class unsupported exports
+  instead of a provider failure.
+- **Regression runs** (fresh, `--rerun`): `julc-compiler` 1889/0/0,
+  `pairCaseTest` 71/0/0, `julc-stdlib` 426/0/0, `julc-testkit` 193/0/0,
   `julc-examples` 81/0/0, `julc-annotation-processor` 20/0/0.
