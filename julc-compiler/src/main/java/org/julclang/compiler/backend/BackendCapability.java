@@ -47,13 +47,34 @@ public record BackendCapability(String id) implements Comparable<BackendCapabili
     public static final BackendCapability SPEND_DATUM_REQUIRED =
             new BackendCapability("spend.datum.required");
 
-    /** Deployment parameters ({@link Parameter}); available from milestone #184. */
+    /** Deployment parameters ({@link Parameter}), decoded like Java {@code @Param} fields. */
     public static final BackendCapability VALIDATOR_PARAMETERS = new BackendCapability("validator.parameters");
-    /** Spending handlers with an optional datum; available from milestone #184. */
+    /** Spending handlers with an optional datum ({@link DatumProfile#OPTIONAL}). */
     public static final BackendCapability SPEND_DATUM_OPTIONAL =
             new BackendCapability("spend.datum.optional");
-    /** Spending handlers without a datum argument; available from milestone #184. */
+    /** Spending handlers without a datum argument ({@link DatumProfile#ABSENT}). */
     public static final BackendCapability SPEND_DATUM_ABSENT = new BackendCapability("spend.datum.absent");
+
+    /** Standalone strict boundary check programs ({@link BoundaryPrograms}). */
+    public static final BackendCapability BOUNDARY_PROGRAMS = new BackendCapability("boundary.check-program");
+
+    /** Approved imported-type operations ({@link LibraryRequest.Operation}). */
+    public static final BackendCapability LIBRARY_REQUEST_OPERATION =
+            new BackendCapability("library.request.operation");
+    /** Explicit container Data codecs ({@link LibraryRequest.Codec}). */
+    public static final BackendCapability LIBRARY_REQUEST_CODEC = new BackendCapability("library.request.codec");
+    /** Type descriptions with approved operations, representation revision 1. */
+    public static final BackendCapability LIBRARY_TYPE_OPERATIONS =
+            new BackendCapability("library.type-operations.1");
+
+    /** Generic export schemes ({@link LibraryScheme}), contract version 1. */
+    public static final BackendCapability LIBRARY_SCHEMES = new BackendCapability("library.schemes.1");
+    /** Specialization of generic exports ({@link LibraryRequest.Instantiate}). */
+    public static final BackendCapability LIBRARY_REQUEST_INSTANTIATE =
+            new BackendCapability("library.request.instantiate");
+
+    /** Deterministic provider composition ({@link LibraryProviders#compose}). */
+    public static final BackendCapability LIBRARY_COMPOSITION = new BackendCapability("library.compose");
 
     public BackendCapability {
         Objects.requireNonNull(id, "id");

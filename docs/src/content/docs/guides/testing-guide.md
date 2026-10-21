@@ -1002,6 +1002,52 @@ Arbitrary<PlutusData> vestingDatum() {
 }
 ```
 
+### Schema-Driven Generators
+
+When a boundary type is known as a PIR type, derive its generators instead of writing
+them by hand. A validator ABI records its datum, redeemer and parameter types.
+`SchemaArbitraries` turns them into jqwik arbitraries whose values are always valid
+Data encodings. Records are `Constr 0`, sums use their tags, and maps have distinct
+keys. Recursive types stay finite.
+
+```java
+@Provide
+Arbitrary<PlutusData> redeemers() {
+    return SchemaArbitraries.redeemer(abi, ContractSchema.Purpose.SPEND);
+}
+
+@Provide
+Arbitrary<PlutusData> datums() {
+    // Replace a named type's generator, here with exact 28-byte key hashes
+    return SchemaArbitraries.forType(datumType, abi.namedTypes(), Map.of("KeyHash",
+            Arbitraries.bytes().array(byte[].class).ofSize(28).map(PlutusData.BytesData::new)));
+}
+```
+
+`SchemaArbitraries.parameters(abi)` generates whole parameter lists, in the order that
+`Program.applyParams` takes them.
+
+### Properties Without jqwik
+
+`julc-testkit` has a small, seeded property runner that needs no test engine. You
+can call it from a plain JUnit test or embed it in a tool, including a native
+image. `DataGenerators.forType` derives generators from the same PIR types.
+`PropertyCheck` shrinks a failure to a minimal counterexample and reports the seed
+that reproduces it:
+
+```java
+var amounts = DataGenerators.integers(0, 1_000_000);
+var owners = DataGenerators.bytes(28);
+var result = PropertyCheck.check(List.of(owners, amounts), args -> {
+    var outcome = evaluate(program, args);          // e.g. ValidatorTest.evaluate
+    return Verdict.of(outcome.isSuccess(), "rejected: " + outcome);
+}, Settings.seeded(42).withTries(200));
+assertTrue(result.passed(), result::describe);
+```
+
+`Settings.defaults()` uses a fresh seed. Every result reports its seed; pass it to
+`Settings.seeded(..)` to reproduce a failure exactly.
+
 ### Property Design Tips
 
 **Positive properties** verify that authorized actions always succeed:

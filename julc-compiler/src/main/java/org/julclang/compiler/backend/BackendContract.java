@@ -36,6 +36,16 @@ public final class BackendContract {
         capabilities.add(BackendCapability.VALIDATOR_PROGRAM);
         for (var purpose : ContractSchema.Purpose.values()) capabilities.add(purposeCapability(purpose));
         capabilities.add(BackendCapability.SPEND_DATUM_REQUIRED);
+        capabilities.add(BackendCapability.SPEND_DATUM_OPTIONAL);
+        capabilities.add(BackendCapability.SPEND_DATUM_ABSENT);
+        capabilities.add(BackendCapability.VALIDATOR_PARAMETERS);
+        capabilities.add(BackendCapability.BOUNDARY_PROGRAMS);
+        capabilities.add(BackendCapability.LIBRARY_REQUEST_OPERATION);
+        capabilities.add(BackendCapability.LIBRARY_REQUEST_CODEC);
+        capabilities.add(BackendCapability.LIBRARY_TYPE_OPERATIONS);
+        capabilities.add(BackendCapability.LIBRARY_SCHEMES);
+        capabilities.add(BackendCapability.LIBRARY_REQUEST_INSTANTIATE);
+        capabilities.add(BackendCapability.LIBRARY_COMPOSITION);
         for (var feature : ProtocolCapability.values())
             if (context.supports(feature)) capabilities.add(targetCapability(feature));
         return new BackendCapabilities(REVISION, MINIMUM_REVISION, context.target(), capabilities);

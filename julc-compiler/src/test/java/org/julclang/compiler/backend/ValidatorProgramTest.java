@@ -361,15 +361,16 @@ class ValidatorProgramTest {
         }
 
         @Test
-        void unavailableFeaturesNeedCapabilities() {
-            var withParameter = new ValidatorProgram(2, Set.of(), "v", CompilerTarget.PLUTUS_V3_PV11,
-                    BackendContract.STRICT_BOUNDARY_V1, Map.of(), List.of(), new LinkedHashMap<>(),
-                    List.of(new Parameter("owner", INT)), List.of(equalsHandler(Purpose.MINT, 1)));
-            assertTrue(rejects("JULC0045", withParameter).getMessage().contains("validator.parameters"));
-            var optional = new ValidatorProgram.Handler(Purpose.SPEND, "s", spendHandler().term(),
-                    spendHandler().type(), DatumProfile.OPTIONAL);
-            assertTrue(rejects("JULC0045", program(List.of(optional))).getMessage()
-                    .contains("spend.datum.optional"));
+        void parameterAndDatumCapabilitiesAreAdvertised() {
+            var capabilities = new CompilerBackend().capabilities(new CompilerOptions());
+            for (var capability : List.of(BackendCapability.VALIDATOR_PARAMETERS,
+                    BackendCapability.SPEND_DATUM_REQUIRED, BackendCapability.SPEND_DATUM_OPTIONAL,
+                    BackendCapability.SPEND_DATUM_ABSENT, BackendCapability.BOUNDARY_PROGRAMS))
+                assertTrue(capabilities.provides(capability), capability.id());
+            var future = new ValidatorProgram(2, Set.of(new BackendCapability("spend.datum.inline-hash")), "v",
+                    CompilerTarget.PLUTUS_V3_PV11, BackendContract.STRICT_BOUNDARY_V1, Map.of(), List.of(),
+                    new LinkedHashMap<>(), List.of(), List.of(equalsHandler(Purpose.MINT, 1)));
+            assertTrue(rejects("JULC0045", future).getMessage().contains("spend.datum.inline-hash"));
         }
 
         @Test

@@ -5,6 +5,8 @@ import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.Type;
 import org.julclang.compiler.backend.LibraryType;
+import org.julclang.compiler.backend.TypeReferences;
+import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.TypeResolver;
@@ -16,6 +18,10 @@ final class LibraryTypeDescriptions {
     private final TypeResolver resolver;
     private final Map<String, RecordDeclaration> records = new LinkedHashMap<>();
     private final Map<String, LibraryType> types = new LinkedHashMap<>();
+    /** Declared records whose runtime encoding is not constructor data, e.g. the map-backed Value. */
+    private final Set<String> special = new LinkedHashSet<>();
+    /** Type variables of the generic method being described (ADR-059, #181). */
+    private Set<String> variables = Set.of();
 
     LibraryTypeDescriptions(List<CompilationUnit> units, TypeResolver resolver) {
         this.resolver = resolver;
@@ -41,6 +47,7 @@ final class LibraryTypeDescriptions {
                     && !m.getType().asString().equals("ConstrData"))) regular = false;
             boolean variant = record.getParentNode().orElse(null) instanceof ClassOrInterfaceDeclaration owner
                     && owner.isInterface();
+            if (!regular && !newType) special.add(identity);
             types.put(identity, new LibraryType(identity, representation, newType,
                     !variant && (regular || newType) ? fields : List.of()));
         }
@@ -71,9 +78,84 @@ final class LibraryTypeDescriptions {
         for (String identity : TypeResolver.ledgerHashFqcns())
             types.put(identity, new LibraryType(identity, new PirType.ByteStringType(), true,
                     List.of(new LibraryType.Field("hash", ref("Bytes", List.of())))));
+        var specialRepresentations = special.stream().map(id -> types.get(id).representation()).toList();
+        var namedDefinitions = resolver.namedDefinitions();
+        types.replaceAll((identity, type) -> new LibraryType(type.identity(), type.representation(),
+                type.newType(), type.fields(), type.constructors(),
+                operations(type, specialRepresentations, namedDefinitions)));
+    }
+
+    /**
+     * Operations derived only from verified facts (ADR-059): special layouts get none, and a
+     * type containing one has no equality or strict codec, because the strict boundary checker
+     * and {@code EqualsData} would treat its map encoding as constructor data.
+     */
+    private Set<LibraryType.Operation> operations(
+            LibraryType type, List<PirType> specialRepresentations, Map<String, PirType> namedDefinitions) {
+        var representation = type.representation();
+        if (special.contains(type.identity()) || PirType.containsNativeOpaque(representation))
+            return Set.of();
+        var operations = EnumSet.noneOf(LibraryType.Operation.class);
+        if (type.newType()) {
+            if (!(representation instanceof PirType.IntegerType || representation instanceof PirType.ByteStringType
+                    || representation instanceof PirType.StringType || representation instanceof PirType.BoolType))
+                return Set.of();
+            operations.addAll(EnumSet.of(LibraryType.Operation.CONSTRUCT, LibraryType.Operation.PROJECT,
+                    LibraryType.Operation.ENCODE));
+        } else if (representation instanceof PirType.RecordType && !type.fields().isEmpty()
+                || representation instanceof PirType.RecordType record && record.fields().isEmpty()) {
+            operations.addAll(EnumSet.of(LibraryType.Operation.CONSTRUCT, LibraryType.Operation.PROJECT,
+                    LibraryType.Operation.MATCH, LibraryType.Operation.ENCODE));
+        } else if (representation instanceof PirType.SumType) {
+            operations.addAll(EnumSet.of(LibraryType.Operation.CONSTRUCT, LibraryType.Operation.MATCH,
+                    LibraryType.Operation.ENCODE));
+        } else {
+            return Set.of();
+        }
+        if (!containsSpecial(representation, specialRepresentations, namedDefinitions, new HashSet<>())
+                && strictlyCheckable(representation, namedDefinitions))
+            operations.addAll(EnumSet.of(LibraryType.Operation.EQUALS, LibraryType.Operation.DECODE_STRICT,
+                    LibraryType.Operation.BOUNDARY));
+        return operations;
+    }
+
+    private static boolean containsSpecial(PirType type, List<PirType> specialRepresentations,
+                                           Map<String, PirType> namedDefinitions, Set<String> visiting) {
+        if (specialRepresentations.contains(type)) return true;
+        return switch (type) {
+            case PirType.NamedTypeRef ref -> visiting.add(ref.stableId())
+                    && namedDefinitions.containsKey(ref.stableId())
+                    && containsSpecial(namedDefinitions.get(ref.stableId()), specialRepresentations,
+                            namedDefinitions, visiting);
+            case PirType.RecordType record -> record.fields().stream().anyMatch(field ->
+                    containsSpecial(field.type(), specialRepresentations, namedDefinitions, visiting));
+            case PirType.SumType sum -> sum.constructors().stream().flatMap(c -> c.fields().stream())
+                    .anyMatch(field -> containsSpecial(field.type(), specialRepresentations, namedDefinitions, visiting));
+            case PirType.ListType list -> containsSpecial(list.elemType(), specialRepresentations, namedDefinitions, visiting);
+            case PirType.MapType map -> containsSpecial(map.keyType(), specialRepresentations, namedDefinitions, visiting)
+                    || containsSpecial(map.valueType(), specialRepresentations, namedDefinitions, visiting);
+            case PirType.OptionalType optional ->
+                    containsSpecial(optional.elemType(), specialRepresentations, namedDefinitions, visiting);
+            case PirType.ArrayType array -> containsSpecial(array.elemType(), specialRepresentations, namedDefinitions, visiting);
+            default -> false;
+        };
+    }
+
+    private static boolean strictlyCheckable(PirType type, Map<String, PirType> namedDefinitions) {
+        try {
+            new StrictBoundaryGenerator(namedDefinitions).ensureSupported(type);
+            return true;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return false;
+        }
     }
 
     Map<String, LibraryType> types() { return Collections.unmodifiableMap(types); }
+
+    /** Describe references to these names as scheme type variables until reset. */
+    void variables(Set<String> names) {
+        variables = Set.copyOf(names);
+    }
 
     void scope(CompilationUnit unit) {
         var known = new LinkedHashSet<>(resolver.allRegisteredFqcns());
@@ -97,6 +179,10 @@ final class LibraryTypeDescriptions {
         };
         if (!type.isClassOrInterfaceType()) throw unsupported(type);
         var ct = type.asClassOrInterfaceType();
+        if (ct.getScope().isEmpty() && variables.contains(ct.getNameAsString())) {
+            if (ct.getTypeArguments().isPresent()) throw unsupported(type);
+            return LibraryType.Reference.variable(ct.getNameAsString());
+        }
         String name = ct.getNameWithScope();
         var args = ct.getTypeArguments().map(a -> a.stream().map(this::reference).toList()).orElse(List.of());
         String resolved = resolver.resolveClassName(name);
@@ -118,28 +204,16 @@ final class LibraryTypeDescriptions {
             case "List", "java.util.List", "JulcList", "org.julclang.core.types.JulcList" -> "List";
             case "Map", "java.util.Map", "JulcMap", "org.julclang.core.types.JulcMap" -> "Map";
             case "Optional", "java.util.Optional" -> "JulcOptional";
+            case "JulcArray", "org.julclang.core.types.JulcArray" -> "Array";
             default -> throw unsupported(type);
         };
-        int arity = switch(mapped) { case "List", "JulcOptional" -> 1; case "Map" -> 2; default -> 0; };
+        int arity = switch(mapped) { case "List", "JulcOptional", "Array" -> 1; case "Map" -> 2; default -> 0; };
         if (args.size() != arity) throw new IllegalArgumentException("Raw or invalid container signature: " + type);
         return ref(mapped, args);
     }
 
     PirType representation(LibraryType.Reference ref) {
-        if (types.containsKey(ref.name())) return types.get(ref.name()).representation();
-        var args = ref.arguments();
-        return switch (ref.name()) {
-            case "Int" -> new PirType.IntegerType();
-            case "Bool" -> new PirType.BoolType();
-            case "String" -> new PirType.StringType();
-            case "Bytes" -> new PirType.ByteStringType();
-            case "Unit" -> new PirType.UnitType();
-            case "Data" -> new PirType.DataType();
-            case "List" -> new PirType.ListType(representation(args.getFirst()));
-            case "Map" -> new PirType.MapType(representation(args.get(0)), representation(args.get(1)));
-            case "JulcOptional" -> new PirType.OptionalType(representation(args.getFirst()));
-            default -> throw new IllegalArgumentException("No source type description for " + ref.name());
-        };
+        return TypeReferences.representation(ref, types);
     }
 
     private static LibraryType.Reference ref(String name, List<LibraryType.Reference> args) {
