@@ -5,6 +5,7 @@ import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.type.Type;
 import org.julclang.compiler.backend.LibraryType;
+import org.julclang.compiler.backend.TypeReferences;
 import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.ImportResolver;
@@ -19,6 +20,8 @@ final class LibraryTypeDescriptions {
     private final Map<String, LibraryType> types = new LinkedHashMap<>();
     /** Declared records whose runtime encoding is not constructor data, e.g. the map-backed Value. */
     private final Set<String> special = new LinkedHashSet<>();
+    /** Type variables of the generic method being described (ADR-059, #181). */
+    private Set<String> variables = Set.of();
 
     LibraryTypeDescriptions(List<CompilationUnit> units, TypeResolver resolver) {
         this.resolver = resolver;
@@ -133,6 +136,7 @@ final class LibraryTypeDescriptions {
                     || containsSpecial(map.valueType(), specialRepresentations, namedDefinitions, visiting);
             case PirType.OptionalType optional ->
                     containsSpecial(optional.elemType(), specialRepresentations, namedDefinitions, visiting);
+            case PirType.ArrayType array -> containsSpecial(array.elemType(), specialRepresentations, namedDefinitions, visiting);
             default -> false;
         };
     }
@@ -147,6 +151,11 @@ final class LibraryTypeDescriptions {
     }
 
     Map<String, LibraryType> types() { return Collections.unmodifiableMap(types); }
+
+    /** Describe references to these names as scheme type variables until reset. */
+    void variables(Set<String> names) {
+        variables = Set.copyOf(names);
+    }
 
     void scope(CompilationUnit unit) {
         var known = new LinkedHashSet<>(resolver.allRegisteredFqcns());
@@ -170,6 +179,10 @@ final class LibraryTypeDescriptions {
         };
         if (!type.isClassOrInterfaceType()) throw unsupported(type);
         var ct = type.asClassOrInterfaceType();
+        if (ct.getScope().isEmpty() && variables.contains(ct.getNameAsString())) {
+            if (ct.getTypeArguments().isPresent()) throw unsupported(type);
+            return LibraryType.Reference.variable(ct.getNameAsString());
+        }
         String name = ct.getNameWithScope();
         var args = ct.getTypeArguments().map(a -> a.stream().map(this::reference).toList()).orElse(List.of());
         String resolved = resolver.resolveClassName(name);
@@ -191,28 +204,16 @@ final class LibraryTypeDescriptions {
             case "List", "java.util.List", "JulcList", "org.julclang.core.types.JulcList" -> "List";
             case "Map", "java.util.Map", "JulcMap", "org.julclang.core.types.JulcMap" -> "Map";
             case "Optional", "java.util.Optional" -> "JulcOptional";
+            case "JulcArray", "org.julclang.core.types.JulcArray" -> "Array";
             default -> throw unsupported(type);
         };
-        int arity = switch(mapped) { case "List", "JulcOptional" -> 1; case "Map" -> 2; default -> 0; };
+        int arity = switch(mapped) { case "List", "JulcOptional", "Array" -> 1; case "Map" -> 2; default -> 0; };
         if (args.size() != arity) throw new IllegalArgumentException("Raw or invalid container signature: " + type);
         return ref(mapped, args);
     }
 
     PirType representation(LibraryType.Reference ref) {
-        if (types.containsKey(ref.name())) return types.get(ref.name()).representation();
-        var args = ref.arguments();
-        return switch (ref.name()) {
-            case "Int" -> new PirType.IntegerType();
-            case "Bool" -> new PirType.BoolType();
-            case "String" -> new PirType.StringType();
-            case "Bytes" -> new PirType.ByteStringType();
-            case "Unit" -> new PirType.UnitType();
-            case "Data" -> new PirType.DataType();
-            case "List" -> new PirType.ListType(representation(args.getFirst()));
-            case "Map" -> new PirType.MapType(representation(args.get(0)), representation(args.get(1)));
-            case "JulcOptional" -> new PirType.OptionalType(representation(args.getFirst()));
-            default -> throw new IllegalArgumentException("No source type description for " + ref.name());
-        };
+        return TypeReferences.representation(ref, types);
     }
 
     private static LibraryType.Reference ref(String name, List<LibraryType.Reference> args) {

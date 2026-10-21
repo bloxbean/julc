@@ -2,12 +2,16 @@ package org.julclang.compiler.backend;
 
 import org.julclang.compiler.pir.PirType;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 /** A request for a provider-owned, closed implementation (ADR-059). */
-public sealed interface LibraryRequest permits LibraryRequest.Export, LibraryRequest.Operation,
-        LibraryRequest.Codec {
+public sealed interface LibraryRequest permits LibraryRequest.Export, LibraryRequest.Instantiate,
+        LibraryRequest.Operation, LibraryRequest.Codec {
 
     /** A stable description used in diagnostics. */
     String describe();
@@ -22,6 +26,35 @@ public sealed interface LibraryRequest permits LibraryRequest.Export, LibraryReq
         @Override
         public String describe() {
             return symbol;
+        }
+    }
+
+    /**
+     * A generic export specialized at concrete type arguments (#181), in the order of the
+     * scheme's type parameters. Arguments are source references without variables.
+     *
+     * <p>{@code producerTypes} gives the representations of producer-owned nominal types that the
+     * arguments name and the provider does not describe, keyed by reference name. Each must be a
+     * constructor-encoded record or sum; a name the provider already describes is rejected rather
+     * than shadowed. Their representations are part of the specialization key.
+     */
+    record Instantiate(String symbol, List<LibraryType.Reference> typeArguments,
+                       Map<String, PirType> producerTypes) implements LibraryRequest {
+        public Instantiate {
+            Objects.requireNonNull(symbol, "symbol");
+            typeArguments = List.copyOf(typeArguments);
+            producerTypes = Collections.unmodifiableMap(new TreeMap<>(producerTypes));
+        }
+
+        /** An instantiation whose arguments name only provider-described or built-in types. */
+        public Instantiate(String symbol, List<LibraryType.Reference> typeArguments) {
+            this(symbol, typeArguments, Map.of());
+        }
+
+        @Override
+        public String describe() {
+            return symbol + "<" + String.join(",", typeArguments.stream()
+                    .map(LibraryType.Reference::canonical).toList()) + ">";
         }
     }
 

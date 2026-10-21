@@ -1,5 +1,6 @@
 package org.julclang.compiler.backend;
 
+import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -19,6 +20,8 @@ import java.util.SequencedMap;
  *
  * @param provider    provider identity for diagnostics
  * @param revision    the backend contract revision the provider implements
+ * @param target      the compiler target the group was materialized for, or null when the
+ *                    provider does not specialize by target
  * @param definitions closed group of strict definitions, in dependency-compatible order
  * @param bindings    the binding name and declared type of each requested implementation
  * @param namedTypes  named type definitions referenced by the binding types
@@ -28,6 +31,7 @@ import java.util.SequencedMap;
 public record LibraryImports(
         String provider,
         int revision,
+        CompilerTarget target,
         SequencedMap<String, PirTerm> definitions,
         Map<LibraryRequest, Binding> bindings,
         Map<String, PirType> namedTypes,
@@ -66,10 +70,17 @@ public record LibraryImports(
                                 + " names no definition: " + binding.getValue().name());
     }
 
-    /** A group whose imported named types have no approved operations. */
+    /** A target-independent group. */
+    public LibraryImports(String provider, int revision, SequencedMap<String, PirTerm> definitions,
+                          Map<LibraryRequest, Binding> bindings, Map<String, PirType> namedTypes,
+                          Map<String, LibraryType> types) {
+        this(provider, revision, null, definitions, bindings, namedTypes, types);
+    }
+
+    /** A target-independent group whose imported named types have no approved operations. */
     public LibraryImports(String provider, int revision, SequencedMap<String, PirTerm> definitions,
                           Map<LibraryRequest, Binding> bindings, Map<String, PirType> namedTypes) {
-        this(provider, revision, definitions, bindings, namedTypes, Map.of());
+        this(provider, revision, null, definitions, bindings, namedTypes, Map.of());
     }
 
     /** The binding for a request materialized by this group. */
