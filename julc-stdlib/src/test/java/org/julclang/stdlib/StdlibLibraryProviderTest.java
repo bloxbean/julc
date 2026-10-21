@@ -254,4 +254,29 @@ class StdlibLibraryProviderTest {
                 lam("n", INT, new PirTerm.Var("n", INT))), INT_LIST, foreign));
         assertEquals("JULC0046", error.code());
     }
+
+    @Test
+    void producerOwnedTypesAreTypeArgumentsOfProgrammaticExports() {
+        var order = new PirType.RecordType("dsl.Order", List.of(new PirType.Field("amount", INT),
+                new PirType.Field("open", BOOL)));
+        var orderRef = new Reference("dsl.Order", List.of());
+        var anyOpen = new LibraryRequest.Instantiate(StdlibLibraryProvider.LISTS + ".any", List.of(orderRef),
+                Map.of("dsl.Order", order));
+        var group = PROVIDER.materialize(List.of(anyOpen));
+        // \o:Order -> the Bool at field 1 (open), decoded from the record's Data fields.
+        var fields = call(DefaultFun.SndPair, call(DefaultFun.UnConstrData, new PirTerm.Var("o", order)));
+        var open = new PirTerm.Lam("o", order, new PirTerm.IfThenElse(call(DefaultFun.EqualsInteger,
+                call(DefaultFun.FstPair, call(DefaultFun.UnConstrData,
+                        call(DefaultFun.HeadList, call(DefaultFun.TailList, fields)))), integer(1)),
+                new PirTerm.Const(Constant.bool(true)), new PirTerm.Const(Constant.bool(false))));
+        PirTerm items = call(DefaultFun.MkNilData, new PirTerm.Const(Constant.unit()));
+        for (var value : List.of(PlutusData.constr(0, PlutusData.integer(1), PlutusData.constr(0)),
+                PlutusData.constr(0, PlutusData.integer(2), PlutusData.constr(1))))
+            items = call(DefaultFun.MkCons, new PirTerm.Const(Constant.data(value)), items);
+        var list = new PirTerm.Let("orders", items, new PirTerm.Var("orders", new PirType.ListType(order)));
+        assertEquals(new Term.Const(Constant.bool(true)), value(apply(ref(group, anyOpen), list, open), BOOL, group));
+        var unknown = new LibraryRequest.Instantiate(StdlibLibraryProvider.LISTS + ".any", List.of(orderRef));
+        assertEquals("JULC0051", assertThrows(BackendException.class,
+                () -> PROVIDER.materialize(List.of(unknown))).code());
+    }
 }

@@ -54,6 +54,40 @@ public final class TypeReferences {
     }
 
     /**
+     * The nominal types visible to an instantiation: the provider's descriptions plus the
+     * producer-owned types the request carries (ADR-059). A producer type must be a
+     * constructor-encoded record or sum and must not redefine a provider-described name.
+     *
+     * @throws IllegalArgumentException for a colliding name or an unsupported producer type
+     */
+    public static Map<String, LibraryType> withProducerTypes(Map<String, LibraryType> providerTypes,
+                                                             LibraryRequest.Instantiate request) {
+        if (request.producerTypes().isEmpty()) return providerTypes;
+        var merged = new java.util.LinkedHashMap<>(providerTypes);
+        request.producerTypes().forEach((name, representation) -> {
+            if (providerTypes.containsKey(name))
+                throw new IllegalArgumentException("producer type " + name
+                        + " collides with a type described by the provider");
+            if (!(representation instanceof PirType.RecordType || representation instanceof PirType.SumType))
+                throw new IllegalArgumentException("producer type " + name
+                        + " must be a constructor-encoded record or sum, not " + PirVerifier.show(representation));
+            merged.put(name, new LibraryType(name, representation, false, java.util.List.of()));
+        });
+        return merged;
+    }
+
+    /**
+     * A stable fingerprint of a request's producer types, for specialization keys: two
+     * producer types with the same name but different representations never share an
+     * implementation. Empty when the request carries none.
+     */
+    public static java.util.List<String> producerFingerprints(LibraryRequest.Instantiate request) {
+        return request.producerTypes().entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue())
+                .toList();
+    }
+
+    /**
      * Whether a representation satisfies {@link LibraryScheme.Constraint#DATA_ENCODABLE}: it has
      * a Plutus Data encoding that generic code can store as a list element.
      */

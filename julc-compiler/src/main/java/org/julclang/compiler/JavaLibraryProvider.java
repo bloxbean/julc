@@ -37,6 +37,8 @@ public final class JavaLibraryProvider implements LibraryProvider {
     private final Map<String, Template> templates = new LinkedHashMap<>();
     private final Map<SpecializationKey, Specialized> specializations = new HashMap<>();
     private final Map<String, String> unsupported = new LinkedHashMap<>();
+    /** {@code Class.method} names declared more than once. */
+    private final Set<String> overloaded = new LinkedHashSet<>();
     private final Map<String, LibraryType> types;
     private final Map<String, PirType> definitions;
 
@@ -88,26 +90,29 @@ public final class JavaLibraryProvider implements LibraryProvider {
                             "Only @OnchainLibrary sources can be exported: " + fqcn);
                 var names = new HashSet<String>();
                 for (var method : cls.getMethods())
-                    if (method.isStatic()) {
-                        if (!names.add(method.getNameAsString()))
-                            throw new IllegalArgumentException(
-                                    "Ambiguous overloaded library export: "
-                                            + fqcn
-                                            + "."
-                                            + method.getNameAsString());
-                    }
+                    if (method.isStatic() && !names.add(method.getNameAsString()))
+                        overloaded.add(fqcn + "." + method.getNameAsString());
             }
         registry = LibraryMethodRegistry.forCompilation(context);
         new LibraryCompiler(context).compile(units, resolver, registry, lookup, known);
         for (var cu : units) {
             descriptions.scope(cu);
-            for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class))
+            for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+                if (cls.isInterface()) continue;
+                String conflict = overloadConflict(cls);
+                var exported = new HashSet<String>();
                 for (var method : cls.getMethods()) {
                     if (!method.isPublic() || !method.isStatic() || cls.isInterface()) continue;
                     var symbol =
                             cls.getFullyQualifiedName().orElseThrow()
                                     + "."
                                     + method.getNameAsString();
+                    if (conflict != null) {
+                        unsupported.put(symbol, conflict);
+                        continue;
+                    }
+                    // Identical overloads compile to one method: export it once.
+                    if (!exported.add(symbol)) continue;
                     if (!method.getTypeParameters().isEmpty()) {
                         describeTemplate(cu, cls, method, symbol);
                         continue;
@@ -130,7 +135,39 @@ public final class JavaLibraryProvider implements LibraryProvider {
                         unsupported.put(symbol, e.getMessage());
                     }
                 }
+            }
         }
+    }
+
+    /**
+     * Library methods are registered and called by {@code Class.method}, so overloads are
+     * usable only when they cannot be told apart on-chain: every overload of a name has the
+     * same source signature (for example {@code long} and {@code BigInteger} parameters, both
+     * {@code Int}). Otherwise a call inside the class could reach the wrong body, and every
+     * export of the class is unsupported; other classes are unaffected.
+     *
+     * @return the reason the class cannot be exported, or null
+     */
+    private String overloadConflict(ClassOrInterfaceDeclaration cls) {
+        String fqcn = cls.getFullyQualifiedName().orElseThrow();
+        var signatures = new LinkedHashMap<String, String>();
+        for (var method : cls.getMethods()) {
+            if (!method.isStatic() || !overloaded.contains(fqcn + "." + method.getNameAsString())) continue;
+            String signature;
+            try {
+                signature = String.join(",", method.getParameters().stream()
+                        .map(p -> descriptions.reference(p.getType()).canonical()).toList())
+                        + "->" + descriptions.reference(method.getType()).canonical()
+                        + (method.getTypeParameters().isEmpty() ? "" : "<generic>");
+            } catch (IllegalArgumentException e) {
+                signature = "unsupported:" + method.getDeclarationAsString();
+            }
+            var previous = signatures.putIfAbsent(method.getNameAsString(), signature);
+            if (previous != null && !previous.equals(signature))
+                return "Ambiguous overloaded library export " + fqcn + "." + method.getNameAsString()
+                        + ": overloads with different signatures cannot be told apart on-chain; give them distinct names";
+        }
+        return null;
     }
 
     /**
@@ -252,6 +289,12 @@ public final class JavaLibraryProvider implements LibraryProvider {
         if (request.typeArguments().size() != scheme.typeParameters().size())
             throw unsupported(request, scheme.identity() + " takes " + scheme.typeParameters().size()
                     + " type arguments, not " + request.typeArguments().size());
+        Map<String, LibraryType> visible;
+        try {
+            visible = TypeReferences.withProducerTypes(types, request);
+        } catch (IllegalArgumentException e) {
+            throw unsupported(request, e.getMessage());
+        }
         var substitution = new LinkedHashMap<String, LibraryType.Reference>();
         var environment = new LinkedHashMap<String, PirType>();
         for (int i = 0; i < request.typeArguments().size(); i++) {
@@ -261,7 +304,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                 throw unsupported(request, "type arguments must be concrete, not " + argument.canonical());
             PirType representation;
             try {
-                representation = descriptions.representation(argument);
+                representation = TypeReferences.representation(argument, visible);
             } catch (IllegalArgumentException e) {
                 throw unsupported(request, "type argument " + argument.canonical() + " is not a supported type: "
                         + e.getMessage());
@@ -273,7 +316,8 @@ public final class JavaLibraryProvider implements LibraryProvider {
             environment.put(parameter.name(), representation);
         }
         var key = new SpecializationKey(contentHash, scheme.identity(), request.typeArguments(),
-                LibraryType.REPRESENTATION_REVISION, BackendContract.REVISION, context.target().profileId());
+                LibraryType.REPRESENTATION_REVISION, BackendContract.REVISION, context.target().profileId(),
+                TypeReferences.producerFingerprints(request));
         var cached = specializations.get(key);
         if (cached != null) return cached;
         String name = request.symbol() + "#" + key.digest();
@@ -290,10 +334,11 @@ public final class JavaLibraryProvider implements LibraryProvider {
         if (!compiled.errors().isEmpty())
             throw unsupported(request, "specialization does not compile: " + compiled.errors().stream()
                     .map(d -> d.message()).toList());
-        PirType signature = descriptions.representation(scheme.result().substitute(substitution));
+        PirType signature = TypeReferences.representation(scheme.result().substitute(substitution), visible);
         for (int i = scheme.parameters().size() - 1; i >= 0; i--)
             signature = new PirType.FunType(
-                    descriptions.representation(scheme.parameters().get(i).substitute(substitution)), signature);
+                    TypeReferences.representation(scheme.parameters().get(i).substitute(substitution), visible),
+                    signature);
         if (!signature.equals(compiled.type()))
             throw unsupported(request, "the specialized source signature disagrees with its compiled representation");
         // Recursive calls were compiled against Class.method at the specialized type.
