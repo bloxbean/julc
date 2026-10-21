@@ -29,7 +29,7 @@ public final class TypeReferences {
             return types.get(reference.name()).representation();
         }
         int arity = switch (reference.name()) {
-            case "List", "JulcOptional" -> 1;
+            case "List", "JulcOptional", "Array" -> 1;
             case "Map", "Function" -> 2;
             default -> 0;
         };
@@ -47,6 +47,8 @@ public final class TypeReferences {
             case "Map" -> new PirType.MapType(representation(arguments.get(0), types),
                     representation(arguments.get(1), types));
             case "JulcOptional" -> new PirType.OptionalType(representation(arguments.getFirst(), types));
+            // A PV11 array (CIP-138) of Data-encoded elements; it has no Data encoding itself.
+            case "Array" -> new PirType.ArrayType(representation(arguments.getFirst(), types));
             case "Function" -> new PirType.FunType(representation(arguments.get(0), types),
                     representation(arguments.get(1), types));
             default -> throw new IllegalArgumentException("No source type description for " + reference.name());

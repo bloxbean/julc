@@ -136,6 +136,7 @@ final class LibraryTypeDescriptions {
                     || containsSpecial(map.valueType(), specialRepresentations, namedDefinitions, visiting);
             case PirType.OptionalType optional ->
                     containsSpecial(optional.elemType(), specialRepresentations, namedDefinitions, visiting);
+            case PirType.ArrayType array -> containsSpecial(array.elemType(), specialRepresentations, namedDefinitions, visiting);
             default -> false;
         };
     }
@@ -203,9 +204,10 @@ final class LibraryTypeDescriptions {
             case "List", "java.util.List", "JulcList", "org.julclang.core.types.JulcList" -> "List";
             case "Map", "java.util.Map", "JulcMap", "org.julclang.core.types.JulcMap" -> "Map";
             case "Optional", "java.util.Optional" -> "JulcOptional";
+            case "JulcArray", "org.julclang.core.types.JulcArray" -> "Array";
             default -> throw unsupported(type);
         };
-        int arity = switch(mapped) { case "List", "JulcOptional" -> 1; case "Map" -> 2; default -> 0; };
+        int arity = switch(mapped) { case "List", "JulcOptional", "Array" -> 1; case "Map" -> 2; default -> 0; };
         if (args.size() != arity) throw new IllegalArgumentException("Raw or invalid container signature: " + type);
         return ref(mapped, args);
     }
