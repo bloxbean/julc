@@ -179,6 +179,30 @@ class GenericExportsTest {
     }
 
     @Test
+    void classMembersKeepTheirTypesWhenATypeVariableSharesAClassName() {
+        // The method's type variable T shadows the record T only inside the method, as in Java.
+        String shadowing = """
+                package demo;
+                import java.math.BigInteger;
+                @OnchainLibrary
+                public class Shadow {
+                    public record T(BigInteger x) {}
+                    static final T SEED = new T(BigInteger.TEN);
+                    public static T record() { return new T(BigInteger.TEN); }
+                    public static <T> boolean get(T ignored) {
+                        return record().equals(record()) && SEED.equals(record());
+                    }
+                }
+                """;
+        for (String source : List.of(shadowing, shadowing.replace("<T> boolean get(T", "<U> boolean get(U"))) {
+            var request = new LibraryRequest.Instantiate("demo.Shadow.get", List.of(INT_REF));
+            var group = provider(source).materialize(List.of(request));
+            assertEquals(new Term.Const(Constant.bool(true)),
+                    value(apply(ref(group, request), integer(5)), BOOL, group), source);
+        }
+    }
+
+    @Test
     void nominalTypeArgumentsStayDistinctAndRequestsDeduplicate() {
         var atPrice = instantiate("firstOr", new Reference("demo.Seq.Price", List.of()));
         var atQuantity = instantiate("firstOr", new Reference("demo.Seq.Quantity", List.of()));

@@ -92,7 +92,7 @@ public final class PirVerifier {
                 if (!agree(v.type(), bound))
                     throw mismatch("variable " + v.name() + " is annotated " + show(v.type())
                             + " but is bound to " + show(bound));
-                yield bound;
+                yield refine(v.type(), bound);
             }
             case PirTerm.Const c -> constantType(c.value());
             case PirTerm.Builtin b -> builtin(b.fun(), List.of());
@@ -358,11 +358,16 @@ public final class PirVerifier {
                     throw structure("sum " + sum.name() + " has no constructor with tag " + c.tag());
                 layout = sum.constructors().get(c.tag()).fields();
             }
-            case PirType.OptionalType _ -> {
+            case PirType.OptionalType optional -> {
                 if (c.tag() == 0 && fields.size() == 1) {
                     if (!isDataRepresented(fields.getFirst()))
                         throw mismatch("an Optional payload is stored without encoding and must "
                                 + "already be Data-represented, not " + show(fields.getFirst()));
+                    // The payload is the element's raw view; opaque Data stays allowed.
+                    var element = rawView(optional.elemType());
+                    if (!agree(element, fields.getFirst()))
+                        throw mismatch("Optional payload of type " + show(fields.getFirst())
+                                + " does not match element " + show(element) + " of " + show(c.dataType()));
                     return c.dataType();
                 }
                 if (c.tag() == 1 && fields.isEmpty()) return c.dataType();
@@ -420,6 +425,13 @@ public final class PirVerifier {
                 throw structure("DataMatch branch " + constructor.name()
                         + " must give one binding type per binding");
             var saved = new LinkedHashMap<String, PirType>();
+            // Lowering binds the pattern variable outside the field bindings, so a field of
+            // the same name shadows it (UplcGenerator.buildBranchFieldExtraction).
+            if (branch.patternVar() != null) {
+                requireBinder(branch.patternVar());
+                saved.put(branch.patternVar(), scope.get(branch.patternVar()));
+                scope.put(branch.patternVar(), scrutinee);
+            }
             for (int j = 0; j < branch.bindings().size(); j++) {
                 var name = branch.bindings().get(j);
                 var type = branch.bindingTypes().get(j);
@@ -434,12 +446,6 @@ public final class PirVerifier {
                             + " but field " + field.name() + " has type " + show(field.type()));
                 if (!saved.containsKey(name)) saved.put(name, scope.get(name));
                 scope.put(name, type);
-            }
-            if (branch.patternVar() != null) {
-                requireBinder(branch.patternVar());
-                if (!saved.containsKey(branch.patternVar()))
-                    saved.put(branch.patternVar(), scope.get(branch.patternVar()));
-                scope.put(branch.patternVar(), scrutinee);
             }
             var body = synth(branch.body());
             saved.forEach(this::restore);
@@ -640,6 +646,34 @@ public final class PirVerifier {
             case PirType.SumType x when a instanceof PirType.SumType y ->
                     x.name().equals(y.name()) && constructorsAgree(x, y, depth + 1);
             default -> false;
+        };
+    }
+
+    /**
+     * The type a reference synthesizes once its annotation agrees with its binding: where one
+     * side is a Data view of the other, the more specific side; elsewhere the binding.
+     */
+    private PirType refine(PirType annotated, PirType bound) {
+        var a = resolve(annotated);
+        var b = resolve(bound);
+        if (a instanceof PirType.DataType) return bound;
+        if (b instanceof PirType.DataType) return annotated;
+        return switch (a) {
+            case PirType.ListType x when b instanceof PirType.ListType y ->
+                    new PirType.ListType(refine(x.elemType(), y.elemType()));
+            case PirType.MapType x when b instanceof PirType.MapType y ->
+                    new PirType.MapType(refine(x.keyType(), y.keyType()), refine(x.valueType(), y.valueType()));
+            case PirType.ArrayType x when b instanceof PirType.ArrayType y ->
+                    new PirType.ArrayType(refine(x.elemType(), y.elemType()));
+            case PirType.OptionalType x when b instanceof PirType.OptionalType y ->
+                    new PirType.OptionalType(refine(x.elemType(), y.elemType()));
+            case PirType.NativeListType x when b instanceof PirType.NativeListType y ->
+                    new PirType.NativeListType(refine(x.elemType(), y.elemType()));
+            case PirType.PairType x when b instanceof PirType.PairType y ->
+                    new PirType.PairType(refine(x.first(), y.first()), refine(x.second(), y.second()));
+            case PirType.FunType x when b instanceof PirType.FunType y ->
+                    new PirType.FunType(refine(x.paramType(), y.paramType()), refine(x.returnType(), y.returnType()));
+            default -> bound;
         };
     }
 

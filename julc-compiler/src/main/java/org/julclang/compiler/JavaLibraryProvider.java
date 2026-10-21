@@ -319,15 +319,12 @@ public final class JavaLibraryProvider implements LibraryProvider {
         var cached = specializations.get(key);
         if (cached != null) return cached;
         String name = "#" + request.symbol() + "#" + key.digest();
-        var previous = resolver.bindTypeVariables(environment);
         LibraryCompiler.Specialization compiled;
         try {
             compiled = new LibraryCompiler(context).compileSpecialization(template.owner(),
-                    template.method(), resolver, registry, lookup, known);
+                    template.method(), environment, resolver, registry, lookup, known);
         } catch (CompilerException e) {
             throw unsupported(request, "specialization does not compile: " + e.getMessage());
-        } finally {
-            resolver.restoreTypeVariables(previous);
         }
         if (!compiled.errors().isEmpty())
             throw unsupported(request, "specialization does not compile: " + compiled.errors().stream()

@@ -132,7 +132,8 @@ Checked invariants:
   to an import export, a definition, or an enclosing binder. Program-level names are
   pairwise disjoint.
 - **Variables and applications:**
-  - A `Var` annotation agrees with its binder's type.
+  - A `Var` annotation agrees with its binder's type. Where one is a Data view of the
+    other, the reference has the more specific type; otherwise it has the binder's type.
   - `Lam` has type `param -> body`.
   - `App` applies a function type to an agreeing argument.
 - **Builtins:** each application agrees with a representation-level signature. The table
@@ -147,13 +148,16 @@ Checked invariants:
   - `IntegerCase` is generator-local and is rejected.
 - **`DataConstr`:**
   - Its type resolves to a record, a sum, or an `Optional` whose payload is already
-    Data-represented. Records use tag 0; a sum constructor must exist for the tag.
+    Data-represented and agrees with the raw view of its element type. Records use tag 0;
+    a sum constructor must exist for the tag.
   - The arity is exact, field terms agree, and field types are Data-encodable. Unit,
     function, pair, array and native types are not.
 - **`DataMatch`:**
   - The scrutinee resolves to a record or sum whose tags are dense (`constructors[i].tag() == i`).
   - There is exactly one branch per constructor, in tag order, with matching names.
   - There are no more bindings than fields, and binding types agree with field types.
+  - A pattern variable is in scope outside the field bindings, as lowering binds it, so a
+    field binding of the same name shadows it.
 - **`ListMatch` and `PairMatch`:**
   - A `ListMatch` scrutinee is a Data list. Its head has the element's raw view; its
     tail has the scrutinee type.
@@ -270,7 +274,9 @@ parameters and a result. `LibraryType.Reference` can name a type variable.
 Java generic `@OnchainLibrary` static methods become templates. Julc compiles them only
 when a request supplies concrete type arguments:
 
-- `TypeResolver` binds the method's type variables during compilation.
+- `TypeResolver` binds the method's type variables while it compiles the method's
+  signature and body. Static fields and sibling methods keep the class's type scope, so a
+  type variable never replaces a class of the same name in their types.
 - The specialization is registered under a provider-local key, never in a Java
   validator's registry, so Java output is unchanged.
 - The rejected forms are bounds, wildcards and raw types; calls from one template to
@@ -851,3 +857,32 @@ reconciles the two as ADR-060's Risks section anticipated:
   `NONE` and source-map artifacts of 20 external validators also change, because they keep
   unused library methods. In the ADR-060 snapshot the same applies to the 22 hygiene
   validators, which import `MapLib`; `Adr060ByteSnapshotTest` lists those rows as explained.
+
+### Review of the merged PR
+
+An independent review of `2822ad8a` found five defects in functionality this stack adds. It
+found no change to the existing Java or revision-1 compilation paths. Each fix has a
+regression test that fails without it.
+
+- **Type-variable scope.** `compileSpecialization` resolved static fields and sibling
+  signatures with the method's type variables bound. A method type variable `T` therefore
+  replaced a record `T` in a sibling's return type, and the specialization miscompiled
+  (`EqualsInteger` over record Data). Class members are now resolved and their initializers
+  compiled before the type variables are bound.
+- **`Var` refinement.** A reference annotated with a record over a Data binder agreed, but
+  synthesized `Data`, so a valid `DataMatch` was rejected. It now synthesizes the more
+  specific of the two types, so a Data annotation also cannot hide what a binder is known
+  to hold.
+- **`Optional` payloads.** The payload was checked only for being Data-represented. It now
+  has to agree with the element's raw view.
+- **Pattern-variable scope.** The verifier let a pattern variable shadow a same-named field
+  binding, the reverse of lowering. It now binds the pattern variable first, so a term
+  that would fail at runtime is rejected.
+- **Schema test data.** A map nested in a recursive type built its children before the depth
+  check and overflowed the stack. The depth check now comes first, as for lists.
+
+Remaining limitation: `PirLinker` requires recursive definitions to be lambdas, but
+`LibraryCompiler` wraps a method body in `Let`s for its class's static fields. A recursive
+library method in a class with static fields therefore cannot be exported through a provider
+(JULC0050). This predates the stack and also affects revision-1 `materialize`. Java validators
+are unaffected. The failure happens at compile time; no wrong script is produced.

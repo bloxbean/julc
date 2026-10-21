@@ -178,6 +178,24 @@ class FunctionProgramTest {
         }
 
         @Test
+        void aDataViewAnnotationRefinesItsBinding() {
+            // Opaque Data referenced as a record keeps the record type for the match.
+            var raw = new PirTerm.Const(Constant.data(PlutusData.constr(0, PlutusData.integer(7), PlutusData.integer(9))));
+            var match = new PirTerm.DataMatch(var("raw", POINT), List.of(new PirTerm.MatchBranch(
+                    "test.Point", List.of("x", "y"), List.of(INT, INT), var("x", INT))));
+            evaluatesTo(program(new PirTerm.Let("raw", raw, match), INT), Constant.integer(7));
+        }
+
+        @Test
+        void aSameNamedFieldShadowsThePatternVariable() {
+            // Lowering binds the pattern variable outside the fields, as the verifier models it.
+            var point = new PirTerm.DataConstr(0, POINT, List.of(integer(7), integer(9)));
+            var match = new PirTerm.DataMatch(point, List.of(new PirTerm.MatchBranch("test.Point",
+                    List.of("x"), List.of(INT), call(DefaultFun.AddInteger, var("x", INT), integer(1)), "x")));
+            evaluatesTo(program(match, INT), Constant.integer(8));
+        }
+
+        @Test
         void encodedListsAndListMatch() {
             var items = call(DefaultFun.MkCons, call(DefaultFun.IData, integer(2)),
                     call(DefaultFun.MkCons, call(DefaultFun.IData, integer(5)),
@@ -332,6 +350,21 @@ class FunctionProgramTest {
             rejects("JULC0049", program(new PirTerm.Let("p",
                     new PirTerm.DataConstr(0, POINT, List.of(integer(1), integer(2))),
                     var("p", SHAPE_REF)), SHAPE_REF));
+            // A coarser Data view does not hide what the binding is known to hold.
+            var ints = new PirType.ListType(INT);
+            var items = new PirTerm.Let("items", call(DefaultFun.MkCons, call(DefaultFun.IData, integer(1)),
+                    call(DefaultFun.MkNilData, new PirTerm.Const(Constant.unit()))), var("items", ints));
+            var takesBytes = new PirTerm.Lam("bs", new PirType.ListType(BYTES), integer(0));
+            rejects("JULC0049", program(new PirTerm.Let("xs", items,
+                    apply(takesBytes, var("xs", new PirType.ListType(DATA)))), INT));
+        }
+
+        @Test
+        void aPatternVariableIsShadowedByASameNamedField() {
+            var point = new PirTerm.DataConstr(0, POINT, List.of(integer(7), integer(9)));
+            var match = new PirTerm.DataMatch(point, List.of(new PirTerm.MatchBranch("test.Point", List.of("x"),
+                    List.of(INT), call(DefaultFun.EqualsData, var("x", POINT), var("x", POINT)), "x")));
+            rejects("JULC0049", program(match, BOOL));
         }
 
         @Test
@@ -403,6 +436,14 @@ class FunctionProgramTest {
                     List.of(new PirTerm.Const(Constant.unit()))), withUnit));
             rejects("JULC0049", program(new PirTerm.DataConstr(0, new PirType.OptionalType(INT),
                     List.of(integer(1))), new PirType.OptionalType(INT)));
+            // An Optional payload must agree with the element type; opaque Data stays allowed.
+            var optionalPoint = new PirType.OptionalType(POINT);
+            var other = new PirType.RecordType("test.Other", List.of());
+            rejects("JULC0049", program(new PirTerm.DataConstr(0, optionalPoint,
+                    List.of(new PirTerm.DataConstr(0, other, List.of()))), optionalPoint));
+            var opaque = new PirTerm.DataConstr(0, optionalPoint,
+                    List.of(new PirTerm.Const(Constant.data(PlutusData.constr(0)))));
+            assertNotNull(compile(program(opaque, optionalPoint)).program());
         }
 
         @Test

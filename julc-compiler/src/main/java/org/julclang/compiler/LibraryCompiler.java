@@ -12,6 +12,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -128,35 +129,45 @@ final class LibraryCompiler {
 
     /**
      * Compile one generic library method as an ordinary method of its class, with its type
-     * variables already bound in {@code typeResolver} (ADR-059). Its own recursive calls
-     * reference {@code Class.method} at the specialized type; the caller renames them to the
+     * variables bound to {@code typeArguments} (ADR-059). Its own recursive calls reference
+     * {@code Class.method} at the specialized type; the caller renames them to the
      * specialization's binding. Generator errors are returned rather than dropped.
      */
     Specialization compileSpecialization(ClassOrInterfaceDeclaration cls, MethodDeclaration method,
-                                         TypeResolver typeResolver, LibraryMethodRegistry registry,
-                                         StdlibLookup effectiveLookup, Set<String> knownFqcns) {
+                                         Map<String, PirType> typeArguments, TypeResolver typeResolver,
+                                         LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
+                                         Set<String> knownFqcns) {
         typeResolver.setCurrentImportResolver(new ImportResolver(cls, knownFqcns));
         var classNameFqcn = cls.getFullyQualifiedName().orElse(cls.getNameAsString());
-        var staticFields = findStaticFields(cls, typeResolver);
-        var symbolTable = new SymbolTable();
-        for (var sf : staticFields) symbolTable.define(sf.name(), sf.pirType());
-        for (var other : cls.getMethods())
-            if (other.isStatic() && other.getTypeParameters().isEmpty())
-                symbolTable.declareMethod(other.getNameAsString(),
-                        classNameFqcn + "." + other.getNameAsString(), computeMethodType(other, typeResolver));
-        var type = computeMethodType(method, typeResolver);
-        symbolTable.declareMethod(method.getNameAsString(), classNameFqcn + "." + method.getNameAsString(), type);
-        var generator = PirGenerator.forCompilation(typeResolver, symbolTable,
-                new CompositeStdlibLookup(effectiveLookup, registry), TypeMethodRegistry.defaultRegistry(),
-                classNameFqcn, context);
-        // A library method can run any number of times: no entry methods (JULC0056, ADR-060).
-        generator.setEntryMethods(List.of());
-        var initializers = new ArrayList<PirTerm>();
-        for (var sf : staticFields) initializers.add(generator.generateExpression(sf.initExpr()));
-        var body = generator.generateMethod(method);
-        for (int i = staticFields.size() - 1; i >= 0; i--)
-            body = new PirTerm.Let(staticFields.get(i).name(), initializers.get(i), body);
-        return new Specialization(body, type, generator.getCollectedErrors());
+        // Static fields and sibling methods are declared outside the method's type parameter
+        // scope, as in Java: a type variable must not replace a class name in their types.
+        var outer = typeResolver.bindTypeVariables(Map.of());
+        try {
+            var staticFields = findStaticFields(cls, typeResolver);
+            var symbolTable = new SymbolTable();
+            for (var sf : staticFields) symbolTable.define(sf.name(), sf.pirType());
+            for (var other : cls.getMethods())
+                if (other.isStatic() && other.getTypeParameters().isEmpty())
+                    symbolTable.declareMethod(other.getNameAsString(),
+                            classNameFqcn + "." + other.getNameAsString(), computeMethodType(other, typeResolver));
+            var generator = PirGenerator.forCompilation(typeResolver, symbolTable,
+                    new CompositeStdlibLookup(effectiveLookup, registry), TypeMethodRegistry.defaultRegistry(),
+                    classNameFqcn, context);
+            // A library method can run any number of times: no entry methods (JULC0056, ADR-060).
+            generator.setEntryMethods(List.of());
+            var initializers = new ArrayList<PirTerm>();
+            for (var sf : staticFields) initializers.add(generator.generateExpression(sf.initExpr()));
+
+            typeResolver.bindTypeVariables(typeArguments);
+            var type = computeMethodType(method, typeResolver);
+            symbolTable.declareMethod(method.getNameAsString(), classNameFqcn + "." + method.getNameAsString(), type);
+            var body = generator.generateMethod(method);
+            for (int i = staticFields.size() - 1; i >= 0; i--)
+                body = new PirTerm.Let(staticFields.get(i).name(), initializers.get(i), body);
+            return new Specialization(body, type, generator.getCollectedErrors());
+        } finally {
+            typeResolver.restoreTypeVariables(outer);
+        }
     }
 
     // --- Shared helpers (same logic as JulcCompiler, extracted to avoid coupling) ---

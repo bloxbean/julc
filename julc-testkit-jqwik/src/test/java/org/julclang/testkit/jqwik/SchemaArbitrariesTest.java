@@ -34,9 +34,12 @@ class SchemaArbitrariesTest {
     static final PirType DATA = new PirType.DataType();
 
     static final PirType.NamedTypeRef TREE = new PirType.NamedTypeRef("test.Tree", "Tree", PirType.NamedKind.SUM);
+    static final PirType.NamedTypeRef NODE = new PirType.NamedTypeRef("test.Node", "Node", PirType.NamedKind.RECORD);
     static final Map<String, PirType> NAMED = Map.of(TREE.stableId(), new PirType.SumType("Tree", List.of(
             new PirType.Constructor("Leaf", 0, List.of(field("value", INT))),
-            new PirType.Constructor("Node", 1, List.of(field("left", TREE), field("children", new PirType.ListType(TREE)))))));
+            new PirType.Constructor("Node", 1, List.of(field("left", TREE), field("children", new PirType.ListType(TREE)))))),
+            // Recursive only through a map: its depth limit must stop construction.
+            NODE.stableId(), new PirType.RecordType("Node", List.of(field("children", new PirType.MapType(INT, NODE)))));
     static final PirType ACTION = new PirType.SumType("Action", List.of(
             new PirType.Constructor("Close", 0, List.of()),
             new PirType.Constructor("Deposit", 1, List.of(field("amount", INT))),
@@ -93,6 +96,25 @@ class SchemaArbitrariesTest {
         return switch (value) {
             case PlutusData.ConstrData constr -> 1 + constr.fields().stream().mapToInt(SchemaArbitrariesTest::depth).max().orElse(0);
             case PlutusData.ListData list -> list.items().stream().mapToInt(SchemaArbitrariesTest::depth).max().orElse(0);
+            default -> 0;
+        };
+    }
+
+    @Property(tries = 100)
+    void recursionThroughMapsIsValidAndBounded(@ForAll("nodes") PlutusData node) {
+        assertTrue(conforms(NODE, node), node::toString);
+        assertTrue(mapDepth(node) <= SchemaArbitraries.DEFAULT_DEPTH + 2, node::toString);
+    }
+
+    @Provide
+    Arbitrary<PlutusData> nodes() {
+        return SchemaArbitraries.forType(NODE, NAMED);
+    }
+
+    static int mapDepth(PlutusData value) {
+        return switch (value) {
+            case PlutusData.ConstrData constr -> 1 + constr.fields().stream().mapToInt(SchemaArbitrariesTest::mapDepth).max().orElse(0);
+            case PlutusData.MapData map -> map.entries().stream().mapToInt(e -> mapDepth(e.value())).max().orElse(0);
             default -> 0;
         };
     }

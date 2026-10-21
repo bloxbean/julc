@@ -127,11 +127,11 @@ public final class SchemaArbitraries {
                             .map(PlutusData.ListData::new);
                 }
                 case PirType.MapType map -> {
-                    var key = of(map.keyType(), depth);
-                    var value = of(map.valueType(), depth);
+                    // Like lists, build no children at the depth limit, or recursion never ends.
+                    if (depth <= 0) yield Arbitraries.just(new PlutusData.MapData(List.of()));
                     // Duplicate keys are dropped after generation, so small key domains still work.
-                    yield depth <= 0 ? Arbitraries.just(new PlutusData.MapData(List.of()))
-                            : Combinators.combine(key, value).as(PlutusData.Pair::new).list()
+                    yield Combinators.combine(of(map.keyType(), depth), of(map.valueType(), depth))
+                            .as(PlutusData.Pair::new).list()
                             .ofMaxSize(DEFAULT_MAX_LENGTH).map(Builder::distinctKeys);
                 }
                 case PirType.OptionalType optional -> depth <= 0 ? Arbitraries.just(NONE)
