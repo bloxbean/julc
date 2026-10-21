@@ -58,6 +58,24 @@ public record BackendCapability(String id) implements Comparable<BackendCapabili
     /** Standalone strict boundary check programs ({@link BoundaryPrograms}). */
     public static final BackendCapability BOUNDARY_PROGRAMS = new BackendCapability("boundary.check-program");
 
+    /** Approved imported-type operations ({@link LibraryRequest.Operation}). */
+    public static final BackendCapability LIBRARY_REQUEST_OPERATION =
+            new BackendCapability("library.request.operation");
+    /** Explicit container Data codecs ({@link LibraryRequest.Codec}). */
+    public static final BackendCapability LIBRARY_REQUEST_CODEC = new BackendCapability("library.request.codec");
+    /** Type descriptions with approved operations, representation revision 1. */
+    public static final BackendCapability LIBRARY_TYPE_OPERATIONS =
+            new BackendCapability("library.type-operations.1");
+
+    /** Generic export schemes ({@link LibraryScheme}), contract version 1. */
+    public static final BackendCapability LIBRARY_SCHEMES = new BackendCapability("library.schemes.1");
+    /** Specialization of generic exports ({@link LibraryRequest.Instantiate}). */
+    public static final BackendCapability LIBRARY_REQUEST_INSTANTIATE =
+            new BackendCapability("library.request.instantiate");
+
+    /** Deterministic provider composition ({@link LibraryProviders#compose}). */
+    public static final BackendCapability LIBRARY_COMPOSITION = new BackendCapability("library.compose");
+
     public BackendCapability {
         Objects.requireNonNull(id, "id");
         if (!FORMAT.matcher(id).matches())

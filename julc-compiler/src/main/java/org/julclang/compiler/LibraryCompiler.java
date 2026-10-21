@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
@@ -82,7 +83,7 @@ final class LibraryCompiler {
                 libSymbolTable.define(sf.name(), sf.pirType());
             }
             for (var method : cls.getMethods()) {
-                if (method.isStatic()) {
+                if (method.isStatic() && method.getTypeParameters().isEmpty()) {
                     var mType = computeMethodType(method, typeResolver);
                     libSymbolTable.define(classNameFqcn + "." + method.getNameAsString(), mType);
                 }
@@ -101,6 +102,11 @@ final class LibraryCompiler {
             }
 
             for (var method : cls.getMethods()) {
+                if (method.isStatic() && !method.getTypeParameters().isEmpty()) {
+                    // Generic methods are templates, specialized on request (ADR-059).
+                    registry.registerTemplate(classNameFqcn, method.getNameAsString());
+                    continue;
+                }
                 if (method.isStatic()) {
                     var pirBody = libPirGenerator.generateMethod(method);
                     for (int i = compiledLibFields.size() - 1; i >= 0; i--) {
@@ -112,6 +118,41 @@ final class LibraryCompiler {
                 }
             }
         }
+    }
+
+    /** A compiled specialization: the method body, its concrete type and collected errors. */
+    record Specialization(PirTerm body, PirType type, List<CompilerDiagnostic> errors) {}
+
+    /**
+     * Compile one generic library method as an ordinary method of its class, with its type
+     * variables already bound in {@code typeResolver} (ADR-059). Its own recursive calls
+     * reference {@code Class.method} at the specialized type; the caller renames them to the
+     * specialization's binding. Generator errors are returned rather than dropped.
+     */
+    Specialization compileSpecialization(CompilationUnit cu, ClassOrInterfaceDeclaration cls,
+                                         MethodDeclaration method, TypeResolver typeResolver,
+                                         LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
+                                         Set<String> knownFqcns) {
+        typeResolver.setCurrentImportResolver(new ImportResolver(cu, knownFqcns));
+        var classNameFqcn = cls.getFullyQualifiedName().orElse(cls.getNameAsString());
+        var staticFields = findStaticFields(cls, typeResolver);
+        var symbolTable = new SymbolTable();
+        for (var sf : staticFields) symbolTable.define(sf.name(), sf.pirType());
+        for (var other : cls.getMethods())
+            if (other.isStatic() && other.getTypeParameters().isEmpty())
+                symbolTable.define(classNameFqcn + "." + other.getNameAsString(),
+                        computeMethodType(other, typeResolver));
+        var type = computeMethodType(method, typeResolver);
+        symbolTable.define(classNameFqcn + "." + method.getNameAsString(), type);
+        var generator = PirGenerator.forCompilation(typeResolver, symbolTable,
+                new CompositeStdlibLookup(effectiveLookup, registry), TypeMethodRegistry.defaultRegistry(),
+                classNameFqcn, context);
+        var initializers = new ArrayList<PirTerm>();
+        for (var sf : staticFields) initializers.add(generator.generateExpression(sf.initExpr()));
+        var body = generator.generateMethod(method);
+        for (int i = staticFields.size() - 1; i >= 0; i--)
+            body = new PirTerm.Let(staticFields.get(i).name(), initializers.get(i), body);
+        return new Specialization(body, type, generator.getCollectedErrors());
     }
 
     // --- Shared helpers (same logic as JulcCompiler, extracted to avoid coupling) ---
