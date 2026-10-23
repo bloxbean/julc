@@ -66,7 +66,8 @@ ext.configureReleaseSigning = { Project candidate ->
 // Modules that are applications, test harnesses or aggregators rather than
 // published libraries. Declared here, not inside `subprojects`, because the
 // Central deployment scope below is derived from it.
-def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-tools', 'julc-wasm', 'julc-jrl']
+// julc-tools and julc-wasm are published so that another language's WebAssembly image can be built on them (ADR-064).
+def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-jrl']
 
 subprojects {
     def commit_id = getCheckedOutGitCommitHash()

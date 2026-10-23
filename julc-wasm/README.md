@@ -44,3 +44,43 @@ of both Wasm smokes; they are never silently skipped. Build CI installs Node.js 
 including a fixed benchmark/conformance corpus, parameterized decoding and session
 lifecycle. Release CI requires both smokes; passing them is evidence, not proof of
 compiler correctness or production safety.
+
+## Building an image for another language
+
+`julc-wasm` and `julc-tools` are published (`org.julclang:julc-wasm`), so a language built on JuLC's backend can
+compile its own WebAssembly engine without copying this module ([ADR-064](../adr/064-embeddable-wasm-engine.md)).
+Use the same JuLC version the language already compiles with: the image, the JavaScript files and the compiler
+then come from one build.
+
+The entry point registers the VM operations, its own operations and installs the API under its own name:
+
+```java
+public final class ElciWasm {
+    public static void main(String[] args) {
+        var api = new ApiRegistry();
+        new VmApi().register(api);                      // vm.* and debug.*, as in JuLC's VM image
+        api.add("elci.compile", CompileRequest.class, ElciWasm::compile);
+        JsApi.install(api, new EngineInfo("elci", "full", ELCI_VERSION, List.of("vm", "debug", "elci")));
+    }
+}
+```
+
+Requests and results are records (the JavaScript codec is derived from them; integers outside the 32-bit range
+cross as `bigint`). An operation returns a `ServiceResult`; exceptions become status 400 or 500 envelopes.
+
+The image and bundle are built as `build.gradle` here builds JuLC's:
+
+1. `native-image --tool:svm-wasm -cp <jar and runtime classpath> -o <name> <entry class>` with GraalVM 25.3
+   (Web Image) and Binaryen on `PATH`.
+2. In `<name>.js`, after the line `const config = new GraalVM.Config();`, insert
+   `if (globalThis.JULC_WASM_PATH) config.wasm_path = globalThis.JULC_WASM_PATH;`.
+3. Name the launcher `<name>-<12 hex digits>.js` and the module `<name>-<12 hex digits>.js.wasm`, from a hash
+   of their contents, and write `engine.json`:
+   `{"version": "<hash>", "launcher": "<name>-<hash>.js", "variant": "<variant>", "api": 0, "groups": [...]}`.
+   `groups` must equal `EngineInfo.groups()`; the client refuses an engine whose features differ.
+4. Copy `META-INF/julc-wasm/js/` from the `julc-wasm` jar next to them: `julc-wasm.js` (the Promise client,
+   `createJulc({baseUrl})`), `julc-worker.js`, `rest-adapter.js` and the `.d.ts` declarations.
+
+Keep `julc-wasm` off every other native-image class path. Its substitutions replace the BLS12-381 builtins, which
+use native code WebAssembly cannot run, with evaluation failures, and native-image applies them to any image the
+jar is part of.

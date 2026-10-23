@@ -86,10 +86,30 @@ test('source-debug REST routes retain the session and convert exact generation v
   assert.equal(closed.sessionId, 'source-1');
 });
 
-test('capabilities advertise source debugging only in the full image', () => {
+test('capabilities are the groups the image passes', () => {
   const invoke = () => JSON.stringify({status: 200, body: {}, integers: []});
-  const full = JulcRuntime.install(invoke, {'uplc.defaultTransaction': {}}, 'full', 'test');
-  const vm = JulcRuntime.install(invoke, {}, 'vm', 'test');
-  assert.deepEqual(full.features().groups, ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals']);
+  const fullGroups = ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals'];
+  const full = JulcRuntime.install(invoke, {'uplc.decompile': {}}, 'full', 'test', fullGroups);
+  const vm = JulcRuntime.install(invoke, {'vm.evaluate': {}}, 'vm', 'test', ['vm', 'debug']);
+  assert.deepEqual(full.features().groups, fullGroups);
   assert.deepEqual(vm.features().groups, ['vm', 'debug']);
+  assert.equal(typeof full.uplc.defaultTransaction, 'function');
+  assert.equal(vm.uplc, undefined);
+  // features() hands out copies: a caller cannot change what the next call reports.
+  full.features().groups.push('extra');
+  assert.deepEqual(full.features().groups, fullGroups);
+});
+
+test('an image built on julc-wasm for another language reports its own groups and variant', () => {
+  const invoke = (method, body) => JSON.stringify({status: 200, body: {method, body: JSON.parse(body)}, integers: []});
+  const api = JulcRuntime.install(invoke, {'vm.evaluate': {}, 'lang.compile': {sources: {$map: 'string'}}},
+    'lang', '1.2.3', ['vm', 'debug', 'lang']);
+  assert.deepEqual(api.features(), {api: 0, variant: 'lang', groups: ['vm', 'debug', 'lang'], defaultProtocol: 11,
+    bls: false});
+  assert.equal(api.version(), '1.2.3');
+  assert.deepEqual(api.lang.compile({sources: {'Main.elm': 'x'}}),
+    {method: 'lang.compile', body: {sources: {'Main.elm': 'x'}}});
+  assert.equal(api.uplc, undefined);
+  assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', undefined), /groups are required/);
+  assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', []), /groups are required/);
 });

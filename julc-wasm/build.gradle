@@ -6,10 +6,12 @@ plugins {
     id 'java-library'
 }
 
-description = 'julc-wasm - in-browser (GraalVM Web Image) engine for the JuLC playground'
+description = 'julc-wasm - GraalVM Web Image engine of the JuLC toolchain and VM, and the base for other languages\' images'
 
 dependencies {
-    implementation project(':julc-tools')
+    // ApiRegistry operations return julc-tools' ServiceResult, and VmApi takes its models: embedders compile against
+    // them (ADR-064).
+    api project(':julc-tools')
     implementation project(':julc-stdlib')
     implementation project(':julc-vm-java')
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
@@ -84,6 +86,8 @@ tasks.register('wasmVersion') {
 }
 sourceSets.main.resources.srcDir(versionResources)
 tasks.named('processResources') { dependsOn 'wasmVersion' }
+// The published sources jar packs the resource directories too.
+tasks.matching { it.name == 'sourcesJar' }.configureEach { dependsOn 'wasmVersion' }
 
 // Strip full-toolchain reflection roots from the VM's copy of julc-tools. The
 // per-variant metadata in julc-wasm explicitly registers its reachable API records.
@@ -230,3 +234,11 @@ tasks.register('typeScriptDeclarations', JavaExec) {
     outputs.dir(layout.buildDirectory.dir('declarations'))
 }
 tasks.named('test') { dependsOn 'typeScriptDeclarations' }
+
+// The JavaScript client in the jar (ADR-064): an image another language builds on this module serves these files
+// next to its launcher, so they always come from the same julc-wasm version as the image. julc-runtime.js, which
+// JsApi loads, is an ordinary resource.
+tasks.named('jar') {
+    from('src/main/js') { into 'META-INF/julc-wasm/js' }
+    from(tasks.named('typeScriptDeclarations')) { into 'META-INF/julc-wasm/js' }
+}

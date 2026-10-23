@@ -87,11 +87,13 @@
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, legacy(v)]));
     return value;
   }
-  function install(invoke, schemas, variant, version) {
+  // The image passes its groups (EngineInfo): JuLC's full and VM images, or an image another language builds on
+  // julc-wasm (ADR-064).
+  function install(invoke, schemas, variant, version, groups) {
+    if (!Array.isArray(groups) || groups.length === 0) throw new Error('Engine groups are required');
+    groups = [...groups];
     const api = { version: () => version, features: () => ({
-      api: 0, variant,
-      groups: variant === 'full' ? ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals'] : ['vm', 'debug'],
-      defaultProtocol: 11, bls: false,
+      api: 0, variant, groups: [...groups], defaultProtocol: 11, bls: false,
     }) };
     for (const [method, schema] of Object.entries(schemas)) {
       const [group, name] = method.split('.');
@@ -101,7 +103,10 @@
         return decode(JSON.parse(invoke(method, JSON.stringify(encode(request, schema)))));
       };
     }
-    if (variant === 'full') api.uplc.defaultTransaction = defaultTransaction;
+    if (groups.includes('uplc')) {
+      api.uplc ??= {};
+      api.uplc.defaultTransaction = defaultTransaction;
+    }
     Object.defineProperty(api, '__schemas', { value: schemas });
     return api;
   }
