@@ -113,3 +113,15 @@ test('an image built on julc-wasm for another language reports its own groups an
   assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', undefined), /groups are required/);
   assert.throws(() => JulcRuntime.install(invoke, {}, 'lang', '1', []), /groups are required/);
 });
+
+test('operations stay in advertised groups and never extend a member every engine or object has', () => {
+  const invoke = () => JSON.stringify({status: 200, body: {}, integers: []});
+  assert.throws(() => JulcRuntime.install(invoke, {'lang.compile': {}}, 'lang', '1', ['vm']),
+    /lang\.compile is outside the engine groups/);
+  for (const group of ['version', 'features', '__schemas', 'constructor', 'toString', 'hasOwnProperty']) {
+    assert.throws(() => JulcRuntime.install(invoke, {[group + '.run']: {}}, 'lang', '1', [group]),
+      /Reserved engine group/, group);
+  }
+  assert.equal(Object.prototype.run, undefined);
+  assert.equal(Object.run, undefined);
+});

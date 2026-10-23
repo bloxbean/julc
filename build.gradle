@@ -63,6 +63,16 @@ ext.configureReleaseSigning = { Project candidate ->
     }
 }
 
+// The playground and the WebAssembly engine run blueprint generation and script hashing on cardano-client-lib
+// 0.8.0-pre6, which also runs under GraalVM Web Image. The projects that build them force it so no transitive
+// dependency moves it. A resolution rule, unlike a strict dependency constraint, is not published: a consumer of
+// julc-tools or julc-wasm that resolves another cardano-client-lib still resolves (ADR-064).
+ext.pinWebImageCardanoClientLib = { Project candidate ->
+    candidate.configurations.matching { it.canBeResolved }.configureEach {
+        resolutionStrategy.force 'com.bloxbean.cardano:cardano-client-lib:0.8.0-pre6'
+    }
+}
+
 // Modules that are applications, test harnesses or aggregators rather than
 // published libraries. Declared here, not inside `subprojects`, because the
 // Central deployment scope below is derived from it.

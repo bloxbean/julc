@@ -82,7 +82,9 @@ Additional prerequisites (only for the WebAssembly build):
 - **GraalVM 25.3 with Web Image** (`native-image --tool:svm-wasm`), passed as `-PgraalvmHome=<path>` or `GRAALVM_HOME`.
   This is the 25.3 *innovation* release (`GRAALVM_VERSION="25.3.x"` in its `release` file; it reports JDK 25.0.4.x
   in `java -version`). Download Oracle GraalVM 25.3 from [graalvm.org/downloads](https://www.graalvm.org/downloads/)
-  or the `graal-25.3.x` release of [graalvm-ce-builds](https://github.com/graalvm/graalvm-ce-builds/releases); the
+  or the `jdk-25i3-*` release of [oracle-graalvm-ea-builds](https://github.com/graalvm/oracle-graalvm-ea-builds/releases),
+  which is what the GitHub action downloads. The Community builds do not include Web Image (GraalVM CE 25.3.4.1 rejects
+  `--tool:svm-wasm`). The
   GitHub action for it is `graalvm/setup-graalvm@v1` with `version: '25.3'` (`actions/setup-java` only resolves the
   25.0 LTS line). The build checks the line and refuses others; 25.0.2 also produces a working engine, so
   `-PwasmGraalvmVersion=25.0` allows it for local experiments, but releases are built with 25.3 only.

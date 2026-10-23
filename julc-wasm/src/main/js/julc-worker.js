@@ -5,12 +5,25 @@ self.onmessage = event => {
   const request = event.data;
   if (request.type === 'init') {
     const {manifest, base, catalogue} = request;
-    if (manifest.api !== 0 || !/^[a-z][a-z0-9-]*$/.test(manifest.variant)
-        || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{12}\.js$/.test(manifest.launcher)) {
-      self.postMessage({type: 'error', message: 'Unsupported or invalid JuLC engine manifest'});
+    const launcherName = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{12}\.js$/;
+    const invalid = manifest.api !== 0 ? 'unsupported API version ' + JSON.stringify(manifest.api)
+      : typeof manifest.variant !== 'string' || !/^[a-z][a-z0-9-]*$/.test(manifest.variant)
+        ? 'variant ' + JSON.stringify(manifest.variant) + ' does not match [a-z][a-z0-9-]*'
+      : typeof manifest.launcher !== 'string' || !launcherName.test(manifest.launcher)
+        ? 'launcher ' + JSON.stringify(manifest.launcher) + ' is not a file name of lowercase words joined by '
+          + 'hyphens, a 12-hex-digit hash and .js'
+      : null;
+    if (invalid) {
+      self.postMessage({type: 'error', message: 'Invalid engine manifest: ' + invalid});
       return;
     }
     self.JULC_WASM_PATH = new URL(manifest.launcher + '.wasm', base).href;
+    // The launcher hook reports main ending with an error before onJulcReady, for example an operation whose
+    // records are not registered for reflection; without it the client would wait for its load timeout.
+    self.onJulcExit = code => {
+      if (!engine) self.postMessage({type: 'error', message: 'The engine stopped before it was ready (exit code '
+        + code + '); its error is in the worker console'});
+    };
     self.onJulcReady = api => {
       engine = api;
       julcAdapter = new JulcRestAdapter(api, catalogue);

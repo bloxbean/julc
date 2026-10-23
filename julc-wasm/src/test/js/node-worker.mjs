@@ -12,7 +12,8 @@ globalThis.addEventListener = (name, callback) => {
 globalThis.importScripts = (...urls) => {
   for (const url of urls) {
     const filename = fileURLToPath(url);
-    if (/julc(?:-vm)?-[0-9a-f]{12}\.js$/.test(filename)) {
+    // A Web Image launcher (the worker checks the manifest's name): it loads its module through require.
+    if (/(?:^|[\\/])[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[0-9a-f]{12}\.js$/.test(filename)) {
       globalThis.JULC_WASM_PATH = fileURLToPath(globalThis.JULC_WASM_PATH);
       createRequire(import.meta.url)(filename);
     } else vm.runInThisContext(readFileSync(filename, 'utf8'), {filename});

@@ -1,9 +1,10 @@
-/** Create an isolated Promise-based JuLC client. Each client owns one worker. */
+/** True for JuLC's full image, which adds the compiler, transaction and source-debug helpers. */
 export function isFullClient(client) {
   const features = client.features();
   return features.variant === 'full' && features.groups.includes('compiler')
     && features.groups.includes('sourceDebug');
 }
+/** Create an isolated Promise-based client of a JuLC engine, or of one built on julc-wasm. Each owns one worker. */
 export async function createJulc({baseUrl = new URL('.', import.meta.url), manifest, catalogue,
   workerFactory = url => new Worker(url), timeoutMs = 30000, loadTimeoutMs = 120000} = {}) {
   const base = new URL(baseUrl, import.meta.url);
@@ -99,8 +100,14 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
   }
   const api = {version: () => info.version, features: () => info.features, dispose,
     rest: (method, path, body) => send({op: 'rest', method, path, body})};
+  const created = new Set();
   for (const method of Object.keys(info.schemas)) {
-    const [group, name] = method.split('.'); api[group] ??= {};
+    const [group, name] = method.split('.');
+    if (!created.has(group)) {
+      if (group in api) { dispose(); throw new Error('Reserved engine group: ' + group); }
+      api[group] = {};
+      created.add(group);
+    }
     api[group][name] = async (body = {}) => {
       const result = await send({method, body});
       if (method === 'vm.debug' || method === 'uplc.debugTransaction') return proxy(result);

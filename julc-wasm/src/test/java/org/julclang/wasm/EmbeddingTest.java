@@ -1,10 +1,12 @@
 package org.julclang.wasm;
 
 import org.julclang.tools.service.ServiceResult;
+import org.julclang.wasm.fixture.DemoLangWasm;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,6 +47,41 @@ class EmbeddingTest {
     }
 
     @Test
+    void theDemoLanguageImageRunsItsOperationsBesideTheVmOperations() throws Exception {
+        var api = DemoLangWasm.create();
+        var sum = JsMarshalling.JSON.readTree(api.invoke("demo.sum",
+                "{\"terms\":[{\"name\":\"a\",\"value\":\"1208925819614629174706177\"},"
+                        + "{\"name\":\"b\",\"value\":\"-1\"}],\"scale\":\"1099511627776\"}"));
+        assertEquals(200, sum.get("status").intValue());
+        assertEquals("1329227995784915872903807060280344576", sum.at("/body/total").asText()); // 2^120
+        assertEquals("[[\"total\"],[\"count\"]]", sum.get("integers").toString());
+        assertEquals(400, JsMarshalling.JSON.readTree(api.invoke("demo.sum", "{}")).get("status").intValue());
+
+        String request = "{\"script\":{\"script\":\"(program 1.1.0 (con integer 42))\"},\"args\":[]}";
+        assertEquals(JulcVmWasm.create().invoke("vm.evaluate", request), api.invoke("vm.evaluate", request));
+        var engine = new EngineInfo("demolang", "demo", DemoLangWasm.VERSION, DemoLangWasm.GROUPS);
+        engine.requireAdvertises(api);
+        assertEquals(new TreeSet<>(DemoLangWasm.GROUPS), operationGroups(api));
+        var missing = new EngineInfo("demolang", "demo", DemoLangWasm.VERSION, List.of("vm", "debug"));
+        var error = assertThrows(IllegalArgumentException.class, () -> missing.requireAdvertises(api));
+        assertTrue(error.getMessage().contains("group demo"), error.getMessage());
+    }
+
+    @Test
+    void operationNamesAreGroupDotOperationAndRegisteredOnce() {
+        var api = new ApiRegistry();
+        for (String name : List.of("compile", "lang.", ".compile", "lang.compile.x", "1lang.compile",
+                "lang.com-pile", "rest.call", "version.get", "constructor.x", "toString.x", "lang.__proto__")) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> api.add(name, Sources.class, request -> ServiceResult.ok(Map.of())), name);
+        }
+        api.add("lang.compile", Sources.class, request -> ServiceResult.ok(Map.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> api.add("lang.compile", Sources.class, request -> ServiceResult.ok(Map.of())));
+        assertEquals(Set.of("lang"), api.groups());
+    }
+
+    @Test
     void engineInfoAcceptsOnlyNamesJavascriptCanUse() {
         var groups = List.of("vm", "debug", "lang");
         var info = new EngineInfo("elci", "full", "0.1.0", groups);
@@ -56,10 +93,22 @@ class EmbeddingTest {
         assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "full", "1", List.of()));
         assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "full", "1", List.of("a.b")));
         assertThrows(NullPointerException.class, () -> new EngineInfo("elci", "full", "1", null));
+        // Names the client, the runtime or every JavaScript object already uses.
+        for (String group : List.of("rest", "dispose", "version", "features", "__schemas", "__proto__", "constructor",
+                "toString", "hasOwnProperty")) {
+            assertThrows(IllegalArgumentException.class, () -> new EngineInfo("elci", "elci", "1", List.of(group)),
+                    group);
+        }
+        for (String global : List.of("JulcRuntime", "JulcRestAdapter", "onJulcReady", "onJulcExit", "JULC_WASM_PATH",
+                "GraalVM", "__proto__")) {
+            assertThrows(IllegalArgumentException.class, () -> new EngineInfo(global, "elci", "1", groups), global);
+        }
     }
 
     @Test
     void julcImagesAdvertiseTheGroupsTheyRegister() throws Exception {
+        new EngineInfo("julc", "full", "test", JulcWasm.GROUPS).requireAdvertises(JulcWasm.create());
+        new EngineInfo("julc", "vm", "test", JulcVmWasm.GROUPS).requireAdvertises(JulcVmWasm.create());
         // sourceDebugLocals is a capability flag with no operations of its own (ADR-058).
         assertEquals(operationGroups(JulcWasm.create()),
                 new TreeSet<>(JulcWasm.GROUPS.stream().filter(g -> !g.equals("sourceDebugLocals")).toList()));

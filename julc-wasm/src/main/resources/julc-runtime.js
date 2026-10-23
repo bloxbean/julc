@@ -95,9 +95,17 @@
     const api = { version: () => version, features: () => ({
       api: 0, variant, groups: [...groups], defaultProtocol: 11, bls: false,
     }) };
+    Object.defineProperty(api, '__schemas', { value: schemas });
+    const created = new Set();
     for (const [method, schema] of Object.entries(schemas)) {
       const [group, name] = method.split('.');
-      api[group] ??= {};
+      if (!groups.includes(group)) throw new Error('Operation ' + method + ' is outside the engine groups');
+      if (!created.has(group)) {
+        // A group must not replace or extend a member every engine has (version, features) or every object has.
+        if (group in api) throw new Error('Reserved engine group: ' + group);
+        api[group] = {};
+        created.add(group);
+      }
       api[group][name] = (request = {}) => {
         if (typeof request.costModel === 'string') request = { ...request, costModel: { profile: request.costModel } };
         return decode(JSON.parse(invoke(method, JSON.stringify(encode(request, schema)))));
@@ -107,7 +115,6 @@
       api.uplc ??= {};
       api.uplc.defaultTransaction = defaultTransaction;
     }
-    Object.defineProperty(api, '__schemas', { value: schemas });
     return api;
   }
   function defaultTransaction({ purpose = 'spend', scriptHash = '$self' } = {}) {

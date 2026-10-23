@@ -32,6 +32,9 @@ dependencies {
         api project(':julc-decompiler')
         api project(':julc-analysis')
         api project(':julc-verification')
+        // For another language's WebAssembly engine (ADR-064)
+        api project(':julc-tools')
+        api project(':julc-wasm')
     }
 }
 

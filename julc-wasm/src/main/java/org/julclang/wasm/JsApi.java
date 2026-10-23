@@ -15,6 +15,7 @@ public final class JsApi {
 
     /** Installs {@code registry} as {@code globalThis[engine.global()]} and then calls {@code onJulcReady}. */
     public static void install(ApiRegistry registry, EngineInfo engine) {
+        engine.requireAdvertises(registry);
         try (var runtime = JsApi.class.getResourceAsStream("/julc-runtime.js")) {
             if (runtime == null) throw new IllegalStateException("Missing JavaScript runtime");
             install(argv -> JSString.of(registry.invoke(((JSString) argv.get(0)).asString(),
@@ -40,6 +41,7 @@ public final class JsApi {
 
     @JS(args = {"fn", "schema", "name", "variant", "version", "groups", "source"}, value = """
             (0, eval)(String(source));
+            if (String(name) in globalThis) throw new Error('Global ' + String(name) + ' is already defined');
             const api = globalThis.JulcRuntime.install(
                 (method, body) => String(fn([method, body])), JSON.parse(String(schema)),
                 String(variant), String(version), JSON.parse(String(groups)));
