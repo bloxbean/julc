@@ -11,8 +11,24 @@ The harness runs the same Java source in two ways:
 It then compares the two results. A difference in value, outcome kind or trace sequence counts as a mismatch.
 
 ```sh
-./gradlew :julc-difftest:test
+./gradlew :julc-difftest:test                          # saved cases, exhaustive G0, fixed-seed G0 campaign
+./gradlew :julc-difftest:nightlyDiffTest               # 3000 G0 programs with a fresh seed
+./gradlew :julc-difftest:test -Pdifftest.cases=<dir>   # replay another directory of .diffcase files
 ```
+
+## Generated programs
+
+`gen/G0` decodes a list of choices into one static method:
+- `while` loops with a bounded counter, and for-each loops;
+- nesting up to two loops deep;
+- accumulator updates, including inside `if`/`else`;
+- `break`, loop-body locals, ternaries, `&&` and `||`.
+
+jqwik generates and shrinks the choice list, so a failure is reported as a small program. The last failing
+case is also written to `build/difftest/last-failure.diffcase`.
+
+A generated mismatch passes only if one entry in `gen/KnownDivergences` explains it. Each entry names its
+ADR-062 catalogue ID, a structural feature of the program, and the observation each side produced.
 
 ## Saved cases
 

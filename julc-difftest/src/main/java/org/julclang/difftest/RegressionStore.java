@@ -78,7 +78,10 @@ public final class RegressionStore {
         /** Null when the result meets this expectation, else the reason it does not. */
         public String check(DiffRunner.Result result) {
             var verdict = result.verdict();
-            if (verdict.kind() != kind) {
+            // A known divergence whose UPLC side never finishes is inconclusive, not a mismatch; the
+            // observation kinds below still pin it exactly.
+            boolean divergesInconclusively = kind == Verdict.Kind.MISMATCH && verdict.kind() == Verdict.Kind.INCONCLUSIVE;
+            if (verdict.kind() != kind && !divergesInconclusively) {
                 return "expected " + this + ", got " + verdict.kind() + (verdict.reason() == null ? "" : " (" + verdict.reason() + ")");
             }
             if (kind == Verdict.Kind.REJECTED && result.uplc() instanceof Observation.Rejected r

@@ -7,6 +7,7 @@ import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.core.Program;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
+import org.julclang.vm.ExBudget;
 import org.julclang.vm.JulcVm;
 import org.julclang.vm.OptimizationCostProfiles;
 
@@ -16,9 +17,16 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * The UPLC side of the harness (ADR-063 D2): JuLC compiles the entry method under the
  * configuration's optimization level, and the configured VM evaluates it with the PV11 cost model
- * and the default budget. This side never consults the JVM result (H1).
+ * and a bounded budget. This side never consults the JVM result (H1).
  */
 public final class UplcExecutor {
+
+    /**
+     * The evaluation bound: 10^10 CPU and 1.4 * 10^7 memory units, the order of a mainnet transaction's
+     * limit. It is a harness bound, not a ledger rule. Without it a script that never terminates runs
+     * until the test JVM is out of memory; with it, it is an exhausted budget (ADR-063 H5).
+     */
+    static final ExBudget BUDGET = new ExBudget(10_000_000_000L, 14_000_000L);
 
     private final Map<String, JulcVm> vms = new ConcurrentHashMap<>();
 
@@ -33,13 +41,15 @@ public final class UplcExecutor {
                     .filter(d -> d.level() == CompilerDiagnostic.Level.ERROR).findFirst();
             return new Observation.Rejected(error.map(CompilerDiagnostic::code).orElse(null),
                     error.map(CompilerDiagnostic::message).orElse(e.getMessage()));
-        } catch (RuntimeException | StackOverflowError e) {
+        } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
+            // Running out of memory while compiling a small program is a compiler defect, such as
+            // exponential growth; the harness reports it rather than dying with the test JVM.
             return new Observation.Crash("compiler: " + e);
         }
         EvalResult result;
         try {
-            result = vm(config.vm()).evaluateWithArgs(program, diffCase.args());
-        } catch (RuntimeException | StackOverflowError e) {
+            result = vm(config.vm()).evaluateWithArgs(program, diffCase.args(), BUDGET);
+        } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
             return new Observation.Crash("vm: " + e);
         }
         return switch (result) {

@@ -1,6 +1,6 @@
 # ADR-063: Differential JVM/UPLC test harness
 
-**Status:** Proposed. M1 is implemented in `julc-difftest` (same PR); M2–M5 are not started
+**Status:** Proposed. M1 and M2 are implemented in `julc-difftest` (same PR); M3–M5 are not started
 **Date:** 2026-10-23
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md)
@@ -161,7 +161,9 @@ divergence is `DIVERGE <catalogue id> <JVM kind>/<UPLC kind>`, for example `DIVE
 The case passes only while that exact divergence holds, so a mismatch with another cause fails it. When the
 owning step resolves the entry, the expectation changes to `AGREE` or `REJECT`.
 
-*Generated cases (M2):* divergences that are known and not yet resolved are listed in one registry file. Each entry names its ADR-062
+*Generated cases (M2, implemented as `KnownDivergences`):* divergences that are known and not yet resolved are
+listed in one registry. Each entry needs a structural feature the generator records (for T21,
+`WHILE_BREAK_WITH_IF_UPDATE`) as well as the observation kinds. Each entry names its ADR-062
 catalogue ID, a predicate over the program's features (for example "uses `any` with a predicate that can fail
 on a later element"), and an issue. A mismatch passes only if exactly one entry matches it, and every match
 appears in the run statistics. Entries are removed when the owning step resolves them. A run with an unused
@@ -316,9 +318,51 @@ Findings:
 - **`ContextsLib.trace` does nothing off-chain,** although its section comment says it prints. This is T12's
   first confirmed instance.
 
+## M2 results (2026-10-23)
+
+Implemented:
+- **G0:** the generator (`gen/G0`) decodes a jqwik-shrunk choice sequence (`gen/Choices`), so every
+  decoded program is valid by construction and shrinks as a whole.
+- **PR campaign:** `G0PropertyTest`, 150 tries with a fixed seed, plus coverage quotas of at least 3% of
+  tries for each G0 feature.
+- **Nightly campaign:** `nightlyDiffTest`, 3,000 tries with a fresh seed, run by
+  `.github/workflows/difftest-nightly.yml`, which uploads the shrunk failing case.
+- **Exhaustive mode:** `G0ExhaustiveTest` runs every program from choice sequences of length 6 over
+  {0, 1, 2} (183 distinct programs) on 3 boundary inputs.
+- **Registry:** `KnownDivergences`.
+- **Harness changes:**
+  - UPLC evaluation now runs under a bounded budget (`UplcExecutor.BUDGET`, 10^10 CPU and 1.4·10^7 memory
+    units). Unlimited evaluation of a non-terminating script ran the test JVM out of memory.
+  - An `OutOfMemoryError` while compiling or evaluating is reported as `Crash`.
+  - `-Pdifftest.cases=<dir>` replays another directory of saved cases.
+
+G0 had to be narrowed to the subset JuLC accepts. Each narrowing is a saved negative case:
+- a for-each whose body updates nothing cannot `break` (`reject-break-in-for-each-without-accumulator`; the
+  diagnostic says "break statement outside of a loop");
+- a loop with `break` cannot contain a loop (`reject-nested-loop-in-break-loop`).
+
+**Finding: T21, a silent non-termination.** The first nightly run found a program the JVM finishes and UPLC
+never does. Reduced by hand:
+- in a `while` loop whose body contains `break`, a taken `if` branch that updates a variable makes the loop
+  run until the budget is exhausted;
+- this happens at every optimization level, even when the `break` is never taken or comes first;
+- the for-each form agrees, and so does a `while` whose `if` is not taken;
+- three reproducers are saved as `diverge-t21-*`.
+
+On-chain this is a script that always fails where Java returns a value. It is registered as T21 so campaigns
+keep running, and it needs a fix (ADR-062 S4/ADR-061, or a targeted fix first).
+
+Measured:
+- `./gradlew :julc-difftest:build --rerun-tasks`: 44 tests, 0 failures, 27 s;
+- `G0ExhaustiveTest`: 19 s;
+- nightly campaign: 3,000 tries in about 2 minutes, 2,998 agreeing at every level and 2 explained by T21.
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
+- **r3** (2026-10-23): M2 implemented: G0 generator, PR and nightly campaigns, exhaustive mode, the
+  `KnownDivergences` registry, a bounded UPLC budget, and the nightly workflow. M2 results added, including
+  finding T21.
 - **r2** (2026-10-23): M1 implemented in the same PR. D6 now describes the per-case expectations of saved cases
   (`DIVERGE <id> <JVM kind>/<UPLC kind>`), with the registry kept for generated cases from M2. M1 results and
   findings added.

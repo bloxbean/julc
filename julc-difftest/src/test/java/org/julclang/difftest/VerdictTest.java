@@ -65,6 +65,10 @@ class VerdictTest {
         // A mismatch with another cause does not satisfy the expectation.
         assertNotNull(check("DIVERGE T7 Value/Failure", value(1), value(2)));
         assertNotNull(check("DIVERGE T7 Value/Failure", value(1), value(1)));
+        // A known divergence whose UPLC side never finishes is inconclusive, pinned by its kinds.
+        assertNull(check("DIVERGE T21 Value/Inconclusive", value(1), new Observation.Inconclusive("budget exhausted")));
+        assertNotNull(check("DIVERGE T21 Value/Inconclusive", value(1), failure()));
+        assertNotNull(check("DIVERGE T7 Value/Failure", value(1), new Observation.Inconclusive("budget exhausted")));
         assertThrows(HarnessException.class, () -> RegressionStore.Expectation.parse("DIVERGE T7"));
         assertThrows(HarnessException.class, () -> RegressionStore.Expectation.parse("REJECT"));
         assertThrows(HarnessException.class, () -> RegressionStore.Expectation.parse("MAYBE"));

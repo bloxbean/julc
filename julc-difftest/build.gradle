@@ -18,5 +18,21 @@ dependencies {
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
+        excludeTags 'nightly'
+    }
+    // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
+    def cases = providers.gradleProperty('difftest.cases')
+    if (cases.isPresent()) systemProperty 'difftest.cases', file(cases.get()).absolutePath
+}
+
+// The scheduled campaign (ADR-063 D12): fresh seeds and more tries than a pull-request run.
+tasks.register('nightlyDiffTest', Test) {
+    group = 'verification'
+    description = 'Differential JVM/UPLC campaign with fresh seeds'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'jqwik'
+        includeTags 'nightly'
     }
 }

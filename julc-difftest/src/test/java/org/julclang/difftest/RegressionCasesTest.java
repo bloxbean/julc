@@ -18,13 +18,15 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class RegressionCasesTest {
 
-    private static final Path CASES = Path.of("src/test/resources/regressions");
+    /** The saved cases; {@code -Ddifftest.cases=<dir>} replays another directory instead. */
+    private static final Path CASES = Path.of(System.getProperty("difftest.cases", "src/test/resources/regressions"));
+    private static final boolean DEFAULT_CASES = System.getProperty("difftest.cases") == null;
     private static final DiffRunner RUNNER = DiffRunner.standard();
 
     @TestFactory
     Stream<DynamicTest> savedCases() {
         var cases = RegressionStore.load(CASES);
-        assertTrue(cases.size() >= 15, "expected the M1 hand-written cases, found " + cases.size());
+        if (DEFAULT_CASES) assertTrue(cases.size() >= 15, "expected the M1 hand-written cases, found " + cases.size());
         return cases.stream().map(saved -> DynamicTest.dynamicTest(saved.file().getFileName().toString(), () -> {
             var report = RUNNER.run(saved.diffCase());
             var problems = new ArrayList<String>();
