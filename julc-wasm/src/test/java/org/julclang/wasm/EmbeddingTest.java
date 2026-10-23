@@ -115,6 +115,20 @@ class EmbeddingTest {
         assertEquals(operationGroups(JulcVmWasm.create()), new TreeSet<>(JulcVmWasm.GROUPS));
     }
 
+    @Test
+    void julcCostModelFieldsAreTheRecordTheProfileShorthandNeeds() throws Exception {
+        // julc-runtime.js expands a profile name only where costModel is a record with a profile field (ADR-064 D2b).
+        var withCostModel = new TreeSet<String>();
+        var schemas = JsMarshalling.JSON.readTree(JulcWasm.create().schemas());
+        schemas.fieldNames().forEachRemaining(method -> {
+            var costModel = schemas.get(method).get("costModel");
+            if (costModel == null) return;
+            withCostModel.add(method);
+            assertTrue(costModel.isObject() && "string".equals(costModel.path("profile").asText()), method);
+        });
+        assertTrue(withCostModel.containsAll(Set.of("vm.evaluate", "uplc.evaluateTransaction")), withCostModel::toString);
+    }
+
     private static TreeSet<String> operationGroups(ApiRegistry api) throws Exception {
         var groups = new TreeSet<String>();
         JsMarshalling.JSON.readTree(api.schemas()).fieldNames()

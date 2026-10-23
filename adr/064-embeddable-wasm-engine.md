@@ -91,6 +91,9 @@ Non-goals:
 - **I9.** The published metadata of `julc-tools` and `julc-wasm` has no strict version constraint (D1a).
 - **I10.** When `main` ends with an error before the engine is ready, the client fails with an error instead of
   waiting for its load timeout (D3b).
+- **I11.** For every engine, the Promise client has the operations and helpers the synchronous API has, and a
+  request reaches another language's operation as the caller wrote it. JuLC's `costModel` shorthand (a profile name
+  for the cost model record) applies only to operations whose `costModel` is that record (D2b).
 
 ## Decision
 
@@ -133,6 +136,15 @@ runtime, worker or launcher define (`JulcRuntime`, `JulcRestAdapter`, `onJulcRea
 `JULC_WASM_PATH`, `GraalVM`). `JsApi.install` requires every operation's group to be advertised and the global not
 to be defined yet. The runtime and the client check again with `group in api`, which covers every inherited member
 without a list (I8).
+
+### D2b. The runtime and the client treat every engine alike (r3)
+
+`julc-runtime.js` turns a string `costModel` into `{profile}` only when the operation's schema declares
+`costModel` as a record with a `profile` field, which is JuLC's `VmModels.CostModel`; every JuLC request with a
+`costModel` field uses that record. Another language's `costModel` string reaches its operation unchanged, and a
+string for a different record is rejected by the encoder as before. The client adds `uplc.defaultTransaction`
+when the engine advertises `uplc`, as the runtime does, instead of only when a `uplc.*` operation is registered
+(I11).
 
 ### D3. The JavaScript client ships in the jar
 
@@ -260,6 +272,13 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
   uppercase, underscore, wrong hash length or extension, and invalid API versions and variants; it loads any
   language's correctly named launcher; it reports `onJulcExit` before ready as an error (I4, I10). Weakening the
   launcher check or the reserved-group check fails these tests (checked by mutation).
+- `codec.test.mjs` (r3): the profile shorthand applies to an operation whose `costModel` is the cost model
+  record, not to one whose `costModel` is a string or another record. `EmbeddingTest` checks that every JuLC
+  operation with a `costModel` field declares it as that record (I11).
+- `client.test.mjs` (r3): through the shipped worker and the Promise client, an engine advertising `lang` and
+  `uplc` with only `lang.check` has `uplc.defaultTransaction`, one without `uplc` does not, and a string
+  `costModel` reaches a custom operation unchanged (I11). Reverting either fix fails these tests (checked by
+  mutation).
 - `wasmSmokeEmbedder` (r2, CI): the demo language's image, built from the jars (D5, I7).
 - `EmbeddingTest` (r2): the demo language on the JVM, operation names and duplicates, reserved groups and globals,
   `requireAdvertises` (I8).
@@ -292,3 +311,6 @@ the exclusion and its size effect, the launcher naming rule and the TypeScript u
   schema validator turned out to need excluding too); P2-3 → D3a; P3-1 → D2a; P3-2 → `worker.test.mjs`, specific
   worker errors, README naming rule; P3-3 → D1a; P3-4 → open question 4 (deferred); P3-5 → D1a (BOM). Added
   I7–I10 and open question 3. `BUILD_FROM_SOURCE.md` no longer says the Community builds include Web Image.
+- r3 (2026-10-24, responds to the review of 9d942f9c): custom `costModel` strings rewritten → D2b, I11;
+  `uplc.defaultTransaction` missing from the Promise client → D2b, I11; tests in `codec.test.mjs` and the new
+  `client.test.mjs`.

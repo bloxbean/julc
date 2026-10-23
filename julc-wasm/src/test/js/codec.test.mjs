@@ -125,3 +125,15 @@ test('operations stay in advertised groups and never extend a member every engin
   assert.equal(Object.prototype.run, undefined);
   assert.equal(Object.run, undefined);
 });
+
+test('the costModel profile shorthand applies only where costModel is JuLC\'s cost model record', () => {
+  const invoke = (method, body) => JSON.stringify({status: 200, body: JSON.parse(body), integers: []});
+  const costModel = {profile: 'string', target: {language: 'string', protocol: 'int'}, parameters: ['long']};
+  const api = JulcRuntime.install(invoke, {'vm.evaluate': {costModel}, 'lang.check': {costModel: 'string'},
+    'lang.tune': {costModel: {name: 'string'}}}, 'lang', '1', ['vm', 'lang']);
+  assert.deepEqual(api.vm.evaluate({costModel: 'plutus-v3'}), {costModel: {profile: 'plutus-v3'}});
+  assert.deepEqual(api.vm.evaluate({costModel: {profile: 'plutus-v3'}}), {costModel: {profile: 'plutus-v3'}});
+  assert.deepEqual(api.lang.check({costModel: 'custom-model'}), {costModel: 'custom-model'});
+  // Another record named costModel is not JuLC's: a string is not turned into it.
+  assert.throws(() => api.lang.tune({costModel: 'custom-model'}), /Expected request object/);
+});

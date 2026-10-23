@@ -114,6 +114,9 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
       return method === 'sourceDebug.open' ? proxy(result, 'sourceDebug') : result;
     };
   }
-  if (api.uplc) api.uplc.defaultTransaction = body => send({method: 'uplc.defaultTransaction', body});
+  // The runtime adds this helper to every engine that advertises uplc, with or without uplc operations.
+  if (info.features.groups.includes('uplc')) {
+    (api.uplc ??= {}).defaultTransaction = body => send({method: 'uplc.defaultTransaction', body});
+  }
   return api;
 }
