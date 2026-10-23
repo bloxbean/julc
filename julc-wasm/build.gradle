@@ -6,10 +6,23 @@ plugins {
     id 'java-library'
 }
 
-description = 'julc-wasm - in-browser (GraalVM Web Image) engine for the JuLC playground'
+description = 'julc-wasm - GraalVM Web Image engine of the JuLC toolchain and VM, and the base for other languages\' images'
+
+rootProject.pinWebImageCardanoClientLib(project)
+
+// A language built on this module the way the README describes (ADR-064). It is not published: EmbeddingTest runs it
+// on the JVM, and wasmSmokeEmbedder builds it into a Web Image from the jars an embedder gets.
+sourceSets {
+    embedderFixture {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+}
 
 dependencies {
-    implementation project(':julc-tools')
+    // ApiRegistry operations return julc-tools' ServiceResult, and VmApi takes its models: embedders compile against
+    // them (ADR-064).
+    api project(':julc-tools')
     implementation project(':julc-stdlib')
     implementation project(':julc-vm-java')
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
@@ -23,6 +36,7 @@ dependencies {
     testImplementation project(':julc-playground')
     testImplementation 'io.javalin:javalin-testtools:6.7.0'
     testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    testImplementation sourceSets.embedderFixture.output
 }
 
 // --- WebAssembly image (opt-in: requires GraalVM with Web Image support and Binaryen on PATH) ---
@@ -72,6 +86,15 @@ def resolveNativeImage = {
 }
 
 
+// Lets the worker say where the module is (the launcher otherwise looks next to the page) and hear when main fails.
+// The hook ships in the jar, so an image another language builds is patched with the same text (README, step 2).
+def launcherHook = file('src/main/resources/META-INF/julc-wasm/launcher-hook.js')
+def patchLauncher = { String launcher, String hook ->
+    def anchor = 'const config = new GraalVM.Config();'
+    if (launcher.count(anchor) != 1) throw new GradleException('Web Image launcher anchor changed')
+    launcher.replace(anchor, anchor + '\n' + hook)
+}
+
 def versionResources = layout.buildDirectory.dir('version-resources')
 tasks.register('wasmVersion') {
     inputs.property('version', project.version.toString())
@@ -84,6 +107,8 @@ tasks.register('wasmVersion') {
 }
 sourceSets.main.resources.srcDir(versionResources)
 tasks.named('processResources') { dependsOn 'wasmVersion' }
+// The published sources jar packs the resource directories too.
+tasks.matching { it.name == 'sourcesJar' }.configureEach { dependsOn 'wasmVersion' }
 
 // Strip full-toolchain reflection roots from the VM's copy of julc-tools. The
 // per-variant metadata in julc-wasm explicitly registers its reachable API records.
@@ -139,6 +164,7 @@ tasks.register('vmToolsJar', Jar) {
         group = 'build'
         dependsOn "wasmImage${suffix}", 'typeScriptDeclarations'
         inputs.dir(imageDir)
+        inputs.file(launcherHook)
         inputs.dir('src/main/js')
         outputs.dir(bundleDir)
         doLast {
@@ -146,11 +172,7 @@ tasks.register('vmToolsJar', Jar) {
             def bundle = bundleDir.get().asFile
             fileOps.delete { delete bundle }
             bundle.mkdirs()
-            def launcher = new File(image, "${name}.js").getText('UTF-8')
-            def anchor = 'const config = new GraalVM.Config();'
-            if (launcher.count(anchor) != 1) throw new GradleException('Web Image launcher anchor changed')
-            launcher = launcher.replace(anchor,
-                    anchor + '\nif (globalThis.JULC_WASM_PATH) config.wasm_path = globalThis.JULC_WASM_PATH;')
+            def launcher = patchLauncher(new File(image, "${name}.js").getText('UTF-8'), launcherHook.getText('UTF-8'))
             def moduleBytes = new File(image, "${name}.js.wasm").bytes
             def digest = MessageDigest.getInstance('SHA-256')
             digest.update(launcher.getBytes('UTF-8'))
@@ -197,8 +219,101 @@ tasks.register('vmToolsJar', Jar) {
         }
     }
 }
+// --- An image another language builds on julc-wasm (ADR-064) ---
+//
+// Built as the README tells an embedder to: from the julc-wasm jar and its runtime dependencies, with the metadata of
+// the jars below excluded (the README gives the same pattern), patched with the launcher hook and served with the
+// JavaScript client, both taken from the julc-wasm jar.
+def EMBEDDER_EXCLUDED_METADATA_JARS =
+        '.*[/\\\\](julc-tools|julc-blueprint|cardano-client-[a-z0-9-]+|json-schema-validator)-[0-9][^/\\\\]*\\.jar'
+tasks.register('embedderFixtureJar', Jar) {
+    from sourceSets.embedderFixture.output
+    archiveBaseName = 'julc-wasm-demo'
+    archiveClassifier = 'fixture'
+}
+def embedderImageDir = layout.buildDirectory.dir('wasm-image-embedder')
+def embedderBundleDir = layout.buildDirectory.dir('wasm-bundle-embedder')
+tasks.register('wasmImageEmbedder', Exec) {
+    group = 'build'
+    dependsOn 'jar', 'embedderFixtureJar'
+    def cp = sourceSets.main.runtimeClasspath
+    inputs.files(cp)
+    inputs.file(tasks.named('jar').flatMap { it.archiveFile })
+    inputs.file(tasks.named('embedderFixtureJar').flatMap { it.archiveFile })
+    inputs.property('graalvmHome', graalvmHome.orElse(''))
+    inputs.property('graalvmVersion', wasmGraalvmVersion)
+    outputs.dir(embedderImageDir)
+    doFirst {
+        def dir = embedderImageDir.get().asFile
+        fileOps.delete { delete dir }
+        dir.mkdirs()
+        def files = [tasks.named('jar').get().archiveFile.get().asFile,
+                     tasks.named('embedderFixtureJar').get().archiveFile.get().asFile] +
+                cp.files.findAll { it.name.endsWith('.jar') }
+        executable resolveNativeImage().absolutePath
+        args '--tool:svm-wasm', '-cp', files.collect { it.absolutePath }.join(File.pathSeparator),
+                '-o', new File(dir, 'demo-lang').absolutePath, '-H:+ReportExceptionStackTraces',
+                // native-image applies every jar's metadata, reachable or not. These jars' metadata registers JuLC's
+                // compiler services, JavaParser and cardano-client-lib for JuLC's full image (19.1 MB instead of
+                // 15.8 MB here); julc-wasm registers what VmApi needs itself (README).
+                '--exclude-config', EMBEDDER_EXCLUDED_METADATA_JARS, 'META-INF/native-image/'
+        // The demo language uses no JuLC compiler: the build fails if any of it, JavaParser or cardano-client-lib
+        // becomes reachable, as JuLC's VM image does.
+        ['com.bloxbean.cardano.*', 'org.julclang.compiler.*', 'org.julclang.decompiler.*',
+         'com.github.javaparser.*'].each { args "-H:AbortOnTypeReachable=${it}" }
+        args 'org.julclang.wasm.fixture.DemoLangWasm'
+    }
+    doLast { fileOps.delete { delete new File(embedderImageDir.get().asFile, 'demo-lang.js.wat') } }
+}
+tasks.register('wasmBundleEmbedder') {
+    group = 'build'
+    dependsOn 'wasmImageEmbedder'
+    def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+    inputs.dir(embedderImageDir)
+    inputs.file(jarFile)
+    outputs.dir(embedderBundleDir)
+    doLast {
+        def image = embedderImageDir.get().asFile
+        def bundle = embedderBundleDir.get().asFile
+        fileOps.delete { delete bundle }
+        bundle.mkdirs()
+        def hook = zipTree(jarFile.get().asFile).matching { include 'META-INF/julc-wasm/launcher-hook.js' }.singleFile
+        def launcher = patchLauncher(new File(image, 'demo-lang.js').getText('UTF-8'), hook.getText('UTF-8'))
+        def moduleBytes = new File(image, 'demo-lang.js.wasm').bytes
+        def groups = ['vm', 'debug', 'demo']
+        def digest = MessageDigest.getInstance('SHA-256')
+        digest.update(launcher.getBytes('UTF-8'))
+        digest.update(moduleBytes)
+        digest.update(groups.join(',').getBytes('UTF-8'))
+        def hash = digest.digest().encodeHex().toString().substring(0, 12)
+        new File(bundle, "demo-lang-${hash}.js").text = launcher
+        new File(bundle, "demo-lang-${hash}.js.wasm").bytes = moduleBytes
+        new File(bundle, 'engine.json').text = groovy.json.JsonOutput.toJson([
+                version: hash, launcher: "demo-lang-${hash}.js", variant: 'demo', api: 0, groups: groups,
+                julcVersion: project.version.toString()]) + '\n'
+        // README, step 4: the client comes from the julc-wasm jar, not from this module's sources.
+        fileOps.copy {
+            from(zipTree(jarFile.get().asFile)) { include 'META-INF/julc-wasm/js/**' }
+            eachFile { it.path = it.name }
+            includeEmptyDirs = false
+            into bundle
+        }
+        logger.lifecycle("embedder image: ${moduleBytes.length} bytes; bundle ${bundle}")
+    }
+}
+tasks.register('wasmSmokeEmbedder', Exec) {
+    group = 'verification'
+    dependsOn 'wasmBundleEmbedder', 'vmParityExpected'
+    outputs.upToDateWhen { false }
+    executable 'node'
+    doFirst {
+        args '--experimental-wasm-exnref', file('src/test/js/embedder-smoke.mjs').absolutePath,
+                embedderBundleDir.get().asFile.absolutePath,
+                layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
+    }
+}
 tasks.register('wasmBundle') { dependsOn 'wasmBundleFull', 'wasmBundleVm' }
-tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm' }
+tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm', 'wasmSmokeEmbedder' }
 tasks.register('wasmParityExpected', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'org.julclang.wasm.ParityFixtures'
@@ -209,7 +324,8 @@ tasks.register('wasmParityExpected', JavaExec) {
 tasks.register('jsTest', Exec) {
     group = 'verification'
     description = 'Run JavaScript codec and REST adapter tests (requires Node 22+).'
-    commandLine 'node', '--test', 'src/test/js/codec.test.mjs'
+    commandLine 'node', '--test', 'src/test/js/codec.test.mjs', 'src/test/js/worker.test.mjs',
+            'src/test/js/client.test.mjs'
 }
 tasks.register('vmParityExpected', JavaExec) {
     dependsOn 'testClasses', 'wasmParityExpected'
@@ -230,3 +346,11 @@ tasks.register('typeScriptDeclarations', JavaExec) {
     outputs.dir(layout.buildDirectory.dir('declarations'))
 }
 tasks.named('test') { dependsOn 'typeScriptDeclarations' }
+
+// The JavaScript client in the jar (ADR-064): an image another language builds on this module serves these files
+// next to its launcher, so they always come from the same julc-wasm version as the image. julc-runtime.js, which
+// JsApi loads, is an ordinary resource.
+tasks.named('jar') {
+    from('src/main/js') { into 'META-INF/julc-wasm/js' }
+    from(tasks.named('typeScriptDeclarations')) { into 'META-INF/julc-wasm/js' }
+}

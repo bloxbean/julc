@@ -63,10 +63,21 @@ ext.configureReleaseSigning = { Project candidate ->
     }
 }
 
+// The playground and the WebAssembly engine run blueprint generation and script hashing on cardano-client-lib
+// 0.8.0-pre6, which also runs under GraalVM Web Image. The projects that build them force it so no transitive
+// dependency moves it. A resolution rule, unlike a strict dependency constraint, is not published: a consumer of
+// julc-tools or julc-wasm that resolves another cardano-client-lib still resolves (ADR-064).
+ext.pinWebImageCardanoClientLib = { Project candidate ->
+    candidate.configurations.matching { it.canBeResolved }.configureEach {
+        resolutionStrategy.force 'com.bloxbean.cardano:cardano-client-lib:0.8.0-pre6'
+    }
+}
+
 // Modules that are applications, test harnesses or aggregators rather than
 // published libraries. Declared here, not inside `subprojects`, because the
 // Central deployment scope below is derived from it.
-def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-tools', 'julc-wasm', 'julc-jrl']
+// julc-tools and julc-wasm are published so that another language's WebAssembly image can be built on them (ADR-064).
+def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-jrl']
 
 subprojects {
     def commit_id = getCheckedOutGitCommitHash()

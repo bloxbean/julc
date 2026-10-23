@@ -26,13 +26,6 @@ dependencies {
 
     // Model records carry Jackson annotations; (de)serialization happens in the transports
     api 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
-
-    constraints {
-        // The playground runs blueprint generation and script hashing on cardano-client-lib
-        // 0.8.0-pre6, which also runs under GraalVM Web Image; pin it so no transitive
-        // dependency moves it.
-        implementation('com.bloxbean.cardano:cardano-client-lib') {
-            version { strictly '0.8.0-pre6' }
-        }
-    }
 }
+
+rootProject.pinWebImageCardanoClientLib(project)

@@ -6,6 +6,8 @@ plugins {
 
 description = 'julc-playground - Online JRL editor and testing playground'
 
+rootProject.pinWebImageCardanoClientLib(project)
+
 application {
     mainClass = 'org.julclang.playground.JulcPlaygroundServer'
 }

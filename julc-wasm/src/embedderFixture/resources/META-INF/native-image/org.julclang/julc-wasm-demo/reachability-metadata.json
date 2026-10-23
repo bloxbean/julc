@@ -1,0 +1,22 @@
+{
+  "reflection": [
+    {
+      "type": "org.julclang.wasm.fixture.DemoLangWasm$Term",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.wasm.fixture.DemoLangWasm$SumRequest",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.wasm.fixture.DemoLangWasm$SumResult",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    }
+  ]
+}
