@@ -58,30 +58,32 @@ catalogue of known divergences.
 ## Catalogue of divergences
 
 Each entry has a stable ID. "Verified" means confirmed by reading the code at `ebaf028c` (origin/main on
-2026-10-23); the cited location is the evidence. "To confirm" is a hypothesis for the first harness
-milestone to reproduce or refute. New entries take the next free ID and are never renumbered.
+2026-10-23); the cited location is the evidence. "Reproduced" means a saved `julc-difftest` case (ADR-063
+M1) shows the divergence at every optimization level. "To confirm" is a hypothesis for the harness to
+reproduce or refute. New entries take the next free ID and are never renumbered.
 
 | ID | Area | JVM behaviour | UPLC behaviour | Status | Owner |
 |---|---|---|---|---|---|
 | T1 | Loop and branch state | Every update is visible after its join | Pattern-specific lowering; known failures #155 (local updated in an `if` lost) and #161 (exponential size) led to ADR-048/050 guards | Verified (history) | S4 / ADR-061 |
-| T2 | Shared field state across calls, callbacks and recursion | Field updates persist within one evaluation | Updates bound lexically per invocation; ADR-061 table shows `h(3) + h(3)` = 9 on the JVM and 6 in JuLC | Verified (ADR-061 probes) | S4 / ADR-061 |
-| T3 | `==` on `BigInteger` | Reference comparison; equal values are `==` only when the same object (`BigInteger.valueOf` caches small values) | `EqualsInteger`, structural (`PirGenerator.generateEquality`) | Verified | S5 |
+| T2 | Shared field state across calls, callbacks and recursion | Field updates persist within one evaluation | Updates bound lexically per invocation; ADR-061 table shows `h(3) + h(3)` = 9 on the JVM and 6 in JuLC | Contained on `main`: the probe is now rejected with `JULC0056` (ADR-060), reproduced as a negative case | S4 / ADR-061 |
+| T3 | `==` on `BigInteger` | Reference comparison; equal values are `==` only when the same object (`BigInteger.valueOf` caches small values) | `EqualsInteger`, structural (`PirGenerator.generateEquality`) | Reproduced | S5 |
 | T4 | `==` on records, sealed types and Data | Reference comparison | `EqualsData`, structural (`PirGenerator.generateEquality`) | Verified | S5 |
-| T5 | `==` on `byte[]`, and `equals` of user records with `byte[]` components | Reference comparison; a record's generated `equals` compares array components by reference | `EqualsByteString` and `EqualsData`, structural. Ledger types such as `PubKeyHash` override `equals` with `Arrays.equals`, so they agree | Verified | S5 |
-| T6 | `int` and `long` | 32- and 64-bit two's-complement overflow | Unbounded integers (`TypeResolver` maps `INT`, `LONG` to `IntegerType`) | Verified | S5 |
-| T7 | `any` and `all` short-circuiting | `JulcArrayList.any` returns at the first match | `PirHofBuilders.any` is a `foldl` over the whole list, so the predicate runs on every element. A later element that fails or traces makes the results differ, not just the cost | Verified | S5 |
+| T5 | `==` on `byte[]`, and `equals` of user records with `byte[]` components | Reference comparison; a record's generated `equals` compares array components by reference | `EqualsByteString` and `EqualsData`, structural. Ledger types such as `PubKeyHash` override `equals` with `Arrays.equals`, so they agree | Reproduced (both forms) | S5 |
+| T6 | `int` and `long` | 32- and 64-bit two's-complement overflow | Unbounded integers (`TypeResolver` maps `INT`, `LONG` to `IntegerType`) | Reproduced | S5 |
+| T7 | `any` and `all` short-circuiting | `JulcArrayList.any` returns at the first match | `PirHofBuilders.any` is a `foldl` over the whole list, so the predicate runs on every element. A later element that fails or traces makes the results differ, not just the cost | Reproduced (JVM true, UPLC fails) | S5 |
 | T8 | Builtins missing off-chain | 40 builtin methods in `Builtins.java` throw `UnsupportedOperationException`: BLS12-381 (including MSM and the native point and scalar lists), the array builtins (`dropList`, `listToArray`, `lengthOfArray`, `indexArray`, `multiIndexArray`) and the native Value builtins (`insertCoin` … `lovelaceValue`) | Implemented by the VM | Verified | S2 |
-| T9 | On-chain-only casts | `(byte[])(Object) pk.hash()` in `AddressLib.credentialHash` throws `ClassCastException`, because `hash()` is a `PubKeyHash` record. The same `(T)(Object)` pattern appears in `ContextsLib`, `MapLib` and `ValuesLib` | A no-op: both are the same representation | Verified (AddressLib); to confirm (others) | S2 |
-| T10 | Off-chain map key equality | `JulcAssocMap` looks keys up with `Objects.equals`, so `byte[]` keys, or records with `byte[]` components, are not found | `EqualsData`, structural. The class comment claims it matches `EqualsData`; it does not for these keys | Verified | S2 |
-| T11 | `BigInteger.mod` with a non-positive modulus | Throws `ArithmeticException` | `ModInteger` succeeds; the result takes the divisor's sign. (`/` and `%` lower to `QuotientInteger` and `RemainderInteger`, which match Java's truncation) | Verified (mapping in `TypeMethodRegistry`) | S5 |
-| T12 | Failure and trace model | Exceptions of several kinds; traces wherever the off-chain stub writes them | One error outcome; traces as an ordered log, including the prefix before a failure | To confirm (category mapping) | S1, S3 |
+| T9 | On-chain-only casts | `(byte[])(Object) pk.hash()` in `AddressLib.credentialHash` throws `ClassCastException`, because `hash()` is a `PubKeyHash` record. The same `(T)(Object)` pattern appears in `ContextsLib`, `MapLib` and `ValuesLib` | A no-op: both are the same representation | Reproduced (AddressLib); to confirm (others) | S2 |
+| T10 | Off-chain map key equality | `JulcAssocMap` looks keys up with `Objects.equals`, so `byte[]` keys, or records with `byte[]` components, are not found | `EqualsData`, structural. The class comment claims it matches `EqualsData`; it does not for these keys | Reproduced | S2 |
+| T11 | `BigInteger.mod` with a non-positive modulus | Throws `ArithmeticException` | `ModInteger` succeeds; the result takes the divisor's sign. (`/` and `%` lower to `QuotientInteger` and `RemainderInteger`, which match Java's truncation) | Reproduced | S5 |
+| T12 | Failure and trace model | Exceptions of several kinds; traces wherever the off-chain stub writes them. `ContextsLib.trace` does nothing off-chain, although its section comment says it prints | One error outcome; traces as an ordered log, including the prefix before a failure | Reproduced (`ContextsLib.trace`); to confirm (failure categories) | S1, S2, S3 |
 | T13 | Budget and size limits | Unbounded | A validator over the execution budget or script-size limit fails on-chain while its JVM test passes | Verified (by design) | S3 |
 | T14 | Target profiles | No notion of protocol version or target | Builtin availability and costs differ by target (for example `PV11_SAFE` versus `BASELINE`) | To confirm (which tests pass off-chain for unavailable builtins) | S3 |
-| T15 | Unused failing expressions | `var x = a / 0;` throws even when `x` is unused | An optimizer may drop an unused binding. `BuiltinSemantics` records totality for this purpose; whether every level keeps a non-total unused binding is not established | To confirm | S1 |
+| T15 | Unused failing expressions | `var x = a / 0;` throws even when `x` is unused | An optimizer may drop an unused binding. `BuiltinSemantics` records totality for this purpose; whether every level keeps a non-total unused binding is not established | Refuted for an unused `BigInteger.divide` by zero, which fails at every level as on the JVM; other shapes not examined | S1 |
 | T16 | Boundary conversion | Tests pass natural Java values (the `JulcEval` proxy takes `long`, `ArgConverter`) or build a `ScriptContext` off-chain | The script decodes Data at its boundary under strict-boundary rules | To confirm (that both decode identically for every supported boundary type) | S1, S3 |
 | T17 | Strings | UTF-16 `String` | UTF-8 bytestrings; `Builtins.encodeUtf8(PlutusData)` passes `BytesData` through off-chain ("On-chain, strings are ByteStrings") | To confirm (behaviour of invalid UTF-8 and of string methods) | S2 |
 | T18 | Off-chain crypto | A pluggable `CryptoProvider` (`JvmCryptoProvider` in the testkit), a separate implementation | VM builtins, conformance-tested | To confirm (edge cases: malformed keys or signatures, where the chain fails and the JVM may return `false`) | S2 |
 | T19 | Callbacks capturing mutable state | Lambdas observe and update enclosing state per Java's rules | See T2; ADR-061 proposes forbidding writes to enclosing bindings | Verified (ADR-061) | S4 / ADR-061 |
+| T20 | Rejections without a diagnostic code | — | `continue`, `return` inside `while`, reassignment outside a loop and `JulcMap.of` in contract code are rejected with uncoded messages; the last says `Undefined variable: JulcMap` | Reproduced (ADR-063 M1) | S5 |
 
 ## Decision
 
@@ -173,3 +175,5 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
+- **r2** (2026-10-23): catalogue statuses updated from ADR-063 M1 (PR #251): T3, T5, T6, T7, T9, T10, T11 and
+  T12 reproduced; T2 contained by `JULC0056`; T15 refuted for the probed shape; new T20 (uncoded rejections).
