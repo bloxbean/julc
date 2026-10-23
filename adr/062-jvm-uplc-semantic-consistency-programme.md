@@ -83,7 +83,8 @@ reproduce or refute. New entries take the next free ID and are never renumbered.
 | T17 | Strings | UTF-16 `String` | UTF-8 bytestrings; `Builtins.encodeUtf8(PlutusData)` passes `BytesData` through off-chain ("On-chain, strings are ByteStrings") | To confirm (behaviour of invalid UTF-8 and of string methods) | S2 |
 | T18 | Off-chain crypto | A pluggable `CryptoProvider` (`JvmCryptoProvider` in the testkit), a separate implementation | VM builtins, conformance-tested | To confirm (edge cases: malformed keys or signatures, where the chain fails and the JVM may return `false`) | S2 |
 | T19 | Callbacks capturing mutable state | Lambdas observe and update enclosing state per Java's rules | See T2; ADR-061 proposes forbidding writes to enclosing bindings | Verified (ADR-061) | S4 / ADR-061 |
-| T20 | Rejections without a diagnostic code | — | `continue`, `return` inside `while`, reassignment outside a loop and `JulcMap.of` in contract code are rejected with uncoded messages; the last says `Undefined variable: JulcMap` | Reproduced (ADR-063 M1) | S5 |
+| T21 | `while` with `break` and a conditional update | The loop runs its bounded iterations and returns | Never terminates: a taken `if` branch that updates a variable, in a `while` body that contains `break`, runs until the budget is exhausted, at every optimization level, even when the `break` is never taken. The for-each form agrees | Reproduced (found by the ADR-063 M2 nightly campaign; three saved cases) | S4 / ADR-061; targeted fix first |
+| T20 | Rejections without a diagnostic code | — | `continue`, `return` inside `while`, reassignment outside a loop, `JulcMap.of` in contract code, `break` in a for-each that updates nothing, and a loop inside a loop with `break` are rejected with uncoded messages. `Undefined variable: JulcMap` and "break statement outside of a loop" (the `break` is inside one) are misleading | Reproduced (ADR-063 M1) | S5 |
 
 ## Decision
 
@@ -175,5 +176,7 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
+- **r3** (2026-10-23): new T21 (silent non-termination of `while` with `break` and a conditional update), found by
+  the ADR-063 M2 campaign; T20 gains two more uncoded rejections found while narrowing G0.
 - **r2** (2026-10-23): catalogue statuses updated from ADR-063 M1 (PR #251): T3, T5, T6, T7, T9, T10, T11 and
   T12 reproduced; T2 contained by `JULC0056`; T15 refuted for the probed shape; new T20 (uncoded rejections).
