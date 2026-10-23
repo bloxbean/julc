@@ -1,0 +1,16 @@
+name: BigInteger.mod with a negative modulus (T11)
+class: Probe
+method: m
+arg: 07
+arg: 21
+expect: DIVERGE T11 Failure/Value
+note: The JVM throws ArithmeticException; ModInteger returns -1.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(long a, long b) {
+        return BigInteger.valueOf(a).mod(BigInteger.valueOf(b));
+    }
+}

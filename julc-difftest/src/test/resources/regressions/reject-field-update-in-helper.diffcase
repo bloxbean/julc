@@ -1,0 +1,26 @@
+name: helper updating a field runs twice (ADR-061 probe)
+class: Probe
+method: m
+arg: 03
+expect: REJECT JULC0056
+note: Java returns 9. JuLC used to return 6 and now rejects it (ADR-060 JULC0056).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    static long K = 0;
+
+    static long h(long n) {
+        long i = 0;
+        while (i < n) {
+            K = K + 1;
+            i = i + 1;
+        }
+        return K;
+    }
+
+    public static long m(long n) {
+        return h(n) + h(n);
+    }
+}

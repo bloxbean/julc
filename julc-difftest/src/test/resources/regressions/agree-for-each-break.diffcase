@@ -1,0 +1,19 @@
+name: for-each with break
+class: Probe
+method: m
+arg: 8501210318c804
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(JulcList<BigInteger> xs) {
+        BigInteger total = BigInteger.ZERO;
+        for (var x : xs) {
+            if (x.compareTo(BigInteger.valueOf(100)) > 0) { break; }
+            total = total.add(x);
+        }
+        return total;
+    }
+}

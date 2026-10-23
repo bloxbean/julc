@@ -1,0 +1,14 @@
+name: / and % truncate towards zero
+class: Probe
+method: m
+arg: 26
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static long m(long a) {
+        return (a / 2) * 100 + (a % 2);
+    }
+}
