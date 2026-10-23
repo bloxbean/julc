@@ -1,0 +1,22 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Differential JVM/UPLC test harness (ADR-063); not published'
+
+dependencies {
+    implementation project(':julc-core')
+    implementation project(':julc-compiler')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-ledger-api')
+    implementation project(':julc-vm')
+    runtimeOnly project(':julc-vm-java')
+
+    testImplementation "net.jqwik:jqwik:${jqwikVersion}"
+}
+
+test {
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter', 'jqwik'
+    }
+}

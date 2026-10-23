@@ -1,0 +1,15 @@
+name: long multiplication past 2^63 (T6)
+class: Probe
+method: m
+arg: 1b0000010000000000
+expect: DIVERGE T6 Value/Value
+note: The JVM wraps 2^80 to 0; UPLC integers are unbounded.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static long m(long n) {
+        return n * n;
+    }
+}

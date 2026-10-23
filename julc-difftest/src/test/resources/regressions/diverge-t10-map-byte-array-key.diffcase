@@ -1,0 +1,17 @@
+name: JulcMap lookup with an equal byte[] key (T10)
+class: Probe
+method: m
+arg: a142010201
+arg: 420102
+expect: DIVERGE T10 Value/Value
+note: Off-chain JulcAssocMap compares keys with Objects.equals, so an equal but distinct byte[] is not found.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.core.types.JulcMap;
+
+public class Probe {
+    public static boolean m(JulcMap<byte[], BigInteger> map, byte[] key) {
+        return map.containsKey(key);
+    }
+}

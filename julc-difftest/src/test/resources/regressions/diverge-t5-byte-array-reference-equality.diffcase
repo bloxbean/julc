@@ -1,0 +1,15 @@
+name: == on byte[] (T5)
+class: Probe
+method: m
+arg: 420102
+arg: 420102
+expect: DIVERGE T5 Value/Value
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static boolean m(byte[] a, byte[] b) {
+        return a == b;
+    }
+}

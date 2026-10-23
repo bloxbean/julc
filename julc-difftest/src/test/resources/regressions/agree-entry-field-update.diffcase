@@ -1,0 +1,18 @@
+name: entry method updates a static field in a for-each (LoopFieldUpdateTest)
+class: Probe
+method: m
+arg: 03
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    static long K = 0;
+
+    public static long m(long n) {
+        JulcList<BigInteger> xs = JulcList.of(BigInteger.ONE, BigInteger.TWO, BigInteger.TEN);
+        for (var x : xs) { K += 1; }
+        return K;
+    }
+}

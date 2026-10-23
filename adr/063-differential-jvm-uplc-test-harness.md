@@ -1,6 +1,6 @@
 # ADR-063: Differential JVM/UPLC test harness
 
-**Status:** Proposed (design only)
+**Status:** Proposed. M1 is implemented in `julc-difftest` (same PR); M2–M5 are not started
 **Date:** 2026-10-23
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md)
@@ -156,7 +156,12 @@ decreasing argument, and nesting depth and size are bounded.
 
 ### D6. Allowed divergences
 
-Divergences that are known and not yet resolved are listed in one registry file. Each entry names its ADR-062
+*Hand-written and saved cases (M1, implemented):* each `.diffcase` file states its own expectation. A known
+divergence is `DIVERGE <catalogue id> <JVM kind>/<UPLC kind>`, for example `DIVERGE T7 Value/Failure`.
+The case passes only while that exact divergence holds, so a mismatch with another cause fails it. When the
+owning step resolves the entry, the expectation changes to `AGREE` or `REJECT`.
+
+*Generated cases (M2):* divergences that are known and not yet resolved are listed in one registry file. Each entry names its ADR-062
 catalogue ID, a predicate over the program's features (for example "uses `any` with a predicate that can fail
 on a later element"), and an issue. A mismatch passes only if exactly one entry matches it, and every match
 appears in the run statistics. Entries are removed when the owning step resolves them. A run with an unused
@@ -284,6 +289,36 @@ ADR-061's control-flow migrations (ADR-062 S4) may start only after M3.
 5. **Should users get the harness?** A published `julc-testkit` API for differential tests of user contracts is
    ADR-062 S3's question. Lean: decide there, after M4.
 
+## M1 results (2026-10-23, at `ebaf028c` plus this PR)
+
+`./gradlew :julc-difftest:test --rerun`: 37 tests pass (24 saved cases at all four optimization levels on
+the Java VM, plus unit tests of the value mapping, the comparison rules and the JVM executor).
+
+| Outcome | Cases |
+|---|---|
+| Agree at every level | 10: for-each with `break`; `break` then `return` after a while; two accumulators updated in `if`/`else`; nested `while` with an inner local; a helper called in a loop; an entry method updating a static field; `&&` skipping a failing operand; truncating `/` and `%`; `boolean` and `byte[]` boundary values; the T15 probe |
+| Known divergence reproduced | 9: T3 (`==` on `BigInteger`), T5 (`==` on `byte[]`, and a record with a `byte[]` component), T6 (`long` overflow), T7 (`any`: the JVM returns true, UPLC fails), T9 (`AddressLib.credentialHash`: the JVM throws `ClassCastException`), T10 (`JulcMap` with a `byte[]` key), T11 (`mod` with a negative modulus: the JVM throws), T12 (`ContextsLib.trace` is a no-op off-chain, so the trace logs differ) |
+| Rejected | 5: the ADR-061 helper probe (`h(n) + h(n)`) with `JULC0056`; `continue`; `return` inside `while`; reassigning a local outside a loop; `JulcMap.of` in contract code |
+
+Findings:
+- **T15 is refuted for the probed shape.** An unused `BigInteger.TEN.divide(BigInteger.valueOf(n))` binding
+  still fails at every level when `n = 0`, as on the JVM. Other unused failing expressions have not been examined.
+- **The ADR-061 field-state probes are now rejected, not miscompiled.** `h(n) + h(n)` is rejected with
+  `JULC0056` (ADR-060), so the case is a negative regression.
+- **Four rejections have no diagnostic code:**
+  - `Unsupported statement: ContinueStmt`;
+  - `'return' is not supported inside while loop body`;
+  - `Unsupported expression: AssignExpr`;
+  - `Undefined variable: JulcMap`.
+  
+  The last one does not say that `JulcMap.of` is available off-chain only. Saved cases record these as
+  `REJECT none`.
+- **`ContextsLib.trace` does nothing off-chain,** although its section comment says it prints. This is T12's
+  first confirmed instance.
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
+- **r2** (2026-10-23): M1 implemented in the same PR. D6 now describes the per-case expectations of saved cases
+  (`DIVERGE <id> <JVM kind>/<UPLC kind>`), with the registry kept for generated cases from M2. M1 results and
+  findings added.
