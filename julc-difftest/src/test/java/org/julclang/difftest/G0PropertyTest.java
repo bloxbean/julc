@@ -44,6 +44,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 class G0PropertyTest {
 
     private static final DiffRunner RUNNER = DiffRunner.standard();
+    /** The rules, and the saved cases that pin known wrong values (D6). */
+    static final KnownDivergences KNOWN = KnownDivergences.withPins(RegressionStore.load(RegressionCasesTest.CASES));
     static final Path LAST_FAILURE = Path.of("build/difftest/last-failure.diffcase");
 
     /** The share of tries that must be conclusive and exercise each G0 feature (D9). */
@@ -119,7 +121,8 @@ class G0PropertyTest {
         var diffCase = new DiffCase("g0 " + plan, program.source(), "Probe", "m",
                 List.of(new PlutusData.IntData(a), new PlutusData.IntData(b), new PlutusData.ListData(items)));
         var report = RUNNER.run(diffCase);
-        // A mismatch passes only if one registry entry explains every configuration that disagrees (D6).
+        // A mismatch passes only if the registry explains every configuration that disagrees: by an exact
+        // pin, or by a rule for an inconclusive UPLC side (D6).
         var explained = new TreeSet<String>();
         boolean unexplained = false;
         var verdicts = new LinkedHashMap<DiffConfig, Verdict.Kind>();
@@ -127,8 +130,8 @@ class G0PropertyTest {
             var result = entry.getValue();
             verdicts.put(entry.getKey(), result.verdict().kind());
             if (result.verdict().kind() == Verdict.Kind.AGREE) continue;
-            var known = KnownDivergences.explain(program.features(), result.jvm(), result.uplc());
-            if (known.isPresent()) explained.add(known.get().id());
+            var known = KNOWN.explain(diffCase, entry.getKey(), program.features(), result);
+            if (known.isPresent()) explained.add(known.get());
             else unexplained = true;
         }
         Statistics.label("allowed divergence").collect(explained.isEmpty() ? "none" : String.join(",", explained));

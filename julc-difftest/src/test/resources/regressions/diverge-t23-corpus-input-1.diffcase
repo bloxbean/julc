@@ -1,0 +1,41 @@
+format: 2
+name: exhaustive corpus program 135 on input 1, a for-each with a split if/else and a taken break (T23)
+class: Probe
+method: m
+arg: 21
+arg: 01
+arg: 9f200204ff
+expect: DIVERGE T23 Value/Value
+jvm: Value 08 []
+uplc: Value 1826 []
+note: The D7 corpus program FOR_EACH [IF_ELSE_UPDATE, BREAK] on its input 1: a = -2, b = 1, xs = [-1, 2, 4].
+note: The break is taken at the second element; the JVM returns 8, UPLC 38, at every optimization level.
+note: This pin, not a rule, is what lets the corpus pass this run (ADR-063 D6).
+found.by: G0ExhaustiveTest
+found.generator: G0 enumeration r1
+found.program: FOR_EACH [IF_ELSE_UPDATE, BREAK]
+found.compiler: 0.1.0-pre20-d47e7bf4-SNAPSHOT v0.1.0-pre19-36-gd47e7bf4d7f3-dirty
+recorded.jvm: Value 08 []
+recorded.Java/NONE: Value 1826 []
+recorded.Java/NONE.cost: cpu 29362556 mem 116329 size 322
+recorded.Java/BASELINE: Value 1826 []
+recorded.Java/BASELINE.cost: cpu 29266556 mem 115729 size 317
+recorded.Java/PV11_SAFE: Value 1826 []
+recorded.Java/PV11_SAFE.cost: cpu 21571113 mem 89542 size 283
+recorded.Java/PV11_COSTED: Value 1826 []
+recorded.Java/PV11_COSTED.cost: cpu 21571113 mem 89542 size 283
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = a;
+        BigInteger v1 = b;
+        for (var x0 : xs) {
+            if (x0.compareTo(b) < 0) { v0 = v0.add(BigInteger.valueOf(1)); } else { v1 = v1.add(x0); }
+            if (x0.compareTo(b) > 0) { break; }
+        }
+        return v0.add(v1.multiply(BigInteger.valueOf(3)));
+    }
+}

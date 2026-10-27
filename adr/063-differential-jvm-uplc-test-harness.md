@@ -1,7 +1,7 @@
 # ADR-063: Differential JVM/UPLC test harness
 
-**Status:** Proposed. M1 and M2 are implemented in `julc-difftest` (same PR), revised in r4 after review; M2b and
-M3–M5 are not started
+**Status:** Proposed. M1 and M2 are implemented in `julc-difftest` (same PR), revised in r4 and r5 after review; M2b
+and M3–M5 are not started
 **Date:** 2026-10-23
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md)
@@ -193,17 +193,26 @@ an extra or reordered trace, a trace before a failure, or another inconclusive r
 (`uplc.<LEVEL>:`) cover a divergence that differs by optimization level. When the owning step resolves the
 entry, the expectation changes to `AGREE` or `REJECT`.
 
-*Generated cases (M2, implemented as `KnownDivergences`):* divergences that are known and not yet resolved are
-listed in one registry. Each entry names its ADR-062 catalogue ID, a structural feature the generator records
-(for T21, `WHILE_BREAK_WITH_IF_UPDATE`), the observation kind each side must produce and, for an inconclusive
-UPLC side, its exact reason. A mismatch passes only if exactly one entry matches it, and every match appears in
-the run statistics. Entries are removed when the owning step resolves them. A run with an unused entry reports
-it, so stale rules don't hide regressions.
+*Generated cases (M2, implemented as `KnownDivergences`):* a generated mismatch passes only if the registry
+explains every configuration that disagrees, and every explanation appears in the run statistics. How it may be
+explained depends on what the UPLC side produced:
 
-A registry entry is weaker than a pinned case. A generated mismatch with the same feature, the same kinds and,
-where it applies, the same reason passes as that entry even if it has another cause. For T23, whose UPLC side is
-a wrong value, any wrong value in that shape passes. The mitigations are that every entry has pinned saved
-reproducers, every match is counted, and an entry is narrowed to the shape the reproducers isolate.
+- **A conclusive UPLC side (a `Value` or a `Failure`) is explained only by an exact pin.** A pin is a saved
+  `DIVERGE` case with the same program (its source, up to the class name), method and arguments, whose pinned
+  observations the result meets at that optimization level, traces included. Any other wrong value, and any
+  change of traces, fails the run and is written out for triage, even in the shape of a known divergence. The
+  saved cases under `src/test/resources/regressions` are the pins, so a saved case and the registry cannot
+  disagree. T23 is explained this way: the two corpus runs it affects (D7) are saved as
+  `diverge-t23-corpus-input-1` and `-input-3`.
+- **An inconclusive UPLC side is explained by a rule.** A rule names its ADR-062 catalogue ID, a structural
+  feature the generator records (for T21, `WHILE_BREAK_WITH_IF_UPDATE`), the JVM kind, and the exact
+  inconclusive reason. A rule cannot explain a conclusive side, and one without a reason is refused. Rules are
+  removed when the owning step resolves them; a run reports how often each one matched, so a stale rule is
+  visible.
+
+A rule is weaker than a pin: another non-termination with the same shape and reason passes as T21. That is
+acceptable because an inconclusive case is no evidence and counts towards no quota (H5, D9), and because each
+rule has pinned saved reproducers. A wrong value is a correctness result, so it gets no rule.
 
 ### D7. Exhaustive small programs
 
@@ -249,7 +258,8 @@ The corpus is checked for what it exercises, not only for its size (`G0Exhaustiv
 - **Observability:** each program is also compiled without its loops, and once without each single statement
   (1,104 variants). Every variant changes the JVM result on at least one input. So a lowering that drops a loop
   or a statement, or never takes a branch, produces a UPLC result that differs from the JVM, and the run fails.
-- **Agreement:** all 1,504 runs agree at every optimization level, or are explained by the registry (T21, T23).
+- **Agreement:** all 1,504 runs agree at every optimization level, or are explained by the registry: by the T21
+  rule, or by the two exact T23 pins.
 
 ### D8. Shrinking and regression capture
 
@@ -276,8 +286,9 @@ composition table.
 
 *Implemented (M2):* the G0 features `WHILE`, `FOR_EACH`, `NESTED_LOOP`, `IF_IN_LOOP`, `IF_ELSE_IN_LOOP`, `BREAK`,
 `BODY_LOCAL`, `TERNARY`, `SHORT_CIRCUIT`, `ACCUMULATOR_UPDATED` and `SEVERAL_ACCUMULATORS`. The features
-`WHILE_BREAK_WITH_IF_UPDATE` and `FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE` mark known bugs' shapes for the registry and
-have no quota. `Coverage` records each case's outcome:
+`WHILE_BREAK_WITH_IF_UPDATE` and `FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE` mark known bugs' shapes and have no quota;
+the T21 rule matches on the first, and the second is statistics only, since T23 is explained by pins.
+`Coverage` records each case's outcome:
 - conclusive: every configuration agrees;
 - allowed divergence: no configuration is inconclusive and every mismatch is explained;
 - inconclusive: some configuration is inconclusive, whether explained or not.
@@ -482,8 +493,8 @@ Two new divergences, both found by the r4 changes:
   An `if`/`else` that assigns one variable agrees, and so do an `if` without `else`, a `break` before the
   `if`/`else`, and no `break`. It is probably the lowering behind T21, which shows in a `while` as
   non-termination instead. Two saved cases pin it, and the registry entry needs the new feature
-  `FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE`. Random G0 campaigns, including the 3,000-try nightly, never generated a
-  failing instance.
+  `FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE` (replaced in r5 by exact pins). Random G0 campaigns, including the 3,000-try
+  nightly, never generated a failing instance.
 
 The first version of the D7 corpus had 15 erasures that changed no result: a `while` counter from 0 makes the
 loop variable 0, and conditions tied to `b` cannot fire after a `break` on `b`. The observability check reported
@@ -503,6 +514,30 @@ Measured at the r4 head:
   under T21, and 2 are allowed under T23.
 - `./gradlew :julc-difftest:nightlyDiffTest`: 3,000 tries with seed `3288857217423497629`. 2,996 are conclusive and
   4 inconclusive under T21; 1 min 35 s.
+
+## Review round r5 results (2026-10-28)
+
+What changed, against the review of `d47e7bf4` (F7):
+- **A wrong value is explained only by an exact pin (D6).** The r4 T23 entry accepted any `Value`/`Value`
+  mismatch in its shape. The registry now has two mechanisms: rules for an inconclusive UPLC side (T21 only),
+  and pins for everything else, loaded from the saved cases. The T23 rule is removed.
+- **The two corpus runs T23 affects are saved.** Program 135, `FOR_EACH [IF_ELSE_UPDATE, BREAK]`, on input 1
+  (JVM 8, UPLC 38) and input 3 (JVM −1, UPLC 26), at every optimization level. With the T23 rule removed and
+  before these were saved, `G0ExhaustiveTest` failed on exactly these two runs and wrote them out; that is the
+  triage path for any new wrong value.
+- **`KnownDivergencesTest`** covers the reviewer's counterexamples: on an empty list the program returns 9 on
+  the JVM, and neither UPLC `Value 999 []` nor `Value 9 ["unexpected trace"]` is explained. So are a pinned
+  program and input with another UPLC value, another trace or another JVM value, the pinned observations on
+  another input or another program, and a conclusive side under the T21 rule's feature. The four T23
+  reproducers are explained, under the saved class name and under the corpus class name. With the pin's
+  observation check replaced by `true`, this test fails.
+
+Measured at the r5 tree:
+- `./gradlew :julc-difftest:build verifyMavenReleasePublicationScope -PskipSigning=true --rerun-tasks`: 72 tests,
+  0 failures, 23 s. The saved cases are 36.
+- `G0ExhaustiveTest`: unchanged outcomes, 1,481 conclusive, 21 inconclusive under T21, and 2 allowed by T23 pins.
+- `./gradlew :julc-difftest:nightlyDiffTest`: 3,000 tries with seed `7009084437455657768`. 2,996 are conclusive and
+  4 inconclusive under T21; 1 min 37 s.
 
 ## Revision history
 
@@ -526,3 +561,7 @@ Measured at the r4 head:
     implemented mapping. D2 states the configurations. D3 and the trusted components name `ValueMapping`, not
     `TermExtractor`. M2b is new, and M4 and M5 are extended.
   - New findings T22 and T23; the T21 note on the for-each form is corrected. History reordered.
+- **r5** (2026-10-28, responds to review round r2 of `d47e7bf4`):
+  - F7: a conclusive mismatch passes only as an exact pin, taken from the saved cases; registry rules explain an
+    inconclusive UPLC side only. The T23 rule is replaced by four pins, two of them the corpus runs. D6, D7 and D9
+    revised.

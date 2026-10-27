@@ -3,7 +3,6 @@ package org.julclang.difftest;
 import org.julclang.core.PlutusData;
 import org.julclang.difftest.gen.G0;
 import org.julclang.difftest.gen.G0Enumeration;
-import org.julclang.difftest.gen.KnownDivergences;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -141,7 +140,7 @@ class G0ExhaustiveTest {
                     var result = entry.getValue();
                     verdicts.put(entry.getKey(), result.verdict().kind());
                     if (result.verdict().kind() != Verdict.Kind.AGREE
-                            && KnownDivergences.explain(program.features(), result.jvm(), result.uplc()).isEmpty()) {
+                            && G0PropertyTest.KNOWN.explain(diffCase, entry.getKey(), program.features(), result).isEmpty()) {
                         unexplained = true;
                     }
                 }

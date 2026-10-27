@@ -36,7 +36,10 @@ public final class G0 {
         /** A for-each body with a break and an if/else whose branches assign different variables: ADR-062 T23. */
         FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE;
 
-        /** Shapes of known divergences, which the registry matches on; they have no coverage quota. */
+        /**
+         * Shapes of known divergences; they have no coverage quota. The registry's T21 rule matches on
+         * the first; T23 is explained only by exact pins, so the second is statistics only.
+         */
         public static final Set<Feature> REGISTRY_MARKERS =
                 EnumSet.of(WHILE_BREAK_WITH_IF_UPDATE, FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE);
     }

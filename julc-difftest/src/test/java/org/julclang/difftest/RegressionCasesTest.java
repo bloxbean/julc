@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 class RegressionCasesTest {
 
     /** The saved cases; {@code -Ddifftest.cases=<dir>} replays another directory instead. */
-    private static final Path CASES = Path.of(System.getProperty("difftest.cases", "src/test/resources/regressions"));
+    static final Path CASES = Path.of(System.getProperty("difftest.cases", "src/test/resources/regressions"));
     private static final boolean DEFAULT_CASES = System.getProperty("difftest.cases") == null;
     private static final DiffRunner RUNNER = DiffRunner.standard();
 
