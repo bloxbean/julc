@@ -1,3 +1,4 @@
+format: 2
 name: JulcMap.of is off-chain only
 class: Probe
 method: m

@@ -1,8 +1,11 @@
+format: 2
 name: ContextsLib.trace is a no-op off-chain (T12)
 class: Probe
 method: m
 arg: 01
 expect: DIVERGE T12 Value/Value
+jvm: Value 01 []
+uplc: Value 01 ["checked"]
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

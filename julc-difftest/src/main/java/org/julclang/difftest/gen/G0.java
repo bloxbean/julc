@@ -32,8 +32,20 @@ public final class G0 {
         WHILE, FOR_EACH, NESTED_LOOP, IF_IN_LOOP, IF_ELSE_IN_LOOP, BREAK, BODY_LOCAL, TERNARY,
         SHORT_CIRCUIT, ACCUMULATOR_UPDATED, SEVERAL_ACCUMULATORS,
         /** A while body with a break and an if that assigns: the shape of ADR-062 T21. */
-        WHILE_BREAK_WITH_IF_UPDATE
+        WHILE_BREAK_WITH_IF_UPDATE,
+        /** A for-each body with a break and an if/else whose branches assign different variables: ADR-062 T23. */
+        FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE;
+
+        /** Shapes of known divergences, which the registry matches on; they have no coverage quota. */
+        public static final Set<Feature> REGISTRY_MARKERS =
+                EnumSet.of(WHILE_BREAK_WITH_IF_UPDATE, FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE);
     }
+
+    /**
+     * The decoding's version, saved with every failure it finds (ADR-063 D8). Change it whenever a
+     * choice sequence would decode to a different program.
+     */
+    public static final String VERSION = "G0 r1";
 
     /** A decoded program: the source of class {@code Probe} and the features it uses. */
     public record Program(String source, Set<Feature> features) {
@@ -131,6 +143,7 @@ public final class G0 {
         var assignedHere = new ArrayList<String>();
         boolean hasBreak = false;
         boolean hasIfUpdate = false;
+        boolean hasSplitIfElse = false;
         // JuLC's break-aware loop bodies cannot contain loops (saved case
         // reject-nested-loop-in-break-loop), so a body either may break or may nest a loop.
         boolean breakAware = choices.oneIn(3);
@@ -144,11 +157,16 @@ public final class G0 {
                     features.add(Feature.IF_IN_LOOP);
                     hasIfUpdate = true;
                     line(indent, "if (" + condition(scope, 2) + ") {");
+                    int before = assignedHere.size();
                     assignment(scope, indent + 1, assignedHere);
+                    var thenTargets = List.copyOf(assignedHere.subList(before, assignedHere.size()));
                     if (choices.oneIn(2)) {
                         features.add(Feature.IF_ELSE_IN_LOOP);
                         line(indent, "} else {");
+                        int elseStart = assignedHere.size();
                         assignment(scope, indent + 1, assignedHere);
+                        var elseTargets = assignedHere.subList(elseStart, assignedHere.size());
+                        if (!thenTargets.equals(elseTargets)) hasSplitIfElse = true;
                     }
                     line(indent, "}");
                 }
@@ -173,6 +191,7 @@ public final class G0 {
         if (counter == null && assignedHere.isEmpty() && hasBreak) assignment(scope, indent, assignedHere);
         if (assignedHere.stream().distinct().count() > 1) features.add(Feature.SEVERAL_ACCUMULATORS);
         if (counter != null && hasBreak && hasIfUpdate) features.add(Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        if (counter == null && hasBreak && hasSplitIfElse) features.add(Feature.FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE);
         updated.addAll(assignedHere);
         if (counter != null) line(indent, counter + " = " + counter + " + 1;");
     }

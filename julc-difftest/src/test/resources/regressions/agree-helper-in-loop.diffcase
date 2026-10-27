@@ -1,3 +1,4 @@
+format: 2
 name: helper called in a loop
 class: Probe
 method: m

@@ -1,3 +1,4 @@
+format: 2
 name: boolean and byte[] arguments and results
 class: Probe
 method: m

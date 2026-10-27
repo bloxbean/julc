@@ -1,3 +1,4 @@
+format: 2
 name: break in a for-each that updates nothing (found by G0)
 class: Probe
 method: m

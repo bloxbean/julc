@@ -1,3 +1,4 @@
+format: 2
 name: helper updating a field runs twice (ADR-061 probe)
 class: Probe
 method: m

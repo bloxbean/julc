@@ -1,3 +1,4 @@
+format: 2
 name: && does not evaluate a failing right operand
 class: Probe
 method: m

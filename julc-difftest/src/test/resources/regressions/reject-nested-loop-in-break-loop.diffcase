@@ -1,3 +1,4 @@
+format: 2
 name: nested loop in a loop with break (found by G0)
 class: Probe
 method: m

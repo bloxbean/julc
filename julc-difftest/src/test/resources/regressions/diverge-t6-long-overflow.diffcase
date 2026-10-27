@@ -1,8 +1,11 @@
+format: 2
 name: long multiplication past 2^63 (T6)
 class: Probe
 method: m
 arg: 1b0000010000000000
 expect: DIVERGE T6 Value/Value
+jvm: Value 00 []
+uplc: Value c24b0100000000000000000000 []
 note: The JVM wraps 2^80 to 0; UPLC integers are unbounded.
 ---
 import java.math.BigInteger;

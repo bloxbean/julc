@@ -1,8 +1,11 @@
+format: 2
 name: AddressLib.credentialHash casts a PubKeyHash to byte[] (T9)
 class: Probe
 method: m
 arg: 581c00000000000000000000000000000000000000000000000000000000
 expect: DIVERGE T9 Failure/Value
+jvm: Failure []
+uplc: Value 581c00000000000000000000000000000000000000000000000000000000 []
 note: The JVM throws ClassCastException; on-chain the cast is a no-op.
 ---
 import java.math.BigInteger;

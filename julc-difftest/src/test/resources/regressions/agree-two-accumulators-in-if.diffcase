@@ -1,3 +1,4 @@
+format: 2
 name: if/else updating different accumulators in a loop
 class: Probe
 method: m

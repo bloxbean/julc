@@ -1,3 +1,4 @@
+format: 2
 name: entry method updates a static field in a for-each (LoopFieldUpdateTest)
 class: Probe
 method: m
