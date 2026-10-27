@@ -4,6 +4,10 @@ name: Differential test campaign
 # cases, the exhaustive small programs and a fixed-seed G0 campaign as part of `./gradlew build`;
 # this job runs 3000 G0 programs with a fresh seed. A failure uploads the shrunk case, which can be
 # saved under julc-difftest/src/test/resources/regressions/. No secrets are used.
+#
+# ADR-063 D13: the fuzz job runs Jazzer on targets whose findings may be published. The decoders of
+# on-chain bytes are fuzzed locally only: their findings can be vulnerabilities (SECURITY.md), and
+# this repository's logs and artifacts are public.
 
 on:
   schedule:
@@ -43,4 +47,46 @@ jobs:
         path: |
           julc-difftest/build/difftest/
           julc-difftest/build/reports/tests/
+        retention-days: 30
+
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: julc-difftest
+            target: '*G0FuzzTest'
+            duration: 20m
+          - module: julc-core
+            target: '*DecoderFuzzTest.uplcText'
+            duration: 10m
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Set up JDK 25
+      uses: actions/setup-java@v4
+      with:
+        java-version: '25'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
+    - name: Fuzz
+      run: ./gradlew :${{ matrix.module }}:fuzz --tests '${{ matrix.target }}' -Pfuzz.duration=${{ matrix.duration }} --stacktrace
+
+    # The failing input is saved as crash-* next to the target's seeds; add it there to replay it in every build.
+    - name: Upload the failing input
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-failure-${{ matrix.module }}
+        path: |
+          ${{ matrix.module }}/src/test/resources/**/crash-*
+          ${{ matrix.module }}/build/reports/tests/fuzz/
         retention-days: 30

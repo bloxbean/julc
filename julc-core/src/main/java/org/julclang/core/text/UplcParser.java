@@ -681,10 +681,11 @@ public final class UplcParser {
         if (pos < input.length() && (input.charAt(pos) == '-' || input.charAt(pos) == '+')) {
             pos++;
         }
+        int digits = pos;
         while (pos < input.length() && Character.isDigit(input.charAt(pos))) {
             pos++;
         }
-        if (pos == start) {
+        if (pos == digits) {
             throw error("Expected integer");
         }
         int digitCount = pos - start;
@@ -852,11 +853,7 @@ public final class UplcParser {
             pos++;
         }
         if (pos == start) throw error("Expected digit in decimal escape");
-        int value = java.lang.Integer.parseInt(input.substring(start, pos));
-        if (value > 0x10FFFF) {
-            throw error("Decimal escape value out of range: " + value + " (max 1114111)");
-        }
-        return value;
+        return escapeCodePoint(start, 10, "Decimal escape value out of range: ", " (max 1114111)");
     }
 
     private int parseHexEscape() {
@@ -865,12 +862,7 @@ public final class UplcParser {
             pos++;
         }
         if (pos == start) throw error("Expected hex digit in escape");
-        int value = java.lang.Integer.parseInt(input.substring(start, pos), 16);
-        if (value > 0x10FFFF) {
-            throw error("Hex escape value out of range: 0x"
-                    + java.lang.Integer.toHexString(value) + " (max 0x10FFFF)");
-        }
-        return value;
+        return escapeCodePoint(start, 16, "Hex escape value out of range: 0x", " (max 0x10FFFF)");
     }
 
     private int parseOctalEscape() {
@@ -879,9 +871,20 @@ public final class UplcParser {
             pos++;
         }
         if (pos == start) throw error("Expected octal digit in escape");
-        int value = java.lang.Integer.parseInt(input.substring(start, pos), 8);
-        if (value > 0x10FFFF) {
-            throw error("Octal escape value out of range: " + value + " (max 1114111)");
+        return escapeCodePoint(start, 8, "Octal escape value out of range: ", " (max 0o4177777)");
+    }
+
+    /**
+     * The code point that the escape digits from {@code start} to {@code pos} denote. The value is checked
+     * after each digit, so any number of digits is a range error rather than an int overflow.
+     */
+    private int escapeCodePoint(int start, int radix, String prefix, String suffix) {
+        int value = 0;
+        for (int i = start; i < pos; i++) {
+            value = value * radix + Character.digit(input.charAt(i), radix);
+            if (value > Character.MAX_CODE_POINT) {
+                throw error(prefix + input.substring(start, pos) + suffix);
+            }
         }
         return value;
     }

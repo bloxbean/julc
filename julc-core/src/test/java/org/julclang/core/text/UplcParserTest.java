@@ -510,6 +510,32 @@ class UplcParserTest {
         assertEquals("\u0000", s);
     }
 
+    // ---- Malformed numbers are parse errors (found by DecoderFuzzTest.uplcText) ----
+
+    @Test
+    void signWithoutDigitsThrows() {
+        for (String text : List.of("(con integer -)", "(con integer +)", "(con integer - 1)")) {
+            assertThrows(UplcParseException.class, () -> UplcParser.parseTerm(text), text);
+        }
+        assertThrows(UplcParseException.class, () -> UplcParser.parseProgram("(program -.1.0 (con unit ()))"));
+    }
+
+    @Test
+    void escapeBeyondIntRangeThrows() {
+        for (String escape : List.of("\\99999999999", "\\x123456789", "\\o777777777777")) {
+            assertThrows(UplcParseException.class,
+                    () -> UplcParser.parseTerm("(con string \"" + escape + "\")"), escape);
+        }
+    }
+
+    @Test
+    void escapesAtTheCodePointLimit() {
+        var term = UplcParser.parseTerm("(con string \"\\1114111\\x10FFFF\\o4177777\")");
+        var s = ((Constant.StringConst) ((Term.Const) term).value()).value();
+        assertEquals(new String(Character.toChars(0x10FFFF)).repeat(3), s);
+        assertThrows(UplcParseException.class, () -> UplcParser.parseTerm("(con string \"\\1114112\")"));
+    }
+
     // ---- Complex programs ----
 
     @Test

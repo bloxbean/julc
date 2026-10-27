@@ -33,7 +33,13 @@ public final class KnownDivergences {
     public static final List<Entry> ENTRIES = List.of(
             new Entry("T21", "a while loop with break and an if that updates a variable never terminates on UPLC",
                     Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), Observation.Value.class,
-                    Observation.Inconclusive.class, "budget exhausted"));
+                    Observation.Inconclusive.class, "budget exhausted"),
+            new Entry("T13", "nested compareTo operands double the script per level (#146) and exhaust the budget",
+                    Set.of(G0.Feature.DEEP_COMPARISON), Observation.Value.class,
+                    Observation.Inconclusive.class, "budget exhausted"),
+            new Entry("T13", "nested compareTo operands double the term per level (#146) until compilation runs out of memory",
+                    Set.of(G0.Feature.DEEP_COMPARISON), Observation.Value.class,
+                    Observation.Crash.class, "OutOfMemoryError"));
 
     /** The single entry that explains this mismatch, if exactly one does. */
     public static Optional<Entry> explain(Set<G0.Feature> features, Observation jvm, Observation uplc) {

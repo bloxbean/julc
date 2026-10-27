@@ -1,6 +1,7 @@
 # ADR-063: Differential JVM/UPLC test harness
 
-**Status:** Proposed. M1 and M2 are implemented in `julc-difftest` (same PR); M3–M5 are not started
+**Status:** Proposed. M1 and M2 are implemented in `julc-difftest`; D13 (coverage-guided fuzzing) in a
+follow-up PR; M3–M5 are not started
 **Date:** 2026-10-23
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md)
@@ -48,7 +49,7 @@ oracle or a weak generator produces false confidence that later steps rely on (A
 
 - Fixing any divergence. The harness finds and records them; the fixes belong to S2–S5 and ADR-061.
 - A reference interpreter for JuLC Java.
-- Coverage-guided fuzzing (for example Jazzer). It can wrap the generator later (ADR-061).
+- ~~Coverage-guided fuzzing (for example Jazzer).~~ No longer a non-goal (r4): D13 adds Jazzer next to jqwik.
 - Comparing costs. The harness records budgets and sizes, but equal results say nothing about acceptable cost.
 
 ## Invariants
@@ -231,6 +232,39 @@ The harness counts as evidence only after it demonstrates that it finds real def
 - A scheduled nightly job runs larger campaigns with fresh seeds and uploads saved failures as artifacts.
 - The module's tests are part of `./gradlew build`; campaign sizes are Gradle properties.
 
+### D13. Coverage-guided fuzzing (r4)
+
+Jazzer (`com.code-intelligence:jazzer-junit`, version in `gradle/libs.versions.toml`) runs `@FuzzTest`
+targets next to jqwik. jqwik samples choice sequences, shrinks failures and gives the PR campaign a fixed
+seed. Jazzer mutates its input towards programs that reach code no earlier input reached, measured over all
+of `org.julclang.**`. It does not shrink a G0 program, so its findings are reduced by hand.
+
+Targets:
+- **`G0FuzzTest`** (`julc-difftest`): Jazzer's bytes decode to the three inputs and to G0's choice
+  sequence, one byte per choice. Each program is checked by the same `G0PropertyTest.verify` as the jqwik
+  campaigns, so H2, H5 and D6 apply unchanged.
+- **`DecoderFuzzTest`** (`julc-core`): the PlutusData CBOR decoder and the UPLC text parser. A decoder may
+  reject input only with its own exception, and what it accepts must decode to the same value after
+  re-encoding.
+
+Modes:
+- `test` replays each target's saved inputs in `<Class>Inputs/<method>/`: seeds, and found inputs kept as
+  regressions. Every `seed-*` decoder input must decode (`seedsDecode`), since a rejected seed adds no coverage.
+- `./gradlew :<module>:fuzz --tests '<one target>' [-Pfuzz.duration=10m]` fuzzes one target
+  (`gradle/jazzer-fuzz.gradle`). A failing input is written as `crash-*` next to the seeds.
+- The nightly workflow fuzzes G0 for 20 minutes and the text parser for 10.
+
+Seeds matter. Jazzer's JUnit mode has no maximum-length option and grows inputs from the largest seed, so
+G0's seeds are 150 bytes; without them inputs stayed at 8–21 bytes and programs stayed trivial.
+
+**Disclosure.** A finding in a decoder of on-chain bytes (FLAT programs, PlutusData CBOR) can be a
+vulnerability (SECURITY.md), and this repository's CI logs and artifacts are public. Those decoders are
+fuzzed locally, and their findings are reported privately. They are not committed as inputs and are not
+fuzzed in public CI. The text parser reads developer input only, so it is fuzzed nightly.
+
+Alternatives: replacing jqwik with Jazzer loses shrinking and the reproducible PR seed. Fuzzing in every PR
+adds minutes for little gain over replaying the saved inputs.
+
 ## Trusted components
 
 The harness's verdicts depend on:
@@ -239,6 +273,8 @@ The harness's verdicts depend on:
 - `TermExtractor`;
 - `julc-vm-java`, which is conformance-tested against the official Plutus test suite (`PlutusConformanceTest`);
 - jqwik.
+
+Jazzer is not trusted: it only chooses inputs, and the verdicts come from the same runner (D13).
 
 The JVM side also runs whatever off-chain library code a program calls. Until ADR-062 S2 is done, that code
 is not trusted, which is why G0 and G1 use only `BigInteger`, `boolean`, `JulcList` and user records on the JVM
@@ -249,11 +285,17 @@ side, and why D10 treats off-chain library differences as findings.
 - New: `julc-difftest`, which is not published.
 - `julc-compiler`: optionally, test-only hooks for D11 mutations, disabled by default and unreachable from public
   APIs. Whether such hooks are acceptable is open question 2.
-- No change to `julc-stdlib`, `julc-vm*`, `julc-testkit` or any published artifact.
+- No change to `julc-stdlib`, `julc-vm*`, `julc-testkit` or any published artifact, except the D13 fixes below.
+- D13 (r4): Jazzer as a test dependency of `julc-core` and `julc-difftest`, `gradle/libs.versions.toml` and
+  `gradle/jazzer-fuzz.gradle`. Two fixes in `julc-core`'s UPLC text parser and printer, from its findings.
 
 ## Compatibility
 
-None. No public API, compiled output, script hash or cost changes.
+No public API, compiled output, script hash or cost changes. The D13 fixes change the text format only:
+- `UplcParser` reports a sign without digits, and a numeric escape above U+10FFFF however long, as
+  `UplcParseException`. Before, both threw `NumberFormatException`.
+- `UplcPrinter` writes `\&` after a decimal escape that a digit follows, as Haskell's `show` does. Such
+  strings used to print as text that parses to a different string.
 
 ## Milestones
 
@@ -290,6 +332,10 @@ ADR-061's control-flow migrations (ADR-062 S4) may start only after M3.
 4. **Which VMs are in the PR run?** Lean: `julc-vm-java` on PRs; Scalus and Truffle in the nightly campaign.
 5. **Should users get the harness?** A published `julc-testkit` API for differential tests of user contracts is
    ADR-062 S3's question. Lean: decide there, after M4.
+6. **Where are the on-chain decoders fuzzed (D13)?** Locally now. A scheduled run whose findings stay private
+   (a private fork or runner) would make it routine. Lean: set one up before M4.
+7. **Version catalog.** Only Jazzer is in `gradle/libs.versions.toml`; jqwik and the rest stay in
+   `gradle.properties`. Lean: move them in a separate change.
 
 ## M1 results (2026-10-23, at `ebaf028c` plus this PR)
 
@@ -357,6 +403,42 @@ Measured:
 - `G0ExhaustiveTest`: 19 s;
 - nightly campaign: 3,000 tries in about 2 minutes, 2,998 agreeing at every level and 2 explained by T21.
 
+## D13 results (2026-10-27)
+
+Jazzer 0.30.0 runs with Java 25, Gradle 9.2 and JUnit 5.11.
+
+| Target | Throughput | Coverage | Result |
+|---|---|---|---|
+| PlutusData CBOR | 58,000–70,000 inputs/s | 314 edges in 30 s | Nothing found |
+| UPLC text | about 88,000 inputs/s | 956 edges in 2 minutes; 36 without seeds or a dictionary | Three findings, below |
+| G0 | 1–4 programs/s | about 4,580 edges; 222 when only `julc-difftest` was instrumented | Two T13 shapes; T21 reached after 299 programs in a spike run (20 s) |
+
+Findings:
+- **T13, exponential size from #146.** The `compareTo`, `abs`, `signum`, `max` and `min` lowerings repeat
+  their operands, so nested comparisons double the script per level, at every optimization level. Nesting
+  `((e.compareTo(C) < 0 || C.compareTo(C) < 0) ? C : C)` 10 deep gives 43,616 bytes at `PV11_SAFE` and
+  127,640 at `NONE`. A fuzzed program 16 levels deep exhausts the budget at `NONE`, `PV11_SAFE` and
+  `PV11_COSTED`, and another runs the compiler out of memory at `BASELINE`, while the JVM returns −5.
+  Measurements and the other lowerings are on #146.
+  - G0 records the shape as `DEEP_COMPARISON`: a ternary inside at least 8 nested `compareTo` operands.
+  - Two T13 entries cover it, one for the budget and one for the compiler's `OutOfMemoryError`.
+  - The threshold keeps a T21 program with a shallow ternary in a comparison explained by T21 alone; a
+    first version without it matched both entries. The saved input `t21-with-ternary-in-comparison` covers this.
+  - The out-of-memory input is not replayed. It takes 24 s and exhausts the heap of the shared test JVM.
+- **Text parser: malformed numbers threw `NumberFormatException`.** This happened for a sign without
+  digits (also in a version) and for numeric escapes too long for an `int`. Fixed; see Compatibility.
+- **Text printer: a control character followed by a digit did not round-trip.** The printed decimal escape
+  absorbed the digit. Fixed with `\&`.
+- **Text names diverge from Haskell (not fixed).** Haskell's unquoted names start with an ASCII letter or `_`
+  and continue with letters, digits, `_` and `'` (plutus-core 1.65.0.0, `PlutusCore.Name.Unique`,
+  `isIdentifierStartingChar`); other names are backtick-quoted. JuLC's parser also accepts a leading digit,
+  `-`, non-ASCII letters and free variables. Its printer renames names instead of quoting them, with two
+  consequences:
+  - the renamed name can be captured: `(lam _43 43)` reparses with the free `43` bound;
+  - names starting with `#` (ADR-060's generated binders) print unchanged and do not parse.
+
+  The text target skips inputs with such names until this is fixed.
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
@@ -366,3 +448,6 @@ Measured:
 - **r2** (2026-10-23): M1 implemented in the same PR. D6 now describes the per-case expectations of saved cases
   (`DIVERGE <id> <JVM kind>/<UPLC kind>`), with the registry kept for generated cases from M2. M1 results and
   findings added.
+- **r4** (2026-10-27): D13, coverage-guided fuzzing with Jazzer, replaces the non-goal. Two T13 registry
+  entries and the `DEEP_COMPARISON` feature; text parser and printer fixes; open questions 6 and 7; D13
+  results.

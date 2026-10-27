@@ -32,7 +32,12 @@ public final class G0 {
         WHILE, FOR_EACH, NESTED_LOOP, IF_IN_LOOP, IF_ELSE_IN_LOOP, BREAK, BODY_LOCAL, TERNARY,
         SHORT_CIRCUIT, ACCUMULATOR_UPDATED, SEVERAL_ACCUMULATORS,
         /** A while body with a break and an if that assigns: the shape of ADR-062 T21. */
-        WHILE_BREAK_WITH_IF_UPDATE
+        WHILE_BREAK_WITH_IF_UPDATE,
+        /**
+         * A ternary inside {@link G0#DEEP_COMPARISON_NESTING} nested {@code compareTo} operands. The lowering
+         * repeats each operand (#146), so the script doubles per level and can exhaust the budget (ADR-062 T13).
+         */
+        DEEP_COMPARISON
     }
 
     /** A decoded program: the source of class {@code Probe} and the features it uses. */
@@ -40,11 +45,15 @@ public final class G0 {
     }
 
     private static final int MAX_LOOP_DEPTH = 2;
+    /** Nesting at which #146's duplication alone multiplies the operand 256 times. */
+    public static final int DEEP_COMPARISON_NESTING = 8;
 
     private final Choices choices;
     private final StringBuilder out = new StringBuilder();
     private final Set<Feature> features = EnumSet.noneOf(Feature.class);
     private int fresh;
+    /** How many {@code compareTo} operands enclose the expression being generated. */
+    private int comparisonOperands;
 
     private G0(Choices choices) {
         this.choices = choices;
@@ -195,6 +204,7 @@ public final class G0 {
             case 2 -> expression(scope, depth - 1) + ".multiply(BigInteger.valueOf(" + (1 + choices.below(3)) + "))";
             case 3 -> {
                 features.add(Feature.TERNARY);
+                if (comparisonOperands >= DEEP_COMPARISON_NESTING) features.add(Feature.DEEP_COMPARISON);
                 yield "(" + condition(scope, 1) + " ? " + expression(scope, depth - 1) + " : " + expression(scope, depth - 1) + ")";
             }
             default -> atom(scope);
@@ -216,8 +226,11 @@ public final class G0 {
             String operator = choices.oneIn(2) ? " || " : " && ";
             return "(" + condition(scope, depth - 1) + operator + condition(scope, depth - 1) + ")";
         }
-        return expression(scope, 1) + ".compareTo(" + expression(scope, 1) + ") "
-                + COMPARISONS[choices.below(COMPARISONS.length)] + " 0";
+        comparisonOperands++;
+        String left = expression(scope, 1);
+        String right = expression(scope, 1);
+        comparisonOperands--;
+        return left + ".compareTo(" + right + ") " + COMPARISONS[choices.below(COMPARISONS.length)] + " 0";
     }
 
     private void line(int indent, String text) {

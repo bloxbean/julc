@@ -2,6 +2,8 @@ plugins {
     id 'java-library'
 }
 
+apply from: rootProject.file('gradle/jazzer-fuzz.gradle')
+
 description = 'Differential JVM/UPLC test harness (ADR-063); not published'
 
 dependencies {
@@ -13,6 +15,7 @@ dependencies {
     runtimeOnly project(':julc-vm-java')
 
     testImplementation "net.jqwik:jqwik:${jqwikVersion}"
+    testImplementation libs.jazzer.junit
 }
 
 test {
