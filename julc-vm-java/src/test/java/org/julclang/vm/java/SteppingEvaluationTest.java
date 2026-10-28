@@ -19,6 +19,7 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
 
+import static org.julclang.vm.java.EvalResultAssertions.assertSameResult;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SteppingEvaluationTest {
@@ -156,23 +157,5 @@ class SteppingEvaluationTest {
         assertNull(evaluation.machine());
         assertInstanceOf(EvalResult.Failure.class, evaluation.result());
         assertEquals(provider.evaluate(program, V3, null, EvalOptions.DEFAULT), evaluation.result());
-    }
-
-    private static void assertSameResult(EvalResult expected, EvalResult actual, String label) {
-        assertNotNull(actual, label);
-        assertEquals(expected.getClass(), actual.getClass(), label);
-        assertEquals(expected.budgetConsumed(), actual.budgetConsumed(), label);
-        assertEquals(expected.traces(), actual.traces(), label);
-        switch (expected) {
-            case EvalResult.Success s -> assertEquals(UplcPrinter.print(s.resultTerm()),
-                    UplcPrinter.print(((EvalResult.Success) actual).resultTerm()), label);
-            case EvalResult.Failure f -> {
-                var other = (EvalResult.Failure) actual;
-                assertEquals(f.error(), other.error(), label);
-                assertSame(f.failedTerm(), other.failedTerm(), label);
-            }
-            case EvalResult.BudgetExhausted b ->
-                    assertSame(b.failedTerm(), ((EvalResult.BudgetExhausted) actual).failedTerm(), label);
-        }
     }
 }
