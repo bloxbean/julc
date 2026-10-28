@@ -47,7 +47,7 @@ version = '1.0-SNAPSHOT'
 
 ext {
     julcVersion = '<version>'
-    cardanoClientLibVersion = '0.8.0-pre6'
+    cardanoClientLibVersion = '0.8.0-pre7'
 }
 
 repositories {
