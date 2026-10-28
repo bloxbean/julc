@@ -1,7 +1,7 @@
 # ADR-063: Differential JVM/UPLC test harness
 
-**Status:** Proposed. M1 and M2 are implemented in `julc-difftest` (same PR), revised in r4 and r5 after review; M2b
-and M3–M5 are not started
+**Status:** Accepted (2026-10-28). M1 and M2 are implemented in `julc-difftest` (same PR), revised in r4 and r5
+after review; M2b and M3–M5 are not started
 **Date:** 2026-10-23
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md)
@@ -565,3 +565,4 @@ Measured at the r5 tree:
   - F7: a conclusive mismatch passes only as an exact pin, taken from the saved cases; registry rules explain an
     inconclusive UPLC side only. The T23 rule is replaced by four pins, two of them the corpus runs. D6, D7 and D9
     revised.
+- **Accepted** (2026-10-28): design accepted at `12f7e4e5` (review round r3), with the stated review of M1 and M2.

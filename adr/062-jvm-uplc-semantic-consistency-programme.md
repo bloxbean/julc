@@ -1,6 +1,6 @@
 # ADR-062: JVM–UPLC semantic consistency programme
 
-**Status:** Proposed (umbrella; design only). Each step below needs its own ADR before implementation.
+**Status:** Accepted (2026-10-28; umbrella; design only). Each step below needs its own ADR before implementation.
 **Date:** 2026-10-23
 **Label:** `semantic-consistency` (this ADR, its sub-ADRs, and their implementation PRs and issues)
 **Relates to:** [ADR-061](https://github.com/bloxbean/julc/pull/203) (control-flow correctness and semantic
@@ -83,10 +83,10 @@ reproduce or refute. New entries take the next free ID and are never renumbered.
 | T17 | Strings | UTF-16 `String` | UTF-8 bytestrings; `Builtins.encodeUtf8(PlutusData)` passes `BytesData` through off-chain ("On-chain, strings are ByteStrings") | To confirm (behaviour of invalid UTF-8 and of string methods) | S2 |
 | T18 | Off-chain crypto | A pluggable `CryptoProvider` (`JvmCryptoProvider` in the testkit), a separate implementation | VM builtins, conformance-tested | To confirm (edge cases: malformed keys or signatures, where the chain fails and the JVM may return `false`) | S2 |
 | T19 | Callbacks capturing mutable state | Lambdas observe and update enclosing state per Java's rules | See T2; ADR-061 proposes forbidding writes to enclosing bindings | Verified (ADR-061) | S4 / ADR-061 |
-| T20 | Rejections without a diagnostic code | — | `continue`, `return` inside `while`, reassignment outside a loop, `JulcMap.of` in contract code, `break` in a for-each that updates nothing, and a loop inside a loop with `break` are rejected with uncoded messages. `Undefined variable: JulcMap` and "break statement outside of a loop" (the `break` is inside one) are misleading | Reproduced (ADR-063 M1) | S5 |
-| T21 | `while` with `break` and a conditional update | The loop runs its bounded iterations and returns | Never terminates: a taken `if` branch that updates a variable, in a `while` body that contains `break`, runs until the budget is exhausted, at every optimization level, even when the `break` is never taken. The for-each forms of the saved reproducers agree; another for-each shape gives a wrong value (T23) | Reproduced (found by the ADR-063 M2 nightly campaign; three saved cases) | S4 / ADR-061; targeted fix first |
-| T22 | String literals with escapes | The literal `"a\nb"` holds a line break | `PirGenerator` lowers a `StringLiteralExpr` with JavaParser's `getValue()`, the source text with its escapes, instead of the decoded `asString()`, so the script holds a backslash and an `n`. Every string constant with an escape has different bytes on-chain | Reproduced (found by the ADR-063 r4 trace-payload case) | S5; targeted fix first |
-| T23 | For-each with `break` and an `if`/`else` assigning different variables | The loop returns the updated values | Returns a wrong value at every optimization level, even when the `break` is never taken (JVM 2, UPLC 29). An `if`/`else` that assigns one variable agrees, and so do an `if` without `else`, a `break` before the `if`/`else`, and no `break`. Probably the lowering behind T21 | Reproduced (found by the ADR-063 r4 exhaustive corpus; two saved cases) | S4 / ADR-061; targeted fix first |
+| T20 | Rejections without a diagnostic code | — | `continue`, `return` inside `while`, reassignment outside a loop, `JulcMap.of` in contract code, `break` in a for-each that updates nothing, and a loop inside a loop with `break` are rejected with uncoded messages. `Undefined variable: JulcMap` and "break statement outside of a loop" (the `break` is inside one) are misleading | Reproduced (ADR-063 M1); #257 | S5 |
+| T21 | `while` with `break` and a conditional update | The loop runs its bounded iterations and returns | Never terminates: a taken `if` branch that updates a variable, in a `while` body that contains `break`, runs until the budget is exhausted, at every optimization level, even when the `break` is never taken. The for-each forms of the saved reproducers agree; another for-each shape gives a wrong value (T23) | Reproduced (found by the ADR-063 M2 nightly campaign; three saved cases); #254 | S4 / ADR-061; targeted fix first |
+| T22 | String literals with escapes | The literal `"a\nb"` holds a line break | `PirGenerator` lowers a `StringLiteralExpr` with JavaParser's `getValue()`, the source text with its escapes, instead of the decoded `asString()`, so the script holds a backslash and an `n`. Every string constant with an escape has different bytes on-chain | Reproduced (found by the ADR-063 r4 trace-payload case); #256 | S5; targeted fix first |
+| T23 | For-each with `break` and an `if`/`else` assigning different variables | The loop returns the updated values | Returns a wrong value at every optimization level, even when the `break` is never taken (JVM 2, UPLC 29). An `if`/`else` that assigns one variable agrees, and so do an `if` without `else`, a `break` before the `if`/`else`, and no `break`. Probably the lowering behind T21 | Reproduced (found by the ADR-063 r4 exhaustive corpus; two saved cases, four exact pins since ADR-063 r5); #255 | S4 / ADR-061; targeted fix first |
 
 ## Decision
 
@@ -190,3 +190,5 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
     assigning different variables), both found by the ADR-063 r4 changes.
   - T21's note on the for-each form is corrected.
   - Rows and history are in ID order.
+- **Accepted** (2026-10-28): design accepted at `b75b9619` (review round r2). Issues filed for T20–T23 (#257, #254,
+  #256, #255), tracked together in #258.
