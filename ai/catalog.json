@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "julcVersion": "0.1.0-pre20-c3a31c2-SNAPSHOT",
-  "generatedAt": "2026-10-28T10:13:54.415Z",
+  "julcVersion": "0.1.0-pre20",
+  "generatedAt": "2026-10-28T11:18:41.230Z",
   "counts": {
     "stdlibClasses": 15,
     "stdlibMethods": 186,
@@ -4215,7 +4215,7 @@
   },
   "diagnostics": {
     "schemaVersion": 1,
-    "julcVersion": "0.1.0-pre20-c3a31c2-SNAPSHOT",
+    "julcVersion": "0.1.0-pre20",
     "$comment": "Authoritative catalog of JuLC compiler diagnostics. Each entry has a stable JULC#### code, a generated Java constant, an emitted-message template, a one-line root cause, a canonical fix snippet, and optionally example bad/good code. Consumed by: (1) generated DiagnosticCodes.java, (2) the MCP julc_explain_diagnostic tool, (3) docs/AI catalog resources, (4) future full compiler diagnostic coverage tests.",
     "categories": {
       "SYNTAX": "Java syntax forms not supported in the on-chain subset",

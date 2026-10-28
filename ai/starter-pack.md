@@ -1,4 +1,4 @@
-<!-- julcVersion: 0.1.0-pre20-c3a31c2-SNAPSHOT -->
+<!-- julcVersion: 0.1.0-pre20 -->
 
 > **Read this entire document before generating any JuLC code.** It distills the JuLC subset of Java, the on-chain idioms, the compiler's known limitations, and the error patterns that AI agents most commonly get wrong. Following the rules here will save many compile-fail-retry cycles.
 
