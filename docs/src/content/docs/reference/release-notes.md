@@ -3,6 +3,22 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: string literals are decoded as Java decodes them (#256)
+
+A string literal compiled to its source text, escapes included, so `"a\nb"` held a
+backslash and an `n` on chain where Java holds a line break. Literals now compile to the
+string javac gives them: escape sequences (`\b \s \t \n \f \r \" \' \\` and octal
+escapes) and Unicode escapes (`é`) are decoded. The same applies to the argument of
+`new BigInteger("...")`.
+
+- **Script bytes change** for validators and libraries with a string literal that contains
+  a backslash, for example a trace message with `\n` or a token name with `é`. A new
+  hash means a new script address or policy ID. Keep the previously compiled script to
+  spend UTxOs locked at the old address. Literals without a backslash are unchanged.
+- **Newly rejected:** literals javac rejects, such as a Unicode escape that produces a
+  quote or a line break. Two shapes javac accepts are rejected too: a Unicode escape with
+  several `u` (`\uuu0041`), and a backslash written as `\` that is followed by `u`.
+
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
