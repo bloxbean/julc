@@ -1,0 +1,24 @@
+format: 2
+name: break in a for-each that updates nothing (found by G0)
+class: Probe
+method: m
+arg: 00
+arg: 00
+arg: 80
+expect: REJECT none
+note: Found by G0PropertyTest (plan [1, 2, 1, 4, 0, 0, 0, 3], shrunk). Java returns -5. JuLC rejects it with
+note: 'break statement outside of a loop', although the break is inside the for-each: a loop that updates no
+note: earlier variable compiles its body as plain statements (ADR-062 T20).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = BigInteger.valueOf(-5);
+        for (var x1 : xs) {
+            if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) { break; }
+        }
+        return BigInteger.valueOf(-5);
+    }
+}

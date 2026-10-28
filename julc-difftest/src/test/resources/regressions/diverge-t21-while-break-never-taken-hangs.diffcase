@@ -1,0 +1,31 @@
+format: 2
+name: while with an untaken break and an if/else update never terminates (T21)
+class: Probe
+method: m
+arg: 23
+arg: 01
+arg: 8100
+expect: DIVERGE T21 Value/Inconclusive
+jvm: Value 23 []
+uplc: Inconclusive "budget exhausted"
+note: Found by the G0 nightly campaign (ADR-063 M2), then reduced by hand. In a while loop whose body
+note: contains break, a taken if branch that updates a variable makes the loop run until the budget is
+note: exhausted, at every optimization level; the JVM returns after one iteration. The for-each form
+note: agrees, and so does a while whose if is not taken.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = a;
+        BigInteger v1 = b;
+        long i = 0;
+        while (i < 1) {
+            if (a.compareTo(BigInteger.ZERO) > 0) { v0 = b; } else { v1 = v0; }
+            if (b.compareTo(BigInteger.ZERO) < 0) { break; }
+            i = i + 1;
+        }
+        return v1;
+    }
+}
