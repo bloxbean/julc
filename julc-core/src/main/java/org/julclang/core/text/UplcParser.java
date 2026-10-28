@@ -476,9 +476,10 @@ public final class UplcParser {
     /**
      * Parse a Value constant: [(#policyId, [(#tokenName, quantity), ...]), ...]
      * <p>
-     * Normalizes: sorts by policyId then tokenName, merges duplicate tokens,
-     * removes zero quantities, removes empty policies.
-     * Validates: key <= 32 bytes (CIP-153), tokenName <= 32 bytes, quantity in Int128 range.
+     * The literal must be in canonical form, as Plutus requires ({@code conValue} in
+     * {@code PlutusCore/Parser/Builtin.hs}): policy IDs, and token names within a policy, strictly ascending, no zero
+     * quantity and no policy without tokens. That is exactly the literal {@link Constant.ValueConst#normalize} leaves
+     * unchanged. Also validates: key <= 32 bytes (CIP-153), tokenName <= 32 bytes, quantity in Int128 range.
      */
     private Constant parseValueConstant() {
         expect('[');
@@ -495,7 +496,12 @@ public final class UplcParser {
             }
         }
         expect(']');
-        return Constant.ValueConst.normalize(rawEntries);
+        var value = new Constant.ValueConst(rawEntries);
+        if (!Constant.ValueConst.normalize(rawEntries).equals(value)) {
+            throw error("Value is not in canonical form: policy IDs and token names must be strictly ascending, "
+                    + "with no zero quantity and no empty token list");
+        }
+        return value;
     }
 
     private Constant.ValueConst.ValueEntry parseValueEntry() {

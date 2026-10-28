@@ -510,6 +510,55 @@ class UplcParserTest {
         assertEquals("\u0000", s);
     }
 
+    // ---- Value constants ----
+
+    @Test
+    void canonicalValueParses() {
+        var term = UplcParser.parseTerm("(con value [(#, [(#aa, 1)]), (#0102, [(#03, 100), (#04, -5)])])");
+        var value = (Constant.ValueConst) ((Term.Const) term).value();
+        assertEquals(2, value.entries().size());
+        assertEquals(2, value.entries().get(1).tokens().size());
+        assertEquals(List.of(), ((Constant.ValueConst) ((Term.Const) UplcParser.parseTerm("(con value [])")).value())
+                .entries());
+    }
+
+    // The six non-canonical literals of the Plutus conformance suite (builtin/parser/value), which Haskell rejects.
+
+    @Test
+    void valueWithUnorderedPolicyIdsIsRejected() {
+        assertThrows(UplcParseException.class, () -> UplcParser.parseTerm(
+                "(con value [(#88, [(#aa, 123), (#bb, 456)]), (#9999, [(#aa, 123)]), (#123456, [(#bb, 456)])])"));
+    }
+
+    @Test
+    void valueWithDuplicatePolicyIdsIsRejected() {
+        assertThrows(UplcParseException.class, () -> UplcParser.parseTerm(
+                "(con value [(#, [(#00, 123), (#01, 456)]), (#1234, [(#00, 123), (#01, 456)]),"
+                        + " (#1234, [(#02, 789), (#03, 012)])])"));
+    }
+
+    @Test
+    void valueWithDuplicateTokenNamesIsRejected() {
+        assertThrows(UplcParseException.class, () -> UplcParser.parseTerm("(con value [(#, [(#, 123), (#, 456)])])"));
+    }
+
+    @Test
+    void valueWithAnEmptyTokenListIsRejected() {
+        assertThrows(UplcParseException.class, () -> UplcParser.parseTerm("(con value [(#, [])])"));
+    }
+
+    @Test
+    void valueWithUnorderedTokenNamesIsRejected() {
+        assertThrows(UplcParseException.class, () -> UplcParser.parseTerm(
+                "(con value [(#123456, [(#bb, 456)]), (#88, [(#88, 2), (#9999, 5), (#123456, 100)]),"
+                        + " (#9999, [(#aa, 123)])])"));
+    }
+
+    @Test
+    void valueWithAZeroQuantityIsRejected() {
+        assertThrows(UplcParseException.class, () -> UplcParser.parseTerm("(con value [(#, [(#, 0), (#aa, 1)])])"));
+    }
+
     // ---- Complex programs ----
 
     @Test
