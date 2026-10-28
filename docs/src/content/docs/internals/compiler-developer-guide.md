@@ -464,7 +464,7 @@ sealed interface Shape {
 | `julc-testkit` | `ValidatorTest` base class, `SourceDiscovery` for test-time compilation |
 | `julc-annotation-processor` | Java annotation processor — compiles validators at build time |
 | `julc-gradle-plugin` | Gradle plugin wrapping the annotation processor |
-| `julc-cardano-client-lib` | Integration with cardano-client-lib v0.8.0-pre6 |
+| `julc-cardano-client-lib` | Integration with cardano-client-lib v0.8.0-pre7 |
 | `julc-examples` | Example validators and library code |
 | `julc-e2e-tests` | End-to-end integration tests (CIP-113, etc.) |
 | `julc-plugin-test` | Tests for the Gradle plugin |

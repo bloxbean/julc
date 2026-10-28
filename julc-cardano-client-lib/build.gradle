@@ -10,7 +10,7 @@ dependencies {
     implementation project(':julc-ledger-api')
     implementation project(':julc-stdlib')
     implementation project(':julc-vm')
-    implementation 'com.bloxbean.cardano:cardano-client-lib:0.8.0-pre6'
+    implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
 
     testImplementation project(':julc-vm-java')
     testRuntimeOnly project(':julc-vm-scalus')
