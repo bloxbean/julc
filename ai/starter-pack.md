@@ -1,4 +1,4 @@
-<!-- julcVersion: 0.1.0-pre20-ebaf028-SNAPSHOT -->
+<!-- julcVersion: 0.1.0-pre20-c3a31c2-SNAPSHOT -->
 
 > **Read this entire document before generating any JuLC code.** It distills the JuLC subset of Java, the on-chain idioms, the compiler's known limitations, and the error patterns that AI agents most commonly get wrong. Following the rules here will save many compile-fail-retry cycles.
 
@@ -13,7 +13,7 @@ JuLC is a compiler from a **safe subset of Java 25** to **Plutus V3 UPLC** (Unty
 Key facts:
 
 - **On-chain only.** JuLC code runs on the Cardano CEK machine. It is the validator/minting-policy code, not the off-chain transaction-building code.
-- **Off-chain Java** (using cardano-client-lib `0.8.0-pre6`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
+- **Off-chain Java** (using cardano-client-lib `0.8.0-pre7`) is a separate concern; you can call the *same* JVM classes (records) off-chain to construct datums and redeemers, but the bodies of `@OnchainLibrary` and validator methods compile to UPLC, not run on the JVM.
 - **Plutus V3 only** (Conway era). No V1/V2 support.
 - **The Java source is the authoring surface; UPLC is what runs.** Many "weird" rules below exist because UPLC has no notion of mutable state, no exceptions (except `error`), and no general recursion (only fixed-point combinators).
 

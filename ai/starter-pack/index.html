@@ -94,7 +94,7 @@
 <p>Key facts:</p>
 <ul>
 <li><strong>On-chain only.</strong> JuLC code runs on the Cardano CEK machine. It is the validator/minting-policy code, not the off-chain transaction-building code.</li>
-<li><strong>Off-chain Java</strong> (using cardano-client-lib <code dir="auto">0.8.0-pre6</code>) is a separate concern; you can call the <em>same</em> JVM classes (records) off-chain to construct datums and redeemers, but the bodies of <code dir="auto">@OnchainLibrary</code> and validator methods compile to UPLC, not run on the JVM.</li>
+<li><strong>Off-chain Java</strong> (using cardano-client-lib <code dir="auto">0.8.0-pre7</code>) is a separate concern; you can call the <em>same</em> JVM classes (records) off-chain to construct datums and redeemers, but the bodies of <code dir="auto">@OnchainLibrary</code> and validator methods compile to UPLC, not run on the JVM.</li>
 <li><strong>Plutus V3 only</strong> (Conway era). No V1/V2 support.</li>
 <li><strong>The Java source is the authoring surface; UPLC is what runs.</strong> Many “weird” rules below exist because UPLC has no notion of mutable state, no exceptions (except <code dir="auto">error</code>), and no general recursion (only fixed-point combinators).</li>
 </ul>
