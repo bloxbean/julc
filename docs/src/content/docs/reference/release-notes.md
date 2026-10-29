@@ -3,6 +3,33 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: loops with `break` continue after an `if` (GHSA-p9v9-f3g2-cqv9)
+
+In a loop body that contains `break`, a path that did not break could leave the loop, or
+skip the statements after its `if`. The script then computed something other than the
+Java code its tests run. In a loop that scans for a forbidden item behind an outer check,
+for example
+
+```java
+for (var output : outputs) {
+    if (!isScript(output)) {
+        if (hasTokens(output)) { clean = false; break; }
+    }
+}
+```
+
+the script stopped at the first output that passed the outer check without being
+forbidden, never examined the rest, and accepted. The same lowering made some `while`
+loops never terminate (#254) and some for-each loops return a wrong value (#255). A path
+that does not break now continues with the statements after the `if`, then with the next
+iteration, as in Java.
+
+- **Recompile and redeploy** validators and libraries with a loop that contains `break`
+  inside a nested `if`, or an `if` with one breaking branch followed by more statements.
+  Their scripts change hash; a new hash means a new script address or policy ID, and
+  funds at the old address stay governed by the old script.
+- `if (c) { ...; break; }` without `else`, the common search loop, keeps its bytes.
+
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain
