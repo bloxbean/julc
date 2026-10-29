@@ -35,14 +35,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** ADR-033 target-aware Scalus conformance and bundled-default characterization matrix. */
 class ScalusTargetAwareConformanceTest {
 
-    private static final int EXPECTED_CASE_COUNT = 999;
-    private static final int EXPECTED_PV10_APPLICABLE_CASES = 737;
-    private static final int EXPECTED_BASE_NUMERIC_BUDGETS = 545;
-    private static final int EXPECTED_PV11_NUMERIC_BUDGETS = 724;
+    private static final int EXPECTED_CASE_COUNT = 1003;
+    private static final int EXPECTED_PV10_APPLICABLE_CASES = 741;
+    private static final int EXPECTED_BASE_NUMERIC_BUDGETS = 542;
+    private static final int EXPECTED_PV11_NUMERIC_BUDGETS = 721;
     private static final int EXPECTED_PV11_OVERRIDES = 65;
     private static final int EXPECTED_PV11_BUDGET_OVERRIDES = 61;
     private static final int EXPECTED_PV11_RESULT_OVERRIDES = 4;
-    private static final int EXPECTED_PARSE_ERRORS = 55;
+    private static final int EXPECTED_PARSE_ERRORS = 62;
     private static final int EXPECTED_NON_SERIALIZABLE_BLS_INPUTS = 111;
     private static final int EXPECTED_HIGH_BYTE_DST_MISMATCHES = 3;
     private static final Set<String> EXPECTED_HIGH_BYTE_DST_MISMATCH_FIXTURES = Set.of(
@@ -273,10 +273,10 @@ class ScalusTargetAwareConformanceTest {
             ConformanceProfile profile, CostSource costSource) {
         if (profile.target().protocolVersion().major() == 10) {
             return costSource == CostSource.SUPPLIED_PROFILE
-                    ? new ExpectedCounts(482, 482, 0, 479, 137, 0)
-                    : new ExpectedCounts(482, 445, 37, 479, 137, 0);
+                    ? new ExpectedCounts(479, 479, 0, 476, 137, 0)
+                    : new ExpectedCounts(479, 442, 37, 476, 137, 0);
         }
-        return new ExpectedCounts(617, 617, 0, 614, 216, 0);
+        return new ExpectedCounts(614, 614, 0, 611, 216, 0);
     }
 
     private long[] readPinnedParams(String resource) throws IOException {
