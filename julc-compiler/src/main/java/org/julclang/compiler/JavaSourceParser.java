@@ -15,6 +15,7 @@ import com.github.javaparser.ast.Node;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -69,6 +70,21 @@ public final class JavaSourceParser {
         var result = parse(source);
         if (!result.isSuccessful()) throw new ParseProblemException(result.getProblems());
         return result.getResult().orElseThrow();
+    }
+
+    /**
+     * The source read leniently, as main's parser read it but with Unicode escapes translated: no escape is
+     * validated and no language level is enforced. Only for deciding whether a source that the strict reading
+     * rejects is meant for JuLC at all; never compile from it. Empty when the lenient parse fails, or when javac
+     * could read the source differently from this reading ({@link UnicodeEscapes.LenientReading#javacMayDiffer}),
+     * so that the question stays open and the caller keeps the strict diagnostic.
+     */
+    public static Optional<CompilationUnit> parseLeniently(String source) {
+        var reading = UnicodeEscapes.readLeniently(source);
+        if (reading.javacMayDiffer()) return Optional.empty();
+        var configuration = new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.RAW);
+        var result = new JavaParser(configuration).parse(reading.text());
+        return result.isSuccessful() ? result.getResult() : Optional.empty();
     }
 
     /** Moves every position in the result from the translated text to the source as written. */

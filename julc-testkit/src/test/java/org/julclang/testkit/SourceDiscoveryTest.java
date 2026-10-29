@@ -124,6 +124,16 @@ class SourceDiscoveryTest {
                     static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
                 }
                 """);
+        Files.writeString(pkgDir.resolve("Mentions.java"), """
+                package com.example;
+
+                import java.util.regex.Pattern;
+
+                /** Helper for the @SpendingValidator and @OnchainLibrary code. */
+                public final class Mentions {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
         Files.writeString(pkgDir.resolve("UnnamedVar.java"), """
                 package com.example;
 

@@ -56,8 +56,10 @@ and the verification resolvers.
   annotation name in the text. They now also look in the text with its Unicode escapes
   translated, without validating them, so an escaped annotation name is no longer skipped.
   A source that names no JuLC annotation is still skipped, so off-chain code that javac
-  compiles but JuLC's stricter reading rejects does not fail the build. A source that does
-  name one and cannot be read still fails with its diagnostic.
+  compiles but JuLC's stricter reading rejects does not fail the build. A source that only
+  mentions one (in a Javadoc, an import or a link) and cannot be read strictly is read again
+  leniently, and skipped if it declares none. It still fails with its diagnostic if it
+  declares one, or if javac could read it differently from the lenient reading.
 - **JRL:** rule names and trace messages go into comments in the generated Java. Their
   backslashes are now doubled there, so an escape in one cannot end the comment.
 
