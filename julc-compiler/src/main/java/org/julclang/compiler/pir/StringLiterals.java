@@ -12,9 +12,10 @@ package org.julclang.compiler.pir;
  * <p>
  * JuLC rejects some literals javac accepts, where javac's reading is not the JLS's or cannot be kept:
  * <ul>
- *   <li>a backslash written as a Unicode escape, after an odd run of such escapes, followed by a raw
- *       backslash that is not followed by {@code u}. javac counts the escaped backslash toward the parity of
- *       the raw backslashes after it; §3.3 counts only raw backslashes;</li>
+ *   <li>a backslash written as a Unicode escape, after an odd run of such escapes, followed by two or more
+ *       raw backslashes and then {@code u}. javac counts the escaped backslash toward the parity of the raw
+ *       backslashes after it, and §3.3 counts only raw backslashes, so they disagree on whether that
+ *       {@code u} starts a Unicode escape;</li>
  *   <li>a Unicode escape whose four digits are not all ASCII hex digits. §3.3 allows only those; javac also
  *       takes other scripts' digits;</li>
  *   <li>a literal that holds an unpaired surrogate. A UPLC string is Unicode text, so the script cannot
@@ -83,11 +84,10 @@ public final class StringLiterals {
                 i = digits + 4;
                 continue;
             }
-            if (c == '\\' && escapedBackslashes % 2 == 1) {
-                // Here javac and §3.3 disagree on which later backslash may start a Unicode escape.
-                throw new IllegalLiteralException(
-                        "A backslash written as a Unicode escape is followed by a backslash in a string literal",
-                        "Write each backslash as the escape sequence \\\\.");
+            if (c == '\\' && escapedBackslashes % 2 == 1 && startsDisputedEscape(text, i)) {
+                throw new IllegalLiteralException("A backslash written as a Unicode escape is followed by raw"
+                        + " backslashes and u in a string literal. javac and the JLS disagree on whether that u starts a"
+                        + " Unicode escape", "Write each backslash as the escape sequence \\\\.");
             }
             s.append(c);
             backslashes = c == '\\' ? backslashes + 1 : 0;
@@ -95,6 +95,18 @@ public final class StringLiterals {
             i++;
         }
         return s.toString();
+    }
+
+    /**
+     * Whether the raw backslashes from {@code i} are two or more and followed by {@code u}. After an odd run of
+     * escaped backslashes, javac counts the escaped one toward their parity and §3.3 does not, so the two
+     * disagree on whether the last of them starts a Unicode escape. With one raw backslash, or no {@code u}
+     * after them, they read the text alike.
+     */
+    private static boolean startsDisputedEscape(String text, int i) {
+        int end = i;
+        while (end < text.length() && text.charAt(end) == '\\') end++;
+        return end - i >= 2 && end < text.length() && text.charAt(end) == 'u';
     }
 
     /** §3.10.7, on the text after Unicode escapes. */

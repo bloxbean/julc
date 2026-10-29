@@ -23,8 +23,9 @@ escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the arg
   - literals javac accepts that JuLC cannot keep or cannot read as javac does: an unpaired
     surrogate such as `\uD800`, because a UPLC string is Unicode text and the script's FLAT
     encoding would carry `?` in its place; and a backslash written as `\u005c` followed by
-    a raw backslash, such as `\u005c\\\u0030`, because javac counts the escaped backslash
-    toward the parity of the raw backslashes after it and the JLS does not.
+    two or more raw backslashes and then `u`, such as `\u005c\\\u0030`. javac counts the
+    escaped backslash toward the parity of the raw backslashes after it and the JLS does not, so they
+    disagree on whether that `u` starts a Unicode escape.
 - **Still rejected**, as before, although javac accepts them: a Unicode escape with more
   than one `u` (`\uuu0041`), `\u005c` before a raw `"`, and a Unicode escape whose digits
   are not ASCII hex digits. JavaParser's lexer rejects these.
