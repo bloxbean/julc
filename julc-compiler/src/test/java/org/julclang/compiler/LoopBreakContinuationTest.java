@@ -115,6 +115,17 @@ class LoopBreakContinuationTest {
             new String[]{"a branch local shadowing a field accumulator, then break", """
                     for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; break; } s = s.add(BigInteger.ONE); }
                     return s;""", "static BigInteger s = BigInteger.TEN;"},
+            // A local declared in the loop body itself, after a field accumulator's update (review A).
+            new String[]{"a loop-body local shadowing a field accumulator, for-each", """
+                    for (var x : xs) { s = s.add(x); BigInteger s = x.add(BigInteger.valueOf(100)); }
+                    return s;""", "static BigInteger s = BigInteger.TEN;"},
+            new String[]{"a loop-body local shadowing a field accumulator, while with break", """
+                    long i = 0;
+                    while (i < 3) { s = s.add(BigInteger.ONE); if (s.compareTo(b) > 100) { break; } BigInteger s = a; i = i + 1; }
+                    return s.add(BigInteger.valueOf(i * 1000));""", "static BigInteger s = BigInteger.TEN;"},
+            new String[]{"a loop-body local shadowing one of two field accumulators", """
+                    for (var x : xs) { s = s.add(x); n = n.add(BigInteger.ONE); if (x.compareTo(b) > 0) { break; } BigInteger s = x; }
+                    return s.add(n.multiply(BigInteger.valueOf(100)));""", "static BigInteger s = BigInteger.TEN; static BigInteger n = BigInteger.ZERO;"},
             // ...and without one.
             new String[]{"a branch local shadowing a field accumulator, no break", """
                     for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; s = s.add(x); } s = s.add(BigInteger.ONE); }
@@ -156,21 +167,26 @@ class LoopBreakContinuationTest {
     @Test
     void chainedBreakingIfsGrowTheScriptLinearly() {
         // Each if that breaks binds what follows it once, as a join point, instead of copying it into
-        // both branches, so n such ifs cost O(n) bytes, not O(2^n).
-        var sizes = new ArrayList<Integer>();
-        for (int n = 1; n <= 8; n++) {
-            var body = new StringBuilder("BigInteger s = a; BigInteger t = b;\nfor (var x : xs) {\n");
-            for (int i = 0; i < n; i++) {
-                body.append("if (x.compareTo(BigInteger.valueOf(").append(i).append(")) > 0) { break; } else { s = s.add(x); }\n");
-                body.append("t = t.add(BigInteger.ONE);\n");
+        // every branch that falls through. Both branches fall through here (review A, F2: with only
+        // one falling through, copying stays linear too), so copying would double the size per if.
+        for (boolean twoAccumulators : new boolean[]{false, true}) {
+            var sizes = new ArrayList<Integer>();
+            for (int n = 1; n <= 8; n++) {
+                var body = new StringBuilder("BigInteger s = a; BigInteger t = b;\nfor (var x : xs) {\n");
+                for (int i = 0; i < n; i++) {
+                    String other = twoAccumulators ? "t = t.add(x);" : "s = s.subtract(x);";
+                    body.append("if (x.compareTo(BigInteger.valueOf(").append(i).append(")) > 0) { if (x.compareTo(b) > 0) { break; } s = s.add(x); } else { ")
+                            .append(other).append(" }\n");
+                    body.append(twoAccumulators ? "t = t.add(BigInteger.ONE);\n" : "s = s.add(BigInteger.ONE);\n");
+                }
+                body.append("}\nreturn s.add(t);");
+                var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source(new String[]{"", body.toString()}), "m").program();
+                sizes.add(UplcFlatEncoder.encodeProgram(program).length);
             }
-            body.append("}\nreturn s.add(t);");
-            var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source(new String[]{"", body.toString()}), "m").program();
-            sizes.add(UplcFlatEncoder.encodeProgram(program).length);
-        }
-        int step = sizes.get(1) - sizes.get(0);
-        for (int n = 2; n < sizes.size(); n++) {
-            assertTrue(sizes.get(n) - sizes.get(n - 1) <= 2 * step, "script sizes " + sizes);
+            int step = sizes.get(1) - sizes.get(0);
+            for (int n = 2; n < sizes.size(); n++) {
+                assertTrue(sizes.get(n) - sizes.get(n - 1) <= 2 * step, (twoAccumulators ? "two" : "one") + " accumulators: script sizes " + sizes);
+            }
         }
     }
 

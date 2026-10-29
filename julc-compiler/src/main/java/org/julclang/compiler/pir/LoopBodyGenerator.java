@@ -253,8 +253,8 @@ final class LoopBodyGenerator {
     // ===== Single-accumulator body =====
 
     PirTerm generateSingleAccBody(Statement bodyStmt, String accName, PirType accType) {
-        var stmts = PirHelpers.blockStmts(bodyStmt);
-        return generateSingleAccStatements(stmts, 0, accName, accType);
+        return shadowingRenamed(bodyStmt, List.of(accName),
+                body -> generateSingleAccStatements(PirHelpers.blockStmts(body), 0, accName, accType));
     }
 
     PirTerm generateSingleAccStatements(List<Statement> stmts, int index,
@@ -291,9 +291,9 @@ final class LoopBodyGenerator {
         }
         if (stmt instanceof IfStmt is) {
             var cond = gen.generateExpression(is.getCondition());
-            var thenTerm = branch(is.getThenStmt(), List.of(accName), b -> generateSingleAccBody(b, accName, accType));
+            var thenTerm = branch(is.getThenStmt(), b -> generateSingleAccBody(b, accName, accType));
             var elseTerm = is.getElseStmt()
-                    .map(e -> branch(e, List.of(accName), b -> generateSingleAccBody(b, accName, accType)))
+                    .map(e -> branch(e, b -> generateSingleAccBody(b, accName, accType)))
                     .orElse(new PirTerm.Var(accName, accType));
             var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             if (index + 1 < stmts.size()) {
@@ -322,10 +322,8 @@ final class LoopBodyGenerator {
 
     PirTerm generateBreakAwareBody(Statement bodyStmt, String accName,
                                     PirType accType, Function<PirTerm, PirTerm> continueFn) {
-        List<Statement> stmts;
-        if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
-        else stmts = List.of(bodyStmt);
-        return generateBreakAwareStatements(stmts, 0, accName, accType, continueFn);
+        return shadowingRenamed(bodyStmt, List.of(accName), body -> generateBreakAwareStatements(
+                body instanceof BlockStmt bs ? bs.getStatements() : List.of(body), 0, accName, accType, continueFn));
     }
 
     private PirTerm generateBreakAwareStatements(List<Statement> stmts, int index,
@@ -384,9 +382,9 @@ final class LoopBodyGenerator {
         boolean hasRest = followingIndex + 1 < followingStmts.size();
 
         if (!thenBreaks && !elseBreaks) {
-            var thenTerm = branch(is.getThenStmt(), List.of(accName), b -> generateSingleAccBody(b, accName, accType));
+            var thenTerm = branch(is.getThenStmt(), b -> generateSingleAccBody(b, accName, accType));
             var elseTerm = is.getElseStmt()
-                    .map(e -> branch(e, List.of(accName), b -> generateSingleAccBody(b, accName, accType)))
+                    .map(e -> branch(e, b -> generateSingleAccBody(b, accName, accType)))
                     .orElse(new PirTerm.Var(accName, accType));
             var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             if (!hasRest) return continueFn.apply(ifExpr);
@@ -395,40 +393,48 @@ final class LoopBodyGenerator {
         }
         if (!hasRest || is.getElseStmt().isEmpty() && !canCompleteNormally(is.getThenStmt())) {
             // At most one path reaches what follows, so it is generated in place.
-            var thenTerm = branch(is.getThenStmt(), List.of(accName), b -> generateBreakAwareBody(b, accName, accType, continueFn));
+            var thenTerm = branch(is.getThenStmt(), b -> generateBreakAwareBody(b, accName, accType, continueFn));
             var elseTerm = is.getElseStmt().isPresent()
-                    ? branch(is.getElseStmt().get(), List.of(accName), b -> generateBreakAwareBody(b, accName, accType, continueFn))
+                    ? branch(is.getElseStmt().get(), b -> generateBreakAwareBody(b, accName, accType, continueFn))
                     : generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
             return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
         }
         var rest = scoped(() -> generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn));
         var join = new PirTerm.Var("#join" + ++joinCounter, new PirType.FunType(accType, accType));
         Function<PirTerm, PirTerm> joinFn = acc -> new PirTerm.App(join, acc);
-        var thenTerm = branch(is.getThenStmt(), List.of(accName), b -> generateBreakAwareBody(b, accName, accType, joinFn));
+        var thenTerm = branch(is.getThenStmt(), b -> generateBreakAwareBody(b, accName, accType, joinFn));
         var elseTerm = is.getElseStmt()
-                .map(e -> branch(e, List.of(accName), b -> generateBreakAwareBody(b, accName, accType, joinFn)))
+                .map(e -> branch(e, b -> generateBreakAwareBody(b, accName, accType, joinFn)))
                 .orElse(joinFn.apply(new PirTerm.Var(accName, accType)));
         return new PirTerm.Let(join.name(), new PirTerm.Lam(accName, accType, rest),
                 new PirTerm.IfThenElse(cond, thenTerm, elseTerm));
     }
 
     /**
-     * Generates an if branch, or the statements after an if, in its own scope. A branch's
-     * declarations are visible only inside it, as in Java, so they neither shadow an accumulator
-     * the generated term names after the branch (its value, a break, a join argument) nor change
-     * how another branch or the statements after the if resolve a name. The branch block's own
-     * locals are renamed apart for the first; the scope covers types for the second.
+     * Generates an if branch in its own scope. A branch's declarations are visible only inside it,
+     * as in Java, so they do not change how another branch or the statements after the if resolve
+     * a name. (A branch local named like an accumulator is renamed by {@link #shadowingRenamed}.)
      */
-    private PirTerm branch(Statement stmt, Collection<String> accumulators, Function<Statement, PirTerm> generate) {
+    private PirTerm branch(Statement stmt, Function<Statement, PirTerm> generate) {
         symbolTable.pushScope();
         try {
-            // Renamed only when needed: unique names let later passes fold more, which would change
-            // the bytes of programs that have no shadowing.
-            return stmt instanceof BlockStmt block && declaresAny(block, accumulators)
-                    ? withLocalsRenamed(block, generate::apply) : generate.apply(stmt);
+            return generate.apply(stmt);
         } finally {
             symbolTable.popScope();
         }
+    }
+
+    /**
+     * A loop body or if branch whose block declares a variable named like an accumulator (a field
+     * or {@code @Param} accumulator, which Java lets a local shadow) is generated with its own
+     * locals renamed apart, so the accumulator reference the generated term uses after the
+     * declaration (its value, the next iteration, a break, a join argument) still means the
+     * accumulator. Renamed only then: unique names let later passes fold more, which would change
+     * the bytes of programs that have no shadowing.
+     */
+    private PirTerm shadowingRenamed(Statement body, Collection<String> accumulators, Function<Statement, PirTerm> generate) {
+        return body instanceof BlockStmt block && declaresAny(block, accumulators)
+                ? withLocalsRenamed(block, generate::apply) : generate.apply(body);
     }
 
     /** Whether a block itself declares a variable with one of these names. */
@@ -468,8 +474,8 @@ final class LoopBodyGenerator {
     // ===== Multi-accumulator body =====
 
     PirTerm generateMultiAccBody(Statement bodyStmt, List<String> accNames, List<PirType> accTypes) {
-        var stmts = PirHelpers.blockStmts(bodyStmt);
-        return generateMultiAccStatements(stmts, 0, accNames, accTypes);
+        return shadowingRenamed(bodyStmt, accNames,
+                body -> generateMultiAccStatements(PirHelpers.blockStmts(body), 0, accNames, accTypes));
     }
 
     private PirTerm generateMultiAccStatements(List<Statement> stmts, int index,
@@ -506,9 +512,9 @@ final class LoopBodyGenerator {
         }
         if (stmt instanceof IfStmt is) {
             var cond = gen.generateExpression(is.getCondition());
-            var thenTerm = branch(is.getThenStmt(), accNames, b -> generateMultiAccBody(b, accNames, accTypes));
+            var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBody(b, accNames, accTypes));
             var elseTerm = is.getElseStmt()
-                    .map(e -> branch(e, accNames, b -> generateMultiAccBody(b, accNames, accTypes)))
+                    .map(e -> branch(e, b -> generateMultiAccBody(b, accNames, accTypes)))
                     .orElse(packAccumulators(accNames, accTypes));
             var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             if (index + 1 < stmts.size()) {
@@ -535,8 +541,8 @@ final class LoopBodyGenerator {
     PirTerm generateMultiAccBreakAwareBody(Statement bodyStmt, List<String> accNames,
                                             List<PirType> accTypes,
                                             Function<PirTerm, PirTerm> continueFn) {
-        var stmts = PirHelpers.blockStmts(bodyStmt);
-        return generateMultiAccBreakAwareStmts(stmts, 0, accNames, accTypes, continueFn);
+        return shadowingRenamed(bodyStmt, accNames,
+                body -> generateMultiAccBreakAwareStmts(PirHelpers.blockStmts(body), 0, accNames, accTypes, continueFn));
     }
 
     private PirTerm generateMultiAccBreakAwareStmts(List<Statement> stmts, int index,
@@ -605,18 +611,18 @@ final class LoopBodyGenerator {
         boolean hasRest = index + 1 < stmts.size();
 
         if (!thenBreaks && !elseBreaks && hasRest) {
-            var thenTerm = branch(is.getThenStmt(), accNames, b -> generateMultiAccBody(b, accNames, accTypes));
+            var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBody(b, accNames, accTypes));
             var elseTerm = is.getElseStmt()
-                    .map(e -> branch(e, accNames, b -> generateMultiAccBody(b, accNames, accTypes)))
+                    .map(e -> branch(e, b -> generateMultiAccBody(b, accNames, accTypes)))
                     .orElse(packAccumulators(accNames, accTypes));
             var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
             return unpackAccumulators(new PirTerm.IfThenElse(cond, thenTerm, elseTerm), accNames, accTypes, rest);
         }
         if (!hasRest || is.getElseStmt().isEmpty() && !canCompleteNormally(is.getThenStmt())) {
             // At most one path reaches what follows, so it is generated in place.
-            var thenTerm = branch(is.getThenStmt(), accNames, b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, continueFn));
+            var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, continueFn));
             var elseTerm = is.getElseStmt().isPresent()
-                    ? branch(is.getElseStmt().get(), accNames, b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, continueFn))
+                    ? branch(is.getElseStmt().get(), b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, continueFn))
                     : generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
             return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
         }
@@ -627,9 +633,9 @@ final class LoopBodyGenerator {
         avoid.addAll(accNames);
         var tuple = new PirTerm.Var(PirHelpers.hygienicName("#join_t", avoid), tupleType);
         Function<PirTerm, PirTerm> joinFn = packed -> new PirTerm.App(join, packed);
-        var thenTerm = branch(is.getThenStmt(), accNames, b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, joinFn));
+        var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, joinFn));
         var elseTerm = is.getElseStmt()
-                .map(e -> branch(e, accNames, b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, joinFn)))
+                .map(e -> branch(e, b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, joinFn)))
                 .orElse(joinFn.apply(packAccumulators(accNames, accTypes)));
         return new PirTerm.Let(join.name(),
                 new PirTerm.Lam(tuple.name(), tupleType, unpackAccumulators(tuple, accNames, accTypes, rest)),

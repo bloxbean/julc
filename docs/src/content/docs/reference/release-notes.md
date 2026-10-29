@@ -29,6 +29,10 @@ iteration, as in Java.
   Their scripts change hash; a new hash means a new script address or policy ID, and
   funds at the old address stay governed by the old script.
 - `if (c) { ...; break; }` without `else`, the common search loop, keeps its bytes.
+- **A local that shadows a field or `@Param` accumulator**, declared in a loop body or in one of
+  its `if` branches, no longer replaces the accumulator after its declaration, in loops with or
+  without `break`. Java scopes such a local to its block; the script used the local's value as
+  the accumulator's from then on. Only loops with such a local change bytes.
 
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
