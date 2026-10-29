@@ -98,6 +98,13 @@ class UnicodeEscapeReadingTest {
                         ;
                     } }
                     """},
+            new String[]{"a Unicode-escaped backslash before one raw backslash, in a comment", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a // \\u005c\\ .add(a)
+                        ;
+                    } }
+                    """},
             new String[]{"a surrogate pair before an escaped line terminator", """
                     import java.math.BigInteger;
                     public class P { public static BigInteger m(BigInteger a) {
@@ -144,7 +151,7 @@ class UnicodeEscapeReadingTest {
                         return a // \\u005c\\\\\\u000a .add(a)
                         ;
                     } }
-                    """, "javac accepts", "followed by a raw backslash"},
+                    """, "javac accepts", "followed by raw backslashes and u"},
             new String[]{"a Unicode escape with digits other than ASCII hex digits, in a comment", """
                     import java.math.BigInteger;
                     public class P { public static BigInteger m(BigInteger a) {

@@ -44,10 +44,12 @@ class StringLiteralEscapeTest {
             "\\u005cs", "\\u005c\\u005c", "\\\\u0041", "\\\\\\u005cn", "\\u005c\\u005cu0041",
             "\\u005cu005cu0041", "\\u005c\\u0041", "\\u0022", "\\u000a", "\\u000d", "\\u12", "\\uXYZW",
             "a\\u005c", "\\u005cq",
-            // A backslash written as a Unicode escape before raw backslashes. javac counts it toward their
-            // parity (JLS 21 §3.3 does not), so JuLC rejects an odd run of them before a raw backslash.
-            "\\u005c\\\\\\u0030", "\\u005c\\\\\\u005cn", "\\u005c\\\\\\u0041", "\\u005c\\\\u0041",
-            "\\u005c\\u005c\\u005c\\n", "\\u005c\\\\", "\\u005c\\u005c\\\\\\u0041", "\\u005c\\u005c\\\\",
+            // A backslash written as a Unicode escape before raw backslashes. After an odd run of such escapes,
+            // javac counts the escaped backslash toward the parity of the raw ones (JLS 21 §3.3 does not), so the two
+            // disagree on whether a u after two or more raw backslashes starts an escape; JuLC rejects that shape.
+            "\\u005c\\\\\\u0030", "\\u005c\\\\\\u005cn", "\\u005c\\\\\\u006e", "\\u005c\\\\\\\\\\u0030",
+            // Neighbours javac and the JLS read alike: one raw backslash, or no u after the raw ones.
+            "\\u005c\\n", "\\u005c\\3", "\\u005c\\\\n", "\\u005c\\u005c\\u005c\\n", "\\u005c\\\\", "\\u005c\\u005c\\\\\\u0041", "\\u005c\\u005c\\\\",
             // Surrogates: a UPLC string cannot hold an unpaired one.
             "\\uD800", "\\uDC00", "\\uDE00\\uD83D", "1\\uD800\\\\\\u0041", "5\\uD800\\\\u5", "\\uD83D\\uDE00\\\\\\u0041",
             // Digits other than ASCII hex digits, which javac takes and the JLS does not.
@@ -59,7 +61,7 @@ class StringLiteralEscapeTest {
      * and unpaired surrogates ({@code StringLiterals}).
      */
     private static final Set<String> FAILS_CLOSED = Set.of(
-            "\\u005c\\\\\\u0030", "\\u005c\\\\\\u005cn", "\\u005c\\\\\\u0041", "\\u005c\\\\u0041", "\\u005c\\u005c\\u005c\\n",
+            "\\u005c\\\\\\u0030", "\\u005c\\\\\\u005cn", "\\u005c\\\\\\u006e", "\\u005c\\\\\\\\\\u0030",
             "\\uD800", "\\uDC00", "\\uDE00\\uD83D", "\\u١٢٣٤", "\\u００４１");
 
     private static String source(String literal) {
@@ -101,18 +103,24 @@ class StringLiteralEscapeTest {
         return assertInstanceOf(EvalResult.Success.class, result, level + ": " + source).resultTerm();
     }
 
-    /** The first line of JuLC's error, or empty if JuLC compiles the literal at every level. */
+    /**
+     * JuLC's first error line if it rejects the literal at every level, empty if it compiles it at every level,
+     * and a description of the difference if only some levels reject it.
+     */
     private static Optional<String> rejection(String literal) {
-        Optional<String> first = Optional.empty();
+        var rejections = new ArrayList<String>();
+        var compiled = new ArrayList<OptimizationLevel>();
         for (var level : OptimizationLevel.values()) {
             try {
                 compile(source(literal), level);
-                if (first.isPresent()) return Optional.of("rejected at some levels only: " + first.get());
+                compiled.add(level);
             } catch (CompilerException rejected) {
-                first = Optional.of(rejected.getMessage().lines().findFirst().orElse(""));
+                rejections.add(rejected.getMessage().lines().findFirst().orElse(""));
             }
         }
-        return first;
+        if (rejections.isEmpty()) return Optional.empty();
+        if (!compiled.isEmpty()) return Optional.of("rejected at some levels only, compiled at " + compiled);
+        return Optional.of(rejections.get(0));
     }
 
     @Test
@@ -123,11 +131,15 @@ class StringLiteralEscapeTest {
             Optional<String> expected = javac(literal);
             if (FAILS_CLOSED.contains(literal)) {
                 if (expected.isEmpty()) problems.add(literal + ": listed as failing closed, but javac rejects it too");
-                if (rejection(literal).isEmpty()) problems.add(literal + ": listed as failing closed, but JuLC compiles it");
+                var rejected = rejection(literal);
+                if (rejected.isEmpty()) problems.add(literal + ": listed as failing closed, but JuLC compiles it");
+                rejected.filter(r -> r.startsWith("rejected at some levels only")).ifPresent(r -> problems.add(literal + ": " + r));
                 continue;
             }
             if (expected.isEmpty()) {
-                if (rejection(literal).isEmpty()) problems.add(literal + ": javac rejects it, JuLC compiles it");
+                var rejected = rejection(literal);
+                if (rejected.isEmpty()) problems.add(literal + ": javac rejects it, JuLC compiles it");
+                rejected.filter(r -> r.startsWith("rejected at some levels only")).ifPresent(r -> problems.add(literal + ": " + r));
                 continue;
             }
             for (var level : OptimizationLevel.values()) {
