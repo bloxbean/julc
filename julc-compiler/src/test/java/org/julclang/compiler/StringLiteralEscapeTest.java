@@ -39,10 +39,11 @@ class StringLiteralEscapeTest {
             "a\\u005c", "\\u005cq");
 
     /**
-     * javac reads both as {@code A}; JuLC rejects them, so they fail closed. JavaParser's lexer accepts one
-     * {@code u} only in an escape, and the first follows no rule the JLS states (see {@code StringLiterals}).
+     * javac reads it as {@code A}, which follows no rule the JLS states: the backslash a Unicode escape
+     * produces starts no further Unicode escape (§3.3), so the text is a backslash followed by
+     * {@code u}, an illegal escape sequence. JuLC rejects it, so it fails closed.
      */
-    private static final List<String> REJECTED_BY_JULC_ONLY = List.of("\\uuu0041", "\\u005cu0041");
+    private static final List<String> REJECTED_BY_JULC_ONLY = List.of("\\u005cu0041");
 
     private static String source(String literal) {
         return "public class Lit { public static String m() { return \"" + literal + "\"; } }";
@@ -113,10 +114,10 @@ class StringLiteralEscapeTest {
     }
 
     @Test
-    void anIllegalEscapeNamesTheEscape() {
-        // JavaParser lets a backslash through when it is written as a Unicode escape.
+    void anIllegalEscapeWrittenWithAUnicodeBackslashIsRejected() {
+        // Unicode escapes are translated before lexing (T24), so the lexer sees the escape \q and rejects it.
         var error = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source("\\u005cq"), "m"));
-        assertTrue(error.getMessage().contains("Illegal escape sequence \\q"), error.getMessage());
+        assertTrue(error.getMessage().contains("Lexical error"), error.getMessage());
     }
 }

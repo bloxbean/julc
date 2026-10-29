@@ -3,21 +3,35 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: Unicode escapes are read as Java reads them (#268)
+
+javac translates `\uXXXX` escapes before it reads anything else, so an escape in a comment
+can be a line break or the end of the comment, and `\u0061` is the name `a`. JuLC's
+parsers left escapes untranslated, so a source with such an escape could compile to a
+script that computes something other than the Java code. Every JuLC parser (the compiler,
+library sources, the CLI, the linter and the verification resolvers) now translates them
+first. Positions in diagnostics and source maps still refer to the source as written.
+
+- **Script bytes change** only for sources with a Unicode escape outside a string literal,
+  and for a literal with several `u` (`\uuu0041`), which is now accepted as javac accepts it.
+- An illegal escape sequence written with a Unicode backslash, such as `\u005cq`, is now
+  reported by the parser.
+
 ## Upcoming preview: string literals are decoded as Java decodes them (#256)
 
 A string literal compiled to its source text, escapes included, so `"a\nb"` held a
 backslash and an `n` on chain where Java holds a line break. Literals now compile to the
 string javac gives them: escape sequences (`\b \s \t \n \f \r \" \' \\` and octal
-escapes) and Unicode escapes (`é`) are decoded. The same applies to the argument of
+escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the argument of
 `new BigInteger("...")`.
 
 - **Script bytes change** for validators and libraries with a string literal that contains
-  a backslash, for example a trace message with `\n` or a token name with `é`. A new
+  a backslash, for example a trace message with `\n` or a token name with `\u00e9`. A new
   hash means a new script address or policy ID. Keep the previously compiled script to
   spend UTxOs locked at the old address. Literals without a backslash are unchanged.
 - **Newly rejected:** literals javac rejects, such as a Unicode escape that produces a
-  quote or a line break. Two shapes javac accepts are rejected too: a Unicode escape with
-  several `u` (`\uuu0041`), and a backslash written as `\` that is followed by `u`.
+  quote or a line break. One shape javac accepts is rejected too: a backslash written as
+  `\u005c` that is followed by `u`.
 
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 

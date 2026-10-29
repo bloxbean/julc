@@ -1,8 +1,7 @@
 package org.julclang.cli.check;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JavaSourceIntrospector;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 
@@ -63,9 +62,7 @@ public final class TestDiscovery {
     }
 
     private static CompilationUnit parseTestSource(Path path, String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
+        var result = JavaSourceParser.parse(source);
         if (!result.isSuccessful() || result.getResult().isEmpty()) {
             var problems = result.getProblems().stream()
                     .map(problem -> problem.getMessage())

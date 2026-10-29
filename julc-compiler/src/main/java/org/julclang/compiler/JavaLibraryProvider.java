@@ -1,7 +1,5 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
@@ -45,10 +43,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
         context = CompilationContext.resolve(options);
         this.lookup = lookup;
         contentHash = contentHash(sources);
-        var parser =
-                new JavaParser(
-                        new ParserConfiguration()
-                                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
+        var parser = JavaSourceParser.create();
         var units = new ArrayList<CompilationUnit>();
         for (var source : sources) {
             var parsed = parser.parse(source);

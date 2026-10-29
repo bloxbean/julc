@@ -1,7 +1,5 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
@@ -106,9 +104,7 @@ public final class JavaSourceIntrospector {
     }
 
     public static SourceInfo inspect(String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
+        var result = JavaSourceParser.parse(source);
         if (!result.isSuccessful() || result.getResult().isEmpty()) {
             var problems = result.getProblems().stream()
                     .map(problem -> {
