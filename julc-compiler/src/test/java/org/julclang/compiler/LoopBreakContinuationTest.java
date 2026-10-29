@@ -17,6 +17,7 @@ import java.math.BigInteger;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -32,8 +33,12 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class LoopBreakContinuationTest {
 
-    private static final String HEAD = "import java.math.BigInteger;\nimport org.julclang.core.types.JulcList;\n"
-            + "public class Loop { public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {\n";
+    private static String source(String[] shape) {
+        // An optional third element declares class members, such as a field a local may shadow.
+        return "import java.math.BigInteger;\nimport org.julclang.core.types.JulcList;\npublic class Loop { "
+                + (shape.length > 2 ? shape[2] : "")
+                + " public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {\n" + shape[1] + "\n} }\n";
+    }
 
     /** Loop bodies, each named by the shape it covers. */
     private static final List<String[]> SHAPES = List.of(
@@ -96,7 +101,21 @@ class LoopBreakContinuationTest {
             new String[]{"while, two accumulators: an update, else break, then a statement", """
                     BigInteger s = a; long i = 0;
                     while (i < 4) { if (s.compareTo(b) <= 0) { s = s.add(BigInteger.TWO); } else { break; } i = i + 1; }
-                    return s.add(BigInteger.valueOf(i * 100));"""});
+                    return s.add(BigInteger.valueOf(i * 100));"""},
+            // Review of the fix: the statements after the if are generated in their own scope, so a
+            // declaration there does not change how a branch reads a field of the same name.
+            new String[]{"a declaration after the if does not retype a field a branch reads", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { if (t.equals(BigInteger.TEN)) { s = BigInteger.ONE; break; } } String t = "hello"; s = s.add(BigInteger.valueOf(t.length())); }
+                    return s;""", "static BigInteger t = BigInteger.TEN;"},
+            // A branch local named like a field accumulator stays inside its branch, through a break...
+            new String[]{"a branch local shadowing a field accumulator, then break", """
+                    for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; break; } s = s.add(BigInteger.ONE); }
+                    return s;""", "static BigInteger s = BigInteger.TEN;"},
+            // ...and without one.
+            new String[]{"a branch local shadowing a field accumulator, no break", """
+                    for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; s = s.add(x); } s = s.add(BigInteger.ONE); }
+                    return s;""", "static BigInteger s = BigInteger.TEN;"});
 
     private static final long[][] INPUTS = {{-4, 1}, {1, -3}, {-2, 1}, {2, 3}, {0, 10}, {5, 0}};
     private static final long[][] LISTS = {{0}, {-4, 3, 1, 2}, {-1, 2, 4}, {1, 2, 5, 1}, {-5, -6}, {}};
@@ -106,14 +125,15 @@ class LoopBreakContinuationTest {
     void everyShapeReturnsWhatTheJvmReturns() throws Exception {
         var problems = new ArrayList<String>();
         for (var shape : SHAPES) {
-            String source = HEAD + shape[1] + "\n} }\n";
-            Method jvm = javac(source);
+            String source = source(shape);
+            var classes = javac(source);
             for (var level : OptimizationLevel.values()) {
                 var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
                         new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "m").program();
                 for (int k = 0; k < INPUTS.length; k++) {
                     var xs = Arrays.stream(LISTS[k]).mapToObj(BigInteger::valueOf).toList();
-                    Object expected = jvm.invoke(null, BigInteger.valueOf(INPUTS[k][0]), BigInteger.valueOf(INPUTS[k][1]),
+                    // A fresh class for each input, so that a static field starts at its initial value.
+                    Object expected = method(classes).invoke(null, BigInteger.valueOf(INPUTS[k][0]), BigInteger.valueOf(INPUTS[k][1]),
                             JulcList.of(xs.toArray(BigInteger[]::new)));
                     var args = List.<PlutusData>of(new PlutusData.IntData(BigInteger.valueOf(INPUTS[k][0])),
                             new PlutusData.IntData(BigInteger.valueOf(INPUTS[k][1])),
@@ -142,7 +162,7 @@ class LoopBreakContinuationTest {
                 body.append("t = t.add(BigInteger.ONE);\n");
             }
             body.append("}\nreturn s.add(t);");
-            var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(HEAD + body + "\n} }\n", "m").program();
+            var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source(new String[]{"", body.toString()}), "m").program();
             sizes.add(UplcFlatEncoder.encodeProgram(program).length);
         }
         int step = sizes.get(1) - sizes.get(0);
@@ -151,7 +171,7 @@ class LoopBreakContinuationTest {
         }
     }
 
-    private static Method javac(String source) throws Exception {
+    private static Path javac(String source) throws Exception {
         var dir = Files.createTempDirectory("julc-loop-break-");
         var file = dir.resolve("Loop.java");
         Files.writeString(file, source);
@@ -159,7 +179,11 @@ class LoopBreakContinuationTest {
         int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors,
                 "-cp", System.getProperty("java.class.path"), "-d", dir.toString(), file.toString());
         assertEquals(0, status, errors::toString);
-        var loader = new URLClassLoader(new URL[]{dir.toUri().toURL()}, LoopBreakContinuationTest.class.getClassLoader());
+        return dir;
+    }
+
+    private static Method method(Path classes) throws Exception {
+        var loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, LoopBreakContinuationTest.class.getClassLoader());
         return Arrays.stream(loader.loadClass("Loop").getMethods()).filter(m -> m.getName().equals("m")).findFirst().orElseThrow();
     }
 }

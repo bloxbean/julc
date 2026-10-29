@@ -291,9 +291,9 @@ final class LoopBodyGenerator {
         }
         if (stmt instanceof IfStmt is) {
             var cond = gen.generateExpression(is.getCondition());
-            var thenTerm = generateSingleAccBody(is.getThenStmt(), accName, accType);
+            var thenTerm = branch(is.getThenStmt(), b -> generateSingleAccBody(b, accName, accType));
             var elseTerm = is.getElseStmt()
-                    .map(e -> generateSingleAccBody(e, accName, accType))
+                    .map(e -> branch(e, b -> generateSingleAccBody(b, accName, accType)))
                     .orElse(new PirTerm.Var(accName, accType));
             var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             if (index + 1 < stmts.size()) {
@@ -384,9 +384,9 @@ final class LoopBodyGenerator {
         boolean hasRest = followingIndex + 1 < followingStmts.size();
 
         if (!thenBreaks && !elseBreaks) {
-            var thenTerm = generateSingleAccBody(is.getThenStmt(), accName, accType);
+            var thenTerm = branch(is.getThenStmt(), b -> generateSingleAccBody(b, accName, accType));
             var elseTerm = is.getElseStmt()
-                    .map(e -> generateSingleAccBody(e, accName, accType))
+                    .map(e -> branch(e, b -> generateSingleAccBody(b, accName, accType)))
                     .orElse(new PirTerm.Var(accName, accType));
             var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             if (!hasRest) return continueFn.apply(ifExpr);
@@ -395,21 +395,47 @@ final class LoopBodyGenerator {
         }
         if (!hasRest || is.getElseStmt().isEmpty() && !canCompleteNormally(is.getThenStmt())) {
             // At most one path reaches what follows, so it is generated in place.
-            var thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, continueFn);
+            var thenTerm = branch(is.getThenStmt(), b -> generateBreakAwareBody(b, accName, accType, continueFn));
             var elseTerm = is.getElseStmt().isPresent()
-                    ? generateBreakAwareBody(is.getElseStmt().get(), accName, accType, continueFn)
+                    ? branch(is.getElseStmt().get(), b -> generateBreakAwareBody(b, accName, accType, continueFn))
                     : generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
             return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
         }
-        var rest = generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
+        var rest = scoped(() -> generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn));
         var join = new PirTerm.Var("#join" + ++joinCounter, new PirType.FunType(accType, accType));
         Function<PirTerm, PirTerm> joinFn = acc -> new PirTerm.App(join, acc);
-        var thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, joinFn);
+        var thenTerm = branch(is.getThenStmt(), b -> generateBreakAwareBody(b, accName, accType, joinFn));
         var elseTerm = is.getElseStmt()
-                .map(e -> generateBreakAwareBody(e, accName, accType, joinFn))
+                .map(e -> branch(e, b -> generateBreakAwareBody(b, accName, accType, joinFn)))
                 .orElse(joinFn.apply(new PirTerm.Var(accName, accType)));
         return new PirTerm.Let(join.name(), new PirTerm.Lam(accName, accType, rest),
                 new PirTerm.IfThenElse(cond, thenTerm, elseTerm));
+    }
+
+    /**
+     * Generates an if branch, or the statements after an if, in its own scope. A branch's
+     * declarations are visible only inside it, as in Java, so they neither shadow an accumulator
+     * the generated term names after the branch (its value, a break, a join argument) nor change
+     * how another branch or the statements after the if resolve a name. The branch block's own
+     * locals are renamed apart for the first; the scope covers types for the second.
+     */
+    private PirTerm branch(Statement stmt, Function<Statement, PirTerm> generate) {
+        symbolTable.pushScope();
+        try {
+            return stmt instanceof BlockStmt block ? withLocalsRenamed(block, generate::apply) : generate.apply(stmt);
+        } finally {
+            symbolTable.popScope();
+        }
+    }
+
+    /** The statements after an if, generated in their own scope (see {@link #branch}). */
+    private PirTerm scoped(java.util.function.Supplier<PirTerm> generate) {
+        symbolTable.pushScope();
+        try {
+            return generate.get();
+        } finally {
+            symbolTable.popScope();
+        }
     }
 
     /**
@@ -466,9 +492,9 @@ final class LoopBodyGenerator {
         }
         if (stmt instanceof IfStmt is) {
             var cond = gen.generateExpression(is.getCondition());
-            var thenTerm = generateMultiAccBody(is.getThenStmt(), accNames, accTypes);
+            var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBody(b, accNames, accTypes));
             var elseTerm = is.getElseStmt()
-                    .map(e -> generateMultiAccBody(e, accNames, accTypes))
+                    .map(e -> branch(e, b -> generateMultiAccBody(b, accNames, accTypes)))
                     .orElse(packAccumulators(accNames, accTypes));
             var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             if (index + 1 < stmts.size()) {
@@ -565,31 +591,31 @@ final class LoopBodyGenerator {
         boolean hasRest = index + 1 < stmts.size();
 
         if (!thenBreaks && !elseBreaks && hasRest) {
-            var thenTerm = generateMultiAccBody(is.getThenStmt(), accNames, accTypes);
+            var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBody(b, accNames, accTypes));
             var elseTerm = is.getElseStmt()
-                    .map(e -> generateMultiAccBody(e, accNames, accTypes))
+                    .map(e -> branch(e, b -> generateMultiAccBody(b, accNames, accTypes)))
                     .orElse(packAccumulators(accNames, accTypes));
             var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
             return unpackAccumulators(new PirTerm.IfThenElse(cond, thenTerm, elseTerm), accNames, accTypes, rest);
         }
         if (!hasRest || is.getElseStmt().isEmpty() && !canCompleteNormally(is.getThenStmt())) {
             // At most one path reaches what follows, so it is generated in place.
-            var thenTerm = generateMultiAccBreakAwareBody(is.getThenStmt(), accNames, accTypes, continueFn);
+            var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, continueFn));
             var elseTerm = is.getElseStmt().isPresent()
-                    ? generateMultiAccBreakAwareBody(is.getElseStmt().get(), accNames, accTypes, continueFn)
+                    ? branch(is.getElseStmt().get(), b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, continueFn))
                     : generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
             return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
         }
-        var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+        var rest = scoped(() -> generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn));
         var tupleType = new PirType.ListType(new PirType.DataType());
         var join = new PirTerm.Var("#join" + ++joinCounter, new PirType.FunType(tupleType, tupleType));
         var avoid = PirHelpers.freeVariables(rest);
         avoid.addAll(accNames);
         var tuple = new PirTerm.Var(PirHelpers.hygienicName("#join_t", avoid), tupleType);
         Function<PirTerm, PirTerm> joinFn = packed -> new PirTerm.App(join, packed);
-        var thenTerm = generateMultiAccBreakAwareBody(is.getThenStmt(), accNames, accTypes, joinFn);
+        var thenTerm = branch(is.getThenStmt(), b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, joinFn));
         var elseTerm = is.getElseStmt()
-                .map(e -> generateMultiAccBreakAwareBody(e, accNames, accTypes, joinFn))
+                .map(e -> branch(e, b -> generateMultiAccBreakAwareBody(b, accNames, accTypes, joinFn)))
                 .orElse(joinFn.apply(packAccumulators(accNames, accTypes)));
         return new PirTerm.Let(join.name(),
                 new PirTerm.Lam(tuple.name(), tupleType, unpackAccumulators(tuple, accNames, accTypes, rest)),
