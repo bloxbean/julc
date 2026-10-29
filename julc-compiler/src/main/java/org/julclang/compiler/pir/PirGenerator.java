@@ -867,7 +867,7 @@ public class PirGenerator {
      */
     private static BigInteger valid(IntegerLiterals.Reading reading, Expression literal) {
         if (reading.isValid()) return reading.value();
-        throw CompilerTypeDiagnostics.invalidIntegerLiteral(literal.toString(), reading.problem(), sourceLocation(literal));
+        throw CompilerTypeDiagnostics.invalidIntegerLiteral(IntegerLiterals.text(literal), reading.problem(), sourceLocation(literal));
     }
 
     public PirTerm generateExpression(Expression expr) {

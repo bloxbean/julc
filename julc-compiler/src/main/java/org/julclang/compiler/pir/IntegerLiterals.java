@@ -90,6 +90,16 @@ public final class IntegerLiterals {
         return Reading.of(magnitude.testBit(bits - 1) ? magnitude.subtract(BigInteger.ONE.shiftLeft(bits)) : magnitude);
     }
 
+    /** A literal as written, without any comment attached to its node, for diagnostics. */
+    public static String text(Expression literal) {
+        return switch (literal) {
+            case IntegerLiteralExpr i -> i.getValue();
+            case LongLiteralExpr l -> l.getValue();
+            case UnaryExpr ue when ue.getOperator() == UnaryExpr.Operator.MINUS -> "-" + text(ue.getExpression());
+            default -> literal.toString();
+        };
+    }
+
     /** Whether an expression is the direct operand of unary minus. */
     public static boolean isNegated(Expression expr) {
         return expr.getParentNode().orElse(null) instanceof UnaryExpr ue && ue.getOperator() == UnaryExpr.Operator.MINUS;

@@ -132,7 +132,7 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     private void checkIntegerLiteral(Expression literal, IntegerLiterals.Reading reading) {
         if (reading != null && !reading.isValid()) {
-            error(literal, INTEGER_LITERAL_INVALID, INTEGER_LITERAL_INVALID.fix(), literal.toString(), reading.problem());
+            error(literal, INTEGER_LITERAL_INVALID, INTEGER_LITERAL_INVALID.fix(), IntegerLiterals.text(literal), reading.problem());
         }
     }
 
@@ -307,7 +307,7 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
                 for (var value : values) {
                     var reading = IntegerLiterals.byteElement(value);
                     if (!reading.isValid() && IntegerLiterals.read(value instanceof UnaryExpr ue ? ue.getExpression() : value).isValid()) {
-                        error(value, INTEGER_LITERAL_INVALID, INTEGER_LITERAL_INVALID.fix(), value.toString(), reading.problem());
+                        error(value, INTEGER_LITERAL_INVALID, INTEGER_LITERAL_INVALID.fix(), IntegerLiterals.text(value), reading.problem());
                     }
                 }
                 super.visit(n, arg);

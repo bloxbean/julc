@@ -722,8 +722,8 @@
       "summary": "An int literal has 32 bits and a long literal 64 (JLS 21 §3.10.1). A decimal literal must fit the signed range; 2147483648 and 9223372036854775808L are allowed only directly after a unary minus, not inside parentheses. A hexadecimal, octal or binary literal must fit the width, and denotes the two's-complement value of its bits, so 0xFFFFFFFF is -1. An octal literal has only the digits 0 to 7. A byte[] initializer element must be in -128 to 127. javac rejects any other literal, and so does JuLC.",
       "fix": "Add the L suffix for a long literal, use BigInteger for a larger value, write a negated most-negative literal without parentheses (-2147483648), and keep byte[] elements in -128 to 127.",
       "example": {
-        "bad": "long big = 4294967296;\nbyte[] b = {0xFF};",
-        "good": "long big = 4294967296L;\nbyte[] b = {-1};"
+        "bad": "long big = 4294967296;\nbyte[] b = new byte[]{0xFF};",
+        "good": "long big = 4294967296L;\nbyte[] b = new byte[]{-1};"
       }
     }
   ]
