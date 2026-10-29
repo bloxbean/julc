@@ -103,6 +103,36 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(kind, name), location);
     }
 
+    /** JULC0003: a {@code return} directly in a while loop body; {@code location} is the return (ADR-062 T20). */
+    public static CompilerException returnInsideWhile(SourceLocation location) {
+        var info = DiagnosticCodes.RETURN_INSIDE_WHILE;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /** JULC0062: {@code JulcMap.of(...)}, which exists off-chain only (ADR-062 T20). */
+    public static CompilerException julcMapOfOffChainOnly(SourceLocation location) {
+        var info = DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0063: a {@code break} in a loop that updates no variable declared before it. Such a
+     * loop compiles its body as plain statements, which cannot stop the loop (ADR-062 T20).
+     */
+    public static CompilerException breakInLoopWithoutAccumulator(SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0064: a statement the break-aware body of a single-accumulator loop cannot compile;
+     * {@code statement} describes it, for example {@code "A nested while loop"} (ADR-062 T20).
+     */
+    public static CompilerException breakLoopStatementUnsupported(String statement, SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_LOOP_STATEMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(statement), location);
+    }
+
     /** JULC0057: a static field initializer that calls a method of its class. */
     public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
         var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;

@@ -137,6 +137,8 @@ var total = BigInteger.ZERO;
 **Hint:** `break can only be used inside for-each or while loops.`
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop scope.
+A `break` inside a loop that updates no variable declared before it reports
+`JULC0063` instead ([1.22](#122-julc0063-break-is-not-supported-in-a-loop-that-updates-no-variable-declared-before-the-loop)).
 
 **Fix:** Move the `break` inside a loop body, or restructure your logic to use
 `return` instead.
@@ -166,6 +168,7 @@ expression statements are supported on-chain.`
 **Cause:** A Java statement type that has no on-chain equivalent was used.
 Unsupported statements include `switch` statements (as opposed to `switch`
 expressions), `try`/`catch`, `do`/`while`, labeled statements, and others.
+`continue` is rejected earlier, with `JULC0060` ([2.19](#219-julc0060-continue-is-not-supported-on-chain)).
 
 **Fix:** Rewrite using the supported statement forms: variable declarations, if/else,
 for-each, while, return, and expression statements.
@@ -185,44 +188,44 @@ var result = switch (action) {
 
 ---
 
-### 1.5 `Unsupported statement in break-aware loop body: <StatementType>`
+### 1.5 `JULC0064` `A nested while loop is not supported in a loop that contains break and updates one variable declared before the loop`
 
-**Hint:** `Inside loops with break, only variable declarations, assignments, if/else,
-and break are supported.`
+**Cause:** A loop that contains `break` and updates exactly one variable declared
+before it may contain only variable declarations, assignments, if/else and break.
+A nested `while` or for-each loop, or any other statement, in its body is rejected.
+The message names the statement: `A nested while loop`, `A nested for-each loop`,
+or for example `A switch statement`. A loop with `break` that updates two or more
+variables declared before it supports nested loops.
 
-**Cause:** A loop body that contains `break` used an unsupported statement type.
-When a loop body contains `break`, the compiler uses a specialized translation
-path that supports a narrower set of statements.
-
-**Fix:** Simplify the loop body to contain only variable declarations, accumulator
-assignments, if/else, and break.
+**Fix:** Move the nested loop into a helper method that returns the value it
+computes, and call the helper from the loop body.
 
 ```java
-// WRONG: nested for-each inside a break-aware loop body
-for (var item : items) {
-    for (var sub : item.children()) { // not supported inside break-aware body
-        if (condition) break;
-    }
+// WRONG: nested while inside a loop with break
+BigInteger v = BigInteger.ZERO;
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    long i = 0;
+    while (i < 3) { v = v.add(x); i = i + 1; }
 }
 
-// CORRECT: nested for-each without break is supported
-for (var item : items) {
-    for (var sub : item.children()) { // OK — no break in outer loop
-        sum = sum + sub.amount();
-    }
+// CORRECT: the nested loop is a helper
+static BigInteger addTimes(BigInteger v, BigInteger x) {
+    BigInteger r = v;
+    long i = 0;
+    while (i < 3) { r = r.add(x); i = i + 1; }
+    return r;
 }
 
-// CORRECT: use a helper method for the break pattern
-var found = false;
-for (var item : items) {
-    if (checkCondition(item)) {
-        found = true;
-        break;
-    }
+BigInteger v = BigInteger.ZERO;
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    v = addTimes(v, x);
 }
 ```
 
-Note: Nested loops (while-in-while, for-each-in-for-each, mixed) are fully supported. The restriction is specifically about nesting inside a **break-aware** loop body — when the outer loop uses `break`, the inner statements must be limited to declarations, assignments, if/else, and break.
+Before [#257](https://github.com/bloxbean/julc/issues/257) this was reported as
+`Unsupported statement in break-aware loop body: WhileStmt`, without a code.
 
 ---
 
@@ -568,27 +571,33 @@ var negative = -amount;
 
 ---
 
-### 1.18 `Unsupported expression: AssignExpr`
+### 1.18 `JULC0061` `Reassigning '<name>' is not supported outside a loop`
 
-**Hint:** `Variables are immutable on-chain. Use the accumulator pattern in
-for-each/while loops for mutable state.`
+**Cause:** On-chain variables are single-assignment. Only a loop can update a
+variable declared before it (the loop's accumulator). Anywhere else, assigning to a
+local variable, a parameter or a field is rejected, including in an `if`/`else`
+branch and inside an expression. Before [#257](https://github.com/bloxbean/julc/issues/257)
+this was reported as `Unsupported expression: AssignExpr`, without a code; an
+assignment inside an expression in a loop still is.
 
-**Cause:** An assignment expression was used outside of the accumulator pattern
-in a loop. On-chain UPLC does not support mutation.
-
-**Fix:** Variables are immutable. Use the accumulator pattern in for-each or while
-loops.
+**Fix:** Declare a new local for the new value, or choose the value in one
+expression.
 
 ```java
-// WRONG: assignment outside loop accumulator
-var x = BigInteger.ZERO;
-x = BigInteger.ONE; // not inside a loop accumulator context
+// WRONG
+long x = n;
+x = x * n;
 
-// CORRECT: accumulator pattern in for-each
-var total = BigInteger.ZERO;
-for (var item : items) {
-    total = total + item.value(); // accumulator assignment in loop
-}
+// CORRECT: a new local
+long x = n;
+long squared = x * n;
+
+// WRONG
+BigInteger limit = BigInteger.TEN;
+if (vip) { limit = BigInteger.valueOf(100); }
+
+// CORRECT: one expression
+var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;
 ```
 
 ---
@@ -627,6 +636,85 @@ condition of an `if` statement outside a loop. Used anywhere else, for example
 `if (x instanceof Bid b && b.amount() > 0)` or inside a loop body, it is reported as
 undefined until [#204](https://github.com/bloxbean/julc/issues/204). Use a `switch` on the sealed type there, which binds case
 variables in every position.
+
+`JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
+reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
+
+---
+
+### 1.21 `JULC0003` `'return' is not supported inside while loop body`
+
+**Cause:** A `while` loop body cannot `return` from the enclosing method. A `while`
+loop is compiled to a recursive function whose result is the variables the loop
+updates, so it has no way to leave the method early. The location is the first
+such `return`.
+
+**Fix:** Exit the loop with `break`, or keep the result in a variable declared
+before the loop, and return after the loop.
+
+```java
+// WRONG
+long i = 0;
+while (i < n) {
+    if (i > 3) { return i; }
+    i = i + 1;
+}
+return n;
+
+// CORRECT
+long i = 0;
+while (i < n) {
+    if (i > 3) { break; }
+    i = i + 1;
+}
+return i;
+```
+
+---
+
+### 1.22 `JULC0063` `break is not supported in a loop that updates no variable declared before the loop`
+
+**Cause:** A loop supports `break` only when it updates a variable declared before
+the loop. A loop that updates none compiles its body as plain statements, which
+cannot stop the loop. Before [#257](https://github.com/bloxbean/julc/issues/257) this was
+reported as `break statement outside of a loop`, although the `break` is inside one.
+
+**Fix:** Declare a variable before the loop and set it where the loop breaks.
+
+```java
+// WRONG
+for (var x : xs) {
+    if (x.equals(target)) { break; }
+    if (x.signum() < 0) { Builtins.error(); }
+}
+
+// CORRECT
+boolean stopped = false;
+for (var x : xs) {
+    if (x.equals(target)) { stopped = true; break; }
+    if (x.signum() < 0) { Builtins.error(); }
+}
+```
+
+---
+
+### 1.23 `JULC0062` `JulcMap.of is off-chain only and has no on-chain implementation`
+
+**Cause:** `JulcMap.of(...)` builds a `JulcAssocMap` in Java, for tests and
+off-chain code. The compiler has no lowering for it. Before
+[#257](https://github.com/bloxbean/julc/issues/257) this was reported as
+`Undefined variable: JulcMap`.
+
+**Fix:** Build the map from `JulcMap.empty()` with `insert`. `insert` adds the
+entry at the front of the map.
+
+```java
+// WRONG
+JulcMap<byte[], BigInteger> map = JulcMap.of(key, BigInteger.ONE);
+
+// CORRECT
+JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, BigInteger.ONE);
+```
 
 ---
 
@@ -1008,6 +1096,31 @@ if (action instanceof Bid best) { return best.amount(); }
 
 // CORRECT
 if (action instanceof Bid bid) { return bid.amount(); }
+```
+
+---
+
+### 2.19 `JULC0060` `continue is not supported on-chain`
+
+**Cause:** `continue` is outside the on-chain subset. Loops are compiled to folds
+and recursive functions whose body runs to its end on every iteration; there is no
+lowering that skips the rest of the body. Before
+[#257](https://github.com/bloxbean/julc/issues/257) this was reported as
+`Unsupported statement: ContinueStmt`, without a code.
+
+**Fix:** Guard the rest of the loop body with an `if` instead.
+
+```java
+// WRONG
+for (var x : xs) {
+    if (x.signum() < 0) { continue; }
+    total = total.add(x);
+}
+
+// CORRECT
+for (var x : xs) {
+    if (x.signum() >= 0) { total = total.add(x); }
+}
 ```
 
 ---
@@ -1398,7 +1511,7 @@ new variable with a different name.
 ```java
 // WRONG
 var x = BigInteger.ONE;
-x = BigInteger.TWO; // CompilerException: Unsupported expression: AssignExpr
+x = BigInteger.TWO; // JULC0061: Reassigning 'x' is not supported outside a loop
 
 // CORRECT: use a new variable
 var x = BigInteger.ONE;

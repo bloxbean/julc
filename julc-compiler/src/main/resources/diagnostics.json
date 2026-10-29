@@ -46,13 +46,13 @@
     {
       "code": "JULC0003",
       "constant": "RETURN_INSIDE_WHILE",
-      "status": "planned",
-      "title": "Cannot return inside while loop",
+      "status": "emitted",
+      "title": "return inside a while loop",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "Cannot return inside while loop",
-      "summary": "`return` statements are not allowed inside `while` loops. UPLC `while` is desugared to a fixed-point `LetRec` that needs an explicit accumulator.",
-      "fix": "Use a boolean accumulator and return after the loop. `break` works inside `for-each` if you only need early termination.",
+      "template": "'return' is not supported inside while loop body",
+      "summary": "A `while` loop body cannot `return` from the enclosing method. A `while` loop is compiled to a recursive function whose result is the variables the loop updates, so it has no way to leave the method early. The diagnostic points at the first such `return`.",
+      "fix": "Exit the loop with break, or keep the result in a variable declared before the loop, and return after the loop.",
       "example": {
         "bad": "while (i.compareTo(n) < 0) {\n    if (matches(i)) return true;\n    i = i.add(BigInteger.ONE);\n}\nreturn false;",
         "good": "boolean found = false;\nvar i = BigInteger.ZERO;\nwhile (i.compareTo(n) < 0 && !found) {\n    if (matches(i)) found = true;\n    i = i.add(BigInteger.ONE);\n}\nreturn found;"
@@ -709,6 +709,81 @@
       "example": {
         "bad": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid best) { return best.amount(); }",
         "good": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid bid) { return bid.amount(); }"
+      }
+    },
+    {
+      "code": "JULC0060",
+      "constant": "CONTINUE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "continue is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "continue is not supported on-chain",
+      "summary": "`continue` is outside the on-chain subset. Loops are compiled to folds and recursive functions whose body runs to its end on every iteration; there is no lowering that skips the rest of the body.",
+      "fix": "Guard the rest of the loop body with an if instead: replace `if (skip) { continue; } rest;` with `if (!skip) { rest; }`.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.signum() < 0) { continue; }\n    total = total.add(x);\n}",
+        "good": "for (var x : xs) {\n    if (x.signum() >= 0) { total = total.add(x); }\n}"
+      }
+    },
+    {
+      "code": "JULC0061",
+      "constant": "REASSIGNMENT_OUTSIDE_LOOP",
+      "status": "emitted",
+      "title": "Reassignment outside a loop",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Reassigning ''{0}'' is not supported outside a loop",
+      "summary": "On-chain variables are single-assignment. Only a loop can update a variable declared before it (the loop's accumulator); anywhere else, assigning to a local variable, parameter or field is rejected, including in an if/else branch and inside an expression.",
+      "fix": "Declare a new local for the new value, for example `long squared = x * n;`, or choose the value in one expression, for example `var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;`.",
+      "example": {
+        "bad": "long x = n;\nx = x * n;\nreturn x;",
+        "good": "long x = n;\nlong squared = x * n;\nreturn squared;"
+      }
+    },
+    {
+      "code": "JULC0062",
+      "constant": "JULCMAP_OF_OFF_CHAIN_ONLY",
+      "status": "emitted",
+      "title": "JulcMap.of is off-chain only",
+      "category": "STDLIB",
+      "severity": "error",
+      "template": "JulcMap.of is off-chain only and has no on-chain implementation",
+      "summary": "`JulcMap.of(...)` builds a `JulcAssocMap` in Java, for tests and off-chain code. The compiler has no lowering for it. On-chain, a map is built from `JulcMap.empty()` with `insert`, which adds the entry at the front of the map.",
+      "fix": "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`.",
+      "example": {
+        "bad": "JulcMap<byte[], BigInteger> map = JulcMap.of(key, BigInteger.ONE);",
+        "good": "JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, BigInteger.ONE);"
+      }
+    },
+    {
+      "code": "JULC0063",
+      "constant": "BREAK_IN_LOOP_WITHOUT_ACCUMULATOR",
+      "status": "emitted",
+      "title": "break in a loop that updates no earlier variable",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "break is not supported in a loop that updates no variable declared before the loop",
+      "summary": "A loop supports `break` only when it updates a variable declared before the loop. A loop that updates none compiles its body as plain statements, which cannot stop the loop.",
+      "fix": "Declare a variable before the loop and set it where the loop breaks: `boolean stopped = false;` before the loop and `if (found) { stopped = true; break; }` in it.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.equals(target)) { break; }\n    if (x.signum() < 0) { Builtins.error(); }\n}",
+        "good": "boolean stopped = false;\nfor (var x : xs) {\n    if (x.equals(target)) { stopped = true; break; }\n    if (x.signum() < 0) { Builtins.error(); }\n}"
+      }
+    },
+    {
+      "code": "JULC0064",
+      "constant": "BREAK_LOOP_STATEMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Unsupported statement in a loop with break",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "{0} is not supported in a loop that contains break and updates one variable declared before the loop",
+      "summary": "A loop that contains `break` and updates exactly one variable declared before it may contain only variable declarations, assignments, if/else and break. A nested loop, or any other statement, in its body is rejected. A loop that updates two or more such variables supports nested loops.",
+      "fix": "Move the nested loop into a helper method that returns the value it computes, and call the helper from the loop body.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    long i = 0;\n    while (i < 3) { v = v.add(x); i = i + 1; }\n}",
+        "good": "static BigInteger addTimes(BigInteger v, BigInteger x) {\n    BigInteger r = v;\n    long i = 0;\n    while (i < 3) { r = r.add(x); i = i + 1; }\n    return r;\n}\n...\nfor (var x : xs) {\n    if (x.signum() < 0) { break; }\n    v = addTimes(v, x);\n}"
       }
     }
   ]

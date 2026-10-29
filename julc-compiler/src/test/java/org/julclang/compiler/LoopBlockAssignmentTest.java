@@ -353,7 +353,7 @@ class LoopBlockAssignmentTest {
                 }
                 """));
         assertTrue(undeclaredInBlock.getMessage().contains("Assignment to undeclared variable 'other'"), undeclaredInBlock.getMessage());
-        // Outside a loop the existing diagnostic stands.
+        // Outside a loop the reassignment is rejected with JULC0061 (ADR-062 T20).
         var outside = assertThrows(CompilerException.class, () -> compile("""
                 static BigInteger m(BigInteger a) {
                     BigInteger b = a;
@@ -361,7 +361,8 @@ class LoopBlockAssignmentTest {
                     return b;
                 }
                 """));
-        assertTrue(outside.getMessage().contains("Unsupported expression: AssignExpr"), outside.getMessage());
+        assertTrue(outside.getMessage().contains("Reassigning 'b' is not supported outside a loop"), outside.getMessage());
+        assertEquals("JULC0061", outside.diagnostics().getFirst().code(), outside.getMessage());
     }
 
     private static String loop(String prelude, String loopBody, String result) {

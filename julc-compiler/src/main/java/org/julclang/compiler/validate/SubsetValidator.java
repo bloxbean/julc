@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.julclang.compiler.error.DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED;
+import static org.julclang.compiler.error.DiagnosticCodes.CONTINUE_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.C_STYLE_FOR_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.DO_WHILE_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.MULTIPLE_DECLARATORS_UNSUPPORTED;
@@ -193,6 +194,13 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
         whileDepth++;
         super.visit(n, arg);
         whileDepth--;
+    }
+
+    /** No loop lowering can skip the rest of a body (ADR-062 T20). */
+    @Override
+    public void visit(ContinueStmt n, Void arg) {
+        error(n, CONTINUE_UNSUPPORTED, CONTINUE_UNSUPPORTED.fix());
+        super.visit(n, arg);
     }
 
     @Override

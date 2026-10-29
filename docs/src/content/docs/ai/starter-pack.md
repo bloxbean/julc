@@ -317,7 +317,12 @@ For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByt
 |---|---|---|
 | `Method must have a body: <name>` | Abstract method in validator class | Provide a body for every method. |
 | `Variable must be initialized: <name>` | `var x;` without initializer | Initialize at declaration (`var x = BigInteger.ZERO;`). |
-| `Cannot return inside while loop` | `return` inside `while` body | Use a boolean accumulator; return after the loop. |
+| `'return' is not supported inside while loop body` (`JULC0003`) | `return` inside `while` body | Exit with `break`, or keep the result in a variable declared before the loop; return after the loop. |
+| `continue is not supported on-chain` (`JULC0060`) | `continue` in a loop | Guard the rest of the body with an `if`. |
+| `Reassigning '<name>' is not supported outside a loop` (`JULC0061`) | `x = ...` outside a loop | Declare a new local, or choose the value in one expression. |
+| `JulcMap.of is off-chain only ...` (`JULC0062`) | `JulcMap.of(...)` in contract code | `JulcMap.<K, V>empty().insert(k, v)`. |
+| `break is not supported in a loop that updates no variable declared before the loop` (`JULC0063`) | `break` in a loop that only checks | Set a variable declared before the loop where it breaks. |
+| `A nested ... loop is not supported in a loop that contains break ...` (`JULC0064`) | nested loop in a loop with `break` | Move the nested loop into a helper method. |
 | `Switch is not exhaustive on <Type>: missing <variants>` | Sealed-interface switch missing cases | Add the missing case branches or a `default ->`. |
 | `Method does not return on all paths` | Missing return in some branch | Make every path return; void methods are exempt. |
 | `Type mismatch: expected IntegerType, got DataType` | Comparing `Builtins.unIData(...)` with raw `Data` field | Apply `unIData`/`unBData`/etc. to the right operand too. |

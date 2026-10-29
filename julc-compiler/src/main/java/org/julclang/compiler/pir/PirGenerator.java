@@ -8,6 +8,7 @@ import org.julclang.compiler.desugar.LoopDesugarer;
 import org.julclang.compiler.desugar.PatternMatchDesugarer;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
@@ -272,7 +273,11 @@ public class PirGenerator {
      * so compilation can continue and report multiple errors.
      */
     private PirTerm collectError(String msg, String suggestion, Node node) {
-        var location = extractLocation(node);
+        return collectError(null, msg, suggestion, node);
+    }
+
+    /** {@link #collectError(String, String, Node)} with a diagnostic catalog code. */
+    private PirTerm collectError(String code, String msg, String suggestion, Node node) {
         String fileName = "<source>";
         int line = 0, col = 0;
         if (node != null) {
@@ -287,7 +292,7 @@ public class PirGenerator {
                     .orElse("<source>");
         }
         collectedErrors.add(new CompilerDiagnostic(
-                CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion));
+                CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion, code));
         return new PirTerm.Error(new PirType.DataType());
     }
 
@@ -513,6 +518,11 @@ public class PirGenerator {
             if (forEachAccumulatorVar != null) {
                 var accType = symbolTable.lookup(forEachAccumulatorVar).orElse(new PirType.BoolType());
                 return new PirTerm.Var(forEachAccumulatorVar, accType);
+            }
+            // A break in a loop reaches here only when the loop updates no variable declared
+            // before it: such a loop compiles its body as plain statements (ADR-062 T20).
+            if (insideLoop(stmt)) {
+                throw CompilerTypeDiagnostics.breakInLoopWithoutAccumulator(sourceLocation(stmt));
             }
             throw enrichedError("break statement outside of a loop",
                     "break can only be used inside for-each or while loops.", stmt);
@@ -994,6 +1004,13 @@ public class PirGenerator {
                             + "an assignment inside another expression or statement is not supported.",
                     expr);
         }
+        if (expr instanceof AssignExpr ae && !insideLoop(expr)) {
+            // Only a loop can update a variable declared before it (ADR-062 T20).
+            var info = DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP;
+            var target = ae.getTarget() instanceof NameExpr ne
+                    ? LoopBodyGenerator.sourceName(ne.getNameAsString()) : ae.getTarget().toString();
+            return collectError(info.code(), info.format(target), info.fix(), expr);
+        }
         String suggestion;
         if (expr instanceof AssignExpr) {
             suggestion = "Variables are immutable on-chain. Use the accumulator pattern in for-each/while loops for mutable state.";
@@ -1260,6 +1277,13 @@ public class PirGenerator {
             // 4. Static stdlib/library dispatch
             result = tryStaticStdlibCall(mce, scopeExpr, methodName, args);
             if (result != null) return result;
+
+            // JulcMap.of has no on-chain lowering; it used to fail as "Undefined variable: JulcMap"
+            // (ADR-062 T20).
+            if (methodName.equals("of") && scopeExpr instanceof NameExpr ne
+                    && ne.getNameAsString().equals("JulcMap") && symbolTable.lookup("JulcMap").isEmpty()) {
+                throw CompilerTypeDiagnostics.julcMapOfOffChainOnly(sourceLocation(mce));
+            }
 
             // 5-8. Instance dispatch (field access, chained access, registry, fallback)
             return resolveInstanceMethodCall(mce, scopeExpr, methodName, args);
@@ -2112,6 +2136,32 @@ public class PirGenerator {
         return loopBody.containsReturn(stmt);
     }
 
+    /** True when the node is inside a for-each or while statement (ADR-062 T20). */
+    private static boolean insideLoop(Node node) {
+        return node.findAncestor(Statement.class, s -> s instanceof ForEachStmt || s instanceof WhileStmt).isPresent();
+    }
+
+    /**
+     * The first return that {@link #containsReturn} finds: one in the statement itself, its
+     * blocks or its if/else branches, not in a nested loop (JULC0003 points at it).
+     */
+    private static Optional<ReturnStmt> firstDirectReturn(Statement stmt) {
+        if (stmt instanceof ReturnStmt rs) return Optional.of(rs);
+        if (stmt instanceof BlockStmt bs) {
+            for (var inner : bs.getStatements()) {
+                var found = firstDirectReturn(inner);
+                if (found.isPresent()) return found;
+            }
+            return Optional.empty();
+        }
+        if (stmt instanceof IfStmt is) {
+            var found = firstDirectReturn(is.getThenStmt());
+            if (found.isPresent()) return found;
+            return is.getElseStmt().flatMap(PirGenerator::firstDirectReturn);
+        }
+        return Optional.empty();
+    }
+
     private boolean containsYield(Statement stmt) {
         return loopBody.containsYield(stmt);
     }
@@ -2182,12 +2232,8 @@ public class PirGenerator {
             Supplier<PirTerm> cont) {
         loopBody.validateConditionalLocalUpdates(ws.getBody(), Set.of());
         if (containsReturn(ws.getBody())) {
-            throw enrichedError(
-                    "'return' is not supported inside while loop body",
-                    "Use 'break' to exit the loop early, then return after the loop. "
-                            + "Or use the accumulator pattern: result = value; (continue iterating) "
-                            + "then return result; after the loop.",
-                    ws);
+            Node exit = firstDirectReturn(ws.getBody()).orElseThrow();
+            throw CompilerTypeDiagnostics.returnInsideWhile(sourceLocation(exit));
         }
         if (containsYield(ws.getBody())) {
             throw enrichedError(

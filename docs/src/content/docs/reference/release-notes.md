@@ -3,6 +3,30 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: coded diagnostics for rejected loop and statement forms (#257)
+
+Six forms outside the on-chain subset were already rejected, but without a diagnostic
+code, and two of the messages named the wrong problem. Each now has a code, the
+location of the construct and a remedy:
+
+| Construct | Code | Message |
+|---|---|---|
+| `continue` | `JULC0060` | `continue is not supported on-chain` |
+| `return` inside `while` | `JULC0003` | `'return' is not supported inside while loop body` (located at the `return`) |
+| reassignment outside a loop | `JULC0061` | `Reassigning '<name>' is not supported outside a loop` |
+| `JulcMap.of(...)` in contract code | `JULC0062` | `JulcMap.of is off-chain only and has no on-chain implementation` |
+| `break` in a loop that updates no earlier variable | `JULC0063` | `break is not supported in a loop that updates no variable declared before the loop` |
+| a nested loop in a loop with `break` that updates one earlier variable | `JULC0064` | `A nested while loop is not supported in a loop that contains break and updates one variable declared before the loop` |
+
+`JulcMap.of` used to report `Undefined variable: JulcMap`, and the `break` case
+`break statement outside of a loop`, although the `break` is inside one.
+
+- **No program changes outcome.** The same programs are rejected and accepted as
+  before, and script bytes are unchanged.
+- **Tools that match message text** see new text for every form except `return`
+  inside `while`. Match the code instead. See the
+  [troubleshooting guide](/reference/troubleshooting/) for each code's fix.
+
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain

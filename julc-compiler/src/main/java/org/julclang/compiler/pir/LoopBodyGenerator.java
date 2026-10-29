@@ -1,6 +1,7 @@
 package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -362,9 +363,18 @@ final class LoopBodyGenerator {
         if (stmt instanceof IfStmt is) {
             return generateBreakAwareIf(is, stmts, index, accName, accType, continueFn);
         }
-        throw gen.enrichedError("Unsupported statement in break-aware loop body: " + stmt.getClass().getSimpleName(),
-                "Inside loops with break, only variable declarations, assignments, if/else, and break are supported.",
-                stmt);
+        throw CompilerTypeDiagnostics.breakLoopStatementUnsupported(describeStatement(stmt),
+                PirGenerator.sourceLocation(stmt));
+    }
+
+    /** The statement as JULC0064 names it (ADR-062 T20). */
+    private static String describeStatement(Statement stmt) {
+        if (stmt instanceof WhileStmt) return "A nested while loop";
+        if (stmt instanceof ForEachStmt) return "A nested for-each loop";
+        // SwitchStmt -> "A switch statement", LocalClassDeclarationStmt -> "A local class declaration statement"
+        var kind = stmt.getClass().getSimpleName().replaceFirst("Stmt$", "")
+                .replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase(Locale.ROOT);
+        return ("aeiou".indexOf(kind.charAt(0)) >= 0 ? "An " : "A ") + kind + " statement";
     }
 
     private PirTerm generateBreakAwareIf(IfStmt is, List<Statement> followingStmts, int followingIndex,

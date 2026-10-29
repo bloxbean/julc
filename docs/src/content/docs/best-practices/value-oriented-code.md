@@ -84,7 +84,7 @@ For `[1, 2, 3]` this returns 3, for `[-1, 0, 2]` it returns 1, and for an empty 
 returns 0.
 
 The same applies outside loops. Outside the supported loop paths JuLC variables are
-immutable, so this is rejected with `Unsupported expression: AssignExpr`:
+immutable, so this is rejected with `JULC0061` (`Reassigning 'limit' is not supported outside a loop`):
 
 ```java
 static BigInteger limitFor(boolean vip) {
