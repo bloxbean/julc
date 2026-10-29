@@ -49,21 +49,28 @@ public final class KnownDivergences {
         }
     }
 
-    public static final List<Rule> RULES = List.of(
-            new Rule("T21", "a while loop with break and an if that updates a variable never terminates on UPLC",
-                    Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), Observation.Value.class, "budget exhausted"));
+    /** None at present: T21, the last, was fixed by #254. */
+    public static final List<Rule> RULES = List.of();
 
     private static final Pattern CLASS_DECLARATION = Pattern.compile("\\bclass\\s+(\\w+)");
 
+    private final List<Rule> rules;
     private final List<RegressionStore.SavedCase> pins;
 
-    private KnownDivergences(List<RegressionStore.SavedCase> pins) {
+    private KnownDivergences(List<Rule> rules, List<RegressionStore.SavedCase> pins) {
+        this.rules = rules;
         this.pins = pins;
     }
 
-    /** The rules, and the saved cases that pin a conclusive divergence at some optimization level. */
+    /** {@link #RULES}, and the saved cases that pin a conclusive divergence at some optimization level. */
     public static KnownDivergences withPins(List<RegressionStore.SavedCase> saved) {
-        return new KnownDivergences(saved.stream().filter(KnownDivergences::pinsAConclusiveDivergence).toList());
+        return of(RULES, saved);
+    }
+
+    /** These rules, and the saved cases that pin a conclusive divergence at some optimization level. */
+    public static KnownDivergences of(List<Rule> rules, List<RegressionStore.SavedCase> saved) {
+        return new KnownDivergences(List.copyOf(rules),
+                saved.stream().filter(KnownDivergences::pinsAConclusiveDivergence).toList());
     }
 
     private static boolean pinsAConclusiveDivergence(RegressionStore.SavedCase saved) {
@@ -87,7 +94,7 @@ public final class KnownDivergences {
     public Optional<String> explain(DiffCase diffCase, DiffConfig config, Set<G0.Feature> features, DiffRunner.Result result) {
         var ids = new TreeSet<String>();
         if (result.uplc() instanceof Observation.Inconclusive) {
-            for (var rule : RULES) if (rule.matches(features, result.jvm(), result.uplc())) ids.add(rule.id());
+            for (var rule : rules) if (rule.matches(features, result.jvm(), result.uplc())) ids.add(rule.id());
         } else {
             String program = program(diffCase);
             for (var pin : pins) {

@@ -8,6 +8,7 @@ import org.julclang.difftest.gen.KnownDivergences;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -19,10 +20,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * The allowed-divergence registry (ADR-063 D6): a conclusive mismatch passes only as an exact pin, and
  * a rule explains only an inconclusive UPLC side, by its exact reason.
+ * <p>
+ * T21 and T23 are fixed (#254, #255), so the registry the campaigns use is empty. These tests run it on
+ * the divergences as they were: the T23 cases as saved before the fix, and the T21 rule.
  */
 class KnownDivergencesTest {
 
-    private static final KnownDivergences KNOWN = G0PropertyTest.KNOWN;
+    private static final Path HISTORICAL_PINS = Path.of("src/test/resources/known-divergences");
+
+    private static final KnownDivergences.Rule T21 = new KnownDivergences.Rule("T21",
+            "a while loop with break and an if that updates a variable never terminates on UPLC",
+            Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), Observation.Value.class, "budget exhausted");
+
+    private static final KnownDivergences KNOWN = KnownDivergences.of(List.of(T21), RegressionStore.load(HISTORICAL_PINS));
 
     /** The T23 shape of the exhaustive corpus. */
     private static final G0Enumeration.Program T23 = new G0Enumeration.Program(G0Enumeration.Shape.FOR_EACH,
@@ -43,6 +53,13 @@ class KnownDivergencesTest {
 
     private static Optional<String> explain(DiffCase diffCase, Set<G0.Feature> features, Observation jvm, Observation uplc) {
         return KNOWN.explain(diffCase, CONFIG, features, new DiffRunner.Result(jvm, uplc, Verdict.compare(jvm, uplc)));
+    }
+
+    @Test
+    void theCampaignRegistryHasNoT21OrT23EntryOnceTheyAreFixed() {
+        assertEquals(List.of(), KnownDivergences.RULES);
+        assertEquals(List.of(), G0PropertyTest.KNOWN.pins().stream()
+                .filter(p -> Set.of("T21", "T23").contains(p.expectation().detail())).toList());
     }
 
     @Test

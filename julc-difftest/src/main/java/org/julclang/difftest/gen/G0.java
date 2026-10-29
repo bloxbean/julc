@@ -37,8 +37,8 @@ public final class G0 {
         FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE;
 
         /**
-         * Shapes of known divergences; they have no coverage quota. The registry's T21 rule matches on
-         * the first; T23 is explained only by exact pins, so the second is statistics only.
+         * Shapes of the divergences T21 and T23, fixed by #254 and #255; they have no coverage quota and
+         * are reported as statistics, so a run shows how often the fixed shapes were exercised.
          */
         public static final Set<Feature> REGISTRY_MARKERS =
                 EnumSet.of(WHILE_BREAK_WITH_IF_UPDATE, FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE);
