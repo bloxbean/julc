@@ -94,6 +94,12 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(field, reason), location);
     }
 
+    /** JULC0070 (ADR-062 T25): an integer literal javac rejects; {@code problem} says why. */
+    public static CompilerException invalidIntegerLiteral(String literal, String problem, SourceLocation location) {
+        var info = DiagnosticCodes.INTEGER_LITERAL_INVALID;
+        return exception(info.code(), info.level(), info.fix(), info.format(literal, problem), location);
+    }
+
     /**
      * JULC0058: a for-each loop with no accumulator reassigns its loop variable or a body local;
      * {@code kind} is {@code "loop variable"} or {@code "local variable"}.

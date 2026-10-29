@@ -861,23 +861,18 @@ public class PirGenerator {
                 stmt);
     }
 
-    /** ADR-062 T25: the value javac gives an integer literal; SubsetValidator has rejected one javac rejects. */
-    private static BigInteger integerLiteral(Expression literal, String text, boolean isLong) {
-        return IntegerLiterals.value(text, isLong, isNegated(literal))
-                .orElseThrow(() -> new CompilerException("Integer literal out of range: " + text));
-    }
-
-    /** Whether an expression is the direct operand of unary minus. */
-    static boolean isNegated(Expression expr) {
-        return expr.getParentNode().orElse(null) instanceof UnaryExpr ue && ue.getOperator() == UnaryExpr.Operator.MINUS;
+    /**
+     * ADR-062 T25: the value javac gives an integer literal. SubsetValidator rejects a literal javac
+     * rejects; sources it does not validate (a library provider's) are rejected here with the same code.
+     */
+    private static BigInteger valid(IntegerLiterals.Reading reading, Expression literal) {
+        if (reading.isValid()) return reading.value();
+        throw CompilerTypeDiagnostics.invalidIntegerLiteral(literal.toString(), reading.problem(), sourceLocation(literal));
     }
 
     public PirTerm generateExpression(Expression expr) {
-        if (expr instanceof IntegerLiteralExpr ile) {
-            return new PirTerm.Const(Constant.integer(integerLiteral(ile, ile.getValue(), false)));
-        }
-        if (expr instanceof LongLiteralExpr lle) {
-            return new PirTerm.Const(Constant.integer(integerLiteral(lle, lle.getValue(), true)));
+        if (expr instanceof IntegerLiteralExpr || expr instanceof LongLiteralExpr) {
+            return new PirTerm.Const(Constant.integer(valid(IntegerLiterals.read(expr), expr)));
         }
         if (expr instanceof BooleanLiteralExpr ble) {
             return new PirTerm.Const(Constant.bool(ble.getValue()));
@@ -975,7 +970,13 @@ public class PirGenerator {
             var values = ace.getInitializer().get().getValues();
             byte[] bytes = new byte[values.size()];
             for (int i = 0; i < values.size(); i++) {
-                bytes[i] = (byte) values.get(i).asIntegerLiteralExpr().asNumber().intValue();
+                var element = values.get(i);
+                var reading = IntegerLiterals.byteElement(element);
+                if (reading == null) {
+                    throw enrichedError("A byte[] initializer element must be an integer literal: " + element,
+                            "Write each element as a literal in -128 to 127, such as 0x46 or -1.", element);
+                }
+                bytes[i] = valid(reading, element).byteValueExact();
             }
             return new PirTerm.Const(Constant.byteString(bytes));
         }

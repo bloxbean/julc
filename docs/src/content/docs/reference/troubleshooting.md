@@ -1012,25 +1012,32 @@ if (action instanceof Bid bid) { return bid.amount(); }
 
 ---
 
-### 2.19 `JULC0070` `Integer literal <literal> is too large for type <int|long>`
+### 2.19 `JULC0070` `Integer literal <literal> is invalid: <reason>`
 
-**Cause:** An `int` literal has 32 bits and a `long` literal (suffix `L`) 64. A decimal
-literal must fit the signed range; `2147483648` and `9223372036854775808L` are allowed only
-directly after a unary minus. A hexadecimal, octal or binary literal must fit the width.
-javac rejects a literal that does not fit, and so does JuLC
-([#270](https://github.com/bloxbean/julc/issues/270)).
+**Cause:** javac rejects the literal, and so does JuLC
+([#270](https://github.com/bloxbean/julc/issues/270)) (JLS 21 §3.10.1):
+
+- An `int` literal has 32 bits and a `long` literal (suffix `L`) 64. A decimal literal must
+  fit the signed range; `2147483648` and `9223372036854775808L` are allowed only directly
+  after a unary minus, not inside parentheses. A hexadecimal, octal or binary literal must
+  fit the width.
+- An octal literal (a leading `0`) has only the digits 0 to 7, so `08` is invalid.
+- A `byte[]` initializer element must be in -128 to 127.
 
 A hexadecimal, octal or binary literal that fits denotes the two's-complement value of its
 bits, as in Java: `0xFFFFFFFF` is `-1`, and `0xFFFFFFFFL` is `4294967295`.
 
-**Fix:** Add the `L` suffix for a `long` literal, or use `BigInteger` for a larger value.
+**Fix:** Add the `L` suffix for a `long` literal, use `BigInteger` for a larger value, write a
+negated most-negative literal without parentheses, and keep `byte[]` elements in range.
 
 ```java
 // WRONG
 long big = 4294967296;
+byte[] b = new byte[]{0xFF};
 
 // CORRECT
 long big = 4294967296L;
+byte[] b = new byte[]{-1};
 BigInteger bigger = new BigInteger("18446744073709551616");
 ```
 

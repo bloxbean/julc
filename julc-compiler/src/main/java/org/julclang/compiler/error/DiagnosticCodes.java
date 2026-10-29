@@ -173,13 +173,13 @@ public final class DiagnosticCodes {
             "floating point types (float/double) are not supported on-chain",
             "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params.");
 
-    public static final DiagnosticInfo INTEGER_LITERAL_OUT_OF_RANGE = new DiagnosticInfo(
+    public static final DiagnosticInfo INTEGER_LITERAL_INVALID = new DiagnosticInfo(
             "JULC0070",
-            "INTEGER_LITERAL_OUT_OF_RANGE",
+            "INTEGER_LITERAL_INVALID",
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
-            "Integer literal {0} is too large for type {1}",
-            "Add the L suffix for a long literal, or use BigInteger (for example new BigInteger(\"4294967296\")) for a larger value.");
+            "Integer literal {0} is invalid: {1}",
+            "Add the L suffix for a long literal, use BigInteger for a larger value, write a negated most-negative literal without parentheses (-2147483648), and keep byte[] elements in -128 to 127.");
 
     public static final DiagnosticInfo LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0022",
@@ -508,7 +508,7 @@ public final class DiagnosticCodes {
             ENTRYPOINT_WRONG_PARAMETER_COUNT,
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
-            INTEGER_LITERAL_OUT_OF_RANGE,
+            INTEGER_LITERAL_INVALID,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
             METHOD_BODY_MISSING,
