@@ -793,9 +793,9 @@
       "title": "Loop update in a position the loop cannot carry",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "Updating ''{0}'' {1} is not supported in a loop body",
-      "summary": "A loop carries an update of a variable declared before it only when the update is a statement of its own, directly in the loop body or in an if/else branch. An update inside a switch statement, inside an expression or inside a lambda is not seen as one, so a loop with break whose only updates are there reports this code at the update.",
-      "fix": "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, and `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`.",
+      "template": "Updating ''{0}'' {1} is not supported in this loop",
+      "summary": "A loop carries an update of a variable declared before it only when the update is a statement of its own, directly in the loop body or in an if/else branch. An update in the loop condition or iterable, inside a switch statement, inside an expression or inside a lambda is not seen as one, so a loop with break whose only updates are there reports this code at the update. The code is emitted only for such a loop with break; the same update in a loop without break still has an uncoded diagnostic (#206).",
+      "fix": "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`, and `while (x - 1 > 0) { x = x - 1; ... }` instead of `while ((x = x - 1) > 0)`.",
       "example": {
         "bad": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    switch (x.intValue()) { case 1 -> c = c + 1; default -> c = c + 2; }\n}",
         "good": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    if (x.intValue() == 1) { c = c + 1; } else { c = c + 2; }\n}"

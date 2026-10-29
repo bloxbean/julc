@@ -2149,8 +2149,10 @@ public class PirGenerator {
 
     /**
      * True when {@code scope} names {@code org.julclang.core.types.JulcMap}: written fully qualified,
-     * or as {@code JulcMap} imported explicitly or by wildcard, with no local or type of the
-     * compilation unit by that name (JULC0062).
+     * or as {@code JulcMap} with no local, type of the compilation unit or explicit import of
+     * another {@code JulcMap} by that name. Like {@code JulcMap.empty()}, an unimported
+     * {@code JulcMap} is the stdlib map. A library {@code JulcMap.of} resolves before this check
+     * (JULC0062).
      */
     private boolean isJulcMapType(Expression scope) {
         if (scope.toString().equals(JULC_MAP_FQCN)) return true;
@@ -2162,10 +2164,9 @@ public class PirGenerator {
         if (cu.isEmpty()) return false;
         boolean declared = cu.get().findAll(TypeDeclaration.class).stream()
                 .anyMatch(t -> t.getNameAsString().equals("JulcMap"));
-        boolean imported = cu.get().getImports().stream().anyMatch(i -> !i.isStatic()
-                && (i.isAsterisk() ? i.getNameAsString().equals("org.julclang.core.types")
-                        : i.getNameAsString().equals(JULC_MAP_FQCN)));
-        return imported && !declared;
+        boolean importsOther = cu.get().getImports().stream().anyMatch(i -> !i.isStatic() && !i.isAsterisk()
+                && i.getName().getIdentifier().equals("JulcMap") && !i.getNameAsString().equals(JULC_MAP_FQCN));
+        return !declared && !importsOther;
     }
 
     /** True when the node is inside a for-each or while statement (ADR-062 T20). */
@@ -2226,15 +2227,29 @@ public class PirGenerator {
     private static CompilerException breakWithoutAccumulator(Statement loop, Node breakStmt) {
         var declared = new HashSet<String>();
         Statement body;
+        Expression header;
+        String headerPosition;
         if (loop instanceof ForEachStmt fes) {
             fes.getVariable().getVariables().forEach(v -> declared.add(v.getNameAsString()));
             body = fes.getBody();
+            header = fes.getIterable();
+            headerPosition = "in the loop iterable";
         } else {
-            body = ((WhileStmt) loop).getBody();
+            var ws = (WhileStmt) loop;
+            body = ws.getBody();
+            header = ws.getCondition();
+            headerPosition = "in the loop condition";
         }
         body.findAll(VariableDeclarator.class).forEach(v -> declared.add(v.getNameAsString()));
         body.findAll(Parameter.class).forEach(p -> declared.add(p.getNameAsString()));
         body.findAll(TypePatternExpr.class).forEach(p -> declared.add(p.getNameAsString()));
+        // The header runs before the body, so an update there is reported first.
+        for (var assign : header.findAll(AssignExpr.class)) {
+            if (assign.getTarget() instanceof NameExpr ne) {
+                return CompilerTypeDiagnostics.loopUpdatePositionUnsupported(
+                        LoopBodyGenerator.sourceName(ne.getNameAsString()), headerPosition, sourceLocation(assign));
+            }
+        }
         for (var assign : body.findAll(AssignExpr.class)) {
             if (assign.getTarget() instanceof NameExpr ne && !declared.contains(ne.getNameAsString())) {
                 return CompilerTypeDiagnostics.loopUpdatePositionUnsupported(

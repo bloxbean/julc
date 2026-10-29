@@ -684,7 +684,7 @@ The same applies to such a loop nested inside a loop that does update a variable
 That form used to be accepted, with its `break` ignored, so the inner loop ran to its
 end ([#273](https://github.com/bloxbean/julc/issues/273)); it is now rejected with this
 code too. A loop whose only update is inside a `switch` statement or an expression
-reports `JULC0065` at the update instead ([1.24](#124-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-a-loop-body)).
+reports `JULC0065` at the update instead ([1.24](#124-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-this-loop)).
 
 **Fix:** Declare a variable before the loop and set it where the loop breaks.
 
@@ -729,14 +729,18 @@ JulcMap<byte[], BigInteger> two = JulcMap.<byte[], BigInteger>empty()
 
 ---
 
-### 1.24 `JULC0065` `Updating '<name>' inside a switch statement is not supported in a loop body`
+### 1.24 `JULC0065` `Updating '<name>' inside a switch statement is not supported in this loop`
 
 **Cause:** A loop carries an update of a variable declared before it only when the
 update is a statement of its own, directly in the loop body or in an `if`/`else`
-branch. An update inside a `switch` statement, inside an expression or inside a
-lambda is not seen as one. A loop with `break` whose only updates are in such a
-position reports this code at the update; the message says where (`inside a switch
-statement`, `inside an expression`, `inside a lambda`).
+branch. An update in the loop condition or iterable, inside a `switch` statement,
+inside an expression or inside a lambda is not seen as one. A loop with `break`
+whose only updates are in such a position reports this code at the update; the
+message says where (`in the loop condition`, `inside a switch statement`, `inside an
+expression`, `inside a lambda`). The code covers only such a loop with `break`: the
+same update in a loop without `break` is still reported as `Unsupported statement:
+SwitchStmt` or `Unsupported expression: AssignExpr`, without a code
+([#206](https://github.com/bloxbean/julc/issues/206)).
 
 **Fix:** Write the update as a statement of its own.
 
@@ -759,6 +763,15 @@ if ((c = c + 1) > 5) { Builtins.error(); }
 // CORRECT
 c = c + 1;
 if (c > 5) { Builtins.error(); }
+
+// WRONG
+while ((x = x - 1) > 0) { if (x == 3) { break; } }
+
+// CORRECT
+while (x - 1 > 0) {
+    x = x - 1;
+    if (x == 3) { break; }
+}
 ```
 
 ---

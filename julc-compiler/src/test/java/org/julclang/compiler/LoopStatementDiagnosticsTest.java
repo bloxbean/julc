@@ -373,6 +373,24 @@ class LoopStatementDiagnosticsTest {
     }
 
     @Test
+    void julcMapOfWithoutImport() {
+        // Review r2 F12: JuLC resolves an unimported JulcMap.empty() to the stdlib map, so an
+        // unimported JulcMap.of(...) is diagnosed the same way.
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileMethod("""
+                        import java.math.BigInteger;
+
+                        public class Probe {
+                            public static boolean m(byte[] a) {
+                                var map = JulcMap.of(a, BigInteger.ONE);
+                                return true;
+                            }
+                        }
+                        """, "m"));
+        assertEquals("JULC0062", error.diagnostics().getFirst().code(), error.getMessage());
+    }
+
+    @Test
     void ownClassNamedJulcMapIsNotTheStdlibMap() {
         // Review r1 F5: a class of the source named JulcMap is not org.julclang.core.types.JulcMap.
         var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
@@ -458,7 +476,7 @@ class LoopStatementDiagnosticsTest {
                         return c;
                     }
                 """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
-                "Updating 'c' inside a switch statement is not supported in a loop body", "c = c + 1;");
+                "Updating 'c' inside a switch statement is not supported in this loop", "c = c + 1;");
     }
 
     @Test
@@ -473,7 +491,7 @@ class LoopStatementDiagnosticsTest {
                         return c;
                     }
                 """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
-                "Updating 'c' inside an expression is not supported in a loop body", "c = c + 1)");
+                "Updating 'c' inside an expression is not supported in this loop", "c = c + 1)");
         rejected("""
                     public static long m(JulcList<BigInteger> xs) {
                         BigInteger k = BigInteger.ZERO;
@@ -484,7 +502,38 @@ class LoopStatementDiagnosticsTest {
                         return 1;
                     }
                 """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
-                "Updating 'k' inside a lambda is not supported in a loop body", "k = v");
+                "Updating 'k' inside a lambda is not supported in this loop", "k = v");
+    }
+
+    @Test
+    void breakInWhileWhoseUpdateIsInTheCondition() throws Exception {
+        // Review r2 F10: the loop updates x in its condition, which the accumulator analysis does
+        // not see. javac returns 3 for n = 6; JuLC points at the update. The remedy, the update as
+        // the first statement of the body, gives javac's 3 on both VMs.
+        String inCondition = """
+                    public static long m(long n) {
+                        long x = n;
+                        while ((x = x - 1) > 0) {
+                            if (x == 3) { break; }
+                        }
+                        return x;
+                    }
+                """;
+        assertEquals(3L, javaLongResult(inCondition, 6));
+        rejected(inCondition, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
+                "Updating 'x' in the loop condition is not supported in this loop", "x = x - 1");
+        String remedy = """
+                    public static long m(long n) {
+                        long x = n;
+                        while (x - 1 > 0) {
+                            x = x - 1;
+                            if (x == 3) { break; }
+                        }
+                        return x;
+                    }
+                """;
+        assertEquals(3L, javaLongResult(remedy, 6));
+        evaluates(remedy, List.of(PlutusData.integer(6)), integer(3));
     }
 
     @Test
@@ -542,6 +591,23 @@ class LoopStatementDiagnosticsTest {
         assertEquals(0, status, errors.toString());
         try (var loader = new URLClassLoader(new URL[]{dir.toUri().toURL()}, LoopStatementDiagnosticsTest.class.getClassLoader())) {
             return loader.loadClass("Probe").getMethod("m", JulcList.class).invoke(null, xs);
+        }
+    }
+
+    /** Compiles the class with javac and runs {@code m(n)}. */
+    private static long javaLongResult(String members, long n) throws Exception {
+        var dir = Files.createTempDirectory("julc-t20-");
+        var file = dir.resolve("Probe.java");
+        Files.writeString(file, source(members));
+        var classpath = String.join(File.pathSeparator,
+                JulcList.class.getProtectionDomain().getCodeSource().getLocation().getPath(),
+                Builtins.class.getProtectionDomain().getCodeSource().getLocation().getPath());
+        var errors = new ByteArrayOutputStream();
+        int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors,
+                "-classpath", classpath, "-d", dir.toString(), file.toString());
+        assertEquals(0, status, errors.toString());
+        try (var loader = new URLClassLoader(new URL[]{dir.toUri().toURL()}, LoopStatementDiagnosticsTest.class.getClassLoader())) {
+            return (long) loader.loadClass("Probe").getMethod("m", long.class).invoke(null, n);
         }
     }
 

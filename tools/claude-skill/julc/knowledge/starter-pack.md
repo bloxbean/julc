@@ -323,7 +323,7 @@ For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByt
 | `JulcMap.of is off-chain only ...` (`JULC0062`) | `JulcMap.of(...)` in contract code | `JulcMap.<K, V>empty().insert(k, v)`; `insert` adds at the front, so insert several entries in reverse order. |
 | `break is not supported in a loop that updates no variable declared before the loop` (`JULC0063`) | `break` in a loop that only checks | Set a variable declared before the loop where it breaks. |
 | `A nested ... loop is not supported in a loop that contains break ...` (`JULC0064`) | nested loop in a loop with `break` | Move the nested loop into a helper method. |
-| `Updating '<name>' inside a switch statement ... is not supported in a loop body` (`JULC0065`) | loop update inside a `switch` statement, an expression or a lambda | Write the update as a statement of its own, in the loop body or an `if`/`else` branch. |
+| `Updating '<name>' inside a switch statement ... is not supported in this loop` (`JULC0065`) | loop update inside a `switch` statement, an expression or a lambda | Write the update as a statement of its own, in the loop body or an `if`/`else` branch. |
 | `Switch is not exhaustive on <Type>: missing <variants>` | Sealed-interface switch missing cases | Add the missing case branches or a `default ->`. |
 | `Method does not return on all paths` | Missing return in some branch | Make every path return; void methods are exempt. |
 | `Type mismatch: expected IntegerType, got DataType` | Comparing `Builtins.unIData(...)` with raw `Data` field | Apply `unIData`/`unBData`/etc. to the right operand too. |

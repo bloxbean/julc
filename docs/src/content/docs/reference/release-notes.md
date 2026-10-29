@@ -17,7 +17,7 @@ location of the construct and a remedy:
 | `JulcMap.of(...)` in contract code | `JULC0062` | `JulcMap.of is off-chain only and has no on-chain implementation` |
 | `break` in a loop that updates no earlier variable | `JULC0063` | `break is not supported in a loop that updates no variable declared before the loop` |
 | a nested loop in a loop with `break` that updates one earlier variable | `JULC0064` | `A nested while loop is not supported in a loop that contains break and updates one variable declared before the loop` |
-| a loop with `break` whose only update is inside a `switch` statement, an expression or a lambda | `JULC0065` | `Updating '<name>' inside a switch statement is not supported in a loop body` (located at the update) |
+| a loop with `break` whose only update is inside a `switch` statement, an expression or a lambda | `JULC0065` | `Updating '<name>' inside a switch statement is not supported in this loop` (located at the update) |
 
 `JulcMap.of` used to report `Undefined variable: JulcMap`, and the `break` case
 `break statement outside of a loop`, although the `break` is inside one.
@@ -26,7 +26,13 @@ location of the construct and a remedy:
   for-each or `while` whose body has a `break` but updates no variable declared
   before it, nested inside a loop that updates one, used to be accepted with its
   `break` ignored, so the inner loop ran to its end and could fail where Java
-  returns. It is now rejected with `JULC0063`, as the same loop is on its own.
+  returns. It is now rejected with `JULC0063`, as the same loop is on its own. The
+  rejection applies whether or not the ignored `break` changed the result, so a
+  program that happened to work is rejected too, for example an inner
+  `for (var y : xs) { if (y.equals(x)) { break; } }`. It applies also to such a loop
+  inside a lambda inside a loop that updates a variable. To keep the early exit,
+  record it in a variable declared before the inner loop
+  (`boolean stopped = false;` and `stopped = true; break;`).
 - **Otherwise no program changes outcome.** Every other program is rejected or
   accepted as before, and script bytes of accepted programs are unchanged. `continue`
   is reported when the compiler lowers the loop that contains it, so code JuLC never

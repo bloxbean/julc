@@ -226,8 +226,8 @@ public final class DiagnosticCodes {
             "LOOP_UPDATE_POSITION_UNSUPPORTED",
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
-            "Updating ''{0}'' {1} is not supported in a loop body",
-            "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, and `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`.");
+            "Updating ''{0}'' {1} is not supported in this loop",
+            "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`, and `while (x - 1 > 0) { x = x - 1; ... }` instead of `while ((x = x - 1) > 0)`.");
 
     public static final DiagnosticInfo METHOD_BODY_MISSING = new DiagnosticInfo(
             "JULC0001",
