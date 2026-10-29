@@ -126,6 +126,15 @@ class LoopBreakContinuationTest {
             new String[]{"a loop-body local shadowing one of two field accumulators", """
                     for (var x : xs) { s = s.add(x); n = n.add(BigInteger.ONE); if (x.compareTo(b) > 0) { break; } BigInteger s = x; }
                     return s.add(n.multiply(BigInteger.valueOf(100)));""", "static BigInteger s = BigInteger.TEN; static BigInteger n = BigInteger.ZERO;"},
+            // Review A, F4: a body local updated in a loop with one accumulator and a break was rejected.
+            new String[]{"one accumulator and break: a branch local updated in place", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { s = s.add(x); break; } else { BigInteger t = x; t = t.add(x); s = s.add(t); } s = s.add(BigInteger.ONE); }
+                    return s;"""},
+            new String[]{"one accumulator and break: a loop-body local updated in place", """
+                    BigInteger s = a;
+                    for (var x : xs) { BigInteger t = x; t = t.multiply(BigInteger.TWO); if (t.compareTo(b) > 4) { break; } s = s.add(t); }
+                    return s;"""},
             // ...and without one.
             new String[]{"a branch local shadowing a field accumulator, no break", """
                     for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; s = s.add(x); } s = s.add(BigInteger.ONE); }

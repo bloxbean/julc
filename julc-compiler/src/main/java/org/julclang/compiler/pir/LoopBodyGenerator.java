@@ -351,6 +351,13 @@ final class LoopBodyGenerator {
                 var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
                 return new PirTerm.Let(accName, value, rest);
             }
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne) {
+                // A body local (any other assigned variable is an accumulator), as the other generators allow.
+                var value = assigned(ae, symbolTable.lookup(ne.getNameAsString()).orElse(null));
+                var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
+                return new PirTerm.Let(ne.getNameAsString(), value, rest);
+            }
             if (es.getExpression() instanceof VariableDeclarationExpr vde) {
                 return compileVarDeclThenContinue(vde, stmts, index,
                         (s, i) -> generateBreakAwareStatements(s, i, accName, accType, continueFn));
