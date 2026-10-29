@@ -91,20 +91,44 @@ class KnownDivergencesTest {
                 features, Observation.Value.class, null));
     }
 
-    /** ADR-063 D13 (r6): the T13 rule, for the #146 growth that Jazzer found, follows the same contract. */
+    private static Optional<String> explain(Set<G0.Feature> features, Observation jvm, Observation uplc, int scriptBytes) {
+        var measurement = new UplcExecutor.Measurement(10_000_000_000L, 14_000_000L, scriptBytes);
+        return KNOWN.explain(t23("Probe", 0, 3), CONFIG, features,
+                new DiffRunner.Result(jvm, uplc, Verdict.compare(jvm, uplc), measurement));
+    }
+
+    /**
+     * ADR-063 D13 (r6): the T13 rule, for the #146 growth that Jazzer found, explains an exhausted budget only
+     * in a script of at least {@link KnownDivergences#T13_MIN_SCRIPT_BYTES} bytes (review round r2 of #253, F2).
+     */
     @Test
-    void theT13RuleExplainsOnlyAnExhaustedBudget() {
+    void theT13RuleExplainsOnlyAnExhaustedBudgetInALargeScript() {
         var deep = Set.of(G0.Feature.DEEP_COMPARISON);
-        var any = t23("Probe", 0, 3);
         var budget = new Observation.Inconclusive("budget exhausted");
-        assertEquals(Optional.of("T13"), explain(any, deep, value(-5), budget));
-        assertEquals(Optional.empty(), explain(any, deep, value(-5), value(4)), "a wrong value is not T13");
-        assertEquals(Optional.empty(), explain(any, deep, value(-5),
-                new Observation.Crash("compiler: java.lang.OutOfMemoryError: Java heap space")), "a crash is never allowed");
-        assertEquals(Optional.empty(), explain(any, deep, new Observation.Failure("x", List.of()), budget),
+        int floor = KnownDivergences.T13_MIN_SCRIPT_BYTES;
+        assertEquals(Optional.of("T13"), explain(deep, value(-5), budget, floor));
+        assertEquals(Optional.of("T13"), explain(deep, value(-5), budget, 8_175_806));
+        // A deep comparison in a small script: the exhaustion is not evidence of #146, so it is a finding.
+        assertEquals(Optional.empty(), explain(deep, value(-5), budget, floor - 1));
+        assertEquals(Optional.empty(), explain(deep, value(-5), budget, 1_000));
+        assertEquals(Optional.empty(), KNOWN.explain(t23("Probe", 0, 3), CONFIG, deep,
+                new DiffRunner.Result(value(-5), budget, Verdict.compare(value(-5), budget))), "no measurement");
+        assertEquals(Optional.empty(), explain(deep, value(-5), value(4), floor), "a wrong value is not T13");
+        assertEquals(Optional.empty(), explain(deep, value(-5),
+                new Observation.Crash("compiler: java.lang.OutOfMemoryError: Java heap space"), floor), "a crash is never allowed");
+        assertEquals(Optional.empty(), explain(deep, new Observation.Failure(null, List.of()), budget, floor),
                 "the JVM side must return a value");
-        // A program with both shapes matches both rules, so neither explains it.
-        assertEquals(Optional.empty(), explain(any, Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE),
-                value(-5), budget));
+        assertEquals(Optional.empty(), explain(deep, value(-5), new Observation.Inconclusive("JVM timeout after 10000 ms"),
+                floor), "another reason");
+        // A program with both shapes: in a small script only T21 matches; in a large one both do, so neither explains it.
+        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        assertEquals(Optional.of("T21"), explain(both, value(-5), budget, 44_039));
+        assertEquals(Optional.empty(), explain(both, value(-5), budget, floor));
+    }
+
+    @Test
+    void aSizeFloorIsNeverNegative() {
+        assertThrows(IllegalArgumentException.class, () -> new KnownDivergences.Rule("T0", "negative",
+                Set.of(), Observation.Value.class, "budget exhausted", -1));
     }
 }

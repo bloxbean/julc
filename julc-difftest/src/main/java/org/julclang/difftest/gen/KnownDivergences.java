@@ -34,26 +34,47 @@ public final class KnownDivergences {
 
     /**
      * One known, unresolved divergence whose UPLC side never finishes: {@code uplcReason} is the exact
-     * {@link Observation.Inconclusive} reason.
+     * {@link Observation.Inconclusive} reason. A rule with a positive {@code minScriptBytes} also needs the
+     * configuration's script to be at least that large, as evidence of its mechanism (ADR-063 D6, r6): the
+     * comparison itself never uses the size (D2).
      */
     public record Rule(String id, String description, Set<G0.Feature> requires, Class<? extends Observation> jvm,
-                       String uplcReason) {
+                       String uplcReason, int minScriptBytes) {
 
         public Rule {
             if (uplcReason == null) throw new IllegalArgumentException(id + ": a rule names its exact inconclusive reason");
+            if (minScriptBytes < 0) throw new IllegalArgumentException(id + ": a negative script size");
         }
 
-        boolean matches(Set<G0.Feature> features, Observation jvmObservation, Observation uplcObservation) {
-            return features.containsAll(requires) && jvm.isInstance(jvmObservation)
-                    && uplcObservation instanceof Observation.Inconclusive i && i.reason().equals(uplcReason);
+        /** A rule with no size condition. */
+        public Rule(String id, String description, Set<G0.Feature> requires, Class<? extends Observation> jvm,
+                    String uplcReason) {
+            this(id, description, requires, jvm, uplcReason, 0);
+        }
+
+        boolean matches(Set<G0.Feature> features, DiffRunner.Result result) {
+            return features.containsAll(requires) && jvm.isInstance(result.jvm())
+                    && result.uplc() instanceof Observation.Inconclusive i && i.reason().equals(uplcReason)
+                    && (minScriptBytes == 0
+                        || result.measurement() != null && result.measurement().scriptBytes() >= minScriptBytes);
         }
     }
+
+    /**
+     * The smallest script the T13 rule explains. #146 doubles the script with each nested {@code compareTo}
+     * operand, and evaluation doubles with it. In about 6,500 sampled G0 programs without
+     * {@link G0.Feature#DEEP_COMPARISON} the largest script was 26,193 bytes, and a T21 program with a deep
+     * comparison that never terminates was 44,039 bytes. The smallest T13 exhaustion seen, a program that
+     * finishes with ten times the budget, was 90,756 bytes.
+     */
+    public static final int T13_MIN_SCRIPT_BYTES = 64 * 1024;
 
     public static final List<Rule> RULES = List.of(
             new Rule("T21", "a while loop with break and an if that updates a variable never terminates on UPLC",
                     Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), Observation.Value.class, "budget exhausted"),
             new Rule("T13", "nested compareTo operands double the script per level (#146) and exhaust the budget",
-                    Set.of(G0.Feature.DEEP_COMPARISON), Observation.Value.class, "budget exhausted"));
+                    Set.of(G0.Feature.DEEP_COMPARISON), Observation.Value.class, "budget exhausted",
+                    T13_MIN_SCRIPT_BYTES));
 
     private static final Pattern CLASS_DECLARATION = Pattern.compile("\\bclass\\s+(\\w+)");
 
@@ -89,7 +110,7 @@ public final class KnownDivergences {
     public Optional<String> explain(DiffCase diffCase, DiffConfig config, Set<G0.Feature> features, DiffRunner.Result result) {
         var ids = new TreeSet<String>();
         if (result.uplc() instanceof Observation.Inconclusive) {
-            for (var rule : RULES) if (rule.matches(features, result.jvm(), result.uplc())) ids.add(rule.id());
+            for (var rule : RULES) if (rule.matches(features, result)) ids.add(rule.id());
         } else {
             String program = program(diffCase);
             for (var pin : pins) {

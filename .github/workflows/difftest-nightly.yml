@@ -81,6 +81,8 @@ jobs:
       run: ./gradlew :${{ matrix.module }}:fuzz --tests '${{ matrix.target }}' -Pfuzz.duration=${{ matrix.duration }} --stacktrace
 
     # The failing input is saved as crash-* next to the target's seeds; add it there to replay it in every build.
+    # build/difftest/ holds the D8 record of a G0 failure (last-failure.diffcase), with each configuration's
+    # observations and costs, and the tally of inputs the registry explained (g0-fuzz-explained.txt).
     - name: Upload the failing input
       if: failure()
       uses: actions/upload-artifact@v4
@@ -88,5 +90,15 @@ jobs:
         name: fuzz-failure-${{ matrix.module }}
         path: |
           ${{ matrix.module }}/src/test/resources/**/crash-*
+          ${{ matrix.module }}/build/difftest/
           ${{ matrix.module }}/build/reports/tests/fuzz/
+        retention-days: 30
+
+    # A passing G0 run reports how many inputs each registry rule or pin explained (ADR-063 H2, D6).
+    - name: Upload the registry tally
+      if: success() && matrix.module == 'julc-difftest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-explained-${{ matrix.module }}
+        path: ${{ matrix.module }}/build/difftest/g0-fuzz-explained.txt
         retention-days: 30

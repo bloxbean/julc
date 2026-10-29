@@ -94,7 +94,8 @@ A `DiffCase` is the source text of one class, the entry method, the input values
 - **UPLC:** compile the same source with JuLC under the configuration, evaluate on `julc-vm-java` with a bounded
   budget (`UplcExecutor.BUDGET`, 10^10 CPU and 1.4·10^7 memory units), and record the result, the trace log, the
   budget used and the script's FLAT size. The comparison never uses the budget or the size; the D8 record keeps
-  them.
+  them. *r6:* a registry rule may require a minimum script size as evidence of its mechanism (D6, T13); the
+  verdict still never depends on it.
 
 Configurations cover every `OptimizationLevel` (`NONE`, `BASELINE`, `PV11_SAFE`, `PV11_COSTED`) on `julc-vm-java`
 and the default `CompilerTarget`. Varying the target is M2b. Other VMs (Scalus, Truffle) can be added as
@@ -210,11 +211,28 @@ explained depends on what the UPLC side produced:
   feature the generator records (for T21, `WHILE_BREAK_WITH_IF_UPDATE`), the JVM kind, and the exact
   inconclusive reason. A rule cannot explain a conclusive side, and one without a reason is refused. Rules are
   removed when the owning step resolves them; a run reports how often each one matched, so a stale rule is
-  visible. *r6:* D13 adds a second rule, T13 (`DEEP_COMPARISON`, `budget exhausted`).
+  visible. *r6:* D13 adds a second rule, T13 (`DEEP_COMPARISON`, `budget exhausted`, and a script of at least
+  64 KiB), with the saved reproducer `diverge-t13-nested-compare-to-exhausts-budget`.
 
 A rule is weaker than a pin: another non-termination with the same shape and reason passes as T21. That is
 acceptable because an inconclusive case is no evidence and counts towards no quota (H5, D9), and because each
 rule has pinned saved reproducers. A wrong value is a correctness result, so it gets no rule.
+
+*r6, T13.* `DEEP_COMPARISON` is syntactic and says nothing about loops, so on its own the T13 rule would also
+explain any other non-termination in a program that happens to contain a deep comparison, even in code that
+never runs. The rule therefore also needs the configuration's script to be at least
+`KnownDivergences.T13_MIN_SCRIPT_BYTES` (64 KiB): #146 doubles the script with each nested operand, and the size
+is deterministic. The floor comes from measurement:
+- in about 6,500 sampled G0 programs without the marker, the largest script was 26,193 bytes;
+- a T21 program with a deep comparison, which never terminates even with 100 times the budget, was 44,039 bytes
+  at most, so T21 alone explains it;
+- the smallest T13 exhaustion seen was 90,756 bytes, at `PV11_SAFE`. That program finishes with ten times the
+  budget, with the JVM's value.
+
+The hidden class is narrower but not empty. A non-termination in a marked program whose script is at least
+64 KiB passes as T13. A T13 exhaustion in a smaller script, for example a shallow deep comparison inside a loop
+that runs many times, fails the run and is triaged by hand. The reviewer's suggested floor of 1 MB would also
+fail the 90,756-byte case above and the saved reproducer (429,033 bytes at `PV11_SAFE`).
 
 ### D7. Exhaustive small programs
 
@@ -356,7 +374,12 @@ Targets:
 
   Jazzer adds no rule, pin or exemption of its own. Anything else fails the input and is written as a D8
   record with `found.by: G0FuzzTest` and the plan; Jazzer has no seed, and the input it saves (`crash-*`)
-  replays the case.
+  replays the case. Every match is counted and reported (H2): each explained input prints a line, and the run
+  ends with a tally per catalogue ID, written to `build/difftest/g0-fuzz-explained.txt`.
+
+  One runner serves the whole Jazzer session, so `UplcExecutor`'s compile cache is bounded: at most 64 entries
+  and 1 MiB of FLAT script in all, evicting the least recently used, and a larger script is never cached. It
+  still serves a program run on several inputs one after another, as D7 does.
 - **`DecoderFuzzTest`** (`julc-core`): the PlutusData CBOR decoder and the UPLC text parser. A decoder may
   reject input only with its own exception, and what it accepts must decode to the same value after
   re-encoding.
@@ -366,7 +389,8 @@ Modes:
   regressions. Every `seed-*` decoder input must decode (`seedsDecode`), since a rejected seed adds no coverage.
 - `./gradlew :<module>:fuzz --tests '<one target>' [-Pfuzz.duration=10m]` fuzzes one target
   (`gradle/jazzer-fuzz.gradle`). A failing input is written as `crash-*` next to the seeds.
-- The nightly workflow fuzzes G0 for 20 minutes and the text parser for 10.
+- The nightly workflow fuzzes G0 for 20 minutes and the text parser for 10. A failure uploads the `crash-*`
+  input, the test report and `build/difftest/`, which holds the D8 record; a passing G0 run uploads the tally.
 
 Seeds matter. Jazzer's JUnit mode has no maximum-length option and grows inputs from the largest seed, so
 G0's seeds are 150 bytes; without them inputs stayed at 8–21 bytes and programs stayed trivial.
@@ -388,7 +412,7 @@ The harness's verdicts depend on:
 - `julc-vm-java`, which is conformance-tested against the official Plutus test suite (`PlutusConformanceTest`);
 - jqwik.
 
-Jazzer is not trusted: it only chooses inputs, and the verdicts come from the same runner (D13).
+*r6:* Jazzer is not trusted: it only chooses inputs, and the verdicts come from the same runner (D13).
 
 The JVM side also runs whatever off-chain library code a program calls. Until ADR-062 S2 is done, that code
 is not trusted, which is why G0 and G1 use only `BigInteger`, `boolean`, `JulcList` and user records on the JVM
@@ -456,13 +480,17 @@ D11 target constructs that G0 already generates.
    (a private fork or runner) would make it routine. Lean: set one up before M4.
 7. **Version catalog.** Only Jazzer is in `gradle/libs.versions.toml`; jqwik and the rest stay in
    `gradle.properties`. Lean: move them in a separate change.
-8. **A compiler crash in the T13 shape (D13, r6).** Fuzzed G0 programs with deep `compareTo` nesting run the
-   compiler out of memory (`Crash "compiler: java.lang.OutOfMemoryError: Java heap space"`). Under r5 a crash is
-   never an allowed divergence: a rule names an inconclusive reason, and a saved case cannot pin a crash. So such
-   an input fails the run, and the nightly G0 fuzz job can stop at it until #146 is fixed. Options: keep it
-   failing; bound G0's comparison nesting, which hides the shape from every campaign; or report a compiler
-   `OutOfMemoryError` as inconclusive, which changes D3. Lean: keep it failing, since it is a real defect, and
-   revisit if it hides other findings in the nightly job.
+8. **A compiler crash in the T13 shape (D13, r6). Answered in review round r2 of #253.** The fuzzed T13
+   programs that seemed to run the compiler out of memory did not: `UplcExecutor` kept every compiled program
+   for the life of the runner, and in a fuzz session that is the whole session, so multi-megabyte programs
+   filled the heap until later compiles failed. Whether a compile failed depended on heap history, and the
+   input did not reproduce in a fresh JVM (H4). With the cache bounded (D13), a 300-second G0 run found
+   nothing, and the input that crashed in round 1 passed, explained as T13 at every level. Decisions:
+   - a compiler `OutOfMemoryError` stays a `Crash` and is never inconclusive (D3). Reporting it as inconclusive
+     would tie verdicts to JVM state and would have hidden this harness bug;
+   - an OOM that reproduces in a fresh JVM is a compiler defect and fails the run;
+   - G0's comparison nesting stays unbounded. If a reproducible crash stops the nightly job most nights, bound
+     it in a versioned G0 r2, with removal tied to #146.
 
 ## M1 results (2026-10-23, at `ebaf028c` plus this PR)
 
@@ -608,8 +636,8 @@ Measured at the r5 tree:
 
 ## D13 results (r6)
 
-Measured on 2026-10-27, before the merge with the r5 registry. Jazzer 0.30.0 runs with Java 25, Gradle 9.2 and
-JUnit 5.11.
+Measured on 2026-10-27, before the merge with the r5 registry and before the compile cache was bounded.
+Jazzer 0.30.0 runs with Java 25, Gradle 9.2 and JUnit 5.11.
 
 | Target | Throughput | Coverage | Result |
 |---|---|---|---|
@@ -622,16 +650,18 @@ Findings:
   their operands, so nested comparisons double the script per level, at every optimization level. Nesting
   `((e.compareTo(C) < 0 || C.compareTo(C) < 0) ? C : C)` 10 deep gives 43,616 bytes at `PV11_SAFE` and
   127,640 at `NONE`. A fuzzed program 16 levels deep exhausts the budget at `NONE`, `PV11_SAFE` and
-  `PV11_COSTED`, and another runs the compiler out of memory at `BASELINE`, while the JVM returns −5.
-  Measurements and the other lowerings are on #146.
+  `PV11_COSTED`, while the JVM returns −5. Measurements and the other lowerings are on #146. The draft also
+  reported that another program ran the compiler out of memory at `BASELINE`. Review round r2 showed that this
+  came from the harness's unbounded compile cache, not from the compiler (open question 8).
   - G0 records the shape as `DEEP_COMPARISON`: a ternary inside at least 8 nested `compareTo` operands. It is
     a registry marker, like `WHILE_BREAK_WITH_IF_UPDATE`, so it has no quota.
-  - One T13 rule covers the exhausted budget: `DEEP_COMPARISON`, a JVM `Value`, and the reason
-    `budget exhausted`. The draft's second entry, for the compiler's `OutOfMemoryError`, matched a `Crash`;
-    the r5 registry cannot express that and should not, so it is dropped (open question 8).
+  - One T13 rule covers the exhausted budget: `DEEP_COMPARISON`, a JVM `Value`, the reason `budget exhausted`,
+    and a script of at least 64 KiB (D6). The draft's second entry, for the compiler's `OutOfMemoryError`,
+    matched a `Crash`; the r5 registry cannot express that and should not, so it is dropped.
   - The threshold keeps a T21 program with a shallow ternary in a comparison explained by T21 alone; a
     first version without it matched both rules. The saved input `t21-with-ternary-in-comparison` covers this.
-  - The out-of-memory input is not replayed. It takes 24 s and exhausts the heap of the shared test JVM.
+  - The draft did not replay its out-of-memory input, because in the shared test JVM it exhausted the heap.
+    That was the same cache. The saved T13 case is a smaller program instead (below).
 - **Text parser: malformed numbers threw `NumberFormatException`.** This happened for a sign without
   digits (also in a version) and for numeric escapes too long for an `int`. Fixed; see Compatibility.
 - **Text printer: a control character followed by a digit did not round-trip.** The printed decimal escape
@@ -646,21 +676,30 @@ Findings:
 
   The text target skips inputs with such names until this is fixed.
 
-Measured on 2026-10-30, after merging the r5 registry and `main` (0.1.0-pre20, whose text parser rejects
-non-canonical `value` literals):
-- `./gradlew :julc-difftest:test --rerun`: 96 tests, 0 failures. They are the 72 of r5, the 23 replayed G0 fuzz
-  inputs (20 seeds, the empty input, `t13-deep-comparison` and `t21-with-ternary-in-comparison`) and
-  `KnownDivergencesTest.theT13RuleExplainsOnlyAnExhaustedBudget`. With the T13 rule removed, the
-  `t13-deep-comparison` replay fails. `G0ExhaustiveTest` and the PR campaign are unchanged: 1,481 conclusive,
-  21 inconclusive under T21, 2 allowed by T23 pins; 150 of 150 conclusive.
+Measured on 2026-10-29 (UTC), after merging the r5 registry and `main` (0.1.0-pre20, whose text parser
+rejects non-canonical `value` literals), at `c3ef031b`:
+- `./gradlew :julc-difftest:test --rerun`: 96 tests, 0 failures.
 - `./gradlew :julc-core:test --rerun`: 844 tests, 0 failures, including `DecoderFuzzTest`'s 24 replayed
   inputs and `seedsDecode`.
 - `./gradlew :julc-core:fuzz --tests '*DecoderFuzzTest.uplcText' -Pfuzz.duration=60s`: 4,657,291 inputs in 61 s,
   971 edges, nothing found.
-- `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=180s`: stopped after 30 programs
-  (106 s) at an input in the T13 shape. The JVM returns 24; UPLC exhausts the budget at `NONE`, which the T13
-  rule explains, and the compiler runs out of memory at `BASELINE`, `PV11_SAFE` and `PV11_COSTED`, which no
-  rule or pin can explain. This is open question 8; the input is not committed.
+- `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=180s`: stopped after 30 programs at
+  `Crash "compiler: java.lang.OutOfMemoryError"` on three levels. That was the compile cache (open question 8).
+
+Measured on 2026-10-29 (UTC), after review round r2 of #253:
+- `./gradlew :julc-difftest:test --rerun`: 101 tests, 0 failures: the 96 above, `UplcExecutorCacheTest`
+  (3 tests), the saved T13 case and one more rule test. `G0ExhaustiveTest` and the PR campaign are unchanged:
+  1,481 conclusive, 21 inconclusive under T21, 2 allowed by T23 pins; 150 of 150 conclusive. With the bounded
+  cache, `G0ExhaustiveTest` still takes 15 s.
+- `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=300s`: 234 programs in 301 s, 4,753 edges,
+  nothing found. Of 257 inputs, counting the 23 replays, the registry explained 13 by T13 and 3 by T21. The
+  input that crashed at `c3ef031b` was reached again and passed, explained as T13 at every level.
+- The saved reproducer `diverge-t13-nested-compare-to-exhausts-budget` nests the shape 13 deep. Every level
+  exhausts the budget, with 625,617 bytes at `NONE` and `BASELINE` and 429,033 at `PV11_SAFE` and
+  `PV11_COSTED`, while the JVM returns 2. At nesting 12, `PV11_SAFE` and `PV11_COSTED` still agree.
+- Mutations, each reverted:
+  - without the cache's eviction, `UplcExecutorCacheTest` fails;
+  - without the T13 rule, the `t13-deep-comparison` replay fails.
 
 ## Revision history
 
@@ -689,10 +728,16 @@ non-canonical `value` literals):
     inconclusive UPLC side only. The T23 rule is replaced by four pins, two of them the corpus runs. D6, D7 and D9
     revised.
 - **Accepted** (2026-10-28): design accepted at `12f7e4e5` (review round r3), with the stated review of M1 and M2.
-- **r6** (2026-10-30, [#253](https://github.com/bloxbean/julc/pull/253)): D13, coverage-guided fuzzing with
+- **r6** (2026-10-29, [#253](https://github.com/bloxbean/julc/pull/253)): D13, coverage-guided fuzzing with
   Jazzer, replaces the fuzzing non-goal. Drafted as r4 on 2026-10-27, before review rounds r4 and r5, and
   renumbered. Ported to the r5 registry: the G0 target is checked against `KnownDivergences.withPins` over the
   saved cases, with no rule or pin of its own. A T13 rule for an exhausted budget, the `DEEP_COMPARISON` feature
   as a registry marker, text parser and printer fixes, open questions 6–8, and D13 results. The draft's T13
   entry for a compiler `OutOfMemoryError` is dropped, since r5 never allows a crash. The status line, the
-  non-goals, D6, D9, Affected modules and Compatibility gain r6 notes; the accepted text is otherwise unchanged.
+  non-goals, D6, D9, Trusted components, Affected modules and Compatibility gain r6 notes; the accepted text
+  is otherwise unchanged.
+  - Review round r2 of #253: F1, the compile cache is bounded, and open question 8 is answered: the
+    out-of-memory error came from the cache, and a compiler OOM stays a `Crash`. F2, the T13 rule needs a
+    script of at least 64 KiB, and D2 and D6 say so. F3, a saved T13 reproducer. F4, `G0FuzzTest` counts and
+    reports the matches it accepts. F5, the nightly fuzz job uploads `build/difftest/`. F6, dates and this
+    entry.
