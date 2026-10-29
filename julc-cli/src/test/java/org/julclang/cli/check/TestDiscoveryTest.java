@@ -36,6 +36,31 @@ class TestDiscoveryTest {
     }
 
     @Test
+    void discoverSkipsSourcesThatOnlyMentionTestAndJuLCCannotRead(@TempDir Path tempDir) throws IOException {
+        // ADR-062 T24: the Javadoc mention makes it a candidate, and JuLC's strict reading rejects the unpaired
+        // surrogate, but read as javac reads it the source has no Test method, so it is skipped.
+        Files.writeString(tempDir.resolve("Mentions.java"), """
+                import java.util.regex.Pattern;
+
+                /** Not a @Test source. */
+                public class Mentions {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
+        assertEquals(0, TestDiscovery.discover(tempDir).size());
+
+        // With a Test method, the strict diagnostic stands.
+        Files.writeString(tempDir.resolve("Mentions.java"), """
+                public class Mentions {
+                    @Test
+                    public static boolean t() { return "\\uD800".isEmpty(); }
+                }
+                """);
+        var error = assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir));
+        assertTrue(error.getMessage().contains("Could not parse @Test candidate"), error.getMessage());
+    }
+
+    @Test
     void discoverSkipsFilesWithoutTestAnnotation(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("NoTests.java"), """
                 public class NoTests {

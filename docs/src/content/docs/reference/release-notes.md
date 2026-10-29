@@ -3,6 +3,44 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: Unicode escapes are read as Java reads them (#268)
+
+javac translates Unicode escapes (a backslash, `u` and four hex digits, such as `\u0061`)
+before it reads anything else. So an escape in a comment can be a line break or the end of
+the comment, and `\u0061` is the name `a`. JuLC's parsers left escapes untranslated, so a
+source with such an escape could compile to a script that computes something other than
+the Java code. Every JuLC parser now reads source through `JavaSourceParser`, which
+translates escapes first: the compiler, library sources, the CLI, the linter, julc-tools
+and the verification resolvers.
+
+- **Script bytes change** only for sources with a Unicode escape outside a string literal,
+  and for a literal with several `u` (`\uuu0041`), which is now accepted as javac accepts it.
+- **Newly rejected, as javac rejects them:**
+  - a malformed Unicode escape anywhere, comments included: `\u00G1`, a lone `\u`, or an
+    escape cut off by the end of the file;
+  - a backslash outside a literal or comment, such as the name `\u005cu0061`;
+  - an illegal escape sequence written with a Unicode backslash, such as `\u005cq`, which
+    the parser now reports.
+- **Rejected although javac accepts them**, because javac's reading differs from the JLS or
+  cannot be kept. Each applies anywhere in the source:
+  - an escape whose digits are not ASCII hex digits;
+  - a backslash written as `\u005c`, after an odd run of such escapes, followed by two
+    or more raw backslashes and then `u`;
+  - an unpaired surrogate.
+- **Positions** in diagnostics, source maps and debug metadata refer to the source as
+  written. This covers node and comment ranges, parse-error locations and lexical-error
+  messages. A range that ends on an escape ends on the escape's last character.
+- **Pre-filters:** before parsing, the Gradle plugin, the CLI and the testkit look for an
+  annotation name in the text. They now also look in the text with its Unicode escapes
+  translated, without validating them, so an escaped annotation name is no longer skipped.
+  A source that names no JuLC annotation is still skipped, so off-chain code that javac
+  compiles but JuLC's stricter reading rejects does not fail the build. A source that only
+  mentions one (in a Javadoc, an import or a link) and cannot be read strictly is read again
+  leniently, and skipped if it declares none. It still fails with its diagnostic if it
+  declares one, or if javac could read it differently from the lenient reading.
+- **JRL:** rule names and trace messages go into comments in the generated Java. Their
+  backslashes are now doubled there, so an escape in one cannot end the comment.
+
 ## Upcoming preview: string literals are decoded as Java decodes them (#256)
 
 A string literal compiled to its source text, escapes included, so `"a\nb"` held a
@@ -26,9 +64,9 @@ escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the arg
     two or more raw backslashes and then `u`, such as `\u005c\\\u0030`. javac counts the
     escaped backslash toward the parity of the raw backslashes after it and the JLS does not, so they
     disagree on whether that `u` starts a Unicode escape.
-- **Still rejected**, as before, although javac accepts them: a Unicode escape with more
-  than one `u` (`\uuu0041`), `\u005c` before a raw `"`, and a Unicode escape whose digits
-  are not ASCII hex digits. JavaParser's lexer rejects these.
+- **Still rejected**, as before, although javac accepts them: `\u005c` before a raw `"`, and
+  a Unicode escape whose digits are not ASCII hex digits. A Unicode escape with more than
+  one `u` (`\uuu0041`) is now accepted (#268, above).
 - **JRL** string literals keep their value. They have no escapes, so the transpiler now
   doubles each backslash in the Java it generates.
 

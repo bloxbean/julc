@@ -1,8 +1,6 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
@@ -523,9 +521,7 @@ public final class LibrarySourceResolver {
     }
 
     private static CompilationUnit parseCompilationUnit(String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
+        var result = JavaSourceParser.parse(source);
         if (!result.isSuccessful()) {
             throw new IllegalArgumentException("Could not parse Java source: " + result.getProblems());
         }

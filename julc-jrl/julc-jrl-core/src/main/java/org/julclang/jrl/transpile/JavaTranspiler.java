@@ -194,7 +194,7 @@ public final class JavaTranspiler {
     private void emitRuleBlocks(List<RuleNode> rules, DatumDeclNode datum,
                                 RedeemerDeclNode redeemer) {
         for (var rule : rules) {
-            emitLine("// Rule: \"" + rule.name() + "\"");
+            emitLine("// Rule: \"" + commentText(rule.name()) + "\"");
             emitRuleBlock(rule, datum, redeemer);
             emitLine();
         }
@@ -250,7 +250,7 @@ public final class JavaTranspiler {
             emitCastAndExtract(variantRedeemerPattern.match(), "redeemer");
             if (!conditionExprs.isEmpty()) {
                 if (rule.traceMessage() != null) {
-                    emitLine("// trace: " + rule.traceMessage());
+                    emitLine("// trace: " + commentText(rule.traceMessage()));
                 }
                 String combined = joinConditions(conditionExprs);
                 if (rule.action() == DefaultAction.ALLOW) {
@@ -391,7 +391,7 @@ public final class JavaTranspiler {
 
     private void emitReturnAction(RuleNode rule) {
         if (rule.traceMessage() != null) {
-            emitLine("// trace: " + rule.traceMessage());
+            emitLine("// trace: " + commentText(rule.traceMessage()));
         }
         boolean returnValue = rule.action() == DefaultAction.ALLOW;
         emitLine("return " + returnValue + ";");
@@ -412,6 +412,14 @@ public final class JavaTranspiler {
             case VOTING -> "VotingValidator";
             case PROPOSING -> "ProposingValidator";
         };
+    }
+
+    /**
+     * JRL text for a Java comment. javac and JuLC translate Unicode escapes in comments too (ADR-062 T24), so a
+     * backslash in a rule name or trace message could end the comment. A doubled backslash starts no escape.
+     */
+    private static String commentText(String text) {
+        return text.replace("\\", "\\\\");
     }
 
     private String sanitizeClassName(String name) {

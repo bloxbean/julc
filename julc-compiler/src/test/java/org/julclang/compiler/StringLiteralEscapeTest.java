@@ -56,12 +56,12 @@ class StringLiteralEscapeTest {
             "\\u١٢٣٤", "\\u００４１");
 
     /**
-     * Literals javac accepts and JuLC rejects, so they fail closed. Each is in {@link #LITERALS}: several
-     * {@code u} (JavaParser's lexer allows one), the backslash parity above, unpaired surrogates, and
-     * digits other than ASCII hex digits.
+     * Literals javac accepts and JuLC rejects, so they fail closed. Each is in {@link #LITERALS}: the
+     * backslash parity above and digits other than ASCII hex digits ({@code JavaSourceParser} rejects both),
+     * and unpaired surrogates ({@code StringLiterals}).
      */
     private static final Set<String> FAILS_CLOSED = Set.of(
-            "\\uuu0041", "\\u005c\\\\\\u0030", "\\u005c\\\\\\u005cn", "\\u005c\\\\\\u006e", "\\u005c\\\\\\\\\\u0030",
+            "\\u005c\\\\\\u0030", "\\u005c\\\\\\u005cn", "\\u005c\\\\\\u006e", "\\u005c\\\\\\\\\\u0030",
             "\\uD800", "\\uDC00", "\\uDE00\\uD83D", "\\u١٢٣٤", "\\u００４１");
 
     private static String source(String literal) {
@@ -173,11 +173,20 @@ class StringLiteralEscapeTest {
     }
 
     @Test
-    void anIllegalEscapeNamesTheEscape() {
-        // JavaParser lets a backslash through when it is written as a Unicode escape.
+    void anIllegalEscapeWrittenWithAUnicodeBackslashIsRejected() {
+        // Unicode escapes are translated before lexing (T24), so the lexer sees the escape for q and rejects it.
         var error = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source("\\u005cq"), "m"));
-        assertTrue(error.getMessage().contains("Illegal escape sequence \\q"), error.getMessage());
+        assertTrue(error.getMessage().contains("Lexical error"), error.getMessage());
+    }
+
+    @Test
+    void anIllegalEscapeNamesTheEscape() {
+        // The backslash a Unicode escape produces starts no further Unicode escape (JLS 21 §3.3), so the text
+        // is a backslash and u0041. JavaParser's lexer lets that through; the escape for u is illegal.
+        var error = assertThrows(CompilerException.class,
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source("\\u005cu0041"), "m"));
+        assertTrue(error.getMessage().contains("Illegal escape sequence \\u"), error.getMessage());
         assertTrue(error.getMessage().contains("or an octal escape"), error.getMessage());
     }
 

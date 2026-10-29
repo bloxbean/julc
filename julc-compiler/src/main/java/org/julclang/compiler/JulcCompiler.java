@@ -26,8 +26,6 @@ import org.julclang.core.Term;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.core.source.SourceMap;
 import org.julclang.core.debug.DebugMetadata;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
@@ -262,8 +260,6 @@ public class JulcCompiler {
             boolean captureContractSchema,
             CompilationContext context,
             boolean collectDebugMetadata) {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
         // 1. Parse all sources
         context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + librarySources.size(), librarySources.size());
@@ -740,8 +736,6 @@ public class JulcCompiler {
             boolean captureContractSchema,
             CompilationContext context)
             throws IOException {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
         context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + libraryFiles.size(), libraryFiles.size());
         var validatorCu = parseSource(Files.readString(validatorFile), "validator", validatorFile);
@@ -836,8 +830,6 @@ public class JulcCompiler {
             String methodName,
             List<String> librarySources,
             CompilationContext context) {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
         // 1. Parse all sources
         var cu = parseSource(javaSource, "method source");
         var libraryCus = new ArrayList<CompilationUnit>();
@@ -1210,7 +1202,7 @@ public class JulcCompiler {
 
     private CompilationUnit parseSource(String source, String label, Path originalPath) {
         try {
-            var cu = StaticJavaParser.parse(source);
+            var cu = JavaSourceParser.parseCompilationUnit(source);
             // Preserve real file path when available; otherwise use synthetic ClassName.java
             if (originalPath != null) {
                 cu.setStorage(originalPath);
