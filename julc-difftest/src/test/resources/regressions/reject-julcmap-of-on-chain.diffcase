@@ -1,0 +1,18 @@
+format: 2
+name: JulcMap.of is off-chain only
+class: Probe
+method: m
+arg: 420102
+expect: REJECT none
+note: The diagnostic is 'Undefined variable: JulcMap', which does not say that the factory is off-chain only.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.core.types.JulcMap;
+
+public class Probe {
+    public static boolean m(byte[] a) {
+        JulcMap<byte[], BigInteger> map = JulcMap.of(a, BigInteger.ONE);
+        return map.containsKey(a);
+    }
+}

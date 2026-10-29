@@ -1,0 +1,48 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Differential JVM/UPLC test harness (ADR-063); not published'
+
+dependencies {
+    implementation project(':julc-core')
+    implementation project(':julc-compiler')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-ledger-api')
+    implementation project(':julc-vm')
+    runtimeOnly project(':julc-vm-java')
+
+    testImplementation "net.jqwik:jqwik:${jqwikVersion}"
+}
+
+// The compiler revision saved with every failure record (ADR-063 D8, H4).
+def compilerRevision = providers.exec {
+    commandLine 'git', 'describe', '--always', '--dirty', '--abbrev=12'
+    ignoreExitValue = true
+}.standardOutput.asText.map { "${project.version} " + it.trim() }
+
+tasks.withType(Test).configureEach {
+    systemProperty 'difftest.compiler', compilerRevision.get()
+}
+
+test {
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter', 'jqwik'
+        excludeTags 'nightly'
+    }
+    // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
+    def cases = providers.gradleProperty('difftest.cases')
+    if (cases.isPresent()) systemProperty 'difftest.cases', file(cases.get()).absolutePath
+}
+
+// The scheduled campaign (ADR-063 D12): fresh seeds and more tries than a pull-request run.
+tasks.register('nightlyDiffTest', Test) {
+    group = 'verification'
+    description = 'Differential JVM/UPLC campaign with fresh seeds'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'jqwik'
+        includeTags 'nightly'
+    }
+}
