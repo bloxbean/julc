@@ -710,6 +710,21 @@
         "bad": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid best) { return best.amount(); }",
         "good": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid bid) { return bid.amount(); }"
       }
+    },
+    {
+      "code": "JULC0070",
+      "constant": "INTEGER_LITERAL_OUT_OF_RANGE",
+      "status": "emitted",
+      "title": "Integer literal too large for its type",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Integer literal {0} is too large for type {1}",
+      "summary": "An int literal has 32 bits and a long literal 64 (JLS 21 §3.10.1). A decimal literal must fit the signed range; 2147483648 and 9223372036854775808L are allowed only directly after a unary minus. A hexadecimal, octal or binary literal must fit the width, and denotes the two's-complement value of its bits, so 0xFFFFFFFF is -1. javac rejects a literal that does not fit, and so does JuLC.",
+      "fix": "Add the L suffix for a long literal, or use BigInteger (for example new BigInteger(\"4294967296\")) for a larger value.",
+      "example": {
+        "bad": "long big = 4294967296;",
+        "good": "long big = 4294967296L;"
+      }
     }
   ]
 }

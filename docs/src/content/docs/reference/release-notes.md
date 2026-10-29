@@ -3,6 +3,20 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: integer literals have Java's value (#270)
+
+A hexadecimal, octal or binary `int` literal was read as unsigned, so `0xFFFFFFFF` compiled
+to 4294967295 where Java has -1 (JLS 21 §3.10.1). Such a literal now denotes the
+two's-complement value of its bits, as in Java: `0xFFFFFFFF` is -1 and `0x80000000` is
+-2147483648. Literals with underscores (`1_000`), non-decimal `long` literals (`0xFFL`) and
+`0B`-prefixed binary literals with underscores, which were rejected with a
+`NumberFormatException` message, now compile. A literal too large for its type is rejected
+with `JULC0070`, as javac rejects it.
+
+- **Script bytes change** for validators and libraries with a hexadecimal, octal or binary
+  `int` literal whose top bit is set. A new hash means a new script address or policy ID.
+  Write `0xFFFFFFFFL` or a `BigInteger` where the unsigned value was meant.
+
 ## Upcoming preview: Unicode escapes are read as Java reads them (#268)
 
 javac translates `\uXXXX` escapes before it reads anything else, so an escape in a comment

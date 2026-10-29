@@ -861,25 +861,23 @@ public class PirGenerator {
                 stmt);
     }
 
+    /** ADR-062 T25: the value javac gives an integer literal; SubsetValidator has rejected one javac rejects. */
+    private static BigInteger integerLiteral(Expression literal, String text, boolean isLong) {
+        return IntegerLiterals.value(text, isLong, isNegated(literal))
+                .orElseThrow(() -> new CompilerException("Integer literal out of range: " + text));
+    }
+
+    /** Whether an expression is the direct operand of unary minus. */
+    static boolean isNegated(Expression expr) {
+        return expr.getParentNode().orElse(null) instanceof UnaryExpr ue && ue.getOperator() == UnaryExpr.Operator.MINUS;
+    }
+
     public PirTerm generateExpression(Expression expr) {
         if (expr instanceof IntegerLiteralExpr ile) {
-            var val = ile.getValue();
-            BigInteger intVal;
-            if (val.startsWith("0x") || val.startsWith("0X")) {
-                intVal = new BigInteger(val.substring(2), 16);
-            } else if (val.startsWith("0b") || val.startsWith("0B")) {
-                intVal = new BigInteger(val.substring(2), 2);
-            } else if (val.length() > 1 && val.startsWith("0") && !val.equals("0")) {
-                intVal = new BigInteger(val.substring(1), 8);
-            } else {
-                intVal = new BigInteger(val);
-            }
-            return new PirTerm.Const(Constant.integer(intVal));
+            return new PirTerm.Const(Constant.integer(integerLiteral(ile, ile.getValue(), false)));
         }
         if (expr instanceof LongLiteralExpr lle) {
-            var val = lle.getValue();
-            if (val.endsWith("L") || val.endsWith("l")) val = val.substring(0, val.length() - 1);
-            return new PirTerm.Const(Constant.integer(new BigInteger(val)));
+            return new PirTerm.Const(Constant.integer(integerLiteral(lle, lle.getValue(), true)));
         }
         if (expr instanceof BooleanLiteralExpr ble) {
             return new PirTerm.Const(Constant.bool(ble.getValue()));

@@ -1,5 +1,6 @@
 package org.julclang.compiler.validate;
 
+import org.julclang.compiler.pir.IntegerLiterals;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
 import com.github.javaparser.ast.CompilationUnit;
@@ -23,6 +24,7 @@ import static org.julclang.compiler.error.DiagnosticCodes.C_STYLE_FOR_UNSUPPORTE
 import static org.julclang.compiler.error.DiagnosticCodes.DO_WHILE_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.MULTIPLE_DECLARATORS_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.NULL_UNSUPPORTED;
+import static org.julclang.compiler.error.DiagnosticCodes.INTEGER_LITERAL_OUT_OF_RANGE;
 import static org.julclang.compiler.error.DiagnosticCodes.PATTERN_VARIABLE_SHADOWS_FIELD;
 import static org.julclang.compiler.error.DiagnosticCodes.THROW_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.TRY_CATCH_UNSUPPORTED;
@@ -122,6 +124,27 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
      * Java already rejects reusing the name of a local or parameter in scope, so a field is the
      * only variable such a name can resolve to.
      */
+    /** ADR-062 T25: an integer literal javac rejects as too large for its type (JLS 21 §3.10.1). */
+    @Override
+    public void visit(IntegerLiteralExpr n, Void arg) {
+        checkIntegerLiteral(n, n.getValue(), false);
+        super.visit(n, arg);
+    }
+
+    @Override
+    public void visit(LongLiteralExpr n, Void arg) {
+        checkIntegerLiteral(n, n.getValue(), true);
+        super.visit(n, arg);
+    }
+
+    private void checkIntegerLiteral(Expression literal, String text, boolean isLong) {
+        boolean negated = literal.getParentNode().orElse(null) instanceof UnaryExpr ue
+                && ue.getOperator() == UnaryExpr.Operator.MINUS;
+        if (IntegerLiterals.value(text, isLong, negated).isEmpty()) {
+            error(literal, INTEGER_LITERAL_OUT_OF_RANGE, INTEGER_LITERAL_OUT_OF_RANGE.fix(), text, isLong ? "long" : "int");
+        }
+    }
+
     @Override
     public void visit(InstanceOfExpr n, Void arg) {
         n.getPattern().ifPresent(pattern -> {
