@@ -37,7 +37,7 @@ public final class LedgerSourceLoader {
         return loadLedgerSources(classLoader, JavaSourceParser::parseCompilationUnit);
     }
 
-    /** Parse with an invocation-local parser, without mutating StaticJavaParser configuration. */
+    /** As {@link #loadLedgerSources(ClassLoader)}, parsing each source with {@code parser}. */
     public static List<CompilationUnit> loadLedgerSources(
             ClassLoader classLoader, java.util.function.Function<String, CompilationUnit> parser) {
         var indexUrl = classLoader.getResource(INDEX_FILE);

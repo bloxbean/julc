@@ -229,6 +229,32 @@ class JrlIntegrationTest {
         }
 
         @Test
+        void aStringWithABackslashKeepsItsValue() {
+            // A JRL string has no escapes. The Java literal must denote the same text, or the backslash would
+            // start an escape sequence (here the illegal one for p).
+            var program = compileJrl("""
+                    contract "Path" version "1" purpose spending
+                    rule "same" when Condition( "C:\\path\\" == "C:\\path\\" ) then allow
+                    default: deny
+                    """);
+            var result = ValidatorTest.evaluate(program, buildSimpleSpendingCtx(new byte[][]{}));
+            assertTrue(result.isSuccess(), "Expected success: " + result);
+        }
+
+        @Test
+        void aRuleNameWithAUnicodeEscapeStaysInItsComment() {
+            // The rule name and trace go into Java line comments. javac translates the escape for a line feed in a
+            // comment too, so unless its backslash is doubled it ends the comment and the rest becomes code.
+            var program = compileJrl("""
+                    contract "Named" version "1" purpose spending
+                    rule "r\\u000a deny" when Condition( true ) then allow trace "t\\u000a x"
+                    default: deny
+                    """);
+            var result = ValidatorTest.evaluate(program, buildSimpleSpendingCtx(new byte[][]{}));
+            assertTrue(result.isSuccess(), "Expected success: " + result);
+        }
+
+        @Test
         void alwaysSucceeds_evaluates() {
             var program = compileJrl("""
                     contract "Always" version "1" purpose spending

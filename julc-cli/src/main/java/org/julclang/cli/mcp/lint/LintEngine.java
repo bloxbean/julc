@@ -16,7 +16,6 @@ import org.julclang.cli.mcp.lint.rules.ReturnInLoopRule;
 import org.julclang.cli.mcp.lint.rules.SwitchFieldShadowRule;
 import org.julclang.cli.mcp.lint.rules.Tuple2SwitchRule;
 import org.julclang.cli.mcp.lint.rules.UninitializedVarRule;
-import com.github.javaparser.JavaParser;
 
 import java.util.ArrayList;
 import java.util.Comparator;

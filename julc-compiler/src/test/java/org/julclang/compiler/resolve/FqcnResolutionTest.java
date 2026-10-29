@@ -1,6 +1,7 @@
 package org.julclang.compiler.resolve;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Nested;
@@ -256,7 +257,7 @@ class FqcnResolutionTest {
                     "org.julclang.ledger.Value",
                     "com.myapp.Token",
                     "com.thirdparty.Token");
-            var cu = com.github.javaparser.StaticJavaParser.parse("""
+            var cu = JavaSourceParser.parseCompilationUnit("""
                     package com.myapp;
                     import com.thirdparty.Token;
                     class Foo {}
@@ -273,7 +274,7 @@ class FqcnResolutionTest {
             var knownFqcns = java.util.Set.of(
                     "org.julclang.ledger.Value",
                     "com.myapp.Token");
-            var cu = com.github.javaparser.StaticJavaParser.parse("""
+            var cu = JavaSourceParser.parseCompilationUnit("""
                     package com.myapp;
                     class Foo {}
                     """);
@@ -287,7 +288,7 @@ class FqcnResolutionTest {
             var knownFqcns = java.util.Set.of(
                     "com.a.Token",
                     "com.b.Token");
-            var cu = com.github.javaparser.StaticJavaParser.parse("""
+            var cu = JavaSourceParser.parseCompilationUnit("""
                     package com.myapp;
                     import com.a.*;
                     import com.b.*;
@@ -302,7 +303,7 @@ class FqcnResolutionTest {
         @Test
         void unknownTypeReturnsFallback() {
             var knownFqcns = java.util.Set.of("org.julclang.ledger.Value");
-            var cu = com.github.javaparser.StaticJavaParser.parse("""
+            var cu = JavaSourceParser.parseCompilationUnit("""
                     package com.myapp;
                     class Foo {}
                     """);
@@ -316,7 +317,7 @@ class FqcnResolutionTest {
             var knownFqcns = java.util.Set.of(
                     "org.julclang.ledger.Value",
                     "com.thirdparty.Value");
-            var cu = com.github.javaparser.StaticJavaParser.parse("""
+            var cu = JavaSourceParser.parseCompilationUnit("""
                     package com.myapp;
                     import com.thirdparty.Value;
                     class Foo {}
@@ -331,7 +332,7 @@ class FqcnResolutionTest {
                     "com.thirdparty.Value",
                     "com.myapp.Foo.Constitution",
                     "com.myapp.Foo.Value");
-            var cu = com.github.javaparser.StaticJavaParser.parse("""
+            var cu = JavaSourceParser.parseCompilationUnit("""
                     package com.myapp;
                     import com.thirdparty.Value;
                     class Foo {
@@ -354,7 +355,7 @@ class FqcnResolutionTest {
                     "com.myapp.A.Inner",
                     "com.myapp.A.Inner.Constitution",
                     "com.myapp.B.Other");
-            var cu = com.github.javaparser.StaticJavaParser.parse("""
+            var cu = JavaSourceParser.parseCompilationUnit("""
                     package com.myapp;
                     class A {
                         record Constitution(java.math.BigInteger value) {}

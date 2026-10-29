@@ -43,10 +43,9 @@ public final class JavaLibraryProvider implements LibraryProvider {
         context = CompilationContext.resolve(options);
         this.lookup = lookup;
         contentHash = contentHash(sources);
-        var parser = JavaSourceParser.create();
         var units = new ArrayList<CompilationUnit>();
         for (var source : sources) {
-            var parsed = parser.parse(source);
+            var parsed = JavaSourceParser.parse(source);
             if (!parsed.isSuccessful())
                 throw new IllegalArgumentException(
                         "Invalid Java library source: " + parsed.getProblems());
@@ -58,9 +57,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
             if (!owners.add(identity)) throw new IllegalArgumentException("Duplicate library type ownership: " + identity);
         }
         resolver = new TypeResolver();
-        var ledgerSources = LedgerSourceLoader.loadLedgerSources(
-                                getClass().getClassLoader(),
-                                source -> parser.parse(source).getResult().orElseThrow());
+        var ledgerSources = LedgerSourceLoader.loadLedgerSources(getClass().getClassLoader());
         new TypeRegistrar().registerAll(ledgerSources, resolver);
         for (String identity : owners) if (resolver.allRegisteredFqcns().contains(identity)
                 || TypeResolver.ledgerHashFqcns().contains(identity))
