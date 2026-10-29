@@ -139,16 +139,18 @@ class G0PropertyTest {
             return ObservationText.format(execution.observation());
         }
 
+        /** The budget and what the rerun used: deterministic, so it goes into the D8 record (H4). */
         String cost() {
             var budget = UplcExecutor.budgetTimes(factor);
             return "factor " + factor + " budget cpu " + budget.cpuSteps() + " mem " + budget.memoryUnits()
-                    + (execution.measurement() == null ? "" : " used " + execution.measurement()) + " in " + millis + " ms";
+                    + (execution.measurement() == null ? "" : " used " + execution.measurement());
         }
 
+        /** The line reported with an input, with the rerun's wall-clock time, which no record keeps. */
         @Override
         public String toString() {
             return config + " rerun x" + factor + ": " + observation() + (agrees ? ", agrees" : ", disagrees")
-                    + " (" + cost() + ")";
+                    + " (" + cost() + " in " + millis + " ms)";
         }
     }
 

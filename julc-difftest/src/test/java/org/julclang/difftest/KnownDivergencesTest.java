@@ -83,13 +83,33 @@ class KnownDivergencesTest {
     @Test
     void aRuleExplainsOnlyItsExactInconclusiveReason() {
         var features = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
-        var any = t23("Probe", 0, 3);
-        assertEquals(Optional.of("T21"), explain(any, features, value(3), new Observation.Inconclusive("budget exhausted")));
-        assertEquals(Optional.empty(), explain(any, features, value(3), new Observation.Inconclusive("stack overflow")));
-        assertEquals(Optional.empty(), explain(any, Set.of(), value(3), new Observation.Inconclusive("budget exhausted")));
-        assertEquals(Optional.empty(), explain(any, features, value(3), value(4)), "a rule never explains a conclusive side");
+        var hangs = fixed(BUDGET, new ArrayList<>());
+        assertEquals(Optional.of("T21"), explain(features, value(3), BUDGET, hangs));
+        assertEquals(Optional.empty(), explain(features, value(3), new Observation.Inconclusive("stack overflow"), hangs));
+        assertEquals(Optional.empty(), explain(Set.of(), value(3), BUDGET, hangs));
+        assertEquals(Optional.empty(), explain(features, value(3), value(4), hangs), "a rule never explains a conclusive side");
         assertThrows(IllegalArgumentException.class, () -> new KnownDivergences.Rule("T0", "no reason",
                 features, Observation.Value.class, null));
+    }
+
+    /**
+     * ADR-063 D6 (r6, round r5 of #253): T21 explains an exhausted budget only if its rerun with
+     * {@link KnownDivergences#CONFIRMATION_FACTOR} times the budget is still exhausted, the opposite of T13.
+     */
+    @Test
+    void theT21RuleExplainsOnlyARunThatStillDoesNotFinish() {
+        var t21 = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var factors = new ArrayList<Long>();
+        assertEquals(Optional.of("T21"), explain(t21, value(3), BUDGET, fixed(BUDGET, factors)));
+        assertEquals(Optional.empty(), explain(t21, value(3), BUDGET, fixed(value(3), factors)), "it finishes: not T21");
+        assertEquals(Optional.empty(), explain(t21, value(3), BUDGET, fixed(value(4), factors)), "it finishes wrong");
+        assertEquals(Optional.empty(), explain(t21, value(3), BUDGET,
+                fixed(new Observation.Inconclusive("stack overflow"), factors)), "another reason");
+        assertEquals(Optional.empty(), explain(t21, value(3), BUDGET,
+                fixed(new Observation.Crash("vm: java.lang.OutOfMemoryError"), factors)), "a crash");
+        assertEquals(List.of(100L, 100L, 100L, 100L, 100L), factors);
+        assertEquals(Optional.empty(), KNOWN.explain(t23("Probe", 0, 3), CONFIG, t21,
+                new DiffRunner.Result(value(3), BUDGET, Verdict.compare(value(3), BUDGET))), "no rerun, no T21");
     }
 
     private static final Path REGRESSIONS = Path.of("src/test/resources/regressions");
@@ -113,7 +133,7 @@ class KnownDivergencesTest {
 
     /**
      * ADR-063 D6 (r6, round r4 of #253): T13 explains an exhausted budget only when a rerun with
-     * {@link KnownDivergences#T13_CONFIRMATION_FACTOR} times the budget finishes and agrees with the JVM. The saved
+     * {@link KnownDivergences#CONFIRMATION_FACTOR} times the budget finishes and agrees with the JVM. The saved
      * reproducer is such a case at every level.
      */
     @Test
@@ -127,7 +147,7 @@ class KnownDivergencesTest {
             assertEquals(BUDGET, result.uplc(), config.toString());
             var reruns = new ArrayList<UplcExecutor.Execution>();
             KnownDivergences.Rerun rerun = factor -> {
-                assertEquals(KnownDivergences.T13_CONFIRMATION_FACTOR, factor);
+                assertEquals(KnownDivergences.CONFIRMATION_FACTOR, factor);
                 var execution = RUNNER.rerun(diffCase, config, factor);
                 reruns.add(execution);
                 return execution;
@@ -174,7 +194,7 @@ class KnownDivergencesTest {
 
     /**
      * A T21 non-termination is still exhausted at a hundred times the budget, so T13 does not explain it, even
-     * when the program also carries T13's marker; T21 alone does.
+     * when the program also carries T13's marker; T21 alone does, from the same single rerun.
      */
     @Test
     void aT21ExhaustionIsNotExplainedByT13() {
@@ -193,12 +213,62 @@ class KnownDivergencesTest {
         assertEquals(List.of(BUDGET), reruns);
         assertEquals(Optional.of("T21"), KNOWN.explain(diffCase, config,
                 Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), result, rerun), "both shapes");
+        assertEquals(List.of(BUDGET, BUDGET), reruns, "one rerun per explanation, shared by both rules");
+    }
+
+    /**
+     * Review round r4 of #253, F12: a program with both markers whose T21 {@code if} is never taken, so it does
+     * not hang, and whose result includes the saved T13 expression. It exhausts the budget only by cost: the rerun
+     * returns the JVM's value, so it is T13 alone at every level.
+     */
+    @Test
+    void aProgramWithBothShapesThatFinishesIsT13Only() {
+        var t13 = RegressionStore.read(REGRESSIONS.resolve("diverge-t13-nested-compare-to-exhausts-budget.diffcase")).diffCase();
+        String expression = t13.source().substring(t13.source().indexOf("return ") + 7, t13.source().lastIndexOf(';'));
+        String source = """
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcList;
+
+                public class Probe {
+                    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+                        BigInteger v0 = a;
+                        long i = 0;
+                        while (i < 1) {
+                            if (b.compareTo(BigInteger.ZERO) < 0) { break; }
+                            if (a.compareTo(BigInteger.TEN) > 0) { v0 = b; }
+                            i = i + 1;
+                        }
+                        return v0.subtract(a).add(%s);
+                    }
+                }
+                """.formatted(expression);
+        var diffCase = new DiffCase("both shapes, finishing", source, "Probe", "m", t13.args());
+        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var report = RUNNER.run(diffCase);
+        assertEquals(value(2), report.jvm());
+        for (var entry : report.results().entrySet()) {
+            var config = entry.getKey();
+            assertEquals(BUDGET, entry.getValue().uplc(), config.toString());
+            var reruns = new ArrayList<Observation>();
+            KnownDivergences.Rerun rerun = factor -> {
+                var execution = RUNNER.rerun(diffCase, config, factor);
+                reruns.add(execution.observation());
+                return execution;
+            };
+            assertEquals(Optional.of("T13"), KNOWN.explain(diffCase, config, both, entry.getValue(), rerun), config.toString());
+            assertEquals(List.of(value(2)), reruns, config.toString());
+        }
     }
 
     @Test
-    void aConfirmationFactorIsNeverNegative() {
-        assertThrows(IllegalArgumentException.class, () -> new KnownDivergences.Rule("T0", "negative",
-                Set.of(), Observation.Value.class, "budget exhausted", -1));
+    void aConfirmationHasAPositiveFactor() {
+        for (var invalid : List.of(
+                new Object[]{KnownDivergences.Confirmation.AGREES_WITH_JVM, -1},
+                new Object[]{KnownDivergences.Confirmation.STILL_INCONCLUSIVE, 0},
+                new Object[]{KnownDivergences.Confirmation.NONE, 100})) {
+            assertThrows(IllegalArgumentException.class, () -> new KnownDivergences.Rule("T0", "invalid", Set.of(),
+                    Observation.Value.class, "budget exhausted", (KnownDivergences.Confirmation) invalid[0], (int) invalid[1]));
+        }
         assertThrows(IllegalArgumentException.class, () -> UplcExecutor.budgetTimes(0));
     }
 }

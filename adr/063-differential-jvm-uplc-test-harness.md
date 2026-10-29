@@ -216,7 +216,8 @@ explained depends on what the UPLC side produced:
   removed when the owning step resolves them; a run reports how often each one matched, so a stale rule is
   visible. *r6:* D13 adds a second rule, T13 (`DEEP_COMPARISON`, `budget exhausted`, and a confirmation
   rerun with 100 times the budget that agrees with the JVM), with the saved reproducer
-  `diverge-t13-nested-compare-to-exhausts-budget`.
+  `diverge-t13-nested-compare-to-exhausts-budget`. T21 gains the opposite confirmation: its rerun with 100 times
+  the budget must still be exhausted.
 
 A rule is weaker than a pin: another non-termination with the same shape and reason passes as T21. That is
 acceptable because an inconclusive case is no evidence and counts towards no quota (H5, D9), and because each
@@ -225,18 +226,23 @@ rule has pinned saved reproducers. A wrong value is a correctness result, so it 
 *r6, T13.* `DEEP_COMPARISON` is syntactic and says nothing about loops, so on its own the T13 rule would also
 explain any other non-termination, or a wrong value that more budget would reveal, in a program that happens to
 contain a deep comparison. The rule therefore confirms its mechanism: it explains a configuration only if
-running it again with `KnownDivergences.T13_CONFIRMATION_FACTOR` (100) times the budget finishes and agrees with
+running it again with `KnownDivergences.CONFIRMATION_FACTOR` (100) times the budget finishes and agrees with
 the JVM, value and traces (`Verdict.compare`). A rerun that is still exhausted, or gives any other result, is not
-explained and fails the run as a finding. So:
-- an expensive run that terminates is T13, whatever its script size;
-- a non-termination, for example T21's, still exhausts at 100 times the budget, so T13 does not explain it, and a
-  program with both shapes is explained by T21 alone;
-- a wrong value is never explained by a rule, as above.
+explained and fails the run as a finding. T21 confirms the opposite way: its rerun with the same factor must still
+end with `budget exhausted`, so a T21-shaped program that only runs long is not T21. Both rules use one rerun per
+configuration (`Rule.confirmation`). So:
+- an expensive run that terminates with the JVM's value and traces is T13, whatever its script size;
+- a run still exhausted at 100 times the budget is T21 if it has T21's shape, and nothing otherwise;
+- a program with both shapes is explained by exactly one of them, as its rerun decides;
+- a run that finishes with another value or trace, fails, or crashes is never explained by a rule, as above.
 
 The factor comes from measurement: the saved reproducer needs 1.8 to 3.8 times the memory budget, and a G0 r2
 program at the nesting bound needed 53 times; 10 times would report that genuine T13 run as a finding. The rerun
 is deterministic (H4). Its budget, factor, observation and cost are reported with every explained input and in
-the D8 record of a failure, as `recorded.<config>.rerun` and `.rerun.cost` (H2). Rounds r2 and r3 of #253 used a
+the D8 record of a failure, as `recorded.<config>.rerun` and `.rerun.cost` (H2). The record keeps only
+deterministic values; the rerun's wall-clock time appears in the per-input line and the tally only. A rerun
+compiles its program again when the script is too large for the compile cache, which is most of its cost;
+reusing the program from the first run is tracked in [#274](https://github.com/bloxbean/julc/issues/274). Rounds r2 and r3 of #253 used a
 64 KiB script-size floor instead; it tested evidence of #146's growth, not the cause of the exhaustion, and it
 failed genuine T13 runs in smaller scripts.
 
@@ -782,7 +788,19 @@ Measured on 2026-10-29 (UTC), after round r4 of #253, with the T13 confirmation 
   No rerun disagreed, and none needed more than 38 times the budget. The reruns are the main cost of a run
   rich in T13 inputs: in run 1 they took half of the 310 s. Most of it is compiling again, because these scripts
   (78 KB to 3.4 MB) do not stay in the compile cache; keeping each configuration's program for its rerun would
-  remove that, and is left for a later change.
+  remove that, and is tracked in [#274](https://github.com/bloxbean/julc/issues/274).
+
+Measured on 2026-10-29 (UTC), after round r5 of #253, with T21's opposite confirmation:
+- `./gradlew :julc-difftest:test --rerun`: 112 tests, 0 failures. New: T21 explains a run only if its rerun is still
+  exhausted (a finishing, wrong, other-reason or crashing rerun is not T21), and the review's probe, a program
+  with both markers whose T21 `if` is never taken and whose result includes the saved T13 expression, is T13
+  alone at every level, its rerun returning 2. With T21's confirmation removed, both tests fail. The saved T21
+  cases are pins and are unchanged. `G0ExhaustiveTest` is unchanged (1,481 / 21 / 2), but now reruns its 21 T21
+  runs at every level: 84 reruns, and the test takes 41 s instead of 15 s.
+- `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=300s`, from the committed seeds only: 1,142
+  programs in 307 s, 4,844 edges, nothing found and no OOM. Explained: T13 30, T21 8, and no input by both. Of
+  140 reruns (139.7 s), 108 agreed with the JVM (T13; median 0.82 s) and 32 were still exhausted (T21; median
+  1.5 s, at most 1.6 s).
 
 ## Revision history
 
@@ -830,3 +848,6 @@ Measured on 2026-10-29 (UTC), after round r4 of #253, with the T13 confirmation 
   - Round r4 of #253: open question 9 is answered. T13's 64 KiB size floor is replaced by a confirmation
     rerun with 100 times the budget that must agree with the JVM (D2, D6, D13), recorded with each explained
     input and in the D8 record. F10, the D3 note. F11, the factor is 100, not 10.
+  - Round r5 of #253: F12, T21 explains only a run whose rerun is still exhausted, so a program with both
+    shapes is explained by exactly one rule (D6). F13, the D8 record's `.rerun.cost` line has no wall-clock
+    time. F14, reusing the compiled program for the rerun is tracked in #274.

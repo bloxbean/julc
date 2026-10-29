@@ -75,7 +75,7 @@ class G0FuzzTest {
     static synchronized String tally() {
         return "G0FuzzTest: " + inputs + " inputs, explained by the registry: " + (explained.isEmpty() ? "none" : explained)
                 + "; confirmation reruns: " + reruns + " (" + rerunsAgreeing + " agreeing with the JVM), x"
-                + KnownDivergences.T13_CONFIRMATION_FACTOR + " budget, " + rerunMillis + " ms in all";
+                + KnownDivergences.CONFIRMATION_FACTOR + " budget, " + rerunMillis + " ms in all";
     }
 
     private static synchronized void count(List<Integer> plan, G0PropertyTest.Outcome outcome) {
