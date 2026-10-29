@@ -100,6 +100,53 @@ class SourceDiscoveryTest {
     }
 
     @Test
+    void compileFqcn_skipsOffChainSourcesJuLCCannotRead(@TempDir Path tempDir) throws IOException {
+        // ADR-062 T24: javac compiles these, JuLC's strict reading rejects them, and they name no annotation.
+        Path pkgDir = tempDir.resolve("com/example");
+        Files.createDirectories(pkgDir);
+        Files.writeString(pkgDir.resolve("UseLib.java"), """
+                package com.example;
+
+                @SpendingValidator
+                class UseLib {
+                    @Entrypoint
+                    static boolean validate(long redeemer, long ctx) {
+                        return true;
+                    }
+                }
+                """);
+        Files.writeString(pkgDir.resolve("SurrogateRegex.java"), """
+                package com.example;
+
+                import java.util.regex.Pattern;
+
+                public final class SurrogateRegex {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
+        Files.writeString(pkgDir.resolve("UnnamedVar.java"), """
+                package com.example;
+
+                import java.util.List;
+
+                public final class UnnamedVar {
+                    static String e = "caf\\u00e9";
+
+                    static int count(List<String> l) {
+                        int n = 0;
+                        for (String _ : l) n++;
+                        return n;
+                    }
+                }
+                """);
+
+        CompileResult result = SourceDiscovery.compile("com.example.UseLib", tempDir);
+
+        assertNotNull(result);
+        assertFalse(result.hasErrors(), "Expected no errors: " + result.diagnostics());
+    }
+
+    @Test
     void compileFqcn_reportsParseErrorForPrefilteredLibraryCandidate(@TempDir Path tempDir) throws IOException {
         Path pkgDir = tempDir.resolve("com/example");
         Files.createDirectories(pkgDir);

@@ -58,6 +58,82 @@ class BundleJulcSourcesTaskTest {
     }
 
     @Test
+    void bundleSkipsOffChainSourcesJuLCCannotReadAndKeepsEscapedLibraries(@TempDir Path tempDir) throws Exception {
+        // ADR-062 T24: the off-chain sources compile with javac, but JuLC's strict reading rejects them. They name
+        // no annotation, so they are skipped; a library whose annotation name is written with an escape is bundled.
+        Path sourceDir = tempDir.resolve("src/main/java");
+        Path pkg = sourceDir.resolve("com/example");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("SurrogateRegex.java"), """
+                package com.example;
+
+                import java.util.regex.Pattern;
+
+                public final class SurrogateRegex {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
+        Files.writeString(pkg.resolve("UnnamedVar.java"), """
+                package com.example;
+
+                import java.util.List;
+
+                public final class UnnamedVar {
+                    static String e = "caf\\u00e9";
+
+                    static int count(List<String> l) {
+                        int n = 0;
+                        for (String _ : l) n++;
+                        return n;
+                    }
+                }
+                """);
+        // No import: only the escaped annotation names the library.
+        Files.writeString(pkg.resolve("Escaped.java"), """
+                package com.example;
+
+                @\\u004fnchainLibrary
+                public final class Escaped {
+                    private Escaped() {}
+                }
+                """);
+
+        Path outputDir = tempDir.resolve("build/resources/main");
+        bundleTask(tempDir, sourceDir, outputDir).bundle();
+
+        assertEquals(List.of("com/example/Escaped.java"),
+                Files.readAllLines(outputDir.resolve("META-INF/plutus-sources/index.txt")));
+    }
+
+    @Test
+    void bundleFailsOnACandidateJuLCCannotRead(@TempDir Path tempDir) throws Exception {
+        Path sourceDir = tempDir.resolve("src/main/java");
+        Path pkg = sourceDir.resolve("com/example");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("Bad.java"), """
+                package com.example;
+
+                @OnchainLibrary
+                public final class Bad {
+                    static String s = "\\uD800";
+                }
+                """);
+
+        var task = bundleTask(tempDir, sourceDir, tempDir.resolve("build/resources/main"));
+        var error = assertThrows(GradleException.class, task::bundle);
+        assertTrue(error.getMessage().contains("Could not parse @OnchainLibrary candidate"), error.getMessage());
+        assertTrue(error.getMessage().contains("unpaired surrogate U+D800"), error.getMessage());
+    }
+
+    private static BundleJulcSourcesTask bundleTask(Path projectDir, Path sourceDir, Path outputDir) {
+        Project project = ProjectBuilder.builder().withProjectDir(projectDir.toFile()).build();
+        BundleJulcSourcesTask task = project.getTasks().create("bundleJulcSources", BundleJulcSourcesTask.class);
+        task.getSourceDir().set(sourceDir.toFile());
+        task.getOutputDir().set(outputDir.toFile());
+        return task;
+    }
+
+    @Test
     void bundleIgnoresOnchainLibraryTextInJavadoc(@TempDir Path tempDir) throws Exception {
         Path sourceDir = tempDir.resolve("src/main/java");
         Path validatorSource = sourceDir.resolve("com/example/MpfRegistryValidator.java");

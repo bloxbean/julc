@@ -289,13 +289,18 @@ public final class JavaSourceIntrospector {
     }
 
     /**
-     * A quick test on the raw text, before parsing. javac reads a Unicode escape as the character it denotes
-     * (ADR-062 T24), so a source with an escape may name the annotation in a way the text does not show, and
-     * might contain it.
+     * A quick text test before parsing. javac reads a Unicode escape as the character it denotes (ADR-062 T24),
+     * so the escapes are also translated, leniently: a source that fails JuLC's stricter reading is not
+     * rejected here. Only a source that names the annotation goes on to the strict parser, which then fails
+     * closed if it cannot read it.
      */
     private static boolean mightContainAnnotation(String source, String annotationName) {
-        return source.contains("@" + annotationName) || source.contains("." + annotationName)
-                || source.contains("\\u");
+        if (namesAnnotation(source, annotationName)) return true;
+        return source.contains("\\u") && namesAnnotation(UnicodeEscapes.translateLeniently(source), annotationName);
+    }
+
+    private static boolean namesAnnotation(String text, String annotationName) {
+        return text.contains("@" + annotationName) || text.contains("." + annotationName);
     }
 
     private static String simpleName(String name) {

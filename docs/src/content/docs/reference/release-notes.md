@@ -30,9 +30,12 @@ and the verification resolvers.
 - **Positions** in diagnostics, source maps and debug metadata refer to the source as
   written. This covers node and comment ranges, parse-error locations and lexical-error
   messages. A range that ends on an escape ends on the escape's last character.
-- **Pre-filters:** the Gradle plugin, the CLI and the testkit look for annotations in the
-  raw text before parsing. They now also parse every source that contains a backslash
-  followed by `u`, so an escaped annotation name is no longer skipped.
+- **Pre-filters:** before parsing, the Gradle plugin, the CLI and the testkit look for an
+  annotation name in the text. They now also look in the text with its Unicode escapes
+  translated, without validating them, so an escaped annotation name is no longer skipped.
+  A source that names no JuLC annotation is still skipped, so off-chain code that javac
+  compiles but JuLC's stricter reading rejects does not fail the build. A source that does
+  name one and cannot be read still fails with its diagnostic.
 - **JRL:** rule names and trace messages go into comments in the generated Java. Their
   backslashes are now doubled there, so an escape in one cannot end the comment.
 

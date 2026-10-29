@@ -137,6 +137,35 @@ final class UnicodeEscapes {
         return new UnicodeEscapes(text, bl, bc, Arrays.copyOf(el, m), Arrays.copyOf(ec, m));
     }
 
+    /**
+     * The source with its well-formed Unicode escapes translated as §3.3 states, and nothing validated: a
+     * malformed escape, an unpaired surrogate or the parity shape {@link #translate} rejects is left as it is.
+     * For quick text tests that must not reject a source, such as the annotation pre-filters.
+     */
+    static String translateLeniently(String source) {
+        if (source.indexOf('\\') < 0) return source;
+        var s = new StringBuilder(source.length());
+        int backslashes = 0;
+        int i = 0;
+        while (i < source.length()) {
+            char c = source.charAt(i);
+            if (c == '\\' && backslashes % 2 == 0 && i + 1 < source.length() && source.charAt(i + 1) == 'u') {
+                int digits = i + 1;
+                while (digits < source.length() && source.charAt(digits) == 'u') digits++;
+                if (digits + 4 <= source.length() && isHex(source, digits)) {
+                    s.append((char) Integer.parseInt(source.substring(digits, digits + 4), 16));
+                    backslashes = 0;
+                    i = digits + 4;
+                    continue;
+                }
+            }
+            s.append(c);
+            backslashes = c == '\\' ? backslashes + 1 : 0;
+            i++;
+        }
+        return s.toString();
+    }
+
     private static void requirePairedSurrogates(String text, int[] lines, int[] columns) throws IllegalSourceException {
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
@@ -201,6 +230,10 @@ final class UnicodeEscapes {
         }
         // Past the last unit at or before p (the end of a line or of the text): keep the same offset from it.
         if (unitLine == p.line) return new Position(endLine[k], endColumn[k] + p.column - unitColumn);
+        if (endColumn[k] > beginColumn[k]) {
+            // An escaped line terminator: the written line does not end there, so p is just after the escape.
+            return new Position(endLine[k], endColumn[k] + Math.max(p.column, 1));
+        }
         return new Position(endLine[k] + p.line - unitLine, p.column);
     }
 

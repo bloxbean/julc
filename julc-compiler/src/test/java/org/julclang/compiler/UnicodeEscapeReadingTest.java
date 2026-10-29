@@ -274,6 +274,9 @@ class UnicodeEscapeReadingTest {
         String escaped = lexicalError("class P { int \\u0061 = 1; # }");
         int column = Integer.parseInt(plain.replaceAll("(?s).*column (\\d+).*", "$1"));
         assertTrue(escaped.contains("line 1, column " + (column + 5)), escaped);
+        // The end of the file just after an escaped line terminator: still line 1 as written, after the escape.
+        String eof = lexicalError("class P { int x; } /* \\u000a");
+        assertTrue(eof.contains("line 1, column 29"), eof);
     }
 
     @Test
@@ -324,6 +327,35 @@ class UnicodeEscapeReadingTest {
         // Without an escape, a source without the annotation is still filtered out.
         assertFalse(JavaSourceIntrospector.mightContainValidatorAnnotation("class V { }"));
         assertFalse(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation("class V { }"));
+    }
+
+    @Test
+    void annotationPreFiltersSkipOffChainSourcesJuLCCannotRead() throws Exception {
+        // Off-chain Java that javac compiles but JuLC's strict reading rejects: an unpaired surrogate in a regex,
+        // and an unnamed variable (Java 22) next to an escape. Neither names an annotation, so the build tasks must
+        // skip it rather than hand it to the strict parser.
+        for (var source : List.of("""
+                import java.util.regex.Pattern;
+                public class P {
+                    static final java.util.regex.Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """, """
+                import java.util.List;
+                public class P {
+                    static String e = "caf\\u00e9";
+                    static int count(List<String> l) { int n = 0; for (String _ : l) n++; return n; }
+                }
+                """)) {
+            assertTrue(javac(source).isPresent(), "javac compiles it: " + source);
+            assertFalse(JavaSourceParser.parse(source).isSuccessful(), "JuLC's strict reading rejects it: " + source);
+            assertFalse(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(source), source);
+            assertFalse(JavaSourceIntrospector.mightContainValidatorAnnotation(source), source);
+            assertFalse(JavaSourceIntrospector.mightContainTestAnnotation(source), source);
+        }
+        // A source that does name an annotation still reaches the strict parser, and fails closed there.
+        String candidate = "@\\u004fnchainLibrary public class Bad { static String s = \"\\uD800\"; }";
+        assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(candidate));
+        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(candidate));
     }
 
     /** Ways main code could build a JavaParser parser outside {@code JavaSourceParser}. */
