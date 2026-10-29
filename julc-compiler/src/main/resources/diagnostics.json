@@ -719,7 +719,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "continue is not supported on-chain",
-      "summary": "`continue` is outside the on-chain subset. Loops are compiled to folds and recursive functions whose body runs to its end on every iteration; there is no lowering that skips the rest of the body.",
+      "summary": "`continue` is outside the on-chain subset. Loops are compiled to folds and recursive functions whose body runs to its end on every iteration; there is no lowering that skips the rest of the body. The diagnostic is reported when the compiler lowers the loop that contains the `continue`, so code JuLC does not compile, such as a nested off-chain helper class, is not affected.",
       "fix": "Guard the rest of the loop body with an if instead: replace `if (skip) { continue; } rest;` with `if (!skip) { rest; }`.",
       "example": {
         "bad": "for (var x : xs) {\n    if (x.signum() < 0) { continue; }\n    total = total.add(x);\n}",
@@ -750,7 +750,7 @@
       "severity": "error",
       "template": "JulcMap.of is off-chain only and has no on-chain implementation",
       "summary": "`JulcMap.of(...)` builds a `JulcAssocMap` in Java, for tests and off-chain code. The compiler has no lowering for it. On-chain, a map is built from `JulcMap.empty()` with `insert`, which adds the entry at the front of the map.",
-      "fix": "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`.",
+      "fix": "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`. insert adds at the front, so JulcMap.of(a, x, b, y) is `JulcMap.<K, V>empty().insert(b, y).insert(a, x)`.",
       "example": {
         "bad": "JulcMap<byte[], BigInteger> map = JulcMap.of(key, BigInteger.ONE);",
         "good": "JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, BigInteger.ONE);"
@@ -764,7 +764,7 @@
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "break is not supported in a loop that updates no variable declared before the loop",
-      "summary": "A loop supports `break` only when it updates a variable declared before the loop. A loop that updates none compiles its body as plain statements, which cannot stop the loop.",
+      "summary": "A loop supports `break` only when it updates a variable declared before the loop. A loop that updates none compiles its body as plain statements, which cannot stop the loop. This holds also when the loop is nested inside another loop (T26, #273). A loop whose only update is in a position the compiler cannot carry, such as a switch statement or an expression, reports JULC0065 at the update instead.",
       "fix": "Declare a variable before the loop and set it where the loop breaks: `boolean stopped = false;` before the loop and `if (found) { stopped = true; break; }` in it.",
       "example": {
         "bad": "for (var x : xs) {\n    if (x.equals(target)) { break; }\n    if (x.signum() < 0) { Builtins.error(); }\n}",
@@ -779,11 +779,26 @@
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "{0} is not supported in a loop that contains break and updates one variable declared before the loop",
-      "summary": "A loop that contains `break` and updates exactly one variable declared before it may contain only variable declarations, assignments, if/else and break. A nested loop, or any other statement, in its body is rejected. A loop that updates two or more such variables supports nested loops.",
+      "summary": "A loop that contains `break` and updates exactly one variable declared before it may contain only variable declarations, assignments, if/else and break. A nested while or for-each loop in its body is rejected with this code; another unsupported statement keeps its own diagnostic. A loop that updates two or more such variables supports nested loops.",
       "fix": "Move the nested loop into a helper method that returns the value it computes, and call the helper from the loop body.",
       "example": {
         "bad": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    long i = 0;\n    while (i < 3) { v = v.add(x); i = i + 1; }\n}",
         "good": "static BigInteger addTimes(BigInteger v, BigInteger x) {\n    BigInteger r = v;\n    long i = 0;\n    while (i < 3) { r = r.add(x); i = i + 1; }\n    return r;\n}\n...\nfor (var x : xs) {\n    if (x.signum() < 0) { break; }\n    v = addTimes(v, x);\n}"
+      }
+    },
+    {
+      "code": "JULC0065",
+      "constant": "LOOP_UPDATE_POSITION_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Loop update in a position the loop cannot carry",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Updating ''{0}'' {1} is not supported in a loop body",
+      "summary": "A loop carries an update of a variable declared before it only when the update is a statement of its own, directly in the loop body or in an if/else branch. An update inside a switch statement, inside an expression or inside a lambda is not seen as one, so a loop with break whose only updates are there reports this code at the update.",
+      "fix": "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, and `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`.",
+      "example": {
+        "bad": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    switch (x.intValue()) { case 1 -> c = c + 1; default -> c = c + 2; }\n}",
+        "good": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    if (x.intValue() == 1) { c = c + 1; } else { c = c + 2; }\n}"
       }
     }
   ]

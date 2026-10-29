@@ -17,12 +17,20 @@ location of the construct and a remedy:
 | `JulcMap.of(...)` in contract code | `JULC0062` | `JulcMap.of is off-chain only and has no on-chain implementation` |
 | `break` in a loop that updates no earlier variable | `JULC0063` | `break is not supported in a loop that updates no variable declared before the loop` |
 | a nested loop in a loop with `break` that updates one earlier variable | `JULC0064` | `A nested while loop is not supported in a loop that contains break and updates one variable declared before the loop` |
+| a loop with `break` whose only update is inside a `switch` statement, an expression or a lambda | `JULC0065` | `Updating '<name>' inside a switch statement is not supported in a loop body` (located at the update) |
 
 `JulcMap.of` used to report `Undefined variable: JulcMap`, and the `break` case
 `break statement outside of a loop`, although the `break` is inside one.
 
-- **No program changes outcome.** The same programs are rejected and accepted as
-  before, and script bytes are unchanged.
+- **Newly rejected: a nested loop with `break` that updates nothing (#273).** A
+  for-each or `while` whose body has a `break` but updates no variable declared
+  before it, nested inside a loop that updates one, used to be accepted with its
+  `break` ignored, so the inner loop ran to its end and could fail where Java
+  returns. It is now rejected with `JULC0063`, as the same loop is on its own.
+- **Otherwise no program changes outcome.** Every other program is rejected or
+  accepted as before, and script bytes of accepted programs are unchanged. `continue`
+  is reported when the compiler lowers the loop that contains it, so code JuLC never
+  compiles, such as a nested off-chain helper class, still compiles.
 - **Tools that match message text** see new text for every form except `return`
   inside `while`. Match the code instead. See the
   [troubleshooting guide](/reference/troubleshooting/) for each code's fix.

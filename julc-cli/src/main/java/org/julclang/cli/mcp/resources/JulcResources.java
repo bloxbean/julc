@@ -88,12 +88,13 @@ public final class JulcResources {
 
                 ## Forbidden in on-chain code
 
-                1. **No mutation after declaration.** `x = x + 1` outside a `while` accumulator
-                   is rejected. Use a new `var y = x + 1`.
+                1. **No mutation after declaration.** `x = x + 1` outside a loop accumulator
+                   is rejected (JULC0061). Use a new `var y = x + 1`.
                 2. **No uninitialized variables.** `var x;` then `x = 5;` does NOT compile.
                    Initialize at declaration: `var x = BigInteger.ZERO;`.
-                3. **No `return` inside a `while` loop.** Use a boolean accumulator and
-                   return after the loop. Compile-time error JULC0003.
+                3. **No `return` inside a `while` loop.** Exit with `break`, or keep the result
+                   in a variable declared before the loop, and return after the loop.
+                   Compile-time error JULC0003.
                 4. **No `return` inside a switch case** — use `yield`.
                 5. **No lambdas stored in variables.** `Function<X, Y> f = x -> ...; f.apply(...)`
                    does not compile. Pass lambdas inline to HOFs.
@@ -105,6 +106,7 @@ public final class JulcResources {
                    none-variants. JULC0017.
                 9. **No try/catch.** JULC0015. UPLC has no exception model.
                 10. **No C-style for, do-while, floating point.** JULC0018, JULC0019, JULC0020.
+                11. **No `continue`.** Guard the rest of the loop body with an `if`. JULC0060.
 
                 ## Type / API gotchas
 

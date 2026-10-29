@@ -47,9 +47,15 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - **`if` / `else if` / `else`**, **ternary `? :`**.
 - **`for-each` loops** over `JulcList<T>`, `JulcMap<K,V>`, and ledger list types. Auto-desugared to recursive UPLC.
 - **`while` loops** with **explicit accumulators** (single or multi-variable). Desugared to `LetRec` fixed points.
-- **Local variables** declared with `var` or explicit type, **must be initialized at declaration**, and **are immutable after assignment** (single-assignment).
+- **Local variables** declared with `var` or explicit type **must be initialized at declaration**. Reassignment is supported only by specific loop paths, not generally: accumulator-carrying loops support direct loop-body/bare-block updates and accumulator updates; an `if` may not update a loop-body local declared outside that branch. Loops with no accumulator and single-accumulator loops with `break` do not support general body-local reassignment. Switch arms may not update enclosing variables, even through nested loops; compute and yield an arm-local result instead. See [complete scope rules and examples](/best-practices/conditionals/#loop-local-assignment-rules).
+- In a single-accumulator loop with `break`, branch-local updates can still work inside an `if` whose branches contain no break; that branch uses the normal body lowering.
+- An `if` at method level or inside a switch arm preserves a nested loop's accumulator updates after the branch (#161). Inside a switch arm, declare the accumulator in that arm and explicitly yield its result; this also works when the switch expression is inside an outer loop body. The separate restrictions on conditional loop-body local updates and switch-arm updates to enclosing variables still apply.
+- **Rejected:** reassignment of a switch case-pattern variable ([#162](https://github.com/bloxbean/julc/issues/162)); copy it to a fresh arm-local accumulator instead. Otherwise-supported `instanceof` binding reassignment is unchanged.
+- Where an assignment is supported, `x += y` (also `-=`, `*=`, `/=`, `%=`) means `x = x op y` on integers, and `+=` appends to a `String`. `&=`, `|=`, `^=` and shift compound operators are rejected (`JULC0052`): evaluate the check first, then write `ok = ok && c`. `x++` is rejected.
+- Declare one variable per statement (`BigInteger a = x, b = y;` is `JULC0053`). Overloaded methods are rejected unless every declaration compiles to the same code (`JULC0054`). A local, parameter or field may share a method's name. Calling a member on a value whose type is unknown, such as `d.amount()` on `PlutusData`, is `JULC0055`. Do not update a static field or `@Param` in a loop except in the entrypoint, and only when no other method reads it (`JULC0056`); copy it into a local accumulator. Do not reassign a for-each variable in a loop that updates no variable declared before it (`JULC0058`); declare a new local.
+- An `instanceof` pattern variable is bound only when `x instanceof T v` is the whole condition of an `if` outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In a loop body, an `&&` condition, a `!` guard, a ternary or a lambda, switch on the sealed type instead. A pattern variable may not reuse a field or `@Param` name (`JULC0059`).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
-- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`, `list.find(...)`, `ListsLib.foldl(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`.
+- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`. Compiled `any`/`all` evaluate the predicate for every element (no early exit), so guard a predicate that can fail with `&&`. Assign `map`'s result to a typed `JulcList<T>` local before a lambda uses its elements. In a javac-compiled project do **not** use `list.find(...)` (the compiled result is an optional value, not the element) or the static `ListsLib.any/all/filter/map/find/foldl/zip` forms (not declared in Java, so javac rejects them); write a fold as an accumulator loop.
 - **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
@@ -75,6 +81,37 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - 🚫 **`@Param PlutusData.BytesData/MapData/ListData/IntData`.** Use `byte[]`, `BigInteger`, typed records, or redeemers instead.
 - 🚫 **Same parameter name as a sealed-interface constructor field.** See limitation 6.4.
 - 🚫 **Calling `.hash()` on a value that is already a hash type** (double-unwrap).
+
+### 3.4 Conditional control flow and script size
+
+- An `if` does **not** need an `else`. Nested `if` statements and code following them
+  retain normal Java behavior.
+- Prefer linear guard clauses for independent validation rules:
+
+  ```java
+  if (!validAmount(datum)) {
+      return false;
+  }
+  if (!ownerSigned(ctx, datum)) {
+      return false;
+  }
+  return validateOutputs(ctx);
+  ```
+
+- Put cheap, safe checks before expensive checks so invalid transactions stop early.
+- When branches mix early returns with fallthrough, code after the conditional becomes
+  the continuation of every branch that can reach it. If several branches reach a large
+  common block, extract that block into a static helper so its generated body is defined
+  once.
+- Do **not** move unsafe operations (such as `list.head()`, division, indexing, or data
+  decoding) before their guards merely to reduce size. UPLC evaluation is strict.
+- For sealed types, prefer an exhaustive `switch` expression that produces a value.
+  Do not generate a statement-style switch containing `return` in its cases.
+
+Full examples and the reasoning behind these rules:
+[Conditionals and Script Size](/best-practices/conditionals/). Tested rewrites that
+compute values instead of updating them, and list-operation caveats:
+[Value-Oriented Contract Code](/best-practices/value-oriented-code/).
 
 ---
 
@@ -280,7 +317,13 @@ For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByt
 |---|---|---|
 | `Method must have a body: <name>` | Abstract method in validator class | Provide a body for every method. |
 | `Variable must be initialized: <name>` | `var x;` without initializer | Initialize at declaration (`var x = BigInteger.ZERO;`). |
-| `Cannot return inside while loop` | `return` inside `while` body | Use a boolean accumulator; return after the loop. |
+| `'return' is not supported inside while loop body` (`JULC0003`) | `return` inside `while` body | Exit with `break`, or keep the result in a variable declared before the loop; return after the loop. |
+| `continue is not supported on-chain` (`JULC0060`) | `continue` in a loop | Guard the rest of the body with an `if`. |
+| `Reassigning '<name>' is not supported outside a loop` (`JULC0061`) | `x = ...` outside a loop | Declare a new local, or choose the value in one expression. |
+| `JulcMap.of is off-chain only ...` (`JULC0062`) | `JulcMap.of(...)` in contract code | `JulcMap.<K, V>empty().insert(k, v)`; `insert` adds at the front, so insert several entries in reverse order. |
+| `break is not supported in a loop that updates no variable declared before the loop` (`JULC0063`) | `break` in a loop that only checks | Set a variable declared before the loop where it breaks. |
+| `A nested ... loop is not supported in a loop that contains break ...` (`JULC0064`) | nested loop in a loop with `break` | Move the nested loop into a helper method. |
+| `Updating '<name>' inside a switch statement ... is not supported in a loop body` (`JULC0065`) | loop update inside a `switch` statement, an expression or a lambda | Write the update as a statement of its own, in the loop body or an `if`/`else` branch. |
 | `Switch is not exhaustive on <Type>: missing <variants>` | Sealed-interface switch missing cases | Add the missing case branches or a `default ->`. |
 | `Method does not return on all paths` | Missing return in some branch | Make every path return; void methods are exempt. |
 | `Type mismatch: expected IntegerType, got DataType` | Comparing `Builtins.unIData(...)` with raw `Data` field | Apply `unIData`/`unBData`/etc. to the right operand too. |
@@ -313,7 +356,7 @@ All imports are from `org.julclang.stdlib.lib.*`.
 `txOutAddress(out)`, `txOutValue(out)`, `txOutDatum(out)`, `outputsAt(outputs, addr)`, `countOutputsAt(outputs, addr)`, `uniqueOutputAt(outputs, addr)`, `outputsWithToken(outputs, policy, token)`, `valueHasToken(value, policy, token)`, `lovelacePaidTo(outputs, addr)`, `paidAtLeast(outputs, addr, amount)`, `getInlineDatum(out)`, `resolveDatum(txInfo, out)`. **Prefer field access**: `out.address()`, `out.value()`, `out.datum()`.
 
 ### MathLib
-`abs(n)`, `max(a, b)`, `min(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)`.
+`abs(n)`, `max(a, b)`, `min(a, b)`, `floorDiv(a, b)`, `floorMod(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)` (PV11 only).
 
 ### IntervalLib
 `between(lo, hi)`, `never()`, `isEmpty(interval)`, `finiteUpperBound(interval)`, `finiteLowerBound(interval)`, `contains(interval, point)`.
@@ -331,7 +374,15 @@ All imports are from `org.julclang.stdlib.lib.*`.
 `credentialHash(addr)` → `byte[]`, `isScriptAddress(addr)`, `isPubKeyAddress(addr)`, `paymentCredential(addr)` → `Credential`.
 
 ### BlsLib (Plutus V3)
-G1/G2 add/scale/neg, pairing, MSM, and `bls12_381_finalVerify`.
+G1/G2 add/scale/neg, pairing, and `bls12_381_finalVerify` are available on
+PV10+; multi-scalar multiplication (MSM) requires PV11. Points and Miller-loop
+results are the opaque types `JulcG1`, `JulcG2`, `JulcMlResult`
+(`org.julclang.core.types`), never `byte[]`: only `g1Compress`/`g2Compress`
+give bytes and only `g1Uncompress`/`g2Uncompress` take them back. MSM takes
+the native lists from `Builtins.scalars(...)`/`g1Points(...)`/`g2Points(...)`
+or `Builtins.scalarsFromList(JulcList<BigInteger>)`/
+`g1PointsFromCompressed(JulcList<byte[]>)`. Declare BLS locals with the typed
+names or `var`; a `byte[]` local holding a point is `JULC0041`.
 
 ### NativeValueLib (PV11)
 Native Mary-era `Value` operations use opaque `JulcValue`. Convert explicitly
@@ -585,6 +636,8 @@ For deeper patterns, consult [`julc-examples`](https://github.com/bloxbean/julc-
 - ❌ **`@Param PlutusData.BytesData/MapData/ListData/IntData`.** Banned.
 - ❌ **Three-way mutual recursion.** Refactor.
 - ❌ **Calling `.hash()` on a value that is already hash bytes.** Causes double-unwrap.
+- ❌ **Repeating a large common block after deeply branching early-return logic.** Keep
+  common work in one helper and use guard clauses where they express the rules clearly.
 
 ---
 
@@ -613,6 +666,7 @@ Before writing any JuLC code, verify the agent can answer "yes" to each:
 8. ✅ Are switch case binding names different from method parameter names?
 9. ✅ Am I using `@SpendingValidator` / `@MintingValidator` etc. correctly with a `static @Entrypoint` method?
 10. ✅ Have I imported from `org.julclang.ledger.*` and `org.julclang.stdlib.lib.*`?
+11. ✅ Have I used guard clauses and kept any large shared continuation in one helper?
 
 If yes to all → write the code. If unsure on any → re-read the relevant section above.
 

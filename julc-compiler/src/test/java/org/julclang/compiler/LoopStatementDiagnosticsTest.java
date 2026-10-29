@@ -6,11 +6,21 @@ import org.julclang.compiler.error.DiagnosticInfo;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.core.types.JulcList;
+import org.julclang.core.types.JulcMap;
+import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.junit.jupiter.api.Test;
 
+import javax.tools.ToolProvider;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.math.BigInteger;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -166,6 +176,42 @@ class LoopStatementDiagnosticsTest {
         assertEquals("JULC0060", error.diagnostics().getFirst().code(), error.getMessage());
     }
 
+    @Test
+    void continueInCodeTheCompilerNeverLowersIsAccepted() {
+        // Review r1 F1: a static nested helper class is ordinary off-chain Java that JuLC does not
+        // compile. JULC0060 is raised where a loop is lowered, so the helper keeps compiling, and
+        // the script is the same as without the continue.
+        String validator = """
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcList;
+
+                @SpendingValidator
+                class Probe {
+                    static class OffChain {
+                        static long count(JulcList<BigInteger> xs) {
+                            long c = 0;
+                            for (var x : xs) {
+                                %s
+                            }
+                            return c;
+                        }
+                    }
+
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        for (var level : LEVELS) {
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setOptimizationLevel(level));
+            var withContinue = compiler.compile(validator.formatted("if (x.signum() < 0) { continue; } c = c + 1;")).program();
+            var guarded = compiler.compile(validator.formatted("if (x.signum() >= 0) { c = c + 1; }")).program();
+            assertArrayEquals(UplcFlatEncoder.encodeProgram(guarded), UplcFlatEncoder.encodeProgram(withContinue), level.toString());
+        }
+    }
+
     // --- return inside while: JULC0003 ---
 
     @Test
@@ -255,6 +301,18 @@ class LoopStatementDiagnosticsTest {
     }
 
     @Test
+    void reassignmentInLambdaIsReportedOnce() {
+        // Review r1 F7: a lambda body is generated more than once; the diagnostic is reported once.
+        rejected("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        BigInteger k = BigInteger.ZERO;
+                        long n = xs.map(v -> k = v).size();
+                        return n;
+                    }
+                """, DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP, "Reassigning 'k' is not supported outside a loop", "k = v");
+    }
+
+    @Test
     void assignmentInsideLoopKeepsItsOwnDiagnostic() {
         // An assignment inside an expression, in a loop with no accumulator, is not "outside a
         // loop"; it keeps the generic diagnostic (LoopBlockAssignmentTest covers it).
@@ -304,6 +362,49 @@ class LoopStatementDiagnosticsTest {
     }
 
     @Test
+    void julcMapOfIsRecognisedByItsQualifiedName() {
+        rejected("""
+                    public static boolean m(byte[] a) {
+                        var map = org.julclang.core.types.JulcMap.of(a, BigInteger.ONE);
+                        return map.containsKey(a);
+                    }
+                """, DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY,
+                "JulcMap.of is off-chain only and has no on-chain implementation", "org.julclang.core.types.JulcMap.of(");
+    }
+
+    @Test
+    void ownClassNamedJulcMapIsNotTheStdlibMap() {
+        // Review r1 F5: a class of the source named JulcMap is not org.julclang.core.types.JulcMap.
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileMethod("""
+                        public class JulcMap {
+                            static long of(long n) { return n; }
+                            public static long m(long n) { return JulcMap.of(n); }
+                        }
+                        """, "m"));
+        assertTrue(error.diagnostics().stream().noneMatch(d -> "JULC0062".equals(d.code())), error.getMessage());
+    }
+
+    @Test
+    void julcMapOfWithTwoEntriesRemedy() {
+        // insert adds at the front, so JulcMap.of(a, 1, b, 2) is empty().insert(b, 2).insert(a, 1),
+        // off-chain and on-chain: both have a as the first key.
+        var offChain = JulcMap.of(BigInteger.ONE, BigInteger.TEN, BigInteger.TWO, BigInteger.ZERO);
+        var rebuilt = JulcMap.<BigInteger, BigInteger>empty().insert(BigInteger.TWO, BigInteger.ZERO)
+                .insert(BigInteger.ONE, BigInteger.TEN);
+        assertEquals(offChain.keys().head(), rebuilt.keys().head());
+        assertEquals(offChain.keys().tail().head(), rebuilt.keys().tail().head());
+        evaluates("""
+                    public static byte[] m(byte[] a, byte[] b) {
+                        JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty()
+                                .insert(b, BigInteger.TWO).insert(a, BigInteger.ONE);
+                        return map.keys().head();
+                    }
+                """, List.of(PlutusData.bytes(new byte[]{1}), PlutusData.bytes(new byte[]{2})),
+                Constant.byteString(new byte[]{1}));
+    }
+
+    @Test
     void julcMapOfRemedy() {
         evaluates("""
                     public static boolean m(byte[] a) {
@@ -341,6 +442,167 @@ class LoopStatementDiagnosticsTest {
                     }
                 """, DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR,
                 "break is not supported in a loop that updates no variable declared before the loop", "break;");
+    }
+
+    @Test
+    void breakInLoopWhoseUpdateIsInASwitchStatement() {
+        // Review r1 F2: the loop does update c, inside a switch statement, which the accumulator
+        // analysis does not see. The diagnostic points at the update, not at the break.
+        rejected("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long c = 0;
+                        for (var x : xs) {
+                            if (x.signum() < 0) { break; }
+                            switch (x.intValue()) { case 1 -> c = c + 1; default -> c = c + 2; }
+                        }
+                        return c;
+                    }
+                """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
+                "Updating 'c' inside a switch statement is not supported in a loop body", "c = c + 1;");
+    }
+
+    @Test
+    void breakInLoopWhoseUpdateIsInAnExpressionOrLambda() {
+        rejected("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long c = 0;
+                        for (var x : xs) {
+                            if (x.signum() < 0) { break; }
+                            if ((c = c + 1) > 5) { Builtins.error(); }
+                        }
+                        return c;
+                    }
+                """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
+                "Updating 'c' inside an expression is not supported in a loop body", "c = c + 1)");
+        rejected("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        BigInteger k = BigInteger.ZERO;
+                        for (var x : xs) {
+                            if (x.signum() < 0) { break; }
+                            long n = xs.map(v -> k = v).size();
+                        }
+                        return 1;
+                    }
+                """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
+                "Updating 'k' inside a lambda is not supported in a loop body", "k = v");
+    }
+
+    @Test
+    void updatePositionRemedies() {
+        // The JULC0065 fixes. Java for [1, 2, -1, 5]: c is 1 + 2 = 3 with the if/else, and 2 with
+        // the update as a statement; both loops break at -1.
+        evaluates("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long c = 0;
+                        for (var x : xs) {
+                            if (x.signum() < 0) { break; }
+                            if (x.intValue() == 1) { c = c + 1; } else { c = c + 2; }
+                        }
+                        return c;
+                    }
+                """, List.of(ints(1, 2, -1, 5)), integer(3));
+        evaluates("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long c = 0;
+                        for (var x : xs) {
+                            if (x.signum() < 0) { break; }
+                            c = c + 1;
+                            if (c > 5) { Builtins.error(); }
+                        }
+                        return c;
+                    }
+                """, List.of(ints(1, 2, -1, 5)), integer(2));
+    }
+
+    private static final String T26 = """
+                public static BigInteger m(JulcList<BigInteger> xs) {
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) {
+                        s = s.add(x);
+                        for (var y : xs) {
+                            if (y.compareTo(BigInteger.ONE) == 0) { break; }
+                            if (y.compareTo(BigInteger.TWO) == 0) { Builtins.error(); }
+                        }
+                    }
+                    return s;
+                }
+            """;
+
+    /** Compiles the class with javac and runs {@code m(xs)}. */
+    private static Object javaResult(String members, JulcList<BigInteger> xs) throws Exception {
+        var dir = Files.createTempDirectory("julc-t26-");
+        var file = dir.resolve("Probe.java");
+        Files.writeString(file, source(members));
+        var classpath = String.join(File.pathSeparator,
+                JulcList.class.getProtectionDomain().getCodeSource().getLocation().getPath(),
+                Builtins.class.getProtectionDomain().getCodeSource().getLocation().getPath());
+        var errors = new ByteArrayOutputStream();
+        int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors,
+                "-classpath", classpath, "-d", dir.toString(), file.toString());
+        assertEquals(0, status, errors.toString());
+        try (var loader = new URLClassLoader(new URL[]{dir.toUri().toURL()}, LoopStatementDiagnosticsTest.class.getClassLoader())) {
+            return loader.loadClass("Probe").getMethod("m", JulcList.class).invoke(null, xs);
+        }
+    }
+
+    @Test
+    void nestedForEachWithBreakAndNoAccumulator() throws Exception {
+        // ADR-062 T26 (#273): javac stops the inner loop at 1, so Builtins.error() is never reached
+        // and m([1, 2]) = 3. JuLC used to accept this and ignore the inner break, so the script
+        // failed. It is now rejected at the inner break, as the same loop is on its own.
+        assertEquals(BigInteger.valueOf(3), javaResult(T26, JulcList.of(BigInteger.ONE, BigInteger.TWO)));
+        rejected(T26, DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR,
+                "break is not supported in a loop that updates no variable declared before the loop", "break;");
+    }
+
+    @Test
+    void nestedWhileWithBreakAndNoAccumulatorAndOuterLoopWithTwoAccumulators() {
+        rejected("""
+                    public static BigInteger m(JulcList<BigInteger> xs) {
+                        BigInteger s = BigInteger.ZERO;
+                        for (var x : xs) {
+                            s = s.add(x);
+                            while (x.signum() > 0) {
+                                if (x.compareTo(BigInteger.ONE) == 0) { break; }
+                                Builtins.error();
+                            }
+                        }
+                        return s;
+                    }
+                """, DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR,
+                "break is not supported in a loop that updates no variable declared before the loop", "break;");
+        rejected("""
+                    public static BigInteger m(JulcList<BigInteger> xs) {
+                        BigInteger s = BigInteger.ZERO;
+                        BigInteger t = BigInteger.ZERO;
+                        for (var x : xs) {
+                            s = s.add(x);
+                            t = t.add(x);
+                            for (var y : xs) {
+                                if (y.compareTo(BigInteger.ONE) == 0) { break; }
+                            }
+                        }
+                        return s.add(t);
+                    }
+                """, DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR,
+                "break is not supported in a loop that updates no variable declared before the loop", "break;");
+    }
+
+    @Test
+    void nestedLoopWithoutBreakIsStillAccepted() {
+        // Control: the inner loop without break is unaffected. Java: 1 + 2 = 3.
+        evaluates("""
+                    public static BigInteger m(JulcList<BigInteger> xs) {
+                        BigInteger s = BigInteger.ZERO;
+                        for (var x : xs) {
+                            s = s.add(x);
+                            for (var y : xs) {
+                                if (y.compareTo(BigInteger.TEN) == 0) { Builtins.error(); }
+                            }
+                        }
+                        return s;
+                    }
+                """, List.of(ints(1, 2)), integer(3));
     }
 
     @Test
@@ -396,6 +658,26 @@ class LoopStatementDiagnosticsTest {
                 """, DiagnosticCodes.BREAK_LOOP_STATEMENT_UNSUPPORTED,
                 "A nested for-each loop is not supported in a loop that contains break and updates one variable declared before the loop",
                 "for (var y");
+    }
+
+    @Test
+    void otherStatementInLoopWithBreakIsNotJulc0064() {
+        // Review r1 F3: JULC0064 and its fix are about nested loops; a stray ';' keeps its own
+        // diagnostic.
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileMethod(source("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long c = 0;
+                        for (var x : xs) {
+                            if (x.signum() < 0) { break; }
+                            ;
+                            c = c + 1;
+                        }
+                        return c;
+                    }
+                """), "m"));
+        assertTrue(error.getMessage().contains("EmptyStmt"), error.getMessage());
+        assertTrue(error.diagnostics().stream().noneMatch(d -> "JULC0064".equals(d.code())), error.getMessage());
     }
 
     @Test

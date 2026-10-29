@@ -125,8 +125,27 @@ public final class CompilerTypeDiagnostics {
     }
 
     /**
-     * JULC0064: a statement the break-aware body of a single-accumulator loop cannot compile;
-     * {@code statement} describes it, for example {@code "A nested while loop"} (ADR-062 T20).
+     * JULC0060: a {@code continue} in a loop the compiler lowers. It is reported at loop lowering,
+     * not by subset validation, so code JuLC never compiles is unaffected (ADR-062 T20).
+     */
+    public static CompilerException continueUnsupported(SourceLocation location) {
+        var info = DiagnosticCodes.CONTINUE_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0065: an update of {@code name}, a variable declared before the loop, in a position the
+     * loop lowering does not carry; {@code position} says where, for example
+     * {@code "inside a switch statement"} (ADR-062 T20).
+     */
+    public static CompilerException loopUpdatePositionUnsupported(String name, String position, SourceLocation location) {
+        var info = DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(name, position), location);
+    }
+
+    /**
+     * JULC0064: a nested loop in the break-aware body of a single-accumulator loop;
+     * {@code statement} is {@code "A nested while loop"} or {@code "A nested for-each loop"} (ADR-062 T20).
      */
     public static CompilerException breakLoopStatementUnsupported(String statement, SourceLocation location) {
         var info = DiagnosticCodes.BREAK_LOOP_STATEMENT_UNSUPPORTED;

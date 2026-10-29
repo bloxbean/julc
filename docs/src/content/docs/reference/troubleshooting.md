@@ -168,7 +168,7 @@ expression statements are supported on-chain.`
 **Cause:** A Java statement type that has no on-chain equivalent was used.
 Unsupported statements include `switch` statements (as opposed to `switch`
 expressions), `try`/`catch`, `do`/`while`, labeled statements, and others.
-`continue` is rejected earlier, with `JULC0060` ([2.19](#219-julc0060-continue-is-not-supported-on-chain)).
+`continue` reports `JULC0060` ([1.25](#125-julc0060-continue-is-not-supported-on-chain)).
 
 **Fix:** Rewrite using the supported statement forms: variable declarations, if/else,
 for-each, while, return, and expression statements.
@@ -192,10 +192,11 @@ var result = switch (action) {
 
 **Cause:** A loop that contains `break` and updates exactly one variable declared
 before it may contain only variable declarations, assignments, if/else and break.
-A nested `while` or for-each loop, or any other statement, in its body is rejected.
-The message names the statement: `A nested while loop`, `A nested for-each loop`,
-or for example `A switch statement`. A loop with `break` that updates two or more
-variables declared before it supports nested loops.
+A nested `while` or for-each loop in its body is rejected with this code; the
+message says `A nested while loop` or `A nested for-each loop`. Another unsupported
+statement keeps its own message, `Unsupported statement in break-aware loop body:
+<StatementType>`. A loop with `break` that updates two or more variables declared
+before it supports nested loops.
 
 **Fix:** Move the nested loop into a helper method that returns the value it
 computes, and call the helper from the loop body.
@@ -679,6 +680,12 @@ the loop. A loop that updates none compiles its body as plain statements, which
 cannot stop the loop. Before [#257](https://github.com/bloxbean/julc/issues/257) this was
 reported as `break statement outside of a loop`, although the `break` is inside one.
 
+The same applies to such a loop nested inside a loop that does update a variable.
+That form used to be accepted, with its `break` ignored, so the inner loop ran to its
+end ([#273](https://github.com/bloxbean/julc/issues/273)); it is now rejected with this
+code too. A loop whose only update is inside a `switch` statement or an expression
+reports `JULC0065` at the update instead ([1.24](#124-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-a-loop-body)).
+
 **Fix:** Declare a variable before the loop and set it where the loop breaks.
 
 ```java
@@ -706,14 +713,79 @@ off-chain code. The compiler has no lowering for it. Before
 `Undefined variable: JulcMap`.
 
 **Fix:** Build the map from `JulcMap.empty()` with `insert`. `insert` adds the
-entry at the front of the map.
+entry at the front of the map, so insert the entries in reverse order to get the
+order `JulcMap.of` gives.
 
 ```java
 // WRONG
 JulcMap<byte[], BigInteger> map = JulcMap.of(key, BigInteger.ONE);
+JulcMap<byte[], BigInteger> two = JulcMap.of(a, BigInteger.ONE, b, BigInteger.TWO);
 
 // CORRECT
 JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, BigInteger.ONE);
+JulcMap<byte[], BigInteger> two = JulcMap.<byte[], BigInteger>empty()
+        .insert(b, BigInteger.TWO).insert(a, BigInteger.ONE); // keys: a, b
+```
+
+---
+
+### 1.24 `JULC0065` `Updating '<name>' inside a switch statement is not supported in a loop body`
+
+**Cause:** A loop carries an update of a variable declared before it only when the
+update is a statement of its own, directly in the loop body or in an `if`/`else`
+branch. An update inside a `switch` statement, inside an expression or inside a
+lambda is not seen as one. A loop with `break` whose only updates are in such a
+position reports this code at the update; the message says where (`inside a switch
+statement`, `inside an expression`, `inside a lambda`).
+
+**Fix:** Write the update as a statement of its own.
+
+```java
+// WRONG
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    switch (x.intValue()) { case 1 -> c = c + 1; default -> c = c + 2; }
+}
+
+// CORRECT
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    if (x.intValue() == 1) { c = c + 1; } else { c = c + 2; }
+}
+
+// WRONG
+if ((c = c + 1) > 5) { Builtins.error(); }
+
+// CORRECT
+c = c + 1;
+if (c > 5) { Builtins.error(); }
+```
+
+---
+
+### 1.25 `JULC0060` `continue is not supported on-chain`
+
+**Cause:** `continue` is outside the on-chain subset. Loops are compiled to folds
+and recursive functions whose body runs to its end on every iteration; there is no
+lowering that skips the rest of the body. The error is reported when the compiler
+lowers the loop that contains the `continue`, so code JuLC never compiles, such as
+a nested off-chain helper class, is not affected. Before
+[#257](https://github.com/bloxbean/julc/issues/257) this was reported as
+`Unsupported statement: ContinueStmt`, without a code.
+
+**Fix:** Guard the rest of the loop body with an `if` instead.
+
+```java
+// WRONG
+for (var x : xs) {
+    if (x.signum() < 0) { continue; }
+    total = total.add(x);
+}
+
+// CORRECT
+for (var x : xs) {
+    if (x.signum() >= 0) { total = total.add(x); }
+}
 ```
 
 ---
@@ -1096,31 +1168,6 @@ if (action instanceof Bid best) { return best.amount(); }
 
 // CORRECT
 if (action instanceof Bid bid) { return bid.amount(); }
-```
-
----
-
-### 2.19 `JULC0060` `continue is not supported on-chain`
-
-**Cause:** `continue` is outside the on-chain subset. Loops are compiled to folds
-and recursive functions whose body runs to its end on every iteration; there is no
-lowering that skips the rest of the body. Before
-[#257](https://github.com/bloxbean/julc/issues/257) this was reported as
-`Unsupported statement: ContinueStmt`, without a code.
-
-**Fix:** Guard the rest of the loop body with an `if` instead.
-
-```java
-// WRONG
-for (var x : xs) {
-    if (x.signum() < 0) { continue; }
-    total = total.add(x);
-}
-
-// CORRECT
-for (var x : xs) {
-    if (x.signum() >= 0) { total = total.add(x); }
-}
 ```
 
 ---

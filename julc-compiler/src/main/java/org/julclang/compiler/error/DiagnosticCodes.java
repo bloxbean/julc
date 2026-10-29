@@ -203,7 +203,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "STDLIB",
             "JulcMap.of is off-chain only and has no on-chain implementation",
-            "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`.");
+            "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`. insert adds at the front, so JulcMap.of(a, x, b, y) is `JulcMap.<K, V>empty().insert(b, y).insert(a, x)`.");
 
     public static final DiagnosticInfo LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0022",
@@ -220,6 +220,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "Reassigning {0} ''{1}'' is not supported in a loop that updates no variable declared before the loop",
             "Declare a new local for the new value instead of reassigning, for example var adjusted = amount.subtract(fee);");
+
+    public static final DiagnosticInfo LOOP_UPDATE_POSITION_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0065",
+            "LOOP_UPDATE_POSITION_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Updating ''{0}'' {1} is not supported in a loop body",
+            "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, and `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`.");
 
     public static final DiagnosticInfo METHOD_BODY_MISSING = new DiagnosticInfo(
             "JULC0001",
@@ -546,6 +554,7 @@ public final class DiagnosticCodes {
             JULCMAP_OF_OFF_CHAIN_ONLY,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
+            LOOP_UPDATE_POSITION_UNSUPPORTED,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
             METHOD_OVERLOAD_UNSUPPORTED,
