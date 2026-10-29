@@ -10,7 +10,8 @@ import java.util.Set;
  * {@code m(BigInteger a, BigInteger b, JulcList<BigInteger> xs)} returning {@code BigInteger}, with
  * method-level declarations, {@code while} loops with a bounded counter, for-each loops over
  * {@code xs}, nesting up to two loops deep, accumulator updates (also inside {@code if}/{@code else}),
- * {@code if (...) break;}, loop-body locals, ternaries, {@code &&} and {@code ||}.
+ * {@code if (...) break;}, loop-body locals, ternaries, {@code &&} and {@code ||}. Since G0 r2 a ternary appears
+ * inside fewer than {@link #MAX_COMPARISON_NESTING} {@code compareTo} operands (#146).
  * <p>
  * The grammar stays inside the subset JuLC documents as supported and inside the semantic
  * intersection of ADR-062:
@@ -54,10 +55,23 @@ public final class G0 {
      * The decoding's version, saved with every failure it finds (ADR-063 D8). Change it whenever a
      * choice sequence would decode to a different program.
      */
-    public static final String VERSION = "G0 r1";
+    public static final String VERSION = "G0 r2";
 
-    /** A decoded program: the source of class {@code Probe} and the features it uses. */
-    public record Program(String source, Set<Feature> features) {
+    /**
+     * G0 r2 bounds comparison nesting: a ternary is generated only inside fewer than this many
+     * {@code compareTo} operands, and an atom takes its place at the bound. #146 doubles the script with
+     * each nested operand, and deeper programs ran the compiler out of memory (ADR-063 D13, open question
+     * 8). Remove the bound, as G0 r3, when #146 is fixed.
+     */
+    public static final int MAX_COMPARISON_NESTING = 14;
+    /** No bound on comparison nesting: {@code decode(plan, UNBOUNDED)} is G0 r1. */
+    public static final int UNBOUNDED = Integer.MAX_VALUE;
+
+    /**
+     * A decoded program: the source of class {@code Probe}, the features it uses, and the most
+     * {@code compareTo} operands that enclose any of its ternaries.
+     */
+    public record Program(String source, Set<Feature> features, int comparisonNesting) {
     }
 
     private static final int MAX_LOOP_DEPTH = 2;
@@ -68,16 +82,29 @@ public final class G0 {
     private final StringBuilder out = new StringBuilder();
     private final Set<Feature> features = EnumSet.noneOf(Feature.class);
     private int fresh;
+    private final int maxComparisonNesting;
     /** How many {@code compareTo} operands enclose the expression being generated. */
     private int comparisonOperands;
+    private int deepestTernary;
 
-    private G0(Choices choices) {
+    private G0(Choices choices, int maxComparisonNesting) {
         this.choices = choices;
+        this.maxComparisonNesting = maxComparisonNesting;
     }
 
+    /** The program this plan decodes to under the current version, {@link #VERSION}. */
     public static Program decode(List<Integer> plan) {
-        var generator = new G0(new Choices(plan));
-        return new Program(generator.method(), generator.features);
+        return decode(plan, MAX_COMPARISON_NESTING);
+    }
+
+    /**
+     * The program this plan decodes to with the given comparison-nesting bound. {@link #UNBOUNDED} gives G0 r1,
+     * so an r1 plan from a D8 record still decodes to the program it was found with.
+     */
+    public static Program decode(List<Integer> plan, int maxComparisonNesting) {
+        if (maxComparisonNesting < 1) throw new IllegalArgumentException("the nesting bound must be positive");
+        var generator = new G0(new Choices(plan), maxComparisonNesting);
+        return new Program(generator.method(), generator.features, generator.deepestTernary);
     }
 
     /** One variable in scope: {@code BigInteger} unless it is a loop counter, which is {@code long}. */
@@ -226,6 +253,8 @@ public final class G0 {
             case 1 -> expression(scope, depth - 1) + ".subtract(" + expression(scope, depth - 1) + ")";
             case 2 -> expression(scope, depth - 1) + ".multiply(BigInteger.valueOf(" + (1 + choices.below(3)) + "))";
             case 3 -> {
+                if (comparisonOperands >= maxComparisonNesting) yield atom(scope);
+                deepestTernary = Math.max(deepestTernary, comparisonOperands);
                 features.add(Feature.TERNARY);
                 if (comparisonOperands >= DEEP_COMPARISON_NESTING) features.add(Feature.DEEP_COMPARISON);
                 yield "(" + condition(scope, 1) + " ? " + expression(scope, depth - 1) + " : " + expression(scope, depth - 1) + ")";

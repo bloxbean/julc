@@ -80,7 +80,11 @@ jobs:
     - name: Fuzz
       run: ./gradlew :${{ matrix.module }}:fuzz --tests '${{ matrix.target }}' -Pfuzz.duration=${{ matrix.duration }} --stacktrace
 
-    # The failing input is saved as crash-* next to the target's seeds; add it there to replay it in every build.
+    # The failing input is saved as crash-* next to the target's seeds. Never commit it there as it is: that
+    # directory is both the replay set of `test` and Jazzer's seed corpus, and no rule or pin passes a crash
+    # (ADR-063 D6), so a committed crash fails every build and stops every later fuzz run during initialization.
+    # Report it (for a known issue, on that issue), and commit the input, renamed, only once a fix or a pin
+    # makes it pass.
     # build/difftest/ holds the D8 record of a G0 failure (last-failure.diffcase), with each configuration's
     # observations and costs, and the tally of inputs the registry explained (g0-fuzz-explained.txt).
     - name: Upload the failing input

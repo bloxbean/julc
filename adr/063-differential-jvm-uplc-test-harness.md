@@ -117,6 +117,8 @@ Agreement means both executions return `Value` with equal Data and equal trace s
 `Failure` with equal trace sequences. Failure kinds (for example `ArithmeticException` versus a builtin error)
 are not compared in the first version, so two `Failure`s that agree do not show that they failed for the same
 reason; the trace prefix is compared (ADR-062 T12, open question 3). `Crash` is always a defect.
+*r6:* a `Crash` whose detail starts with `encoder:` comes from `julc-core`'s FLAT encoder, which encodes the
+compiled program to measure its size (D2), not from the compiler; its detail starts with `compiler:`.
 
 A trace event is one call of `Builtins.trace`. Off-chain, it prints `[TRACE] message` with one `println`; the
 JVM side replaces standard output with a sink that records each such call, made directly by `Builtins.trace`,
@@ -146,7 +148,7 @@ unit tests against hand-written expected Data.
 Programs are generated as typed ASTs and printed as Java source, never as random text (ADR-061). The
 grammar grows in named stages:
 
-- **G0 (M2, as implemented in `gen/G0`, version `G0 r1`):**
+- **G0 (M2, as implemented in `gen/G0`, version `G0 r1`; *r6:* `G0 r2` bounds comparison nesting, D13):**
   - one static method `m(BigInteger a, BigInteger b, JulcList<BigInteger> xs)` returning `BigInteger`;
   - method-level `BigInteger` declarations, assigned only inside loops (ADR-048);
   - `while` loops whose `long` counter counts up to a bound of at most 3, and for-each over `xs`, nested at
@@ -231,8 +233,11 @@ is deterministic. The floor comes from measurement:
 
 The hidden class is narrower but not empty. A non-termination in a marked program whose script is at least
 64 KiB passes as T13. A T13 exhaustion in a smaller script, for example a shallow deep comparison inside a loop
-that runs many times, fails the run and is triaged by hand. The reviewer's suggested floor of 1 MB would also
-fail the 90,756-byte case above and the saved reproducer (429,033 bytes at `PV11_SAFE`).
+that runs many times, fails the run and is triaged by hand: rerun the configuration with ten times the budget.
+If it then finishes with the JVM's value, the input is a sub-floor T13 run; report it on #146 and do not commit
+it. If it still exhausts the budget, or finishes with another value, it is a new finding. The reviewer's
+suggested floor of 1 MB would also fail the 90,756-byte case above and the saved reproducer (429,033 bytes at
+`PV11_SAFE`).
 
 ### D7. Exhaustive small programs
 
@@ -377,6 +382,14 @@ Targets:
   replays the case. Every match is counted and reported (H2): each explained input prints a line, and the run
   ends with a tally per catalogue ID, written to `build/difftest/g0-fuzz-explained.txt`.
 
+  **G0 r2.** Jazzer drives G0 to comparison nesting no jqwik campaign reaches, and #146 doubles the script
+  with each level: two fuzzed G0 r1 programs, at nesting 17 and 21, ran the compiler out of memory in a fresh
+  JVM. G0 r2 (`G0.VERSION`) therefore generates a ternary only inside fewer than
+  `G0.MAX_COMPARISON_NESTING` (14) `compareTo` operands, and an atom at the bound. The bound changes only the
+  programs that exceed it; `G0.decode(plan, G0.UNBOUNDED)` still decodes G0 r1, so a D8 record whose
+  `found.generator` is `G0 r1` can be decoded from its plan, and a saved case replays from its source whatever
+  its generator. The bound is removed, as G0 r3, when #146 is fixed.
+
   One runner serves the whole Jazzer session, so `UplcExecutor`'s compile cache is bounded: at most 64 entries
   and 1 MiB of FLAT script in all, evicting the least recently used, and a larger script is never cached. It
   still serves a program run on several inputs one after another, as D7 does.
@@ -388,7 +401,11 @@ Modes:
 - `test` replays each target's saved inputs in `<Class>Inputs/<method>/`: seeds, and found inputs kept as
   regressions. Every `seed-*` decoder input must decode (`seedsDecode`), since a rejected seed adds no coverage.
 - `./gradlew :<module>:fuzz --tests '<one target>' [-Pfuzz.duration=10m]` fuzzes one target
-  (`gradle/jazzer-fuzz.gradle`). A failing input is written as `crash-*` next to the seeds.
+  (`gradle/jazzer-fuzz.gradle`). A failing input is written as `crash-*` next to the seeds. It is never
+  committed there as it is: that directory is both the replay set and Jazzer's seed corpus, and no rule or pin
+  passes a crash, so a committed crash would fail every build and stop every fuzz run during initialization.
+  It is reported (for a known defect, on its issue) and committed, renamed, only once a fix or a pin makes it
+  pass.
 - The nightly workflow fuzzes G0 for 20 minutes and the text parser for 10. A failure uploads the `crash-*`
   input, the test report and `build/difftest/`, which holds the D8 record; a passing G0 run uploads the tally.
 
@@ -480,17 +497,29 @@ D11 target constructs that G0 already generates.
    (a private fork or runner) would make it routine. Lean: set one up before M4.
 7. **Version catalog.** Only Jazzer is in `gradle/libs.versions.toml`; jqwik and the rest stay in
    `gradle.properties`. Lean: move them in a separate change.
-8. **A compiler crash in the T13 shape (D13, r6). Answered in review round r2 of #253.** The fuzzed T13
-   programs that seemed to run the compiler out of memory did not: `UplcExecutor` kept every compiled program
-   for the life of the runner, and in a fuzz session that is the whole session, so multi-megabyte programs
-   filled the heap until later compiles failed. Whether a compile failed depended on heap history, and the
-   input did not reproduce in a fresh JVM (H4). With the cache bounded (D13), a 300-second G0 run found
-   nothing, and the input that crashed in round 1 passed, explained as T13 at every level. Decisions:
+8. **A compiler crash in the T13 shape (D13, r6). Answered: G0 r2.** Two causes, in turn.
+   - *Round r2: the harness.* `UplcExecutor` kept every compiled program for the whole session, so
+     multi-megabyte programs filled the heap until later compiles failed, and the input did not reproduce in a
+     fresh JVM (H4). The cache is now bounded.
+   - *Round r3: the compiler.* With the cache bounded, two 300-second runs stopped after 44 s and 140 s on
+     G0 r1 programs whose compile runs out of memory in a fresh JVM: 46 `compareTo` at nesting 21 (all four
+     levels), and 36 at nesting 17 (`BASELINE`; `NONE` succeeds with a 32,702,668-byte script). That is #146's
+     growth itself. Both are reported on #146.
+
+   Decisions:
    - a compiler `OutOfMemoryError` stays a `Crash` and is never inconclusive (D3). Reporting it as inconclusive
-     would tie verdicts to JVM state and would have hidden this harness bug;
+     would tie verdicts to JVM state and would have hidden the harness bug;
    - an OOM that reproduces in a fresh JVM is a compiler defect and fails the run;
-   - G0's comparison nesting stays unbounded. If a reproducible crash stops the nightly job most nights, bound
-     it in a versioned G0 r2, with removal tied to #146.
+   - G0 r2 bounds comparison nesting at 14 (D13), until #146 is fixed. Under the bound, the two plans above give
+     scripts of at most 2,662,590 bytes and compile in under a second per level; at 17 they give 15,646,924 bytes
+     and take up to 5.8 s. The bound keeps `DEEP_COMPARISON` (8) and T13's exhaustion (nesting 12 and up in the
+     saved reproducer) reachable.
+9. **Sub-floor T13 runs (D6, r6).** Under G0 r2, programs are smaller, and a deep comparison inside a loop can
+   exhaust the budget below the 64 KiB floor. One of the two round-r3 runs stopped on such an input: 64,067
+   bytes at `NONE`, which finishes with ten times the budget with the JVM's −5. Each such input fails the run
+   until it is triaged. Options: a lower floor, which widens the hidden class of D6; or a rule condition that
+   reruns the configuration with ten times the budget and requires the JVM's value, which tests the mechanism
+   directly at the cost of a rerun per match. Lean: the rerun condition, in its own change.
 
 ## M1 results (2026-10-23, at `ebaf028c` plus this PR)
 
@@ -701,6 +730,33 @@ Measured on 2026-10-29 (UTC), after review round r2 of #253:
   - without the cache's eviction, `UplcExecutorCacheTest` fails;
   - without the T13 rule, the `t13-deep-comparison` replay fails.
 
+Measured on 2026-10-29 (UTC), after review round r3 of #253, with G0 r2:
+- `./gradlew :julc-difftest:test --rerun`: 105 tests, 0 failures: the 101 above and `G0BoundTest` (4 tests). The
+  replayed fuzz inputs decode under G0 r2; `t13-deep-comparison` is now explained by T13 at all four levels and
+  replays in 1.7 s instead of 6–10 s. `G0ExhaustiveTest` (G0 enumeration, unaffected) and the PR campaign are
+  unchanged: 1,481 conclusive, 21 inconclusive under T21, 2 allowed by T23 pins; 150 of 150 conclusive.
+- The two round-r3 crash plans (D8 records, `found.generator: G0 r1`), compiled alone at each bound:
+
+  | Bound | Nesting reached | Largest script (`NONE`) | Slowest level |
+  |---|---|---|---|
+  | none (G0 r1) | 21 and 17 | OOM | OOM after 6–9 s |
+  | 12 | 11 | 675,262 bytes | 0.2 s |
+  | 14 (chosen) | 13 | 2,662,590 bytes | 0.9 s |
+  | 16 | 15 | 9,048,254 bytes | 3.3 s |
+  | 17 | 16 | 15,646,924 bytes | 5.8 s |
+
+  Mutants of the two plans (four random bytes changed, 38 at the bound each) reached at most 2,901,518 bytes at
+  14 and 11,608,247 at 16, with no OOM.
+- Two runs of `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=300s`, each from the
+  committed seeds only:
+  - run 1 stopped after 625 programs (123 s) on a sub-floor T13 input: `NONE` exhausts the budget with 64,067
+    bytes and finishes with ten times the budget with −5, the JVM's value; the other levels agree. No OOM. The
+    tally was `647 inputs, explained by the registry: {T13=24, T21=9}` (open question 9);
+  - run 2 ran its full 312 s: 4,095 programs, 4,802 edges, nothing found, and
+    `4118 inputs, explained by the registry: {T13=31, T21=20}`.
+
+  Smaller programs also make G0 r2 faster: about 13 programs/s in run 2, against 1–4 for G0 r1.
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
@@ -741,3 +797,6 @@ Measured on 2026-10-29 (UTC), after review round r2 of #253:
     script of at least 64 KiB, and D2 and D6 say so. F3, a saved T13 reproducer. F4, `G0FuzzTest` counts and
     reports the matches it accepts. F5, the nightly fuzz job uploads `build/difftest/`. F6, dates and this
     entry.
+  - Review round r3 of #253: F9, G0 r2 bounds comparison nesting at 14 until #146 is fixed (D5, D13), open
+    question 8 is answered with it, and a `crash-*` input is never committed until it passes. F7, the
+    triage line in D6 and open question 9. F8, an encoder failure is a `Crash` labelled `encoder:` (D3).

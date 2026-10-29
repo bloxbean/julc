@@ -141,11 +141,11 @@ public final class UplcExecutor {
     }
 
     private static Compiled compile(DiffCase diffCase, DiffConfig config) {
+        Program program;
         try {
-            Program program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+            program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
                     new CompilerOptions().setOptimizationLevel(config.level()))
                     .compileMethod(diffCase.source(), diffCase.method()).program();
-            return new Compiled(program, UplcFlatEncoder.encodeProgram(program).length);
         } catch (CompilerException e) {
             var error = e.diagnostics().stream()
                     .filter(d -> d.level() == CompilerDiagnostic.Level.ERROR).findFirst();
@@ -155,6 +155,12 @@ public final class UplcExecutor {
             // Running out of memory while compiling a small program is a compiler defect, such as
             // exponential growth; the harness reports it rather than dying with the test JVM.
             return new Compiled(new Observation.Crash("compiler: " + e), 0);
+        }
+        try {
+            return new Compiled(program, UplcFlatEncoder.encodeProgram(program).length);
+        } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
+            // julc-core's FLAT encoder, not the compiler: labelled apart so that triage looks in the right place.
+            return new Compiled(new Observation.Crash("encoder: " + e), 0);
         }
     }
 

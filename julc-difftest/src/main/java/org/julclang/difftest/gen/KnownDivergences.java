@@ -62,9 +62,9 @@ public final class KnownDivergences {
 
     /**
      * The smallest script the T13 rule explains. #146 doubles the script with each nested {@code compareTo}
-     * operand, and evaluation doubles with it. In about 6,500 sampled G0 programs without
-     * {@link G0.Feature#DEEP_COMPARISON} the largest script was 26,193 bytes, and a T21 program with a deep
-     * comparison that never terminates was 44,039 bytes. The smallest T13 exhaustion seen, a program that
+     * operand, and evaluation can double with it, depending on the branches taken. In about 6,500 sampled
+     * G0 r1 programs without {@link G0.Feature#DEEP_COMPARISON} the largest script was 26,193 bytes, and a T21
+     * program with a deep comparison that never terminates was 44,039 bytes. The smallest T13 exhaustion seen, a program that
      * finishes with ten times the budget, was 90,756 bytes.
      */
     public static final int T13_MIN_SCRIPT_BYTES = 64 * 1024;

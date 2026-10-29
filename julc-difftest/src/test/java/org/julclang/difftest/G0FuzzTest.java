@@ -30,8 +30,8 @@ import java.util.TreeMap;
  * <p>
  * {@code ./gradlew :julc-difftest:test} replays every input in {@code G0FuzzTestInputs/generatedProgramsAgree/}.
  * {@code ./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest'} fuzzes, saving a failing input as
- * {@code crash-*} in that directory. Long seeds matter: Jazzer's JUnit mode grows inputs from the
- * largest seed, so short seeds keep the programs short.
+ * {@code crash-*} in that directory; commit it only once a fix or a pin makes it pass (ADR-063 D13). Long
+ * seeds matter: Jazzer's JUnit mode grows inputs from the largest seed, so short seeds keep the programs short.
  */
 class G0FuzzTest {
 
