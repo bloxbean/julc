@@ -8,16 +8,28 @@ description: "JuLC release notes and migration guidance"
 A string literal compiled to its source text, escapes included, so `"a\nb"` held a
 backslash and an `n` on chain where Java holds a line break. Literals now compile to the
 string javac gives them: escape sequences (`\b \s \t \n \f \r \" \' \\` and octal
-escapes) and Unicode escapes (`é`) are decoded. The same applies to the argument of
+escapes) and Unicode escapes (`\u00e9`) are decoded. The same applies to the argument of
 `new BigInteger("...")`.
 
 - **Script bytes change** for validators and libraries with a string literal that contains
-  a backslash, for example a trace message with `\n` or a token name with `é`. A new
-  hash means a new script address or policy ID. Keep the previously compiled script to
-  spend UTxOs locked at the old address. Literals without a backslash are unchanged.
-- **Newly rejected:** literals javac rejects, such as a Unicode escape that produces a
-  quote or a line break. Two shapes javac accepts are rejected too: a Unicode escape with
-  several `u` (`\uuu0041`), and a backslash written as `\` that is followed by `u`.
+  a backslash, for example a trace message with `\n` or a token name written as
+  `caf\u00e9`. A new hash means a new script address or policy ID. Keep the previously
+  compiled script to spend UTxOs locked at the old address. Literals without a backslash
+  are unchanged.
+- **Newly rejected**, where the literal used to compile to its raw text:
+  - literals javac rejects: a Unicode escape that produces a quote or a line terminator
+    (`\u0022`, `\u000a`), and a backslash written as `\u005c` that starts no escape
+    sequence (`\u005cq`, `\u005cu0041`, or a `\u005c` that ends the literal);
+  - literals javac accepts that JuLC cannot keep or cannot read as javac does: an unpaired
+    surrogate such as `\uD800`, because a UPLC string is Unicode text and the script's FLAT
+    encoding would carry `?` in its place; and a backslash written as `\u005c` followed by
+    a raw backslash, such as `\u005c\\\u0030`, because javac counts the escaped backslash
+    toward the parity of the raw backslashes after it and the JLS does not.
+- **Still rejected**, as before, although javac accepts them: a Unicode escape with more
+  than one `u` (`\uuu0041`), `\u005c` before a raw `"`, and a Unicode escape whose digits
+  are not ASCII hex digits. JavaParser's lexer rejects these.
+- **JRL** string literals keep their value. They have no escapes, so the transpiler now
+  doubles each backslash in the Java it generates.
 
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
