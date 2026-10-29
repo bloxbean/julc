@@ -15,10 +15,10 @@ import java.util.Arrays;
  * <ul>
  *   <li>a backslash that can start an escape and is followed by {@code u}, but not by four ASCII hex digits.
  *       javac rejects this too, except that it also takes other scripts' digits ({@code Character.digit});</li>
- *   <li>a backslash produced by an escape, at the end of an odd run of such escapes, followed by a raw
- *       backslash. javac counts the escaped backslash toward the parity of the raw backslashes after it, so
- *       it reads a later escape differently from the JLS. (A raw backslash followed by {@code u} there is
- *       read alike by both, and is not rejected.);</li>
+ *   <li>a backslash produced by an escape, at the end of an odd run of such escapes, followed by two or more
+ *       raw backslashes and then {@code u}. javac counts the escaped backslash toward the parity of the raw
+ *       backslashes after it, and the JLS does not, so they disagree on whether that {@code u} starts an
+ *       escape. With one raw backslash, or no {@code u} after them, both read the text alike;</li>
  *   <li>an unpaired surrogate. javac's lookahead for the low half of a pair changes how it counts the
  *       backslashes after an unpaired high half, and a UPLC string cannot hold one.</li>
  * </ul>
@@ -105,11 +105,11 @@ final class UnicodeEscapes {
                 i = digits + 4;
                 continue;
             }
-            if (c == '\\' && escapedBackslashes % 2 == 1) {
-                throw new IllegalSourceException("A backslash written as a Unicode escape is followed by a raw"
-                        + " backslash. javac counts the escaped backslash toward the raw backslashes after it, and"
-                        + " the JLS does not, so they read a later Unicode escape differently. Write the first"
-                        + " backslash as itself", new Position(line, column));
+            if (c == '\\' && escapedBackslashes % 2 == 1 && startsDisputedEscape(source, i)) {
+                throw new IllegalSourceException("A backslash written as a Unicode escape is followed by raw"
+                        + " backslashes and u. javac counts the escaped backslash toward the raw backslashes after it,"
+                        + " and the JLS does not, so they disagree on whether that u starts a Unicode escape. Write"
+                        + " the first backslash as itself", new Position(line, column));
             }
             int k = s.length();
             s.append(c);
@@ -164,6 +164,13 @@ final class UnicodeEscapes {
             i++;
         }
         return s.toString();
+    }
+
+    /** Whether the raw backslashes from {@code i} are two or more and followed by {@code u}. */
+    private static boolean startsDisputedEscape(String source, int i) {
+        int end = i;
+        while (end < source.length() && source.charAt(end) == '\\') end++;
+        return end - i >= 2 && end < source.length() && source.charAt(end) == 'u';
     }
 
     private static void requirePairedSurrogates(String text, int[] lines, int[] columns) throws IllegalSourceException {
