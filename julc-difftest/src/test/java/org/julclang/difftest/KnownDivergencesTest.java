@@ -177,7 +177,71 @@ class KnownDivergencesTest {
     void aRerunThatIsStillExhaustedIsNotT13() {
         var factors = new ArrayList<Long>();
         assertEquals(Optional.empty(), explain(DEEP, value(-5), BUDGET, fixed(BUDGET, factors)));
+        assertEquals(List.of(100L, 1000L), factors, "both rungs, and nothing more");
+    }
+
+    /** A rerun that is still exhausted below {@code finishesAt} times the budget and returns {@code then} from there. */
+    private static KnownDivergences.Rerun ladder(long finishesAt, Observation then, List<Long> factors) {
+        return factor -> {
+            factors.add(factor);
+            return new UplcExecutor.Execution(factor >= finishesAt ? then : BUDGET, null);
+        };
+    }
+
+    /**
+     * Review round r5 of #253, F15: T13 climbs a ladder. A run still exhausted at 100 times the budget is rerun at
+     * 1000 times, and T13 explains it if that agrees with the JVM. T21 needs the last rung run to be exhausted.
+     */
+    @Test
+    void t13ClimbsToItsSecondRungAndT21NeedsTheLastRungExhausted() {
+        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var t21 = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var factors = new ArrayList<Long>();
+        assertEquals(Optional.of("T13"), explain(DEEP, value(-5), BUDGET, ladder(1000, value(-5), factors)));
+        assertEquals(List.of(100L, 1000L), factors);
+        factors.clear();
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), BUDGET, ladder(1000, value(4), factors)), "wrong at 1000x");
+        assertEquals(Optional.of("T13"), explain(both, value(-5), BUDGET, ladder(1000, value(-5), factors)),
+                "both shapes, finishing at 1000x: T13 only");
+        assertEquals(Optional.of("T21"), explain(both, value(-5), BUDGET, ladder(Long.MAX_VALUE, value(-5), factors)),
+                "both shapes, exhausted at both rungs: T21 only");
+        assertEquals(Optional.empty(), explain(both, value(-5), BUDGET, ladder(1000, value(4), factors)),
+                "both shapes, wrong at 1000x: neither");
+        factors.clear();
+        // Without T13's marker there is one rung: a run that would finish at 1000x is still T21 within 100x.
+        assertEquals(Optional.of("T21"), explain(t21, value(-5), BUDGET, ladder(1000, value(-5), factors)));
         assertEquals(List.of(100L), factors);
+    }
+
+    /**
+     * The input of F15, saved as a reproducer: two nested {@code while} loops around a deep comparison. At
+     * {@code NONE} it needs about 107 times the budget, so only T13's second rung confirms it.
+     */
+    @Test
+    void theNestedLoopsReproducerNeedsTheSecondRungAtNone() {
+        var diffCase = RegressionStore.read(REGRESSIONS.resolve("diverge-t13-nested-loops-needs-second-rung.diffcase")).diffCase();
+        var report = RUNNER.run(diffCase);
+        assertEquals(value(-5), report.jvm());
+        for (var entry : report.results().entrySet()) {
+            var config = entry.getKey();
+            assertEquals(BUDGET, entry.getValue().uplc(), config.toString());
+            var factors = new ArrayList<Long>();
+            var observations = new ArrayList<Observation>();
+            KnownDivergences.Rerun rerun = factor -> {
+                var execution = RUNNER.rerun(diffCase, config, factor);
+                factors.add(factor);
+                observations.add(execution.observation());
+                return execution;
+            };
+            assertEquals(Optional.of("T13"), KNOWN.explain(diffCase, config, DEEP, entry.getValue(), rerun), config.toString());
+            if (config.level() == OptimizationLevel.NONE) {
+                assertEquals(List.of(100L, 1000L), factors);
+                assertEquals(List.of(BUDGET, value(-5)), observations);
+            } else {
+                assertEquals(List.of(100L), factors, config.toString());
+                assertEquals(List.of(value(-5)), observations, config.toString());
+            }
+        }
     }
 
     @Test
@@ -193,8 +257,8 @@ class KnownDivergencesTest {
     }
 
     /**
-     * A T21 non-termination is still exhausted at a hundred times the budget, so T13 does not explain it, even
-     * when the program also carries T13's marker; T21 alone does, from the same single rerun.
+     * A T21 non-termination is still exhausted at a hundred and a thousand times the budget, so T13 does not
+     * explain it, even when the program also carries T13's marker; T21 alone does, from the same reruns.
      */
     @Test
     void aT21ExhaustionIsNotExplainedByT13() {
@@ -210,10 +274,10 @@ class KnownDivergencesTest {
             return execution;
         };
         assertEquals(Optional.empty(), KNOWN.explain(diffCase, config, DEEP, result, rerun), "T13's shape only");
-        assertEquals(List.of(BUDGET), reruns);
+        assertEquals(List.of(BUDGET, BUDGET), reruns, "both of T13's rungs");
         assertEquals(Optional.of("T21"), KNOWN.explain(diffCase, config,
                 Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), result, rerun), "both shapes");
-        assertEquals(List.of(BUDGET, BUDGET), reruns, "one rerun per explanation, shared by both rules");
+        assertEquals(List.of(BUDGET, BUDGET, BUDGET, BUDGET), reruns, "the same two rungs, shared by both rules");
     }
 
     /**
@@ -262,12 +326,15 @@ class KnownDivergencesTest {
 
     @Test
     void aConfirmationHasAPositiveFactor() {
-        for (var invalid : List.of(
-                new Object[]{KnownDivergences.Confirmation.AGREES_WITH_JVM, -1},
-                new Object[]{KnownDivergences.Confirmation.STILL_INCONCLUSIVE, 0},
-                new Object[]{KnownDivergences.Confirmation.NONE, 100})) {
+        for (var invalid : List.<Object[]>of(
+                new Object[]{KnownDivergences.Confirmation.AGREES_WITH_JVM, List.of(-1)},
+                new Object[]{KnownDivergences.Confirmation.STILL_INCONCLUSIVE, List.of()},
+                new Object[]{KnownDivergences.Confirmation.AGREES_WITH_JVM, List.of(1000, 100)},
+                new Object[]{KnownDivergences.Confirmation.NONE, List.of(100)})) {
+            @SuppressWarnings("unchecked")
+            var rungs = (List<Integer>) invalid[1];
             assertThrows(IllegalArgumentException.class, () -> new KnownDivergences.Rule("T0", "invalid", Set.of(),
-                    Observation.Value.class, "budget exhausted", (KnownDivergences.Confirmation) invalid[0], (int) invalid[1]));
+                    Observation.Value.class, "budget exhausted", (KnownDivergences.Confirmation) invalid[0], rungs));
         }
         assertThrows(IllegalArgumentException.class, () -> UplcExecutor.budgetTimes(0));
     }

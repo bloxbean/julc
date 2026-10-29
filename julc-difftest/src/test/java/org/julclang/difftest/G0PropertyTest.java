@@ -192,8 +192,10 @@ class G0PropertyTest {
             RegressionStore.write(LAST_FAILURE, diffCase, RegressionStore.Expectation.AGREE, null,
                     provenance(finder, plan), report);
             for (var confirmation : confirmations) {
-                RegressionStore.addRecorded(LAST_FAILURE, confirmation.config() + ".rerun", confirmation.observation());
-                RegressionStore.addRecorded(LAST_FAILURE, confirmation.config() + ".rerun.cost", confirmation.cost());
+                // One pair of lines per rung, for example recorded.Java/NONE.rerun.x1000 (D6, r6).
+                String key = confirmation.config() + ".rerun.x" + confirmation.factor();
+                RegressionStore.addRecorded(LAST_FAILURE, key, confirmation.observation());
+                RegressionStore.addRecorded(LAST_FAILURE, key + ".cost", confirmation.cost());
             }
             failureWritten = true;
             fail(report.describe() + "\n\n" + confirmations.stream().map(Confirmation::toString)

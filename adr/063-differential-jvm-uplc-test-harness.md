@@ -94,9 +94,9 @@ A `DiffCase` is the source text of one class, the entry method, the input values
 - **UPLC:** compile the same source with JuLC under the configuration, evaluate on `julc-vm-java` with a bounded
   budget (`UplcExecutor.BUDGET`, 10^10 CPU and 1.4·10^7 memory units), and record the result, the trace log, the
   budget used and the script's FLAT size. The comparison never uses the budget or the size; the D8 record keeps
-  them. *r6:* a registry rule may ask for a confirmation rerun of a configuration with a larger budget
-  (`DiffRunner.rerun`, `UplcExecutor.budgetTimes`) as evidence of its mechanism (D6, T13). The verdict never
-  depends on the rerun, and the configuration stays inconclusive (D3, H5).
+  them. *r6:* a registry rule may ask for confirmation reruns of a configuration with larger budgets
+  (`DiffRunner.rerun`, `UplcExecutor.budgetTimes`) as evidence of its mechanism (D6, T13 and T21). The verdict
+  never depends on the reruns, and the configuration stays inconclusive (D3, H5).
 
 Configurations cover every `OptimizationLevel` (`NONE`, `BASELINE`, `PV11_SAFE`, `PV11_COSTED`) on `julc-vm-java`
 and the default `CompilerTarget`. Varying the target is M2b. Other VMs (Scalus, Truffle) can be added as
@@ -215,9 +215,9 @@ explained depends on what the UPLC side produced:
   inconclusive reason. A rule cannot explain a conclusive side, and one without a reason is refused. Rules are
   removed when the owning step resolves them; a run reports how often each one matched, so a stale rule is
   visible. *r6:* D13 adds a second rule, T13 (`DEEP_COMPARISON`, `budget exhausted`, and a confirmation
-  rerun with 100 times the budget that agrees with the JVM), with the saved reproducer
-  `diverge-t13-nested-compare-to-exhausts-budget`. T21 gains the opposite confirmation: its rerun with 100 times
-  the budget must still be exhausted.
+  rerun with 100 times the budget, then 1000 times, that agrees with the JVM), with the saved reproducers
+  `diverge-t13-nested-compare-to-exhausts-budget` and `diverge-t13-nested-loops-needs-second-rung`. T21 gains the
+  opposite confirmation: the last rerun run must still be exhausted.
 
 A rule is weaker than a pin: another non-termination with the same shape and reason passes as T21. That is
 acceptable because an inconclusive case is no evidence and counts towards no quota (H5, D9), and because each
@@ -225,26 +225,36 @@ rule has pinned saved reproducers. A wrong value is a correctness result, so it 
 
 *r6, T13.* `DEEP_COMPARISON` is syntactic and says nothing about loops, so on its own the T13 rule would also
 explain any other non-termination, or a wrong value that more budget would reveal, in a program that happens to
-contain a deep comparison. The rule therefore confirms its mechanism: it explains a configuration only if
-running it again with `KnownDivergences.CONFIRMATION_FACTOR` (100) times the budget finishes and agrees with
-the JVM, value and traces (`Verdict.compare`). A rerun that is still exhausted, or gives any other result, is not
-explained and fails the run as a finding. T21 confirms the opposite way: its rerun with the same factor must still
-end with `budget exhausted`, so a T21-shaped program that only runs long is not T21. Both rules use one rerun per
-configuration (`Rule.confirmation`). So:
-- an expensive run that terminates with the JVM's value and traces is T13, whatever its script size;
-- a run still exhausted at 100 times the budget is T21 if it has T21's shape, and nothing otherwise;
-- a program with both shapes is explained by exactly one of them, as its rerun decides;
+contain a deep comparison. The rules therefore confirm their mechanism with reruns of the configuration on a
+ladder of budgets (`Rule.confirmation`, `Rule.confirmationFactors`):
+- the first rung, `KnownDivergences.CONFIRMATION_FACTOR` (100 times the budget), is shared by T21 and T13;
+- only if it still ends with `budget exhausted` and the program has T13's marker is a second rung run,
+  `KnownDivergences.T13_SECOND_RUNG` (1000 times);
+- the ladder stops at the first rung that ends otherwise, and each rung is run at most once per configuration.
+
+T13 explains the configuration if a rung finishes and agrees with the JVM, value and traces (`Verdict.compare`).
+T21 explains it if the last rung run still ends with `budget exhausted`, so a T21-shaped program that only runs
+long is not T21. Any other outcome is not explained and fails the run as a finding. So:
+- an expensive run that terminates with the JVM's value and traces within 1000 times the budget is T13, whatever
+  its script size;
+- a run still exhausted at the last rung is T21 if it has T21's shape, and nothing otherwise; a program with only
+  T21's shape gets the single 100-times rung, so T21 means "does not terminate within 100 times the budget";
+- a program with both shapes is explained by exactly one of them, as its reruns decide;
 - a run that finishes with another value or trace, fails, or crashes is never explained by a rule, as above.
 
-The factor comes from measurement: the saved reproducer needs 1.8 to 3.8 times the memory budget, and a G0 r2
-program at the nesting bound needed 53 times; 10 times would report that genuine T13 run as a finding. The rerun
-is deterministic (H4). Its budget, factor, observation and cost are reported with every explained input and in
-the D8 record of a failure, as `recorded.<config>.rerun` and `.rerun.cost` (H2). The record keeps only
-deterministic values; the rerun's wall-clock time appears in the per-input line and the tally only. A rerun
-compiles its program again when the script is too large for the compile cache, which is most of its cost;
-reusing the program from the first run is tracked in [#274](https://github.com/bloxbean/julc/issues/274). Rounds r2 and r3 of #253 used a
-64 KiB script-size floor instead; it tested evidence of #146's growth, not the cause of the exhaustion, and it
-failed genuine T13 runs in smaller scripts.
+The rungs come from measurement. The saved T13 reproducer needs 1.8 to 3.8 times the memory budget, and most T13
+runs in fuzzing finish within 38 times. Loops multiply the cost: the nested-loops reproducer, two `while` loops of
+three iterations around a deep comparison at the nesting bound, needs about 107 times at `NONE`, beyond the first
+rung, and the round-r6 fuzz runs confirmed 18 runs on the second rung, needing up to 148 times. A single rung of 1000 would make every T21 rerun ten times slower; the ladder keeps T21-only programs, such
+as those of D7, at one 100-times rerun. The reruns are deterministic (H4). Each rung's budget, factor, observation
+and cost are reported with every explained input, counted per rung in the tally, and kept in the D8 record of a
+failure as `recorded.<config>.rerun.x<factor>` and `.cost` (H2). The record keeps only deterministic values; the
+reruns' wall-clock time appears in the per-input line and the tally only. A rerun compiles its program again when
+the script is too large for the compile cache, which is most of its cost; reusing the program from the first run
+is tracked in [#274](https://github.com/bloxbean/julc/issues/274). Rounds r2 and r3 of #253 used a 64 KiB
+script-size floor instead; it tested evidence of #146's growth, not the cause of the exhaustion, and it failed
+genuine T13 runs in smaller scripts. Rounds r4 and r5 used a single 100-times rerun, which failed the
+nested-loops reproducer.
 
 ### D7. Exhaustive small programs
 
@@ -388,7 +398,8 @@ Targets:
   record with `found.by: G0FuzzTest` and the plan; Jazzer has no seed, and the input it saves (`crash-*`)
   replays the case. Every match is counted and reported (H2): each explained input prints a line, and the run
   ends with a tally per catalogue ID, written to `build/difftest/g0-fuzz-explained.txt`. Each explained
-  input's line lists its confirmation reruns, and the tally counts them, how many agreed, and their time.
+  input's line lists its confirmation reruns, and the tally counts them per rung, with how many agreed and
+  their time.
 
   **G0 r2.** Jazzer drives G0 to comparison nesting no jqwik campaign reaches, and #146 doubles the script
   with each level: two fuzzed G0 r1 programs, at nesting 17 and 21, ran the compiler out of memory in a fresh
@@ -525,9 +536,9 @@ D11 target constructs that G0 already generates.
 9. **Sub-floor T13 runs (D6, r6). Answered in round r4 of #253: a confirmation rerun.** Under G0 r2, programs
    are smaller, and a deep comparison inside a loop exhausted the budget below the 64 KiB floor of rounds r2 and
    r3: one round-r3 run stopped on a 64,067-byte input that finishes with more budget with the JVM's −5. A lower
-   floor would have widened D6's hidden class. T13 now reruns the configuration with 100 times the budget and
-   requires the JVM's value and traces (D6), which tests the mechanism directly; the round-r3 input is explained
-   that way.
+   floor would have widened D6's hidden class. T13 now reruns the configuration with 100 times the budget, and
+   if that is still exhausted with 1000 times (round r6), and requires the JVM's value and traces (D6), which
+   tests the mechanism directly; the round-r3 input is explained that way.
 
 ## M1 results (2026-10-23, at `ebaf028c` plus this PR)
 
@@ -802,6 +813,28 @@ Measured on 2026-10-29 (UTC), after round r5 of #253, with T21's opposite confir
   140 reruns (139.7 s), 108 agreed with the JVM (T13; median 0.82 s) and 32 were still exhausted (T21; median
   1.5 s, at most 1.6 s).
 
+Measured on 2026-10-29 (UTC), after round r6 of #253, with the confirmation ladder:
+- `./gradlew :julc-difftest:test --rerun`: 116 tests, 0 failures. New:
+  - a ladder test: a run that finishes only at 1000 times is T13; wrong at 1000 times, it is not; with both
+    shapes it is T13 if the second rung agrees, T21 if both rungs are exhausted, and neither if the second rung
+    is wrong; with only T21's shape there is one rung;
+  - the saved reproducer `diverge-t13-nested-loops-needs-second-rung` (F15's input): T13 at every level, from
+    the first rung at `BASELINE`, `PV11_SAFE` and `PV11_COSTED`, and from the second at `NONE`, where the first is
+    still exhausted and the second returns −5;
+  - the same input as a G0 fuzz replay, `t13-nested-loops-needs-second-rung`.
+
+  With the second rung removed, four tests fail. `G0ExhaustiveTest` keeps one rung per T21 run (40 s).
+- Two runs of `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=300s`, each from the
+  committed seeds only. Both ran to the end, found nothing and hit no OOM:
+
+  | Run | Programs | Explained | First rung (x100) | Second rung (x1000) | Most memory needed |
+  |---|---|---|---|---|---|
+  | 1 | 329 in 359 s | T13 32, T21 2 | 129, 105 agreeing, 179.6 s | 16, all agreeing, 40.0 s | 147.8 times the budget |
+  | 2 | 399 in 317 s | T13 35, T21 3 | 125, 111 agreeing, 154.6 s | 2, both agreeing, 4.2 s | 107.2 times |
+
+  The first rung's non-agreeing reruns are T21 runs, still exhausted, and T13 runs that went on to the second
+  rung. Reruns took 61% and 50% of the two runs, most of it compiling again (#274).
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
@@ -851,3 +884,7 @@ Measured on 2026-10-29 (UTC), after round r5 of #253, with T21's opposite confir
   - Round r5 of #253: F12, T21 explains only a run whose rerun is still exhausted, so a program with both
     shapes is explained by exactly one rule (D6). F13, the D8 record's `.rerun.cost` line has no wall-clock
     time. F14, reusing the compiled program for the rerun is tracked in #274.
+  - Round r6 of #253: F15, T13 confirms on a ladder, 100 then 1000 times the budget, since nested loops
+    needed 107 times; T21 needs the last rung run exhausted, and T21-only programs keep the single 100-times
+    rung (D6). Both rungs are recorded per input, per rung in the tally, and in the D8 record. A saved
+    reproducer and a fuzz replay for the nested-loops input.

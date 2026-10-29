@@ -3,7 +3,6 @@ package org.julclang.difftest;
 import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.junit.FuzzTest;
 import org.julclang.difftest.gen.G0;
-import org.julclang.difftest.gen.KnownDivergences;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 
@@ -43,21 +42,18 @@ class G0FuzzTest {
 
     /**
      * Inputs run; inputs that some configuration needed the registry for, by catalogue ID; and the
-     * confirmation reruns the registry asked for (D6, r6), with how many agreed and their total time.
+     * confirmation reruns the registry asked for (D6, r6) on each rung: how many, how many agreed with the JVM,
+     * and their total time.
      */
     private static long inputs;
     private static final Map<String, Long> explained = new TreeMap<>();
-    private static long reruns;
-    private static long rerunsAgreeing;
-    private static long rerunMillis;
+    private static final Map<Long, long[]> rungs = new TreeMap<>();
 
     @BeforeAll
     static void startTally() {
         inputs = 0;
         explained.clear();
-        reruns = 0;
-        rerunsAgreeing = 0;
-        rerunMillis = 0;
+        rungs.clear();
     }
 
     @AfterAll
@@ -74,16 +70,19 @@ class G0FuzzTest {
 
     static synchronized String tally() {
         return "G0FuzzTest: " + inputs + " inputs, explained by the registry: " + (explained.isEmpty() ? "none" : explained)
-                + "; confirmation reruns: " + reruns + " (" + rerunsAgreeing + " agreeing with the JVM), x"
-                + KnownDivergences.CONFIRMATION_FACTOR + " budget, " + rerunMillis + " ms in all";
+                + "; confirmation reruns: " + (rungs.isEmpty() ? "none" : rungs.entrySet().stream()
+                        .map(rung -> "x" + rung.getKey() + " " + rung.getValue()[0] + " (" + rung.getValue()[1]
+                                + " agreeing with the JVM, " + rung.getValue()[2] + " ms)")
+                        .collect(Collectors.joining(", ")));
     }
 
     private static synchronized void count(List<Integer> plan, G0PropertyTest.Outcome outcome) {
         inputs++;
         for (var confirmation : outcome.confirmations()) {
-            reruns++;
-            rerunMillis += confirmation.millis();
-            if (confirmation.agrees()) rerunsAgreeing++;
+            long[] rung = rungs.computeIfAbsent(confirmation.factor(), factor -> new long[3]);
+            rung[0]++;
+            if (confirmation.agrees()) rung[1]++;
+            rung[2] += confirmation.millis();
         }
         if (outcome.explained().isEmpty()) return;
         for (String id : outcome.explained()) explained.merge(id, 1L, Long::sum);
