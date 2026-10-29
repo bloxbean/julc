@@ -328,8 +328,11 @@ These constrain the spike prototype and any later migration ADR.
     the same code at the same source position. javac accepting a construct is never sufficient.
   - **I2b, invalid Java.** Where JuLC rejects source that javac also rejects, javac's error replaces JuLC's. That
     covers JuLC's uncoded parse failures (`JulcCompiler.parseSource`, `:1222-1224` at `b5ff39a8`) and the literal
-    rejections `JULC0070` (T25). The program is still rejected, at the same start offset, and the
-    evidence file lists the mapping from each JuLC message or code to the javac diagnostic key.
+    rejections `JULC0070` (T25). I2b requires only that the program is still rejected. Positions do not gate:
+    javac and JavaParser report syntax errors at different columns. In the r2 review's probe (JavaParser 3.26.3
+    against javac 25.0.2), a missing semicolon after `return 1` is reported at 3:12 and 3:13, and `return (1;` at
+    3:13 and 3:14. The evidence file records both frontends' positions, and the mapping from each JuLC message or
+    code to the javac diagnostic key, for information.
   - **I2c, reading rejections.** The T22 and T24 rows list shapes that JuLC rejects although javac accepts them.
     - **Decoded-value shapes.** An unpaired surrogate is still visible in javac's decoded string value, so a
       javac frontend can keep that rejection without reading the raw text.
@@ -361,9 +364,10 @@ These constrain the spike prototype and any later migration ADR.
   - The javac frontend takes literal values from javac (`LiteralTree.getValue`), which agrees with T25's fixed
     decoding.
   - It lowers constant expressions and static-field initializers as JuLC does today, with unbounded integers. It
-    does not lower `VariableElement.getConstantValue()`, because javac folds at the declared width: in the probe,
-    `static final int WRAP = Integer.MAX_VALUE + 1` has the constant value `-2147483648`, while JuLC's lowering
-    gives `2147483648`.
+    does not lower `VariableElement.getConstantValue()`, because javac folds at the declared width. For
+    `static final int WRAP = 2147483647 + 1`, javac's constant value is `-2147483648`, while JuLC's lowering
+    gives `2147483648`. The example uses a literal because JuLC does not resolve `Integer.MAX_VALUE`
+    (`Undefined variable: Integer`, r2 review probe). javac folds both spellings to `-2147483648`.
   - Adopting javac's folding is part of the T6 decision (ADR-062 S5), not of this ADR. Any difference I9 permits
     is listed under I1.
 
@@ -434,14 +438,25 @@ escapes itself, and `preprocessUnicodeEscapes` stays off on purpose.
 
 - **What is compared.** For every reference JuLC resolves (a name, field access, method call or type
   reference), the comparison key is the declaration it resolves to. It takes one of three forms:
-  - a local variable or parameter: the start offset of its declaring node;
+  - a local variable: its declaration statement's start offset, plus the declarator's index within that
+    statement and its name;
+  - a parameter: its method's key plus its index;
   - a method: the qualified owner type plus the simple name, since JuLC's registries key by `"Class.method"`
     and overloads are rejected;
   - a type: its qualified name.
 
+  The start offset alone is not unique on the javac side. javac splits `BigInteger x = p, y = p;` into two
+  `VariableTree`s, and `SourcePositions.getStartPosition` gives both the start of the type (probe on JDK
+  25.0.2: `x` and `y` both start at offset 81, on a line that starts at 77). JavaParser's `VariableDeclarator`
+  begins at the name instead. So the nodes used on each side are:
+  - **JavaParser:** the enclosing `VariableDeclarationExpr`'s begin position (the type), converted to an offset,
+    plus the declarator's index in `getVariables()` and its name;
+  - **javac:** the `VariableTree` from `Trees.getPath(element)`, its start position, plus its index among the
+    consecutive `VariableTree`s in the enclosing block that share that start position, and its name.
+
   JuLC's side comes from `SymbolTable` entries and registry keys, mapped to declarations. javac's side comes from
-  `Trees.getElement`. For a local, `Trees.getPath(element)` and `SourcePositions` give its declaration offset;
-  otherwise the key is the enclosing `TypeElement`'s qualified name and the element's simple name. Literal
+  `Trees.getElement`. For a method or type, the key is the enclosing `TypeElement`'s qualified name and the
+  element's simple name. Literal
   values are compared directly, and so are static constants under I9's rule (same value expected only where
   JuLC's unbounded lowering and javac's folding agree).
 - **How nodes are aligned.** A JavaParser node and a javac tree are aligned by their start offset in the source
@@ -463,7 +478,8 @@ rather judge.
 
 - **E1.** I1 holds for every corpus input the prototype covers. M4 reports coverage as covered methods, classes
   and programs out of the totals, with an estimate of the work needed to port the uncovered constructs.
-- **E2.** I2a and I2b hold for the rejection corpus, and I2c has a recorded choice for each raw-text shape.
+- **E2.** I2a and I2b hold for the rejection corpus: subset codes and positions under I2a, and rejection only
+  under I2b. I2c has a recorded choice for each raw-text shape.
 - **E3.** I6: no internal javac API is needed, or each one that is needed is listed with a JDK-version risk the
   maintainers accept.
 - **E4.** Every shipping target has a viable plan:
@@ -489,6 +505,13 @@ rather judge.
   extrapolated to the uncovered constructs (an estimate).
 - **B3.** ADR-063's positive corpus (the G0 exhaustive programs) and every regression `.diffcase`, run through
   both frontends with each one's AGREE/DISAGREE verdict.
+  - **Counted separately.** Covered and uncovered programs are reported as separate counts, for G0 and for the
+    `.diffcase` files. G0 is built from loops: `while` with counters, for-each, `if (c) break;`, and two
+    accumulators (ADR-063 G0 grammar at `43927663`). So most of it falls outside D2.
+  - **Uncovered programs** are reported with their JavaParser verdict only. They neither pass nor fail B3.
+  - **In-subset positive corpus.** At `43927663`, 15 of the 38 `.diffcase` files contain `while (` or `break;` in
+    their code. The other 23, of which 16 have no loop at all, are B3's in-subset corpus. M0 also lists any G0
+    programs that are for-each-only with a single accumulator.
 
 **Decision rule:**
 
@@ -497,8 +520,14 @@ rather judge.
 - **R2, GO.** GO, meaning a migration ADR sequenced after ADR-061's representation decision (open question 9),
   requires all of:
   - E1–E6 hold;
-  - B3 shows no verdict that differs between the two frontends, except ones attributed under I1;
+  - B3 shows no verdict that differs between the two frontends on **covered** programs, except ones attributed
+    under I1; M4 states how many covered programs that rests on;
   - and either B1s ≥ 1, or B2's deletable lines exceed the prototype's extrapolated frontend size.
+
+  E1 sets no coverage floor, so a GO can rest on low coverage, and B2's comparison then rests on an extrapolation
+  from a small prototype. That is acceptable only because GO recommends a migration ADR, not a migration. A GO
+  recommendation therefore carries its coverage figures (E1) and its covered-program count (B3). The migration
+  ADR must re-establish I1 on full coverage of the corpus before any default changes.
 - **R3, GO-C.** R1 applies and GO does not. Keep `JavaSourceParser` and ship the D4 cross-check in the
   annotation processor. Fix each B1s case at its source.
 - **R4, NO-GO.** B1s = 0 and GO does not apply. B1f cases become targeted fixes in the ADR-062 catalogue, and
@@ -605,7 +634,7 @@ The day budgets are in D1.
 | **M1** | Platform feasibility and API inventory. A minimal `JavacTask.analyze()` runs over one validator that uses the stdlib, on each of: the JVM; a GraalVM native image (CLI-like); the `julc-wasm` full Web Image; Elci's native-image shape (source JARs, no class loading). Record what each needs (system module data, class files, metadata), the image size, and every non-exported API used. Test option B's route: `JavacTask.instance(processingEnv)` plus an `ANALYZE` listener in the existing processor, across multiple rounds, with a generated source, reporting a diagnostic after processing, and under Gradle's `annotationProcessor` configuration | M0 | A table per target: works, works with listed costs, or does not work, with evidence. **Stop gate:** if javac runs nowhere but the JVM, skip M2's port and finish D4 only | I5, I6; E3, E4, E5 |
 | **M2** | Lowering prototype (D2) behind an entry point that exists only on the spike branch. Compare against the M0 baselines | M1 shows the JVM path works | Coverage per method, class and program; I1a and I1b results; every difference attributed or listed as a defect; rejection-corpus results under I2a–I2c; generated-binder tests pass | I1, I2, I3, I4, I7, I9; E1, E2 |
 | **M3** | Option C measurement (D4): the javac cross-check over the corpus, using the comparison key and offset alignment of D4 | M0 (independent of M2) | B1: silent and fail-closed disagreements, with cases; the count of unaligned nodes | D4; B1 |
-| **M4** | Report and recommendation | M1–M3 done, or the box spent | The evidence file and an ADR-065 revision record: E1–E6; B1–B3 (B2's inventory, and B3's corpus run through both frontends); the outcome under R1–R4; the seam the prototype's code suggests relative to ADR-061 (open question 9) | D5 |
+| **M4** | Report and recommendation | M1–M3 done, or the box spent | The evidence file and an ADR-065 revision record: E1–E6; B1–B3 (B2's inventory, and B3's corpus run through both frontends, with covered and uncovered counts for G0 and the `.diffcase` files); the outcome under R1–R4, and for a GO its coverage figures; the seam the prototype's code suggests relative to ADR-061 (open question 9) | D5 |
 
 **M0 corpus:**
 
@@ -630,11 +659,11 @@ The day budgets are in D1.
   that pin javac's reading. None of these is derived from the prototype.
 - **Equal output** (I1): FLAT bytes and script hashes, compared per program, level and target, and PIR compared
   per method. Differences are shown as PIR diffs.
-- **Rejections** (I2): the same codes and positions under I2a, the stated mapping under I2b, and the recorded
-  choices under I2c.
+- **Rejections** (I2): the same codes and positions under I2a; under I2b, rejection by both, with both positions
+  and the message mapping recorded but not gating; and the recorded choices under I2c.
 - **Name binding** (I3): ADR-060's lint and independence tests, plus D4's per-reference comparison.
-- **Integer semantics** (I9): a corpus entry with `int` constant expressions that overflow, such as
-  `Integer.MAX_VALUE + 1`, compiles to JuLC's unbounded value under both frontends.
+- **Integer semantics** (I9): a corpus entry with an `int` constant expression that overflows, such as
+  `2147483647 + 1` (or `0x7FFFFFFF + 1`), compiles to JuLC's unbounded value under both frontends.
 - **Platforms** (M1): each target is built and run, not inferred. Failures are recorded with the command and
   the error.
 - **Downstream** (E5): Elci's native CLI, built against a local JuLC snapshot, passes `cli-smoke.sh` and compiles
@@ -642,7 +671,8 @@ The day budgets are in D1.
   passes.
 - **Negative controls.** A deliberately wrong binding in the prototype, for example binding a call to a
   different library method, must fail both I1 and D4's comparison. That shows each check detects what it claims
-  to.
+  to. D4's controls must include a multi-declarator case, `BigInteger x = p, y = p;`, where a use of `y`
+  deliberately bound to `x` must be reported as a disagreement. A correct binding must not be reported.
 
 ### Verification evidence for this ADR
 
@@ -670,7 +700,8 @@ Added in r2:
   `javac -d proc-out AnalyzeProbe.java` and run as
   `javac -proc:full -processorpath proc-out -processor AnalyzeProbe -d sample-out Sample.java`.
   - The `ANALYZE` listener, registered through `JavacTask.instance(processingEnv)`, printed
-    `constant MASK = -1` for `0xFFFFFFFF` and `constant WRAP = -2147483648` for `Integer.MAX_VALUE + 1`.
+    `constant MASK = -1` for `0xFFFFFFFF` and `constant WRAP = -2147483648` for `Integer.MAX_VALUE + 1`. That is
+    javac's side only: JuLC rejects this spelling, so I9 uses `2147483647 + 1`.
   - It printed `literal INT_LITERAL value=-2147483648` for `-2147483648`, with no unary node.
   - It printed the synthesized `super` call.
   - It printed `call x.add -> java.math.BigInteger.add(java.math.BigInteger)` and
@@ -678,6 +709,11 @@ Added in r2:
   - `createResource from listener: ok`; `Sample.class` and the resource were both written.
 - **The `JavacTask` API.** `javap --module jdk.compiler com.sun.source.util.JavacTask` lists
   `instance(javax.annotation.processing.ProcessingEnvironment)`, `analyze()` and `addTaskListener`.
+- **Multi-declarator positions (r3).** A `JavacTask.analyze()` probe on JDK 25.0.2 over
+  `BigInteger x = p, y = p;`, on a line starting at offset 77, gives `VariableTree x start=81 end=98` and
+  `VariableTree y start=81 end=105`. This reproduces the r2 review's F13 evidence.
+- **Loop use in `.diffcase` files (r3).** In the 38 files at `43927663`, 15 contain `while (` or `break;` in
+  their code (`grep -c -E '(while *\(|break;)'`), 23 do not, and 16 have no `while`, `break` or `for` at all.
 - **Library loops.** The `while` counts come from `grep -c -E '\bwhile\s*\('` over the 17 `@OnchainLibrary` files.
   Whole-class lowering is at `LibraryCompiler.java:106-121`.
 - **Elci call sites and smoke set.** `ElciCompiler.java:84`, `:153` and `:224`, and `cli-smoke.sh`, at `8542617`.
@@ -735,8 +771,9 @@ Added in r2:
    JDK, and its diagnostics to the JDK's version. Lean: the JDK the build uses (25), with `--release` pinned.
 5. **Does this ADR join ADR-062 as a step?** Lean: add it to ADR-062 as a candidate step after the spike reports,
    not before.
-6. **Time box.** 15 working days is an estimate. Should M1's stop gate be allowed to end the spike early with
-   GO-C? Lean: yes.
+6. **Time box and early stop.** 15 working days is an estimate. Should M1's stop gate end the spike early, with
+   the outcome then decided by R1, R3 or R4 on D4's results? An early stop can never be GO, because E1 is unmet;
+   it is GO-C if B1s ≥ 1 and NO-GO otherwise. Lean: yes.
 7. **Raw-text reading rejections under a javac frontend (I2c).** Options:
    (a) keep them with a raw-source check, named as a residual second reader;
    (b) accept them with javac's meaning, which is the JVM's meaning, and list them as attributed acceptance
@@ -744,6 +781,12 @@ Added in r2:
    Lean: (b). JuLC rejects them because its own reader cannot be sure to read them as javac does, and with javac
    as the reader that reason is gone. The unpaired-surrogate rejection stays, because it is visible in the decoded
    value.
+   **Consequence across targets.** Suppose (b) is combined with question 1 (a) or with a retained JavaParser
+   provider for Elci (question 2). Then the same source compiles on the JVM and is rejected in the playground or
+   by Elci. The difference is fail-closed: no target compiles it to a different program. But JuLC would accept
+   different sources on different targets. Lean: acceptable only if the rejecting targets name the cause in their
+   diagnostic, and the per-target acceptance difference is documented with the target. Otherwise choose (a)
+   wherever any target keeps `JavaSourceParser`, so that every target accepts the same sources.
 8. **Decision thresholds.** Should D5's R1–R4, including "one silent disagreement is enough for GO-C" and B2's
    comparison, bind the outcome, or should the maintainers judge B1–B3 directly? Lean: bind it, so the spike
    cannot end in an unfalsifiable recommendation. The maintainers may change the thresholds when they accept this
@@ -787,3 +830,20 @@ Added in r2:
   - F11 → per-milestone day budgets in D1, and E6 cold compile time recorded with no threshold.
   - Also from the r2 probe: javac folds `-2147483648` into one literal and synthesizes the default constructor.
     Both are noted for the lowering and D4's alignment.
+- **r3** (2026-10-30; responds to the review of `982a20b9`):
+  - F12 → I2b requires only that the program is still rejected. Both frontends' positions and the message mapping
+    are recorded without gating (the one-column difference, quoted from the review's probe). E2 and Verification
+    are updated.
+  - F13 → D4's key for a local is now the declaration statement's start offset plus the declarator's index and
+    name; a parameter keys by its method key plus its index. The JavaParser node (`VariableDeclarationExpr`) and
+    the javac node (`VariableTree`) are named, and the negative control gains a multi-declarator case. The
+    javac positions were reproduced.
+  - F14 → B3 reports covered and uncovered counts separately, for G0 and the `.diffcase` files. R2's B3 condition
+    applies only to covered programs, with the count stated in M4. B3's in-subset corpus is the 23 `.diffcase`
+    files with no `while` or `break`.
+  - F15 → I9 and Verification use `2147483647 + 1`. The probe line is marked as javac's side only.
+  - F16 → open question 6 is reworded against R1, R3 and R4: an early stop can never be GO.
+  - F17 → open question 7 records that sources may be accepted on one target and rejected on another, with a
+    lean.
+  - F18 → R2 states that a GO carries its coverage figures, and that the migration ADR must re-establish I1 on
+    full coverage. M4 is updated.
