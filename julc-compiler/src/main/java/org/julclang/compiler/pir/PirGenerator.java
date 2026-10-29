@@ -885,7 +885,7 @@ public class PirGenerator {
             return new PirTerm.Const(Constant.bool(ble.getValue()));
         }
         if (expr instanceof StringLiteralExpr sle) {
-            return new PirTerm.Const(Constant.string(sle.getValue()));
+            return new PirTerm.Const(Constant.string(stringLiteral(sle)));
         }
         if (expr instanceof NameExpr ne) {
             var name = ne.getNameAsString();
@@ -1762,7 +1762,7 @@ public class PirGenerator {
         if (typeName.equals("BigInteger") && oce.getArguments().size() == 1) {
             var arg = oce.getArguments().get(0);
             if (arg instanceof StringLiteralExpr sle) {
-                return new PirTerm.Const(Constant.integer(new BigInteger(sle.getValue())));
+                return new PirTerm.Const(Constant.integer(new BigInteger(stringLiteral(sle))));
             }
             throw enrichedError("new BigInteger() requires a string literal argument",
                     "Use new BigInteger(\"12345\") or BigInteger.valueOf(n) for integer constants.", oce);
@@ -2760,6 +2760,15 @@ public class PirGenerator {
         return new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(fun), a),
                 b);
+    }
+
+    /** The string javac gives a literal, or a compile error where JuLC rejects it (ADR-062 T22). */
+    private static String stringLiteral(StringLiteralExpr literal) {
+        try {
+            return StringLiterals.decode(literal.getValue());
+        } catch (StringLiterals.IllegalLiteralException e) {
+            throw enrichedError(e.getMessage(), e.suggestion(), literal);
+        }
     }
 
     // --- Error enrichment helpers ---
