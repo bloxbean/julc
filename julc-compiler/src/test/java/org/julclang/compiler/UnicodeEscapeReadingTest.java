@@ -1,9 +1,16 @@
 package org.julclang.compiler;
 
+import com.github.javaparser.Position;
+import com.github.javaparser.Problem;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
+import org.julclang.core.debug.DebugMetadata;
+import org.julclang.core.flat.UplcFlatDecoder;
+import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.junit.jupiter.api.Test;
@@ -14,11 +21,18 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Stream;
+import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -76,7 +90,80 @@ class UnicodeEscapeReadingTest {
                     public class P { public static BigInteger m(BigInteger a) {
                         return BigInteger.valueOf("\\u002f\\u002f".length()).add(a);
                     } }
+                    """},
+            new String[]{"an escaped backslash pair before an escaped line terminator", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a // \\u005c\\u005c\\u000a .add(a)
+                        ;
+                    } }
+                    """},
+            new String[]{"a surrogate pair before an escaped line terminator", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a // \\uD83D\\uDE00\\u000a .add(a)
+                        ;
+                    } }
                     """});
+
+    /**
+     * Sources JuLC rejects: {name, source, whether javac accepts it, a fragment of JuLC's message}. Where javac
+     * accepts one, JuLC fails closed, because javac's reading differs from the JLS or cannot be kept.
+     */
+    private static final List<String[]> REJECTED = List.of(
+            new String[]{"a backslash a Unicode escape produces, in a name", """
+                    import java.math.BigInteger;
+                    public class P {
+                        static final BigInteger a = BigInteger.ONE;
+                        public static BigInteger m(BigInteger x) {
+                            BigInteger \\u005cu0061 = x;
+                            return a;
+                        }
+                    }
+                    """, "javac rejects", "Illegal character '\\'"},
+            new String[]{"a Unicode escape with a digit that is not hex, in a comment", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a; // \\u00G1
+                    } }
+                    """, "javac rejects", "Illegal Unicode escape"},
+            new String[]{"a Unicode escape cut off by the end of the file", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a;
+                    } } // \\u00""", "javac rejects", "Illegal Unicode escape"},
+            new String[]{"a backslash and u without digits, in a comment", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a; /* \\u */
+                    } }
+                    """, "javac rejects", "Illegal Unicode escape"},
+            new String[]{"a Unicode-escaped backslash before raw backslashes, in a comment", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a // \\u005c\\\\\\u000a .add(a)
+                        ;
+                    } }
+                    """, "javac accepts", "followed by a raw backslash"},
+            new String[]{"a Unicode escape with digits other than ASCII hex digits, in a comment", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a; // \\u١٢٣٤
+                    } }
+                    """, "javac accepts", "Illegal Unicode escape"},
+            new String[]{"an unpaired surrogate, in a comment", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a; // \\uD800
+                    } }
+                    """, "javac accepts", "unpaired surrogate U+D800"},
+            new String[]{"an unpaired surrogate before raw backslashes, in a comment", """
+                    import java.math.BigInteger;
+                    public class P { public static BigInteger m(BigInteger a) {
+                        return a // \\uD800\\\\\\u000a .add(a)
+                        ;
+                    } }
+                    """, "javac accepts", "unpaired surrogate U+D800"});
 
     private static final List<BigInteger> INPUTS = List.of(BigInteger.valueOf(5), BigInteger.valueOf(-3), BigInteger.ZERO);
 
@@ -84,16 +171,42 @@ class UnicodeEscapeReadingTest {
     void everySourceComputesWhatTheJvmComputes() throws Exception {
         var problems = new ArrayList<String>();
         for (var source : SOURCES) {
-            var jvm = javac(source[1]);
+            var jvm = javac(source[1]).orElseThrow(() -> new AssertionError("javac rejects " + source[0]));
             for (var level : OptimizationLevel.values()) {
                 var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
                         new CompilerOptions().setOptimizationLevel(level)).compileMethod(source[1], "m").program();
+                // The script carries the FLAT bytes, so evaluate those too.
+                var deployed = UplcFlatDecoder.decodeProgram(UplcFlatEncoder.encodeProgram(program));
                 for (var input : INPUTS) {
                     var expected = new Term.Const(Constant.integer((BigInteger) jvm.getMethod("m", BigInteger.class).invoke(null, input)));
-                    var result = CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(new PlutusData.IntData(input)));
-                    var actual = result instanceof EvalResult.Success ok ? ok.resultTerm() : result;
-                    if (!expected.equals(actual)) {
-                        problems.add(source[0] + " at " + level + " on " + input + ": JVM " + expected + ", UPLC " + actual);
+                    for (var form : List.of(program, deployed)) {
+                        var result = CompilerTestVm.pv11("Java").evaluateWithArgs(form, List.of(new PlutusData.IntData(input)));
+                        var actual = result instanceof EvalResult.Success ok ? ok.resultTerm() : result;
+                        if (!expected.equals(actual)) {
+                            problems.add(source[0] + " at " + level + (form == deployed ? " after FLAT" : "") + " on "
+                                    + input + ": JVM " + expected + ", UPLC " + actual);
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(problems.isEmpty(), String.join("\n", problems));
+    }
+
+    @Test
+    void everyRejectedSourceIsRejectedWhateverJavacDoes() throws Exception {
+        var problems = new ArrayList<String>();
+        for (var row : REJECTED) {
+            boolean javacAccepts = javac(row[1]).isPresent();
+            if (javacAccepts != row[2].equals("javac accepts")) problems.add(row[0] + ": expected " + row[2]);
+            for (var level : OptimizationLevel.values()) {
+                try {
+                    new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(level))
+                            .compileMethod(row[1], "m");
+                    problems.add(row[0] + " at " + level + ": JuLC compiles it");
+                } catch (CompilerException rejected) {
+                    if (!rejected.getMessage().contains(row[3])) {
+                        problems.add(row[0] + ": message lacks '" + row[3] + "': " + rejected.getMessage());
                     }
                 }
             }
@@ -128,41 +241,182 @@ class UnicodeEscapeReadingTest {
     }
 
     @Test
-    void positionsReferToTheSourceAsWritten() {
+    void nodePositionsReferToTheSourceAsWritten() {
         // Source maps and diagnostics key on positions: after an escape, a column counts its six characters.
         var unit = JavaSourceParser.parseCompilationUnit(
                 "class P { Object m(Object a) { return \\u0061.hashCode(); } }");
         var call = unit.findFirst(MethodCallExpr.class).orElseThrow();
         assertEquals("a", call.getScope().orElseThrow().toString());
         assertEquals(46, call.getName().getBegin().orElseThrow().column, "hashCode as written, not 41 as translated");
+        // A range that ends on an escape ends on its last character.
+        var scope = call.getScope().orElseThrow().getRange().orElseThrow();
+        assertEquals(new Position(1, 39), scope.begin);
+        assertEquals(new Position(1, 44), scope.end, "the escape's last character, not its first");
+    }
+
+    @Test
+    void parseProblemsReferToTheSourceAsWritten() {
+        // Escaped line terminators: the problem is on line 4 as written, not line 6 as translated.
+        assertEquals(problemAt("class P {\n  //\n  //\n  int x = ;\n}"),
+                problemAt("class P {\n  // \\u000a\n  // \\u000a\n  int x = ;\n}"));
+        // Escapes earlier on the line: each adds its six characters, less the one it denotes.
+        var plain = problemAt("class P { int abc = ; }");
+        assertEquals(new Position(plain.line, plain.column + 15),
+                problemAt("class P { int \\u0061\\u0062\\u0063 = ; }"));
+        // CR LF counts as one line terminator, as in JavaParser.
+        assertEquals(problemAt("class P {\r\n  //\r\n  int x = ;\r\n}"),
+                problemAt("class P {\r\n  // \\u000a\r\n  int x = ;\r\n}"));
+    }
+
+    @Test
+    void aLexicalErrorNamesThePositionAsWritten() {
+        String plain = lexicalError("class P { int a = 1; # }");
+        String escaped = lexicalError("class P { int \\u0061 = 1; # }");
+        int column = Integer.parseInt(plain.replaceAll("(?s).*column (\\d+).*", "$1"));
+        assertTrue(escaped.contains("line 1, column " + (column + 5)), escaped);
+    }
+
+    @Test
+    void commentsAreAttributedAndPlacedAsWritten() {
+        // A line comment ended by an escape, then a Javadoc on the next line as written.
+        var unit = JavaSourceParser.parseCompilationUnit(
+                "class P {\n int a; // \\u000a int b;\n /** doc of c */\n int c;\n}");
+        var c = field(unit, "c");
+        var doc = c.getComment().orElseThrow(() -> new AssertionError("the Javadoc is attached to c"));
+        assertEquals(" doc of c ", doc.getContent());
+        assertEquals(new Position(3, 2), doc.getRange().orElseThrow().begin);
+        assertTrue(unit.findAll(FieldDeclaration.class).stream().anyMatch(f -> f.getVariable(0).getNameAsString().equals("b")),
+                "the escape ends the line comment, so b is a field");
+        // Escapes earlier on the line.
+        var same = JavaSourceParser.parseCompilationUnit(
+                "class P { int \\u0061\\u0062\\u0063 = 1; /** doc */ int r = 2; }");
+        var plain = JavaSourceParser.parseCompilationUnit("class P { int abc = 1; /** doc */ int r = 2; }");
+        assertEquals(" doc ", field(same, "r").getComment().orElseThrow().getContent());
+        var plainBegin = field(plain, "r").getComment().orElseThrow().getRange().orElseThrow().begin;
+        assertEquals(new Position(1, plainBegin.column + 15), field(same, "r").getComment().orElseThrow().getRange().orElseThrow().begin);
+    }
+
+    @Test
+    void debugBindingRangesReferToTheSourceAsWritten() {
+        String template = """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData %s, ScriptContext %s) {
+                        return true;
+                    }
+                }
+                """;
+        var plain = bindings(template.formatted("redeemer", "ctx"));
+        var escaped = bindings(template.formatted("redeeme\\u0072", "ct\\u0078"));
+        // redeemer ends 5 columns later; ctx starts 5 and ends 10 columns later.
+        assertEquals(shifted(plain.get("redeemer"), 0, 5), escaped.get("redeemer"));
+        assertEquals(shifted(plain.get("ctx"), 5, 10), escaped.get("ctx"));
+    }
+
+    @Test
+    void annotationPreFiltersDoNotSkipEscapedAnnotations() {
+        String validator = "@\\u0053pendingValidator class V { @Entrypoint static boolean validate(PlutusData r, ScriptContext c) { return true; } }";
+        assertTrue(JavaSourceIntrospector.mightContainValidatorAnnotation(validator));
+        assertEquals("V", JavaSourceIntrospector.inspect(validator).validatorType().orElseThrow().simpleName());
+        assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation("@\\u004fnchainLibrary public class Twice {}"));
+        assertTrue(JavaSourceIntrospector.mightContainTestAnnotation("class T { @\\u0054est void t() {} }"));
+        // Without an escape, a source without the annotation is still filtered out.
+        assertFalse(JavaSourceIntrospector.mightContainValidatorAnnotation("class V { }"));
+        assertFalse(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation("class V { }"));
+    }
+
+    /** Ways main code could build a JavaParser parser outside {@code JavaSourceParser}. */
+    private static final List<Pattern> PARSER_CONSTRUCTS = List.of(
+            Pattern.compile("\\b(StaticJavaParser|JavaParserAdapter|JavaParserFacade)\\b"),
+            Pattern.compile("\\bnew\\s+(com\\.github\\.javaparser\\.)?(JavaParser|ParserConfiguration)\\s*\\("),
+            Pattern.compile("\\bJavaParser\\s*::\\s*new\\b"));
+
+    private static List<String> parserConstructs(String text) {
+        return PARSER_CONSTRUCTS.stream().map(p -> p.matcher(text)).filter(Matcher::find).map(Matcher::group).toList();
+    }
+
+    @Test
+    void theParserLintSeesEveryShape() {
+        for (var shape : List.of("import com.github.javaparser.StaticJavaParser;", "Function<String, ?> f = StaticJavaParser::parse;",
+                "StaticJavaParser.parse(source)", "new JavaParser()", "new JavaParser(new ParserConfiguration())",
+                "new com.github.javaparser.JavaParser()", "com.github.javaparser.JavaParserAdapter.of(parser)",
+                "Supplier<JavaParser> s = JavaParser::new;", "var c = new ParserConfiguration ();")) {
+            assertFalse(parserConstructs(shape).isEmpty(), shape);
+        }
+        assertEquals(List.of(), parserConstructs("var unit = JavaSourceParser.parse(source); JavaParser parser;"));
     }
 
     @Test
     void everyParserIsMadeByJavaSourceParser() throws IOException {
-        // A parser configured anywhere else would not translate Unicode escapes.
+        // A parser configured anywhere else would not translate Unicode escapes. Only real module trees count:
+        // hidden directories (nested worktrees, for example) and build output are skipped.
         var root = Path.of("..").toAbsolutePath().normalize();
-        var offenders = new ArrayList<String>();
-        try (Stream<Path> files = Files.walk(root)) {
-            for (var file : files.filter(f -> f.toString().endsWith(".java"))
-                    .filter(f -> f.toString().contains("/src/main/java/"))
-                    .filter(f -> !f.toString().contains("/build/") && !f.toString().contains("/node_modules/"))
-                    .filter(f -> !f.getFileName().toString().equals("JavaSourceParser.java")).toList()) {
-                var text = Files.readString(file);
-                for (var construct : List.of("new JavaParser(", "StaticJavaParser.", "new ParserConfiguration(")) {
-                    if (text.contains(construct)) offenders.add(root.relativize(file) + ": " + construct);
-                }
+        var files = new ArrayList<Path>();
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attributes) {
+                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                boolean skip = !dir.equals(root) && (name.startsWith(".") || name.equals("build") || name.equals("node_modules"));
+                return skip ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                String relative = root.relativize(file).toString().replace('\\', '/');
+                if (relative.endsWith(".java") && relative.contains("/src/main/java/")
+                        && !file.getFileName().toString().equals("JavaSourceParser.java")) {
+                    files.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        assertTrue(files.size() > 100, "found the module sources: " + files.size());
+        var offenders = new ArrayList<String>();
+        for (var file : files) {
+            for (var construct : parserConstructs(Files.readString(file))) offenders.add(root.relativize(file) + ": " + construct);
         }
         assertEquals(List.of(), offenders);
     }
 
-    private static Class<?> javac(String source) throws Exception {
+    private static Position problemAt(String source) {
+        var result = JavaSourceParser.parse(source);
+        assertFalse(result.isSuccessful(), source);
+        return result.getProblems().get(0).getLocation().orElseThrow().getBegin().getRange().orElseThrow().begin;
+    }
+
+    private static String lexicalError(String source) {
+        var result = JavaSourceParser.parse(source);
+        assertFalse(result.isSuccessful(), source);
+        return result.getProblems().stream().map(Problem::getMessage).filter(m -> m.contains("Lexical error"))
+                .findFirst().orElseThrow(() -> new AssertionError("no lexical error: " + result.getProblems()));
+    }
+
+    private static FieldDeclaration field(CompilationUnit unit, String name) {
+        return unit.findAll(FieldDeclaration.class).stream()
+                .filter(f -> f.getVariable(0).getNameAsString().equals(name)).findFirst().orElseThrow();
+    }
+
+    private static Map<String, DebugMetadata.SourceRange> bindings(String source) {
+        var metadata = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true))
+                .compileForDebug(source, List.of()).debugMetadata();
+        var ranges = new HashMap<String, DebugMetadata.SourceRange>();
+        for (var binding : metadata.bindings()) ranges.put(binding.name(), binding.declarationRange());
+        return ranges;
+    }
+
+    private static DebugMetadata.SourceRange shifted(DebugMetadata.SourceRange range, int begin, int end) {
+        return new DebugMetadata.SourceRange(range.sourceId(), range.startUtf16() + begin, range.endUtf16() + end,
+                range.startLine(), range.startColumn() + begin, range.endLine(), range.endColumn() + end);
+    }
+
+    /** The class javac compiles from the source, or empty if javac rejects it. */
+    private static Optional<Class<?>> javac(String source) throws Exception {
         var dir = Files.createTempDirectory("julc-unicode-escape-");
         var file = dir.resolve("P.java");
         Files.writeString(file, source);
-        var errors = new ByteArrayOutputStream();
-        int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors, "-d", dir.toString(), file.toString());
-        assertEquals(0, status, errors::toString);
-        return new URLClassLoader(new URL[]{dir.toUri().toURL()}, null).loadClass("P");
+        int status = ToolProvider.getSystemJavaCompiler().run(null, null, new ByteArrayOutputStream(), "-d", dir.toString(), file.toString());
+        if (status != 0) return Optional.empty();
+        return Optional.of(new URLClassLoader(new URL[]{dir.toUri().toURL()}, null).loadClass("P"));
     }
 }

@@ -52,7 +52,8 @@ public final class FactTranslator {
             case Expression.IntLiteralExpr il ->
                     "BigInteger.valueOf(" + il.value() + ")";
             case Expression.StringLiteralExpr sl ->
-                    "\"" + sl.value() + "\"";
+                    // A JRL string has no escapes, so each backslash is one character; Java needs it doubled.
+                    "\"" + sl.value().replace("\\", "\\\\") + "\"";
             case Expression.HexLiteralExpr hl ->
                     "new byte[]{" + hexToByteArrayLiteral(hl.value()) + "}";
             case Expression.BoolLiteralExpr bl ->

@@ -288,8 +288,14 @@ public final class JavaSourceIntrospector {
                 .toList();
     }
 
+    /**
+     * A quick test on the raw text, before parsing. javac reads a Unicode escape as the character it denotes
+     * (ADR-062 T24), so a source with an escape may name the annotation in a way the text does not show, and
+     * might contain it.
+     */
     private static boolean mightContainAnnotation(String source, String annotationName) {
-        return source.contains("@" + annotationName) || source.contains("." + annotationName);
+        return source.contains("@" + annotationName) || source.contains("." + annotationName)
+                || source.contains("\\u");
     }
 
     private static String simpleName(String name) {
