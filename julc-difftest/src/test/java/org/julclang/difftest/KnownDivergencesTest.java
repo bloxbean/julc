@@ -8,6 +8,7 @@ import org.julclang.difftest.gen.KnownDivergences;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -91,44 +92,113 @@ class KnownDivergencesTest {
                 features, Observation.Value.class, null));
     }
 
-    private static Optional<String> explain(Set<G0.Feature> features, Observation jvm, Observation uplc, int scriptBytes) {
-        var measurement = new UplcExecutor.Measurement(10_000_000_000L, 14_000_000L, scriptBytes);
-        return KNOWN.explain(t23("Probe", 0, 3), CONFIG, features,
-                new DiffRunner.Result(jvm, uplc, Verdict.compare(jvm, uplc), measurement));
+    private static final Path REGRESSIONS = Path.of("src/test/resources/regressions");
+    private static final DiffRunner RUNNER = DiffRunner.standard();
+    private static final Set<G0.Feature> DEEP = Set.of(G0.Feature.DEEP_COMPARISON);
+    private static final Observation BUDGET = new Observation.Inconclusive("budget exhausted");
+
+    /** A rerun that returns a fixed observation, and remembers the factors it was asked for. */
+    private static KnownDivergences.Rerun fixed(Observation observation, List<Long> factors) {
+        return factor -> {
+            factors.add(factor);
+            return new UplcExecutor.Execution(observation, null);
+        };
+    }
+
+    private static Optional<String> explain(Set<G0.Feature> features, Observation jvm, Observation uplc,
+                                            KnownDivergences.Rerun rerun) {
+        return KNOWN.explain(t23("Probe", 0, 3), CONFIG, features, new DiffRunner.Result(jvm, uplc, Verdict.compare(jvm, uplc)),
+                rerun);
     }
 
     /**
-     * ADR-063 D13 (r6): the T13 rule, for the #146 growth that Jazzer found, explains an exhausted budget only
-     * in a script of at least {@link KnownDivergences#T13_MIN_SCRIPT_BYTES} bytes (review round r2 of #253, F2).
+     * ADR-063 D6 (r6, round r4 of #253): T13 explains an exhausted budget only when a rerun with
+     * {@link KnownDivergences#T13_CONFIRMATION_FACTOR} times the budget finishes and agrees with the JVM. The saved
+     * reproducer is such a case at every level.
      */
     @Test
-    void theT13RuleExplainsOnlyAnExhaustedBudgetInALargeScript() {
-        var deep = Set.of(G0.Feature.DEEP_COMPARISON);
-        var budget = new Observation.Inconclusive("budget exhausted");
-        int floor = KnownDivergences.T13_MIN_SCRIPT_BYTES;
-        assertEquals(Optional.of("T13"), explain(deep, value(-5), budget, floor));
-        assertEquals(Optional.of("T13"), explain(deep, value(-5), budget, 8_175_806));
-        // A deep comparison in a small script: the exhaustion is not evidence of #146, so it is a finding.
-        assertEquals(Optional.empty(), explain(deep, value(-5), budget, floor - 1));
-        assertEquals(Optional.empty(), explain(deep, value(-5), budget, 1_000));
-        assertEquals(Optional.empty(), KNOWN.explain(t23("Probe", 0, 3), CONFIG, deep,
-                new DiffRunner.Result(value(-5), budget, Verdict.compare(value(-5), budget))), "no measurement");
-        assertEquals(Optional.empty(), explain(deep, value(-5), value(4), floor), "a wrong value is not T13");
-        assertEquals(Optional.empty(), explain(deep, value(-5),
-                new Observation.Crash("compiler: java.lang.OutOfMemoryError: Java heap space"), floor), "a crash is never allowed");
-        assertEquals(Optional.empty(), explain(deep, new Observation.Failure(null, List.of()), budget, floor),
-                "the JVM side must return a value");
-        assertEquals(Optional.empty(), explain(deep, value(-5), new Observation.Inconclusive("JVM timeout after 10000 ms"),
-                floor), "another reason");
-        // A program with both shapes: in a small script only T21 matches; in a large one both do, so neither explains it.
-        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
-        assertEquals(Optional.of("T21"), explain(both, value(-5), budget, 44_039));
-        assertEquals(Optional.empty(), explain(both, value(-5), budget, floor));
+    void theSavedT13ReproducerIsExplainedByItsConfirmationRerun() {
+        var saved = RegressionStore.read(REGRESSIONS.resolve("diverge-t13-nested-compare-to-exhausts-budget.diffcase"));
+        var diffCase = saved.diffCase();
+        var report = RUNNER.run(diffCase);
+        for (var entry : report.results().entrySet()) {
+            var config = entry.getKey();
+            var result = entry.getValue();
+            assertEquals(BUDGET, result.uplc(), config.toString());
+            var reruns = new ArrayList<UplcExecutor.Execution>();
+            KnownDivergences.Rerun rerun = factor -> {
+                assertEquals(KnownDivergences.T13_CONFIRMATION_FACTOR, factor);
+                var execution = RUNNER.rerun(diffCase, config, factor);
+                reruns.add(execution);
+                return execution;
+            };
+            assertEquals(Optional.of("T13"), KNOWN.explain(diffCase, config, DEEP, result, rerun), config.toString());
+            assertEquals(List.of(value(2)), reruns.stream().map(UplcExecutor.Execution::observation).toList());
+            // The verdict itself stays inconclusive (D3, H5), and without a rerun nothing confirms it.
+            assertEquals(Verdict.Kind.INCONCLUSIVE, result.verdict().kind());
+            assertEquals(Optional.empty(), KNOWN.explain(diffCase, config, DEEP, result), "no rerun, no T13");
+        }
     }
 
     @Test
-    void aSizeFloorIsNeverNegative() {
+    void aRerunThatDisagreesWithTheJvmIsNotT13() {
+        var factors = new ArrayList<Long>();
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), BUDGET, fixed(value(4), factors)), "another value");
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), BUDGET, fixed(value(-5, "t"), factors)), "another trace");
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), BUDGET, fixed(new Observation.Failure(null, List.of()), factors)),
+                "a failure");
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), BUDGET,
+                fixed(new Observation.Crash("vm: java.lang.OutOfMemoryError"), factors)), "a crash");
+        assertEquals(Optional.of("T13"), explain(DEEP, value(-5), BUDGET, fixed(value(-5), factors)), "the JVM's value");
+        assertEquals(List.of(100L, 100L, 100L, 100L, 100L), factors);
+    }
+
+    @Test
+    void aRerunThatIsStillExhaustedIsNotT13() {
+        var factors = new ArrayList<Long>();
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), BUDGET, fixed(BUDGET, factors)));
+        assertEquals(List.of(100L), factors);
+    }
+
+    @Test
+    void theT13RuleAsksForNoRerunOutsideItsShape() {
+        var factors = new ArrayList<Long>();
+        var rerun = fixed(value(-5), factors);
+        assertEquals(Optional.empty(), explain(Set.of(), value(-5), BUDGET, rerun), "no marker");
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), value(4), rerun), "a conclusive side");
+        assertEquals(Optional.empty(), explain(DEEP, new Observation.Failure(null, List.of()), BUDGET, rerun), "a JVM failure");
+        assertEquals(Optional.empty(), explain(DEEP, value(-5), new Observation.Inconclusive("JVM timeout after 10000 ms"), rerun),
+                "another reason");
+        assertEquals(List.of(), factors);
+    }
+
+    /**
+     * A T21 non-termination is still exhausted at a hundred times the budget, so T13 does not explain it, even
+     * when the program also carries T13's marker; T21 alone does.
+     */
+    @Test
+    void aT21ExhaustionIsNotExplainedByT13() {
+        var saved = RegressionStore.read(REGRESSIONS.resolve("diverge-t21-while-break-first-hangs.diffcase"));
+        var diffCase = saved.diffCase();
+        var config = new DiffConfig(OptimizationLevel.PV11_SAFE, "Java");
+        var result = RUNNER.run(diffCase).results().get(config);
+        assertEquals(BUDGET, result.uplc());
+        var reruns = new ArrayList<Observation>();
+        KnownDivergences.Rerun rerun = factor -> {
+            var execution = RUNNER.rerun(diffCase, config, factor);
+            reruns.add(execution.observation());
+            return execution;
+        };
+        assertEquals(Optional.empty(), KNOWN.explain(diffCase, config, DEEP, result, rerun), "T13's shape only");
+        assertEquals(List.of(BUDGET), reruns);
+        assertEquals(Optional.of("T21"), KNOWN.explain(diffCase, config,
+                Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), result, rerun), "both shapes");
+    }
+
+    @Test
+    void aConfirmationFactorIsNeverNegative() {
         assertThrows(IllegalArgumentException.class, () -> new KnownDivergences.Rule("T0", "negative",
                 Set.of(), Observation.Value.class, "budget exhausted", -1));
+        assertThrows(IllegalArgumentException.class, () -> UplcExecutor.budgetTimes(0));
     }
 }

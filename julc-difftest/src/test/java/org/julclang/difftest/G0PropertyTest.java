@@ -122,8 +122,34 @@ class G0PropertyTest {
         coverage.record(program.features().stream().map(Enum::name).collect(Collectors.toSet()), outcome.verdicts());
     }
 
-    /** What {@link #verify} found: the catalogue IDs that explained a mismatch, and each configuration's verdict. */
-    record Outcome(Set<String> explained, Map<DiffConfig, Verdict.Kind> verdicts) {
+    /**
+     * What {@link #verify} found: the catalogue IDs that explained a mismatch, each configuration's verdict, and
+     * the confirmation reruns the registry asked for (D6, r6).
+     */
+    record Outcome(Set<String> explained, Map<DiffConfig, Verdict.Kind> verdicts, List<Confirmation> confirmations) {
+    }
+
+    /**
+     * One confirmation rerun: the configuration, the budget factor, what it produced, whether that agrees with the
+     * JVM (value and traces), and its time.
+     */
+    record Confirmation(DiffConfig config, long factor, UplcExecutor.Execution execution, boolean agrees, long millis) {
+
+        String observation() {
+            return ObservationText.format(execution.observation());
+        }
+
+        String cost() {
+            var budget = UplcExecutor.budgetTimes(factor);
+            return "factor " + factor + " budget cpu " + budget.cpuSteps() + " mem " + budget.memoryUnits()
+                    + (execution.measurement() == null ? "" : " used " + execution.measurement()) + " in " + millis + " ms";
+        }
+
+        @Override
+        public String toString() {
+            return config + " rerun x" + factor + ": " + observation() + (agrees ? ", agrees" : ", disagrees")
+                    + " (" + cost() + ")";
+        }
     }
 
     /**
@@ -143,21 +169,35 @@ class G0PropertyTest {
         var explained = new TreeSet<String>();
         boolean unexplained = false;
         var verdicts = new LinkedHashMap<DiffConfig, Verdict.Kind>();
+        var confirmations = new ArrayList<Confirmation>();
         for (var entry : report.results().entrySet()) {
+            var config = entry.getKey();
             var result = entry.getValue();
-            verdicts.put(entry.getKey(), result.verdict().kind());
+            verdicts.put(config, result.verdict().kind());
             if (result.verdict().kind() == Verdict.Kind.AGREE) continue;
-            var known = KNOWN.explain(diffCase, entry.getKey(), program.features(), result);
+            KnownDivergences.Rerun rerun = factor -> {
+                long start = System.nanoTime();
+                var execution = RUNNER.rerun(diffCase, config, factor);
+                boolean agrees = Verdict.compare(result.jvm(), execution.observation()).kind() == Verdict.Kind.AGREE;
+                confirmations.add(new Confirmation(config, factor, execution, agrees, (System.nanoTime() - start) / 1_000_000));
+                return execution;
+            };
+            var known = KNOWN.explain(diffCase, config, program.features(), result, rerun);
             if (known.isPresent()) explained.add(known.get());
             else unexplained = true;
         }
         if (unexplained) {
             RegressionStore.write(LAST_FAILURE, diffCase, RegressionStore.Expectation.AGREE, null,
                     provenance(finder, plan), report);
+            for (var confirmation : confirmations) {
+                RegressionStore.addRecorded(LAST_FAILURE, confirmation.config() + ".rerun", confirmation.observation());
+                RegressionStore.addRecorded(LAST_FAILURE, confirmation.config() + ".rerun.cost", confirmation.cost());
+            }
             failureWritten = true;
-            fail(report.describe() + "\n\n" + program.source());
+            fail(report.describe() + "\n\n" + confirmations.stream().map(Confirmation::toString)
+                    .collect(Collectors.joining("\n")) + "\n\n" + program.source());
         }
-        return new Outcome(explained, verdicts);
+        return new Outcome(explained, verdicts, List.copyOf(confirmations));
     }
 
     /** Where a generated case came from (D8); the seed is added when jqwik reports it. */

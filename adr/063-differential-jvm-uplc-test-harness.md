@@ -94,8 +94,9 @@ A `DiffCase` is the source text of one class, the entry method, the input values
 - **UPLC:** compile the same source with JuLC under the configuration, evaluate on `julc-vm-java` with a bounded
   budget (`UplcExecutor.BUDGET`, 10^10 CPU and 1.4·10^7 memory units), and record the result, the trace log, the
   budget used and the script's FLAT size. The comparison never uses the budget or the size; the D8 record keeps
-  them. *r6:* a registry rule may require a minimum script size as evidence of its mechanism (D6, T13); the
-  verdict still never depends on it.
+  them. *r6:* a registry rule may ask for a confirmation rerun of a configuration with a larger budget
+  (`DiffRunner.rerun`, `UplcExecutor.budgetTimes`) as evidence of its mechanism (D6, T13). The verdict never
+  depends on the rerun, and the configuration stays inconclusive (D3, H5).
 
 Configurations cover every `OptimizationLevel` (`NONE`, `BASELINE`, `PV11_SAFE`, `PV11_COSTED`) on `julc-vm-java`
 and the default `CompilerTarget`. Varying the target is M2b. Other VMs (Scalus, Truffle) can be added as
@@ -118,7 +119,7 @@ Agreement means both executions return `Value` with equal Data and equal trace s
 are not compared in the first version, so two `Failure`s that agree do not show that they failed for the same
 reason; the trace prefix is compared (ADR-062 T12, open question 3). `Crash` is always a defect.
 *r6:* a `Crash` whose detail starts with `encoder:` comes from `julc-core`'s FLAT encoder, which encodes the
-compiled program to measure its size (D2), not from the compiler; its detail starts with `compiler:`.
+compiled program to measure its size (D2), not from the compiler, whose crashes start with `compiler:`.
 
 A trace event is one call of `Builtins.trace`. Off-chain, it prints `[TRACE] message` with one `println`; the
 JVM side replaces standard output with a sink that records each such call, made directly by `Builtins.trace`,
@@ -213,31 +214,31 @@ explained depends on what the UPLC side produced:
   feature the generator records (for T21, `WHILE_BREAK_WITH_IF_UPDATE`), the JVM kind, and the exact
   inconclusive reason. A rule cannot explain a conclusive side, and one without a reason is refused. Rules are
   removed when the owning step resolves them; a run reports how often each one matched, so a stale rule is
-  visible. *r6:* D13 adds a second rule, T13 (`DEEP_COMPARISON`, `budget exhausted`, and a script of at least
-  64 KiB), with the saved reproducer `diverge-t13-nested-compare-to-exhausts-budget`.
+  visible. *r6:* D13 adds a second rule, T13 (`DEEP_COMPARISON`, `budget exhausted`, and a confirmation
+  rerun with 100 times the budget that agrees with the JVM), with the saved reproducer
+  `diverge-t13-nested-compare-to-exhausts-budget`.
 
 A rule is weaker than a pin: another non-termination with the same shape and reason passes as T21. That is
 acceptable because an inconclusive case is no evidence and counts towards no quota (H5, D9), and because each
 rule has pinned saved reproducers. A wrong value is a correctness result, so it gets no rule.
 
 *r6, T13.* `DEEP_COMPARISON` is syntactic and says nothing about loops, so on its own the T13 rule would also
-explain any other non-termination in a program that happens to contain a deep comparison, even in code that
-never runs. The rule therefore also needs the configuration's script to be at least
-`KnownDivergences.T13_MIN_SCRIPT_BYTES` (64 KiB): #146 doubles the script with each nested operand, and the size
-is deterministic. The floor comes from measurement:
-- in about 6,500 sampled G0 programs without the marker, the largest script was 26,193 bytes;
-- a T21 program with a deep comparison, which never terminates even with 100 times the budget, was 44,039 bytes
-  at most, so T21 alone explains it;
-- the smallest T13 exhaustion seen was 90,756 bytes, at `PV11_SAFE`. That program finishes with ten times the
-  budget, with the JVM's value.
+explain any other non-termination, or a wrong value that more budget would reveal, in a program that happens to
+contain a deep comparison. The rule therefore confirms its mechanism: it explains a configuration only if
+running it again with `KnownDivergences.T13_CONFIRMATION_FACTOR` (100) times the budget finishes and agrees with
+the JVM, value and traces (`Verdict.compare`). A rerun that is still exhausted, or gives any other result, is not
+explained and fails the run as a finding. So:
+- an expensive run that terminates is T13, whatever its script size;
+- a non-termination, for example T21's, still exhausts at 100 times the budget, so T13 does not explain it, and a
+  program with both shapes is explained by T21 alone;
+- a wrong value is never explained by a rule, as above.
 
-The hidden class is narrower but not empty. A non-termination in a marked program whose script is at least
-64 KiB passes as T13. A T13 exhaustion in a smaller script, for example a shallow deep comparison inside a loop
-that runs many times, fails the run and is triaged by hand: rerun the configuration with ten times the budget.
-If it then finishes with the JVM's value, the input is a sub-floor T13 run; report it on #146 and do not commit
-it. If it still exhausts the budget, or finishes with another value, it is a new finding. The reviewer's
-suggested floor of 1 MB would also fail the 90,756-byte case above and the saved reproducer (429,033 bytes at
-`PV11_SAFE`).
+The factor comes from measurement: the saved reproducer needs 1.8 to 3.8 times the memory budget, and a G0 r2
+program at the nesting bound needed 53 times; 10 times would report that genuine T13 run as a finding. The rerun
+is deterministic (H4). Its budget, factor, observation and cost are reported with every explained input and in
+the D8 record of a failure, as `recorded.<config>.rerun` and `.rerun.cost` (H2). Rounds r2 and r3 of #253 used a
+64 KiB script-size floor instead; it tested evidence of #146's growth, not the cause of the exhaustion, and it
+failed genuine T13 runs in smaller scripts.
 
 ### D7. Exhaustive small programs
 
@@ -380,7 +381,8 @@ Targets:
   Jazzer adds no rule, pin or exemption of its own. Anything else fails the input and is written as a D8
   record with `found.by: G0FuzzTest` and the plan; Jazzer has no seed, and the input it saves (`crash-*`)
   replays the case. Every match is counted and reported (H2): each explained input prints a line, and the run
-  ends with a tally per catalogue ID, written to `build/difftest/g0-fuzz-explained.txt`.
+  ends with a tally per catalogue ID, written to `build/difftest/g0-fuzz-explained.txt`. Each explained
+  input's line lists its confirmation reruns, and the tally counts them, how many agreed, and their time.
 
   **G0 r2.** Jazzer drives G0 to comparison nesting no jqwik campaign reaches, and #146 doubles the script
   with each level: two fuzzed G0 r1 programs, at nesting 17 and 21, ran the compiler out of memory in a fresh
@@ -514,12 +516,12 @@ D11 target constructs that G0 already generates.
      scripts of at most 2,662,590 bytes and compile in under a second per level; at 17 they give 15,646,924 bytes
      and take up to 5.8 s. The bound keeps `DEEP_COMPARISON` (8) and T13's exhaustion (nesting 12 and up in the
      saved reproducer) reachable.
-9. **Sub-floor T13 runs (D6, r6).** Under G0 r2, programs are smaller, and a deep comparison inside a loop can
-   exhaust the budget below the 64 KiB floor. One of the two round-r3 runs stopped on such an input: 64,067
-   bytes at `NONE`, which finishes with ten times the budget with the JVM's −5. Each such input fails the run
-   until it is triaged. Options: a lower floor, which widens the hidden class of D6; or a rule condition that
-   reruns the configuration with ten times the budget and requires the JVM's value, which tests the mechanism
-   directly at the cost of a rerun per match. Lean: the rerun condition, in its own change.
+9. **Sub-floor T13 runs (D6, r6). Answered in round r4 of #253: a confirmation rerun.** Under G0 r2, programs
+   are smaller, and a deep comparison inside a loop exhausted the budget below the 64 KiB floor of rounds r2 and
+   r3: one round-r3 run stopped on a 64,067-byte input that finishes with more budget with the JVM's −5. A lower
+   floor would have widened D6's hidden class. T13 now reruns the configuration with 100 times the budget and
+   requires the JVM's value and traces (D6), which tests the mechanism directly; the round-r3 input is explained
+   that way.
 
 ## M1 results (2026-10-23, at `ebaf028c` plus this PR)
 
@@ -685,7 +687,8 @@ Findings:
   - G0 records the shape as `DEEP_COMPARISON`: a ternary inside at least 8 nested `compareTo` operands. It is
     a registry marker, like `WHILE_BREAK_WITH_IF_UPDATE`, so it has no quota.
   - One T13 rule covers the exhausted budget: `DEEP_COMPARISON`, a JVM `Value`, the reason `budget exhausted`,
-    and a script of at least 64 KiB (D6). The draft's second entry, for the compiler's `OutOfMemoryError`,
+    and a confirmation rerun with 100 times the budget that agrees with the JVM (D6; a 64 KiB size floor in
+    rounds r2 and r3). The draft's second entry, for the compiler's `OutOfMemoryError`,
     matched a `Crash`; the r5 registry cannot express that and should not, so it is dropped.
   - The threshold keeps a T21 program with a shallow ternary in a comparison explained by T21 alone; a
     first version without it matched both rules. The saved input `t21-with-ternary-in-comparison` covers this.
@@ -757,6 +760,30 @@ Measured on 2026-10-29 (UTC), after review round r3 of #253, with G0 r2:
 
   Smaller programs also make G0 r2 faster: about 13 programs/s in run 2, against 1–4 for G0 r1.
 
+Measured on 2026-10-29 (UTC), after round r4 of #253, with the T13 confirmation rerun:
+- `./gradlew :julc-difftest:test --rerun`: 110 tests, 0 failures. `RegressionStoreTest` checks the rerun lines of
+  a D8 record, and the two size-floor tests are replaced by six:
+  the saved T13 reproducer is explained at every level by its rerun (which returns 2, the JVM's value) and by
+  nothing without one; a rerun with another value, another trace, a failure or a crash is not T13; a rerun still
+  exhausted is not T13; outside its shape the rule asks for no rerun; the T21 reproducer is still exhausted at
+  100 times the budget, so T13 does not explain it and, with both markers, T21 alone does; a negative factor is
+  refused. With the comparison of the rerun replaced by "any result", three of them fail. The replayed fuzz
+  inputs need 4 reruns, 1.9 s in all. `G0ExhaustiveTest` and the PR campaign are unchanged.
+- The round-r3 sub-floor input, replayed: T13 at `NONE`, by a rerun that returns −5 using 16,965,104 memory
+  units, in 5 ms.
+- Two runs of `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=300s`, each from the
+  committed seeds only. Both ran to the end, found nothing and hit no OOM:
+
+  | Run | Programs | Edges | Explained | Reruns (all agreeing) | Rerun time | Memory needed |
+  |---|---|---|---|---|---|---|
+  | 1 | 624 in 310 s | 4,827 | T13 37, T21 3 | 146 | 152.5 s; median 0.99 s, at most 2.3 s | up to 36.8 times the budget, median 7.4 |
+  | 2 | 3,478 in 303 s | 4,858 | T13 30, T21 20 | 80 | 63.8 s; median 0.85 s, at most 1.8 s | up to 37.3 times, median 9.8 |
+
+  No rerun disagreed, and none needed more than 38 times the budget. The reruns are the main cost of a run
+  rich in T13 inputs: in run 1 they took half of the 310 s. Most of it is compiling again, because these scripts
+  (78 KB to 3.4 MB) do not stay in the compile cache; keeping each configuration's program for its rerun would
+  remove that, and is left for a later change.
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
@@ -800,3 +827,6 @@ Measured on 2026-10-29 (UTC), after review round r3 of #253, with G0 r2:
   - Review round r3 of #253: F9, G0 r2 bounds comparison nesting at 14 until #146 is fixed (D5, D13), open
     question 8 is answered with it, and a `crash-*` input is never committed until it passes. F7, the
     triage line in D6 and open question 9. F8, an encoder failure is a `Crash` labelled `encoder:` (D3).
+  - Round r4 of #253: open question 9 is answered. T13's 64 KiB size floor is replaced by a confirmation
+    rerun with 100 times the budget that must agree with the JVM (D2, D6, D13), recorded with each explained
+    input and in the D8 record. F10, the D3 note. F11, the factor is 100, not 10.

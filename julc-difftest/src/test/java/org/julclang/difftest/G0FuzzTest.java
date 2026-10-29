@@ -3,6 +3,7 @@ package org.julclang.difftest;
 import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.junit.FuzzTest;
 import org.julclang.difftest.gen.G0;
+import org.julclang.difftest.gen.KnownDivergences;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * The G0 campaign with Jazzer's coverage guidance in place of jqwik's sampling (ADR-063 D13). Jazzer's
@@ -39,14 +41,23 @@ class G0FuzzTest {
     private static final int MAX_PLAN = 150;
     static final Path TALLY = Path.of("build/difftest/g0-fuzz-explained.txt");
 
-    /** Inputs run, and inputs that some configuration needed the registry for, by catalogue ID. */
+    /**
+     * Inputs run; inputs that some configuration needed the registry for, by catalogue ID; and the
+     * confirmation reruns the registry asked for (D6, r6), with how many agreed and their total time.
+     */
     private static long inputs;
     private static final Map<String, Long> explained = new TreeMap<>();
+    private static long reruns;
+    private static long rerunsAgreeing;
+    private static long rerunMillis;
 
     @BeforeAll
     static void startTally() {
         inputs = 0;
         explained.clear();
+        reruns = 0;
+        rerunsAgreeing = 0;
+        rerunMillis = 0;
     }
 
     @AfterAll
@@ -62,14 +73,22 @@ class G0FuzzTest {
     }
 
     static synchronized String tally() {
-        return "G0FuzzTest: " + inputs + " inputs, explained by the registry: " + (explained.isEmpty() ? "none" : explained);
+        return "G0FuzzTest: " + inputs + " inputs, explained by the registry: " + (explained.isEmpty() ? "none" : explained)
+                + "; confirmation reruns: " + reruns + " (" + rerunsAgreeing + " agreeing with the JVM), x"
+                + KnownDivergences.T13_CONFIRMATION_FACTOR + " budget, " + rerunMillis + " ms in all";
     }
 
     private static synchronized void count(List<Integer> plan, G0PropertyTest.Outcome outcome) {
         inputs++;
+        for (var confirmation : outcome.confirmations()) {
+            reruns++;
+            rerunMillis += confirmation.millis();
+            if (confirmation.agrees()) rerunsAgreeing++;
+        }
         if (outcome.explained().isEmpty()) return;
         for (String id : outcome.explained()) explained.merge(id, 1L, Long::sum);
-        System.err.println("G0FuzzTest explained " + outcome.explained() + " " + outcome.verdicts() + " plan " + plan);
+        System.err.println("G0FuzzTest explained " + outcome.explained() + " " + outcome.verdicts() + " plan " + plan
+                + outcome.confirmations().stream().map(c -> "\n  " + c).collect(Collectors.joining()));
     }
 
     @FuzzTest(maxDuration = "60s")

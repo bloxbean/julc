@@ -33,6 +33,15 @@ public final class UplcExecutor {
     static final ExBudget BUDGET = new ExBudget(10_000_000_000L, 14_000_000L);
 
     /**
+     * {@link #BUDGET} times {@code factor}, for a confirmation rerun (ADR-063 D6, r6). A rerun is evidence for a
+     * registry explanation only; no verdict uses it (D2).
+     */
+    public static ExBudget budgetTimes(long factor) {
+        if (factor < 1) throw new IllegalArgumentException("the budget factor must be positive");
+        return new ExBudget(Math.multiplyExact(BUDGET.cpuSteps(), factor), Math.multiplyExact(BUDGET.memoryUnits(), factor));
+    }
+
+    /**
      * The compile cache keeps at most this many entries. It serves a program run on several inputs one
      * after another, as the exhaustive corpus does; it is not a store for a whole campaign.
      */
@@ -82,6 +91,11 @@ public final class UplcExecutor {
     }
 
     public Execution run(DiffCase diffCase, DiffConfig config) {
+        return run(diffCase, config, BUDGET);
+    }
+
+    /** Runs the case under the configuration with another evaluation budget. */
+    public Execution run(DiffCase diffCase, DiffConfig config, ExBudget budget) {
         String key = config.level() + "\0" + diffCase.method() + "\0" + diffCase.source();
         Compiled entry = cached(key);
         if (entry == null) {
@@ -93,12 +107,12 @@ public final class UplcExecutor {
         int size = entry.scriptBytes();
         EvalResult result;
         try {
-            result = vm(config.vm()).evaluateWithArgs(program, diffCase.args(), BUDGET);
+            result = vm(config.vm()).evaluateWithArgs(program, diffCase.args(), budget);
         } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
             return new Execution(new Observation.Crash("vm: " + e), null);
         }
-        var budget = result.budgetConsumed();
-        var measurement = new Measurement(budget.cpuSteps(), budget.memoryUnits(), size);
+        var consumed = result.budgetConsumed();
+        var measurement = new Measurement(consumed.cpuSteps(), consumed.memoryUnits(), size);
         Observation observation = switch (result) {
             case EvalResult.Success s -> {
                 try {
