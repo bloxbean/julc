@@ -1,3 +1,4 @@
+format: 2
 name: reassigning a local outside a loop is outside the subset
 class: Probe
 method: m

@@ -22,7 +22,7 @@ dependencies {
     implementation project(':julc-verification')
     implementation project(':julc-bls')
     implementation project(':julc-jrl:julc-jrl-core')
-    implementation 'com.bloxbean.cardano:cardano-client-lib:0.8.0-pre6'
+    implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
 
     implementation 'info.picocli:picocli:4.7.7'
     annotationProcessor 'info.picocli:picocli-codegen:4.7.7'

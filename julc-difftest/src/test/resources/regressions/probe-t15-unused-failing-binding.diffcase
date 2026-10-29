@@ -1,3 +1,4 @@
+format: 2
 name: unused binding that fails (T15)
 class: Probe
 method: m

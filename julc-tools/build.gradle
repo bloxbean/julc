@@ -17,7 +17,7 @@ dependencies {
     // UPLC tools: decompiler, V1/V2 script contexts and bech32 addresses (cardano-client-lib)
     implementation project(':julc-decompiler')
     implementation project(':julc-cardano-client-lib')
-    implementation 'com.bloxbean.cardano:cardano-client-lib:0.8.0-pre6'
+    implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
 
@@ -29,10 +29,10 @@ dependencies {
 
     constraints {
         // The playground runs blueprint generation and script hashing on cardano-client-lib
-        // 0.8.0-pre6, which also runs under GraalVM Web Image; pin it so no transitive
+        // cardanoClientLibVersion, which also runs under GraalVM Web Image; pin it so no transitive
         // dependency moves it.
         implementation('com.bloxbean.cardano:cardano-client-lib') {
-            version { strictly '0.8.0-pre6' }
+            version { strictly cardanoClientLibVersion }
         }
     }
 }

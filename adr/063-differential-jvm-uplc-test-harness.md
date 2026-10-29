@@ -1,7 +1,8 @@
 # ADR-063: Differential JVM/UPLC test harness
 
-**Status:** Proposed. M1 and M2 are implemented in `julc-difftest`; D13 (coverage-guided fuzzing) in a
-follow-up PR; M3–M5 are not started
+**Status:** Accepted (2026-10-28). M1 and M2 are implemented in `julc-difftest` (same PR), revised in r4 and r5
+after review; M2b and M3–M5 are not started. r6 adds D13 (coverage-guided fuzzing,
+[#253](https://github.com/bloxbean/julc/pull/253)), which is under review
 **Date:** 2026-10-23
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md)
@@ -11,7 +12,7 @@ testing" and its milestone 2, which this ADR makes concrete)
 ## Context
 
 ADR-062 catalogues divergences between running JuLC source on the JVM and running its compiled UPLC
-(T1–T19). ADR-061 argues that control-flow correctness needs generated programs compared against an
+(T1–T23 as of its r4). ADR-061 argues that control-flow correctness needs generated programs compared against an
 independent oracle, not more hand-written scenarios. Both need the same infrastructure, and none of it
 exists in general form today.
 
@@ -49,7 +50,8 @@ oracle or a weak generator produces false confidence that later steps rely on (A
 
 - Fixing any divergence. The harness finds and records them; the fixes belong to S2–S5 and ADR-061.
 - A reference interpreter for JuLC Java.
-- ~~Coverage-guided fuzzing (for example Jazzer).~~ No longer a non-goal (r4): D13 adds Jazzer next to jqwik.
+- Coverage-guided fuzzing (for example Jazzer). It can wrap the generator later (ADR-061). *r6: no longer a
+  non-goal; D13 adds Jazzer next to jqwik.*
 - Comparing costs. The harness records budgets and sizes, but equal results say nothing about acceptable cost.
 
 ## Invariants
@@ -61,9 +63,10 @@ oracle or a weak generator produces false confidence that later steps rely on (A
 - **H3. Fresh state per evaluation.** Each top-level evaluation runs in a new class loader, so static fields
   start from their initial values. State is never reset between calls inside one evaluation (ADR-061).
 - **H4. Reproducibility.** A failure is reproducible from its saved seed, generator version, compiler revision
-  and configuration.
+  and configuration (the D8 record). Replaying it runs the current compiler; the observations of the run that
+  found it are kept beside it as history.
 - **H5. Inconclusive is not a pass.** A timeout, a budget exhaustion or a JVM stack overflow is recorded as
-  inconclusive and counted against the conclusive-case quota.
+  inconclusive. An inconclusive case, explained by the registry or not, satisfies no coverage quota (D9).
 - **H6. Generator validity.** Every program the positive generator emits compiles with javac. A javac error is a
   generator bug and fails the run.
 - **H7. Two properties.** Positive programs must compile with JuLC and agree. Negative programs must be rejected
@@ -88,12 +91,14 @@ A `DiffCase` is the source text of one class, the entry method, the input values
 
 - **JVM:** compile with `javax.tools.JavaCompiler` in memory against the off-chain classpath, load it in a
   fresh class loader (H3), and invoke the entry method reflectively. A watchdog bounds the run time.
-- **UPLC:** compile the same source with JuLC under the configuration, evaluate on `julc-vm-java` with the
-  maximum execution budget, and record the result, the trace log and the budget used.
+- **UPLC:** compile the same source with JuLC under the configuration, evaluate on `julc-vm-java` with a bounded
+  budget (`UplcExecutor.BUDGET`, 10^10 CPU and 1.4·10^7 memory units), and record the result, the trace log, the
+  budget used and the script's FLAT size. The comparison never uses the budget or the size; the D8 record keeps
+  them.
 
-Configurations cover every `OptimizationLevel` (`NONE`, `BASELINE`, `PV11_SAFE`, `PV11_COSTED`) and the supported
-target profiles. Other VMs (Scalus, Truffle) can be added as additional UPLC executions; agreement between VMs
-is a separate property and does not validate the frontend.
+Configurations cover every `OptimizationLevel` (`NONE`, `BASELINE`, `PV11_SAFE`, `PV11_COSTED`) on `julc-vm-java`
+and the default `CompilerTarget`. Varying the target is M2b. Other VMs (Scalus, Truffle) can be added as
+additional UPLC executions; agreement between VMs is a separate property and does not validate the frontend.
 
 ### D3. The observation model
 
@@ -101,26 +106,36 @@ Each execution yields one `Observation`:
 
 | Kind | JVM | UPLC |
 |---|---|---|
-| `Value(data)` | The return value, converted by the mapping in D4 | The result term, converted by `TermExtractor` |
+| `Value(data)` | The return value, converted by the mapping in D4 | The result term, converted by the same mapping (`ValueMapping.fromTerm`) |
 | `Failure(traces)` | Any exception from the entry method, with the traces emitted before it | Evaluation error, with the trace log |
 | `Rejected(code)` | — | JuLC compile error with its diagnostic code |
 | `Crash` | — | A compiler exception that is not a diagnostic |
 | `Inconclusive(reason)` | Timeout or stack overflow | Budget exhausted |
 
-Agreement means both executions return `Value` with equal Data, or both return `Failure` with equal trace
-sequences. Failure kinds (for example `ArithmeticException` versus a builtin error) are not compared in the
-first version; the trace prefix is (ADR-062 T12, open question 3). `Crash` is always a defect.
+Agreement means both executions return `Value` with equal Data and equal trace sequences, or both return
+`Failure` with equal trace sequences. Failure kinds (for example `ArithmeticException` versus a builtin error)
+are not compared in the first version, so two `Failure`s that agree do not show that they failed for the same
+reason; the trace prefix is compared (ADR-062 T12, open question 3). `Crash` is always a defect.
+
+A trace event is one call of `Builtins.trace`. Off-chain, it prints `[TRACE] message` with one `println`; the
+JVM side replaces standard output with a sink that records each such call, made directly by `Builtins.trace`,
+as one event with its message unchanged. So a message keeps its line breaks and any `[TRACE] ` it contains, and
+other output is never taken for a trace. The UPLC trace list is never normalized to match.
 
 ### D4. One value mapping
 
-JVM results are converted to `PlutusData` by a single documented mapping:
+JVM results are converted to `PlutusData` by a single documented mapping (`ValueMapping`), which also converts
+UPLC result terms and hand-written arguments:
 
 - `BigInteger`, `int` and `long` become `IntegerData`;
 - `boolean` becomes the Bool constructor;
 - `byte[]` becomes `BytesData`;
 - `String` becomes its UTF-8 bytes;
-- ledger types use their own `toPlutusData` (`julc-ledger-api`);
-- user records use field order and the constructor tags the compiler documents.
+- `PlutusData` is itself; `Optional`, `JulcList` and `JulcMap` of these map element by element.
+
+Not implemented yet, and rejected by the mapping rather than guessed:
+- user records, by field order and the constructor tags the compiler documents (M2b);
+- ledger types, through their own `toPlutusData` (`julc-ledger-api`), which D10 needs (M4).
 
 The comparison is structural equality on `PlutusData`. The mapping is a trusted component and has its own
 unit tests against hand-written expected Data.
@@ -130,19 +145,25 @@ unit tests against hand-written expected Data.
 Programs are generated as typed ASTs and printed as Java source, never as random text (ADR-061). The
 grammar grows in named stages:
 
-- **G0 (first milestone):**
-  - static methods over `BigInteger` and `boolean` locals;
-  - assignments and compound assignments;
-  - `if`/`else` and the ternary operator;
-  - `&&` and `||`;
-  - `while` loops with a bounded, decreasing counter;
-  - for-each over a `JulcList<BigInteger>` parameter;
-  - `break`, `continue` and `return` inside loops;
-  - nested blocks and shadowing;
-  - calls to non-recursive helper methods.
-  
-  Integers stay within ±2^62 so that no `long` overflows, and the grammar never uses `==` on reference types.
-  That keeps G0 inside the semantic intersection (ADR-062 T3–T6).
+- **G0 (M2, as implemented in `gen/G0`, version `G0 r1`):**
+  - one static method `m(BigInteger a, BigInteger b, JulcList<BigInteger> xs)` returning `BigInteger`;
+  - method-level `BigInteger` declarations, assigned only inside loops (ADR-048);
+  - `while` loops whose `long` counter counts up to a bound of at most 3, and for-each over `xs`, nested at
+    most two deep;
+  - in loop bodies: plain assignments, `if`/`else` with assignments, `if (c) break;`, and `BigInteger` locals;
+  - expressions: `add`, `subtract`, `multiply` by a small constant, the ternary operator, constants from −5 to
+    5; conditions: `compareTo` against 0, `&&` and `||`.
+
+  The grammar never uses `==` on reference types, has no `int` or `long` arithmetic beyond the counters, and has
+  no division, which keeps it inside the semantic intersection (ADR-062 T3–T6, T11).
+
+  Planned for G0 and not generated yet (M2b): `if`/`else` and loops inside an `if` at method level, calls to
+  non-recursive helper methods, `boolean` locals, a local that shadows a field, and decreasing counters. Java has
+  no other shadowing. Compound assignment does not apply to `BigInteger`.
+
+  JuLC rejects these, so they belong to the negative grammar G0⁻ (M5) and are saved as `REJECT` cases today:
+  `continue`; `return` inside a loop; reassigning a variable outside a loop; `break` in a for-each that updates
+  nothing; a loop with `break` that contains a loop.
 - **G1:** `switch` expressions over sealed interfaces and records; Optional; `JulcMap`.
 - **G2:** list functions with lambdas (`any`, `all`, `find`, `map`, `filter`, `foldl`); recursion with a
   decreasing measure.
@@ -152,58 +173,142 @@ grammar grows in named stages:
   lambda, unsupported operators, the forms ADR-048 and ADR-061 exclude), each paired with the expected
   diagnostic category.
 
-Termination holds by construction. Every loop has a counter that strictly decreases, every recursion a
-decreasing argument, and nesting depth and size are bounded.
+Termination holds by construction. Every loop has a bounded counter or iterates over a finite list, every
+recursion has a decreasing argument, and nesting depth and size are bounded.
 
 ### D6. Allowed divergences
 
 *Hand-written and saved cases (M1, implemented):* each `.diffcase` file states its own expectation. A known
-divergence is `DIVERGE <catalogue id> <JVM kind>/<UPLC kind>`, for example `DIVERGE T7 Value/Failure`.
-The case passes only while that exact divergence holds, so a mismatch with another cause fails it. When the
-owning step resolves the entry, the expectation changes to `AGREE` or `REJECT`.
+divergence is `DIVERGE <catalogue id> <JVM kind>/<UPLC kind>`, for example `DIVERGE T12 Value/Value`, followed by
+the observation each side must produce:
 
-*Generated cases (M2, implemented as `KnownDivergences`):* divergences that are known and not yet resolved are
-listed in one registry. Each entry needs a structural feature the generator records (for T21,
-`WHILE_BREAK_WITH_IF_UPDATE`) as well as the observation kinds. Each entry names its ADR-062
-catalogue ID, a predicate over the program's features (for example "uses `any` with a predicate that can fail
-on a later element"), and an issue. A mismatch passes only if exactly one entry matches it, and every match
-appears in the run statistics. Entries are removed when the owning step resolves them. A run with an unused
-entry reports it, so stale rules don't hide regressions.
+```
+expect: DIVERGE T12 Value/Value
+jvm: Value 01 []
+uplc: Value 01 ["checked"]
+```
+
+The pins fix the value and traces of a `Value`, the traces of a `Failure`, and the reason of an `Inconclusive`;
+they cannot name a `Rejected` or a `Crash`. Failure details are not pinned, because they are not compared (open
+question 3). So a saved divergence passes only while it produces exactly those observations: a different value,
+an extra or reordered trace, a trace before a failure, or another inconclusive reason fails it. Per-level pins
+(`uplc.<LEVEL>:`) cover a divergence that differs by optimization level. When the owning step resolves the
+entry, the expectation changes to `AGREE` or `REJECT`.
+
+*Generated cases (M2, implemented as `KnownDivergences`):* a generated mismatch passes only if the registry
+explains every configuration that disagrees, and every explanation appears in the run statistics. How it may be
+explained depends on what the UPLC side produced:
+
+- **A conclusive UPLC side (a `Value` or a `Failure`) is explained only by an exact pin.** A pin is a saved
+  `DIVERGE` case with the same program (its source, up to the class name), method and arguments, whose pinned
+  observations the result meets at that optimization level, traces included. Any other wrong value, and any
+  change of traces, fails the run and is written out for triage, even in the shape of a known divergence. The
+  saved cases under `src/test/resources/regressions` are the pins, so a saved case and the registry cannot
+  disagree. T23 is explained this way: the two corpus runs it affects (D7) are saved as
+  `diverge-t23-corpus-input-1` and `-input-3`.
+- **An inconclusive UPLC side is explained by a rule.** A rule names its ADR-062 catalogue ID, a structural
+  feature the generator records (for T21, `WHILE_BREAK_WITH_IF_UPDATE`), the JVM kind, and the exact
+  inconclusive reason. A rule cannot explain a conclusive side, and one without a reason is refused. Rules are
+  removed when the owning step resolves them; a run reports how often each one matched, so a stale rule is
+  visible. *r6:* D13 adds a second rule, T13 (`DEEP_COMPARISON`, `budget exhausted`).
+
+A rule is weaker than a pin: another non-termination with the same shape and reason passes as T21. That is
+acceptable because an inconclusive case is no evidence and counts towards no quota (H5, D9), and because each
+rule has pinned saved reproducers. A wrong value is a correctness result, so it gets no rule.
 
 ### D7. Exhaustive small programs
 
-Alongside random generation, enumerate every G0 program up to a small size (initially 6 statements over 2
-variables, to be tuned against run time) with fixed boundary inputs (empty, singleton and multi-element
-lists; zero, negative and large integers). This covers all small combinations, which random generation can
-miss.
+Alongside random generation, enumerate every program of a bounded sub-grammar of G0 (`gen/G0Enumeration`,
+version `G0 enumeration r1`) on fixed inputs. This covers all small combinations, which random generation can
+miss. Every program declares `v0 = a` and `v1 = b`, runs one or two loops, and returns `v0 + 3·v1`, so both
+accumulators reach the result. A loop body reads its loop variable `X` in each of nine statements:
+
+| Statement | Body text |
+|---|---|
+| `ADD` | `v0 = v0.add(X);` |
+| `SUBTRACT_OTHER` | `v1 = v1.subtract(v0);` |
+| `IF_UPDATE` | `if (X > a) { v0 = v0 + X; }` |
+| `IF_ELSE_UPDATE` | `if (X < b) { v0 = v0 + 1; } else { v1 = v1 + X; }` |
+| `BREAK` | `if (X > b) { break; }` |
+| `LOCAL` | `BigInteger t = X * 2; v1 = v1 + t;` |
+| `TERNARY` | `v0 = (X < a ? v0 - X : v0 + 2);` |
+| `AND_UPDATE` | `if (X > a && X < 4) { v1 = v1 + 1; }` |
+| `OR_UPDATE` | `if (X < a \|\| X > 2) { v1 = v1 + X; }` |
+
+The bound:
+- one loop (`while` run once, `while` run three times, or for-each): a body of one or two statements;
+- two loops, one after the other, a `while` around a for-each, or a for-each around a `while`: one statement in
+  each body, plus the inner loop in the outer body;
+- a `while` counts its loop variable from 1; a for-each runs over `xs`;
+- bodies that update nothing, and outer bodies that `break`, are left out, because JuLC rejects them (G0⁻).
+
+That is 376 programs: 8 one-statement bodies and 80 two-statement bodies, so 8 + 88 + 88 for the single-loop
+shapes and 3 × 64 for the two-loop shapes. They run on four inputs:
+
+| `a` | `b` | `xs` | Under `X > b` |
+|---|---|---|---|
+| 0 | 3 | `[]` | for-each runs zero times; three-iteration `while` never breaks |
+| −2 | 1 | `[-1, 2, 4]` | `while` breaks at its second iteration; for-each at its second element |
+| 2 | 1 | `[1]` | for-each never breaks |
+| −2 | −3 | `[-4, 3, 1, 2]` | `while` breaks at once; for-each at its second element |
+
+The last three were chosen by a greedy search over 210 candidate inputs as the fewest under which every erasure
+below is observable.
+
+The corpus is checked for what it exercises, not only for its size (`G0ExhaustiveTest`):
+- **Bound and features:** exactly 376 distinct programs, with at least 20 for each G0 feature.
+- **Observability:** each program is also compiled without its loops, and once without each single statement
+  (1,104 variants). Every variant changes the JVM result on at least one input. So a lowering that drops a loop
+  or a statement, or never takes a branch, produces a UPLC result that differs from the JVM, and the run fails.
+- **Agreement:** all 1,504 runs agree at every optimization level, or are explained by the registry: by the T21
+  rule, or by the two exact T23 pins.
 
 ### D8. Shrinking and regression capture
 
-jqwik shrinks the AST and the inputs together, keeping each candidate typed, in scope and terminating. A
-minimized failure is saved under `julc-difftest/src/test/resources/regressions/` with:
-- its source and inputs;
-- both observations;
-- the seed and generator version;
-- the compiler revision;
-- the configuration.
+jqwik shrinks the choice sequence and the inputs together; every decoded program is valid, so each candidate
+stays typed, in scope and terminating. A failure is written as a versioned record (`format: 2`, `RegressionStore`):
 
-A regression suite replays every saved case on every run. Fixing the defect turns the case into a plain
-regression test; it is never deleted.
+| Lines | Content |
+|---|---|
+| `name`, `class`, `method`, `arg`, source | The case: its source and inputs |
+| `expect`, `jvm`, `uplc`, and `.<LEVEL>` overrides | What a replay must produce (D6) |
+| `found.by`, `found.generator`, `found.plan`, `found.seed`, `found.compiler` | Provenance: the test, the generator version, the choice sequence, the jqwik seed, and the project version with `git describe --dirty` |
+| `recorded.jvm`, `recorded.<config>`, `recorded.<config>.cost` | History: what each side observed when the record was written, under each configuration, with the budget and script size |
+
+`recorded.` lines are never checked. A replay against a later compiler may contradict them; the `expect` lines
+say what the replay must produce. A generated failure is written to `build/difftest/` and uploaded by the
+nightly job; saving it under `julc-difftest/src/test/resources/regressions/` makes it permanent. A regression
+suite replays every saved case on every run. Fixing the defect turns the case into a plain regression test; it
+is never deleted. Hand-written cases from M1 carry no provenance.
 
 ### D9. Coverage quotas and statistics
 
-Each generated case is labelled with the interactions it exercises, using the dimensions in ADR-061's
-composition table:
-- zero, one or many iterations;
-- the number of updated variables;
-- if-in-loop, loop-in-if and loop-in-loop nesting;
-- shadowing;
-- each exit kind, early or on the last iteration;
-- short-circuit branches;
-- helper calls inside loops.
+Each generated case is labelled with the interactions its program contains, using the dimensions in ADR-061's
+composition table.
 
-A run fails when a dimension has fewer conclusive cases than its quota. It reports discard, inconclusive and
-allowed-divergence rates (H5).
+*Implemented (M2):* the G0 features `WHILE`, `FOR_EACH`, `NESTED_LOOP`, `IF_IN_LOOP`, `IF_ELSE_IN_LOOP`, `BREAK`,
+`BODY_LOCAL`, `TERNARY`, `SHORT_CIRCUIT`, `ACCUMULATOR_UPDATED` and `SEVERAL_ACCUMULATORS`. The features
+`WHILE_BREAK_WITH_IF_UPDATE` and `FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE` mark known bugs' shapes and have no quota;
+the T21 rule matches on the first, and the second is statistics only, since T23 is explained by pins.
+*r6:* `DEEP_COMPARISON` (D13) is a third marker, and the T13 rule matches on it.
+`Coverage` records each case's outcome:
+- conclusive: every configuration agrees;
+- allowed divergence: no configuration is inconclusive and every mismatch is explained;
+- inconclusive: some configuration is inconclusive, whether explained or not.
+
+A feature counts towards its quota only from conclusive cases, and the PR campaign fails when a feature has
+fewer than 3% of all tries. The report gives each outcome per configuration. A case with an unexplained mismatch
+fails the run instead.
+
+These features are syntactic: they say a program contains a loop or a `break`, not that the loop iterated or the
+`break` was taken. For the exhaustive corpus, D7's observability check establishes that. For random campaigns,
+coverage of what was exercised is M2b.
+
+*Not implemented (M2b):* zero, one or many iterations as measured; each exit kind, early or on the last
+iteration; loop-in-if nesting; shadowing; helper calls inside loops.
+
+Discards do not occur, because every decoded program is valid. The PR campaign has a fixed seed, so its
+inconclusive and allowed-divergence counts are fixed. The nightly campaign reports them.
 
 ### D10. Value-level mode
 
@@ -232,7 +337,7 @@ The harness counts as evidence only after it demonstrates that it finds real def
 - A scheduled nightly job runs larger campaigns with fresh seeds and uploads saved failures as artifacts.
 - The module's tests are part of `./gradlew build`; campaign sizes are Gradle properties.
 
-### D13. Coverage-guided fuzzing (r4)
+### D13. Coverage-guided fuzzing (r6)
 
 Jazzer (`com.code-intelligence:jazzer-junit`, version in `gradle/libs.versions.toml`) runs `@FuzzTest`
 targets next to jqwik. jqwik samples choice sequences, shrinks failures and gives the PR campaign a fixed
@@ -242,7 +347,16 @@ of `org.julclang.**`. It does not shrink a G0 program, so its findings are reduc
 Targets:
 - **`G0FuzzTest`** (`julc-difftest`): Jazzer's bytes decode to the three inputs and to G0's choice
   sequence, one byte per choice. Each program is checked by the same `G0PropertyTest.verify` as the jqwik
-  campaigns, so H2, H5 and D6 apply unchanged.
+  campaigns, against the same registry, `G0PropertyTest.KNOWN = KnownDivergences.withPins(<the saved
+  cases>)`. So H2, H5 and D6 apply unchanged:
+  - a conclusive mismatch passes only as an exact pin: a saved `DIVERGE` case with the same program up to the
+    class name, method and arguments, whose pinned observations the result meets, traces included;
+  - an inconclusive UPLC side passes only by a `KnownDivergences.Rule`, by its exact reason;
+  - a `Crash` never passes.
+
+  Jazzer adds no rule, pin or exemption of its own. Anything else fails the input and is written as a D8
+  record with `found.by: G0FuzzTest` and the plan; Jazzer has no seed, and the input it saves (`crash-*`)
+  replays the case.
 - **`DecoderFuzzTest`** (`julc-core`): the PlutusData CBOR decoder and the UPLC text parser. A decoder may
   reject input only with its own exception, and what it accepts must decode to the same value after
   re-encoding.
@@ -269,8 +383,8 @@ adds minutes for little gain over replaying the saved inputs.
 
 The harness's verdicts depend on:
 - javac and the JVM, as the oracle for Java's meaning;
-- the D4 value mapping;
-- `TermExtractor`;
+- the D4 value mapping (`ValueMapping`), in both directions;
+- the JVM trace sink (D3);
 - `julc-vm-java`, which is conformance-tested against the official Plutus test suite (`PlutusConformanceTest`);
 - jqwik.
 
@@ -282,16 +396,19 @@ side, and why D10 treats off-chain library differences as findings.
 
 ## Affected modules
 
-- New: `julc-difftest`, which is not published.
+- New: `julc-difftest`, which is not published. Its build runs `git describe` for the D8 compiler revision.
 - `julc-compiler`: optionally, test-only hooks for D11 mutations, disabled by default and unreachable from public
   APIs. Whether such hooks are acceptable is open question 2.
-- No change to `julc-stdlib`, `julc-vm*`, `julc-testkit` or any published artifact, except the D13 fixes below.
-- D13 (r4): Jazzer as a test dependency of `julc-core` and `julc-difftest`, `gradle/libs.versions.toml` and
-  `gradle/jazzer-fuzz.gradle`. Two fixes in `julc-core`'s UPLC text parser and printer, from its findings.
+- No change to `julc-stdlib`, `julc-vm*`, `julc-testkit` or any published artifact.
+- r6 (D13): Jazzer as a test dependency of `julc-core` and `julc-difftest`, `gradle/libs.versions.toml` and
+  `gradle/jazzer-fuzz.gradle`. Two fixes in `julc-core`'s UPLC text parser and printer, from its findings; these
+  are the only r6 changes to a published artifact.
 
 ## Compatibility
 
-No public API, compiled output, script hash or cost changes. The D13 fixes change the text format only:
+None. No public API, compiled output, script hash or cost changes.
+
+r6 (D13) changes none of these either. Its fixes change the UPLC text format only:
 - `UplcParser` reports a sign without digits, and a numeric escape above U+10FFFF however long, as
   `UplcParseException`. Before, both threw `NumberFormatException`.
 - `UplcPrinter` writes `\&` after a decimal escape that a digit follows, as Haskell's `show` does. Such
@@ -302,12 +419,14 @@ No public API, compiled output, script hash or cost changes. The D13 fixes chang
 | Milestone | Scope | Exit criteria |
 |---|---|---|
 | **M1** | `DiffRunner`, observation model (D3), value mapping (D4) with its unit tests, regression store (D8), and about 15 hand-written cases: the `LoopFieldUpdateTest` program, the ADR-061 probes, and reproducers for T3, T5, T7, T10, T11 and T15 | Every known divergence reproduces and is registered (D6) or recorded as a finding; T15 is confirmed or refuted |
-| **M2** | G0 generator, printer, shrinking, exhaustive enumeration (D7), statistics and quotas (D9), PR and nightly CI (D12) | Quotas met with a measured PR-run time; discard and inconclusive rates reported |
+| **M2** | G0 generator, printer, shrinking, exhaustive enumeration (D7), statistics and quotas (D9), PR and nightly CI (D12) | Quotas met from conclusive cases with a measured PR-run time; inconclusive and allowed-divergence rates reported; the D7 corpus observability check passes; failures saved as D8 records |
+| **M2b** | The rest of G0 (D5): method-level `if`/`else` and loops inside an `if`, helper calls, `boolean` locals, a local shadowing a field. User-record mapping (D4); target profiles (D2); exercised-coverage dimensions for random campaigns (D9) | Each construct generated and covered by a quota; the D7 bound extended to it with the observability check; T14 confirmed or refuted |
 | **M3** | Self-check (D11): rediscovery and mutation | Every listed historical failure and every injected fault is detected |
-| **M4** | Value-level mode (D10) over every public `Builtins` method and the stdlib libraries | A conformance report listing each method as agree, diverge or unsupported, which becomes the input to S2's ADR |
-| **M5** | G0⁻ negative grammar, then G1 | Both H7 properties hold; G1 quotas met |
+| **M4** | Value-level mode (D10) over every public `Builtins` method and the stdlib libraries, with the ledger-type mapping (D4) | A conformance report listing each method as agree, diverge or unsupported, which becomes the input to S2's ADR |
+| **M5** | G0⁻ negative grammar (starting from the saved `REJECT` cases), then G1 | Both H7 properties hold; G1 quotas met |
 
-ADR-061's control-flow migrations (ADR-062 S4) may start only after M3.
+ADR-061's control-flow migrations (ADR-062 S4) may start only after M3. M2b does not gate M3: the mutations of
+D11 target constructs that G0 already generates.
 
 ## Alternatives considered
 
@@ -328,7 +447,8 @@ ADR-061's control-flow migrations (ADR-062 S4) may start only after M3.
    unreachable from public API? The alternative is running rediscovery only against pinned old snapshots,
    which cannot test new faults. Lean: allow hooks, behind a package-private test seam.
 3. **Failure kinds (D3).** Should failure categories be compared (division by zero versus a decode error)? Lean:
-   not in M1; revisit after S2 defines how off-chain failures map to UPLC errors.
+   not in M1; revisit after S2 defines how off-chain failures map to UPLC errors. Until then, saved divergences
+   pin a failure's traces but not its detail (D6), and D8 records keep the details as history.
 4. **Which VMs are in the PR run?** Lean: `julc-vm-java` on PRs; Scalus and Truffle in the nightly campaign.
 5. **Should users get the harness?** A published `julc-testkit` API for differential tests of user contracts is
    ADR-062 S3's question. Lean: decide there, after M4.
@@ -336,6 +456,13 @@ ADR-061's control-flow migrations (ADR-062 S4) may start only after M3.
    (a private fork or runner) would make it routine. Lean: set one up before M4.
 7. **Version catalog.** Only Jazzer is in `gradle/libs.versions.toml`; jqwik and the rest stay in
    `gradle.properties`. Lean: move them in a separate change.
+8. **A compiler crash in the T13 shape (D13, r6).** Fuzzed G0 programs with deep `compareTo` nesting run the
+   compiler out of memory (`Crash "compiler: java.lang.OutOfMemoryError: Java heap space"`). Under r5 a crash is
+   never an allowed divergence: a rule names an inconclusive reason, and a saved case cannot pin a crash. So such
+   an input fails the run, and the nightly G0 fuzz job can stop at it until #146 is fixed. Options: keep it
+   failing; bound G0's comparison nesting, which hides the shape from every campaign; or report a compiler
+   `OutOfMemoryError` as inconclusive, which changes D3. Lean: keep it failing, since it is a real defect, and
+   revisit if it hides other findings in the nightly job.
 
 ## M1 results (2026-10-23, at `ebaf028c` plus this PR)
 
@@ -374,7 +501,8 @@ Implemented:
 - **Nightly campaign:** `nightlyDiffTest`, 3,000 tries with a fresh seed, run by
   `.github/workflows/difftest-nightly.yml`, which uploads the shrunk failing case.
 - **Exhaustive mode:** `G0ExhaustiveTest` runs every program from choice sequences of length 6 over
-  {0, 1, 2} (183 distinct programs) on 3 boundary inputs.
+  {0, 1, 2} (183 distinct programs) on 3 boundary inputs. Replaced in r4 by the D7 grammar: the review showed
+  that every `while` bound in it was zero and no result read an accumulator.
 - **Registry:** `KnownDivergences`.
 - **Harness changes:**
   - UPLC evaluation now runs under a bounded budget (`UplcExecutor.BUDGET`, 10^10 CPU and 1.4·10^7 memory
@@ -392,7 +520,8 @@ never does. Reduced by hand:
 - in a `while` loop whose body contains `break`, a taken `if` branch that updates a variable makes the loop
   run until the budget is exhausted;
 - this happens at every optimization level, even when the `break` is never taken or comes first;
-- the for-each form agrees, and so does a `while` whose `if` is not taken;
+- a `while` whose `if` is not taken agrees. The for-each form of these reproducers agrees too, but a for-each
+  whose `if`/`else` assigns different variables does not: r4 found T23 (below);
 - three reproducers are saved as `diverge-t21-*`.
 
 On-chain this is a script that always fails where Java returns a value. It is registered as T21 so campaigns
@@ -403,9 +532,84 @@ Measured:
 - `G0ExhaustiveTest`: 19 s;
 - nightly campaign: 3,000 tries in about 2 minutes, 2,998 agreeing at every level and 2 explained by T21.
 
-## D13 results (2026-10-27)
+## Review round r4 results (2026-10-28)
 
-Jazzer 0.30.0 runs with Java 25, Gradle 9.2 and JUnit 5.11.
+What changed, against the review of `ac20ac2d`:
+- **Saved divergences are pinned (D6).** All 12 `DIVERGE` cases now pin both observations. Each pin was checked
+  against the divergence its case documents, for example T11 as UPLC −1 against the JVM's
+  `ArithmeticException`, and T12 as `["checked"]` on UPLC against no trace on the JVM. No case differs by
+  optimization level. `VerdictTest` covers the reviewer's counterexamples: a wrong value with the same traces,
+  an extra or reordered trace, and another inconclusive reason.
+- **The exhaustive corpus is the D7 grammar.** The 183 programs decoded from G0 choice lists are replaced by the
+  376 programs and four inputs of D7.
+- **Quotas count conclusive cases only (D9, H5).** `Coverage` keeps per-configuration outcomes. `CoverageTest`
+  shows that a feature present only in budget-exhausted cases fails its quota.
+- **JVM traces are whole events (D3).**
+- **Failures are D8 records**, with the budget and script size of each configuration.
+
+Two new divergences, both found by the r4 changes:
+- **T22, string literal escapes.** The trace-payload case compiled `"a\n[TRACE] b"` into a script that traces a
+  backslash and an `n` where Java has a line break. `PirGenerator` lowers a `StringLiteralExpr` with `getValue()`,
+  JavaParser's source text with its escapes, instead of the decoded `asString()`. Any string constant with an
+  escape therefore has different bytes on-chain. The case is saved as `diverge-t22-string-literal-escapes`. The
+  trace-payload case now passes its messages as arguments and agrees.
+- **T23, a silent wrong value.** The D7 corpus found `FOR_EACH [IF_ELSE_UPDATE, BREAK]`. A for-each whose body
+  has an `if`/`else` assigning different variables, and a `break`, returns a wrong value at every optimization
+  level, even when the `break` is never taken. For example, the JVM returns 2 and UPLC 29.
+
+  An `if`/`else` that assigns one variable agrees, and so do an `if` without `else`, a `break` before the
+  `if`/`else`, and no `break`. It is probably the lowering behind T21, which shows in a `while` as
+  non-termination instead. Two saved cases pin it, and the registry entry needs the new feature
+  `FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE` (replaced in r5 by exact pins). Random G0 campaigns, including the 3,000-try
+  nightly, never generated a failing instance.
+
+The first version of the D7 corpus had 15 erasures that changed no result: a `while` counter from 0 makes the
+loop variable 0, and conditions tied to `b` cannot fire after a `break` on `b`. The observability check reported
+them; the counter now starts at 1, and the inputs were chosen by search.
+
+Checks that the new mechanisms fail when they should, each made by editing the code and reverting it:
+- with the pin comparison disabled, `VerdictTest` fails;
+- with a 30% quota, the PR campaign fails with the features below it listed;
+- with failures forced, the record carries `found.seed: 20261023`. This showed that `@AddLifecycleHook` needs
+  `propagateTo = ALL_DESCENDANTS`, or jqwik never runs the hook.
+
+Measured at the r4 head:
+- `./gradlew :julc-difftest:build verifyMavenReleasePublicationScope -PskipSigning=true --rerun-tasks`: 66 tests,
+  0 failures, the publication-scope check passing with 20 projects, 31 s. The saved cases are 34 (24 from M1,
+  three for T21, two for trace payloads, one for T22 and two for T23, plus the two subset rejections of M2).
+- `G0ExhaustiveTest`: 1,504 runs and 1,104 erasure variants, 20 s. 1,481 runs are conclusive, 21 are inconclusive
+  under T21, and 2 are allowed under T23.
+- `./gradlew :julc-difftest:nightlyDiffTest`: 3,000 tries with seed `3288857217423497629`. 2,996 are conclusive and
+  4 inconclusive under T21; 1 min 35 s.
+
+## Review round r5 results (2026-10-28)
+
+What changed, against the review of `d47e7bf4` (F7):
+- **A wrong value is explained only by an exact pin (D6).** The r4 T23 entry accepted any `Value`/`Value`
+  mismatch in its shape. The registry now has two mechanisms: rules for an inconclusive UPLC side (T21 only),
+  and pins for everything else, loaded from the saved cases. The T23 rule is removed.
+- **The two corpus runs T23 affects are saved.** Program 135, `FOR_EACH [IF_ELSE_UPDATE, BREAK]`, on input 1
+  (JVM 8, UPLC 38) and input 3 (JVM −1, UPLC 26), at every optimization level. With the T23 rule removed and
+  before these were saved, `G0ExhaustiveTest` failed on exactly these two runs and wrote them out; that is the
+  triage path for any new wrong value.
+- **`KnownDivergencesTest`** covers the reviewer's counterexamples: on an empty list the program returns 9 on
+  the JVM, and neither UPLC `Value 999 []` nor `Value 9 ["unexpected trace"]` is explained. So are a pinned
+  program and input with another UPLC value, another trace or another JVM value, the pinned observations on
+  another input or another program, and a conclusive side under the T21 rule's feature. The four T23
+  reproducers are explained, under the saved class name and under the corpus class name. With the pin's
+  observation check replaced by `true`, this test fails.
+
+Measured at the r5 tree:
+- `./gradlew :julc-difftest:build verifyMavenReleasePublicationScope -PskipSigning=true --rerun-tasks`: 72 tests,
+  0 failures, 23 s. The saved cases are 36.
+- `G0ExhaustiveTest`: unchanged outcomes, 1,481 conclusive, 21 inconclusive under T21, and 2 allowed by T23 pins.
+- `./gradlew :julc-difftest:nightlyDiffTest`: 3,000 tries with seed `7009084437455657768`. 2,996 are conclusive and
+  4 inconclusive under T21; 1 min 37 s.
+
+## D13 results (r6)
+
+Measured on 2026-10-27, before the merge with the r5 registry. Jazzer 0.30.0 runs with Java 25, Gradle 9.2 and
+JUnit 5.11.
 
 | Target | Throughput | Coverage | Result |
 |---|---|---|---|
@@ -420,10 +624,13 @@ Findings:
   127,640 at `NONE`. A fuzzed program 16 levels deep exhausts the budget at `NONE`, `PV11_SAFE` and
   `PV11_COSTED`, and another runs the compiler out of memory at `BASELINE`, while the JVM returns −5.
   Measurements and the other lowerings are on #146.
-  - G0 records the shape as `DEEP_COMPARISON`: a ternary inside at least 8 nested `compareTo` operands.
-  - Two T13 entries cover it, one for the budget and one for the compiler's `OutOfMemoryError`.
+  - G0 records the shape as `DEEP_COMPARISON`: a ternary inside at least 8 nested `compareTo` operands. It is
+    a registry marker, like `WHILE_BREAK_WITH_IF_UPDATE`, so it has no quota.
+  - One T13 rule covers the exhausted budget: `DEEP_COMPARISON`, a JVM `Value`, and the reason
+    `budget exhausted`. The draft's second entry, for the compiler's `OutOfMemoryError`, matched a `Crash`;
+    the r5 registry cannot express that and should not, so it is dropped (open question 8).
   - The threshold keeps a T21 program with a shallow ternary in a comparison explained by T21 alone; a
-    first version without it matched both entries. The saved input `t21-with-ternary-in-comparison` covers this.
+    first version without it matched both rules. The saved input `t21-with-ternary-in-comparison` covers this.
   - The out-of-memory input is not replayed. It takes 24 s and exhausts the heap of the shared test JVM.
 - **Text parser: malformed numbers threw `NumberFormatException`.** This happened for a sign without
   digits (also in a version) and for numeric escapes too long for an `int`. Fixed; see Compatibility.
@@ -439,15 +646,53 @@ Findings:
 
   The text target skips inputs with such names until this is fixed.
 
+Measured on 2026-10-30, after merging the r5 registry and `main` (0.1.0-pre20, whose text parser rejects
+non-canonical `value` literals):
+- `./gradlew :julc-difftest:test --rerun`: 96 tests, 0 failures. They are the 72 of r5, the 23 replayed G0 fuzz
+  inputs (20 seeds, the empty input, `t13-deep-comparison` and `t21-with-ternary-in-comparison`) and
+  `KnownDivergencesTest.theT13RuleExplainsOnlyAnExhaustedBudget`. With the T13 rule removed, the
+  `t13-deep-comparison` replay fails. `G0ExhaustiveTest` and the PR campaign are unchanged: 1,481 conclusive,
+  21 inconclusive under T21, 2 allowed by T23 pins; 150 of 150 conclusive.
+- `./gradlew :julc-core:test --rerun`: 844 tests, 0 failures, including `DecoderFuzzTest`'s 24 replayed
+  inputs and `seedsDecode`.
+- `./gradlew :julc-core:fuzz --tests '*DecoderFuzzTest.uplcText' -Pfuzz.duration=60s`: 4,657,291 inputs in 61 s,
+  971 edges, nothing found.
+- `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=180s`: stopped after 30 programs
+  (106 s) at an input in the T13 shape. The JVM returns 24; UPLC exhausts the budget at `NONE`, which the T13
+  rule explains, and the compiler runs out of memory at `BASELINE`, `PV11_SAFE` and `PV11_COSTED`, which no
+  rule or pin can explain. This is open question 8; the input is not committed.
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
-- **r3** (2026-10-23): M2 implemented: G0 generator, PR and nightly campaigns, exhaustive mode, the
-  `KnownDivergences` registry, a bounded UPLC budget, and the nightly workflow. M2 results added, including
-  finding T21.
 - **r2** (2026-10-23): M1 implemented in the same PR. D6 now describes the per-case expectations of saved cases
   (`DIVERGE <id> <JVM kind>/<UPLC kind>`), with the registry kept for generated cases from M2. M1 results and
   findings added.
-- **r4** (2026-10-27): D13, coverage-guided fuzzing with Jazzer, replaces the non-goal. Two T13 registry
-  entries and the `DEEP_COMPARISON` feature; text parser and printer fixes; open questions 6 and 7; D13
-  results.
+- **r3** (2026-10-23): M2 implemented: G0 generator, PR and nightly campaigns, exhaustive mode, the
+  `KnownDivergences` registry, a bounded UPLC budget, and the nightly workflow. M2 results added, including
+  finding T21.
+- **r4** (2026-10-28, responds to review round r1 of `ac20ac2d`):
+  - F1: saved divergences pin both observations, and registry entries match an exact inconclusive reason; D6
+    states what each guarantees.
+  - F2: D7 is a bounded grammar of 376 programs on four inputs, with bound, feature and observability checks.
+  - F3: quotas count conclusive cases only, with per-configuration outcomes (`Coverage`); D9 separates syntactic
+    from exercised coverage, and H5 is restated.
+  - F4: the JVM side records each `Builtins.trace` call as one event (D3).
+  - F5: D8 records are format 2, with provenance, recorded observations, and budget and size per configuration.
+    D2 now states the bounded budget and the measurements.
+  - F6: D5 states the implemented G0 and moves the rest to M2b (supported) or G0⁻ (rejected). D4 states the
+    implemented mapping. D2 states the configurations. D3 and the trusted components name `ValueMapping`, not
+    `TermExtractor`. M2b is new, and M4 and M5 are extended.
+  - New findings T22 and T23; the T21 note on the for-each form is corrected. History reordered.
+- **r5** (2026-10-28, responds to review round r2 of `d47e7bf4`):
+  - F7: a conclusive mismatch passes only as an exact pin, taken from the saved cases; registry rules explain an
+    inconclusive UPLC side only. The T23 rule is replaced by four pins, two of them the corpus runs. D6, D7 and D9
+    revised.
+- **Accepted** (2026-10-28): design accepted at `12f7e4e5` (review round r3), with the stated review of M1 and M2.
+- **r6** (2026-10-30, [#253](https://github.com/bloxbean/julc/pull/253)): D13, coverage-guided fuzzing with
+  Jazzer, replaces the fuzzing non-goal. Drafted as r4 on 2026-10-27, before review rounds r4 and r5, and
+  renumbered. Ported to the r5 registry: the G0 target is checked against `KnownDivergences.withPins` over the
+  saved cases, with no rule or pin of its own. A T13 rule for an exhausted budget, the `DEEP_COMPARISON` feature
+  as a registry marker, text parser and printer fixes, open questions 6–8, and D13 results. The draft's T13
+  entry for a compiler `OutOfMemoryError` is dropped, since r5 never allows a crash. The status line, the
+  non-goals, D6, D9, Affected modules and Compatibility gain r6 notes; the accepted text is otherwise unchanged.

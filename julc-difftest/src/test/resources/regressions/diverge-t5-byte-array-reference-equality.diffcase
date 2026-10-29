@@ -1,9 +1,12 @@
+format: 2
 name: == on byte[] (T5)
 class: Probe
 method: m
 arg: 420102
 arg: 420102
 expect: DIVERGE T5 Value/Value
+jvm: Value d87980 []
+uplc: Value d87a80 []
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

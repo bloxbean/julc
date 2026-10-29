@@ -1,3 +1,4 @@
+format: 2
 name: while with break: a taken if that updates a variable never terminates (T21)
 class: Probe
 method: m
@@ -5,6 +6,8 @@ arg: 23
 arg: 01
 arg: 8100
 expect: DIVERGE T21 Value/Inconclusive
+jvm: Value 23 []
+uplc: Inconclusive "budget exhausted"
 note: Found by the G0 nightly campaign (ADR-063 M2), then reduced by hand. In a while loop whose body
 note: contains break, a taken if branch that updates a variable makes the loop run until the budget is
 note: exhausted, at every optimization level; the JVM returns after one iteration. The for-each form

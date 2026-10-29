@@ -1,9 +1,12 @@
+format: 2
 name: BigInteger.mod with a negative modulus (T11)
 class: Probe
 method: m
 arg: 07
 arg: 21
 expect: DIVERGE T11 Failure/Value
+jvm: Failure []
+uplc: Value 20 []
 note: The JVM throws ArithmeticException; ModInteger returns -1.
 ---
 import java.math.BigInteger;

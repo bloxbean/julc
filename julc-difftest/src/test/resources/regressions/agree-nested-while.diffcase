@@ -1,3 +1,4 @@
+format: 2
 name: while nested in while with an inner local
 class: Probe
 method: m

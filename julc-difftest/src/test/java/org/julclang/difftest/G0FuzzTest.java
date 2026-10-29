@@ -11,7 +11,10 @@ import java.util.List;
 /**
  * The G0 campaign with Jazzer's coverage guidance in place of jqwik's sampling (ADR-063 D13). Jazzer's
  * bytes decode to the inputs and to G0's choice sequence, one byte per choice, and each program is checked
- * exactly as {@link G0PropertyTest} checks it.
+ * exactly as {@link G0PropertyTest} checks it, against {@link G0PropertyTest#KNOWN}: a conclusive mismatch
+ * passes only as an exact pin from the saved cases, an inconclusive UPLC side only by a rule with its exact
+ * reason, and a crash never (D6). Anything else is a finding, written to {@code build/difftest/last-failure.diffcase}
+ * with {@code found.by: G0FuzzTest} and its plan.
  * <p>
  * {@code ./gradlew :julc-difftest:test} replays every input in {@code G0FuzzTestInputs/generatedProgramsAgree/}.
  * {@code ./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest'} fuzzes, saving a failing input as

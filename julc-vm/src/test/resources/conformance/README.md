@@ -11,14 +11,20 @@ truth:
   refreshed to the post-[#7617](https://github.com/IntersectMBO/plutus/pull/7617)
   values; the rest of the tree dates from the original project snapshot and was
   verified identical to the pinned commit)
+- **Forward-ported:** [#7816](https://github.com/IntersectMBO/plutus/pull/7816)
+  (`b1db04cc4`, 2026-06-17, in plutus 1.66.0.0 and later, shipped by cardano-node
+  11.1.x): its conformance files under `builtin/constant/value/` and
+  `builtin/semantics/valueContains/ccy-missing/` are taken verbatim from that
+  commit. The change is to the textual parser only (literal `value`s must be in
+  canonical form), so no budget or evaluation result of any other case changes.
 
-Contents: 999 test cases, each with `<name>.uplc` (input),
+Contents: 1003 test cases, each with `<name>.uplc` (input),
 `<name>.uplc.expected` (result), and `<name>.uplc.budget.expected` (CPU/mem
-budget). The 728 numeric budget files were generated upstream with the default
+budget). The 725 numeric budget files were generated upstream with the default
 cost model at the pinned commit (semantics variant C). Under the real V3/PV10
 ledger profile, 236 fixtures using the PV11-only Batch 6 builtins are marked
 unavailable, as are 26 fixtures that use PV11-only `Case` on builtin constants;
-the remaining 737 fixtures include 545 exact numeric budget comparisons. This
+the remaining 741 fixtures include 542 exact numeric budget comparisons. This
 prevents an expected-failure fixture from passing at PV10 merely because a
 protocol gate rejected it first.
 
@@ -34,8 +40,9 @@ diff -rq julc-vm/src/test/resources/conformance \
 
 cardano-node `11.0.1` (mainnet PV11) ships plutus `1.63.0.0` at commit
 [`f92b7d7d8`](https://github.com/IntersectMBO/plutus/tree/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-conformance/test-cases/uplc/evaluation)
-(2026-05-02). Blob-level comparison against that commit (2026-08-01): the file
-set is identical (3001/3001, nothing missing, nothing extra); 65 files differ
+(2026-05-02). Blob-level comparison against that commit (2026-08-01, before the
+#7816 forward-port): the file set is identical (3001/3001, nothing missing,
+nothing extra); 65 files differ
 in content, all attributable to the PV11 semantics-variant work tracked by
 issue #61:
 
@@ -70,7 +77,7 @@ after the base commit include:
 - `shiftByteString`/`rotateByteString` by more than `maxBound::Int64` now fail
   ([#7754](https://github.com/IntersectMBO/plutus/pull/7754)).
 - Value constants require ascending keys
-  ([#7816](https://github.com/IntersectMBO/plutus/pull/7816)); BLS tests
+  ([#7816](https://github.com/IntersectMBO/plutus/pull/7816), forward-ported above); BLS tests
   refactored ([#7837](https://github.com/IntersectMBO/plutus/pull/7837)); new
   duplicate-currency-ID case ([#7850](https://github.com/IntersectMBO/plutus/pull/7850)).
 

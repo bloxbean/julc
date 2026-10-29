@@ -1,3 +1,4 @@
+format: 2
 name: / and % truncate towards zero
 class: Probe
 method: m

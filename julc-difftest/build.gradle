@@ -18,6 +18,16 @@ dependencies {
     testImplementation libs.jazzer.junit
 }
 
+// The compiler revision saved with every failure record (ADR-063 D8, H4).
+def compilerRevision = providers.exec {
+    commandLine 'git', 'describe', '--always', '--dirty', '--abbrev=12'
+    ignoreExitValue = true
+}.standardOutput.asText.map { "${project.version} " + it.trim() }
+
+tasks.withType(Test).configureEach {
+    systemProperty 'difftest.compiler', compilerRevision.get()
+}
+
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'

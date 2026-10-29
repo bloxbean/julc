@@ -1,6 +1,6 @@
 # ADR-062: JVM–UPLC semantic consistency programme
 
-**Status:** Proposed (umbrella; design only). Each step below needs its own ADR before implementation.
+**Status:** Accepted (2026-10-28; umbrella; design only). Each step below needs its own ADR before implementation.
 **Date:** 2026-10-23
 **Label:** `semantic-consistency` (this ADR, its sub-ADRs, and their implementation PRs and issues)
 **Relates to:** [ADR-061](https://github.com/bloxbean/julc/pull/203) (control-flow correctness and semantic
@@ -74,17 +74,19 @@ reproduce or refute. New entries take the next free ID and are never renumbered.
 | T8 | Builtins missing off-chain | 40 builtin methods in `Builtins.java` throw `UnsupportedOperationException`: BLS12-381 (including MSM and the native point and scalar lists), the array builtins (`dropList`, `listToArray`, `lengthOfArray`, `indexArray`, `multiIndexArray`) and the native Value builtins (`insertCoin` … `lovelaceValue`) | Implemented by the VM | Verified | S2 |
 | T9 | On-chain-only casts | `(byte[])(Object) pk.hash()` in `AddressLib.credentialHash` throws `ClassCastException`, because `hash()` is a `PubKeyHash` record. The same `(T)(Object)` pattern appears in `ContextsLib`, `MapLib` and `ValuesLib` | A no-op: both are the same representation | Reproduced (AddressLib); to confirm (others) | S2 |
 | T10 | Off-chain map key equality | `JulcAssocMap` looks keys up with `Objects.equals`, so `byte[]` keys, or records with `byte[]` components, are not found | `EqualsData`, structural. The class comment claims it matches `EqualsData`; it does not for these keys | Reproduced | S2 |
-| T11 | `BigInteger.mod` with a non-positive modulus | Throws `ArithmeticException` | `ModInteger` succeeds; the result takes the divisor's sign. (`/` and `%` lower to `QuotientInteger` and `RemainderInteger`, which match Java's truncation) | Reproduced | S5 |
+| T11 | `BigInteger.mod` with a negative modulus | Throws `ArithmeticException` | `ModInteger` succeeds; the result takes the divisor's sign. A zero modulus fails on both sides, so it agrees. (`/` and `%` lower to `QuotientInteger` and `RemainderInteger`, which match Java's truncation) | Reproduced | S5 |
 | T12 | Failure and trace model | Exceptions of several kinds; traces wherever the off-chain stub writes them. `ContextsLib.trace` does nothing off-chain, although its section comment says it prints | One error outcome; traces as an ordered log, including the prefix before a failure | Reproduced (`ContextsLib.trace`); to confirm (failure categories) | S1, S2, S3 |
 | T13 | Budget and size limits | Unbounded | A validator over the execution budget or script-size limit fails on-chain while its JVM test passes | Verified (by design) | S3 |
-| T14 | Target profiles | No notion of protocol version or target | Builtin availability and costs differ by target (for example `PV11_SAFE` versus `BASELINE`) | To confirm (which tests pass off-chain for unavailable builtins) | S3 |
+| T14 | Target profiles | No notion of protocol version or target | Builtin availability and costs differ by `CompilerTarget` (Plutus language, protocol version and UPLC version): for example, a PV10 target lacks builtins that a PV11 target has. Optimization levels such as `BASELINE` and `PV11_SAFE` are separate from target legality | To confirm (which tests pass off-chain for unavailable builtins) | S3 |
 | T15 | Unused failing expressions | `var x = a / 0;` throws even when `x` is unused | An optimizer may drop an unused binding. `BuiltinSemantics` records totality for this purpose; whether every level keeps a non-total unused binding is not established | Refuted for an unused `BigInteger.divide` by zero, which fails at every level as on the JVM; other shapes not examined | S1 |
 | T16 | Boundary conversion | Tests pass natural Java values (the `JulcEval` proxy takes `long`, `ArgConverter`) or build a `ScriptContext` off-chain | The script decodes Data at its boundary under strict-boundary rules | To confirm (that both decode identically for every supported boundary type) | S1, S3 |
 | T17 | Strings | UTF-16 `String` | UTF-8 bytestrings; `Builtins.encodeUtf8(PlutusData)` passes `BytesData` through off-chain ("On-chain, strings are ByteStrings") | To confirm (behaviour of invalid UTF-8 and of string methods) | S2 |
 | T18 | Off-chain crypto | A pluggable `CryptoProvider` (`JvmCryptoProvider` in the testkit), a separate implementation | VM builtins, conformance-tested | To confirm (edge cases: malformed keys or signatures, where the chain fails and the JVM may return `false`) | S2 |
 | T19 | Callbacks capturing mutable state | Lambdas observe and update enclosing state per Java's rules | See T2; ADR-061 proposes forbidding writes to enclosing bindings | Verified (ADR-061) | S4 / ADR-061 |
-| T21 | `while` with `break` and a conditional update | The loop runs its bounded iterations and returns | Never terminates: a taken `if` branch that updates a variable, in a `while` body that contains `break`, runs until the budget is exhausted, at every optimization level, even when the `break` is never taken. The for-each form agrees | Reproduced (found by the ADR-063 M2 nightly campaign; three saved cases) | S4 / ADR-061; targeted fix first |
-| T20 | Rejections without a diagnostic code | — | `continue`, `return` inside `while`, reassignment outside a loop, `JulcMap.of` in contract code, `break` in a for-each that updates nothing, and a loop inside a loop with `break` are rejected with uncoded messages. `Undefined variable: JulcMap` and "break statement outside of a loop" (the `break` is inside one) are misleading | Reproduced (ADR-063 M1) | S5 |
+| T20 | Rejections without a diagnostic code | — | `continue`, `return` inside `while`, reassignment outside a loop, `JulcMap.of` in contract code, `break` in a for-each that updates nothing, and a loop inside a loop with `break` are rejected with uncoded messages. `Undefined variable: JulcMap` and "break statement outside of a loop" (the `break` is inside one) are misleading | Reproduced (ADR-063 M1); #257 | S5 |
+| T21 | `while` with `break` and a conditional update | The loop runs its bounded iterations and returns | Never terminates: a taken `if` branch that updates a variable, in a `while` body that contains `break`, runs until the budget is exhausted, at every optimization level, even when the `break` is never taken. The for-each forms of the saved reproducers agree; another for-each shape gives a wrong value (T23) | Reproduced (found by the ADR-063 M2 nightly campaign; three saved cases); #254 | S4 / ADR-061; targeted fix first |
+| T22 | String literals with escapes | The literal `"a\nb"` holds a line break | `PirGenerator` lowers a `StringLiteralExpr` with JavaParser's `getValue()`, the source text with its escapes, instead of the decoded `asString()`, so the script holds a backslash and an `n`. Every string constant with an escape has different bytes on-chain | Reproduced (found by the ADR-063 r4 trace-payload case); #256 | S5; targeted fix first |
+| T23 | For-each with `break` and an `if`/`else` assigning different variables | The loop returns the updated values | Returns a wrong value at every optimization level, even when the `break` is never taken (JVM 2, UPLC 29). An `if`/`else` that assigns one variable agrees, and so do an `if` without `else`, a `break` before the `if`/`else`, and no `break`. Probably the lowering behind T21 | Reproduced (found by the ADR-063 r4 exhaustive corpus; two saved cases, four exact pins since ADR-063 r5); #255 | S4 / ADR-061; targeted fix first |
 
 ## Decision
 
@@ -176,7 +178,17 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
-- **r3** (2026-10-23): new T21 (silent non-termination of `while` with `break` and a conditional update), found by
-  the ADR-063 M2 campaign; T20 gains two more uncoded rejections found while narrowing G0.
 - **r2** (2026-10-23): catalogue statuses updated from ADR-063 M1 (PR #251): T3, T5, T6, T7, T9, T10, T11 and
   T12 reproduced; T2 contained by `JULC0056`; T15 refuted for the probed shape; new T20 (uncoded rejections).
+- **r3** (2026-10-23): new T21 (silent non-termination of `while` with `break` and a conditional update), found by
+  the ADR-063 M2 campaign; T20 gains two more uncoded rejections found while narrowing G0.
+- **r4** (2026-10-28, responds to the ADR-063 review round r1 of `ac20ac2d`, which reviewed this ADR at
+  `f3333d69` as context):
+  - T11's domain is a negative modulus; a zero modulus fails on both sides, checked with the harness.
+  - T14's example names compiler targets, not optimization levels.
+  - New T22 (string literal escapes) and T23 (a wrong value from a for-each with `break` and an `if`/`else`
+    assigning different variables), both found by the ADR-063 r4 changes.
+  - T21's note on the for-each form is corrected.
+  - Rows and history are in ID order.
+- **Accepted** (2026-10-28): design accepted at `b75b9619` (review round r2). Issues filed for T20–T23 (#257, #254,
+  #256, #255), tracked together in #258.

@@ -1,3 +1,4 @@
+format: 2
 name: for-each with break
 class: Probe
 method: m
