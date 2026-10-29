@@ -21,6 +21,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.HexFormat;
+import java.security.MessageDigest;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -168,6 +171,36 @@ class LoopBreakContinuationTest {
         int step = sizes.get(1) - sizes.get(0);
         for (int n = 2; n < sizes.size(); n++) {
             assertTrue(sizes.get(n) - sizes.get(n - 1) <= 2 * step, "script sizes " + sizes);
+        }
+    }
+
+    @Test
+    void branchLocalsThatShadowNothingKeepTheirBytes() throws Exception {
+        // A branch's locals are renamed apart only when one shadows an accumulator. Renaming always
+        // made same-named locals in disjoint branches unique, which let later passes fold more and
+        // changed the script of programs with no shadowing. FLAT SHA-256 as on main (b5ff39a8).
+        String disjoint = """
+                BigInteger s = a;
+                for (var x : xs) { if (x.compareTo(b) > 0) { JulcArray<BigInteger> t = JulcArray.of(BigInteger.ONE, BigInteger.TWO); s = s.add(t.get(0)); } else { JulcArray<BigInteger> t = JulcArray.of(BigInteger.TEN, BigInteger.ZERO); s = s.add(t.get(1)); } }
+                return s;""";
+        String after = """
+                BigInteger s = a;
+                for (var x : xs) { if (x.compareTo(b) > 0) { JulcArray<BigInteger> t = JulcArray.of(BigInteger.ONE, BigInteger.TWO); s = s.add(t.get(0)); } JulcArray<BigInteger> t = JulcArray.of(BigInteger.TEN, BigInteger.ZERO); s = s.add(t.get(1)); }
+                return s;""";
+        var expected = Map.of(
+                "disjoint/NONE", "5f45f41a1f20f790", "disjoint/BASELINE", "2b5534c1e7ceec45",
+                "disjoint/PV11_SAFE", "f5291f420faa9503", "disjoint/PV11_COSTED", "f5291f420faa9503",
+                "after/NONE", "1ddde995398ed2e4", "after/BASELINE", "2311bdbc72edf318",
+                "after/PV11_SAFE", "c24270710016e850", "after/PV11_COSTED", "c24270710016e850");
+        for (var fixture : Map.of("disjoint", disjoint, "after", after).entrySet()) {
+            String source = source(new String[]{"", fixture.getValue()}).replace(
+                    "import org.julclang.core.types.JulcList;", "import org.julclang.core.types.JulcList;\nimport org.julclang.core.types.JulcArray;");
+            for (var level : OptimizationLevel.values()) {
+                var bytes = UplcFlatEncoder.encodeProgram(new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                        new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "m").program());
+                var sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 16);
+                assertEquals(expected.get(fixture.getKey() + "/" + level), sha, fixture.getKey() + " at " + level);
+            }
         }
     }
 
