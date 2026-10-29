@@ -325,7 +325,16 @@ These constrain the spike prototype and any later migration ADR.
 - **I2. The subset does not widen.** It has three cases. (D2, M2; open question 7)
   - **I2a, subset rejections.** Every program the JavaParser frontend rejects with a subset or type diagnostic
     (a `JULC` code from `SubsetValidator`, the resolver or the lowering) is rejected by the javac frontend with
-    the same code at the same source position. javac accepting a construct is never sufficient.
+    the same code at the same source position. javac accepting a construct is never sufficient. The position
+    gate stays, because subset diagnostics are JuLC's own and their positions are part of the user-facing
+    contract (IDE markers, the MCP lint, the playground).
+    - **Caveat.** Under option A the validator runs on javac trees, so the anchors are corresponding nodes in two
+      different trees, and some start positions differ. A declarator starts at its name in JavaParser but at its
+      type in javac's `VariableTree`. A negated literal is one javac `INT_LITERAL` starting at the `-`, but in
+      JavaParser it is a literal inside a unary minus.
+    - **Rule.** The javac frontend derives JuLC's anchor positions from javac's exported position API (for
+      example the `SourcePositions` of the subtree that corresponds to JuLC's anchor). Any mismatch that remains
+      is a prototype defect, to be fixed or listed. It is not a reason to drop the gate.
   - **I2b, invalid Java.** Where JuLC rejects source that javac also rejects, javac's error replaces JuLC's. That
     covers JuLC's uncoded parse failures (`JulcCompiler.parseSource`, `:1222-1224` at `b5ff39a8`) and the literal
     rejections `JULC0070` (T25). I2b requires only that the program is still rejected. Positions do not gate:
@@ -437,26 +446,37 @@ cross-check. D4 measures it independently of D2. It has no preprocessing axis: s
 escapes itself, and `preprocessUnicodeEscapes` stays off on purpose.
 
 - **What is compared.** For every reference JuLC resolves (a name, field access, method call or type
-  reference), the comparison key is the declaration it resolves to. It takes one of three forms:
+  reference), the comparison key is the declaration it resolves to. It takes one of five forms:
   - a local variable: its declaration statement's start offset, plus the declarator's index within that
     statement and its name;
   - a parameter: its method's key plus its index;
+  - a field, including a library constant: the declaring type's qualified name plus the field name. A field name
+    is unique within its type, so no index is needed. javac's side is the `VariableElement`'s enclosing
+    `TypeElement` and its simple name;
   - a method: the qualified owner type plus the simple name, since JuLC's registries key by `"Class.method"`
     and overloads are rejected;
   - a type: its qualified name.
 
-  The start offset alone is not unique on the javac side. javac splits `BigInteger x = p, y = p;` into two
-  `VariableTree`s, and `SourcePositions.getStartPosition` gives both the start of the type (probe on JDK
-  25.0.2: `x` and `y` both start at offset 81, on a line that starts at 77). JavaParser's `VariableDeclarator`
-  begins at the name instead. So the nodes used on each side are:
+  Positions alone would not identify a declarator on the javac side. javac splits a multi-declarator declaration
+  such as `BigInteger x = p, y = p;` into two `VariableTree`s, and `SourcePositions.getStartPosition` gives both
+  the start of the type (probe on JDK 25.0.2: `x` and `y` both start at offset 81, on a line that starts at 77).
+  JavaParser's `VariableDeclarator` begins at the name instead.
+  - **Locals are single-declarator today.** JuLC rejects a local declaration with more than one declarator
+    (`JULC0053`, `SubsetValidator.java:111-114`), so in an accepted program the local key's index is always 0.
+    The index is kept so that the key stays unambiguous if that rule is ever relaxed.
+  - **Fields can have several declarators.** Static fields with several declarators are accepted:
+    `LibraryCompiler.findStaticFields` iterates every declarator (`:177-189`). Fields key by name, so that is
+    not a problem for the key.
+
+  The nodes used for a local key on each side are:
   - **JavaParser:** the enclosing `VariableDeclarationExpr`'s begin position (the type), converted to an offset,
     plus the declarator's index in `getVariables()` and its name;
   - **javac:** the `VariableTree` from `Trees.getPath(element)`, its start position, plus its index among the
     consecutive `VariableTree`s in the enclosing block that share that start position, and its name.
 
   JuLC's side comes from `SymbolTable` entries and registry keys, mapped to declarations. javac's side comes from
-  `Trees.getElement`. For a method or type, the key is the enclosing `TypeElement`'s qualified name and the
-  element's simple name. Literal
+  `Trees.getElement`. For a field, method or type, the key is the enclosing `TypeElement`'s qualified name and
+  the element's simple name. Literal
   values are compared directly, and so are static constants under I9's rule (same value expected only where
   JuLC's unbounded lowering and javac's folding agree).
 - **How nodes are aligned.** A JavaParser node and a javac tree are aligned by their start offset in the source
@@ -671,8 +691,10 @@ The day budgets are in D1.
   passes.
 - **Negative controls.** A deliberately wrong binding in the prototype, for example binding a call to a
   different library method, must fail both I1 and D4's comparison. That shows each check detects what it claims
-  to. D4's controls must include a multi-declarator case, `BigInteger x = p, y = p;`, where a use of `y`
-  deliberately bound to `x` must be reported as a disagreement. A correct binding must not be reported.
+  to. D4's controls must include a multi-declarator case on a static field, which is the shape JuLC
+  accepts. For `static final BigInteger A = BigInteger.ONE, B = BigInteger.TWO;` used as `p.add(A).add(B)`, a use
+  of `B` deliberately bound to `A` must be reported as a disagreement, and the correct binding must not be. Local
+  multi-declarators are rejected by `JULC0053`, so they are not a control.
 
 ### Verification evidence for this ADR
 
@@ -847,3 +869,13 @@ Added in r2:
     lean.
   - F18 → R2 states that a GO carries its coverage figures, and that the migration ADR must re-establish I1 on
     full coverage. M4 is updated.
+- **r4** (2026-10-30; responds to the review of `e2f5232b`):
+  - F19 → D4 gains a field key: the declaring type's qualified name plus the field name, taken on javac's side
+    from the `VariableElement`'s enclosing `TypeElement`. The multi-declarator negative control moves to a static
+    field, `static final BigInteger A = ..., B = ...;`, with a use of `B` deliberately bound to `A`. The local
+    key is kept, with a note that `JULC0053` (`SubsetValidator.java:111-114`) makes locals single-declarator
+    today.
+  - I2a wording (reviewer note, no finding) → I2a keeps the position gate and now states the caveat: under
+    option A some node starts differ (declarators, folded negative literals). The javac frontend derives JuLC's
+    anchors from javac's exported position API, and a residual mismatch is a prototype defect, not a reason to
+    drop the gate.
