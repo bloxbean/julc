@@ -50,9 +50,24 @@ class ProjectScannerTest {
                 }
                 """);
 
+        // Mentions a validator annotation in a Javadoc, so it is a candidate, but it declares none.
+        Path mentions = tempDir.resolve("com/example/Mentions.java");
+        Files.createDirectories(mentions.getParent());
+        Files.writeString(mentions, """
+                package com.example;
+
+                import java.util.regex.Pattern;
+
+                /** Helper for the @SpendingValidator and @OnchainLibrary code. */
+                public final class Mentions {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
+
         var result = ProjectScanner.scan(tempDir);
         assertEquals(java.util.Set.of("MyValidator"), result.validators().keySet());
         assertTrue(result.libraries().containsKey("SurrogateRegex"));
+        assertTrue(result.libraries().containsKey("com.example.Mentions"));
     }
 
     @Test

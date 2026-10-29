@@ -138,14 +138,24 @@ final class UnicodeEscapes {
     }
 
     /**
-     * The source with its well-formed Unicode escapes translated as §3.3 states, and nothing validated: a
-     * malformed escape, an unpaired surrogate or the parity shape {@link #translate} rejects is left as it is.
-     * For quick text tests that must not reject a source, such as the annotation pre-filters.
+     * A source read without validation: its well-formed Unicode escapes translated as §3.3 states, and a
+     * malformed escape, an unpaired surrogate or the parity shape {@link #translate} rejects left as it is.
+     *
+     * @param text            the translated text
+     * @param javacMayDiffer whether javac could read the source differently from {@code text}: the source holds
+     *                        the parity shape, an escape whose digits javac takes but §3.3 does not, or an unpaired
+     *                        high surrogate before a backslash (javac's lookahead then counts that backslash twice)
      */
-    static String translateLeniently(String source) {
-        if (source.indexOf('\\') < 0) return source;
+    record LenientReading(String text, boolean javacMayDiffer) {
+    }
+
+    /** For quick text tests and decisions that must not reject a source, such as the annotation pre-filters. */
+    static LenientReading readLeniently(String source) {
+        if (source.indexOf('\\') < 0) return new LenientReading(source, false);
         var s = new StringBuilder(source.length());
+        boolean differs = false;
         int backslashes = 0;
+        int escapedBackslashes = 0;
         int i = 0;
         while (i < source.length()) {
             char c = source.charAt(i);
@@ -153,17 +163,34 @@ final class UnicodeEscapes {
                 int digits = i + 1;
                 while (digits < source.length() && source.charAt(digits) == 'u') digits++;
                 if (digits + 4 <= source.length() && isHex(source, digits)) {
-                    s.append((char) Integer.parseInt(source.substring(digits, digits + 4), 16));
+                    char unit = (char) Integer.parseInt(source.substring(digits, digits + 4), 16);
+                    if (afterHighSurrogate(s) && !Character.isLowSurrogate(unit)) differs = true;
+                    s.append(unit);
+                    escapedBackslashes = unit == '\\' ? escapedBackslashes + 1 : 0;
                     backslashes = 0;
                     i = digits + 4;
                     continue;
                 }
+                if (digits + 4 <= source.length() && isJavacHex(source, digits)) differs = true;
             }
+            if (c == '\\' && escapedBackslashes % 2 == 1 && startsDisputedEscape(source, i)) differs = true;
+            if (c == '\\' && afterHighSurrogate(s)) differs = true;
             s.append(c);
             backslashes = c == '\\' ? backslashes + 1 : 0;
+            escapedBackslashes = 0;
             i++;
         }
-        return s.toString();
+        return new LenientReading(s.toString(), differs);
+    }
+
+    private static boolean afterHighSurrogate(StringBuilder s) {
+        return !s.isEmpty() && Character.isHighSurrogate(s.charAt(s.length() - 1));
+    }
+
+    /** Four digits javac's {@code Character.digit} accepts in an escape. */
+    private static boolean isJavacHex(String text, int from) {
+        for (int i = from; i < from + 4; i++) if (Character.digit(text.charAt(i), 16) < 0) return false;
+        return true;
     }
 
     /** Whether the raw backslashes from {@code i} are two or more and followed by {@code u}. */

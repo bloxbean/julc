@@ -73,6 +73,17 @@ class BundleJulcSourcesTaskTest {
                     static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
                 }
                 """);
+        // Mentions the annotations in a Javadoc, so the text pre-filter makes it a candidate; it declares none.
+        Files.writeString(pkg.resolve("Mentions.java"), """
+                package com.example;
+
+                import java.util.regex.Pattern;
+
+                /** Helper for the @SpendingValidator and @OnchainLibrary code. */
+                public final class Mentions {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
         Files.writeString(pkg.resolve("UnnamedVar.java"), """
                 package com.example;
 

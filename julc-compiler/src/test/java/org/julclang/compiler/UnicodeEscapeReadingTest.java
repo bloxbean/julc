@@ -359,10 +359,52 @@ class UnicodeEscapeReadingTest {
             assertFalse(JavaSourceIntrospector.mightContainValidatorAnnotation(source), source);
             assertFalse(JavaSourceIntrospector.mightContainTestAnnotation(source), source);
         }
+        // Whitespace after the @ is Java, so it names the annotation too.
+        assertTrue(JavaSourceIntrospector.mightContainValidatorAnnotation("@ SpendingValidator class V { }"));
         // A source that does name an annotation still reaches the strict parser, and fails closed there.
         String candidate = "@\\u004fnchainLibrary public class Bad { static String s = \"\\uD800\"; }";
         assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(candidate));
         assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(candidate));
+    }
+
+    @Test
+    void aCandidateThatOnlyMentionsAnAnnotationHasNoJulcRole() throws Exception {
+        // The pre-filter is a text test, so a Javadoc mention makes this off-chain source a candidate. JuLC's
+        // strict reading rejects it (the unpaired surrogate), but read as javac reads it, it declares no annotation.
+        String mentions = """
+                import java.util.regex.Pattern;
+                /** Helper for the @SpendingValidator and @OnchainLibrary code; see @Test. */
+                public class P {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """;
+        assertTrue(javac(mentions).isPresent());
+        assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(mentions));
+        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(mentions));
+        assertTrue(JavaSourceIntrospector.declaresNoJulcRole(mentions));
+        assertTrue(JavaSourceIntrospector.declaresNoTestMethod(mentions));
+
+        // The question stays open, and the candidate fails closed, when the source declares an annotation, or when
+        // javac could read it differently from the lenient reading: the parity shape (javac translates the escape
+        // for a line feed there and the JLS does not, so for javac the comment ends and Q is a library), escape
+        // digits javac takes but the JLS does not, and an unpaired high surrogate before a backslash.
+        var open = new ArrayList<String>();
+        for (var source : List.of(
+                "@OnchainLibrary public class P { static String s = \"\\uD800\"; }",
+                "public class P { void t() {} @Test public static boolean t2() { return \"\\uD800\".isEmpty(); } }",
+                "public class P { } // \\u005c\\\\u000a @OnchainLibrary class Q { }",
+                "public class P { } // \\u\u0661\u0662\u0663\u0664 @OnchainLibrary",
+                "public class P { static String s = \"\\uD800\\\\\"; } // @OnchainLibrary")) {
+            assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(source), source);
+            if (JavaSourceIntrospector.declaresNoJulcRole(source) && JavaSourceIntrospector.declaresNoTestMethod(source)) {
+                open.add("decided as no role, but should stay open or declared: " + source);
+            }
+        }
+        assertEquals(List.of(), open);
+        assertFalse(JavaSourceIntrospector.declaresNoJulcRole(
+                "@OnchainLibrary public class P { static String s = \"\\uD800\"; }"));
+        assertFalse(JavaSourceIntrospector.declaresNoTestMethod(
+                "public class P { @Test public static boolean t() { return \"\\uD800\".isEmpty(); } }"));
     }
 
     /** Ways main code could build a JavaParser parser outside {@code JavaSourceParser}. */
