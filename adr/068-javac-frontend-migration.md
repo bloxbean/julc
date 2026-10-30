@@ -18,8 +18,9 @@ consistency), added by this ADR (ADR-065 open question 5). It follows the spike 
 [ADR-064](https://github.com/bloxbean/julc/pull/252) (browser engine)
 **Base:** r1 cited code at `5a72d7a6`. Since then PR #267 also merged ADR-067 M1 round 5 (F85), ADR-066's latest
 round, the loop-break continuation fix (#254, #255; GHSA-p9v9-f3g2-cqv9) with its T21/T23 harness updates, and
-the reconciliation of all of them. **B0**, the reference base for I1, is the #267 head where that integration's
-full test run is green; M0 records its SHA. Line citations below are at `5a72d7a6` unless marked; the integration
+the reconciliation of all of them. **B0** = `86ebffcd`, the reference base for I1: the #267 head where that
+integration's full test run is green (`./gradlew test --offline --continue --rerun`: 12,395 tests, 0 failures, 530
+skipped). Line citations below are at `5a72d7a6` unless marked; the integration
 did not move the cited lines except where noted.
 
 ## Context and problem
