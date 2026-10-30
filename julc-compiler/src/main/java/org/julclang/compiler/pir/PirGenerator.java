@@ -523,7 +523,9 @@ public class PirGenerator {
         if (stmt instanceof WhileStmt ws) {
             return generateWhileStmt(ws, stmts, index, cont);
         }
-        if (stmt instanceof BreakStmt) {
+        if (stmt instanceof BreakStmt br) {
+            // A labelled break is rejected before lowering (#201); never lower it as a plain one.
+            if (br.getLabel().isPresent()) throw labelUnsupported(br);
             // break outside break-aware context: return current accumulator
             if (forEachAccumulatorVar != null) {
                 var accType = symbolTable.lookup(forEachAccumulatorVar).orElse(new PirType.BoolType());
@@ -2226,7 +2228,7 @@ public class PirGenerator {
     }
 
     /** JULC0066 for a node {@link #isLabelled} accepts, naming the construct as written. */
-    private static CompilerException labelUnsupported(Node node) {
+    static CompilerException labelUnsupported(Node node) {
         String construct;
         if (node instanceof LabeledStmt ls) {
             construct = ls.getLabel().asString() + ":";

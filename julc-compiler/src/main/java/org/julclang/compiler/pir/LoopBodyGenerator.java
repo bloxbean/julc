@@ -338,7 +338,9 @@ final class LoopBodyGenerator {
             return withBlockSpliced(stmts, index, bs, body -> generateBreakAwareStatements(body, 0, accName, accType, continueFn));
         }
 
-        if (stmt instanceof BreakStmt) {
+        if (stmt instanceof BreakStmt br) {
+            // A labelled break is rejected before lowering (#201); never lower it as a plain one.
+            if (br.getLabel().isPresent()) throw PirGenerator.labelUnsupported(br);
             return new PirTerm.Var(accName, accType);
         }
         if (stmt instanceof ExpressionStmt es) {
@@ -508,7 +510,8 @@ final class LoopBodyGenerator {
             return withBlockSpliced(stmts, index, bs, body -> generateMultiAccBreakAwareStmts(body, 0, accNames, accTypes, continueFn));
         }
 
-        if (stmt instanceof BreakStmt) {
+        if (stmt instanceof BreakStmt br) {
+            if (br.getLabel().isPresent()) throw PirGenerator.labelUnsupported(br);
             return packAccumulators(accNames, accTypes);
         }
         if (stmt instanceof ExpressionStmt es) {

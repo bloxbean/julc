@@ -47,8 +47,11 @@ location of the construct and a remedy:
   inner loop breaks, and skip the rest of the outer loop while it is set.
 - **Otherwise no program changes outcome.** Every other program is rejected or
   accepted as before, and script bytes of accepted programs are unchanged. `continue`
-  and labels are reported when the compiler lowers the loop that contains them, so
-  code JuLC never compiles, such as a nested off-chain helper class, still compiles.
+  and labels inside a loop are reported when the compiler lowers that loop, and labels
+  outside any loop when it lowers the statement, so code JuLC never compiles, such as a
+  nested off-chain helper class, still compiles. The exception is a labelled `break`
+  outside any loop: subset validation rejects it in every class, as it did before
+  without a code.
 - **Tools that match message text** see new text for every form except `return`
   inside `while`. Match the code instead. See the
   [troubleshooting guide](/reference/troubleshooting/) for each code's fix.
