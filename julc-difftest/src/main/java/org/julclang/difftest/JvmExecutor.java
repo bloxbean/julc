@@ -1,13 +1,19 @@
 package org.julclang.difftest;
 
+import com.sun.source.util.JavacTask;
+import com.sun.source.util.TaskEvent;
+import com.sun.source.util.TaskListener;
+
+import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.io.StringWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -45,7 +51,11 @@ public final class JvmExecutor {
     private static final String TRACE_CLASS = "org.julclang.stdlib.Builtins";
 
     private final long timeoutMillis;
-    private final Map<String, Path> compiled = new ConcurrentHashMap<>();
+    private final Map<String, Compiled> compiled = new ConcurrentHashMap<>();
+
+    /** Where a source's classes are, and the binary names of the top-level classes javac generated from it. */
+    private record Compiled(Path dir, List<String> classes) {
+    }
 
     public JvmExecutor(long timeoutMillis) {
         this.timeoutMillis = timeoutMillis;
@@ -56,10 +66,10 @@ public final class JvmExecutor {
      * entry method and maps its result at its declared return type.
      */
     public synchronized Observation run(DiffCase diffCase) {
-        Path classes = compiled.computeIfAbsent(diffCase.source(), source -> compile(diffCase));
-        try (var loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
+        Compiled classes = compiled(diffCase);
+        try (var loader = new URLClassLoader(new URL[]{classes.dir().toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
             Class<?> type = loader.loadClass(diffCase.className());
-            validate(diffCase, type);
+            validate(diffCase, classes, loader);
             Method method = entryMethod(type, diffCase.method());
             var params = method.getGenericParameterTypes();
             if (params.length != diffCase.args().size()) {
@@ -86,19 +96,29 @@ public final class JvmExecutor {
      * tag table, so that a case with an invalid table fails before any run.
      */
     public synchronized ValueMapping.Representation resultRepresentation(DiffCase diffCase) {
-        Path classes = compiled.computeIfAbsent(diffCase.source(), source -> compile(diffCase));
-        try (var loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
+        Compiled classes = compiled(diffCase);
+        try (var loader = new URLClassLoader(new URL[]{classes.dir().toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
             Class<?> type = loader.loadClass(diffCase.className());
-            validate(diffCase, type);
+            validate(diffCase, classes, loader);
             return ValueMapping.Representation.of(entryMethod(type, diffCase.method()).getGenericReturnType());
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
     }
 
-    private static void validate(DiffCase diffCase, Class<?> type) {
+    private Compiled compiled(DiffCase diffCase) {
+        return compiled.computeIfAbsent(diffCase.source(), source -> compile(diffCase));
+    }
+
+    /**
+     * Source validation over every class javac generated from the case's source, top-level siblings of the entry
+     * class included, never over classes from elsewhere.
+     */
+    private static void validate(DiffCase diffCase, Compiled classes, ClassLoader loader) throws ClassNotFoundException {
+        var types = new ArrayList<Class<?>>();
+        for (String name : classes.classes()) types.add(Class.forName(name, false, loader));
         try {
-            diffCase.tags().validate(type);
+            diffCase.tags().validate(types);
         } catch (HarnessException e) {
             throw new HarnessException(diffCase.name() + ": " + e.getMessage(), e);
         }
@@ -176,33 +196,51 @@ public final class JvmExecutor {
                 .collect(Collectors.toMap(DiffCase::source, c -> c, (first, second) -> first,
                         LinkedHashMap::new));
         if (pending.isEmpty()) return;
-        Path dir = compile(List.copyOf(pending.values()), "cases " + pending.size());
-        pending.keySet().forEach(source -> compiled.put(source, dir));
+        compiled.putAll(compile(List.copyOf(pending.values()), "cases " + pending.size()));
     }
 
-    private static Path compile(DiffCase diffCase) {
-        return compile(List.of(diffCase), diffCase.name());
+    private static Compiled compile(DiffCase diffCase) {
+        return compile(List.of(diffCase), diffCase.name()).get(diffCase.source());
     }
 
-    /** javac must accept every case; a rejection is a harness or generator bug (ADR-063 H6). */
-    private static Path compile(List<DiffCase> cases, String label) {
+    /**
+     * javac must accept every case; a rejection is a harness or generator bug (ADR-063 H6). Returns each source's
+     * classes; a listener records which top-level classes javac analyzed in which source file.
+     */
+    private static Map<String, Compiled> compile(List<DiffCase> cases, String label) {
         try {
             Path dir = Files.createTempDirectory("julc-difftest-");
-            var arguments = new ArrayList<>(List.of("-proc:none", "-classpath", System.getProperty("java.class.path"),
-                    "-d", dir.toString()));
+            var options = List.of("-proc:none", "-classpath", System.getProperty("java.class.path"), "-d", dir.toString());
+            var sources = new LinkedHashMap<URI, String>();
             for (DiffCase diffCase : cases) {
                 Path file = dir.resolve(diffCase.className() + ".java");
                 if (Files.exists(file)) throw new HarnessException(label + ": two sources declare " + diffCase.className());
                 Files.writeString(file, diffCase.source());
-                arguments.add(file.toString());
+                sources.put(file.toUri(), diffCase.source());
             }
-            var errors = new ByteArrayOutputStream();
-            int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors, arguments.toArray(String[]::new));
-            if (status != 0) {
-                throw new HarnessException(label + ": javac rejected the source\n" + errors
-                        + (cases.size() == 1 ? "\n" + cases.getFirst().source() : ""));
+            JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+            var errors = new StringWriter();
+            var emitted = new LinkedHashMap<URI, List<String>>();
+            try (var files = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
+                var units = files.getJavaFileObjectsFromPaths(sources.keySet().stream().map(Path::of).toList());
+                var task = (JavacTask) compiler.getTask(errors, files, null, options, null, units);
+                task.addTaskListener(new TaskListener() {
+                    @Override
+                    public void finished(TaskEvent event) {
+                        if (event.getKind() == TaskEvent.Kind.ANALYZE && event.getTypeElement() != null) {
+                            emitted.computeIfAbsent(event.getSourceFile().toUri(), uri -> new ArrayList<>())
+                                    .add(task.getElements().getBinaryName(event.getTypeElement()).toString());
+                        }
+                    }
+                });
+                if (!task.call()) {
+                    throw new HarnessException(label + ": javac rejected the source\n" + errors
+                            + (cases.size() == 1 ? "\n" + cases.getFirst().source() : ""));
+                }
             }
-            return dir;
+            var result = new LinkedHashMap<String, Compiled>();
+            sources.forEach((uri, source) -> result.put(source, new Compiled(dir, List.copyOf(emitted.getOrDefault(uri, List.of())))));
+            return result;
         } catch (IOException e) {
             throw new HarnessException(label + ": cannot write the source", e);
         }

@@ -657,10 +657,19 @@ Implemented, in `julc-difftest` only (no compiler, stdlib, VM or published modul
 
 - **D3, tag table.** `TagTable` holds the `(record binary name, parent binary name, tag)` entries, sorted by
   record, then parent. On construction it rejects duplicate entries and, per parent, duplicate tags and tags that
-  do not cover `0..n-1`. `TagTable.validate(top)` is the source validation: every entry names a record that
-  directly implements its sealed parent; every record nested in the program that implements a sealed interface has
-  an entry for each such parent; and each parent's entries are exactly its permitted subclasses. `JvmExecutor` runs
-  it before every JVM run, and `DiffRunner.run` before any run.
+  do not cover `0..n-1`. `TagTable.validate(classes)` is the source validation, over every class javac generated
+  from the case's source (top-level siblings of the entry class included, recorded per source by a javac task
+  listener in `JvmExecutor`, also when cases are precompiled together):
+  - every entry names a record and a sealed parent of the program, never a class from elsewhere such as the
+    harness;
+  - each entry's record directly implements its parent;
+  - every record of the program that implements a sealed interface has an entry for each such parent;
+  - each parent's entries are exactly its permitted subclasses, so a family with a variant outside the program
+    fails.
+
+  `JvmExecutor.run` and `JvmExecutor.resultRepresentation` both validate, and `DiffRunner.run` calls the latter
+  before any run. Both are public entry points (`G0ExhaustiveTest` calls `JvmExecutor.run` directly), and
+  `JvmExecutorTest` pins each one.
 - **D3, value mapping.** `ValueMapping` maps user records and sealed interfaces both ways by D3's rule, with the
   case's table (`toData(value, declaredType, tags)`, `fromData(data, type, tags)`). `TagTable.tagFor` is the
   parent-aware lookup and the boundary validation: a record whose parents give it different tags is a
@@ -669,9 +678,12 @@ Implemented, in `julc-difftest` only (no compiler, stdlib, VM or published modul
   then checks the arity. A case whose program has sealed variants and no table fails (G1-I4).
 - **D4, representation check.** `ValueMapping.Representation` (`INTEGER` for `BigInteger`, `BOOL` for
   `boolean`, `CONSTR_DATA` for a user record or sealed interface, `ANY` otherwise) and
-  `fromTerm(term, representation)`; a violation is `Crash("result: representation: …")`.
+  `fromTerm(term, representation)`; a violation is `Crash("result: representation: …")`. `DiffRunner.run` and
+  `rerun` pass the declared type. A package-private test seam exercises that wiring:
+  - `UplcExecutor(UnaryOperator<Term>)` rewrites each evaluated result term before mapping;
+  - `DiffRunner(configs, timeout, uplc)` runs over such an executor.
 - **D5.** `KnownDivergences.Rule.requires` and `explain` take feature names (`KnownDivergences.names` converts
-  G0's enum); pins also compare the tag table. The shared helper is `CampaignVerifier.verify(finder, source,
+  G0's enum); pins also compare the tag table, with the class name aside (decision 7). The shared helper is `CampaignVerifier.verify(finder, source,
   className, method, args, tags, features, generator, profile, plan)` (test sources), which now owns the runner,
   the registry, the failure record and the seed hook; `G0PropertyTest.verify` is G0's adapter (no tags, no profile,
   `G0.VERSION`). `DiffCase` carries `tags` and `profile`. `.diffcase` format 3 adds `tag:` and `profile:` lines;
@@ -695,15 +707,22 @@ Decisions made in M1:
 4. **What reflection is used for:** a record's direct sealed interfaces, the set of permitted subclasses, record
    components in declaration order (`Class.getRecordComponents` specifies that order) and the canonical
    constructor. No tag ever comes from reflection.
-5. **Library types.** Records and sealed interfaces in `org.julclang.core.`, `org.julclang.ledger.` and
-   `org.julclang.stdlib.`, and `PlutusData` subtypes, are not user types and stay unmapped, as before: ledger types
-   map through their own encoders (ADR-063 D4, M4).
+5. **Library types: a denylist.** Records and sealed interfaces in `org.julclang.core.`, `org.julclang.ledger.`
+   and `org.julclang.stdlib.`, and `PlutusData` subtypes, are not user types. They stay unmapped, as before:
+   ledger types map through their own encoders (ADR-063 D4, M4). Every other record is a user record, JDK records
+   (`java.`, `jdk.`) included, which G1 programs never use. Ledger records get G1-I10's representation check only
+   when ADR-063 M4 maps them; until then `Representation.of` gives them `ANY`.
 6. **Format 2 is still written** for a case without tags and without a profile, so G0's D8 records are
    byte-identical to before (`RegressionStoreTest.aCaseWithoutTagsIsWrittenAsFormat2`); any other case is written
    as format 3. The reader accepts both; `tag:` or `profile:` in a format-2 file is an error.
-7. **The profile** is one trimmed line, or null for none; G0's "default profile" is none. It is part of the
-   `DiffCase` and of its record, but not of pin matching: a pin matches the program (class name aside), method,
-   arguments and tag table, since the profile decides how a program was generated, not what it does.
+7. **Pin identity, and the profile.** A pin matches the program, method, arguments and tag table, with the
+   class name aside in both the program and the table. `KnownDivergences.program` renames the class declaration,
+   and `KnownDivergences.tags` rewrites a leading `<className>$` in every record and parent name to `_$`. So a
+   tagged pin saved under `Probe` explains the same program compiled as `E135` with `E135$…` tags, as the
+   exhaustive corpus needs (review F46/F50); swapped tags, or the pin's `Probe$…` names under `E135`, still do not
+   match. The profile is one trimmed line, or null for none; G0's "default profile" is none. It is part of the
+   `DiffCase` and of its record, but not of pin matching, since it decides how a program was generated, not what
+   it does.
 8. **The case name** of a generated case is the generator version's first word in lower case plus the plan
    (`g0 [...]`, as before), so `verify` takes the generator version rather than a name; it also takes `finder` for
    the provenance, as G0's did.
@@ -714,13 +733,21 @@ Tests (all new tests are JUnit, written from `advanced-guide.md`'s encoding, not
   nested records and sealed components to depth 2, records in lists, round trips under two tables, missing tags
   with and without a table, malformed Data (wrong arity, unknown tags, wrong component kinds), unequal and equal
   tags under two parents, library records.
-- `TagTableTest` (4): sorting and the `tag:` text; duplicate, gapped and negative tags; source validation of valid
-  tables (including unequal tags under two parents) and of missing variants, a missing second parent, extra
-  entries, a parent that is not sealed, and unknown names.
-- `ResultRepresentationTest` (5): `Representation.of`, accepted and rejected terms (an integer as Data, a bool as
-  a `Constr`, a record as a native `Constr` or as non-`Constr` Data), the executor's
-  `Crash("result: representation …")`, and `BigInteger`, `boolean` and `long` results still agreeing through
-  `DiffRunner`.
+- `TagTableTest` (4): sorting and the `tag:` text; duplicate, gapped and negative tags; source validation of
+  valid tables, including unequal tags under two parents. It also covers what validation rejects:
+  - missing variants and a missing second parent;
+  - extra entries;
+  - a family whose variants are outside the program;
+  - entries that name classes outside the program, such as harness classes;
+  - a parent that is not sealed, and unknown names.
+- `ResultRepresentationTest` (6): `Representation.of`; accepted and rejected terms (an integer as Data, a bool as a
+  `Constr`, a record as a native `Constr` or as non-`Constr` Data); the executor's
+  `Crash("result: representation …")`; and `BigInteger`, `boolean` and `long` results still agreeing through
+  `DiffRunner`. Through the seam, `boolean`, `BigInteger` and sealed results with the right Data in the wrong
+  representation crash in both `DiffRunner.run` and `rerun` at every level, and an unchecked `long` still agrees.
+- `JvmExecutorTest` (+3): javac's diagnostics are still reported. A sibling family with missing tags fails in
+  `JvmExecutor.run` and in `DiffRunner.run` before any run, and runs with its tags. Cases precompiled together
+  keep their own classes, so a table cannot name another source's classes.
 - `RecordDiffTest` (5): `DiffRunner` end to end with a record argument holding a sealed component and a record
   result, for six families whose declaration, `permits` and switch-arm orders are pairwise different, on every
   variant, at every level; the JVM results against hand-written Data; a sealed result and a variant result typed as
@@ -729,11 +756,31 @@ Tests (all new tests are JUnit, written from `advanced-guide.md`'s encoding, not
 - `RegressionStoreTest` (+3): format 3 round trip with unequal tags under two parents and a profile, the exact
   header text, case identity under swapped tags; format 2 still written for untagged cases; invalid `tag:` and
   `profile:` lines.
-- `KnownDivergencesTest` (+1): a pin matches only its tag table, whatever the profile.
+- `KnownDivergencesTest` (+1): a pin matches only its tag table, whatever the profile; with tags, it matches under
+  a renamed class, and swapped tags under the renamed class do not match.
 
 Commands and counts:
-- `./gradlew :julc-difftest:test --rerun`: 146 tests, 0 failures, 0 skipped (117 before M1, all unchanged in
-  meaning; +29). `G0BoundTest`'s 20,000-plan identity check passes.
+- `./gradlew :julc-difftest:test --rerun`: 150 tests, 0 failures, 0 errors, 0 skipped (117 before M1, all unchanged in
+  meaning; +33).
+- G0 is unchanged across M1 (review F53). `G0BoundTest` compares bounded and unbounded decoding at one revision,
+  so it is no before-and-after evidence. The evidence is blob identity. `G0.java`, `G0Enumeration.java` and
+  `Choices.java` have the same git blobs at `0c09ca01` and at the M1 head (`a0b82ab0`, `2ff50e2e`, `c647a3d8`),
+  and they import only `java.util`, so every plan decodes to the same program:
+  ```
+  for f in G0 G0Enumeration Choices; do p=julc-difftest/src/main/java/org/julclang/difftest/gen/$f.java;
+    echo "$f $(git rev-parse 0c09ca01:$p) $(git rev-parse HEAD:$p)"; done
+  git diff --quiet 0c09ca01 -- julc-difftest/src/main/java/org/julclang/difftest/gen/{G0,G0Enumeration,Choices}.java \
+    julc-difftest/src/test/resources
+  ```
+- Mutation check (review round 1): the reviewer's 16 mutants of the main sources, plus 3 new ones, were run one
+  at a time against the 8 targeted test classes (`RecordMappingTest`, `TagTableTest`, `ResultRepresentationTest`,
+  `RecordDiffTest`, `RegressionStoreTest`, `KnownDivergencesTest`, `ValueMappingTest`, `JvmExecutorTest`). The
+  new mutants are: pin tags not renamed; validation of the entry class only; `JvmExecutor.run` without
+  validation, replacing the reviewer's M11 at its new site. All 19 are killed, including the four that had
+  survived:
+  - M6, the permitted-set check;
+  - M11, `JvmExecutor.run` without validation;
+  - M12 and M13, `DiffRunner.run` and `rerun` passing `ANY`.
 - `./gradlew :julc-difftest:nightlyDiffTest --rerun`, with a temporary probe class holding one JUnit test tagged
   `nightly` and one untagged (removed afterwards): 2 tests ran, 0 failures, in 1 min 52 s. They were the
   3,000-try `G0PropertyTest.generatedProgramsAgreeNightly` (jqwik, 111 s) and the tagged JUnit probe. Neither

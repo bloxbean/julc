@@ -53,6 +53,68 @@ class JvmExecutorTest {
     }
 
     @Test
+    void javacsDiagnosticsAreReported() {
+        var e = assertThrows(HarnessException.class,
+                () -> new JvmExecutor(5_000).run(probe("public static long m(long n) { return undefined; }", integer(1))));
+        assertTrue(e.getMessage().contains("javac rejected the source") && e.getMessage().contains("undefined"), e.getMessage());
+    }
+
+    /** A sealed family declared beside the entry class, in the same file, used only inside {@code m}. */
+    private static String siblings(String className) {
+        return """
+                import java.math.BigInteger;
+
+                public class %1$s {
+                    public static BigInteger m(BigInteger a) {
+                        %1$sS s = a.signum() > 0 ? new %1$sA(a) : new %1$sB();
+                        return s instanceof %1$sA x ? x.v() : BigInteger.ZERO;
+                    }
+                }
+
+                sealed interface %1$sS permits %1$sB, %1$sA {}
+                record %1$sA(BigInteger v) implements %1$sS {}
+                record %1$sB() implements %1$sS {}
+                """.formatted(className);
+    }
+
+    private static TagTable siblingTags(String className) {
+        return TagTable.of(new TagTable.Entry(className + "A", className + "S", 1),
+                new TagTable.Entry(className + "B", className + "S", 0));
+    }
+
+    /**
+     * ADR-066 D3, review F51: source validation covers every class javac generates from the source, top-level
+     * siblings of the entry class included, and runs on the JVM side itself (F48), not only in {@link DiffRunner}.
+     */
+    @Test
+    void theTagTableIsValidatedAgainstEveryClassOfTheSource() {
+        var executor = new JvmExecutor(5_000);
+        var untagged = new DiffCase("siblings", siblings("Sib"), "Sib", "m", List.of(integer(3)));
+        var e = assertThrows(HarnessException.class, () -> executor.run(untagged));
+        assertTrue(e.getMessage().contains("No tag for SibA under SibS") || e.getMessage().contains("No tag for SibB under SibS"),
+                e.getMessage());
+        assertThrows(HarnessException.class, () -> DiffRunner.standard().run(untagged));
+        var tagged = new DiffCase("siblings", siblings("Sib"), "Sib", "m", List.of(integer(3)), siblingTags("Sib"), null);
+        assertEquals(new Observation.Value(integer(3), List.of()), executor.run(tagged));
+        var partial = TagTable.of(new TagTable.Entry("SibB", "SibS", 0));
+        assertThrows(HarnessException.class, () -> executor.run(new DiffCase("siblings", siblings("Sib"), "Sib", "m",
+                List.of(integer(3)), partial, null)));
+    }
+
+    /** Sources compiled together keep their own classes: one source's siblings are not another's. */
+    @Test
+    void precompiledSourcesKeepTheirOwnClasses() {
+        var executor = new JvmExecutor(5_000);
+        var family = new DiffCase("family", siblings("Fam"), "Fam", "m", List.of(integer(-1)), siblingTags("Fam"), null);
+        var plain = probe("public static long m(long n) { return n; }", integer(4));
+        executor.precompile(List.of(family, plain));
+        assertEquals(new Observation.Value(integer(0), List.of()), executor.run(family));
+        assertEquals(new Observation.Value(integer(4), List.of()), executor.run(plain));
+        assertThrows(HarnessException.class, () -> executor.run(new DiffCase("plain with tags", plain.source(), "Probe", "m",
+                plain.args(), siblingTags("Fam"), null)), "a table may not name another source's classes");
+    }
+
+    @Test
     void argumentsMustMatchTheParameters() {
         assertThrows(HarnessException.class,
                 () -> new JvmExecutor(5_000).run(probe("public static long m(long n) { return n; }")));

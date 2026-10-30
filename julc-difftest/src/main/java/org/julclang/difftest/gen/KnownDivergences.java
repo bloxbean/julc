@@ -10,6 +10,7 @@ import org.julclang.difftest.Verdict;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -28,7 +29,8 @@ import java.util.stream.Collectors;
  *     another cause with the same shape and reason passes as it, but an inconclusive case counts
  *     towards no quota (D9).</li>
  * <li>A conclusive UPLC side, a value or a failure, is explained only by a <em>pin</em>: a saved
- *     {@code DIVERGE} case with the same program, method, arguments and tag table (ADR-066 D3), whose pinned observations
+ *     {@code DIVERGE} case with the same program, method, arguments and tag table (ADR-066 D3), the class name
+ *     aside in the program and in the table, whose pinned observations
  *     the result matches exactly, traces included. Any other wrong value fails the run and is
  *     written out for triage.</li>
  * </ul>
@@ -209,11 +211,12 @@ public final class KnownDivergences {
             }
         } else {
             String program = program(diffCase);
+            List<String> tags = tags(diffCase);
             for (var pin : pins) {
                 var saved = pin.diffCase();
                 var expectation = pin.expectationFor(config.level());
                 if (expectation.kind() == Verdict.Kind.MISMATCH && saved.method().equals(diffCase.method())
-                        && saved.args().equals(diffCase.args()) && saved.tags().equals(diffCase.tags())
+                        && saved.args().equals(diffCase.args()) && tags(saved).equals(tags)
                         && program(saved).equals(program)
                         && expectation.check(result) == null) {
                     ids.add(expectation.detail());
@@ -226,6 +229,25 @@ public final class KnownDivergences {
     /** The names of a generator's features, as rules and coverage take them. */
     public static Set<String> names(Collection<? extends Enum<?>> features) {
         return features.stream().map(Enum::name).collect(Collectors.toCollection(TreeSet::new));
+    }
+
+    /**
+     * The tag table with the class renamed as {@link #program} renames it: a record or parent name that starts
+     * with {@code <className>$} starts with {@code _$} instead, so that a tagged case compiled under another class
+     * name still matches (ADR-066 D3, D9).
+     */
+    static List<String> tags(DiffCase diffCase) {
+        String prefix = diffCase.className() + "$";
+        var tags = new ArrayList<String>();
+        for (var entry : diffCase.tags().entries()) {
+            tags.add(renamed(entry.record(), prefix) + " " + renamed(entry.parent(), prefix) + " " + entry.tag());
+        }
+        Collections.sort(tags);
+        return tags;
+    }
+
+    private static String renamed(String binaryName, String prefix) {
+        return binaryName.startsWith(prefix) ? "_$" + binaryName.substring(prefix.length()) : binaryName;
     }
 
     /** The source with its class renamed, so that a case compiled under another class name still matches. */

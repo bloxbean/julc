@@ -40,11 +40,16 @@ import java.util.Optional;
  *       one whose tag is the {@code Constr}'s, with as many fields as it has components.</li>
  * </ul>
  * Records and sealed interfaces of JuLC's own libraries ({@link #LIBRARY_PACKAGES}) have encodings of their own
- * and are not mapped.
+ * and are not mapped. This is a denylist: any other record is a user record, JDK records included, which G1
+ * programs never use. Ledger records get a mapping, and the result check of ADR-066 D4, only with ADR-063 M4.
  */
 public final class ValueMapping {
 
-    /** Packages whose records and sealed interfaces are not user types: ledger and library types. */
+    /**
+     * The denylist of packages whose records and sealed interfaces are not user types: JuLC's ledger and library
+     * types, mapped by their own encoders (ADR-063 D4, M4) and unmapped here. Records from anywhere else, the JDK
+     * included, are user records.
+     */
     static final List<String> LIBRARY_PACKAGES = List.of("org.julclang.core.", "org.julclang.ledger.", "org.julclang.stdlib.");
 
     private ValueMapping() {

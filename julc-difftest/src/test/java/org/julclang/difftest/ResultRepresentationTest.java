@@ -108,6 +108,80 @@ class ResultRepresentationTest {
                 crash).kind());
     }
 
+    /** The same Data in another representation: a bool as a native {@code Constr}, an integer or a record as Data. */
+    private static Term otherRepresentation(Term term) {
+        if (!(term instanceof Term.Const c)) return term;
+        return switch (c.value()) {
+            case Constant.BoolConst b -> new Term.Constr(b.value() ? 1 : 0, List.of());
+            case Constant.IntegerConst i -> data(new PlutusData.IntData(i.value()));
+            case Constant.DataConst d when d.value() instanceof PlutusData.ConstrData r ->
+                    new Term.Constr(r.tag(), r.fields().stream().map(ResultRepresentationTest::data).toList());
+            default -> term;
+        };
+    }
+
+    /**
+     * Review F47: the runner passes the declared type to every UPLC run and confirmation rerun. Through the test
+     * seam, each evaluated result keeps its Data and changes its representation; for a checked declared type every
+     * configuration crashes, and for an unchecked one ({@code long}) the lenient mapping still agrees.
+     */
+    @Test
+    void theRunnerRejectsTheRightDataInTheWrongRepresentation() {
+        var runner = new DiffRunner(DiffConfig.allLevels(), 10_000, new UplcExecutor(ResultRepresentationTest::otherRepresentation));
+        var cases = List.of(
+                new DiffCase("boolean", """
+                        import java.math.BigInteger;
+
+                        public class Probe {
+                            public static boolean m(BigInteger a) {
+                                return a.compareTo(BigInteger.ZERO) > 0;
+                            }
+                        }
+                        """, "Probe", "m", List.of(new PlutusData.IntData(BigInteger.TWO))),
+                new DiffCase("BigInteger", """
+                        import java.math.BigInteger;
+
+                        public class Probe {
+                            public static BigInteger m(BigInteger a) {
+                                return a.add(BigInteger.ONE);
+                            }
+                        }
+                        """, "Probe", "m", List.of(new PlutusData.IntData(BigInteger.TWO))),
+                new DiffCase("record", """
+                        import java.math.BigInteger;
+
+                        public class Probe {
+                            sealed interface S permits B, A {}
+                            record A(BigInteger v) implements S {}
+                            record B() implements S {}
+
+                            public static S m(BigInteger a) {
+                                return new A(a);
+                            }
+                        }
+                        """, "Probe", "m", List.of(new PlutusData.IntData(BigInteger.TWO)),
+                        TagTable.of(new TagTable.Entry("Probe$A", "Probe$S", 1), new TagTable.Entry("Probe$B", "Probe$S", 0)), null));
+        for (var diffCase : cases) {
+            var report = runner.run(diffCase);
+            assertTrue(report.all(Verdict.Kind.CRASH), report.describe());
+            for (var config : DiffConfig.allLevels()) {
+                var crash = assertInstanceOf(Observation.Crash.class, report.results().get(config).uplc(), report.describe());
+                assertTrue(crash.detail().startsWith("result: representation"), crash.detail());
+                var rerun = assertInstanceOf(Observation.Crash.class, runner.rerun(diffCase, config, 2).observation(), config.toString());
+                assertTrue(rerun.detail().startsWith("result: representation"), rerun.detail());
+            }
+            assertTrue(DiffRunner.standard().run(diffCase).all(Verdict.Kind.AGREE), "without the seam: " + diffCase.name());
+        }
+        var unchecked = runner.run(new DiffCase("long", """
+                public class Probe {
+                    public static long m(long a) {
+                        return a + 1;
+                    }
+                }
+                """, "Probe", "m", List.of(new PlutusData.IntData(BigInteger.TWO))));
+        assertTrue(unchecked.all(Verdict.Kind.AGREE), unchecked.describe());
+    }
+
     /** The runner takes the declared type from javac's class: G0's {@code BigInteger} and other results still agree. */
     @Test
     void theRunnerChecksTheDeclaredReturnType() {

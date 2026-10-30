@@ -73,6 +73,12 @@ class TagTableTest {
         assertThrows(HarnessException.class, () -> TagTable.of(entry(Shapes.Circle.class, Shapes.Shape.class, 0),
                 entry(Shapes.Square.class, Shapes.Shape.class, 1), entry(Shapes.Tri.class, Shapes.Shape.class, 2),
                 entry(TwoParents.OnlyLeft.class, Shapes.Shape.class, 3)).validate(Shapes.class));
+        // A family whose variants are outside the program: here, the interface alone (review F48, M6).
+        assertThrows(HarnessException.class, () -> TagTable.EMPTY.validate(Shapes.Shape.class));
+        assertThrows(HarnessException.class, () -> RecordMappingTest.PERMITS.validate(Shapes.Shape.class));
+        // Entries may name only classes of the program, never other classes the loader can see (review F48).
+        assertThrows(HarnessException.class, () -> RecordMappingTest.UNEQUAL.validate(Shapes.Point.class));
+        assertDoesNotThrow(() -> RecordMappingTest.UNEQUAL.validate(List.of(Shapes.Point.class, TwoParents.class)));
         // A parent that is not a sealed interface, and names that are not in the program.
         assertThrows(HarnessException.class, () -> TagTable.of(entry(Shapes.Circle.class, Shapes.Point.class, 0)).validate(Shapes.class));
         assertThrows(HarnessException.class, () -> TagTable.of(new TagTable.Entry("NoSuch$A", Shapes.Shape.class.getName(), 0))

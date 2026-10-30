@@ -12,12 +12,18 @@ import java.util.Map;
 public final class DiffRunner {
 
     private final JvmExecutor jvm;
-    private final UplcExecutor uplc = new UplcExecutor();
+    private final UplcExecutor uplc;
     private final List<DiffConfig> configs;
 
     public DiffRunner(List<DiffConfig> configs, long jvmTimeoutMillis) {
+        this(configs, jvmTimeoutMillis, new UplcExecutor());
+    }
+
+    /** A runner over the given UPLC executor: a test seam (ADR-066 D4). */
+    DiffRunner(List<DiffConfig> configs, long jvmTimeoutMillis, UplcExecutor uplc) {
         this.configs = List.copyOf(configs);
         this.jvm = new JvmExecutor(jvmTimeoutMillis);
+        this.uplc = uplc;
     }
 
     /** The pull-request matrix: every optimization level on the Java VM, with a 10-second JVM bound. */

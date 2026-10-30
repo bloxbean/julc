@@ -101,6 +101,20 @@ class KnownDivergencesTest {
         assertEquals(Optional.empty(), known.explain(new DiffCase("swapped", base.source(), "Probe", "m", base.args(), swapped,
                 "G1 r1"), CONFIG, Set.of(), result));
         assertEquals(Optional.empty(), known.explain(base, CONFIG, Set.of(), result), "no tags");
+
+        // Review F46: the class name is aside in the tags as in the source, as G0ExhaustiveTest's E<n> classes need.
+        var renamed = t23("E135", -2, 1, -1, 2, 4);
+        assertEquals(Optional.of("T99"), known.explain(new DiffCase("renamed", renamed.source(), "E135", "m", renamed.args(),
+                rename(tags, "E135"), null), CONFIG, Set.of(), result));
+        assertEquals(Optional.empty(), known.explain(new DiffCase("renamed, swapped", renamed.source(), "E135", "m",
+                renamed.args(), rename(swapped, "E135"), null), CONFIG, Set.of(), result));
+        assertEquals(Optional.empty(), known.explain(new DiffCase("renamed, pin's tags", renamed.source(), "E135", "m",
+                renamed.args(), tags, null), CONFIG, Set.of(), result), "Probe$R is another class in E135's program");
+    }
+
+    private static TagTable rename(TagTable tags, String className) {
+        return new TagTable(tags.entries().stream().map(e -> new TagTable.Entry(e.record().replace("Probe$", className + "$"),
+                e.parent().replace("Probe$", className + "$"), e.tag())).toList());
     }
 
     @Test

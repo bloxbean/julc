@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.OptionalInt;
@@ -129,26 +130,37 @@ public record TagTable(List<Entry> entries) {
         return tags.getOrDefault(useSite.getName(), tags.firstEntry().getValue());
     }
 
-    /**
-     * Source validation (ADR-066 D3): checks this table against the compiled program whose top-level class is
-     * {@code top}. Every record and sealed interface nested in {@code top}, and every one an entry names, is
-     * checked: each entry names a record that directly implements its sealed parent; every record that
-     * implements a sealed interface has an entry for each such parent; and each parent's entries are exactly its
-     * permitted subclasses, so its family has as many tags as the source has variants.
-     */
+    /** Source validation of a program whose classes are all nested in {@code top}; see {@link #validate(List)}. */
     public void validate(Class<?> top) {
+        validate(List.of(top));
+    }
+
+    /**
+     * Source validation (ADR-066 D3): checks this table against a compiled program, given as every top-level class
+     * javac generated from its source. Every record and sealed interface of the program is checked, at any nesting
+     * depth: each entry names a record of the program that directly implements its sealed parent, also of the
+     * program (never a class from elsewhere, such as the harness); every record that implements a sealed interface
+     * has an entry for each such parent; and each parent's entries are exactly its permitted subclasses, so its
+     * family has as many tags as the source has variants, and a family with a variant outside the program fails.
+     */
+    public void validate(List<Class<?>> topLevel) {
+        var program = new LinkedHashMap<String, Class<?>>();
         var records = new LinkedHashSet<Class<?>>();
         var sealed = new LinkedHashSet<Class<?>>();
-        var pending = new ArrayDeque<Class<?>>(List.of(top));
+        var pending = new ArrayDeque<Class<?>>(topLevel);
         while (!pending.isEmpty()) {
             Class<?> type = pending.pop();
+            program.put(type.getName(), type);
             if (type.isRecord()) records.add(type);
             if (type.isInterface() && type.isSealed()) sealed.add(type);
             pending.addAll(Arrays.asList(type.getDeclaredClasses()));
         }
         for (var entry : entries) {
-            Class<?> record = load(top, entry.record());
-            Class<?> parent = load(top, entry.parent());
+            Class<?> record = program.get(entry.record());
+            Class<?> parent = program.get(entry.parent());
+            if (record == null || parent == null) {
+                throw new HarnessException("tag: " + entry + ": names a class that is not in the program " + program.keySet());
+            }
             if (!parent.isInterface() || !parent.isSealed()) {
                 throw new HarnessException("tag: " + entry + ": " + entry.parent() + " is not a sealed interface");
             }
@@ -187,14 +199,6 @@ public record TagTable(List<Entry> entries) {
     /** The sealed interfaces that {@code record} directly implements. */
     static List<Class<?>> sealedParents(Class<?> record) {
         return Arrays.stream(record.getInterfaces()).filter(Class::isSealed).toList();
-    }
-
-    private static Class<?> load(Class<?> top, String name) {
-        try {
-            return Class.forName(name, false, top.getClassLoader());
-        } catch (ClassNotFoundException e) {
-            throw new HarnessException("tag: no class " + name + " in the program", e);
-        }
     }
 
     /** The table as {@code tag:} lines' values, in order. */
