@@ -1,6 +1,6 @@
 # ADR-067: Switch guards, record patterns, cross-type record `equals`, records with two sealed parents, and record members
 
-**Status:** Proposed (2026-10-30). Design only; the implementation will follow in the same PR after acceptance.
+**Status:** Accepted (2026-10-30): approved at `f965d061` by the review comment and, after the r6 editorial below, by Codex's round-5 findings being text-only (F46). The implementation follows in the same PR.
 **Date:** 2026-10-30
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. Every defect below is a silent miscompile: a validator built with
@@ -793,7 +793,9 @@ shapes are ordinary `DataMatch`, `IfThenElse`, `Let`, `Lam` and `App`.
   `equals` whose operands have known, disjoint class sets (D5) returned the structural result; it is now rejected
   with `JULC0078` (r4). Every program with a record that has two sealed parents is now rejected. Colon-form switches
   that fall through between groups (#283) are now rejected (r3). A packageless top-level user record named like a
-  non-hash ledger type now means the user's record (#284, r4).
+  non-hash ledger type now means the user's record (#284, r4). A user record whose implicit accessor or method call
+  reached a named ledger handler by simple name (`Value`'s `isEmpty`, `lovelaceOf`, `containsPolicy`, `assetOf`)
+  now uses its own accessor (F45, r6).
   Deployed scripts are unaffected (their hashes are fixed); recompiling changes their hash only if they use one of
   these constructs.
 - **Newly rejected programs** are those javac 21.0.3 rejects (D4), colon-form fall-through and grouped labels and
@@ -889,7 +891,8 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    | F19c (the same record nested) | `AGREE` | `AGREE` | M3b | D |
    | Packageless user record named like a ledger hash type (`record PubKeyHash(byte[] h) {}`) | as found in M0 | `REJECT JULC0081` | M3b | D |
    | User source declaring a bundled ledger FQCN (`package org.julclang.ledger; record Value…`) | as found in M0 | `REJECT JULC0081` | M3b | P (javac accepts; JuLC rejects on purpose) or a `julc-compiler` unit test: `JvmExecutor` writes `<className>.java` and loads the class by simple name (`JvmExecutor.java:57`, `:158`), so it cannot run a packaged source (r6, F26) |
-   | User `record Value(boolean isEmpty)`, `new Value(…).isEmpty()` (F45) | `DIVERGE` T30 (JVM `true`; JuLC fails "UnMapData") | `AGREE` | M3b | D |
+   | User `record Value(boolean isEmpty)` nested in `Probe`, `new Value(…).isEmpty()` (F45) | `DIVERGE` T32 (JVM `true`; JuLC fails "UnMapData") | `AGREE` | M3b | D |
+   | The same record at top level in a packageless source, on the constructor and through a local (F45c) | `DIVERGE` T32 (JVM `true`; JuLC fails "MapData: expected list", #284 resolves it to the ledger type) | `AGREE` | M3b | D |
    | Mixed user/ledger `Rational`: a ledger value assigned or passed to the user's `Rational` (F23, #287) | JuLC accepts, 7 (javac: incompatible types) | unchanged: JuLC accepts, recorded as a known parity exception owned by #287 | M3b | P (exception entry) and U (value pinned) |
    | #277 known-disjoint `equals`: E1, E2, E6, E7, E9 | `DIVERGE` T28 | `REJECT JULC0078` | M4 | D |
    | E3, E5 (known-disjoint, already `false`), E10 (failing operand) | `AGREE` | `REJECT JULC0078` | M4 | D |
@@ -918,7 +921,8 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    revisions and (ii) fall outside the approved behaviour-changing categories: a guard or record pattern; an `equals`
    that D5 classifies (now a rejection); D4's new rejections (colon fall-through, grouped labels, duplicate `default`,
    pattern-variable conflicts, parameterized sealed selectors, javac-rejected guards); D6; D9 (record bodies, ledger
-   redeclaration); and #284's resolution change. Those programs must be byte-identical; every program in a category
+   redeclaration); #284's resolution change; and named ledger handlers keyed on ledger identity with the
+   implicit-accessor correction (F45). The report classifies each changed program under one of these. Those programs must be byte-identical; every program in a category
    must appear in the outcome matrix or the report. Programs accepted at the base and rejected at the head are listed
    with their code and must all fall in an approved category. Counts per category go in the PR.
 6. **Mutation checks.** Each of these deliberate faults must make at least one test fail: ignore guards; keep only
@@ -1165,8 +1169,9 @@ records `Amt`, `Price`. JuLC's result was the same at `NONE`, `BASELINE`, `PV11_
 | F19b | Same with `import org.julclang.ledger.*;` (r4) | 7 | 5 |
 | F19c | Same record nested in `Probe` (r4) | 7 | 7 |
 | F20 | `record W(B b)` (`B` at position 1 of `S`), `S s = new W(new B(a)).b()`, switch over `s` (r4) | 2 | 2 (the component carries `B`'s tag) |
-| F45 | `record Value(boolean isEmpty) {}`, `new Value(a.signum() > 0).isEmpty()`, a=5 (r6) | `true` | fails: "UnMapData: not MapData" |
-| F45b | Same through a local, `Value v = new Value(…); v.isEmpty()` (r6) | `true` | `true` |
+| F45 | `record Value(boolean isEmpty) {}` nested in `Probe`, `new Value(a.signum() > 0).isEmpty()`, a=5 (r6) | `true` | fails: "UnMapData: not MapData" |
+| F45b | Same, nested, through a local, `Value v = new Value(…); v.isEmpty()` (r6) | `true` | `true` |
+| F45c | The record at top level of a packageless source, on the constructor and through a local (review round 5, F27) | `true` | fails: "MapData: expected list, got VCon(Bool[])" (#284) |
 | D5u | `var x = a > 0 ? new R1(a) : new R1(b); x.equals(new R2(a))` (r5) | 0 | 1 (structural; the operand is unknown under D5) |
 | F23 | JuLC-only (javac: incompatible types): member `record Rational(BigInteger denominator, BigInteger numerator)`, `Rational q = new org.julclang.ledger.Rational(a, b); q.numerator()`, a=5, b=7 (r5) | — | 7 at all four levels |
 | F33 | Guard of type `Boolean` (`static Boolean big(BigInteger x)`), false for the value (r4) | 2 | 1 (guard ignored, #275) |
@@ -1323,3 +1328,7 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
   excluded), I15, M3b, mutation checks for D9, Evidence N1–N10 and the record-body scan, open question 8. D3's
   explicit-accessor rejection marked subsumed by D9; D5 notes its reliance on D9; D7 reservation extended to
   `JULC0080`; D8's T30 now names #282; R6/H5 moved from Related findings into scope. No ID renumbered.
+- **r6, editorial** (after approval at `f965d061`): Codex's F46 (P2) → the F45 handler and accessor change added to
+  Compatibility and to Verification 5's byte-stability exclusions, with the report classifying each changed
+  program; the review comment's F27 (P3) → F45 and F45b marked "nested in `Probe`", new row and evidence F45c for the
+  top-level shape (#284), catalogue ID T32 instead of T30 for the F45 rows. Status set to Accepted.
