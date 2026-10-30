@@ -85,6 +85,8 @@ public final class JvmExecutor {
                 }
             }
             return invoke(method, args, diffCase.tags());
+        } catch (LinkageError e) {
+            throw unverifiable(diffCase, e);
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
@@ -101,6 +103,8 @@ public final class JvmExecutor {
             Class<?> type = loader.loadClass(diffCase.className());
             validate(diffCase, classes, loader);
             return ValueMapping.Representation.of(entryMethod(type, diffCase.method()).getGenericReturnType());
+        } catch (LinkageError e) {
+            throw unverifiable(diffCase, e);
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
@@ -114,6 +118,11 @@ public final class JvmExecutor {
      * Source validation over the case's top-level declarations, siblings of the entry class included, and their
      * member classes, recursively; never over classes from elsewhere. Local and anonymous classes are not visited.
      */
+    /** javac accepted the source but produced a class the JVM rejects, such as a VerifyError: an oracle fault (H6). */
+    private static HarnessException unverifiable(DiffCase diffCase, LinkageError e) {
+        return new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + e, e);
+    }
+
     private static void validate(DiffCase diffCase, Compiled classes, ClassLoader loader) throws ClassNotFoundException {
         var types = new ArrayList<Class<?>>();
         for (String name : classes.classes()) types.add(Class.forName(name, false, loader));
@@ -144,6 +153,8 @@ public final class JvmExecutor {
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause() instanceof InvocationTargetException ite ? ite.getCause() : e.getCause();
                 if (cause instanceof StackOverflowError) return new Observation.Inconclusive("JVM stack overflow");
+                // A class javac produced that the JVM cannot link is no observation of the program (H6).
+                if (e.getCause() instanceof LinkageError linkage) throw new HarnessException("the JVM rejects javac's class: " + linkage, linkage);
                 return new Observation.Failure(String.valueOf(cause), out.traces());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

@@ -25,11 +25,12 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r4): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r5): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
- * with accumulators of any generated type, record and sealed arguments and results, traces and failures. The
- * {@code switch} productions are M3's. The productions build a typed AST ({@link G1Ast}), which {@link G1Printer}
- * prints.
+ * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
+ * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
+ * (M3 part 1; guards and record patterns wait for ADR-067). The productions build a typed AST ({@link G1Ast}), which
+ * {@link G1Printer} prints.
  * <p>
  * A plan decodes left to right through {@link Choices}, as G0's does, and does not share G0's decoding (D1): the
  * declarations (types, fields, helpers) read its even positions and the entry method its odd ones, so that a plan
@@ -59,7 +60,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r4";
+    public static final String VERSION = "G1 r5";
 
     /** The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open. */
     public enum Gate {
@@ -71,7 +72,10 @@ public final class G1 {
         CROSS_TYPE_EQUALS,
         /** A record implementing two sealed interfaces at different positions (#279); M3. */
         SHARED_VARIANT,
-        /** Reassigning a {@code switch} case-pattern binding inside a loop (#162); M3, historical. */
+        /**
+         * Reassigning a {@code switch} case-pattern binding inside a loop in its arm (#162); historical: the fix
+         * rejects it, so a run under this gate on the fixed compiler ends in that rejection.
+         */
         ASSIGN_PATTERN_BINDING,
         /** Zero-parameter helpers (#280). */
         ZERO_ARG_HELPERS,
@@ -85,10 +89,9 @@ public final class G1 {
          */
         TRACE_IN_COMPARISON;
 
-        /** The switches G1 r4 defines but does not implement yet: they change no program until M3. */
+        /** The switches G1 defines but does not implement yet: they wait for ADR-067 (M3, part 2). */
         public static final Set<Gate> INERT =
-                Collections.unmodifiableSet(EnumSet.of(GUARDS, RECORD_PATTERNS, CROSS_TYPE_EQUALS, SHARED_VARIANT,
-                        ASSIGN_PATTERN_BINDING));
+                Collections.unmodifiableSet(EnumSet.of(GUARDS, RECORD_PATTERNS, CROSS_TYPE_EQUALS, SHARED_VARIANT));
     }
 
     /**
@@ -103,7 +106,9 @@ public final class G1 {
         /** Half of the helpers without parameters, most of their bodies traced. */
         ISSUE_280(Gate.ZERO_ARG_HELPERS),
         /** A third of the comparisons trace their left operand. */
-        ISSUE_146(Gate.TRACE_IN_COMPARISON);
+        ISSUE_146(Gate.TRACE_IN_COMPARISON),
+        /** Every arm loop that can assigns the case-pattern binding. */
+        ISSUE_162(Gate.ASSIGN_PATTERN_BINDING);
 
         final Gate gate;
 
@@ -118,7 +123,7 @@ public final class G1 {
 
     /**
      * A generation profile: {@link #VERSION}, the value of every {@link Gate} (ADR-066 D6) and its {@link Steer}s. Its
-     * text, such as {@code G1 r4 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
+     * text, such as {@code G1 r5 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
      */
     public record Profile(Set<Gate> on, Set<Steer> steering) {
 
@@ -130,6 +135,11 @@ public final class G1 {
         public static final Profile REDISCOVER_280 = DEFAULT.with(Gate.ZERO_ARG_HELPERS).steered(Steer.ISSUE_280);
         /** The historical profile that rediscovers #146's double evaluation of a traced operand (ADR-066 D10.1). */
         public static final Profile REDISCOVER_146 = DEFAULT.with(Gate.TRACE_IN_COMPARISON).steered(Steer.ISSUE_146);
+        /**
+         * The historical profile of #162 (ADR-066 D6): it generates the case-pattern reassignment that the fix rejects,
+         * so on the fixed compiler its cases end in that rejection ({@code G1MustRejectTest}).
+         */
+        public static final Profile REDISCOVER_162 = DEFAULT.with(Gate.ASSIGN_PATTERN_BINDING).steered(Steer.ISSUE_162);
 
         public Profile {
             var gates = EnumSet.noneOf(Gate.class);
@@ -234,6 +244,22 @@ public final class G1 {
         VARIANT_COMPONENT,
         /** A call of a helper that returns {@code boolean}. */
         BOOLEAN_HELPER_CALL,
+        /** A {@code switch} expression over a sealed value (ADR-066 D8). */
+        SWITCH,
+        /** A {@code switch} in an arm of another. */
+        NESTED_SWITCH,
+        /** An arm that is a block ending in {@code yield}. */
+        YIELD_BLOCK,
+        /** A loop in an arm, over an accumulator the arm owns. */
+        LOOP_IN_ARM,
+        /** A {@code switch} in a loop body. */
+        SWITCH_IN_LOOP,
+        /** A type-pattern arm, {@code case V q ->}. */
+        TYPE_PATTERN,
+        /** A {@code default} arm. */
+        DEFAULT_ARM,
+        /** An arm accumulator initialized from the case-pattern binding: #162's positive form. */
+        BINDING_ACCUMULATOR,
         /** A family whose {@code permits} order differs from its variants' declaration order and name order. */
         PERMITS_PERMUTED,
         /** {@code equals} against a value of a sealed family's type. */
@@ -243,17 +269,18 @@ public final class G1 {
         /** Statistics only. */
         LOOP, BREAK,
         /** Gated constructs (ADR-066 D6): a program under the default profile never contains one. */
-        SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE, TRACE_IN_COMPARISON;
+        SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE, TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING;
 
         /**
-         * The features with a quota: D8's list without the {@code switch} features, which are M3's, and the
-         * sub-features that keep a shape from hiding behind a sibling's quota (review of M2, F63, F70, F71).
+         * The features with a quota: D8's list without the features of the gated constructs (guards, record patterns,
+         * cross-type {@code equals}), and the sub-features that keep a shape from hiding behind a sibling's quota
+         * (review of M2, F63, F70, F71).
          */
         public static final Set<Feature> QUOTA = Collections.unmodifiableSet(EnumSet.range(RECORD, FAMILY_EQUALS));
         /** The marker of each implemented gate's construct. */
         public static final Set<Feature> GATED =
                 Collections.unmodifiableSet(EnumSet.of(SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE,
-                        TRACE_IN_COMPARISON));
+                        TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING));
     }
 
     /** A decoded program: its source, its tag table, its features, its profile and its entry parameters. */
@@ -452,8 +479,12 @@ public final class G1 {
             // #209's own shape: two records with the same components in different orders (see mirror).
             Type first = new Type(Kind.RECORD, "R0");
             var names = new ArrayList<>(POOL);
+            // A third of the time integers only, so that a read through the wrong layout returns another integer: the
+            // silent form; else sometimes a boolean, so that it fails.
+            boolean integers = choices.oneIn(3);
             for (int i = 2 + choices.below(2); i > 0; i--) {
-                first.components.add(new Component(names.remove(choices.below(names.size())), choices.oneIn(6) ? BOOL : BIG));
+                first.components.add(new Component(names.remove(choices.below(names.size())),
+                        !integers && choices.oneIn(3) ? BOOL : BIG));
             }
             first.depth = 1;
             Type second = new Type(Kind.RECORD, "R1");
@@ -640,8 +671,12 @@ public final class G1 {
                 parameters.add(new Var(parameterNames.remove(choices.below(parameterNames.size())), anyType(), false, false,
                         true, false));
             }
+            // Names declared in this helper's body (switch bindings, arm locals) avoid its parameters; xs is not in scope.
+            methodNames.clear();
+            parameters.forEach(parameter -> methodNames.add(parameter.name()));
+            inHelper = true;
             // Boolean helpers are called from conditions (BOOLEAN_HELPER_CALL).
-            Type result = choices.oneIn(2) ? BOOL : anyType();
+            Type result = !choices.oneIn(3) ? BOOL : anyType();
             var scope = new Scope(parameters, 0);
             var ctx = new Ctx(scope, List.copyOf(helpers), false, false, null, false);
             int traced = traceSites;
@@ -651,6 +686,7 @@ public final class G1 {
                 // Steered to #280, whose defect shows only when the body does something observable at script start.
                 if (profile.steers(Steer.ISSUE_280) && result == BIG && !choices.oneIn(4)) body = trace(body);
             }
+            inHelper = false;
             helperDeclarations.add(new G1Ast.Helper(name, parameters, result, body));
             helpers.add(new Helper(name, parameters, result, traceSites > traced));
         }
@@ -693,7 +729,7 @@ public final class G1 {
         var updated = new ArrayList<String>();
         boolean shadowing = profile.steers(Steer.ISSUE_209);
         for (int n = choices.below(5) + (shadowing ? 1 : 0); n > 0; n--) {
-            int kind = choices.below(8);
+            int kind = choices.below(10);
             // Steered to #209, more loops: #209 lives in a loop body.
             if (shadowing && kind != 1 && choices.oneIn(2)) kind = 1;
             switch (kind) {
@@ -705,17 +741,25 @@ public final class G1 {
                 }
                 case 4 -> earlyReturn(scope, body, result);
                 case 5, 6 -> scope = instanceOf(scope, body, result);
+                case 8, 9 -> scope = switchDeclaration(scope, body);
                 default -> scope = declaration(scope, body, false, null);
             }
         }
         if (choices.oneIn(3)) {
             features.add(Feature.METHOD_LEVEL_IF);
-            Expr test = condition(ctx(scope), EXPRESSION_DEPTH);
+            Expr test = test(ctx(scope), EXPRESSION_DEPTH);
             var then = branch(scope, result);
             body.add(new G1Ast.If(test, then, branch(scope, result)));
         } else {
             String preferred = profile.steers(Steer.ISSUE_209) ? shadowRead : null;
-            body.add(new G1Ast.Return(expression(result, ctx(scope).preferring(preferred), EXPRESSION_DEPTH)));
+            // A switch as the result a third of the time a family is declared.
+            Expr value = null;
+            if (preferred == null && types.stream().anyMatch(t -> t.kind == Kind.SEALED) && choices.oneIn(3)) {
+                scope = selectable(scope, body);
+                value = switchExpression(result, ctx(scope), EXPRESSION_DEPTH);
+            }
+            if (value == null) value = expression(result, ctx(scope).preferring(preferred), EXPRESSION_DEPTH);
+            body.add(new G1Ast.Return(value));
         }
         return new G1Ast.Method(result, parameters, body);
     }
@@ -727,7 +771,7 @@ public final class G1 {
     /** {@code if (c) { locals; return e; }} at method level. */
     private void earlyReturn(Scope scope, List<Stmt> into, Type result) {
         features.add(Feature.METHOD_LEVEL_IF);
-        Expr test = condition(ctx(scope), EXPRESSION_DEPTH);
+        Expr test = test(ctx(scope), EXPRESSION_DEPTH);
         into.add(new G1Ast.If(test, branch(scope, result), null));
     }
 
@@ -757,6 +801,33 @@ public final class G1 {
         var body = branch(scope.with(new Var(binding, variant, false, false, true, false)), result);
         into.add(new G1Ast.IfInstance(subject, variant, binding, body));
         return scope;
+    }
+
+    /**
+     * {@code T x = switch (s) { … };} at method level: a local whose value is a switch, after declaring a value of a
+     * family to select on if none is in scope.
+     */
+    private Scope switchDeclaration(Scope scope, List<Stmt> into) {
+        if (types.stream().noneMatch(t -> t.kind == Kind.SEALED)) return declaration(scope, into, false, null);
+        scope = selectable(scope, into);
+        Type type = anyType();
+        String name = freshName(false);
+        Expr value = switchExpression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH);
+        if (value == null) value = expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH);
+        into.add(new G1Ast.Declare(type, name, value));
+        if (isField(name)) features.add(Feature.FIELD_SHADOWED);
+        return scope.with(new Var(name, type, false, false, true, false));
+    }
+
+    /** The scope with a value to switch on: unchanged if it has one, else after declaring a local of a family. */
+    private Scope selectable(Scope scope, List<Stmt> into) {
+        if (!subjects(ctx(scope)).isEmpty()) return scope;
+        var families = types.stream().filter(t -> t.kind == Kind.SEALED).toList();
+        Type family = families.get(choices.below(families.size()));
+        String name = freshName(false);
+        into.add(new G1Ast.Declare(family, name, expression(family, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
+        if (isField(name)) features.add(Feature.FIELD_SHADOWED);
+        return scope.with(new Var(name, family, false, false, true, false));
     }
 
     /** Zero to two locals, then a return. */
@@ -827,8 +898,12 @@ public final class G1 {
 
     // ---------------------------------------------------------------- loops (G0's sub-grammar, D2)
 
+    /** Whether a helper's body is being generated: {@code xs} is m's parameter, so loops there are while loops. */
+    private boolean inHelper;
+
     private void loop(Scope scope, List<Stmt> into, List<String> updated, boolean forEach) {
         features.add(Feature.LOOP);
+        forEach = forEach && !inHelper;
         Scope body = scope.inLoop();
         var statements = new ArrayList<Stmt>();
         if (forEach) {
@@ -846,12 +921,23 @@ public final class G1 {
     }
 
     private void body(Scope scope, List<Stmt> into, List<String> updated, boolean counted) {
-        var assigned = new ArrayList<String>();
-        boolean hasBreak = false;
         // A body with break contains no loop (reject-nested-loop-in-break-loop). Loop bodies with break and
         // conditional updates are gated (LOOP_BREAK_SHAPES, #254, #255).
         boolean breakAware = choices.oneIn(3) && !profile.steers(Steer.ISSUE_209);
         boolean conditionalUpdates = !breakAware || profile.has(Gate.LOOP_BREAK_SHAPES);
+        // A switch arm in a body with break contains no loop either (reject-nested-loop-in-break-loop).
+        if (breakAware) breakAwareBodies++;
+        try {
+            statements(scope, into, updated, counted, breakAware, conditionalUpdates);
+        } finally {
+            if (breakAware) breakAwareBodies--;
+        }
+    }
+
+    private void statements(Scope scope, List<Stmt> into, List<String> updated, boolean counted, boolean breakAware,
+                            boolean conditionalUpdates) {
+        var assigned = new ArrayList<String>();
+        boolean hasBreak = false;
         boolean hasIfUpdate = false;
         for (int n = 1 + choices.below(3); n > 0; n--) {
             int kind = choices.below(7);
@@ -868,12 +954,17 @@ public final class G1 {
                 case 3 -> {
                     hasBreak = true;
                     features.add(Feature.BREAK);
-                    into.add(new G1Ast.BreakIf(condition(ctx(scope), EXPRESSION_DEPTH)));
+                    into.add(new G1Ast.BreakIf(test(ctx(scope), EXPRESSION_DEPTH)));
                 }
                 case 5 -> loop(scope, into, updated, choices.oneIn(2));
                 default -> {
-                    scope = loopLocal(scope, into);
-                    if (isField(scope.locals().getLast().name())) features.add(Feature.LOOP_LOCAL_SHADOWS_FIELD);
+                    // A switch-valued local half of the time a family is declared (SWITCH_IN_LOOP).
+                    if (types.stream().anyMatch(t -> t.kind == Kind.SEALED) && choices.oneIn(2)) {
+                        scope = switchDeclaration(scope, into);
+                    } else {
+                        scope = loopLocal(scope, into);
+                        if (isField(scope.locals().getLast().name())) features.add(Feature.LOOP_LOCAL_SHADOWS_FIELD);
+                    }
                 }
             }
         }
@@ -888,7 +979,7 @@ public final class G1 {
      * shadow a field of another type, and the statement after the if reads that field: #209's composition.
      */
     private void ifUpdate(Scope scope, List<Stmt> into, List<String> assigned) {
-        Expr test = condition(ctx(scope), EXPRESSION_DEPTH);
+        Expr test = test(ctx(scope), EXPRESSION_DEPTH);
         var then = new ArrayList<Stmt>();
         Scope branch = scope;
         String shadowed = null;
@@ -968,7 +1059,10 @@ public final class G1 {
         Var target = targets.get(choices.below(targets.size()));
         assigned.add(target.name());
         accumulatorFeatures(target);
-        into.add(new G1Ast.Assign(target.name(), expression(target.type(), ctx(scope).preferring(preferred), EXPRESSION_DEPTH)));
+        // A switch as the assigned value half of the time: a switch in a loop body (SWITCH_IN_LOOP).
+        Expr value = preferred == null && choices.oneIn(2) ? switchExpression(target.type(), ctx(scope), EXPRESSION_DEPTH) : null;
+        if (value == null) value = expression(target.type(), ctx(scope).preferring(preferred), EXPRESSION_DEPTH);
+        into.add(new G1Ast.Assign(target.name(), value));
     }
 
     private void accumulatorFeatures(Var target) {
@@ -1003,19 +1097,54 @@ public final class G1 {
     private Expr integer(Ctx ctx, int depth) {
         if (ctx.conditional() && !ctx.constant() && choices.oneIn(6)) return failure(atom(BIG, ctx));
         if (depth == 0 || choices.below(3) == 0) return atom(BIG, ctx);
-        return switch (choices.below(12)) {
-            case 0 -> new G1Ast.Arith(integer(ctx, depth - 1), "add", integer(ctx, depth - 1));
-            case 1 -> new G1Ast.Arith(integer(ctx, depth - 1), "subtract", integer(ctx, depth - 1));
-            case 2 -> new G1Ast.Scale(integer(ctx, depth - 1), 1 + choices.below(3));
+        return switch (choices.below(14)) {
+            case 0 -> new G1Ast.Arith(receiver(ctx, depth - 1), "add", integer(ctx, depth - 1));
+            case 1 -> new G1Ast.Arith(receiver(ctx, depth - 1), "subtract", integer(ctx, depth - 1));
+            case 2 -> new G1Ast.Scale(receiver(ctx, depth - 1), 1 + choices.below(3));
             case 3 -> ctx.constant() ? atom(BIG, ctx) : ternary(BIG, ctx, depth);
             case 4, 10 -> access(BIG, ctx);
             case 5, 9 -> call(BIG, ctx, depth);
             case 6, 11 -> ctx.constant() || ctx.traceFree() ? atom(BIG, ctx) : trace(integer(ctx, depth - 1));
             case 7 -> !ctx.constant() && (ctx.conditional() || choices.oneIn(8))
                     ? failure(integer(ctx, depth - 1)) : atom(BIG, ctx);
+            case 12, 13 -> switchOrAtom(BIG, ctx, depth);
             default -> atom(BIG, ctx);
         };
     }
+
+    /**
+     * The test of an {@code if}, a {@code break} or a ternary: a condition with no {@code switch} in it. javac 25
+     * emits bytecode the JVM rejects (VerifyError) for a pattern switch used in a test followed by a pattern switch
+     * evaluated as a call argument, so tests stay switch-free and the oracle stays sound.
+     */
+    private Expr test(Ctx ctx, int depth) {
+        tests++;
+        try {
+            return condition(ctx, depth);
+        } finally {
+            tests--;
+        }
+    }
+
+    /** How many tests enclose the expression being generated: no switch is generated inside one. */
+    private int tests;
+
+    /**
+     * The receiver of a {@code BigInteger} method: an integer expression with no {@code switch} in it, since JuLC
+     * rejects a method called on a switch expression (JULC0055, outside the positive grammar like an accessor on a
+     * constructor expression).
+     */
+    private Expr receiver(Ctx ctx, int depth) {
+        receivers++;
+        try {
+            return integer(ctx, depth);
+        } finally {
+            receivers--;
+        }
+    }
+
+    /** How many method receivers enclose the expression being generated: no switch is generated inside one. */
+    private int receivers;
 
     /** Trace sites generated so far, counting calls of helpers that trace. */
     private int traceSites;
@@ -1034,13 +1163,14 @@ public final class G1 {
     private Expr condition(Ctx ctx, int depth) {
         if (ctx.constant()) return new G1Ast.BoolConst(choices.oneIn(2));
         if (depth == 0 || choices.below(3) == 0) return atom(BOOL, ctx);
-        return switch (choices.below(12)) {
+        return switch (choices.below(13)) {
             case 0, 1 -> comparison(ctx, depth);
             case 2 -> new G1Ast.Logic(condition(ctx, depth - 1), "&&", condition(ctx.conditionally(), depth - 1));
             case 3 -> new G1Ast.Logic(condition(ctx, depth - 1), "||", condition(ctx.conditionally(), depth - 1));
             case 4 -> new G1Ast.Not(condition(ctx, depth - 1));
             case 5, 6, 10 -> equality(ctx, depth);
             case 7, 8, 9 -> call(BOOL, ctx, depth);
+            case 12 -> switchOrAtom(BOOL, ctx, depth);
             default -> atom(BOOL, ctx);
         };
     }
@@ -1052,7 +1182,7 @@ public final class G1 {
     private Expr comparison(Ctx ctx, int depth) {
         var operands = profile.has(Gate.TRACE_IN_COMPARISON) ? ctx : ctx.withoutTraces();
         int traced = traceSites;
-        Expr left = integer(operands, depth - 1);
+        Expr left = receiver(operands, depth - 1);
         if (profile.steers(Steer.ISSUE_146) && !ctx.constant() && !ctx.traceFree() && choices.oneIn(3)) left = trace(left);
         Expr right = integer(operands, depth - 1);
         var comparison = new G1Ast.Compare(left, right, COMPARISONS[choices.below(COMPARISONS.length)]);
@@ -1076,11 +1206,12 @@ public final class G1 {
 
     private Expr value(Type type, Ctx ctx, int depth) {
         if (depth == 0 || choices.below(3) == 0) return atom(type, ctx);
-        return switch (choices.below(5)) {
+        return switch (choices.below(7)) {
             case 0 -> construct(type, ctx, depth);
             case 1 -> access(type, ctx);
             case 2 -> ctx.constant() ? construct(type, ctx, depth) : ternary(type, ctx, depth);
             case 3 -> call(type, ctx, depth);
+            case 5, 6 -> switchOrAtom(type, ctx, depth);
             default -> atom(type, ctx);
         };
     }
@@ -1096,7 +1227,7 @@ public final class G1 {
     }
 
     private Expr ternary(Type type, Ctx ctx, int depth) {
-        Expr test = condition(ctx, depth - 1);
+        Expr test = test(ctx, depth - 1);
         Expr then = expression(type, ctx.conditionally(), depth - 1);
         return new G1Ast.Cond(test, then, expression(type, ctx.conditionally(), depth - 1));
     }
@@ -1113,6 +1244,138 @@ public final class G1 {
         var arguments = new ArrayList<Expr>();
         for (Var parameter : helper.parameters()) arguments.add(expression(parameter.type(), ctx, Math.max(0, depth - 1)));
         return new G1Ast.Call(helper.name(), helper.result(), arguments);
+    }
+
+    // ---------------------------------------------------------------- switch expressions (D2, M3 part 1)
+
+    private static final int MAX_SWITCH_NESTING = 2;
+    /** How many switches enclose the expression being generated, through their arms. */
+    private int switchNesting;
+    /** How many enclosing loop bodies contain a break: an arm there contains no loop. */
+    private int breakAwareBodies;
+
+    /** A value a switch can select on: a variable of a family's type, or a component of that type read from one. */
+    private record Subject(Var var, Expr expression, Type family) {
+    }
+
+    private List<Subject> subjects(Ctx ctx) {
+        var subjects = new ArrayList<Subject>();
+        for (Var var : readable(ctx)) {
+            if (var.type().kind == Kind.SEALED) subjects.add(new Subject(var, new G1Ast.Read(var), var.type()));
+            if (var.type().kind != Kind.RECORD) continue;
+            for (Component component : var.type().components) {
+                if (component.type().kind == Kind.SEALED) {
+                    subjects.add(new Subject(var, new G1Ast.Access(var, List.of(component.name())), component.type()));
+                }
+            }
+        }
+        return subjects;
+    }
+
+    private Expr switchOrAtom(Type result, Ctx ctx, int depth) {
+        Expr value = switchExpression(result, ctx, depth);
+        return value != null ? value : atom(result, ctx);
+    }
+
+    /**
+     * {@code switch (s) { case V q -> …; … default -> …; }} over a sealed value, or null where none can be generated.
+     * The arms cover every variant once, in an order chosen independently of {@code permits} and declaration
+     * orders, or some of them followed by {@code default}: one arm per variant until guards (M3 part 2).
+     */
+    private Expr switchExpression(Type result, Ctx ctx, int depth) {
+        if (ctx.constant() || depth < 1 || switchNesting >= MAX_SWITCH_NESTING || receivers > 0 || tests > 0) return null;
+        var subjects = subjects(ctx);
+        if (subjects.isEmpty()) return null;
+        Subject subject = subjects.get(choices.below(subjects.size()));
+        if (subject.var().field()) fieldReads++;
+        features.add(Feature.SWITCH);
+        if (switchNesting > 0) features.add(Feature.NESTED_SWITCH);
+        if (ctx.scope().loopDepth() > 0) features.add(Feature.SWITCH_IN_LOOP);
+        var order = permuted(subject.family().variants);
+        int covered = order.size() > 1 && !choices.oneIn(3) ? 1 + choices.below(order.size() - 1) : order.size();
+        var arms = new ArrayList<G1Ast.Arm>();
+        switchNesting++;
+        try {
+            for (Type variant : order.subList(0, covered)) arms.add(arm(variant, result, ctx, depth));
+            if (covered < order.size()) arms.add(arm(null, result, ctx, depth));
+        } finally {
+            switchNesting--;
+        }
+        return new G1Ast.Switch(subject.expression(), subject.family(), result, arms);
+    }
+
+    /**
+     * An arm: an expression, or half of the time a block of one or two statements (locals, or a loop over an
+     * accumulator the arm owns) ending in {@code yield}. Arms are evaluated only when selected, so they may fail. Inside
+     * a block, enclosing variables are read-only: an arm never assigns them (ADR-048). A block is not generated where
+     * traces are not allowed (a {@code compareTo} operand), so that its statements cannot trace there.
+     */
+    private G1Ast.Arm arm(Type variant, Type result, Ctx ctx, int depth) {
+        Scope scope = ctx.scope();
+        String binding = null;
+        Var bound = null;
+        if (variant != null) {
+            binding = freshName(false);
+            bound = new Var(binding, variant, false, false, true, false);
+            scope = scope.with(bound);
+            features.add(Feature.TYPE_PATTERN);
+        } else {
+            features.add(Feature.DEFAULT_ARM);
+        }
+        var armCtx = new Ctx(scope, ctx.helpers(), true, false, null, ctx.traceFree());
+        if (ctx.traceFree() || choices.oneIn(2)) {
+            // A nested switch as the arm a third of the time it can be one (NESTED_SWITCH).
+            Expr nested = choices.oneIn(3) ? switchExpression(result, armCtx, depth - 1) : null;
+            return new G1Ast.Arm(variant, binding, List.of(), nested != null ? nested : expression(result, armCtx, depth - 1));
+        }
+        features.add(Feature.YIELD_BLOCK);
+        var body = new ArrayList<Stmt>();
+        var owned = new Scope(scope.locals().stream()
+                .map(v -> new Var(v.name(), v.type(), v.counter(), false, v.guardEligible(), v.field())).toList(), scope.loopDepth());
+        for (int n = 1 + choices.below(2); n > 0; n--) {
+            if (breakAwareBodies == 0 && owned.loopDepth() < MAX_LOOP_DEPTH && !choices.oneIn(3)) {
+                owned = armLoop(owned, body, bound);
+            } else {
+                owned = declaration(owned, body, false, null);
+            }
+        }
+        var valueCtx = new Ctx(owned, ctx.helpers(), true, false, null, false);
+        return new G1Ast.Arm(variant, binding, body, expression(result, valueCtx, depth - 1));
+    }
+
+    /**
+     * A loop over an accumulator the arm owns: two times in three a copy of the case-pattern binding, #162's positive
+     * form ({@code LoopConditionalLocalTest}), else a new value. Under ASSIGN_PATTERN_BINDING the loop may assign the
+     * binding itself instead, #162's historical construct, which the fixed compiler rejects.
+     */
+    private Scope armLoop(Scope scope, List<Stmt> into, Var binding) {
+        features.add(Feature.LOOP_IN_ARM);
+        Scope loopScope;
+        boolean reassign = binding != null && profile.has(Gate.ASSIGN_PATTERN_BINDING)
+                && (profile.steers(Steer.ISSUE_162) || choices.oneIn(2));
+        if (reassign) {
+            loopScope = new Scope(scope.locals().stream().map(v -> v.name().equals(binding.name())
+                    ? new Var(v.name(), v.type(), false, true, false, false) : v).toList(), scope.loopDepth());
+        } else {
+            String name = freshName(false);
+            Type type;
+            Expr init;
+            if (binding != null && !choices.oneIn(3)) {
+                type = binding.type();
+                init = new G1Ast.Read(binding);
+                features.add(Feature.BINDING_ACCUMULATOR);
+            } else {
+                type = anyType();
+                init = expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH - 1);
+            }
+            into.add(new G1Ast.Declare(type, name, init));
+            if (isField(name)) features.add(Feature.FIELD_SHADOWED);
+            loopScope = scope.with(new Var(name, type, false, true, false, false));
+        }
+        var updated = new ArrayList<String>();
+        loop(loopScope, into, updated, choices.oneIn(2));
+        if (reassign && updated.contains(binding.name())) features.add(Feature.ASSIGN_PATTERN_BINDING);
+        return loopScope;
     }
 
     /** A component read and the variable it starts from. */

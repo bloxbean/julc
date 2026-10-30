@@ -115,6 +115,38 @@ class JvmExecutorTest {
                 plain.args(), siblingTags("Fam"), null)), "a table may not name another source's classes");
     }
 
+    /**
+     * javac 21.0.3 and 25.0.2 accept this program and emit a class the JVM's verifier rejects (a pattern switch used as
+     * an {@code if} test, then a pattern switch passed as an argument): an oracle fault, not an observation (ADR-063
+     * H6, ADR-066 M3). G1 keeps switches out of tests. If a later javac emits a valid class, this case runs, and the
+     * test needs another class the JVM rejects.
+     */
+    @Test
+    void aClassTheJvmRejectsIsAHarnessError() {
+        String source = """
+                import java.math.BigInteger;
+
+                public class Probe {
+                    sealed interface S0 permits C0, B0, A0 {}
+                    record C0(BigInteger w) implements S0 {}
+                    record B0() implements S0 {}
+                    record A0(boolean x) implements S0 {}
+                    static final S0 x = new C0(BigInteger.ONE);
+
+                    public static boolean m(boolean c) {
+                        if (switch (x) { case A0 f1 -> f1.x(); default -> c; }) { return c; }
+                        return x.equals(switch (x) { case A0 p -> new B0(); default -> new B0(); });
+                    }
+                }
+                """;
+        var tags = TagTable.of(new TagTable.Entry("Probe$C0", "Probe$S0", 0), new TagTable.Entry("Probe$B0", "Probe$S0", 1),
+                new TagTable.Entry("Probe$A0", "Probe$S0", 2));
+        var e = assertThrows(HarnessException.class, () -> new JvmExecutor(5_000).run(new DiffCase("verify", source, "Probe",
+                "m", List.of(new PlutusData.ConstrData(0, List.of())), tags, null)));
+        assertTrue(e.getMessage().contains("the JVM rejects javac's class") && e.getMessage().contains("VerifyError"),
+                e.getMessage());
+    }
+
     @Test
     void argumentsMustMatchTheParameters() {
         assertThrows(HarnessException.class,

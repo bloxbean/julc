@@ -132,6 +132,7 @@ class G1PropertyTest {
             case "REDISCOVER_209" -> G1.Profile.REDISCOVER_209;
             case "REDISCOVER_280" -> G1.Profile.REDISCOVER_280;
             case "REDISCOVER_146" -> G1.Profile.REDISCOVER_146;
+            case "REDISCOVER_162" -> G1.Profile.REDISCOVER_162;
             default -> G1.Profile.parse(name);
         };
     }
@@ -142,7 +143,7 @@ class G1PropertyTest {
         CampaignVerifier.Outcome outcome;
         try {
             outcome = verify(finder, plan, inputs, program);
-        } catch (AssertionError e) {
+        } catch (AssertionError | RuntimeException e) {
             // For the rediscovery record (D10.1): the first failing try, before shrinking, and the time to reach it.
             if (firstFailure == null) {
                 firstFailure = "first failure at try " + tries + " after " + (System.nanoTime() - started) / 1_000_000 + " ms";

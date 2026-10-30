@@ -54,6 +54,7 @@ class G1GatesTest {
                 G1.Profile.REDISCOVER_209, G1.Feature.SHADOW_IN_LOOP_BRANCH,
                 G1.Profile.REDISCOVER_280, G1.Feature.ZERO_ARG_HELPER,
                 G1.Profile.REDISCOVER_146, G1.Feature.TRACE_IN_COMPARISON,
+                G1.Profile.REDISCOVER_162, G1.Feature.ASSIGN_PATTERN_BINDING,
                 G1.Profile.DEFAULT.with(G1.Gate.LOOP_BREAK_SHAPES), G1.Feature.LOOP_BREAK_SHAPE);
         cases.forEach((profile, marker) -> {
             var random = new Random(20261031);
@@ -107,7 +108,7 @@ class G1GatesTest {
         double[] plain = shares(G1.Profile.DEFAULT);
         String[] names = {"break", "loop", "zero-parameter helper", "mirrored records"};
         for (G1.Gate gate : List.of(G1.Gate.SHADOW_IN_LOOP_BRANCH, G1.Gate.ZERO_ARG_HELPERS, G1.Gate.TRACE_IN_COMPARISON,
-                G1.Gate.LOOP_BREAK_SHAPES)) {
+                G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.ASSIGN_PATTERN_BINDING)) {
             double[] gated = shares(G1.Profile.DEFAULT.with(gate));
             for (int k = 0; k < names.length; k++) {
                 // A zero-parameter helper is the ZERO_ARG_HELPERS construct itself.
@@ -146,9 +147,9 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r4 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+        assertEquals("G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
                 + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON", G1.Profile.DEFAULT.text());
-        for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280,
+        for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_162,
                 G1.Profile.REDISCOVER_146, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
             assertEquals(profile, G1.Profile.parse(profile.text()));
         }
@@ -156,7 +157,7 @@ class G1GatesTest {
         assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209"),
                 G1.Profile.REDISCOVER_209.text());
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_209));
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r4", "G1 r3"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r5", "G1 r4"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }
@@ -169,10 +170,12 @@ class G1GatesTest {
         private static final Pattern FIELD = Pattern.compile("(?m)^    static final \\w+ (\\w+) = ");
         private static final Pattern HELPER = Pattern.compile("(?m)^    static \\w+ (\\w+)\\(([^)]*)\\) \\{\\n        return (.*);$");
         private static final Pattern LOOP = Pattern.compile("^( *)(while \\(|for \\(var ).*\\{$");
+        private static final Pattern BLOCK_ARM = Pattern.compile("^( *)case \\w+ (\\w+) -> \\{$");
 
         static Set<G1.Feature> in(String source) {
             var found = EnumSet.noneOf(G1.Feature.class);
             if (ZERO_ARG.matcher(source).find()) found.add(G1.Feature.ZERO_ARG_HELPER);
+            if (assignsPatternBinding(source)) found.add(G1.Feature.ASSIGN_PATTERN_BINDING);
             var fields = new HashSet<String>();
             Matcher field = FIELD.matcher(source);
             while (field.find()) fields.add(field.group(1));
@@ -206,6 +209,20 @@ class G1GatesTest {
                 if (traces(operand, tracing)) found.add(G1.Feature.TRACE_IN_COMPARISON);
             }
             return found;
+        }
+
+        /** Whether a block arm of a switch assigns its case-pattern binding (#162's construct). */
+        static boolean assignsPatternBinding(String source) {
+            var lines = source.split("\n");
+            for (int i = 0; i < lines.length; i++) {
+                Matcher arm = BLOCK_ARM.matcher(lines[i]);
+                if (!arm.matches()) continue;
+                String inside = arm.group(1) + "    ";
+                for (int j = i + 1; j < lines.length && lines[j].startsWith(inside); j++) {
+                    if (lines[j].trim().startsWith(arm.group(2) + " = ")) return true;
+                }
+            }
+            return false;
         }
 
         private static boolean traces(String expression, Set<String> tracing) {

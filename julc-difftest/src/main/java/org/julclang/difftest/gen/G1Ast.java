@@ -74,7 +74,7 @@ final class G1Ast {
     // ---------------------------------------------------------------- expressions
 
     sealed interface Expr permits IntConst, BoolConst, Read, Arith, Scale, Cond, Compare, Logic, Not, Equals, New,
-            Access, Call, Trace, Fail {
+            Access, Call, Trace, Fail, Switch {
     }
 
     /** {@code BigInteger.valueOf(value)}. */
@@ -129,6 +129,17 @@ final class G1Ast {
 
     /** {@code fail(value)}. */
     record Fail(Expr value) implements Expr {
+    }
+
+    /** {@code switch (subject) { arms }} over a value of the sealed family {@code family}, producing {@code result}. */
+    record Switch(Expr subject, Type family, Type result, List<Arm> arms) implements Expr {
+    }
+
+    /**
+     * One arm: {@code case variant binding ->} or, when {@code variant} is null, {@code default ->}. An arm without
+     * statements is {@code -> value;}; one with statements is a block that ends in {@code yield value;}.
+     */
+    record Arm(Type variant, String binding, List<Stmt> body, Expr value) {
     }
 
     // ---------------------------------------------------------------- statements

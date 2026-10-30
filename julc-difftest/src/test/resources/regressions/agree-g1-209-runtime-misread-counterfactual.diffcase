@@ -2,11 +2,11 @@ format: 3
 name: the #209 reproducer 209-runtime-misread with its trigger removed agrees (counterfactual)
 class: Probe
 method: m
-profile: G1 r4 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
-arg: 04
-arg: 04
-arg: 9f24202101ff
-arg: d8799f05d87a80ff
+profile: G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
+arg: 01
+arg: 20
+arg: 9f22252525ff
+arg: d8799f25d87980ff
 expect: AGREE
 note: ADR-066 D10.1 cause check for #209: only the trigger changes (the shadowing local is renamed apart); the JVM
 note: observation is unchanged and UPLC agrees.
@@ -19,7 +19,7 @@ public class Probe {
     record R1(boolean w, BigInteger v) {}
     record R0(BigInteger v, boolean w) {}
 
-    static final R0 w = new R0(BigInteger.valueOf(-5), false);
+    static final R0 w = new R0(BigInteger.valueOf(-4), true);
 
     static BigInteger t(String k, BigInteger v) {
         return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
@@ -30,15 +30,18 @@ public class Probe {
     }
 
     public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, R0 v) {
-        BigInteger v1 = BigInteger.valueOf(-5);
-        BigInteger f = v1;
-        for (var v2 : xs) {
+        boolean v1 = v.equals(new R0(a, a.compareTo(BigInteger.valueOf(-2)) == 0));
+        long i0 = 0;
+        while (i0 < 2) {
             if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
                 R1 w1 = new R1(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0, BigInteger.valueOf(-5));
-                v1 = BigInteger.valueOf(-5);
+                v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
             }
-            v1 = w.v();
+            v1 = w.w();
+            v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+            v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+            i0 = i0 + 1;
         }
-        return new R0(v1, v1.compareTo(v1) < 0);
+        return new R0(BigInteger.valueOf(-5), v1);
     }
 }

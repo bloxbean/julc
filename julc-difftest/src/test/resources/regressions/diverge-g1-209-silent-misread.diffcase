@@ -2,33 +2,36 @@ format: 3
 name: a branch local shadowing a field in a loop makes a later field read return another component (#209)
 class: Probe
 method: m
-profile: G1 r4 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
-arg: 04
-arg: 04
-arg: 9f24202101ff
+profile: G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
+arg: 00
+arg: 01
+arg: 9f04250503ff
+arg: d8799f040524ff
+arg: d8799f052105ff
 expect: DIVERGE #209 Value/Value
-jvm: Value d8799f2424ff []
-uplc: Value d8799f2323ff []
-note: Rediscovered by the G1 r4 campaign under REDISCOVER_209 (ADR-066 D10.1, M2), the shrunk reproducer as found:
-note: #209's own shape. R0(v, w) and R1(w, v) have the same components in other orders; the branch local R1 w keeps
-note: its type after the if, so w.v() on the field R0 w = R0(-5, -4) reads index 1, which is R0's w: UPLC returns
-note: R0(-4, -4) where Java returns R0(-5, -5), silently, at every level. Provisional until #209 is fixed.
+jvm: Value d8799f050505ff []
+uplc: Value d8799f212121ff []
+note: Rediscovered by the G1 r5 campaign under REDISCOVER_209 (ADR-066 D10.1), the shrunk reproducer as found:
+note: #209's own shape. R0(v, w, x) and R1(w, x, v) have the same components in other orders; the branch local R1 p
+note: keeps its type after the if, so p.v() on the field R0 p = R0(5, 0, -2) reads index 2, which is R0's x: UPLC
+note: returns R0(-2, -2, -2) where Java returns R0(5, 5, 5), silently, at every level. Provisional until #209 is fixed.
 found.by: G1PropertyTest rediscovery
-found.generator: G1 r4
-found.plan: 0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,222,17,3,5,2,35,303,1,857,36,16,50,60,547
-found.inputs: 23,153,509,14,31,4,215,739,43,822,9,119,559
+found.generator: G1 r5
+found.plan: 2,0,1,0,0,0,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,1,1,2,1,1,0,0,0,0,57,22,6,691,2,205,217,1,0,771,464,33,19,26,218,91,9,16,67,443,23,16,0,90,120,555,54,31,489,23,60,13,19,23,16,0,12,83,169,1000,16,255,71,110,34,9,79,0,689,101,88,9,172,251,95,21,139,134,97,597,125,772,826,454,8,106,719,9,241,1,31,29,22,961,313,90,17,23,192,138,4,207,336,636,45,17,31,51,132,259,3,188,26,195,84,762,18,0,86,50,270,78,29,327
+found.inputs: 19,306,4,621,884,11,542,36,37,144,89,30,11,58,709,7,9,15
 found.seed: 20261030
-found.compiler: 0.1.0-pre20 v0.1.0-pre20-41-g86496b664c61-dirty
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-43-gd954df360526-dirty
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;
 import org.julclang.stdlib.Builtins;
 
 public class Probe {
-    record R1(BigInteger w, BigInteger v) {}
-    record R0(BigInteger v, BigInteger w) {}
+    record R1(BigInteger w, BigInteger x, BigInteger v) {}
+    record R0(BigInteger v, BigInteger w, BigInteger x) {}
 
-    static final R0 w = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-4));
+    static final R0 v = new R0(BigInteger.valueOf(-3), BigInteger.valueOf(-3), BigInteger.valueOf(-5));
+    static final R0 p = new R0(BigInteger.valueOf(5), BigInteger.valueOf(0), BigInteger.valueOf(-1).multiply(BigInteger.valueOf(2)));
 
     static BigInteger t(String k, BigInteger v) {
         return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
@@ -38,16 +41,26 @@ public class Probe {
         return Builtins.unIData(Builtins.error());
     }
 
-    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
-        R0 v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
-        BigInteger x = BigInteger.valueOf(1);
-        for (var v1 : xs) {
+    static boolean p(BigInteger p, R1 f) {
+        return !(f.equals(f));
+    }
+
+    static boolean v(R0 w, BigInteger p) {
+        return v.equals(new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5)));
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, R0 v, R0 v1) {
+        R0 x = (!(v1.equals(new R0(p.w(), b, v1.x()))) ? (v1.equals(p) ? v : v) : new R0(a, b, b));
+        BigInteger w = x.x();
+        for (var x1 : xs) {
             if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
-                R1 w = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
-                v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+                R1 p = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+                x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
             }
-            x = w.v();
+            w = p.v();
+            x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+            x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
         }
-        return new R0(x, x);
+        return new R0(w, w, w);
     }
 }

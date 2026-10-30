@@ -108,7 +108,7 @@ class G0PropertyTest {
         CampaignVerifier.Outcome outcome;
         try {
             outcome = verify("G0PropertyTest", plan, program, a, b, xs);
-        } catch (AssertionError e) {
+        } catch (AssertionError | RuntimeException e) {
             failed = true;
             throw e;
         }

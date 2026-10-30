@@ -41,13 +41,13 @@ final class G1Printer {
         for (Type type : unit.declarations()) line(1, declaration(type));
         if (!unit.declarations().isEmpty()) out.append('\n');
         for (var field : unit.fields()) {
-            line(1, "static final " + field.type().name + " " + field.name() + " = " + expression(field.init()) + ";");
+            line(1, "static final " + field.type().name + " " + field.name() + " = " + expression(field.init(), 1) + ";");
         }
         out.append('\n').append(HELPERS);
         for (var helper : unit.helpers()) {
             out.append('\n');
             line(1, "static " + helper.result().name + " " + helper.name() + "(" + parameters(helper.parameters()) + ") {");
-            line(2, "return " + expression(helper.body()) + ";");
+            line(2, "return " + expression(helper.body(), 2) + ";");
             line(1, "}");
         }
         var method = unit.method();
@@ -80,10 +80,10 @@ final class G1Printer {
 
     private void statement(Stmt statement, int indent) {
         switch (statement) {
-            case G1Ast.Declare d -> line(indent, d.type().name + " " + d.name() + " = " + expression(d.init()) + ";");
-            case G1Ast.Assign a -> line(indent, a.target() + " = " + expression(a.value()) + ";");
+            case G1Ast.Declare d -> line(indent, d.type().name + " " + d.name() + " = " + expression(d.init(), indent) + ";");
+            case G1Ast.Assign a -> line(indent, a.target() + " = " + expression(a.value(), indent) + ";");
             case G1Ast.If i -> {
-                line(indent, "if (" + expression(i.test()) + ") {");
+                line(indent, "if (" + expression(i.test(), indent) + ") {");
                 statements(i.then(), indent + 1);
                 if (i.otherwise() != null) {
                     line(indent, "} else {");
@@ -91,13 +91,13 @@ final class G1Printer {
                 }
                 line(indent, "}");
             }
-            case G1Ast.BreakIf b -> line(indent, "if (" + expression(b.test()) + ") { break; }");
+            case G1Ast.BreakIf b -> line(indent, "if (" + expression(b.test(), indent) + ") { break; }");
             case G1Ast.IfInstance i -> {
                 line(indent, "if (" + i.subject().name() + " instanceof " + i.variant().name + " " + i.binding() + ") {");
                 statements(i.body(), indent + 1);
                 line(indent, "}");
             }
-            case G1Ast.Return r -> line(indent, "return " + expression(r.value()) + ";");
+            case G1Ast.Return r -> line(indent, "return " + expression(r.value(), indent) + ";");
             case G1Ast.While w -> {
                 line(indent, "long " + w.counter() + " = 0;");
                 line(indent, "while (" + w.counter() + " < " + w.bound() + ") {");
@@ -114,27 +114,57 @@ final class G1Printer {
     }
 
     static String expression(Expr expression) {
+        return expression(expression, 0);
+    }
+
+    /** An expression printed at statement indent {@code indent}; a {@code switch} spans lines at that indent. */
+    static String expression(Expr expression, int indent) {
         return switch (expression) {
             case G1Ast.IntConst c -> "BigInteger.valueOf(" + c.value() + ")";
             case G1Ast.BoolConst c -> String.valueOf(c.value());
             case G1Ast.Read r -> read(r.var());
-            case G1Ast.Arith a -> expression(a.left()) + "." + a.method() + "(" + expression(a.right()) + ")";
-            case G1Ast.Scale s -> expression(s.left()) + ".multiply(BigInteger.valueOf(" + s.factor() + "))";
-            case G1Ast.Cond c -> "(" + expression(c.test()) + " ? " + expression(c.then()) + " : " + expression(c.otherwise()) + ")";
-            case G1Ast.Compare c -> expression(c.left()) + ".compareTo(" + expression(c.right()) + ") " + c.operator() + " 0";
-            case G1Ast.Logic l -> "(" + expression(l.left()) + " " + l.operator() + " " + expression(l.right()) + ")";
-            case G1Ast.Not n -> "!(" + expression(n.operand()) + ")";
-            case G1Ast.Equals e -> expression(e.receiver()) + ".equals(" + expression(e.argument()) + ")";
-            case G1Ast.New n -> "new " + n.record().name + "(" + arguments(n.arguments()) + ")";
+            case G1Ast.Arith a -> receiver(a.left(), indent) + "." + a.method() + "(" + expression(a.right(), indent) + ")";
+            case G1Ast.Scale s -> receiver(s.left(), indent) + ".multiply(BigInteger.valueOf(" + s.factor() + "))";
+            case G1Ast.Cond c -> "(" + expression(c.test(), indent) + " ? " + expression(c.then(), indent) + " : " + expression(c.otherwise(), indent) + ")";
+            case G1Ast.Compare c -> receiver(c.left(), indent) + ".compareTo(" + expression(c.right(), indent) + ") " + c.operator() + " 0";
+            case G1Ast.Logic l -> "(" + expression(l.left(), indent) + " " + l.operator() + " " + expression(l.right(), indent) + ")";
+            case G1Ast.Not n -> "!(" + expression(n.operand(), indent) + ")";
+            case G1Ast.Equals e -> receiver(e.receiver(), indent) + ".equals(" + expression(e.argument(), indent) + ")";
+            case G1Ast.New n -> "new " + n.record().name + "(" + arguments(n.arguments(), indent) + ")";
             case G1Ast.Access a -> read(a.var()) + String.join("", a.components().stream().map(c -> "." + c + "()").toList());
-            case G1Ast.Call c -> c.helper() + "(" + arguments(c.arguments()) + ")";
-            case G1Ast.Trace t -> "t(\"" + t.label() + "\", " + expression(t.value()) + ")";
-            case G1Ast.Fail f -> "fail(" + expression(f.value()) + ")";
+            case G1Ast.Call c -> c.helper() + "(" + arguments(c.arguments(), indent) + ")";
+            case G1Ast.Trace t -> "t(\"" + t.label() + "\", " + expression(t.value(), indent) + ")";
+            case G1Ast.Fail f -> "fail(" + expression(f.value(), indent) + ")";
+            case G1Ast.Switch w -> switchExpression(w, indent);
         };
     }
 
-    private static String arguments(List<Expr> arguments) {
-        return String.join(", ", arguments.stream().map(G1Printer::expression).toList());
+    /** A method call's receiver: a switch expression there needs parentheses. */
+    private static String receiver(Expr expression, int indent) {
+        String text = expression(expression, indent);
+        return expression instanceof G1Ast.Switch ? "(" + text + ")" : text;
+    }
+
+    private static String arguments(List<Expr> arguments, int indent) {
+        return String.join(", ", arguments.stream().map(a -> expression(a, indent)).toList());
+    }
+
+    private static String switchExpression(G1Ast.Switch w, int indent) {
+        var printer = new G1Printer();
+        printer.out.append("switch (").append(expression(w.subject(), indent)).append(") {\n");
+        for (var arm : w.arms()) {
+            String label = arm.variant() == null ? "default" : "case " + arm.variant().name + " " + arm.binding();
+            if (arm.body().isEmpty()) {
+                printer.line(indent + 1, label + " -> " + expression(arm.value(), indent + 1) + ";");
+            } else {
+                printer.line(indent + 1, label + " -> {");
+                printer.statements(arm.body(), indent + 2);
+                printer.line(indent + 2, "yield " + expression(arm.value(), indent + 2) + ";");
+                printer.line(indent + 1, "}");
+            }
+        }
+        printer.out.append("    ".repeat(indent)).append('}');
+        return printer.out.toString();
     }
 
     private static String read(Var var) {
