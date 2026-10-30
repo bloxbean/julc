@@ -119,7 +119,10 @@ review at `5c358dfa` (same code). The probe sources are not committed; their pro
   a component accessor called directly on a constructor expression (`new P(a).v()`, JULC0055), record instance and
   static methods (JULC0055, "Undefined variable: P"), and explicit canonical constructors ("'this' is not
   supported on-chain"); a sealed interface without `permits` whose variants are top-level siblings ("Unknown type"); nested sealed
-  hierarchies (a sealed interface that extends another: "class inheritance is not supported on-chain").
+  hierarchies (a sealed interface that extends another: "class inheritance is not supported on-chain"). (M3:)
+  a method called on a `switch` expression, `(switch (s) { … }).subtract(…)` (JULC0055 "Cannot resolve subtract",
+  #290, with `new P(a).v()`); a `switch` over a value typed as a variant ("switch expression requires a sealed
+  interface type").
 - *Silently different, at every level:* #275 (guard ignored: JVM 2, UPLC 1), #276 (record pattern dropped: JVM
   −3, UPLC −99), #277 (`new R1(a).equals(new R2(a))`: JVM false, UPLC true; also through an `Object`-typed
   argument), #279 (JVM 21, UPLC 11), #280 (a never-called zero-parameter helper that traces and fails: JVM
@@ -1237,6 +1240,161 @@ Commands and counts (G1 r4):
   - `RegressionCasesTest` replays 48 cases.
 - `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`: 3,000 tries, all conclusive at
   every level, 142 s.
+
+## M3 part 1 results (2026-10-30, G1 r5)
+
+M3 part 1 is everything in M3 that does not need ADR-067's implementation (PR #281). `GUARDS`, `RECORD_PATTERNS`,
+`CROSS_TYPE_EQUALS` and `SHARED_VARIANT` stay defined and inert, and `G1GatesTest.inertGatesChangeNothing` pins them.
+
+Implemented, in `julc-difftest` only:
+
+- **`switch` expressions** (D2) over a value of a sealed family's type: a variable, or a component read from one.
+  They can produce any requested type.
+  - **Arms:**
+    - type patterns (`case V q ->`), one per variant until guards;
+    - arm order: a permutation of the variants, independent of the `permits` and declaration orders;
+    - coverage: every variant, or (when the family has more than one) some variants followed by `default`, which is
+      always last;
+    - an arm is an expression, or, half of the time, a block of one or two statements (final locals, or a loop over
+      an accumulator the arm owns) that ends in `yield`;
+    - in a block, enclosing variables are read-only, so an arm never assigns them (ADR-048);
+    - the arm-owned accumulator is, two times in three, a copy of the case-pattern binding: #162's positive form.
+  - **Where switches appear:**
+    - nested in arms, up to nesting 2;
+    - as method-level locals and results;
+    - as loop-body locals and assigned values (`SWITCH_IN_LOOP`);
+    - as call and constructor arguments;
+    - in helper bodies, whose arm loops are `while` loops because `xs` is not in scope there.
+  - **Traces and failures:** arms are evaluated only when selected, so `fail(...)` may appear in them; traces appear
+    in arms. Where traces are not allowed (a `compareTo` operand, `TRACE_IN_COMPARISON`), arms are expressions in the
+    same trace-free context, never blocks.
+  - **`break`:** in a loop body that contains `break`, an arm contains no loop (as G0's break-aware bodies). Loop
+    bodies inside arms follow the same `break` rules as other loop bodies, `LOOP_BREAK_SHAPES` included.
+- **Guard-eligible bindings:** case-pattern bindings and arm-local finals are guard-eligible, and arm-owned
+  accumulators are not, ready for M3 part 2's guards.
+- **D8 features with quotas:** `SWITCH`, `NESTED_SWITCH`, `YIELD_BLOCK`, `LOOP_IN_ARM`, `SWITCH_IN_LOOP`,
+  `TYPE_PATTERN`, `DEFAULT_ARM`, and `BINDING_ACCUMULATOR` (#162's positive form).
+- **`ASSIGN_PATTERN_BINDING` and `REDISCOVER_162`:**
+  - The gate lets an arm's loop assign the case-pattern binding itself instead of copying it: #162's historical
+    construct.
+  - `REDISCOVER_162 = DEFAULT.with(ASSIGN_PATTERN_BINDING).steered(ISSUE_162)` does so in every arm loop that can.
+  - The marker is `ASSIGN_PATTERN_BINDING`. `G1GatesTest` reads it from the source (a block arm that assigns its
+    binding), and checks that the default profile never generates it and that the gate alone keeps the default
+    distribution.
+- **`G1MustRejectTest` (D6):** two fixed #162 programs (for-each and `while`, reading the binding after the loop or
+  not), and ten programs generated under `REDISCOVER_162` with the construct. Each must be rejected at every level
+  with #162's diagnostic ("Reassignment of switch case-pattern variable …", which has no code: `REJECT none`).
+  `rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_162` ends in that rejection at try 2 (0.8 s).
+- **AST and printer:** a `Switch` node with its `Arm`s. Statements and expressions print at their indent, and a
+  switch that is a method receiver is parenthesized.
+
+Findings and decisions:
+1. **A method called on a switch expression is rejected** (JULC0055, #290). G1 generates no `switch` inside a method
+   receiver (the left side of `add`, `subtract`, `multiply` or `compareTo`), and "Current behavior" lists it under
+   "rejected". It fails closed.
+2. **An oracle limitation: javac 21.0.3 and 25.0.2 emit unverifiable bytecode.** This valid program fails JVM
+   verification ("Inconsistent stackmap frames"), with plain `java Probe.java` as well:
+
+   ```java
+   if (switch (x) { case A0 f1 -> f1.x(); default -> c; }) { return c; }
+   return x.equals(switch (x) { case A0 p -> new B0(); default -> new B0(); });
+   ```
+
+   It needs a pattern switch used as a test (an `if` or ternary condition) followed by a pattern switch passed as an
+   argument. Each alone runs, and so do a switch inside `&&` and a switch assigned to a local. OpenJDK JDK-8358801
+   (a pattern `instanceof` in a conditional, fixed in 2025) is a similar but different report.
+   - `JvmExecutor` now turns a `LinkageError` from javac's class into a `HarnessException` ("the JVM rejects javac's
+     class"), an oracle fault (ADR-063 H6), instead of letting it escape or be read as a JVM failure.
+     `JvmExecutorTest.aClassTheJvmRejectsIsAHarnessError` pins this.
+   - G1 generates no `switch` inside a test (an `if`, `break` or ternary condition). Switches stay in value
+     positions.
+3. **F62 extended:** the property tests stop counting coverage after any failing try, a `HarnessException`
+   included, not only an assertion.
+4. **The #209 steer** is integers-only a third of the time, so that both its silent and its failure forms are found
+   within the PR budget.
+
+No other mismatch was found by the default-profile campaigns. Every case of every run was conclusive at every
+level:
+- the PR run;
+- three nightly runs of 3,000 tries during development (the first two stopped on the two findings above);
+- a final nightly run of 3,000 tries.
+
+Quotas (G1 r5):
+
+| Feature | PR, 150 tries | Nightly, 3,000 tries |
+|---|---|---|
+| `SWITCH` | 21 (14.0%) | 641 (21.4%) |
+| `NESTED_SWITCH` | 7 (4.7%) | 283 (9.4%) |
+| `YIELD_BLOCK` | 21 (14.0%) | 548 (18.3%) |
+| `LOOP_IN_ARM` | 18 (12.0%) | 486 (16.2%) |
+| `SWITCH_IN_LOOP` | 7 (4.7%) | 205 (6.8%) |
+| `TYPE_PATTERN` | 21 (14.0%) | 641 (21.4%) |
+| `DEFAULT_ARM` | 15 (10.0%) | 328 (10.9%) |
+| `BINDING_ACCUMULATOR` | 15 (10.0%) | 412 (13.7%) |
+| `RECORD` | 82 (54.7%) | 1837 (61.2%) |
+| `SEALED` | 79 (52.7%) | 1675 (55.8%) |
+| `TWO_FAMILIES` | 39 (26.0%) | 787 (26.2%) |
+| `ZERO_COMPONENTS` | 65 (43.3%) | 1230 (41.0%) |
+| `NESTED_RECORD` | 43 (28.7%) | 1125 (37.5%) |
+| `SEALED_COMPONENT` | 14 (9.3%) | 362 (12.1%) |
+| `RECORD_ARG` | 30 (20.0%) | 663 (22.1%) |
+| `SEALED_ARG` | 8 (5.3%) | 338 (11.3%) |
+| `RECORD_RESULT` | 39 (26.0%) | 783 (26.1%) |
+| `SEALED_RESULT` | 36 (24.0%) | 469 (15.6%) |
+| `COMPONENT_ACCESS` | 41 (27.3%) | 986 (32.9%) |
+| `CHAINED_ACCESS` | 11 (7.3%) | 398 (13.3%) |
+| `STATIC_FIELD` | 60 (40.0%) | 1504 (50.1%) |
+| `FIELD_FROM_FIELD` | 13 (8.7%) | 370 (12.3%) |
+| `FIELD_SHADOWED` | 23 (15.3%) | 706 (23.5%) |
+| `RECORD_EQUALS` | 32 (21.3%) | 691 (23.0%) |
+| `RECORD_ACCUMULATOR` | 36 (24.0%) | 880 (29.3%) |
+| `INSTANCEOF_PATTERN` | 10 (6.7%) | 249 (8.3%) |
+| `METHOD_LEVEL_IF` | 44 (29.3%) | 828 (27.6%) |
+| `HELPER_CALL` | 14 (9.3%) | 319 (10.6%) |
+| `TRACE` | 9 (6.0%) | 298 (9.9%) |
+| `FAILURE` | 9 (6.0%) | 282 (9.4%) |
+| `VARIANT_ARG` | 14 (9.3%) | 402 (13.4%) |
+| `VARIANT_RESULT` | 13 (8.7%) | 392 (13.1%) |
+| `VARIANT_ACCUMULATOR` | 25 (16.7%) | 609 (20.3%) |
+| `VARIANT_COMPONENT` | 14 (9.3%) | 294 (9.8%) |
+| `BOOLEAN_HELPER_CALL` | 9 (6.0%) | 250 (8.3%) |
+| `PERMITS_PERMUTED` | 7 (4.7%) | 288 (9.6%) |
+| `FAMILY_EQUALS` | 15 (10.0%) | 374 (12.5%) |
+| `LOOP_LOCAL_SHADOWS_FIELD` (decode-checked; saved case) | 2 (1.3%) | 91 (3.0%) |
+| `LOOP` (statistics, no quota) | 49 (32.7%) | 1307 (43.6%) |
+| `BREAK` (statistics, no quota) | 3 (2.0%) | 58 (1.9%) |
+
+Rediscovery (G1 r5). The command is `./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=<profile>
+[-Pdifftest.form=…]`, with seed `20261030`, 150 tries and the 744ab54f compiler. The pins and counterfactuals are
+re-recorded:
+
+| Defect | Profile, form | First failing try | Time to first failure | JVM | UPLC, every level |
+|---|---|---|---|---|---|
+| #209 | `REDISCOVER_209` (and `form=value`) | 12 | 2.4 s (2.1 s) | `Value R0(5, 5, 5)` | `Value R0(-2, -2, -2)` (silent) |
+| #209 | `REDISCOVER_209`, `form=failure` | 62 | 5.2 s | `Value R0(-5, false)` | `Failure UnConstrData: not ConstrData` |
+| #280 | `REDISCOVER_280` | 2 | 1.1 s | `Value -5 []` | `Value -5 [k0]` |
+| #146 | `REDISCOVER_146` | 35 | 2.9 s | `Value A0() [k0]` | `Value A0() [k0, k0]` |
+| #162 | `REDISCOVER_162` | 2 | 0.8 s | `Value` | `Rejected` (#162's diagnostic, expected) |
+
+Commands and counts (G1 r5):
+- `./gradlew :julc-difftest:test --rerun`: 197 tests, 0 failures, 0 skipped, in 70 s (the G1 classes 14.4 s);
+  `RegressionCasesTest` runs 48 cases.
+- `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`: 3,000 tries, all conclusive at
+  every level, 135 s.
+
+Deviations from the ADR:
+- One arm per variant until guards: D2's "several arms per variant" needs guards (M3 part 2).
+- `default` only when some variant has no arm; there is no `default` after every variant.
+- No switch in method receivers (#290) or in tests (the javac limitation above).
+- `BINDING_ACCUMULATOR` is a quota feature beyond D8's list.
+
+Open for M3 part 2, once ADR-067 is below this PR:
+- guards (with snapshots of accumulators);
+- record patterns;
+- cross-type `equals`;
+- shared variants;
+- `G1MustRejectTest` for #279 and #282;
+- rediscovery of #275, #276, #277 and #279 on the pre-fix base.
 
 ## Revision history
 
