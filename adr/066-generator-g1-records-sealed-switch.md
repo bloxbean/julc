@@ -24,7 +24,7 @@ generates the constructs they need:
 | #277 | `equals` between two different record types with equal fields is true on-chain | Probe while writing this ADR |
 | #279 | A record implementing two sealed interfaces gets one tag; a `switch` over the other takes the wrong arm | Review of this ADR (r1) |
 | #280 | A zero-parameter helper runs once at script start, even if never called | Probe while revising this ADR |
-| #291 | A `switch` `default` arm block has no scope of its own: its locals keep their types after the switch, and two loops in it, in a switch inside a method-call argument, are rejected | G1 r5's default campaign (review of M3 part 1) |
+| #291 | A `switch` `default` arm block has no scope of its own: its locals keep their types after the switch, and, in a switch inside a method-call argument, a local declared in it after a loop and read later is rejected | G1 r5's default campaign (review of M3 part 1) |
 | #166 (fixed) | A `boolean` record component bound by a switch case pattern was not decoded | Review of PR #165 |
 | #162 (fixed) | Reassigning a switch case-pattern variable in a loop left stale field reads | Review of PR #157 |
 | #47, #50 (fixed) | Switch case bindings collided with method parameters | Users |
@@ -136,11 +136,13 @@ review at `5c358dfa` (same code). The probe sources are not committed; their pro
   and `equals` lowers structurally, as above.
 - *(M3) #291, at every level, whether the `default` arm runs or not:* a local declared directly in a `default ->`
   block keeps its type after the switch, so a later read of a field with that name uses the local's layout: a
-  wrong value silently (`R1 p` shadowing `R0 p`: JVM 1, UPLC −2), a failure, or a rejection (JULC0055). And two
-  loops directly in a `default` block, in a switch inside an argument of a method call (`a.add(switch …)`,
-  `x.equals(switch …)`), are rejected with "Unbound variable: i1" (no code), where javac accepts. A type-pattern
-  arm block, a single loop, and the same switch assigned to a local first all agree; loop-body locals inside the
-  block are scoped.
+  wrong value silently (`R1 p` shadowing `R0 p`: JVM 1, UPLC −2), a failure, or a rejection (JULC0055). And, in
+  a switch inside an argument of a method call (`a.add(switch …)`, `x.equals(switch …)`, also through a helper call
+  or a ternary inside the argument), a local declared in a `default` block after a loop and read later is rejected
+  with "Unbound variable: j" (no code), where javac accepts: a second loop's counter is one such local, and so is a
+  local declared by a switch's `default` block in the rest of the block. A local declared after the loop but never
+  read, a type-pattern arm block, a bare helper or constructor argument, and the same switch assigned to a local
+  first all agree; loop-body locals inside the block are scoped.
 
 **Representation the mapping must match.** A standalone record is `ConstrData 0 [components]`; a variant of a
 sealed interface is `ConstrData i [components]`, where `i` is its position in the `permits` clause, also when
@@ -391,7 +393,7 @@ random plans under the default profile and fails if any program contains a gated
 | `SHADOW_IN_LOOP_BRANCH` | A local in an `if` branch inside a loop body shadowing a field of another type | #209 | #209 is fixed on the base |
 | `LOOP_BREAK_SHAPES` | Loop bodies with `break` and conditional updates (M2: broadened from G0's T21 and T23 shapes) | #254, #255 | Both are fixed on the base |
 | `TRACE_IN_COMPARISON` | A trace in an operand of `compareTo`, or in a receiver of `signum`, directly or through a helper whose body traces (added in M2) | #146 | #146 is fixed on the base |
-| `DEFAULT_BLOCK_SCOPE` | A local declared directly in a `default` arm block with a field's name; two or more loops directly in a `default` arm block of a switch inside a method-call argument (added in M3) | #291 | #291 is fixed on the base (ADR-067 scopes `default`) |
+| `DEFAULT_BLOCK_SCOPE` | A local declared directly in a `default` arm block with a field's name; anything declared after the first loop of a `default` arm block of a switch inside a method-call argument, directly or by a switch in the rest of the block (added in M3) | #291 | #291 is fixed on the base (ADR-067 scopes `default`) |
 
 `TRACE_IN_COMPARISON` (M2): #146's lowering evaluates a `compareTo` operand, and a `signum` receiver, more than
 once, so a traced operand traces more often on UPLC than on the JVM. G1 emits no `signum`; the other operations it
@@ -1435,12 +1437,13 @@ default profile.
 - `DEFAULT_BLOCK_SHADOW`: without the gate, a local declared directly in a `default` block (a final or an
   arm-owned accumulator) never takes a field's name. Loop-body locals and for-each elements in the block are
   scoped (probed), so they keep field names.
-- `DEFAULT_BLOCK_LOOPS`: found by the first r6 nightly run (try 1,653 of 3,000), with the coordinator's analysis
-  (ADR-067's scope fix accepts it). Without the gate, a `default` block of a switch anywhere inside an argument of
-  `add`, `subtract`, `compareTo` or `equals` has at most one loop directly in it. Probed: a `while` after another
-  loop is rejected, also through a ternary, a helper call, a constructor or a nested switch inside the argument; a
-  `while` first and a for-each second, nested loops, a static helper argument, a constructor argument, and a
-  switch assigned to a local first all agree.
+- `DEFAULT_BLOCK_LOOPS` (narrower than the defect; corrected to `DEFAULT_BLOCK_AFTER_LOOP` in round 2): found by the
+  first r6 nightly run (try 1,653 of 3,000), with the coordinator's analysis (ADR-067's scope fix accepts it).
+  Without the gate, a `default` block of a switch anywhere inside an argument of `add`, `subtract`, `compareTo` or
+  `equals` has at most one loop directly in it. Probed: a `while` after another loop is rejected, also through a
+  ternary, a helper call, a constructor or a nested switch inside the argument; a `while` first and a for-each
+  second, nested loops, a static helper argument, a constructor argument, and a switch assigned to a local first all
+  agree.
 - Both keep the choices the plan decodes, so the gate alone keeps the default distribution
   (`aGateAloneKeepsTheDefaultDistribution`).
 - Markers and source readings: `G1GatesTest` reads the shadow from lines and the loops from javac's tree, and the
@@ -1530,6 +1533,85 @@ Commands and counts (G1 r6):
 The default campaigns found no mismatch other than #291's two symptoms, now gated. #291's first symptom showed in
 about 1 in 1,000 default r5 programs, and its second in 1 in 3,000 r6 programs before it was gated: rarer shapes
 may remain, which is what the steered profiles and the nightly runs are for.
+
+### M3 part 1 review round 2 (2026-10-30, G1 r7)
+
+Each reviewer had one item left at `f4a9fa6a`.
+
+| Finding | Change |
+|---|---|
+| F78 (P2), #291's second symptom is wider than two loops | The trigger is a local declared after a loop in such a `default` block and read later; a second loop's counter is one instance. The gated construct is now: in a `default` block of a switch inside a method-call argument, anything declared after the block's first loop. Without the gate, `G1.arm()` ends such a block after its first loop and generates its yield with no switch, since a switch's bindings and its `default` block's locals are declarations too (probed: a local declared by a nested switch's `default` block after the loop is rejected the same way; a nested type-pattern arm block's agrees). The marker is renamed `DEFAULT_BLOCK_AFTER_LOOP`, and `G1Source` reads it as any declaration after the first direct loop of such a block. The `291_LOOPS` steer follows a loop with a `while` loop or with a local of the arm's type that the yield reads. New pin `reject-g1-291-local-after-loop` (`REJECT none`, "Unbound variable: v4", one loop), with the counterfactual that assigns the switch to a local first. |
+| F95 (P1), a `LinkageError` the program throws read as an oracle fault | The phase decides, not the throwable's class. An error while the preflight loads or links a class is the oracle fault. Whatever is thrown while the program initializes or runs is its `Failure` with its traces, a `LinkageError` included; an `ExceptionInInitializerError` reports its cause. The exception is a `VerifyError` or `ClassFormatError` whose message names a class compiled from the case's own source, such as a lazily loaded local or anonymous class: that stays an oracle fault. A program that threw such an error naming its own class would be read the same way; generated programs throw none. `JvmExecutorTest` checks an initializer that throws `NoClassDefFoundError` or `LinkageError` directly, and a method that throws `LinkageError`, `NoClassDefFoundError` or an unrelated `VerifyError` after a trace (each `Failure` with its traces), and a local class with javac's unverifiable bytecode (`Probe$1Local`, an oracle fault). |
+| F96 (P2), the #280 r4 pair | Restored under `-r4` names with its own provenance, although its program is r2's. |
+
+G1 r7 decodes differently from r6 (the `default` block rule and the steer), so the version is bumped; the r6 pins
+stay as saved. Rediscovery, seed `20261030`, 150 tries. The machine was under load (load average about 40), so the
+times are noisier than r6's; the try numbers are deterministic and match r6's:
+
+| Defect | Profile, form | First failing try | Time to first failure |
+|---|---|---|---|
+| #209 | `REDISCOVER_209` (and `form=value`) | 12 | 1.7 s (4.9 s) |
+| #209 | `REDISCOVER_209`, `form=failure` | 62 | 7.8 s |
+| #280 | `REDISCOVER_280` | 2 | 1.0 s |
+| #146 | `REDISCOVER_146` | 35 | 3.6 s |
+| #162, must-reject evidence on the fixed compiler | `REDISCOVER_162` | 2 | 0.9 s |
+| #291 | `REDISCOVER_291` (shrinks to the failure form) | 20 | 3.5 s |
+| #291 | `REDISCOVER_291`, `form=value` | 20 | 6.4 s |
+| #291 | `REDISCOVER_291`, `form=failure` | 81 | 12.6 s |
+| #291 | `REDISCOVER_291`, `form=rejection` | 67 | 20.2 s |
+| #291, local after a loop | `REDISCOVER_291_LOOPS` | 49 | 4.7 s; `Rejected` (no code), "Unbound variable: v4" |
+
+Quotas (G1 r7). The PR minimum is 7 (`NESTED_SWITCH`, `SWITCH_IN_LOOP`, `PERMITS_PERMUTED`); every nightly quota
+is at 7.1% or above:
+
+| Feature | PR, 150 tries | Nightly, 3,000 tries |
+|---|---|---|
+| `SWITCH` | 21 (14.0%) | 632 (21.1%) |
+| `NESTED_SWITCH` | 7 (4.7%) | 262 (8.7%) |
+| `YIELD_BLOCK` | 21 (14.0%) | 547 (18.2%) |
+| `LOOP_IN_ARM` | 18 (12.0%) | 477 (15.9%) |
+| `SWITCH_IN_LOOP` | 7 (4.7%) | 214 (7.1%) |
+| `TYPE_PATTERN` | 21 (14.0%) | 632 (21.1%) |
+| `DEFAULT_ARM` | 15 (10.0%) | 320 (10.7%) |
+| `BINDING_ACCUMULATOR` | 14 (9.3%) | 377 (12.6%) |
+| `RECORD` | 82 (54.7%) | 1837 (61.2%) |
+| `SEALED` | 79 (52.7%) | 1642 (54.7%) |
+| `TWO_FAMILIES` | 39 (26.0%) | 767 (25.6%) |
+| `ZERO_COMPONENTS` | 65 (43.3%) | 1235 (41.2%) |
+| `NESTED_RECORD` | 43 (28.7%) | 1135 (37.8%) |
+| `SEALED_COMPONENT` | 14 (9.3%) | 333 (11.1%) |
+| `RECORD_ARG` | 30 (20.0%) | 651 (21.7%) |
+| `SEALED_ARG` | 8 (5.3%) | 338 (11.3%) |
+| `RECORD_RESULT` | 39 (26.0%) | 847 (28.2%) |
+| `SEALED_RESULT` | 36 (24.0%) | 457 (15.2%) |
+| `COMPONENT_ACCESS` | 41 (27.3%) | 921 (30.7%) |
+| `CHAINED_ACCESS` | 11 (7.3%) | 392 (13.1%) |
+| `STATIC_FIELD` | 60 (40.0%) | 1492 (49.7%) |
+| `FIELD_FROM_FIELD` | 13 (8.7%) | 332 (11.1%) |
+| `FIELD_SHADOWED` | 23 (15.3%) | 692 (23.1%) |
+| `RECORD_EQUALS` | 32 (21.3%) | 692 (23.1%) |
+| `RECORD_ACCUMULATOR` | 36 (24.0%) | 886 (29.5%) |
+| `INSTANCEOF_PATTERN` | 10 (6.7%) | 275 (9.2%) |
+| `METHOD_LEVEL_IF` | 44 (29.3%) | 829 (27.6%) |
+| `HELPER_CALL` | 14 (9.3%) | 307 (10.2%) |
+| `TRACE` | 9 (6.0%) | 289 (9.6%) |
+| `FAILURE` | 9 (6.0%) | 287 (9.6%) |
+| `VARIANT_ARG` | 14 (9.3%) | 388 (12.9%) |
+| `VARIANT_RESULT` | 13 (8.7%) | 382 (12.7%) |
+| `VARIANT_ACCUMULATOR` | 25 (16.7%) | 603 (20.1%) |
+| `VARIANT_COMPONENT` | 14 (9.3%) | 307 (10.2%) |
+| `BOOLEAN_HELPER_CALL` | 9 (6.0%) | 259 (8.6%) |
+| `PERMITS_PERMUTED` | 7 (4.7%) | 255 (8.5%) |
+| `FAMILY_EQUALS` | 15 (10.0%) | 360 (12.0%) |
+| `LOOP_LOCAL_SHADOWS_FIELD` (decode-checked; saved case) | 2 (1.3%) | 72 (2.4%) |
+| `LOOP` (statistics, no quota) | 49 (32.7%) | 1268 (42.3%) |
+| `BREAK` (statistics, no quota) | 3 (2.0%) | 67 (2.2%) |
+
+Commands and counts (G1 r7):
+- `./gradlew :julc-difftest:test --rerun`: 244 tests, 0 failures, 0 skipped, in 127 s (the G1 classes 60.4 s, of
+  which `G1GatesTest` 25.1 s and `G1SwitchShapesTest` 19.0 s); `RegressionCasesTest` runs 86 cases.
+- `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`: 3,000 tries, all conclusive at
+  every level, 179 s (under the same load).
 
 ## Revision history
 
