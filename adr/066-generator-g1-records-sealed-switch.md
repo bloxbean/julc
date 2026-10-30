@@ -1699,12 +1699,14 @@ reading each file back). The derived tags equal `TypeResolver`'s constructor tag
 `permits A, B` gives the same tags by JuLC's permits-order rule. No mismatch. `SwitchParityCorpusTest`'s run programs
 carry their families' tag tables too.
 
-**Open finding.** `reject-nested-sealed-interface` and `reject-nested-sealed-interface-pattern` (ADR-067 M3, M4: `sealed
-interface S permits A, U` with `sealed interface U extends S permits B, C`) cannot be given a valid tag table: D3's
-table admits only record variants, and source validation rejects `S` permitting the interface `U`. They stay format 2
-and fail with a `HarnessException` before running, although no sealed value crosses their boundary. D3 needs a
-decision for them (for example, source validation that admits a nested sealed interface as a permitted subclass when
-the case maps no value of the hierarchy); this reconciliation does not make it.
+**Nested sealed hierarchies (decided).** `reject-nested-sealed-interface` and `reject-nested-sealed-interface-pattern`
+(ADR-067 M3, M4: `sealed interface S permits A, U` with `sealed interface U extends S permits B, C`) could not be given
+a valid tag table, since D3's table admits only record variants. D3's source validation now treats a nested sealed
+hierarchy as having no Data encoding: a sealed interface that permits a non-record, and every sealed interface below
+one, takes no tags (a `tag:` line naming one is an error), and mapping one of its values fails closed in `TagTable.tag`,
+so the harness never compares a value it cannot encode. JuLC rejects such programs, and these two cases map no value of
+the hierarchy, so they keep format 2 and run. `TagTableTest.aNestedSealedHierarchyTakesNoTagsAndCannotBeMapped` checks
+the three rules.
 
 ## Revision history
 

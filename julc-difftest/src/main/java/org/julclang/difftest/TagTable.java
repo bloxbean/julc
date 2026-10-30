@@ -155,6 +155,7 @@ public record TagTable(List<Entry> entries) {
             if (type.isInterface() && type.isSealed()) sealed.add(type);
             pending.addAll(Arrays.asList(type.getDeclaredClasses()));
         }
+        var unrepresentable = unrepresentable(sealed);
         for (var entry : entries) {
             Class<?> record = program.get(entry.record());
             Class<?> parent = program.get(entry.parent());
@@ -168,11 +169,16 @@ public record TagTable(List<Entry> entries) {
                 throw new HarnessException("tag: " + entry + ": " + entry.record() + " is not a record that implements "
                         + entry.parent());
             }
+            if (unrepresentable.contains(parent)) {
+                throw new HarnessException("tag: " + entry + ": " + entry.parent() + " is a nested sealed hierarchy, which"
+                        + " has no Data encoding");
+            }
             records.add(record);
             sealed.add(parent);
         }
         for (Class<?> record : records) {
             for (Class<?> parent : sealedParents(record)) {
+                if (unrepresentable.contains(parent)) continue;
                 if (tag(record, parent).isEmpty()) {
                     throw new HarnessException("No tag for " + record.getName() + " under " + parent.getName());
                 }
@@ -180,6 +186,7 @@ public record TagTable(List<Entry> entries) {
             }
         }
         for (Class<?> parent : sealed) {
+            if (unrepresentable.contains(parent)) continue;
             Set<String> permitted = new TreeSet<>();
             for (Class<?> variant : parent.getPermittedSubclasses()) {
                 if (!variant.isRecord()) {
@@ -194,6 +201,28 @@ public record TagTable(List<Entry> entries) {
                         + permitted);
             }
         }
+    }
+
+    /**
+     * The sealed interfaces of a nested sealed hierarchy: one that permits a type other than a record, and every sealed
+     * interface below one. Their values have no Data encoding, so they take no tags; a program may declare them, and
+     * mapping a value of one fails ({@link #tag}), so the harness never compares what it cannot encode.
+     */
+    private static Set<Class<?>> unrepresentable(Set<Class<?>> sealed) {
+        var result = new LinkedHashSet<Class<?>>();
+        for (Class<?> parent : sealed) {
+            if (Arrays.stream(parent.getPermittedSubclasses()).anyMatch(variant -> !variant.isRecord())) result.add(parent);
+        }
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (Class<?> parent : sealed) {
+                if (!result.contains(parent) && Arrays.stream(parent.getInterfaces()).anyMatch(result::contains)) {
+                    grew = result.add(parent);
+                }
+            }
+        }
+        return result;
     }
 
     /** The sealed interfaces that {@code record} directly implements. */

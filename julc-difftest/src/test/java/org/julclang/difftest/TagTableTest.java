@@ -5,6 +5,7 @@ import org.julclang.difftest.RecordMappingTest.Shapes;
 import org.julclang.difftest.RecordMappingTest.TwoParents;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigInteger;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -83,5 +84,31 @@ class TagTableTest {
         assertThrows(HarnessException.class, () -> TagTable.of(entry(Shapes.Circle.class, Shapes.Point.class, 0)).validate(Shapes.class));
         assertThrows(HarnessException.class, () -> TagTable.of(new TagTable.Entry("NoSuch$A", Shapes.Shape.class.getName(), 0))
                 .validate(Shapes.class));
+    }
+
+    /** A sealed interface that permits another sealed interface: a nested hierarchy, with no Data encoding. */
+    static final class Nested {
+        sealed interface S permits A, U {}
+        record A(BigInteger v) implements S {}
+        sealed interface U extends S permits B, C {}
+        record B(BigInteger v) implements U {}
+        record C(BigInteger v) implements U {}
+    }
+
+    /**
+     * A program may declare a nested sealed hierarchy without tags, since JuLC rejects it and no value of it crosses
+     * the boundary; a tag naming one is an error, and mapping one of its values fails, so the harness never compares
+     * a value it cannot encode (ADR-067's nested-hierarchy cases, after merging ADR-066).
+     */
+    @Test
+    void aNestedSealedHierarchyTakesNoTagsAndCannotBeMapped() {
+        assertDoesNotThrow(() -> TagTable.EMPTY.validate(Nested.class));
+        assertThrows(HarnessException.class, () -> TagTable.of(entry(Nested.A.class, Nested.S.class, 0)).validate(Nested.class));
+        assertThrows(HarnessException.class, () -> TagTable.of(entry(Nested.B.class, Nested.U.class, 0),
+                entry(Nested.C.class, Nested.U.class, 1)).validate(Nested.class));
+        assertThrows(HarnessException.class, () -> ValueMapping.toData(new Nested.A(BigInteger.ONE), Nested.S.class,
+                TagTable.EMPTY));
+        assertThrows(HarnessException.class, () -> ValueMapping.toData(new Nested.B(BigInteger.ONE), Nested.U.class,
+                TagTable.EMPTY));
     }
 }
