@@ -203,6 +203,8 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
 - **ADR-067 M1 round 3** (2026-10-30): new T34 (#292), `String.equals` with a non-`String` argument fails on-chain.
   T6 gains two saved cases outside guards (a narrowing cast of a `long`, `int` overflow in an `if`); inside `switch`
   guards ADR-067 lowers `int`/`long` constants with Java's width and rejects the non-constant forms.
+- **ADR-067 M1 round 4** (2026-10-30): T6 gains `intValue()`/`longValue()` saved cases at the sign boundaries
+  (#294: JuLC lowers them to the identity); ADR-067 rejects both calls inside `switch` guards.
 - **ADR-067 M0** (2026-10-30): new T27–T33 for #275, #276, #277, #279, #282, #283 and #284, owned by S5 through
   ADR-067, which proposed them as T26–T32. T24 and T25 are claimed by #269 and #271, and T26 by #272, so they take the
   next free IDs. Each has saved `julc-difftest` cases with the base behaviour.

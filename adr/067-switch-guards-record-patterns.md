@@ -285,7 +285,9 @@ Each invariant names the decisions it constrains and is testable.
 - **I8. Byte stability** (D2, D4, D5, D6, D9). A `switch` with no guard and no record pattern compiles to the same PIR
   and the same script bytes as at the base, at every optimization level and target, unless D4 now rejects it (a
   colon-form group that falls through, #283; a parameterized sealed selector; javac-rejected shapes), or unless a
-  local declared in its `default` body shadows a name read after the switch (#291, M1 round 3). An `equals`
+  local declared in its `default` body shadows a name read after the switch (#291, M1 round 3), or unless it is
+  nested inside a guard (M1 round 4): a guard's whole expression, an unguarded inner switch included, is guarded code,
+  where R3a lowers `int`/`long` constants with Java's width. An `equals`
   call that D5 does not classify as disjoint compiles as before. Programs not affected by D6 or D9 are unchanged.
 - **I9. Compile-time parity with JLS 21** (D4; r3; **revised in M1 round 3**). For an accepted switch, the
   switch-specific rules match the JLS 21 text exactly, as operationalized by javac 21.0.3: guard type, constant guards
@@ -522,7 +524,14 @@ is a parity-corpus dimension (Verification 3):
   guard (`ok(true)` for a `long` parameter, `signum()` on a `long`; F73) is the type-checking gap every `if`
   condition has today; it is #287 and ADR-065, not D4. D4 owns the switch-specific rules and the guard subset, which
   fails closed wherever that gap could change a guard's value (the guard's type, comparisons, casts, `==`,
-  `instanceof`, `String.equals`, fixed-width arithmetic).
+  `instanceof`, `String.equals`, fixed-width arithmetic). *(M1 round 4.)* A `@Param` field is never a constant:
+  it is read as the applied parameter, in whole guards, in R3a's subexpressions and through other constants'
+  initializers, so `when ENABLED` on a `@Param` field is a guarded label (F41 = F80; whether such a `static final`
+  declaration should be rejected, since javac inlines it, is #293). `intValue()` and `longValue()`, which JuLC lowers to
+  the identity where Java narrows, are rejected in a guard (F81, #294). A referenced constant declaration, or a part of
+  a guard, that the checker cannot evaluate exactly (an out-of-range literal such as `2147483648`, floating point) is
+  rejected, never left to the ordinary lowering; Java's minimum-value forms `-2147483648` and
+  `-9223372036854775808L` are classified exactly (F82, JLS 3.10.1).
 - **Effectively final guard variables** (§14.11.1, §4.12.4; revised in r3, F7): each name used but not declared in a
   guard is resolved to its declaration (by identity and scope, not by name). If that declaration is a local or
   parameter that occurs as the target of an assignment anywhere in its scope (in JuLC, only loops may reassign), the
@@ -876,7 +885,7 @@ the Java VM and the Scalus VM (and Truffle where the existing switch suites run 
 | **M3** | D6: reject a second sealed parent, `JULC0079` | M0 (independent of M1/M2) | #279 pin becomes a `REJECT` case; javac accepts and runs it (21), JuLC rejects with `JULC0079`; equal positions also rejected; a record with one sealed parent and a plain interface still compiles byte-identically | I8, I13 |
 | **M3b** | D9 (r2): reject user record body members, `JULC0080`, as a declaration preflight before `SubsetValidator` (r3, F17); ledger redeclaration, `JULC0081` (r3, F8, F15); Java's shadowing rule for other ledger simple names, including the unnamed package (r4, F19, #284); rewrite `SubsetValidatorTest.acceptsRecordApply` | M0 (independent of M1/M2) | Pins for #282 (accessor through a local, a parameter and a switch binding; `equals` by sign and always-true; compact constructor; secondary constructor) become `REJECT` cases with `JULC0080`; javac accepts and runs each (N1–N10 values); every member kind in D9's list has a rejection test, including on a sealed variant and a `@NewType`; a canonical constructor with `this.x = x` reports `JULC0080`, not "'this' is not supported"; a user record with a body in package `org.julclang.ledger`, one with the exact FQCN of a bundled ledger type, and one named like a ledger hash type are rejected (`JULC0080`/`JULC0081`) at the validator, `compileMethod` and library-provider entry points; the #284 `Rational` pin flips to `AGREE`; the F45 user-`Value` accessor pin flips to `AGREE` with named ledger handlers keyed on ledger identity (r6); the mixed user/ledger `Rational` case (F23) is entered in the parity suite as a known exception owned by #287 and its JuLC value pinned by a U test, and the layout query classifies a user `record Value` by its own FQCN (r5); for **every** non-hash ledger simple name, a top-level user record of that name in a packageless source, in a named package, with and without `import org.julclang.ledger.*;`, and in a library unit of the unnamed package, compared against javac 21.0.3 (the user's type wins), and a single-type import plus a same-named declaration rejected as javac does; a record with a nested type declaration and every ledger type still compile byte-identically; the corpus scan is repeated and attached | I8, I15 |
 | **M4** | D5 cross-type `equals`, `JULC0078` | M3 and M3b; open question 1 (decided in r4: reject; still open to a maintainer veto); **the corpus scan for known-disjoint `equals`** (in-repo and external examples, helloworld, CIP-113, stdlib) run with a classification-only build and attached, before any behaviour ships (r3, F6) | #277 pin becomes `REJECT` (`JULC0078`, r4); rejection tests for E1, E2, E6, E7, E9 (known, disjoint) whose message names both types; E3, E5 (known, disjoint, but already `false` on-chain) also rejected; E4 (same family) unchanged; E10's failing operand is a compile error now, not a run-time failure; **must-stay-structural** tests for F1a–F1c (ternary, ternary with a variant, switch expression), for `var` from a generic call, and for an accessor on an unknown receiver (r4, F21); unknown types keep structural equality; I8 for unclassified calls | I8, I12 |
-| **M5** | Documentation, catalogue rows, release notes, AI starter packs; full validation | M1–M4, M3b | `./gradlew build -PskipSigning=true` green; external `../julc-examples` built against the published snapshot; byte-stability report attached to the PR; ADR status line and evidence updated | All |
+| **M5** | Documentation, catalogue rows, release notes, AI starter packs; full validation. Troubleshooting includes "parenthesise a conditional guard" (F38) and, for `JULC0072` on `int`/`long` arithmetic in a guard, "use `BigInteger` arithmetic, or compute the value in a local before the switch, where T6 applies as in any `if`" (F42) | M1–M4, M3b | `./gradlew build -PskipSigning=true` green; external `../julc-examples` built against the published snapshot; byte-stability report attached to the PR; ADR status line and evidence updated | All |
 
 M1, M3 and M3b can proceed in parallel. ADR-066's G1 generates guards, record patterns and cross-type `equals` only once
 M1, M2 and M4 are below it in the stack (ADR-066 open question 1).
@@ -974,6 +983,11 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    | `int` constants with overflow inside a non-constant guard (round 3) | first arm skipped (JVM 1, JuLC 2) | `AGREE` | M1 | D |
    | Non-constant `int` arithmetic in a guard, `x.v().signum() + 2147483647 < 0` (round 3) | first arm skipped (JVM 1, JuLC 2) | `REJECT JULC0072` | M1 | D |
    | The same arithmetic in an `if` (T6) | `DIVERGE` T6 | `DIVERGE` T6 (retained) | — | D |
+   | *M1 round 4 rows.* `@Param static final boolean ENABLED = true` / `long LIMIT = 5` read by a guard, applied with another value (F41 = F80), directly, negated and through `M = LIMIT`; a minting validator | guard folded the initializer (JVM-inlined value; the `if` control read the applied one) | the guard reads the applied value, as the `if` control does; `when ENABLED` is guarded (`JULC0005` without `default`) | M1 | U |
+   | Guard `x.v().intValue() < 0` / `longValue()` (F81, #294) | narrowing erased (JVM 1, JuLC 2 at 2^31) | `REJECT JULC0072` (#294) | M1 | D |
+   | `intValue()`/`longValue()` in an `if` at the sign boundaries (#294) | `DIVERGE` T6 above `Integer.MAX_VALUE`, below `Integer.MIN_VALUE` and above `Long.MAX_VALUE`; `AGREE` at the boundaries | retained | — | D |
+   | Out-of-range literals in a referenced declaration (field, `long` field, final local, `M = N`) or in the guard (F82; javac rejects) | JuLC accepted | `REJECT JULC0072` | M1 | P |
+   | `-2147483648`, `-9223372036854775808L` beside a binding (F82) | `AGREE` | `AGREE` | M1 | D |
    | *Interim (F35):* every record-pattern row above (R1, H2, R2, R7, R4, F9, F30 ×2, `X(W(B(var v)))`, the parameterized component, `Pair`) | as listed | `REJECT JULC0076` ("not yet supported") between M1 and M2a, which sets the final verdicts listed | M1 → M2a | D |
 
    Every new reproducer from review is added as a row with its baseline, final expectation and checker.
@@ -1631,7 +1645,49 @@ checked). The round-2 list stands.
 - **Open point for review.** `JavaConstants` treats a `static final` primitive field with a constant initializer as
   its Java constant even when it is annotated `@Param` (pre-existing for whole constant guards; R3a extends it to
   subexpressions). No corpus program declares a `@Param` field `final`; whether such a field should be rejected in a
-  guard is left to the reviewers.
+  guard is left to the reviewers. *(Resolved in round 4, F41 = F80.)*
+
+### M1 review round 4 (2026-10-30; review F41, F42, Codex F80–F82)
+
+Both reviews of `bbf815a1` requested changes; they overlap on F41 = F80. Both found R3a and R3b consistent with the
+revised I9. Every finding is fixed within D4's guard subset. The declaration-level `@Param` question is #293 and
+the general `intValue()`/`longValue()` lowering is #294; neither is fixed here.
+
+| Finding | Change |
+|---|---|
+| F41 = F80 (P1): a `@Param static final` field with a constant initializer was folded in a guard (whole guards since M1, R3a subexpressions since round 3), so the applied parameter was ignored while an `if` honoured it; a minting validator with `LIMIT` applied as 0 succeeded | `JavaConstants.constantField` treats a field annotated `@Param` (simple or qualified annotation name) as not constant, everywhere `JavaConstants` is used: whole-guard classification, constant `true`/`false` for dominance and exhaustiveness, R3a's lowering, and other constants' initializers (`static final long M = LIMIT`). A guard reads the applied binding, as an `if` does (at `a4a7d834` only a guard that was not constant as a whole did). `when ENABLED` on a `@Param` field is a guarded label. Tests (`SwitchGuardParamTest`): `@Param static final boolean ENABLED = true` and `@Param static final long LIMIT = 5`, applied with another value through `compileMethod`, directly, negated and through `M = LIMIT`, each against the same read in an ordinary `if`; the guarded label's exhaustiveness (`JULC0005`) and non-dominance; and a `@MintingValidator` with `program.applyParams` on a minting context (`LIMIT` 5 accepts, 0 rejects, guard and `if` alike). No `.diffcase` pin is possible: javac inlines the constant (#293) and the ADR-063 harness does not apply parameters, so the oracle is the `if` control (outcome-matrix row, checker U). Declaration validation (F71, F82) still covers `@Param` fields: it only rejects declarations javac rejects. |
+| F81 (P1): `intValue()` and `longValue()` lower to the identity (`TypeMethodRegistry`), where Java narrows | In a guard, a zero-argument `intValue()` or `longValue()` call is `JULC0072`, citing #294. Pinned `REJECT` (`x.v().intValue() < 0` at 2^31: JVM 1, JuLC 2 at `bbf815a1`). The `if` form is pinned at the sign boundaries: `DIVERGE T6` at 2^31, at -2^31-1 and (for `longValue()`) at 2^63, `AGREE` at `Integer.MAX_VALUE`, `Integer.MIN_VALUE` and `Long.MAX_VALUE`. |
+| F82 (P2): invalid literals in referenced declarations fell back to the ordinary lowering | `JavaConstants` classifies `-2147483648` and `-9223372036854775808L` exactly, only when the decimal literal is the direct operand of unary minus (JLS 3.10.1; `-(2147483648)` is not, as javac 21.0.3 confirms); any other out-of-range literal is unclassifiable. `invalidDeclaration` rejects every reachable constant declaration whose initializer the checker cannot evaluate exactly (naming the deepest one, the cause), and `checkGuard` rejects any unclassifiable part of a guard, not only an unclassifiable whole. Covered: a field, a `long` field, a final local, `M = N`, and literals in the guard; P rows for the four declaration forms; an `AGREE` pin and corpus kinds for the minimum-value forms. |
+| F42 (P3): R3b's usability | R3b is kept. Its `JULC0072` message now suggests `BigInteger` arithmetic, or computing the value in a local before the switch (where T6 applies as in any `if`) and comparing that. M5's troubleshooting entry carries the same remedy (milestone table). |
+| Codex's I8 note: an unguarded switch nested inside a guard changes bytes under R3a | I8 now states that a guard's whole expression, an unguarded inner switch included, is guarded code (the program-level guarded-code exclusion). |
+
+**Known over-rejections added in round 4 (fail closed):** a `@Param` boolean guard counts as guarded, so a switch
+that javac finds exhaustive through it (the field being a constant `true` in Java) is `JULC0005`; `intValue()` and
+`longValue()` on values in range, and a record accessor named `intValue` or `longValue`; R3b's arithmetic (F42: 8 of
+the review's 10 arithmetic guards).
+
+**Related finding (not fixed here).** An integer literal with underscores (`1_000`) crashes the ordinary lowering
+with an uncoded `NumberFormatException` (`PirGenerator.generateExpression` parses the digits with `new
+BigInteger`); `0xFFFFFFFF` lowers as 4294967295 where Java's `int` is -1 (T6). Inside a guard both are exact, since R3a
+lowers them from `JavaConstants`; outside guards they are the ordinary lowering's.
+
+**Evidence.**
+- **Tests** (`./gradlew :julc-compiler:test --rerun :julc-difftest:test --rerun -Pjulc.javac21.required=true`):
+  julc-compiler 2,087, 0 failures (`SwitchDiagnosticsTest` 55, `SwitchGuardTest` 23, new `SwitchGuardParamTest` 5,
+  `SwitchMalformedDataTest` 11, `JavaConstantsTest` 7); julc-difftest 270, 0 failures (`RegressionCasesTest` 144 pins,
+  eight new; `Javac21ParityTest` 46 rows, four new; `SwitchParityCorpusTest`). `./gradlew build -PskipSigning=true`:
+  success; 12,264 tests in all modules, 0 failures, 530 skipped (pre-existing).
+- **Parity corpus:** 1,116 programs (four new guard kinds): 140 accepted by javac 21.0.3 and JuLC (61 run both ways at
+  all four levels, all agreeing), 949 rejected by both, 27 rejected by JuLC on purpose; javac 21.0.3 and javac 25
+  `--release 21` agree on all.
+- **Base replays:** the `reject-guard-intvalue` pin, with F81's check reverted, reproduces its recorded JVM 1 and
+  JuLC 2.
+- **Byte stability** against `fd605e77` (same harness and corpora): 784 programs byte-identical, 0 changed, 0 newly
+  rejected or accepted (the only head-only rows are the new test file's validator text block).
+- **Mutations:** all 43 detected: the 38 of round 3 (the F71, F72 and R3b mutants re-anchored to the restructured
+  code) and five new: F41 fold a `@Param` constant (six `SwitchGuardParamTest`/`JavaConstantsTest` tests); F81 allow
+  `intValue()`/`longValue()`; F82 leave unclassifiable declarations to the ordinary lowering, check only the whole
+  guard for unclassifiable constants, and drop the minimum-value forms.
 
 ## Revision history
 

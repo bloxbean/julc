@@ -394,6 +394,36 @@ class Javac21ParityTest {
                             case A x when (s instanceof A a2) || (s instanceof A a2) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
                 """), Map.of(), FIVE, "illegal attempt to redefine an existing match binding", round3, Julc.rejects("JULC0083")));
+        // ---- M1 review round 4 rows
+        String round4 = "added in M1 review round 4";
+        cases.add(new ParityCase("F82 an out-of-range int literal in a constant field", "F82a", probe(S + "    static final int N = 2147483648;\n", """
+                    public static BigInteger m(BigInteger a) {
+                        
+                        S s = new A(a);
+                        return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F82 an out-of-range long literal in a constant field", "F82b", probe(S + "    static final long L = 9223372036854775808L;\n", """
+                    public static BigInteger m(BigInteger a) {
+                        
+                        S s = new A(a);
+                        return switch (s) { case A x when L > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F82 an out-of-range literal in a final local", "F82c", probe(S + "", """
+                    public static BigInteger m(BigInteger a) {
+                        final int n = 2147483648;
+                        S s = new A(a);
+                        return switch (s) { case A x when n > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F82 an out-of-range literal read through another constant", "F82d", probe(S + "    static final int N = 2147483648;\n    static final int M = N;\n", """
+                    public static BigInteger m(BigInteger a) {
+                        
+                        S s = new A(a);
+                        return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0072")));
         return cases;
     }
 

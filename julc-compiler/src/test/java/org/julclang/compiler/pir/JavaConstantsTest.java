@@ -44,11 +44,36 @@ class JavaConstantsTest {
     }
 
     @Test
+    void minimumValueLiteralsAndOutOfRangeLiterals() {
+        // F82: the decimal literals 2147483648 and 9223372036854775808L are legal only as the direct operand of unary
+        // minus (JLS 3.10.1); elsewhere javac rejects them, and they are unclassifiable.
+        constant("", "-2147483648 < 0", true);
+        constant("", "-2147483648 == 0x80000000", true);
+        constant("", "-9223372036854775808L < 0", true);
+        constant("", "-2_147_483_648 == -2147483647 - 1", true);
+        assertTrue(evaluate("", "-(2147483648) < 0").unclassifiable());
+        assertTrue(evaluate("", "2147483648 > 0").unclassifiable());
+        assertTrue(evaluate("", "9223372036854775808L > 0").unclassifiable());
+        assertTrue(evaluate("static final int N = 2147483648;", "N > 0").unclassifiable());
+        assertTrue(invalid("static final int N = 2147483648;", "N > n").contains("'N = 2147483648' cannot be evaluated exactly"));
+    }
+
+    @Test
+    void paramFieldsAreNeverConstant() {
+        // F41/F80: a @Param field is the applied parameter on-chain, so it is not folded, directly or through another
+        // constant (#293 for its JVM meaning).
+        assertFalse(evaluate("@Param static final boolean ON = true;", "ON").constant());
+        assertFalse(evaluate("@org.julclang.stdlib.annotation.Param static final long LIMIT = 5;", "LIMIT > 0").constant());
+        assertFalse(evaluate("@Param static final long LIMIT = 5; static final long M = LIMIT;", "M > 0").constant());
+        assertFalse(evaluate("@Param static final long LIMIT = 5;", "Probe.LIMIT > 0").constant());
+    }
+
+    @Test
     void declarationsAGuardReadsAreValidated() {
         // F71: simple, qualified and transitive references to a declaration javac rejects; a legal chain passes.
-        assertEquals("N = 4294967296L", invalid("static final int N = 4294967296L;", "N > n"));
-        assertEquals("N = 4294967296L", invalid("static final int N = 4294967296L;", "Probe.N > n"));
-        assertEquals("N = 4294967296L", invalid("static final int N = 4294967296L; static final int M = N;", "M > n"));
+        assertTrue(invalid("static final int N = 4294967296L;", "N > n").contains("'N = 4294967296L' narrows"));
+        assertTrue(invalid("static final int N = 4294967296L;", "Probe.N > n").contains("'N = 4294967296L' narrows"));
+        assertTrue(invalid("static final int N = 4294967296L; static final int M = N;", "M > n").contains("'N = 4294967296L' narrows"));
         assertNull(invalid("static final int N = 4; static final long M = N;", "M > n"));
     }
 

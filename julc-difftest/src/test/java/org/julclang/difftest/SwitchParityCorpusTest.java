@@ -179,6 +179,11 @@ class SwitchParityCorpusTest {
         guards.put("constant narrowing beside a binding", new String[]{"", "((int) 2147483648L) < x0.v().signum()"});
         guards.put("int arithmetic", new String[]{"", "x0.v().signum() + 2147483647 < 0", "JULC0072"});
         guards.put("String.equals of a boolean", new String[]{"", "\"a\".equals(true)", "JULC0072"});
+        // Review round 4: minimum-value literals, out-of-range literals, narrowing identity methods (#294).
+        guards.put("int minimum literal beside a binding", new String[]{"", "-2147483648 < x0.v().signum()"});
+        guards.put("long minimum literal beside a binding", new String[]{"", "-9223372036854775808L < x0.v().signum()"});
+        guards.put("out-of-range int literal", new String[]{"", "2147483648 > x0.v().signum()"});
+        guards.put("intValue", new String[]{"", "x0.v().intValue() < 0", "JULC0072"});
         var shapes = Map.of(
                 "A?,B", List.of("A?", "B"),
                 "A?,A,B", List.of("A?", "A", "B"),

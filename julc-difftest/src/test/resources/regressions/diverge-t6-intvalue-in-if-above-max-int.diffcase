@@ -1,0 +1,20 @@
+format: 2
+name: intValue() just above Integer.MAX_VALUE in an if (F81, #294)
+class: Probe
+method: m
+arg: 1a80000000
+expect: DIVERGE T6 Value/Value
+jvm: Value 01 []
+uplc: Value 02 []
+note: ADR-067 M1 round 4, F81 (#294), outside guards: JuLC lowers intValue() to the identity; Java narrows 2147483648 to -2147483648 (1), JuLC keeps it positive (2).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(BigInteger a) {
+        if (a.intValue() < 0) {
+            return BigInteger.ONE;
+        }
+        return BigInteger.TWO;
+    }
+}

@@ -83,6 +83,7 @@ final class JavaConstants {
             case TextBlockLiteralExpr literal -> number(() -> Result.of(Kind.STRING, literal.asString()));
             case DoubleLiteralExpr ignored -> Result.UNCLASSIFIABLE;
             case EnclosedExpr enclosed -> evaluate(enclosed.getInner(), visiting);
+            case UnaryExpr unary when minimumValue(unary) != null -> minimumValue(unary);
             case UnaryExpr unary -> unary(unary.getOperator(), evaluate(unary.getExpression(), visiting));
             case BinaryExpr binary -> binary(binary.getOperator(), evaluate(binary.getLeft(), visiting),
                     evaluate(binary.getRight(), visiting));
@@ -107,6 +108,23 @@ final class JavaConstants {
     private static Result guard(Result... operands) {
         for (var operand : operands) if (!operand.constant()) return Result.NOT_CONSTANT;
         for (var operand : operands) if (operand.unclassifiable()) return Result.UNCLASSIFIABLE;
+        return null;
+    }
+
+    /**
+     * F82: {@code -2147483648} and {@code -9223372036854775808L}, where the decimal literal is legal only as the
+     * direct operand of unary minus (JLS 3.10.1); anywhere else it is out of range and unclassifiable. Null otherwise.
+     */
+    private static Result minimumValue(UnaryExpr unary) {
+        if (unary.getOperator() != UnaryExpr.Operator.MINUS) return null;
+        if (unary.getExpression() instanceof IntegerLiteralExpr literal
+                && literal.getValue().replace("_", "").equals("2147483648")) {
+            return Result.of(Kind.INT, Integer.MIN_VALUE);
+        }
+        if (unary.getExpression() instanceof LongLiteralExpr literal
+                && literal.getValue().replace("_", "").replaceAll("[lL]$", "").equals("9223372036854775808")) {
+            return Result.of(Kind.LONG, Long.MIN_VALUE);
+        }
         return null;
     }
 
@@ -269,24 +287,38 @@ final class JavaConstants {
     /**
      * F71: a constant declaration that a guard references, simply, qualified ({@code Probe.N}) or through another
      * constant's initializer, whose initializer is a constant javac rejects for its declared type (a narrowing such as
-     * {@code int N = 4294967296L}), whether or not the guard itself is constant; null if none.
+     * {@code int N = 4294967296L}) or that JuLC cannot evaluate exactly ({@code int N = 2147483648}, F82), whether or
+     * not the guard itself is constant; the reason, or null if none.
      */
     static String invalidDeclaration(Expression guard) {
         // The declarations the guard names, simply or qualified, and those their initializers name in turn.
+        var reachable = new ArrayList<VariableDeclarator>();
         var pending = new ArrayDeque<VariableDeclarator>(referencedDeclarations(guard));
         var seen = new HashSet<VariableDeclarator>();
         while (!pending.isEmpty()) {
             var declaration = pending.pop();
             if (!seen.add(declaration)) continue;
             if (!isConstantType(declaration.getType()) || declaration.getInitializer().isEmpty()) continue;
-            var initializer = declaration.getInitializer().get();
-            if (!declaration.getType().isVarType()) {
-                var value = evaluate(initializer, new HashSet<>());
-                if (value.constant() && !value.unclassifiable() && !assignable(declaration.getType(), value.value())) {
-                    return declaration.toString();
-                }
+            reachable.add(declaration);
+            pending.addAll(referencedDeclarations(declaration.getInitializer().get()));
+        }
+        for (var declaration : reachable) {
+            var value = evaluate(declaration.getInitializer().get(), new HashSet<>());
+            if (!declaration.getType().isVarType() && value.constant() && !value.unclassifiable()
+                    && !assignable(declaration.getType(), value.value())) {
+                return isSubsetType(declaration.getType())
+                        ? "the constant declaration '" + declaration + "' narrows its initializer, which javac rejects (JLS 5.2)"
+                        : "the constant declaration '" + declaration + "' has a type outside boolean, int, long and String";
             }
-            pending.addAll(referencedDeclarations(initializer));
+        }
+        // F82: an initializer the checker cannot evaluate exactly (an out-of-range literal such as 2147483648, floating
+        // point) is rejected, never left to the ordinary lowering. The deepest one is named: it is the cause.
+        for (int i = reachable.size() - 1; i >= 0; i--) {
+            var declaration = reachable.get(i);
+            if (evaluate(declaration.getInitializer().get(), new HashSet<>()).unclassifiable()) {
+                return "the constant declaration '" + declaration + "' cannot be evaluated exactly by JuLC (an "
+                        + "out-of-range literal, or a type outside boolean, int, long and String)";
+            }
         }
         return null;
     }
@@ -344,7 +376,16 @@ final class JavaConstants {
         if (!(field instanceof FieldDeclaration declaration) || !declaration.isFinal() || !declaration.isStatic()) {
             return Result.NOT_CONSTANT;
         }
+        // F41/F80: a @Param field is read as the applied parameter on-chain, never as its initializer, so it is not a
+        // constant JuLC folds (whole guards, R3a subexpressions, other constants' initializers). javac does inline it
+        // (JLS 13.1), which is #293.
+        if (isParam(declaration)) return Result.NOT_CONSTANT;
         return initializer(variable, visiting);
+    }
+
+    /** Whether the field is annotated {@code @Param} (simple or qualified name). */
+    static boolean isParam(FieldDeclaration field) {
+        return field.getAnnotations().stream().anyMatch(a -> a.getName().getIdentifier().equals("Param"));
     }
 
     private static Result initializer(VariableDeclarator variable, Set<Node> visiting) {
@@ -374,6 +415,16 @@ final class JavaConstants {
             };
         }
         return value.kind() == Kind.STRING;
+    }
+
+    private static boolean isSubsetType(Type type) {
+        if (type instanceof PrimitiveType primitive) {
+            return switch (primitive.getType()) {
+                case BOOLEAN, INT, LONG -> true;
+                default -> false;
+            };
+        }
+        return type.isClassOrInterfaceType() && type.asClassOrInterfaceType().getNameAsString().equals("String");
     }
 
     private static boolean isConstantType(Type type) {

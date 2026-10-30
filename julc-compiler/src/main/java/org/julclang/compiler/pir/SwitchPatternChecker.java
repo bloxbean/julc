@@ -283,12 +283,16 @@ final class SwitchPatternChecker {
         if (!bool(type) && type != JType.UNKNOWN) {
             throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, notBoolean(guard, type));
         }
-        var constant = JavaConstants.evaluate(guard);
-        if (constant.unclassifiable()) {
-            throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, "'" + guard
-                    + "' is not a constant expression JuLC can evaluate exactly (floating point, a division by zero, or a "
-                    + "declaration javac rejects); write the condition without it");
+        // A constant-looking part outside the verified subset is rejected, never lowered ordinarily (I7, F82): the
+        // whole guard, or any subexpression of a guard that is not constant as a whole.
+        for (var part : guard.findAll(Expression.class)) {
+            if (JavaConstants.evaluate(part).unclassifiable()) {
+                throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, part, label, "'" + part
+                        + "' is not a constant expression JuLC can evaluate exactly (floating point, a division by zero, "
+                        + "an out-of-range literal, or a declaration javac rejects); write the condition without it");
+            }
         }
+        var constant = JavaConstants.evaluate(guard);
         if (constant.constant()) {
             if (constant.value().kind() != JavaConstants.Kind.BOOLEAN) {
                 throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label,
@@ -407,6 +411,9 @@ final class SwitchPatternChecker {
             BinaryExpr.Operator.REMAINDER, BinaryExpr.Operator.LEFT_SHIFT, BinaryExpr.Operator.SIGNED_RIGHT_SHIFT,
             BinaryExpr.Operator.UNSIGNED_RIGHT_SHIFT, BinaryExpr.Operator.BINARY_AND, BinaryExpr.Operator.BINARY_OR,
             BinaryExpr.Operator.XOR);
+
+    /** Methods JuLC lowers to the identity where Java narrows the value (#294). */
+    private static final Set<String> NARROWING_IDENTITY_METHODS = Set.of("intValue", "longValue");
 
     private static final Set<String> PRIMITIVE_INTEGER_METHODS = Set.of(
             "signum", "compareTo", "intValue", "longValue", "intValueExact", "longValueExact", "bitLength", "bitCount",
@@ -734,34 +741,44 @@ final class SwitchPatternChecker {
             // F72: a narrowing cast is erased by the lowering (T6); a constant one is lowered as its Java value
             // (PirGenerator.guardFixedWidthConstant).
             if (cast.getType() instanceof PrimitiveType primitive && primitive.getType() == PrimitiveType.Primitive.INT
-                    && !isConstant(cast.getExpression())) {
+                    && !JavaConstants.evaluate(cast.getExpression()).constant()) {
                 throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, cast, label, "'" + cast + "' may narrow a long, and JuLC "
                         + "erases the narrowing (ADR-062 T6); compare the long value instead");
             }
         }
         // Round 3: int and long arithmetic that is not a constant expression is evaluated without Java's fixed width
-        // (ADR-062 T6), so it may overflow differently; constant arithmetic is lowered as its Java value.
+        // (ADR-062 T6), so it may overflow differently; constant arithmetic is lowered as its Java value, and a
+        // constant JuLC cannot classify is rejected by checkGuard.
         for (var binary : guard.findAll(BinaryExpr.class)) {
-            if (!FIXED_WIDTH_OPERATORS.contains(binary.getOperator()) || isConstant(binary)) continue;
+            if (!FIXED_WIDTH_OPERATORS.contains(binary.getOperator()) || JavaConstants.evaluate(binary).constant()) continue;
             var left = sourceType(binary.getLeft(), e -> JType.UNKNOWN);
             var right = sourceType(binary.getRight(), e -> JType.UNKNOWN);
             if (binary.getOperator() == BinaryExpr.Operator.PLUS && (left == JType.STRING || right == JType.STRING)) continue;
             if (bool(left) && bool(right)) continue; // boolean &, |, ^
             throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, binary, label, "'" + binary + "' is int or long arithmetic, "
-                    + "which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compare "
-                    + "the operands without combining them");
+                    + "which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compute "
+                    + "the value in a local before the switch (where T6 applies as in any if) and compare that");
         }
         for (var unary : guard.findAll(UnaryExpr.class)) {
             if ((unary.getOperator() == UnaryExpr.Operator.MINUS || unary.getOperator() == UnaryExpr.Operator.BITWISE_COMPLEMENT)
-                    && !isConstant(unary)) {
+                    && !JavaConstants.evaluate(unary).constant()) {
                 throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, unary, label, "'" + unary + "' is int or long arithmetic, "
-                        + "which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic instead");
+                        + "which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compute "
+                        + "the value in a local before the switch (where T6 applies as in any if) and compare that");
             }
         }
         var invalid = JavaConstants.invalidDeclaration(guard);
         if (invalid != null) {
-            throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, "the constant declaration '" + invalid
-                    + "' narrows its initializer, which javac rejects (JLS 5.2)");
+            throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, invalid);
+        }
+        for (var call : guard.findAll(MethodCallExpr.class)) {
+            // F81: intValue() and longValue() lower to the identity, where Java narrows to 32 or 64 bits (#294).
+            if (call.getArguments().isEmpty() && call.getScope().isPresent()
+                    && NARROWING_IDENTITY_METHODS.contains(call.getNameAsString())) {
+                throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, call, label, "'" + call + "' narrows to "
+                        + (call.getNameAsString().equals("intValue") ? "32" : "64") + " bits in Java, but JuLC "
+                        + "lowers it to the identity (#294); compare the BigInteger value instead");
+            }
         }
         if (!guard.findAll(CharLiteralExpr.class).isEmpty() || guard.findAll(CastExpr.class).stream()
                 .anyMatch(c -> declaredType(c.getType(), c) == JType.SMALL)) {
