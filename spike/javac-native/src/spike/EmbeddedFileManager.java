@@ -86,6 +86,9 @@ final class EmbeddedFileManager implements JavaFileManager {
         }
     }
 
+    /** Blob entries under this prefix are served on CLASS_PATH rather than as a system module. */
+    static final String CLASS_PATH_MODULE = "classpath";
+
     // module -> package -> simple file name -> class
     private final Map<String, Map<String, Map<String, EmbeddedClass>>> modules = new TreeMap<>();
     private final Map<String, ModuleLocation> moduleLocations = new TreeMap<>();
@@ -123,7 +126,9 @@ final class EmbeddedFileManager implements JavaFileManager {
         String pkg = last < 0 ? "" : rel.substring(0, last).replace('/', '.');
         String simple = rel.substring(last + 1);
         String binary = pkg.isEmpty() ? simple : pkg + "." + simple;
-        moduleLocations.computeIfAbsent(module, ModuleLocation::new);
+        if (!module.equals(CLASS_PATH_MODULE)) {
+            moduleLocations.computeIfAbsent(module, ModuleLocation::new);
+        }
         modules.computeIfAbsent(module, m -> new TreeMap<>())
                 .computeIfAbsent(pkg, p -> new TreeMap<>())
                 .put(simple, new EmbeddedClass(this, module, binary, data));
@@ -149,10 +154,11 @@ final class EmbeddedFileManager implements JavaFileManager {
     @Override
     public Iterable<JavaFileObject> list(Location location, String packageName, Set<JavaFileObject.Kind> kinds,
                                          boolean recurse) {
-        if (!(location instanceof ModuleLocation ml) || !kinds.contains(JavaFileObject.Kind.CLASS)) {
+        String module = moduleOf(location);
+        if (module == null || !kinds.contains(JavaFileObject.Kind.CLASS)) {
             return List.of();
         }
-        Map<String, Map<String, EmbeddedClass>> pkgs = modules.get(ml.moduleName);
+        Map<String, Map<String, EmbeddedClass>> pkgs = modules.get(module);
         List<JavaFileObject> result = new ArrayList<>();
         if (recurse) {
             for (Map.Entry<String, Map<String, EmbeddedClass>> e : pkgs.entrySet()) {
@@ -168,6 +174,13 @@ final class EmbeddedFileManager implements JavaFileManager {
             }
         }
         return result;
+    }
+
+    /** The embedded "module" a location reads: a java.base-style system module, or "classpath" for CLASS_PATH. */
+    private String moduleOf(Location location) {
+        if (location instanceof ModuleLocation ml) return ml.moduleName;
+        if (location == StandardLocation.CLASS_PATH && modules.containsKey(CLASS_PATH_MODULE)) return CLASS_PATH_MODULE;
+        return null;
     }
 
     @Override
@@ -190,16 +203,18 @@ final class EmbeddedFileManager implements JavaFileManager {
 
     @Override
     public boolean hasLocation(Location location) {
-        return location == StandardLocation.SYSTEM_MODULES || location instanceof ModuleLocation;
+        return location == StandardLocation.SYSTEM_MODULES || location instanceof ModuleLocation
+                || (location == StandardLocation.CLASS_PATH && modules.containsKey(CLASS_PATH_MODULE));
     }
 
     @Override
     public JavaFileObject getJavaFileForInput(Location location, String className, JavaFileObject.Kind kind) {
-        if (location instanceof ModuleLocation ml && kind == JavaFileObject.Kind.CLASS) {
+        String module = moduleOf(location);
+        if (module != null && kind == JavaFileObject.Kind.CLASS) {
             int last = className.lastIndexOf('.');
             String pkg = last < 0 ? "" : className.substring(0, last);
             String simple = className.substring(last + 1);
-            Map<String, EmbeddedClass> files = modules.get(ml.moduleName).get(pkg);
+            Map<String, EmbeddedClass> files = modules.get(module).get(pkg);
             return files == null ? null : files.get(simple);
         }
         return null;
@@ -273,6 +288,7 @@ final class EmbeddedFileManager implements JavaFileManager {
 
     @Override
     public boolean contains(Location location, FileObject fo) {
-        return location instanceof ModuleLocation ml && fo instanceof EmbeddedClass ec && ec.module.equals(ml.moduleName);
+        String module = moduleOf(location);
+        return module != null && fo instanceof EmbeddedClass ec && ec.module.equals(module);
     }
 }

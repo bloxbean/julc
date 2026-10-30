@@ -31,6 +31,7 @@ import java.util.zip.GZIPOutputStream;
  *     SELECTION  all       every class file of java.base
  *                exported  module-info plus the classes of java.base's unqualified exported packages
  *                list:FILE the module-relative paths listed in FILE (e.g. java.base/java/lang/Object.class)
+ *     then any number of jar:PATH  every class file of that jar, served on javac's class path ("classpath/..." entries)
  *
  * Format: gzip( int count, then per entry: UTF path, int length, bytes ), entries sorted by path.
  */
@@ -61,11 +62,24 @@ public class MakePlatformBlob {
                 });
             }
         }
+        java.util.Map<String, byte[]> jarEntries = new java.util.TreeMap<>();
+        for (int a = 3; a < args.length; a++) {
+            if (!args[a].startsWith("jar:")) throw new IllegalArgumentException(args[a]);
+            try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(args[a].substring(4))) {
+                for (var e : java.util.Collections.list(zip.entries())) {
+                    String n = e.getName();
+                    if (n.endsWith(".class") && !n.startsWith("META-INF/") && !n.endsWith("module-info.class")) {
+                        jarEntries.put("classpath/" + n, zip.getInputStream(e).readAllBytes());
+                    }
+                }
+            }
+        }
+        paths.addAll(jarEntries.keySet());
         long rawTotal = 0;
         long strippedTotal = 0;
         List<byte[]> datas = new ArrayList<>();
         for (String p : paths) {
-            byte[] bytes = Files.readAllBytes(jrt.getPath("/modules/" + p));
+            byte[] bytes = jarEntries.containsKey(p) ? jarEntries.get(p) : Files.readAllBytes(jrt.getPath("/modules/" + p));
             rawTotal += bytes.length;
             if (!strip.equals("none") && !p.endsWith("module-info.class")) {
                 bytes = strip(bytes, strip.equals("api"));

@@ -1,0 +1,16 @@
+engine ready after 394.5 ms
+PASS  Probe class (compiles): errors=[] analyzeMs=95.8 callMs=187.4 methods=1 calls=7 switches=1
+PASS  Undefined symbol: errors=["compiler.err.cant.resolve.location.args"] analyzeMs=8.9 callMs=10.8
+      5:21  ERROR  compiler.err.cant.resolve.location.args  [140,150]  cannot find symbol
+PASS  Incompatible types (return "x"): errors=["compiler.err.prob.found.req"] analyzeMs=4.9 callMs=5.4
+      7:16  ERROR  compiler.err.prob.found.req  [235,238]  incompatible types: java.lang.String cannot be converted to java.math.BigInteger
+PASS  Non-exhaustive switch over a sealed interface: errors=["compiler.err.not.exhaustive"] analyzeMs=30.4 callMs=30.6
+      8:16  ERROR  compiler.err.not.exhaustive  [267,360]  the switch expression does not cover all possible input values
+PASS  Dominated case label: errors=["compiler.err.pattern.dominated"] analyzeMs=11.1 callMs=11.5
+      9:18  ERROR  compiler.err.pattern.dominated  [296,299]  this case label is dominated by a preceding case label
+PASS  Guard reads a non-effectively-final variable: errors=["compiler.err.cant.ref.non.effectively.final.var"] analyzeMs=12.9 callMs=13.5
+      10:43  ERROR  compiler.err.cant.ref.non.effectively.final.var  [363,368]  local variables referenced from a guard must be final or effectively final
+PASS  JuLC validator with ledger types (compiles): errors=[] analyzeMs=26 callMs=27.7 methods=1 calls=6 switches=0
+PASS  JuLC-only syntax: BigInteger with > (javac rejects): errors=["compiler.err.operator.cant.be.applied.1"] analyzeMs=8.4 callMs=13.5
+      4:28  ERROR  compiler.err.operator.cant.be.applied.1  [157,179]  bad operand types for binary operator '>'
+PASS  /Users/satya/work/bloxbean/julc-examples/src/main/java/com/example/nft/onchain/Cip68Nft.java: errors=[] analyzeMs=24.6 callMs=27.3 methods=9 calls=76 switches=5

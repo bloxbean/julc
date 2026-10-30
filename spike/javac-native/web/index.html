@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>javac in Wasm</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --fg: #1d1d1b; --muted: #6b6b66; --panel: #ffffff; --border: #dcdcd6;
+    --error: #b3261e; --warning: #8a5a00; --note: #2f5d8a; --ok: #1f7a3a; --code-bg: #f3f3ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --fg: #e8e8e3; --muted: #9a9a93; --panel: #1f1f1d; --border: #3a3a36;
+      --error: #ff8a80; --warning: #f0c05a; --note: #8ab8e6; --ok: #6fcf8a; --code-bg: #262624;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161615; --fg: #e8e8e3; --muted: #9a9a93; --panel: #1f1f1d; --border: #3a3a36;
+    --error: #ff8a80; --warning: #f0c05a; --note: #8ab8e6; --ok: #6fcf8a; --code-bg: #262624;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.lede { margin: 0 0 16px; color: var(--muted); }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
+                   background: var(--panel); color: var(--fg); }
+  button { cursor: pointer; font-weight: 600; }
+  button:disabled { opacity: .55; cursor: default; }
+  textarea { width: 100%; min-height: 300px; resize: vertical; padding: 10px; border-radius: 6px;
+             border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+             font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 4; }
+  #status { color: var(--muted); font-size: 14px; }
+  #timing { font: 13px ui-monospace, Menlo, monospace; color: var(--muted); margin: 12px 0 6px; }
+  .diag { border: 1px solid var(--border); border-radius: 6px; background: var(--panel); margin: 10px 0;
+          padding: 8px 10px; overflow-x: auto; }
+  .diag pre { margin: 0; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .head { font-weight: 600; }
+  .ERROR { color: var(--error); } .WARNING, .MANDATORY_WARNING { color: var(--warning); }
+  .NOTE, .OTHER { color: var(--note); }
+  .src { background: var(--code-bg); border-radius: 4px; padding: 4px 6px; margin-top: 6px; }
+  .ok { color: var(--ok); font-weight: 600; }
+  details { margin-top: 10px; } summary { cursor: pointer; color: var(--muted); }
+  details pre { font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+<main>
+  <h1>javac in a Web Image</h1>
+  <p class="lede">javac <code>parse()</code> + <code>analyze()</code> running in WebAssembly (GraalVM 25.3 Web Image),
+    against an embedded, signature-only platform: a minimal <code>java.base</code> plus JuLC's core, ledger-api and
+    stdlib class files. ADR-065 spike, not a JuLC compile.</p>
+  <div class="bar">
+    <label for="example">Example</label>
+    <select id="example"></select>
+    <button id="check" disabled>Check with javac (Wasm)</button>
+    <span id="status">Loading engine…</span>
+  </div>
+  <textarea id="source" spellcheck="false" aria-label="Java source"></textarea>
+  <div id="timing"></div>
+  <div id="output"></div>
+</main>
+<script src="examples.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const select = $('example'), source = $('source'), button = $('check'), status = $('status');
+  JAVAC_EXAMPLES.forEach((ex, i) => select.add(new Option(ex.name, String(i))));
+  source.value = JAVAC_EXAMPLES[0].source;
+  select.onchange = () => { source.value = JAVAC_EXAMPLES[Number(select.value)].source; $('output').textContent = ''; };
+
+  let loadMs = null, nextId = 1;
+  const pending = new Map();
+  const worker = new Worker('worker.js');
+  worker.onmessage = ({data}) => {
+    if (data.type === 'ready') {
+      loadMs = data.loadMs;
+      status.textContent = `Engine ready (${loadMs.toFixed(0)} ms to load)`;
+      button.disabled = false;
+    } else if (data.type === 'error') {
+      status.textContent = 'Engine error: ' + data.message;
+    } else if (data.type === 'result') {
+      pending.get(data.id)?.(data);
+      pending.delete(data.id);
+    }
+  };
+  worker.onerror = e => { status.textContent = 'Worker error: ' + (e.message || e); };
+
+  const esc = s => s.replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+  const detab = s => s.replace(/\t/g, '    ');
+
+  function render(result, text, callMs) {
+    const out = $('output');
+    $('timing').textContent = result.internalError ? '' :
+      `load ${loadMs.toFixed(0)} ms · analyze ${result.analyzeMs} ms (in Java) · round trip ${callMs.toFixed(1)} ms` +
+      ` · platform ${result.platformClasses} class files`;
+    if (result.internalError) { out.innerHTML = `<div class="diag"><pre class="ERROR">internal error: ${esc(result.internalError)}</pre></div>`; return; }
+    const lines = text.split('\n');
+    let html = '';
+    for (const d of result.diagnostics) {
+      const [first, ...rest] = d.message.split('\n');
+      html += `<div class="diag"><pre><span class="head"><span class="${d.kind}">${d.line}:${d.column}  ${d.kind}</span>  ${esc(d.code)}  ${esc(first)}</span>`;
+      if (rest.length) html += '\n' + esc(rest.join('\n'));
+      if (d.line > 0 && d.line <= lines.length) {
+        const raw = lines[d.line - 1];
+        const before = detab(raw.slice(0, Math.max(0, d.column - 1)));
+        html += `</pre><pre class="src">${esc(detab(raw))}\n${' '.repeat(before.length)}^</pre>`;
+      } else html += '</pre>';
+      html += '</div>';
+    }
+    if (!result.diagnostics.length) html += '<p class="ok">No diagnostics: javac accepts this source.</p>';
+    if (result.summary) {
+      const s = result.summary;
+      html += `<details open><summary>Attributed-tree summary (${s.methods.length} methods, ${s.calls.length} calls, ${s.switchTypes.length} switch expressions)</summary><pre>` +
+        esc(['Methods:', ...s.methods.map(m => '  ' + m), '', 'Calls:', ...s.calls.map(c => '  ' + c), '',
+             'Switch expression types:', ...s.switchTypes.map(t => '  ' + t)].join('\n')) + '</pre></details>';
+    }
+    html += `<details><summary>Raw JSON</summary><pre>${esc(JSON.stringify(result, null, 2))}</pre></details>`;
+    out.innerHTML = html;
+  }
+
+  button.onclick = () => {
+    const id = nextId++, text = source.value;
+    button.disabled = true; status.textContent = 'Checking…';
+    pending.set(id, ({result, callMs}) => {
+      render(result, text, callMs);
+      button.disabled = false; status.textContent = `Engine ready (${loadMs.toFixed(0)} ms to load)`;
+    });
+    worker.postMessage({id, source: text});
+  };
+</script>
+</body>
+</html>

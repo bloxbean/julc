@@ -1,0 +1,4 @@
+worker ready, loadMs=320.2
+result Probe class (compiles): [] callMs=178.1
+result Non-exhaustive switch over a sealed interface: ["8:16 compiler.err.not.exhaustive"] callMs=7.1
+result Guard reads a non-effectively-final variable: ["10:43 compiler.err.cant.ref.non.effectively.final.var"] callMs=6.2

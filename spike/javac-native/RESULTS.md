@@ -676,3 +676,47 @@ and 24,484,979 by hand. So the Wasm size deltas above carry noise of about ±0.1
 build per side. The two native builds from the final sources (the rebuild and the rerun) were both 37,922,856 bytes. They were
 not compared with `cmp`. Making the images byte-reproducible was not investigated; this matters for ADR-065's
 I4 (determinism) if javac goes into the images.
+
+## Follow-up: browser demo (`web/`)
+
+This is a small page that runs javac in the Web Image on whatever source is typed into it.
+
+- **Engine.** `src-web/spike/JavacCheck.java` uses the `ToolProvider` route only, with no `--add-exports`. It
+  installs `globalThis.javacCheck(source)`, which returns JSON:
+  - each diagnostic, with kind, code, line, column, start, end and message;
+  - on success, method signatures, resolved call elements and switch-expression types.
+
+  The install uses Web Image's `@JS` interop, as `julc-wasm`'s `JsApi` does.
+- **Platform blob.** 297 class files, 354,738 bytes uncompressed:
+  - the 30-entry `java.base` union in `web/java-base-list.txt` (probe, on-chain stdlib and CIP-68 sets);
+  - all class files of `julc-core`, `julc-ledger-api` and `julc-stdlib`, `api`-stripped and served on javac's
+    `CLASS_PATH`. `EmbeddedFileManager` now serves `classpath/` entries there.
+- **Browser setup.** It mirrors `julc-wasm`:
+  - a classic worker (`web/worker.js`) sets the `.wasm` URL and calls `importScripts` on the launcher;
+  - `web/build.sh` applies the same launcher-anchor patch as `wasmBundle`
+    (`config.wasm_path = globalThis.JAVAC_WASM_PATH`).
+- **Image size.** `javac-check.js.wasm` is 19,504,669 bytes raw, 7,342,516 gzip and 5,346,565 brotli. The
+  launcher is 110,950 bytes. Both are build outputs, ignored by git; `web/build.sh` regenerates them.
+
+**Verification:**
+
+- **JVM.** `web/check-jvm.mjs` passed all 8 examples.
+- **Node, through the same JS function the page calls.** `web/check-node.mjs` (`out/web-check-node.txt`) gives
+  the expected error codes for all 8 examples:
+  - `cant.resolve.location.args`;
+  - `prob.found.req`;
+  - `not.exhaustive`;
+  - `pattern.dominated`;
+  - `cant.ref.non.effectively.final.var`;
+  - `operator.cant.be.applied.1`, for JuLC's `BigInteger >` syntax, which javac rejects;
+  - two clean compiles, the probe and a small `@SpendingValidator` using `ScriptContext`, `TxInfo`, `JulcList`
+    and `ContextsLib`.
+- **A real validator.** With `EXTRA_SOURCE`, `julc-examples`' `Cip68Nft.java` (197 lines, a `@MultiValidator` with
+  lambdas, for-each and sealed switches) analyzes with 0 diagnostics: 9 methods, 76 resolved calls and 5 switch
+  types.
+- **Timings in Node.** The engine is ready after 395 ms. The first analysis takes 96 ms, later ones 5–30 ms.
+- **The page's worker.** `web/check-worker-node.mjs` (`out/web-check-worker-node.txt`) runs `worker.js` unchanged
+  in a Node worker thread with browser-like shims (`self`, `location`, `importScripts`, `postMessage`). It was
+  ready after 320 ms and returned the expected diagnostics.
+- **Not verified:** the page in a real browser, which needs Wasm exception-handling (`exnref`) support, as
+  `julc-wasm` does.

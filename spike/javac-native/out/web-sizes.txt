@@ -1,0 +1,2 @@
+web/javac-check.js.wasm	raw=19504669	gzip9=7342516	brotli11=5346565
+web/javac-check.js	raw=110950	gzip9=22504	brotli11=18169
