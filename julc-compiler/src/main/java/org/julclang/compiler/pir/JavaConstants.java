@@ -276,7 +276,10 @@ final class JavaConstants {
 
     private static Result constantField(VariableDeclarator variable, Set<Node> visiting) {
         var field = variable.getParentNode().orElse(null);
-        if (!(field instanceof FieldDeclaration declaration) || !declaration.isFinal()) return Result.NOT_CONSTANT;
+        // Only a static final field: an instance field cannot be read from the static method (F66).
+        if (!(field instanceof FieldDeclaration declaration) || !declaration.isFinal() || !declaration.isStatic()) {
+            return Result.NOT_CONSTANT;
+        }
         return initializer(variable, visiting);
     }
 
@@ -287,11 +290,24 @@ final class JavaConstants {
         try {
             var value = evaluate(variable.getInitializer().get(), visiting);
             if (!value.constant() || value.unclassifiable() || variable.getType().isVarType()) return value;
-            // The declared type converts the initializer (int k = 'a' is the int 97).
-            return cast(variable.getType(), value);
+            // The initializer must be assignable without narrowing (JLS 5.2); a declaration javac rejects
+            // (int N = 4294967296L) is not a constant JuLC classifies (F66). char, byte and short are not modelled.
+            return assignable(variable.getType(), value.value()) ? value : Result.UNCLASSIFIABLE;
         } finally {
             visiting.remove(variable);
         }
+    }
+
+    private static boolean assignable(Type type, Value value) {
+        if (type instanceof PrimitiveType primitive) {
+            return switch (primitive.getType()) {
+                case BOOLEAN -> value.kind() == Kind.BOOLEAN;
+                case INT -> value.kind() == Kind.INT;
+                case LONG -> value.kind() == Kind.INT || value.kind() == Kind.LONG;
+                default -> false;
+            };
+        }
+        return value.kind() == Kind.STRING;
     }
 
     private static boolean isConstantType(Type type) {

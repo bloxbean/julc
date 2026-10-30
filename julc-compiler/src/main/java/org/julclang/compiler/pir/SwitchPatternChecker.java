@@ -93,7 +93,7 @@ final class SwitchPatternChecker {
      * The Java type of a guard expression, as far as JuLC can establish it from the source (ADR-067 D4, M1 decision):
      * {@code BOOLEAN} for {@code boolean} and {@code Boolean}, {@code UNKNOWN} when the source alone does not say.
      */
-    enum JType { BOOLEAN, NUMERIC, STRING, OTHER, UNKNOWN }
+    enum JType { BOOLEAN, BOOLEAN_BOX, NUMERIC, NUMERIC_BOX, BIGINTEGER, SMALL, STRING, OTHER, UNKNOWN }
 
     private SwitchPatternChecker() {
     }
@@ -128,7 +128,7 @@ final class SwitchPatternChecker {
             if (guard != null) guarded = true;
             String variant = checkApplicable(entry, type, sumType, types);
             checkPatternVariables(se, entry, label);
-            boolean unguarded = guard == null || checkGuard(entry, guard);
+            boolean unguarded = guard == null || checkGuard(entry, guard, types);
             labels.add(new Label(entry, label, variant, guard, unguarded));
         }
         checkDominance(labels);
@@ -200,26 +200,25 @@ final class SwitchPatternChecker {
     // ---- applicability by nominal type (D3, D4, F56)
 
     /**
-     * The constructor name a type pattern names. A qualified pattern type ({@code Other.A}) is resolved to its
-     * declaration and must be a permitted variant of exactly the selector's sealed interface; an unqualified one
-     * names the variant of that simple name, as in Java's scope (and as at the base, I8).
+     * The constructor name a type pattern names. The pattern type, qualified ({@code Other.A}) or not, is resolved to
+     * its declaration and must be a permitted variant of exactly the selector's sealed interface (F56, F64).
      */
     private static String checkApplicable(SwitchEntry entry, TypePatternExpr label, PirType.SumType sumType, TypeResolver types) {
         var type = label.getType().asClassOrInterfaceType();
         String variant = type.getNameAsString();
         boolean named = sumType.constructors().stream().anyMatch(c -> c.name().equals(variant));
         if (type.getScope().isPresent()) {
-            Optional<PirType.SumType> family;
-            try {
-                family = types.lookupSumTypeForVariant(types.resolveTypeWithScope(type));
-            } catch (CompilerException | IllegalArgumentException e) {
-                family = Optional.empty();
-            }
-            if (named && family.isPresent() && family.get().equals(sumType)) return variant;
+            if (named && resolvesToVariant(type, sumType, types)) return variant;
             throw error(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED, entry, label.toString(),
                     "not applicable: " + type + " is not a permitted variant of " + sumType.name());
         }
-        if (named) return variant;
+        if (named) {
+            // F64: the simple name must denote the variant's own declaration in this scope, not another type of that
+            // name (a nested record A that does not implement the selector's interface).
+            if (resolvesToVariant(type, sumType, types)) return variant;
+            throw error(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED, entry, label.toString(),
+                    "not applicable: " + type + " does not resolve to a permitted variant of " + sumType.name());
+        }
         if (variant.equals(sumType.name())) {
             throw error(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED, entry, label.toString(),
                     "unsupported: total type pattern (valid Java, not supported by JuLC; use default)");
@@ -228,6 +227,14 @@ final class SwitchPatternChecker {
         throw error(DiagnosticCodes.CASE_PATTERN_UNSUPPORTED, entry, label.toString(),
                 "not applicable: " + variant + " is not a permitted variant of " + sumType.name()
                         + " (variants: " + available + ")");
+    }
+
+    private static boolean resolvesToVariant(ClassOrInterfaceType type, PirType.SumType sumType, TypeResolver types) {
+        try {
+            return types.isVariantOf(types.resolveTypeWithScope(type), sumType);
+        } catch (CompilerException | IllegalArgumentException e) {
+            return false;
+        }
     }
 
     // ---- pattern-variable conflicts (D4, JLS 6.4, 14.30.1)
@@ -268,18 +275,19 @@ final class SwitchPatternChecker {
     // ---- guards (D1, D4)
 
     /** Checks a guard; true when it is the constant {@code true}, which makes the label unguarded. */
-    private static boolean checkGuard(SwitchEntry entry, Expression guard) {
+    private static boolean checkGuard(SwitchEntry entry, Expression guard, TypeResolver types) {
         String label = labelText(entry);
         checkGuardPatternVariables(label, guard);
+        checkGuardSubset(label, guard, types);
         var type = sourceType(guard, e -> JType.UNKNOWN);
-        if (type != JType.BOOLEAN && type != JType.UNKNOWN) {
+        if (!bool(type) && type != JType.UNKNOWN) {
             throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, notBoolean(guard, type));
         }
         var constant = JavaConstants.evaluate(guard);
         if (constant.unclassifiable()) {
             throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, "'" + guard
-                    + "' is a constant expression JuLC cannot evaluate exactly (floating point or a division by zero); "
-                    + "write the condition without it");
+                    + "' is not a constant expression JuLC can evaluate exactly (floating point, a division by zero, or a "
+                    + "declaration javac rejects); write the condition without it");
         }
         if (constant.constant()) {
             if (constant.value().kind() != JavaConstants.Kind.BOOLEAN) {
@@ -307,9 +315,11 @@ final class SwitchPatternChecker {
     static String notBoolean(Expression guard, JType type) {
         return "a guard must have type boolean or Boolean, but the type of '" + guard + "' is "
                 + switch (type) {
-                    case NUMERIC -> "numeric";
+                    case NUMERIC, NUMERIC_BOX, BIGINTEGER -> "numeric";
                     case STRING -> "String";
-                    case OTHER -> "not boolean";
+                    case SMALL -> "char, byte or short, which a guard does not support";
+                    case OTHER -> "not boolean, or not established as legal Java (a comparison of references, "
+                            + "an operand of the wrong type)";
                     default -> "not established as boolean";
                 }
                 + ". Assign the condition to a boolean local first, or call a helper declared to return boolean";
@@ -370,51 +380,85 @@ final class SwitchPatternChecker {
     // ---- the Java type of a guard (D4; M1 decision: fail closed)
 
     /**
-     * The Java type of {@code e} from the source: literals, operators (a conditional by both branches), casts,
-     * declared types of locals, parameters and fields, and declared return types of methods of the compilation
-     * unit. Anything else is asked of {@code leaf}, which the lowering answers from its symbol table.
+     * Methods whose result is a primitive {@code int} or {@code long} in Java ({@code BigInteger}, collections and the
+     * stdlib's {@code long}-valued helpers). Any other call typed as an integer by the symbol table is taken to be a
+     * {@code BigInteger}, a reference: comparing it with {@code <} or {@code ==} is not established as legal.
+     */
+    private static final Set<String> PRIMITIVE_INTEGER_METHODS = Set.of(
+            "signum", "compareTo", "intValue", "longValue", "intValueExact", "longValueExact", "bitLength", "bitCount",
+            "getLowestSetBit", "size", "length", "hashCode", "at", "countOutputsAt", "countSetBits", "findFirstSetBit",
+            "hexNibble", "constrTag", "indexByteString", "lengthOfByteString");
+
+    private static boolean bool(JType t) {
+        return t == JType.BOOLEAN || t == JType.BOOLEAN_BOX;
+    }
+
+    private static boolean num(JType t) {
+        return t == JType.NUMERIC || t == JType.NUMERIC_BOX;
+    }
+
+    /** An operand that is neither of the expected kinds: still open, unsupported, or not legal. */
+    private static JType open(JType a, JType b) {
+        if (a == JType.SMALL || b == JType.SMALL) return JType.SMALL;
+        if (a == JType.UNKNOWN || b == JType.UNKNOWN) return JType.UNKNOWN;
+        return JType.OTHER;
+    }
+
+    /**
+     * The Java type of {@code e} from the source: literals, operators with their operands checked (a comparison by
+     * both operands, a conditional by its condition and both branches), casts, the declared types of locals,
+     * parameters, fields and record components, and the declared return types of methods of the compilation unit.
+     * Anything else is asked of {@code leaf}, which the lowering answers from its symbol table. A result that is not
+     * established as legal is {@code OTHER} (fail closed, ADR-067 M1 decision).
      */
     static JType sourceType(Expression e, Function<Expression, JType> leaf) {
         return switch (e) {
             case BooleanLiteralExpr ignored -> JType.BOOLEAN;
             case IntegerLiteralExpr ignored -> JType.NUMERIC;
             case LongLiteralExpr ignored -> JType.NUMERIC;
-            case CharLiteralExpr ignored -> JType.NUMERIC;
-            case DoubleLiteralExpr ignored -> JType.NUMERIC;
+            case CharLiteralExpr ignored -> JType.SMALL;
+            case DoubleLiteralExpr ignored -> JType.OTHER;
             case StringLiteralExpr ignored -> JType.STRING;
             case TextBlockLiteralExpr ignored -> JType.STRING;
             case NullLiteralExpr ignored -> JType.OTHER;
             case EnclosedExpr enclosed -> sourceType(enclosed.getInner(), leaf);
             case InstanceOfExpr ignored -> JType.BOOLEAN;
-            case UnaryExpr unary -> switch (unary.getOperator()) {
-                case LOGICAL_COMPLEMENT -> booleanOperand(sourceType(unary.getExpression(), leaf));
-                default -> JType.NUMERIC;
-            };
-            case BinaryExpr binary -> switch (binary.getOperator()) {
-                case EQUALS, NOT_EQUALS, LESS, LESS_EQUALS, GREATER, GREATER_EQUALS -> JType.BOOLEAN;
-                case AND, OR -> both(sourceType(binary.getLeft(), leaf), sourceType(binary.getRight(), leaf));
-                case BINARY_AND, BINARY_OR, XOR -> {
-                    var a = sourceType(binary.getLeft(), leaf);
-                    var b = sourceType(binary.getRight(), leaf);
-                    yield a == JType.NUMERIC || b == JType.NUMERIC ? JType.NUMERIC : both(a, b);
-                }
-                case PLUS -> sourceType(binary.getLeft(), leaf) == JType.STRING
-                        || sourceType(binary.getRight(), leaf) == JType.STRING ? JType.STRING : JType.NUMERIC;
-                default -> JType.NUMERIC;
-            };
+            case UnaryExpr unary -> {
+                var t = sourceType(unary.getExpression(), leaf);
+                yield switch (unary.getOperator()) {
+                    case LOGICAL_COMPLEMENT -> bool(t) ? JType.BOOLEAN : open(t, t);
+                    case PLUS, MINUS, BITWISE_COMPLEMENT -> num(t) ? JType.NUMERIC : open(t, t);
+                    default -> JType.OTHER;
+                };
+            }
+            case BinaryExpr binary -> binaryType(binary, leaf);
             case ConditionalExpr conditional -> {
+                var c = sourceType(conditional.getCondition(), leaf);
                 var a = sourceType(conditional.getThenExpr(), leaf);
                 var b = sourceType(conditional.getElseExpr(), leaf);
-                if (a == JType.BOOLEAN && b == JType.BOOLEAN) yield JType.BOOLEAN;
-                if (a == JType.UNKNOWN || b == JType.UNKNOWN) yield JType.UNKNOWN;
-                yield JType.OTHER; // boolean with another type is a reference type (JLS 15.25)
+                if (c == JType.SMALL || a == JType.SMALL || b == JType.SMALL) yield JType.SMALL;
+                if (!bool(c) && c != JType.UNKNOWN) yield JType.OTHER; // JLS 15.25: the condition must be boolean
+                JType result;
+                if (bool(a) && bool(b)) {
+                    result = a == JType.BOOLEAN_BOX && b == JType.BOOLEAN_BOX ? JType.BOOLEAN_BOX : JType.BOOLEAN;
+                } else if (num(a) && num(b)) {
+                    result = JType.NUMERIC; // binary numeric promotion (JLS 15.25.2)
+                } else if (a == JType.STRING && b == JType.STRING) {
+                    result = JType.STRING;
+                } else if (a == JType.UNKNOWN || b == JType.UNKNOWN) {
+                    result = JType.UNKNOWN;
+                } else {
+                    result = JType.OTHER; // boolean with another type is a reference type (JLS 15.25), never boolean
+                }
+                yield c == JType.UNKNOWN && result != JType.OTHER ? JType.UNKNOWN : result;
             }
             case CastExpr cast -> {
                 var target = declaredType(cast.getType(), cast);
-                if (target != JType.BOOLEAN) yield target;
-                // (boolean) and (Boolean) give boolean only when the operand is boolean: a downcast from Object would
-                // only fail at run time on the JVM, and on-chain it would not be checked.
-                yield booleanOperand(sourceType(cast.getExpression(), leaf));
+                var operand = sourceType(cast.getExpression(), leaf);
+                if (target == JType.BOOLEAN || target == JType.BOOLEAN_BOX) yield bool(operand) ? target : open(operand, operand);
+                if (target == JType.NUMERIC) yield num(operand) ? JType.NUMERIC : open(operand, operand);
+                if (target == JType.SMALL) yield JType.SMALL;
+                yield JType.OTHER; // a reference cast loses its run-time check on-chain (#288)
             }
             case NameExpr name -> nameType(name, leaf);
             case FieldAccessExpr access -> {
@@ -427,26 +471,41 @@ final class SwitchPatternChecker {
                 }
                 yield leaf.apply(access);
             }
-            case MethodCallExpr call -> {
-                var method = unitMethod(call);
-                yield method.isPresent() ? declaredType(method.get().getType(), method.get()) : leaf.apply(call);
-            }
+            case MethodCallExpr call -> callType(call, leaf);
             case SwitchExpr nested -> switchType(nested, leaf);
-            case ObjectCreationExpr creation -> declaredType(creation.getType(), creation);
+            case ObjectCreationExpr creation -> declaredType(creation.getType(), creation) == JType.BOOLEAN_BOX
+                    ? JType.BOOLEAN_BOX : JType.OTHER;
             case LambdaExpr ignored -> JType.OTHER;
             default -> leaf.apply(e);
         };
     }
 
-    private static JType booleanOperand(JType operand) {
-        return operand == JType.BOOLEAN || operand == JType.UNKNOWN ? operand : JType.OTHER;
+    private static JType binaryType(BinaryExpr binary, Function<Expression, JType> leaf) {
+        var a = sourceType(binary.getLeft(), leaf);
+        var b = sourceType(binary.getRight(), leaf);
+        if (a == JType.SMALL || b == JType.SMALL) return JType.SMALL;
+        return switch (binary.getOperator()) {
+            case EQUALS, NOT_EQUALS -> {
+                // A primitive comparison, or one operand unboxed (JLS 15.21); two references compare identity, which
+                // JuLC does not model: rejected unless both are compile-time constant strings (#289).
+                if (bool(a) && bool(b) && !(a == JType.BOOLEAN_BOX && b == JType.BOOLEAN_BOX)) yield JType.BOOLEAN;
+                if (num(a) && num(b) && !(a == JType.NUMERIC_BOX && b == JType.NUMERIC_BOX)) yield JType.BOOLEAN;
+                if (a == JType.STRING && b == JType.STRING && isConstant(binary.getLeft()) && isConstant(binary.getRight())) {
+                    yield JType.BOOLEAN;
+                }
+                yield open(a, b);
+            }
+            case LESS, LESS_EQUALS, GREATER, GREATER_EQUALS -> num(a) && num(b) ? JType.BOOLEAN : open(a, b);
+            case AND, OR -> bool(a) && bool(b) ? JType.BOOLEAN : open(a, b);
+            case BINARY_AND, BINARY_OR, XOR -> bool(a) && bool(b) ? JType.BOOLEAN : num(a) && num(b) ? JType.NUMERIC : open(a, b);
+            case PLUS -> a == JType.STRING || b == JType.STRING ? JType.STRING : num(a) && num(b) ? JType.NUMERIC : open(a, b);
+            default -> num(a) && num(b) ? JType.NUMERIC : open(a, b);
+        };
     }
 
-    private static JType both(JType a, JType b) {
-        if (a == JType.BOOLEAN && b == JType.BOOLEAN) return JType.BOOLEAN;
-        if (a == JType.UNKNOWN && (b == JType.BOOLEAN || b == JType.UNKNOWN)) return JType.UNKNOWN;
-        if (b == JType.UNKNOWN && a == JType.BOOLEAN) return JType.UNKNOWN;
-        return JType.OTHER;
+    private static boolean isConstant(Expression e) {
+        var result = JavaConstants.evaluate(e);
+        return result.constant() && !result.unclassifiable();
     }
 
     private static JType nameType(NameExpr name, Function<Expression, JType> leaf) {
@@ -468,6 +527,20 @@ final class SwitchPatternChecker {
         return leaf.apply(name);
     }
 
+    private static JType callType(MethodCallExpr call, Function<Expression, JType> leaf) {
+        var method = unitMethod(call);
+        if (method.isPresent()) return declaredType(method.get().getType(), method.get());
+        if (call.getArguments().isEmpty() && call.getScope().isPresent()) {
+            var component = recordComponent(call.getScope().get(), call.getNameAsString());
+            if (component.isPresent()) return declaredType(component.get().getType(), component.get());
+        }
+        var t = leaf.apply(call);
+        if (t == JType.BIGINTEGER && call.getScope().isPresent() && PRIMITIVE_INTEGER_METHODS.contains(call.getNameAsString())) {
+            return JType.NUMERIC;
+        }
+        return t;
+    }
+
     /** The return type of an unqualified (or own-class-qualified) call of a method declared once in the unit. */
     private static Optional<MethodDeclaration> unitMethod(MethodCallExpr call) {
         if (call.getScope().isPresent()) {
@@ -486,6 +559,45 @@ final class SwitchPatternChecker {
         return methods.size() == 1 ? Optional.of(methods.getFirst()) : Optional.empty();
     }
 
+    /** The declared type node of an expression, from its declaration in the source: a name, or an accessor call. */
+    static Optional<Type> declaredTypeNode(Expression e) {
+        return switch (e) {
+            case EnclosedExpr enclosed -> declaredTypeNode(enclosed.getInner());
+            case NameExpr name -> {
+                var local = resolveLocal(name, name.getNameAsString());
+                if (local.isPresent()) {
+                    yield switch (local.get()) {
+                        case Parameter parameter -> Optional.of(parameter.getType());
+                        case TypePatternExpr pattern -> Optional.of((Type) pattern.getType());
+                        case VariableDeclarator variable when variable.getType().isVarType() ->
+                                variable.getInitializer().filter(i -> i instanceof ObjectCreationExpr)
+                                        .map(i -> (Type) ((ObjectCreationExpr) i).getType());
+                        case VariableDeclarator variable -> Optional.of(variable.getType());
+                        default -> Optional.empty();
+                    };
+                }
+                yield Optional.empty();
+            }
+            case MethodCallExpr call when call.getArguments().isEmpty() && call.getScope().isPresent() ->
+                    recordComponent(call.getScope().get(), call.getNameAsString()).map(Parameter::getType);
+            case ObjectCreationExpr creation -> Optional.of(creation.getType());
+            default -> Optional.empty();
+        };
+    }
+
+    /** The component {@code name} of the record declared (in this unit) as the type of {@code receiver}. */
+    private static Optional<Parameter> recordComponent(Expression receiver, String name) {
+        var type = declaredTypeNode(receiver);
+        if (type.isEmpty() || !type.get().isClassOrInterfaceType()) return Optional.empty();
+        var named = type.get().asClassOrInterfaceType();
+        if (named.getScope().isPresent()) return Optional.empty();
+        var declaration = typeInScope(receiver, named.getNameAsString());
+        if (declaration.isEmpty() || !(declaration.get() instanceof com.github.javaparser.ast.body.RecordDeclaration record)) {
+            return Optional.empty();
+        }
+        return record.getParameters().stream().filter(p -> p.getNameAsString().equals(name)).findFirst();
+    }
+
     private static JType switchType(SwitchExpr nested, Function<Expression, JType> leaf) {
         var results = new ArrayList<JType>();
         for (var entry : nested.getEntries()) {
@@ -501,25 +613,65 @@ final class SwitchPatternChecker {
             }
         }
         if (results.isEmpty()) return JType.UNKNOWN;
-        if (results.stream().allMatch(t -> t == JType.BOOLEAN)) return JType.BOOLEAN;
+        if (results.stream().allMatch(SwitchPatternChecker::bool)) return JType.BOOLEAN;
+        if (results.stream().anyMatch(t -> t == JType.SMALL)) return JType.SMALL;
         if (results.stream().anyMatch(t -> t == JType.UNKNOWN)) return JType.UNKNOWN;
         return JType.OTHER;
     }
 
-    /** The guard type of a declared Java type; a type variable is unknown. */
-    private static JType declaredType(Type type, Node at) {
+    /** The guard type of a declared Java type; a type variable is unknown, a shadowed java.lang name is not java.lang. */
+    static JType declaredType(Type type, Node at) {
         if (type instanceof PrimitiveType primitive) {
-            return primitive.getType() == PrimitiveType.Primitive.BOOLEAN ? JType.BOOLEAN : JType.NUMERIC;
+            return switch (primitive.getType()) {
+                case BOOLEAN -> JType.BOOLEAN;
+                case INT, LONG -> JType.NUMERIC;
+                case CHAR, BYTE, SHORT -> JType.SMALL;
+                case FLOAT, DOUBLE -> JType.OTHER;
+            };
         }
         if (!(type instanceof ClassOrInterfaceType named)) return type.isVarType() ? JType.UNKNOWN : JType.OTHER;
-        String name = named.getNameAsString();
-        if (isTypeVariable(name, at)) return JType.UNKNOWN;
-        return switch (name) {
-            case "Boolean" -> JType.BOOLEAN;
+        if (named.getScope().isEmpty() && isTypeVariable(named.getNameAsString(), at)) return JType.UNKNOWN;
+        if (!isStandardType(named, at)) return JType.OTHER;
+        return switch (named.getNameAsString()) {
+            case "Boolean" -> JType.BOOLEAN_BOX;
             case "String" -> JType.STRING;
-            case "Integer", "Long", "Short", "Byte", "Character", "BigInteger" -> JType.NUMERIC;
+            case "Integer", "Long" -> JType.NUMERIC_BOX;
+            case "Short", "Byte", "Character" -> JType.SMALL;
+            case "BigInteger" -> JType.BIGINTEGER;
             default -> JType.OTHER;
         };
+    }
+
+    private static final Set<String> STANDARD_NAMES = Set.of("Boolean", "String", "Integer", "Long", "Short", "Byte",
+            "Character", "Object", "BigInteger");
+
+    /**
+     * True when {@code named} denotes the {@code java.lang} (or {@code java.math.BigInteger}) type of its simple name:
+     * written with that package, or unqualified and not shadowed by a type declared in the unit or imported by a
+     * single-type import from another package (F65).
+     */
+    static boolean isStandardType(ClassOrInterfaceType named, Node at) {
+        String name = named.getNameAsString();
+        if (!STANDARD_NAMES.contains(name)) return false;
+        String home = name.equals("BigInteger") ? "java.math" : "java.lang";
+        if (named.getScope().isPresent()) return named.getScope().get().asString().equals(home);
+        if (userTypeNamed(at, name)) return false;
+        var unit = at.findCompilationUnit();
+        if (unit.isPresent()) {
+            for (var imported : unit.get().getImports()) {
+                if (!imported.isAsterisk() && !imported.isStatic() && imported.getName().getIdentifier().equals(name)
+                        && !imported.getNameAsString().equals(home + "." + name)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** A type of that simple name declared in the unit (top level or nested) shadows the java.lang one. */
+    private static boolean userTypeNamed(Node at, String name) {
+        var unit = at.findCompilationUnit();
+        return unit.isPresent() && unit.get().findFirst(TypeDeclaration.class, t -> t.getNameAsString().equals(name)).isPresent();
     }
 
     private static boolean isTypeVariable(String name, Node at) {
@@ -532,6 +684,101 @@ final class SwitchPatternChecker {
                     && declaration.getTypeParameters().stream().anyMatch(p -> p.getNameAsString().equals(name))) return true;
         }
         return false;
+    }
+
+    // ---- the guard subset (fail closed; review round 2, F61-F63, F66, F38)
+
+    /**
+     * Restrictions on what a guard may contain, beyond its type, each where JuLC's lowering or its constant
+     * evaluation would differ from Java's (ADR-067 M1 review round 2): a reference cast, whose run-time check JuLC
+     * erases (#288); {@code char}, {@code byte} and {@code short} values, whose constant narrowing JuLC does not model
+     * (JLS 15.25.2); an instance field read from the static method; an {@code instanceof} whose operand is not known,
+     * by declaration, to be the tested variant or its sealed interface.
+     */
+    private static void checkGuardSubset(String label, Expression guard, TypeResolver types) {
+        for (var cast : guard.findAll(CastExpr.class)) {
+            var target = cast.getType();
+            boolean primitive = target instanceof PrimitiveType;
+            boolean booleanBox = target.isClassOrInterfaceType() && isStandardType(target.asClassOrInterfaceType(), cast)
+                    && target.asClassOrInterfaceType().getNameAsString().equals("Boolean");
+            if (!primitive && !booleanBox) {
+                throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, cast, label, "'" + cast + "' casts to a reference type, "
+                        + "and JuLC erases the cast's run-time check (#288); a guard may cast only to a primitive type or to Boolean");
+            }
+        }
+        if (!guard.findAll(CharLiteralExpr.class).isEmpty() || guard.findAll(CastExpr.class).stream()
+                .anyMatch(c -> declaredType(c.getType(), c) == JType.SMALL)) {
+            throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, "char, byte and short values are not supported in a "
+                    + "guard (their constant narrowing, JLS 15.25.2, is not modelled); use int or long");
+        }
+        for (var name : guard.findAll(NameExpr.class)) {
+            if (resolveLocal(name, name.getNameAsString()).isPresent()) continue;
+            for (var type = name.findAncestor(TypeDeclaration.class); type.isPresent();
+                 type = type.get().findAncestor(TypeDeclaration.class)) {
+                var field = JavaConstants.fieldOf(type.get(), name.getNameAsString());
+                if (field.isEmpty()) continue;
+                if (field.get().getParentNode().orElse(null) instanceof com.github.javaparser.ast.body.FieldDeclaration declaration
+                        && !declaration.isStatic()) {
+                    throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, name, label, "'" + name
+                            + "' is an instance field, which a static method cannot read");
+                }
+                break;
+            }
+        }
+        for (var access : guard.findAll(FieldAccessExpr.class)) {
+            if (!(access.getScope() instanceof NameExpr qualifier)) continue;
+            var owner = typeInScope(qualifier, qualifier.getNameAsString());
+            var field = owner.flatMap(t -> JavaConstants.fieldOf(t, access.getNameAsString()));
+            if (field.isPresent() && field.get().getParentNode().orElse(null)
+                    instanceof com.github.javaparser.ast.body.FieldDeclaration declaration && !declaration.isStatic()) {
+                throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, access, label, "'" + access
+                        + "' is an instance field, which a static method cannot read");
+            }
+        }
+        for (var instanceOf : guard.findAll(InstanceOfExpr.class)) {
+            var reason = instanceOfIncompatibility(instanceOf, types);
+            if (reason != null) {
+                throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, instanceOf, label, "'" + instanceOf + "': " + reason);
+            }
+        }
+    }
+
+    /**
+     * Null when {@code o instanceof V} can be dispatched on V's constructor tag: the operand's declared type, resolved
+     * to its declaration, is V itself or V's sealed interface (F51, F62). A sibling variant, another family, a type of
+     * the same simple name declared elsewhere, or an operand JuLC cannot type by declaration is a reason to reject.
+     */
+    static String instanceOfIncompatibility(InstanceOfExpr instanceOf, TypeResolver types) {
+        var targetType = instanceOf.getPattern().map(p -> p instanceof TypePatternExpr t ? (Type) t.getType() : null)
+                .orElse(instanceOf.getType());
+        if (targetType == null || !targetType.isClassOrInterfaceType()) {
+            return "only a type test or type pattern naming a sealed-interface variant is supported";
+        }
+        String target;
+        Optional<PirType.SumType> family;
+        try {
+            target = types.resolveTypeWithScope(targetType.asClassOrInterfaceType());
+            family = types.lookupSumTypeForVariant(target);
+        } catch (CompilerException | IllegalArgumentException e) {
+            return targetType + " does not resolve to a sealed-interface variant";
+        }
+        if (family.isEmpty()) return targetType + " is not a variant of a sealed interface";
+        var operand = declaredTypeNode(instanceOf.getExpression());
+        if (operand.isEmpty() || !operand.get().isClassOrInterfaceType()) {
+            return "the operand's type is not established by its declaration as " + family.get().name()
+                    + " or " + targetType + " (constructor tags are only meaningful within one sealed interface); "
+                    + "bind it to a local or parameter of that type";
+        }
+        String operandFqcn;
+        try {
+            operandFqcn = types.resolveTypeWithScope(operand.get().asClassOrInterfaceType());
+        } catch (CompilerException | IllegalArgumentException e) {
+            return "the operand's type " + operand.get() + " does not resolve to a declaration";
+        }
+        if (operandFqcn.equals(target)) return null;
+        var operandFamily = types.lookupSumType(operandFqcn);
+        if (operandFamily.isPresent() && operandFamily.get() == family.get()) return null;
+        return "incompatible types: " + operand.get() + " can never be a " + targetType;
     }
 
     // ---- dominance (JLS 14.11.1, 14.30.3) and exhaustiveness (14.11.1.1)

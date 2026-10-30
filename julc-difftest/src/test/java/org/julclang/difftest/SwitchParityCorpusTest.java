@@ -151,12 +151,24 @@ class SwitchParityCorpusTest {
         guards.put("\"a\" == \"b\"", new String[]{"", "\"a\" == \"b\""});
         guards.put("promoted conditional", new String[]{"", "((true ? 2147483647 : 0L) + 1) > 0"});
         guards.put("int conditional overflow", new String[]{"", "((true ? 2147483647 : 0) + 1) > 0"});
-        guards.put("(byte) cast", new String[]{"", "(byte) 200 == -56"});
+        guards.put("(byte) cast", new String[]{"", "(byte) 200 == -56", "JULC0072"});
         guards.put("(Object) true", new String[]{"", "(Object) true"});
         guards.put("true ? true : 0", new String[]{"", "(true ? true : 0)"});
         guards.put("binding when false", new String[]{"", "!(s instanceof A a2)"});
         guards.put("binding when true", new String[]{"", "s instanceof A a2", "JULC0074"});
         guards.put("floating constant", new String[]{"", "1.5 > 1.0", "JULC0072"});
+        // Review round 2 (F60-F67): the guard subset. A third element marks a deliberate over-rejection.
+        guards.put("char conditional", new String[]{"", "(\"x\" + (true ? 'a' : 98)) == \"xa\"", "JULC0072"});
+        guards.put("char comparison", new String[]{"", "'a' < 'b'", "JULC0072"});
+        guards.put("int condition", new String[]{"", "(1 ? true : false)"});
+        guards.put("== on a mixed conditional", new String[]{"", "(x0.v().signum() > 0 ? true : 0) == true"});
+        guards.put("non-constant String ==", new String[]{"", "(n + \"b\") == \"3b\"", "JULC0072"});
+        guards.put("constant String concatenation ==", new String[]{"", "\"a\" + \"b\" == \"ab\""});
+        guards.put("reference cast", new String[]{"", "((S) (Object) new A(n)) instanceof A", "JULC0072"});
+        guards.put("sibling instanceof", new String[]{"", "x0 instanceof B"});
+        guards.put("same-family instanceof", new String[]{"", "s instanceof B"});
+        guards.put("BigInteger relational", new String[]{"", "x0.v() < n"});
+        guards.put("record ==", new String[]{"", "x0 == x0", "JULC0072"});
         var shapes = Map.of(
                 "A?,B", List.of("A?", "B"),
                 "A?,A,B", List.of("A?", "A", "B"),

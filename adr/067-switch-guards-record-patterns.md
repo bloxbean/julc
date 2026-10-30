@@ -484,7 +484,12 @@ is a parity-corpus dimension (Verification 3):
   table (generic returns such as `JulcList<Boolean>.head()` included). A guard whose type cannot be established as
   `boolean`/`Boolean` is rejected with `JULC0072` (fail closed), and the message suggests a typed local or helper.
   Constant expressions follow §15.29 exactly (casts, shifts, `String ==`, numeric promotion); a constant JuLC does not
-  model (floating point, division by zero) is rejected rather than classified.
+  model (floating point, division by zero) is rejected rather than classified. *(Review round 2.)* The guard subset is further restricted, each with
+  `JULC0072`: operands of comparisons and the condition of a conditional must be established as legal; reference casts
+  (#288), non-constant `==` on strings and `==` on other references (#289, T4), `char`/`byte`/`short` values, instance
+  fields, constant declarations javac rejects, `java.lang` names shadowed by a user type, and `instanceof` whose operand
+  is not, by declaration (FQCN), the tested variant or its sealed interface are rejected. Unqualified case-pattern
+  types are resolved to their declaration like qualified ones (`JULC0076`).
 - **Effectively final guard variables** (§14.11.1, §4.12.4; revised in r3, F7): each name used but not declared in a
   guard is resolved to its declaration (by identity and scope, not by name). If that declaration is a local or
   parameter that occurs as the target of an assignment anywhere in its scope (in JuLC, only loops may reassign), the
@@ -1036,6 +1041,12 @@ stated. Issues are to be filed.
   open question 9's "one access path, one reading" principle: it is local, cheap, and closes a fail-open path the new
   lowering would otherwise route arms through. The same leniency of `instanceof` outside guards should be fixed for
   all positions together (with #204); to be filed as an issue by the coordinator.
+- **Casts lose their run-time check (#288; M1 review round 2, F61).** `A x = (A) s` on a `B` throws
+  `ClassCastException` on the JVM but returns a value on-chain, because a reference cast lowers to its operand
+  (`PirGenerator.java:964`). Inside guards ADR-067 rejects reference casts (fail closed); the general fix is #288.
+- **`String ==` compares values (#289; F67).** Java compares the identity of two non-constant strings; JuLC compares
+  their bytes. Inside guards ADR-067 accepts `==` on strings only when both are compile-time constants (interned, so
+  identity is value equality); the general fix is #289.
 - **Container equality.** `contains`, `indexOf` and map lookups compare elements with `EqualsData`, so D5's
   cross-type cases also arise inside collections (code reading).
 - **`Builtins.trace` with one argument** crashes the compiler (`IllegalArgumentException`, an ADR-063 `Crash`)
@@ -1448,6 +1459,49 @@ beyond the deviation-4 decision, which both reviewers and the coordinator agreed
   fail-closed typing masks the review's exact shape); F34 treat an `if` without `else` as unable to complete normally
   (`colonGroupEndingInIfWithoutElse`); F58 re-extract the outer field (`nestedSwitchReusesTheOuterDecodedField`, after
   its count was corrected to the PIR's `unIData` spelling).
+
+### M1 review round 2 (2026-10-30; Codex F60–F67, review F37–F39)
+
+The review comment approved `d1f1783b` with P3s F37–F39; Codex requested changes (F60–F67, all P1). Following the
+coordinator's direction, every Codex finding is fixed **fail closed**, by restricting the guard subset rather than
+implementing Java's typing in general; each restriction is a known over-rejection below. No design change beyond
+D4's guard subset was needed.
+
+| Finding | Change |
+|---|---|
+| F60: comparison operands and conditional conditions unchecked | The type lattice distinguishes `boolean`/`Boolean`, primitive and boxed integers, `BigInteger`, `String`, `char`-like values and other references. `==`/`!=` need two booleans or two numbers with at least one primitive (or two constant strings), `<`… need numbers, `&&`/`||`/`!` need booleans, a conditional's condition must be boolean; anything not established is `JULC0072`. `BigInteger` results (record components declared `BigInteger`, integer calls outside a known list of `int`/`long`-valued methods) are references. |
+| F61: casts erased without their check | A guard may cast only to a primitive type or to `java.lang.Boolean` of a boolean operand; every reference cast is `JULC0072`, citing #288. Pinned: `((S)(Object) new C(a)) instanceof A` (the JVM throws). |
+| F62, F37: `instanceof` by family and structure | The operand's declared type (parameter, local, pattern variable, record component, by declaration) and the target are resolved to FQCNs; the operand must be the target itself or the target's sealed interface. A sibling variant, another family, a same-named declaration elsewhere, or an operand without a declared type is `JULC0072`. P rows for the sibling and same-name forms. |
+| F63: `char` narrowing in constant conditionals | `char`, `byte` and `short` values (literals, casts, declared types) are outside the guard subset (`JULC0072`). Pinned (`("x" + (true ? 'a' : 98)) == "xa"`, which Java accepts as `true`) and a P row for the `"x97"` form. |
+| F64: unqualified pattern types by simple name | Resolved to the declaration and checked as a permitted variant (`JULC0076`). TypeResolver now records every family a variant was registered under, so a record with two sealed parents (#279) keeps its base behaviour until M3 (D6) rejects it. Byte stability re-checked: unchanged. |
+| F65: `Boolean`/`String` by spelling | A `java.lang` (or `java.math.BigInteger`) name counts only when written with its package or not shadowed by a type of the unit or a single-type import; otherwise it is another reference type. P row for a user `Boolean`. |
+| F66: constant fields assumed legal | A field is a constant variable only if `static final` and its initializer is assignable without narrowing (JLS 5.2); a narrowing declaration is `JULC0072` (unclassifiable), and an instance field read in a guard is `JULC0072`. P rows for both. |
+| F67: non-constant `String ==` | Rejected (`JULC0072`, citing #289) unless both operands are compile-time constants; pinned (`(a + "b") == "5b"`: Java 2, JuLC returned 1). `==` on other references (records) is rejected too (T4). |
+| F38: unparenthesised conditional guard | JavaParser parses `when c ? d : e ->` as a lambda: an uncoded parse error, javac accepts it. Known over-rejection; an M5 troubleshooting note ("parenthesise a conditional guard"). |
+| F39: surviving mutant (`UNKNOWN && BOOLEAN`) | Diagnostics test and P row with `Builtins.iData(...)` (typed `Data` by the symbol table) inside `&&` and `||`; the mutant is now detected. |
+
+**Known over-rejections of the guard subset (fail closed; javac accepts each):** floating-point constants;
+`char`/`byte`/`short` values (F63); reference casts, including `(Boolean)` of a non-boolean operand (F61);
+`==` on non-constant strings (F67) and on records or other references (T4); relational operators on integer calls
+outside the known `int`/`long`-valued list (taken as `BigInteger`); `instanceof` whose operand has no declared type
+(a cast or a call result other than a record component); guards whose leaf JuLC cannot type (a record component read
+as a field); an unparenthesised conditional guard (F38, a JavaParser parse error); a guard binding introduced when
+true (`JULC0074`, D1).
+
+**Evidence.**
+- **Tests** (`./gradlew :julc-compiler:test :julc-difftest:test --rerun -Pjulc.javac21.required=true`): julc-compiler 2,063,
+  0 failures (`SwitchDiagnosticsTest` 46, `SwitchGuardTest` 20, `SwitchMalformedDataTest` 11); julc-difftest 240, 0
+  failures (`RegressionCasesTest` 124 pins, three new; `Javac21ParityTest` 36 rows, ten new; `SwitchParityCorpusTest`).
+  `./gradlew build -PskipSigning=true`: success; 12,210 tests in all modules, 0 failures, 530 skipped (pre-existing).
+- **Parity corpus:** 1,077 programs (eleven new guard kinds): 128 accepted by javac 21.0.3 and JuLC (49 run both ways at
+  all four levels, all agreeing), 928 rejected by both, 21 rejected by JuLC on purpose (the over-rejections above and
+  the earlier deliberate ones); javac 21.0.3 and javac 25 `--release 21` agree on all.
+- **Byte stability** against `fd605e77`: 3,764 rows, 784 programs byte-identical, 0 changed, 0 newly rejected.
+- **Mutations:** all 28 detected: the 17 of round 1 (the F51 mutant now targets the checker, where the family check
+  moved) and 11 new: F60 comparisons without operand checks; F61 reference casts allowed; F62 instanceof by family
+  membership; F63 `char`/`byte`/`short` allowed; F64 unqualified names by spelling; F65 `java.lang` names by spelling;
+  F66 a narrowing initializer folded, and an instance field read; F67 `String ==` on non-constants; F39 an unknown
+  leaf inside `&&`/`||` counted as boolean.
 
 ## Revision history
 

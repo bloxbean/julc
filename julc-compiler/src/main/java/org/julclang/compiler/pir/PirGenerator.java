@@ -2650,7 +2650,7 @@ public class PirGenerator {
                 && typeResolver.resolveNamed(inferPirType(guard)) instanceof PirType.BoolType) {
             type = SwitchPatternChecker.JType.BOOLEAN;
         }
-        if (type != SwitchPatternChecker.JType.BOOLEAN) {
+        if (type != SwitchPatternChecker.JType.BOOLEAN && type != SwitchPatternChecker.JType.BOOLEAN_BOX) {
             throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(arm.guard()),
                     SwitchPatternChecker.labelText(arm.entry()), SwitchPatternChecker.notBoolean(arm.guard(), type));
         }
@@ -2667,7 +2667,8 @@ public class PirGenerator {
         }
         return switch (type) {
             case PirType.BoolType ignored -> SwitchPatternChecker.JType.BOOLEAN;
-            case PirType.IntegerType ignored -> SwitchPatternChecker.JType.NUMERIC;
+            // An integer whose Java type the source does not give is taken to be a BigInteger (a reference).
+            case PirType.IntegerType ignored -> SwitchPatternChecker.JType.BIGINTEGER;
             case PirType.StringType ignored -> SwitchPatternChecker.JType.STRING;
             case PirType.DataType ignored -> SwitchPatternChecker.JType.UNKNOWN;
             default -> SwitchPatternChecker.JType.OTHER;
@@ -2765,22 +2766,7 @@ public class PirGenerator {
         if (sumType.isEmpty()) {
             throw guardInstanceOfError(ioe, target + " is not a variant of a sealed interface");
         }
-        // Constructor tags are positions within one sealed interface, so the operand must be known to belong to
-        // the target's family; an operand of another family, or of an unknown or erased type, cannot be dispatched
-        // (F51). javac rejects the first; the second would read another family's tag.
-        var operandType = guardOperandType(ioe.getExpression());
-        var family = sumType.get();
-        boolean compatible = operandType instanceof PirType.SumType operandFamily && operandFamily.equals(family)
-                || operandType instanceof PirType.RecordType record && family.constructors().stream()
-                .anyMatch(c -> c.name().equals(record.name()) && c.fields().equals(record.fields()));
-        if (!compatible) {
-            throw guardInstanceOfError(ioe, operandType instanceof PirType.SumType || operandType instanceof PirType.RecordType
-                    ? "incompatible types: the operand is a " + LibraryMethodRegistry.pirTypeName(operandType)
-                    + ", which can never be a " + typeName
-                    : "the operand's type is not established as " + family.name()
-                    + " (constructor tags are only meaningful within one sealed interface); give it the type "
-                    + family.name() + " or one of its variants");
-        }
+        // The checker proved, by declaration, that the operand is this variant or its sealed interface (F51, F62).
         var scrutinee = generateExpression(ioe.getExpression());
         var constructors = sumType.get().constructors();
         var branches = constructors.stream()
@@ -2792,18 +2778,6 @@ public class PirGenerator {
         PirTerm result = new PirTerm.DataMatch(selected, branches);
         typeInference.recordTermType(result, new PirType.BoolType());
         return result;
-    }
-
-    /** The static type of an instanceof operand in a guard: a cast's target, else the operand's resolved type. */
-    private PirType guardOperandType(Expression operand) {
-        var inner = operand;
-        while (inner instanceof EnclosedExpr enclosed) inner = enclosed.getInner();
-        try {
-            if (inner instanceof CastExpr cast) return typeResolver.resolveNamed(typeResolver.resolve(cast.getType()));
-            return typeResolver.resolveNamed(resolveExpressionType(inner));
-        } catch (CompilerException | IllegalArgumentException e) {
-            return new PirType.DataType();
-        }
     }
 
     private CompilerException guardInstanceOfError(InstanceOfExpr ioe, String reason) {

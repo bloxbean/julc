@@ -201,7 +201,7 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when (Object) true -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "not boolean");
+                """), "JULC0072", "#288");
         rejected(switchOver("""
                             case A x when (true ? true : 0) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
@@ -232,13 +232,154 @@ class SwitchDiagnosticsTest {
                 """));
     }
 
+    // ---- review round 2: the guard subset (fail closed)
+
+    private static final String T_FAMILY = """
+                sealed interface T permits C, D {}
+                record C(BigInteger w) implements T {}
+                record D(BigInteger w) implements T {}
+            """;
+
+    @Test
+    void comparisonOperandsAndConditionsAreChecked() {
+        // F60: operands of == and <, and a conditional's condition, must be established as legal.
+        for (String guard : new String[]{"(x.v().signum() > 0 ? true : 0) == true", "(1 ? true : false)",
+                "x.v() < BigInteger.TEN", "x == x"}) {
+            rejected(switchOver("""
+                                case A x when %s -> BigInteger.ONE;
+                                default -> BigInteger.TWO;
+                    """.formatted(guard)), "JULC0072", "a guard must have type boolean or Boolean");
+        }
+    }
+
+    @Test
+    void dataTypedLibraryCallInsideAndOr() {
+        // F39: an operand the symbol table types as Data, inside && and ||.
+        for (String guard : new String[]{"Builtins.iData(x.v()) && x.v().signum() > 0",
+                "x.v().signum() > 0 || Builtins.iData(x.v())"}) {
+            rejected(switchOver("""
+                                case A x when %s -> BigInteger.ONE;
+                                default -> BigInteger.TWO;
+                    """.formatted(guard)), "JULC0072", "boolean");
+        }
+    }
+
+    @Test
+    void referenceCastsInGuards() {
+        // F61: a reference cast loses its run-time check on-chain (#288); primitive and Boolean casts of a boolean stay.
+        rejected(probe(S + T_FAMILY + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when ((S) (Object) new C(a)) instanceof A -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "#288");
+        accepted(probe(S + """
+                    static BigInteger m(BigInteger a, boolean flag) {
+                        S s = new A(a);
+                        return switch (s) { case A x when (boolean) flag && (Boolean) flag -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """));
+    }
+
+    @Test
+    void instanceofByDeclarationIdentity() {
+        // F62 (and F37): a sibling variant, and another declaration of the same simple name, are rejected.
+        rejected(switchOver("""
+                            case A x when x instanceof B -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "can never be a B");
+        rejected(probe(S + """
+                    static final class Other {
+                        record A(BigInteger v) {}
+                    }
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        Other.A o = new Other.A(a);
+                        return switch (s) { case A x when o instanceof A -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "can never be a A");
+        accepted(probe(S + """
+                    static BigInteger m(BigInteger a, S t) {
+                        S s = new A(a);
+                        return switch (s) { case A x when t instanceof A && x instanceof A -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """));
+    }
+
+    @Test
+    void unqualifiedPatternTypeResolvedByDeclaration() {
+        // F64: the selector's variant A is Other.A; the A in scope is Probe.A, which does not implement Other.S.
+        rejected(probe("""
+                    static final class Other {
+                        sealed interface S permits A {}
+                        record A(BigInteger v) implements S {}
+                    }
+                    record A(BigInteger v) {}
+                    static BigInteger m(BigInteger a) {
+                        Other.S s = new Other.A(a);
+                        return switch (s) { case A x -> BigInteger.ONE; };
+                    }
+                """), "JULC0076", "not applicable");
+    }
+
+    @Test
+    void shadowedJavaLangNames() {
+        // F65: a user type named Boolean or String is not java.lang's.
+        rejected(probe(S + """
+                    static final class Boolean {}
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when (Boolean) true -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "#288");
+        rejected(probe(S + """
+                    static final class Boolean {}
+                    static BigInteger m(BigInteger a, Boolean flag) {
+                        S s = new A(a);
+                        return switch (s) { case A x when flag -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "not established as legal Java");
+    }
+
+    @Test
+    void constantFieldsMustBeLegalStaticFinal() {
+        // F66: a narrowing initializer (javac rejects the declaration), and an instance field read from static m.
+        rejected(probe(S + """
+                    static final int N = 4294967296L;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when N > 0 -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "not a constant expression JuLC can evaluate");
+        rejected(probe(S + """
+                    final boolean ON = true;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when ON -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "instance field");
+    }
+
+    @Test
+    void stringIdentityComparison() {
+        // F67: == on non-constant Strings compares identity in Java (#289); two constants are folded.
+        rejected(switchOver("""
+                            case A x when (x.v() + "b") == "ab" -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "not established as legal Java");
+        accepted(switchOver("""
+                            case A x when "a" + "b" == "ab" -> BigInteger.ONE;
+                            case B y -> BigInteger.ZERO;
+                """));
+    }
+
     // ---- JULC0072: constant guards by JLS 15.29 (F54, F29)
 
     @Test
     void constantGuardsFollowJls1529() {
         // Constant true: the label is unguarded, so it covers A.
         for (String guard : new String[]{"(boolean) true", "(1 << 1) == 2", "\"a\" == \"a\"",
-                "((true ? 2147483647 : 0L) + 1) > 0", "(int) 3L == 3", "'a' < 'b'", "(byte) 200 == -56"}) {
+                "((true ? 2147483647 : 0L) + 1) > 0", "(int) 3L == 3"}) {
             accepted(switchOver("""
                                 case A x when %s -> BigInteger.ONE;
                                 case B y -> BigInteger.ZERO;
@@ -252,11 +393,18 @@ class SwitchDiagnosticsTest {
                                 case B y -> BigInteger.ZERO;
                     """.formatted(guard)), "JULC0072", "value false");
         }
+        // char, byte and short are outside the guard subset (F63; known over-rejection: javac accepts these).
+        for (String guard : new String[]{"'a' < 'b'", "(byte) 200 == -56", "(\"x\" + (true ? 'a' : 98)) == \"xa\""}) {
+            rejected(switchOver("""
+                                case A x when %s -> BigInteger.ONE;
+                                case B y -> BigInteger.ZERO;
+                    """.formatted(guard)), "JULC0072", "char, byte and short");
+        }
         // A constant JuLC does not model exactly is rejected, never classified (known over-rejection: javac accepts).
         rejected(switchOver("""
                             case A x when 1.5 > 1.0 -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0072", "cannot evaluate exactly");
+                """), "JULC0072", "not established as legal Java");
     }
 
     @Test
@@ -382,7 +530,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when (Object) x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "not established as T");
+                """), "JULC0072", "#288");
         rejected(probe(S + t + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
@@ -395,7 +543,7 @@ class SwitchDiagnosticsTest {
                         return switch (s) { case A x when d instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
                 """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;"),
-                "JULC0072", "not established as T");
+                "JULC0072", "PlutusData can never be a C");
     }
 
     @Test

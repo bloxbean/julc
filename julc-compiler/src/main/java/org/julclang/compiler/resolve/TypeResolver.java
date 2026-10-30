@@ -34,6 +34,9 @@ public class TypeResolver {
     // Sealed interfaces that declare type parameters; type arguments are dropped, so a switch over
     // one cannot be checked (ADR-067 D4, JULC0007)
     private final Set<String> parameterizedSumTypes = new LinkedHashSet<>();
+    // Every sealed interface a variant FQCN was registered under, in order; variantToSumType keeps only the last
+    // (a record with two sealed parents, #279, rejected by ADR-067 D6). Used to resolve case patterns (F64).
+    private final Map<String, List<PirType.SumType>> variantFamilies = new LinkedHashMap<>();
     // Map of @NewType FQCNs -> their underlying PIR type
     private final Map<String, PirType> newTypes = new LinkedHashMap<>();
     // Forward identities visible only while one recursive declaration SCC is registered.
@@ -186,8 +189,19 @@ public class TypeResolver {
                     ? resolvedFqcn
                     : fqcn.substring(0, fqcn.lastIndexOf('.') + 1) + ctor.name();
             variantToSumType.put(actualFqcn, sumType);
+            variantFamilies.computeIfAbsent(actualFqcn, k -> new ArrayList<>()).add(sumType);
             simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(actualFqcn);
         }
+    }
+
+    /**
+     * True when the record declared as {@code variantFqcn} is a permitted variant of {@code sumType}, under any of the
+     * sealed interfaces it was registered with (ADR-067 F64).
+     */
+    public boolean isVariantOf(String variantFqcn, PirType.SumType sumType) {
+        var families = variantFamilies.get(variantFqcn);
+        if (families != null && families.stream().anyMatch(sumType::equals)) return true;
+        return lookupSumTypeForVariant(variantFqcn).map(sumType::equals).orElse(false);
     }
 
     /**
@@ -236,6 +250,7 @@ public class TypeResolver {
             var ctor = constructors.get(i);
             var variantFqcn = variantFqcns.get(i);
             variantToSumType.put(variantFqcn, sumType);
+            variantFamilies.computeIfAbsent(variantFqcn, k -> new ArrayList<>()).add(sumType);
             simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(variantFqcn);
         }
     }
