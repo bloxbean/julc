@@ -1,6 +1,6 @@
 # ADR-066: Generator G1 — records, sealed interfaces, switch and fields
 
-**Status:** Proposed (2026-10-30), revision r3
+**Status:** Proposed (2026-10-30), revision r4
 **Date:** 2026-10-30
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md), as a generator stage of
@@ -116,15 +116,19 @@ review at `5c358dfa` (same code). The probe sources are not committed; their pro
   `instanceof` without a binding in an expression, and `instanceof` with a binding inside `&&` ("Undefined
   variable", #204); `switch` statements ("Unsupported statement: SwitchStmt"; when every arm returns, the message
   is "Method 'm' may not return a value on all execution paths");
-  compact and explicit canonical constructors, overridden accessors, record instance and static methods, and
-  secondary constructors (JULC0055, JULC0016, "'this' is not supported on-chain" or "Undefined variable"); a
-  sealed interface without `permits` whose variants are top-level siblings ("Unknown type"); nested sealed
+  a record member called directly on a constructor expression (`new P(a).v()`, JULC0055), record instance and
+  static methods (JULC0055, "Undefined variable: P"), and explicit canonical constructors ("'this' is not
+  supported on-chain"); a sealed interface without `permits` whose variants are top-level siblings ("Unknown type"); nested sealed
   hierarchies (a sealed interface that extends another: "class inheritance is not supported on-chain").
 - *Silently different, at every level:* #275 (guard ignored: JVM 2, UPLC 1), #276 (record pattern dropped: JVM
   −3, UPLC −99), #277 (`new R1(a).equals(new R2(a))`: JVM false, UPLC true; also through an `Object`-typed
   argument), #279 (JVM 21, UPLC 11), #280 (a never-called zero-parameter helper that traces and fails: JVM
   returns, UPLC fails with the trace), and #209 (a field shadowed by a local of another record type declared in
-  an `if` branch inside a loop body: UPLC fails with `HeadList: empty list` or returns a wrong value).
+  an `if` branch inside a loop body: UPLC fails with `HeadList: empty list` or returns a wrong value), and #282
+  (record members are ignored: an explicit accessor that negates, called on a local, a parameter or a `switch`
+  binding, gives JVM −5 and UPLC 5; a compact constructor `P { v = v.negate(); }` gives the same; an explicit
+  `equals` is replaced by structural equality; a secondary constructor fails on-chain). Only a member called
+  directly on a constructor expression is rejected, as above.
 
 **Representation the mapping must match.** A standalone record is `ConstrData 0 [components]`; a variant of a
 sealed interface is `ConstrData i [components]`, where `i` is its position in the `permits` clause, also when
@@ -285,10 +289,13 @@ than components (#282; ADR-067 D9 rejects them), and every construct listed as r
   `HarnessException` if none does or the arity differs.
 
 **The tag table.** G1 knows each variant's position in the `permits` clause it printed. The `DiffCase` carries
-that table as a field `tags` (binary class name to tag), saved in `.diffcase` format 3 as `tag: Probe$A 0` lines
-in a fixed order, and it is part of the case's identity: `verify`, replay, D8 records and exact-pin matching all
+that table as a field `tags`, keyed by (record binary name, sealed parent binary name), saved in `.diffcase`
+format 3 as `tag: Probe$A Probe$S 0` lines sorted by record then parent, and it is part of the case's identity: `verify`, replay, D8 records and exact-pin matching all
 carry and compare it. The table has one entry per (record, sealed parent) pair. Two validations, at different
 points:
+Lookups are parent-aware: mapping a value at a use site typed by sealed interface `S` uses the entry for `S`;
+mapping a variant typed as itself uses its only entry, and is a boundary error if it has two with different tags.
+A format round-trip test and a case-identity test cover a record with unequal tags under two parents.
 - *Source validation, before any run:* every record that implements a sealed interface has an entry for each
   parent; tags within a family are distinct and cover `0..n-1`; arities match the source.
 - *Boundary validation, when a value is mapped:* a value whose record has two sealed parents with different tags
@@ -399,7 +406,10 @@ A bounded enumeration over the shapes where the defects above live, versioned `G
 - **Shared-variant and zero-parameter shapes,** gated.
 - **Boundary shapes.** Each sealed argument variant, a nested record argument, and record and sealed results.
 
-**Inputs:** each variant of the selector, with `v` in {−1, 1, 3}, `f` in {false, true} and `a` in {−1, 3}.
+**Inputs:** each variant of the selector, with `f` in {false, true}, and `v` and `a` each taking one value in
+every interval of the threshold partition: thresholds {0, 2} give {−1, 1, 3}, so each guard sequence admitted
+by the corpus has an input reaching each of its arms (an arm guarded `a > 2` followed by one guarded `a > 0` is
+reached by `a = 1`). The inputs are derived from the thresholds, so adding a threshold adds its partition.
 **Reachability witnesses:** the twin (D8) must show, on these inputs, every arm entered and every guard both
 true and false; a combination where it does not is a corpus error, not an equivalence.
 
@@ -475,9 +485,11 @@ ADR-063 D11 asks for rediscovery and mutation before a harness counts as evidenc
    - *fixed by a code change* (#275, #276, #277, #166, #47, #50): with the fix applied, the reproducer agrees;
    - *fixed by a rejection* (#162, #279, #282): with the fix applied, the reproducer is rejected with the
      expected code;
-   - *not yet fixed* (#209, #280): the reproducer contains the gated construct, and the same program with that
-     construct removed (the nearest default-profile program, by the shrinker) agrees; the fix-based check is
-     then done in the fix's PR.
+   - *not yet fixed* (#209, #280): a constrained counterfactual, with inputs and all unrelated source held fixed,
+     that changes only the defect's trigger and keeps the JVM observation equal, must agree. For #209, rename the
+     shadowing local apart (alpha-renaming, which Java's meaning ignores); for #280, give the zero-parameter
+     helper an unused parameter and pass a pure argument at each call. Until the fix-based check succeeds in the
+     fix's PR, the discovery is recorded as provisional.
 
    | Defect | Compiler | Found by |
    |---|---|---|
@@ -610,12 +622,12 @@ are read as before; the registry rules keep their behaviour with feature names.
 
 ## Related findings (out of scope)
 
-- Record constructs that JuLC rejects do so with uncoded or misleading diagnostics: a compact constructor that
-  normalizes a component and an overridden accessor report JULC0055 "Cannot resolve x"; a static method on a
-  record reports "Undefined variable: P"; an explicit canonical constructor reports "'this' is not supported
-  on-chain"; a sealed interface without `permits` over sibling records reports "Unknown type: T"; `instanceof`
-  with a binding inside `&&` reports "Undefined variable" (#204). These belong to a G1⁻ negative grammar and to
-  coded diagnostics (ADR-062 T20's family); an issue should be filed.
+- Record members are silently ignored (#282) or rejected with uncoded or misleading diagnostics (a member called
+  on a constructor expression reports JULC0055 "Cannot resolve x"; a static method reports "Undefined variable:
+  P"; an explicit canonical constructor reports "'this' is not supported on-chain"); ADR-067 D9 replaces all of
+  these with one coded rejection. Other uncoded rejections: a sealed interface without `permits` over sibling
+  records ("Unknown type: T") and `instanceof` with a binding inside `&&` ("Undefined variable", #204). These
+  belong to a G1⁻ negative grammar and to coded diagnostics (ADR-062 T20's family).
 - `JulcMap` results cannot be mapped by `ValueMapping.fromTerm` today (a native pair list, no `PairConst` case),
   and `JulcMap.get` of a missing key returns `null` on the JVM but fails on-chain. Both are G1b's subject.
 
@@ -686,3 +698,13 @@ answered by D11: Scalus joins the nightly run in M6.)
     for both forms, validated on a control pair before scoring.
   - New: #282 (record members, from ADR-067's author) is excluded from the grammar and joins the must-reject list
     with ADR-067 D9.
+- **r4** (2026-10-30, responds to round 3 at `639324f0`: F35, F36 and Codex's F40, F41, and the remaining part of
+  F31):
+  - F35 → record members moved from "rejected" to "silently different (#282)", with the call-site split (only a
+    member called on a constructor expression is rejected); "Related findings" reconciled.
+  - F36, F31 → corpus inputs derived from the threshold partition ({−1, 1, 3} for `v` and `a`), so every admitted
+    guard sequence has an input reaching each arm.
+  - F40 → the tag table is keyed by (record, parent), serialized as `tag: Probe$A Probe$S 0`, with parent-aware
+    lookup, deterministic order, and round-trip and identity tests for unequal tags.
+  - F41 → for defects not yet fixed, a constrained counterfactual (alpha-renaming for #209, an unused parameter
+    for #280) with equal JVM observations; discoveries stay provisional until the fix-based check.
