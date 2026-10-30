@@ -49,8 +49,8 @@ public final class KnownDivergences {
         /** No rerun. */
         NONE,
         /**
-         * A rerun on one of the rule's rungs finishes and agrees with the JVM, value and traces: the run is only
-         * expensive (T13).
+         * A rerun finishes and agrees with the JVM, value and traces: the run is only expensive (T13). Any rung of
+         * the shared ladder counts, since agreement with less budget than the rule's own rungs shows the same.
          */
         AGREES_WITH_JVM,
         /**
@@ -100,8 +100,8 @@ public final class KnownDivergences {
         boolean confirmedBy(DiffRunner.Result result, List<Rung> rungs) {
             return switch (confirmation) {
                 case NONE -> true;
-                case AGREES_WITH_JVM -> rungs.stream().anyMatch(rung -> confirmationFactors.contains(rung.factor())
-                        && Verdict.compare(result.jvm(), rung.observation()).kind() == Verdict.Kind.AGREE);
+                case AGREES_WITH_JVM -> rungs.stream().anyMatch(rung ->
+                        Verdict.compare(result.jvm(), rung.observation()).kind() == Verdict.Kind.AGREE);
                 case STILL_INCONCLUSIVE -> !rungs.isEmpty()
                         && rungs.getLast().observation() instanceof Observation.Inconclusive again
                         && again.reason().equals(uplcReason);
@@ -114,9 +114,14 @@ public final class KnownDivergences {
     }
 
     /**
-     * The first rung, shared by T21 and T13. #146 doubles the script with each nested {@code compareTo} operand,
-     * and evaluation can double with it, depending on the branches taken; the saved T13 reproducer needs 1.8 to
-     * 3.8 times the memory budget, and most T13 runs in fuzzing fit within this.
+     * T21's only rung. A T21 run does not terminate, so a small rung confirms it as well as a large one, and a
+     * still-exhausted rerun costs evaluation up to its whole budget (review round r7 of #253, F16).
+     */
+    public static final int T21_RUNG = 10;
+    /**
+     * T13's first rung. #146 doubles the script with each nested {@code compareTo} operand, and evaluation can
+     * double with it, depending on the branches taken; the saved T13 reproducer needs 1.8 to 3.8 times the memory
+     * budget, and most T13 runs in fuzzing fit within this.
      */
     public static final int CONFIRMATION_FACTOR = 100;
     /**
@@ -128,7 +133,7 @@ public final class KnownDivergences {
     public static final List<Rule> RULES = List.of(
             new Rule("T21", "a while loop with break and an if that updates a variable never terminates on UPLC",
                     Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), Observation.Value.class, "budget exhausted",
-                    Confirmation.STILL_INCONCLUSIVE, List.of(CONFIRMATION_FACTOR)),
+                    Confirmation.STILL_INCONCLUSIVE, List.of(T21_RUNG)),
             new Rule("T13", "nested compareTo operands double the script per level (#146) and exhaust the budget",
                     Set.of(G0.Feature.DEEP_COMPARISON), Observation.Value.class, "budget exhausted",
                     Confirmation.AGREES_WITH_JVM, List.of(CONFIRMATION_FACTOR, T13_SECOND_RUNG)));

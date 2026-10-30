@@ -227,26 +227,35 @@ rule has pinned saved reproducers. A wrong value is a correctness result, so it 
 explain any other non-termination, or a wrong value that more budget would reveal, in a program that happens to
 contain a deep comparison. The rules therefore confirm their mechanism with reruns of the configuration on a
 ladder of budgets (`Rule.confirmation`, `Rule.confirmationFactors`):
-- the first rung, `KnownDivergences.CONFIRMATION_FACTOR` (100 times the budget), is shared by T21 and T13;
-- only if it still ends with `budget exhausted` and the program has T13's marker is a second rung run,
-  `KnownDivergences.T13_SECOND_RUNG` (1000 times);
+- T21's only rung is `KnownDivergences.T21_RUNG` (10 times the budget);
+- T13's rungs are `KnownDivergences.CONFIRMATION_FACTOR` (100 times) and `KnownDivergences.T13_SECOND_RUNG`
+  (1000 times);
+- the rungs of all the rules that fit are merged into one ascending ladder: `{10}` for T21's shape alone,
+  `{100, 1000}` for T13's alone, `{10, 100, 1000}` for both;
 - the ladder stops at the first rung that ends otherwise, and each rung is run at most once per configuration.
 
 T13 explains the configuration if a rung finishes and agrees with the JVM, value and traces (`Verdict.compare`).
+Any rung of the merged ladder counts, including T21's: agreement with less budget than T13's own rungs shows the
+same thing, that the run is only expensive. Without that, a program with both shapes that finishes within
+10 times the budget would stop the ladder at T21's rung and be explained by neither rule.
 T21 explains it if the last rung run still ends with `budget exhausted`, so a T21-shaped program that only runs
 long is not T21. Any other outcome is not explained and fails the run as a finding. So:
 - an expensive run that terminates with the JVM's value and traces within 1000 times the budget is T13, whatever
   its script size;
 - a run still exhausted at the last rung is T21 if it has T21's shape, and nothing otherwise; a program with only
-  T21's shape gets the single 100-times rung, so T21 means "does not terminate within 100 times the budget";
+  T21's shape gets the single 10-times rung, so T21 means "does not terminate within 10 times the budget";
 - a program with both shapes is explained by exactly one of them, as its reruns decide;
 - a run that finishes with another value or trace, fails, or crashes is never explained by a rule, as above.
 
 The rungs come from measurement. The saved T13 reproducer needs 1.8 to 3.8 times the memory budget, and most T13
 runs in fuzzing finish within 38 times. Loops multiply the cost: the nested-loops reproducer, two `while` loops of
 three iterations around a deep comparison at the nesting bound, needs about 107 times at `NONE`, beyond the first
-rung, and the round-r6 fuzz runs confirmed 18 runs on the second rung, needing up to 148 times. A single rung of 1000 would make every T21 rerun ten times slower; the ladder keeps T21-only programs, such
-as those of D7, at one 100-times rerun. The reruns are deterministic (H4). Each rung's budget, factor, observation
+rung, and the round-r6 fuzz runs confirmed 18 runs on the second rung, needing up to 148 times. A single rung of 1000 would make every T21 rerun ten times slower. A T21 run does not terminate, so a still-exhausted
+rerun costs evaluation up to its whole budget, and a larger rung confirms nothing a smaller one does not; the
+ladder keeps T21-only programs, such as those of D7, at one 10-times rerun (round r7 of #253, F16). The price is
+a weaker T21: a T21-shaped run that would finish between 10 and 100 times the budget is explained as T21 and not
+compared. That stays inconclusive, never a pass (H5), and the T21 rule is removed when the owning step resolves
+T21. The reruns are deterministic (H4). Each rung's budget, factor, observation
 and cost are reported with every explained input, counted per rung in the tally, and kept in the D8 record of a
 failure as `recorded.<config>.rerun.x<factor>` and `.cost` (H2). The record keeps only deterministic values; the
 reruns' wall-clock time appears in the per-input line and the tally only. A rerun compiles its program again when
@@ -835,6 +844,18 @@ Measured on 2026-10-29 (UTC), after round r6 of #253, with the confirmation ladd
   The first rung's non-agreeing reruns are T21 runs, still exhausted, and T13 runs that went on to the second
   rung. Reruns took 61% and 50% of the two runs, most of it compiling again (#274).
 
+Measured on 2026-10-30 (UTC), after round r7 of #253, with T21's 10-times rung:
+- `./gradlew :julc-difftest:test --rerun`: 117 tests, 0 failures. New: with both shapes, T13 is confirmed by
+  agreement on T21's rung, a wrong value there is explained by neither rule, and a run exhausted at all three
+  rungs is T21. With T13's old condition (agreement only on its own rungs), two tests fail, among them the
+  review's both-shapes probe of round r5, whose rerun now runs at 10 times. `G0ExhaustiveTest` takes 20 s
+  instead of 40 s, since its 84 T21 reruns run at 10 times.
+- Three runs of `./gradlew :julc-difftest:fuzz --tests '*G0FuzzTest' -Pfuzz.duration=300s`. All ran to the end
+  and found nothing. The T21 reruns, still exhausted at 10 times, took 1,866 ms for 12, 2,708 ms for 12 and
+  2,252 ms for 8, so 0.16 to 0.28 s each, against a median of 1.5 s at 100 times in round r5. The T13 reruns are
+  unchanged and are still most of the rerun time (#274). The runs shared the machine with other builds, so
+  their program counts are not comparable with the rounds above and are not reported.
+
 ## Revision history
 
 - **r1** (2026-10-23): initial proposal.
@@ -888,3 +909,5 @@ Measured on 2026-10-29 (UTC), after round r6 of #253, with the confirmation ladd
     needed 107 times; T21 needs the last rung run exhausted, and T21-only programs keep the single 100-times
     rung (D6). Both rungs are recorded per input, per rung in the tally, and in the D8 record. A saved
     reproducer and a fuzz replay for the nested-loops input.
+  - Round r7 of #253: F16, T21's rung is lowered to 10 times the budget, and T13 accepts agreement on any rung
+    of the merged ladder, so a program with both shapes that finishes within 10 times is still T13 (D6).

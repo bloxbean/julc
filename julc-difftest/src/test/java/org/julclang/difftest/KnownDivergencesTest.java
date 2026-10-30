@@ -94,7 +94,7 @@ class KnownDivergencesTest {
 
     /**
      * ADR-063 D6 (r6, round r5 of #253): T21 explains an exhausted budget only if its rerun with
-     * {@link KnownDivergences#CONFIRMATION_FACTOR} times the budget is still exhausted, the opposite of T13.
+     * {@link KnownDivergences#T21_RUNG} times the budget is still exhausted, the opposite of T13.
      */
     @Test
     void theT21RuleExplainsOnlyARunThatStillDoesNotFinish() {
@@ -107,7 +107,7 @@ class KnownDivergencesTest {
                 fixed(new Observation.Inconclusive("stack overflow"), factors)), "another reason");
         assertEquals(Optional.empty(), explain(t21, value(3), BUDGET,
                 fixed(new Observation.Crash("vm: java.lang.OutOfMemoryError"), factors)), "a crash");
-        assertEquals(List.of(100L, 100L, 100L, 100L, 100L), factors);
+        assertEquals(List.of(10L, 10L, 10L, 10L, 10L), factors);
         assertEquals(Optional.empty(), KNOWN.explain(t23("Probe", 0, 3), CONFIG, t21,
                 new DiffRunner.Result(value(3), BUDGET, Verdict.compare(value(3), BUDGET))), "no rerun, no T21");
     }
@@ -204,13 +204,35 @@ class KnownDivergencesTest {
         assertEquals(Optional.of("T13"), explain(both, value(-5), BUDGET, ladder(1000, value(-5), factors)),
                 "both shapes, finishing at 1000x: T13 only");
         assertEquals(Optional.of("T21"), explain(both, value(-5), BUDGET, ladder(Long.MAX_VALUE, value(-5), factors)),
-                "both shapes, exhausted at both rungs: T21 only");
+                "both shapes, exhausted at every rung: T21 only");
         assertEquals(Optional.empty(), explain(both, value(-5), BUDGET, ladder(1000, value(4), factors)),
                 "both shapes, wrong at 1000x: neither");
         factors.clear();
-        // Without T13's marker there is one rung: a run that would finish at 1000x is still T21 within 100x.
+        // Without T13's marker there is one rung: a run that would finish at 1000x is still T21 within 10x.
         assertEquals(Optional.of("T21"), explain(t21, value(-5), BUDGET, ladder(1000, value(-5), factors)));
-        assertEquals(List.of(100L), factors);
+        assertEquals(List.of(10L), factors);
+    }
+
+    /**
+     * Review round r7 of #253, F16: with both shapes the merged ladder starts at T21's rung, 10 times the budget,
+     * below T13's own rungs. A run that finishes there with the JVM's value is only expensive, so T13 explains it
+     * from that rung, and the ladder stops; a wrong value there is explained by neither rule.
+     */
+    @Test
+    void withBothShapesT13AcceptsAgreementOnT21sRung() {
+        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var factors = new ArrayList<Long>();
+        assertEquals(Optional.of("T13"), explain(both, value(-5), BUDGET, ladder(10, value(-5), factors)));
+        assertEquals(List.of(10L), factors);
+        factors.clear();
+        assertEquals(Optional.empty(), explain(both, value(-5), BUDGET, ladder(10, value(4), factors)), "wrong at 10x");
+        assertEquals(List.of(10L), factors);
+        factors.clear();
+        assertEquals(Optional.of("T13"), explain(both, value(-5), BUDGET, ladder(100, value(-5), factors)));
+        assertEquals(List.of(10L, 100L), factors);
+        factors.clear();
+        assertEquals(Optional.of("T21"), explain(both, value(-5), BUDGET, ladder(Long.MAX_VALUE, value(-5), factors)));
+        assertEquals(List.of(10L, 100L, 1000L), factors);
     }
 
     /**
@@ -257,7 +279,7 @@ class KnownDivergencesTest {
     }
 
     /**
-     * A T21 non-termination is still exhausted at a hundred and a thousand times the budget, so T13 does not
+     * A T21 non-termination is still exhausted at ten, a hundred and a thousand times the budget, so T13 does not
      * explain it, even when the program also carries T13's marker; T21 alone does, from the same reruns.
      */
     @Test
@@ -277,13 +299,15 @@ class KnownDivergencesTest {
         assertEquals(List.of(BUDGET, BUDGET), reruns, "both of T13's rungs");
         assertEquals(Optional.of("T21"), KNOWN.explain(diffCase, config,
                 Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), result, rerun), "both shapes");
-        assertEquals(List.of(BUDGET, BUDGET, BUDGET, BUDGET), reruns, "the same two rungs, shared by both rules");
+        assertEquals(List.of(BUDGET, BUDGET, BUDGET, BUDGET, BUDGET), reruns,
+                "one ladder for both rules: T21's rung, then T13's two");
     }
 
     /**
      * Review round r4 of #253, F12: a program with both markers whose T21 {@code if} is never taken, so it does
      * not hang, and whose result includes the saved T13 expression. It exhausts the budget only by cost: the rerun
-     * returns the JVM's value, so it is T13 alone at every level.
+     * returns the JVM's value, so it is T13 alone at every level. Since round r7 that rerun is T21's 10-times rung,
+     * which T13 accepts (F16).
      */
     @Test
     void aProgramWithBothShapesThatFinishesIsT13Only() {
@@ -315,6 +339,7 @@ class KnownDivergencesTest {
             assertEquals(BUDGET, entry.getValue().uplc(), config.toString());
             var reruns = new ArrayList<Observation>();
             KnownDivergences.Rerun rerun = factor -> {
+                assertEquals(KnownDivergences.T21_RUNG, factor);
                 var execution = RUNNER.rerun(diffCase, config, factor);
                 reruns.add(execution.observation());
                 return execution;
