@@ -103,6 +103,65 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(kind, name), location);
     }
 
+    /** JULC0003: a {@code return} directly in a while loop body; {@code location} is the return (ADR-062 T20). */
+    public static CompilerException returnInsideWhile(SourceLocation location) {
+        var info = DiagnosticCodes.RETURN_INSIDE_WHILE;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /** JULC0062: {@code JulcMap.of(...)}, which exists off-chain only (ADR-062 T20). */
+    public static CompilerException julcMapOfOffChainOnly(SourceLocation location) {
+        var info = DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0063: a {@code break} in a loop that updates no variable declared before it. Such a
+     * loop compiles its body as plain statements, which cannot stop the loop (ADR-062 T20).
+     */
+    public static CompilerException breakInLoopWithoutAccumulator(SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0060: a {@code continue} in a loop the compiler lowers. It is reported at loop lowering,
+     * not by subset validation, so code JuLC never compiles is unaffected (ADR-062 T20).
+     */
+    public static CompilerException continueUnsupported(SourceLocation location) {
+        var info = DiagnosticCodes.CONTINUE_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0065: an update of {@code name}, a variable declared before the loop, in a position the
+     * loop lowering does not carry; {@code position} says where, for example
+     * {@code "inside a switch statement"} (ADR-062 T20).
+     */
+    public static CompilerException loopUpdatePositionUnsupported(String name, String position, SourceLocation location) {
+        var info = DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(name, position), location);
+    }
+
+    /**
+     * JULC0064: a nested loop in the break-aware body of a single-accumulator loop;
+     * {@code statement} is {@code "A nested while loop"} or {@code "A nested for-each loop"} (ADR-062 T20).
+     */
+    public static CompilerException breakLoopStatementUnsupported(String statement, SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_LOOP_STATEMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(statement), location);
+    }
+
+    /**
+     * JULC0066: a labelled statement, or a {@code break} or {@code continue} that names a label;
+     * {@code construct} is the construct as written, for example {@code "break outer"} or
+     * {@code "outer:"} (#201).
+     */
+    public static CompilerException labelUnsupported(String construct, SourceLocation location) {
+        var info = DiagnosticCodes.LABEL_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(construct), location);
+    }
+
     /** JULC0057: a static field initializer that calls a method of its class. */
     public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
         var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;

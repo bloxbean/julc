@@ -3,6 +3,59 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: coded diagnostics for rejected loop and statement forms (#257)
+
+Seven forms outside the on-chain subset were already rejected, but without a diagnostic
+code, and two of the messages named the wrong problem. Each now has a code, the
+location of the construct and a remedy:
+
+| Construct | Code | Message |
+|---|---|---|
+| `continue` | `JULC0060` | `continue is not supported on-chain` |
+| `return` inside `while` | `JULC0003` | `'return' is not supported inside while loop body` (located at the `return`) |
+| reassignment outside a loop | `JULC0061` | `Reassigning '<name>' is not supported outside a loop` |
+| `JulcMap.of(...)` in contract code | `JULC0062` | `JulcMap.of is off-chain only and has no on-chain implementation` |
+| `break` in a loop that updates no earlier variable | `JULC0063` | `break is not supported in a loop that updates no variable declared before the loop` |
+| a nested loop in a loop with `break` that updates one earlier variable | `JULC0064` | `A nested while loop is not supported in a loop that contains break and updates one variable declared before the loop` |
+| a loop with `break` whose only update is inside a `switch` statement, an expression or a lambda | `JULC0065` | `Updating '<name>' inside a switch statement is not supported in this loop` (located at the update) |
+| a labelled statement | `JULC0066` | `Labels are not supported on-chain: 'outer:'` |
+
+`JulcMap.of` used to report `Undefined variable: JulcMap`, and the `break` case
+`break statement outside of a loop`, although the `break` is inside one.
+
+- **Newly rejected: a nested loop with `break` that updates nothing (#273).** A
+  for-each or `while` whose body has a `break` but updates no variable declared
+  before it, nested inside a loop that updates one, used to be accepted with its
+  `break` ignored, so the inner loop ran to its end and could fail where Java
+  returns. It is now rejected with `JULC0063`, as the same loop is on its own. The
+  rejection applies whether or not the ignored `break` changed the result, so a
+  program that happened to work is rejected too, for example an inner
+  `for (var y : xs) { if (y.equals(x)) { break; } }`. It applies also to such a loop
+  inside a lambda inside a loop that updates a variable. To keep the early exit,
+  record it in a variable declared before the inner loop
+  (`boolean stopped = false;` and `stopped = true; break;`).
+- **Newly rejected: a `break` or `continue` that names a label (#201).** Labelled
+  statements were already rejected, but a `break` that named a label, even one that no
+  statement carries, was accepted and compiled as a plain `break` of the innermost
+  loop. javac rejects such source, so a Gradle build stopped, but tools that compile
+  source text without javac (the testkit's `compileMethod`, the playground) silently
+  gave it another meaning: `break outer;` in a nested loop left only the inner loop.
+  A labelled statement, a `break` that names a label and a `continue` that names one
+  now report `JULC0066` (`Labels are not supported on-chain: 'break outer'`); the
+  labelled statement used to report `Unsupported statement: LabeledStmt`, without a
+  code. To leave an outer loop, set a variable declared before the loops where the
+  inner loop breaks, and skip the rest of the outer loop while it is set.
+- **Otherwise no program changes outcome.** Every other program is rejected or
+  accepted as before, and script bytes of accepted programs are unchanged. `continue`
+  and labels inside a loop are reported when the compiler lowers that loop, and labels
+  outside any loop when it lowers the statement, so code JuLC never compiles, such as a
+  nested off-chain helper class, still compiles. The exception is a labelled `break`
+  outside any loop: subset validation rejects it in every class, as it did before
+  without a code.
+- **Tools that match message text** see new text for every form except `return`
+  inside `while`. Match the code instead. See the
+  [troubleshooting guide](/reference/troubleshooting/) for each code's fix.
+
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain

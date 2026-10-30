@@ -8,6 +8,7 @@ import org.julclang.compiler.desugar.LoopDesugarer;
 import org.julclang.compiler.desugar.PatternMatchDesugarer;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
@@ -15,6 +16,9 @@ import org.julclang.core.DefaultFun;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
@@ -272,7 +276,11 @@ public class PirGenerator {
      * so compilation can continue and report multiple errors.
      */
     private PirTerm collectError(String msg, String suggestion, Node node) {
-        var location = extractLocation(node);
+        return collectError(null, msg, suggestion, node);
+    }
+
+    /** {@link #collectError(String, String, Node)} with a diagnostic catalog code. */
+    private PirTerm collectError(String code, String msg, String suggestion, Node node) {
         String fileName = "<source>";
         int line = 0, col = 0;
         if (node != null) {
@@ -286,8 +294,12 @@ public class PirGenerator {
                     .map(s -> s.getFileName())
                     .orElse("<source>");
         }
-        collectedErrors.add(new CompilerDiagnostic(
-                CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion));
+        var diagnostic = new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion, code);
+        // A lambda body can be generated more than once; report a coded diagnostic once.
+        if (code == null || !collectedErrors.contains(diagnostic)) {
+            collectedErrors.add(diagnostic);
+        }
         return new PirTerm.Error(new PirType.DataType());
     }
 
@@ -460,6 +472,9 @@ public class PirGenerator {
             return cont == null ? new PirTerm.Const(Constant.unit()) : cont.get();
         }
         var stmt = stmts.get(index);
+        if (isLabelled(stmt)) {
+            throw labelUnsupported(stmt);
+        }
         if (stmt instanceof ReturnStmt rs) {
             var result = rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
@@ -508,11 +523,19 @@ public class PirGenerator {
         if (stmt instanceof WhileStmt ws) {
             return generateWhileStmt(ws, stmts, index, cont);
         }
-        if (stmt instanceof BreakStmt) {
+        if (stmt instanceof BreakStmt br) {
+            // A labelled break is rejected before lowering (#201); never lower it as a plain one.
+            if (br.getLabel().isPresent()) throw labelUnsupported(br);
             // break outside break-aware context: return current accumulator
             if (forEachAccumulatorVar != null) {
                 var accType = symbolTable.lookup(forEachAccumulatorVar).orElse(new PirType.BoolType());
                 return new PirTerm.Var(forEachAccumulatorVar, accType);
+            }
+            // A loop without an accumulator rejects its break before lowering its body
+            // (rejectBreakWithoutAccumulator); this covers any other break inside a loop.
+            var loop = stmt.findAncestor(Statement.class, s -> s instanceof ForEachStmt || s instanceof WhileStmt);
+            if (loop.isPresent()) {
+                throw breakWithoutAccumulator(loop.get(), stmt);
             }
             throw enrichedError("break statement outside of a loop",
                     "break can only be used inside for-each or while loops.", stmt);
@@ -820,6 +843,9 @@ public class PirGenerator {
     }
 
     PirTerm generateStatement(Statement stmt) {
+        if (isLabelled(stmt)) {
+            throw labelUnsupported(stmt);
+        }
         if (stmt instanceof BlockStmt block) {
             symbolTable.pushScope();
             var result = generateBlock(block);
@@ -993,6 +1019,13 @@ public class PirGenerator {
                             + "In an if/else branch, assign an accumulator or a local declared within that branch; "
                             + "an assignment inside another expression or statement is not supported.",
                     expr);
+        }
+        if (expr instanceof AssignExpr ae && !insideLoop(expr)) {
+            // Only a loop can update a variable declared before it (ADR-062 T20).
+            var info = DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP;
+            var target = ae.getTarget() instanceof NameExpr ne
+                    ? LoopBodyGenerator.sourceName(ne.getNameAsString()) : ae.getTarget().toString();
+            return collectError(info.code(), info.format(target), info.fix(), expr);
         }
         String suggestion;
         if (expr instanceof AssignExpr) {
@@ -1260,6 +1293,12 @@ public class PirGenerator {
             // 4. Static stdlib/library dispatch
             result = tryStaticStdlibCall(mce, scopeExpr, methodName, args);
             if (result != null) return result;
+
+            // JulcMap.of has no on-chain lowering; it used to fail as "Undefined variable: JulcMap"
+            // (ADR-062 T20).
+            if (methodName.equals("of") && isJulcMapType(scopeExpr)) {
+                throw CompilerTypeDiagnostics.julcMapOfOffChainOnly(sourceLocation(mce));
+            }
 
             // 5-8. Instance dispatch (field access, chained access, registry, fallback)
             return resolveInstanceMethodCall(mce, scopeExpr, methodName, args);
@@ -1856,6 +1895,8 @@ public class PirGenerator {
 
     PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        rejectLabels(fes);
+        rejectContinue(fes);
         loopBody.validateConditionalLocalUpdates(fes.getBody(),
                 Set.of(fes.getVariable().getVariable(0).getNameAsString()));
         if (containsReturn(fes.getBody())) {
@@ -2064,6 +2105,7 @@ public class PirGenerator {
                         loopVariable ? "loop variable" : "local variable", LoopBodyGenerator.sourceName(name),
                         sourceLocation(reassignment.get()));
             }
+            if (hasBreak) rejectBreakWithoutAccumulator(fes, fes.getBody());
             symbolTable.pushScope();
             symbolTable.define(itemName, elemType);
 
@@ -2110,6 +2152,170 @@ public class PirGenerator {
 
     private boolean containsReturn(Statement stmt) {
         return loopBody.containsReturn(stmt);
+    }
+
+    private static final String JULC_MAP_FQCN = "org.julclang.core.types.JulcMap";
+
+    /**
+     * True when {@code scope} names {@code org.julclang.core.types.JulcMap}: written fully qualified,
+     * or as {@code JulcMap} with no local, type of the compilation unit or explicit import of
+     * another {@code JulcMap} by that name. Like {@code JulcMap.empty()}, an unimported
+     * {@code JulcMap} is the stdlib map. A library {@code JulcMap.of} resolves before this check
+     * (JULC0062).
+     */
+    private boolean isJulcMapType(Expression scope) {
+        if (scope.toString().equals(JULC_MAP_FQCN)) return true;
+        if (!(scope instanceof NameExpr ne) || !ne.getNameAsString().equals("JulcMap")
+                || symbolTable.lookup("JulcMap").isPresent()) {
+            return false;
+        }
+        var cu = scope.findCompilationUnit();
+        if (cu.isEmpty()) return false;
+        boolean declared = cu.get().findAll(TypeDeclaration.class).stream()
+                .anyMatch(t -> t.getNameAsString().equals("JulcMap"));
+        boolean importsOther = cu.get().getImports().stream().anyMatch(i -> !i.isStatic() && !i.isAsterisk()
+                && i.getName().getIdentifier().equals("JulcMap") && !i.getNameAsString().equals(JULC_MAP_FQCN));
+        return !declared && !importsOther;
+    }
+
+    /** True when the node is inside a for-each or while statement (ADR-062 T20). */
+    private static boolean insideLoop(Node node) {
+        return node.findAncestor(Statement.class, s -> s instanceof ForEachStmt || s instanceof WhileStmt).isPresent();
+    }
+
+    /**
+     * The first exit of the given kind that {@link #containsReturn} or {@link #containsBreak}
+     * finds: the statement itself, or one in its blocks or if/else branches, not in a nested loop
+     * (JULC0003 and JULC0063 point at it).
+     */
+    private static Optional<Statement> firstDirectExit(Statement stmt, Class<? extends Statement> exit) {
+        if (exit.isInstance(stmt)) return Optional.of(stmt);
+        if (stmt instanceof BlockStmt bs) {
+            for (var inner : bs.getStatements()) {
+                var found = firstDirectExit(inner, exit);
+                if (found.isPresent()) return found;
+            }
+            return Optional.empty();
+        }
+        if (stmt instanceof IfStmt is) {
+            var found = firstDirectExit(is.getThenStmt(), exit);
+            if (found.isPresent()) return found;
+            return is.getElseStmt().flatMap(e -> firstDirectExit(e, exit));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * JULC0060: a loop the compiler lowers contains {@code continue}. Checked when the loop is
+     * lowered, so code the compiler never reaches is unaffected (ADR-062 T20).
+     */
+    private static void rejectContinue(Statement loop) {
+        var found = loop.findFirst(ContinueStmt.class);
+        if (found.isPresent()) {
+            throw CompilerTypeDiagnostics.continueUnsupported(sourceLocation(found.get()));
+        }
+    }
+
+    /**
+     * True for a labelled statement and for a {@code break} or {@code continue} that names a label.
+     * Labels are outside the subset; a {@code break} naming one used to compile as a plain
+     * {@code break} of the innermost loop (#201).
+     */
+    private static boolean isLabelled(Node node) {
+        return node instanceof LabeledStmt
+                || node instanceof BreakStmt bs && bs.getLabel().isPresent()
+                || node instanceof ContinueStmt cs && cs.getLabel().isPresent();
+    }
+
+    /** JULC0066 for a node {@link #isLabelled} accepts, naming the construct as written. */
+    static CompilerException labelUnsupported(Node node) {
+        String construct;
+        if (node instanceof LabeledStmt ls) {
+            construct = ls.getLabel().asString() + ":";
+        } else if (node instanceof BreakStmt bs) {
+            construct = "break " + bs.getLabel().orElseThrow().asString();
+        } else {
+            construct = "continue " + ((ContinueStmt) node).getLabel().orElseThrow().asString();
+        }
+        return CompilerTypeDiagnostics.labelUnsupported(construct, sourceLocation(node));
+    }
+
+    /**
+     * JULC0066: a loop the compiler lowers contains a label. Checked before the loop's other
+     * checks and its lowering, which would treat {@code break outer} as a plain {@code break}, so
+     * the label is reported wherever it is in the loop: in a nested loop, an if/else or switch
+     * arm, or a lambda (#201).
+     */
+    private static void rejectLabels(Statement loop) {
+        var found = loop.findFirst(Node.class, PirGenerator::isLabelled);
+        if (found.isPresent()) {
+            throw labelUnsupported(found.get());
+        }
+    }
+
+    /**
+     * A loop with no accumulator compiles its body as plain statements, which cannot stop the
+     * loop, so its {@code break} is rejected before the body is lowered. Nested in a loop that has
+     * an accumulator, the break used to be lowered as a no-op (ADR-062 T26, #273).
+     */
+    private static void rejectBreakWithoutAccumulator(Statement loop, Statement body) {
+        var found = firstDirectExit(body, BreakStmt.class);
+        if (found.isPresent()) {
+            throw breakWithoutAccumulator(loop, found.get());
+        }
+    }
+
+    /**
+     * The diagnostic for {@code breakStmt} in {@code loop}, which has no accumulator. JULC0063 when
+     * the body updates no variable declared before the loop; otherwise JULC0065 at the first such
+     * update, which is in a position the accumulator analysis does not see (ADR-062 T20).
+     */
+    private static CompilerException breakWithoutAccumulator(Statement loop, Node breakStmt) {
+        var declared = new HashSet<String>();
+        Statement body;
+        Expression header;
+        String headerPosition;
+        if (loop instanceof ForEachStmt fes) {
+            fes.getVariable().getVariables().forEach(v -> declared.add(v.getNameAsString()));
+            body = fes.getBody();
+            header = fes.getIterable();
+            headerPosition = "in the loop iterable";
+        } else {
+            var ws = (WhileStmt) loop;
+            body = ws.getBody();
+            header = ws.getCondition();
+            headerPosition = "in the loop condition";
+        }
+        body.findAll(VariableDeclarator.class).forEach(v -> declared.add(v.getNameAsString()));
+        body.findAll(Parameter.class).forEach(p -> declared.add(p.getNameAsString()));
+        body.findAll(TypePatternExpr.class).forEach(p -> declared.add(p.getNameAsString()));
+        // The header runs before the body, so an update there is reported first.
+        for (var assign : header.findAll(AssignExpr.class)) {
+            if (assign.getTarget() instanceof NameExpr ne) {
+                return CompilerTypeDiagnostics.loopUpdatePositionUnsupported(
+                        LoopBodyGenerator.sourceName(ne.getNameAsString()), headerPosition, sourceLocation(assign));
+            }
+        }
+        for (var assign : body.findAll(AssignExpr.class)) {
+            if (assign.getTarget() instanceof NameExpr ne && !declared.contains(ne.getNameAsString())) {
+                return CompilerTypeDiagnostics.loopUpdatePositionUnsupported(
+                        LoopBodyGenerator.sourceName(ne.getNameAsString()), updatePosition(assign, body),
+                        sourceLocation(assign));
+            }
+        }
+        return CompilerTypeDiagnostics.breakInLoopWithoutAccumulator(sourceLocation(breakStmt));
+    }
+
+    /** Where an update the accumulator analysis does not see sits in the loop body (JULC0065). */
+    private static String updatePosition(AssignExpr assign, Statement body) {
+        for (Node n = assign.getParentNode().orElse(null); n != null && n != body; n = n.getParentNode().orElse(null)) {
+            if (n instanceof LambdaExpr) return "inside a lambda";
+            if (n instanceof SwitchStmt) return "inside a switch statement";
+            if (n instanceof SwitchExpr) return "inside a switch expression";
+            if (n instanceof ForEachStmt || n instanceof WhileStmt) return "inside a nested loop";
+        }
+        if (!(assign.getParentNode().orElse(null) instanceof ExpressionStmt)) return "inside an expression";
+        return "in this position";
     }
 
     private boolean containsYield(Statement stmt) {
@@ -2180,14 +2386,12 @@ public class PirGenerator {
 
     PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        rejectLabels(ws);
+        rejectContinue(ws);
         loopBody.validateConditionalLocalUpdates(ws.getBody(), Set.of());
         if (containsReturn(ws.getBody())) {
-            throw enrichedError(
-                    "'return' is not supported inside while loop body",
-                    "Use 'break' to exit the loop early, then return after the loop. "
-                            + "Or use the accumulator pattern: result = value; (continue iterating) "
-                            + "then return result; after the loop.",
-                    ws);
+            Node exit = firstDirectExit(ws.getBody(), ReturnStmt.class).orElseThrow();
+            throw CompilerTypeDiagnostics.returnInsideWhile(sourceLocation(exit));
         }
         if (containsYield(ws.getBody())) {
             throw enrichedError(
@@ -2353,6 +2557,7 @@ public class PirGenerator {
 
         } else {
             // --- No accumulator: existing side-effect-only while loop ---
+            if (hasBreak) rejectBreakWithoutAccumulator(ws, ws.getBody());
             var condition = generateExpression(ws.getCondition());
             var bodyTerm = generateStatement(ws.getBody());
 

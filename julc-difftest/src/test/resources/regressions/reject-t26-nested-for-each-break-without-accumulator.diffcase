@@ -1,0 +1,28 @@
+format: 2
+name: nested for-each with break and no accumulator (T26, fixed)
+class: Probe
+method: m
+arg: 820102
+expect: REJECT JULC0063
+note: Java returns 3: the inner break stops the inner loop before Builtins.error(). The inner for-each updates no
+note: variable declared before it. Nested in a loop that updates s, it used to be accepted with its break lowered as a
+note: no-op, so UPLC reached Builtins.error() and failed (ADR-062 T26, #273). It is now rejected with JULC0063, as the
+note: same loop is on its own.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    public static BigInteger m(JulcList<BigInteger> xs) {
+        BigInteger s = BigInteger.ZERO;
+        for (var x : xs) {
+            s = s.add(x);
+            for (var y : xs) {
+                if (y.compareTo(BigInteger.ONE) == 0) { break; }
+                if (y.compareTo(BigInteger.TWO) == 0) { Builtins.error(); }
+            }
+        }
+        return s;
+    }
+}
