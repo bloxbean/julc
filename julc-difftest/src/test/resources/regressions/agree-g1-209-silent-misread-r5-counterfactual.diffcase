@@ -1,0 +1,56 @@
+format: 3
+name: the #209 reproducer 209-silent-misread with its trigger removed agrees (counterfactual)
+class: Probe
+method: m
+profile: G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
+arg: 00
+arg: 01
+arg: 9f04250503ff
+arg: d8799f040524ff
+arg: d8799f052105ff
+expect: AGREE
+note: ADR-066 D10.1 cause check for #209: only the trigger changes (the shadowing local is renamed apart); the JVM
+note: observation is unchanged and UPLC agrees.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    record R1(BigInteger w, BigInteger x, BigInteger v) {}
+    record R0(BigInteger v, BigInteger w, BigInteger x) {}
+
+    static final R0 v = new R0(BigInteger.valueOf(-3), BigInteger.valueOf(-3), BigInteger.valueOf(-5));
+    static final R0 p = new R0(BigInteger.valueOf(5), BigInteger.valueOf(0), BigInteger.valueOf(-1).multiply(BigInteger.valueOf(2)));
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    static boolean p(BigInteger p, R1 f) {
+        return !(f.equals(f));
+    }
+
+    static boolean v(R0 w, BigInteger p) {
+        return v.equals(new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5)));
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, R0 v, R0 v1) {
+        R0 x = (!(v1.equals(new R0(p.w(), b, v1.x()))) ? (v1.equals(p) ? v : v) : new R0(a, b, b));
+        BigInteger w = x.x();
+        for (var x1 : xs) {
+            if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
+                R1 p1 = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+                x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+            }
+            w = p.v();
+            x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+            x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+        }
+        return new R0(w, w, w);
+    }
+}

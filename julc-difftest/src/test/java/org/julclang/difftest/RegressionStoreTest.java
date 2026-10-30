@@ -104,6 +104,72 @@ class RegressionStoreTest {
         assertThrows(HarnessException.class, () -> RegressionStore.read(old));
     }
 
+    /** A record with unequal tags under two parents (#279's shape) and a profile: format 3 (ADR-066 D3, D5). */
+    private static final TagTable TWO_PARENTS = TagTable.of(new TagTable.Entry("Probe$R", "Probe$T", 1),
+            new TagTable.Entry("Probe$Q", "Probe$S", 1), new TagTable.Entry("Probe$R", "Probe$S", 0),
+            new TagTable.Entry("Probe$U", "Probe$T", 0));
+
+    @Test
+    void aCaseWithTagsAndAProfileRoundTripsAsFormat3(@TempDir Path dir) throws IOException {
+        var diffCase = new DiffCase("tagged", SOURCE, "Probe", "m", CASE.args(), TWO_PARENTS, "G1 r1 -GUARDS -RECORD_PATTERNS");
+        Path file = dir.resolve("tagged.diffcase");
+        RegressionStore.write(file, diffCase, RegressionStore.Expectation.AGREE, null, Map.of(), null);
+        String text = Files.readString(file);
+        assertTrue(text.startsWith("format: 3\nname: tagged\nclass: Probe\nmethod: m\n"
+                + "tag: Probe$Q Probe$S 1\ntag: Probe$R Probe$S 0\ntag: Probe$R Probe$T 1\ntag: Probe$U Probe$T 0\n"
+                + "profile: G1 r1 -GUARDS -RECORD_PATTERNS\narg: 02\n"), text);
+        var saved = RegressionStore.read(file);
+        assertEquals(diffCase, saved.diffCase());
+        assertEquals(TWO_PARENTS, saved.diffCase().tags());
+        // Tags are part of the case: the same source and arguments under swapped tags is another case.
+        var swapped = TagTable.of(new TagTable.Entry("Probe$R", "Probe$T", 0), new TagTable.Entry("Probe$Q", "Probe$S", 0),
+                new TagTable.Entry("Probe$R", "Probe$S", 1), new TagTable.Entry("Probe$U", "Probe$T", 1));
+        assertNotEquals(saved.diffCase(), new DiffCase("tagged", SOURCE, "Probe", "m", CASE.args(), swapped,
+                "G1 r1 -GUARDS -RECORD_PATTERNS"));
+    }
+
+    /** A case without tags or a profile, such as every G0 case, is still written as format 2 (ADR-066 D5). */
+    @Test
+    void aCaseWithoutTagsIsWrittenAsFormat2(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("untagged.diffcase");
+        RegressionStore.write(file, CASE, RegressionStore.Expectation.AGREE, null, Map.of(), null);
+        assertEquals("format: 2\nname: identity\nclass: Probe\nmethod: m\narg: 02\nexpect: AGREE\n---\n" + SOURCE,
+                Files.readString(file));
+        assertEquals(CASE, RegressionStore.read(file).diffCase());
+        var profiled = new DiffCase("profiled", SOURCE, "Probe", "m", CASE.args(), TagTable.EMPTY, "G1 r1");
+        RegressionStore.write(file, profiled, RegressionStore.Expectation.AGREE, null, Map.of(), null);
+        assertTrue(Files.readString(file).startsWith("format: 3\n"));
+        assertEquals(profiled, RegressionStore.read(file).diffCase());
+    }
+
+    @Test
+    void invalidTagLinesAreRejected(@TempDir Path dir) throws IOException {
+        // Tags and profiles need format 3.
+        assertRejected(dir, "tag: Probe$A Probe$S 0\nexpect: AGREE\n");
+        assertRejected(dir, "profile: G1 r1\nexpect: AGREE\n");
+        // Malformed, duplicated or gapped tags, and two profiles.
+        assertRejected3(dir, "tag: Probe$A Probe$S\nexpect: AGREE\n");
+        assertRejected3(dir, "tag: Probe$A Probe$S zero\nexpect: AGREE\n");
+        assertRejected3(dir, "tag: Probe$A Probe$S 0\ntag: Probe$A Probe$S 0\nexpect: AGREE\n");
+        assertRejected3(dir, "tag: Probe$A Probe$S 0\ntag: Probe$B Probe$S 0\nexpect: AGREE\n");
+        assertRejected3(dir, "tag: Probe$A Probe$S 0\ntag: Probe$B Probe$S 2\nexpect: AGREE\n");
+        assertRejected3(dir, "profile: G1 r1\nprofile: G1 r1\nexpect: AGREE\n");
+        // Format 3 reads its lines in any order; format 4 does not exist.
+        Path file = Files.createTempFile(dir, "case", ".diffcase");
+        Files.writeString(file, "format: 3\nname: x\nclass: Probe\nmethod: m\narg: 02\ntag: Probe$B Probe$S 1\n"
+                + "expect: AGREE\ntag: Probe$A Probe$S 0\n---\n" + SOURCE);
+        assertEquals(TagTable.of(new TagTable.Entry("Probe$A", "Probe$S", 0), new TagTable.Entry("Probe$B", "Probe$S", 1)),
+                RegressionStore.read(file).diffCase().tags());
+        Files.writeString(file, "format: 4\nname: x\nclass: Probe\nmethod: m\narg: 02\nexpect: AGREE\n---\n" + SOURCE);
+        assertThrows(HarnessException.class, () -> RegressionStore.read(file));
+    }
+
+    private static void assertRejected3(Path dir, String lines) throws IOException {
+        Path file = Files.createTempFile(dir, "case", ".diffcase");
+        Files.writeString(file, "format: 3\nname: x\nclass: Probe\nmethod: m\narg: 02\n" + lines + "---\n" + SOURCE);
+        assertThrows(HarnessException.class, () -> RegressionStore.read(file), lines);
+    }
+
     private static void assertRejected(Path dir, String lines) throws IOException {
         Path file = write(dir, lines);
         assertThrows(HarnessException.class, () -> RegressionStore.read(file), lines);

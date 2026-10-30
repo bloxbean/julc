@@ -31,21 +31,43 @@ tasks.withType(Test).configureEach {
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
-        excludeTags 'nightly'
+        excludeTags 'nightly', 'rediscovery'
     }
     // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
     def cases = providers.gradleProperty('difftest.cases')
     if (cases.isPresent()) systemProperty 'difftest.cases', file(cases.get()).absolutePath
 }
 
-// The scheduled campaign (ADR-063 D12): fresh seeds and more tries than a pull-request run.
+// The scheduled campaign (ADR-063 D12): fresh seeds and more tries than a pull-request run. Both engines, so
+// that JUnit tests tagged nightly, such as full self-checks, run here too (ADR-066 D5).
 tasks.register('nightlyDiffTest', Test) {
     group = 'verification'
     description = 'Differential JVM/UPLC campaign with fresh seeds'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
-        includeEngines 'jqwik'
+        includeEngines 'junit-jupiter', 'jqwik'
         includeTags 'nightly'
     }
+}
+
+// A rediscovery campaign (ADR-066 D10.1): the G1 pull-request bounds under a named profile, such as
+//   ./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_209
+// It is expected to fail with the gated defect's mismatch, written to build/difftest/last-failure.diffcase.
+tasks.register('rediscoveryDiffTest', Test) {
+    group = 'verification'
+    description = 'G1 campaign under a named generation profile'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'jqwik'
+        includeTags 'rediscovery'
+    }
+    def profile = providers.gradleProperty('difftest.profile')
+    if (profile.isPresent()) systemProperty 'difftest.profile', profile.get()
+    // -Pdifftest.form=runtime passes over cases whose only disagreement is a rejection; =value (=failure) over all but
+    // value-against-value (value-against-failure) disagreements; =rejection over cases that no configuration rejects.
+    def form = providers.gradleProperty('difftest.form')
+    if (form.isPresent()) systemProperty 'difftest.form', form.get()
+    outputs.upToDateWhen { false }
 }

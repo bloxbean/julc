@@ -11,9 +11,11 @@ The harness runs the same Java source in two ways:
 It then compares the two results. A difference in value, outcome kind or trace sequence counts as a mismatch.
 
 ```sh
-./gradlew :julc-difftest:test                          # saved cases, exhaustive G0, fixed-seed G0 campaign
-./gradlew :julc-difftest:nightlyDiffTest               # 3000 G0 programs with a fresh seed
+./gradlew :julc-difftest:test                          # saved cases, exhaustive G0, fixed-seed G0 and G1 campaigns
+./gradlew :julc-difftest:nightlyDiffTest               # 3000 G0 and 3000 G1 programs with fresh seeds
 ./gradlew :julc-difftest:test -Pdifftest.cases=<dir>   # replay another directory of .diffcase files
+./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_209   # G1 under a historical profile
+./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_209 -Pdifftest.form=value   # only value mismatches (or =failure, =runtime)
 ```
 
 ## Generated programs
@@ -23,6 +25,13 @@ It then compares the two results. A difference in value, outcome kind or trace s
 - nesting up to two loops deep;
 - accumulator updates, including inside `if`/`else`;
 - `break`, loop-body locals, ternaries, `&&` and `||`.
+
+`gen/G1` ([ADR-066](../adr/066-generator-g1-records-sealed-switch.md)) adds records, sealed interfaces, static
+fields, helpers, method-level `if` and `instanceof`, `switch` expressions with type patterns, `default`, `yield`
+blocks and loops in arms, traces and failures, with record and sealed arguments and results. Constructs whose
+defect is open are gated by a generation profile, printed in every record; the historical profiles
+`REDISCOVER_209`, `REDISCOVER_280`, `REDISCOVER_146`, `REDISCOVER_162`, `REDISCOVER_291` and `REDISCOVER_291_LOOPS`
+turn one gate on each and steer generation to its construct.
 
 jqwik generates and shrinks the choice list, so a failure is reported as a small program. The last failing
 case is also written to `build/difftest/last-failure.diffcase`.
@@ -44,5 +53,11 @@ every level and checks the expectation in its header:
 
 Arguments are given as `arg:` lines, one per parameter, each holding the CBOR of the Data in hex. The JVM
 side converts each argument to the parameter's declared type using `ValueMapping`.
+
+A case whose program has sealed interfaces carries their constructor tags as `tag: <record> <parent> <tag>`
+lines, such as `tag: Probe$A Probe$S 0`, and a generated case may carry a `profile:` line; both need
+`format: 3` ([ADR-066](../adr/066-generator-g1-records-sealed-switch.md) D3, D5). Records map to
+`Constr tag [components]`, with tag 0 for a record without a sealed parent; the tags come only from these lines.
+A case without tags or a profile is written as `format: 2`.
 
 When the owning step fixes a divergence, change its expectation. Never delete a case.

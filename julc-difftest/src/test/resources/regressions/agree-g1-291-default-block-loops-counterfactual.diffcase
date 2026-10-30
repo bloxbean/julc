@@ -1,0 +1,75 @@
+format: 3
+name: the #291 reproducer 291-default-block-loops with the switch assigned to a local first agrees (counterfactual)
+class: Probe
+method: m
+tag: Probe$A0 Probe$S0 1
+tag: Probe$B0 Probe$S0 0
+profile: G1 r6 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE steer=291_LOOPS
+arg: 21
+arg: 23
+arg: 80
+arg: d8799fd87980ff
+expect: AGREE
+note: ADR-066 D10.1 cause check for #291's second symptom: only the trigger changes (the switch is assigned to a local,
+note: which is then passed to equals); the JVM observation is unchanged and UPLC agrees.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    sealed interface S0 permits B0, A0 {}
+    record B0(boolean v) implements S0 {}
+    record A0(BigInteger v) implements S0 {}
+    record R0(BigInteger v, BigInteger w, BigInteger x) {}
+
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    static boolean w(BigInteger v, BigInteger w) {
+        return BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, S0 v) {
+        S0 s = switch (v) {
+            case A0 v1 -> {
+                A0 v2 = v1;
+                long i0 = 0;
+                while (i0 < 0) {
+                    v2 = new A0(BigInteger.valueOf(-5));
+                    i0 = i0 + 1;
+                }
+                yield new B0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+            }
+            default -> {
+                BigInteger v3 = BigInteger.valueOf(-5);
+                long i1 = 0;
+                while (i1 < 0) {
+                    v3 = BigInteger.valueOf(-5);
+                    i1 = i1 + 1;
+                }
+                BigInteger v4 = BigInteger.valueOf(-5);
+                long i2 = 0;
+                while (i2 < 0) {
+                    v3 = BigInteger.valueOf(-5);
+                    i2 = i2 + 1;
+                }
+                yield new B0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+            }
+        };
+        B0 x = new B0(v.equals(s));
+        R0 v5 = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+        long i3 = 0;
+        while (i3 < 0) {
+            x = new B0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+            i3 = i3 + 1;
+        }
+        return new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+    }
+}

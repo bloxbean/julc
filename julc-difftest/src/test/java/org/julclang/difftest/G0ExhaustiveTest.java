@@ -3,6 +3,7 @@ package org.julclang.difftest;
 import org.julclang.core.PlutusData;
 import org.julclang.difftest.gen.G0;
 import org.julclang.difftest.gen.G0Enumeration;
+import org.julclang.difftest.gen.KnownDivergences;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -140,8 +141,8 @@ class G0ExhaustiveTest {
                     var result = entry.getValue();
                     verdicts.put(entry.getKey(), result.verdict().kind());
                     var config = entry.getKey();
-                    if (result.verdict().kind() != Verdict.Kind.AGREE && G0PropertyTest.KNOWN.explain(diffCase, config,
-                            program.features(), result, factor -> runner.rerun(diffCase, config, factor)).isEmpty()) {
+                    if (result.verdict().kind() != Verdict.Kind.AGREE && CampaignVerifier.KNOWN.explain(diffCase, config,
+                            KnownDivergences.names(program.features()), result, factor -> runner.rerun(diffCase, config, factor)).isEmpty()) {
                         unexplained = true;
                     }
                 }
@@ -155,7 +156,7 @@ class G0ExhaustiveTest {
                             RegressionStore.Expectation.AGREE, null, provenance, report);
                     failures.add(report.describe() + "\n" + diffCase.source());
                 } else {
-                    coverage.record(new HashSet<>(program.features().stream().map(Enum::name).toList()), verdicts);
+                    coverage.record(KnownDivergences.names(program.features()), verdicts);
                 }
             }
         }

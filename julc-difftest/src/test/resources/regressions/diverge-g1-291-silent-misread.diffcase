@@ -1,0 +1,73 @@
+format: 3
+name: a default arm block local named like a field makes a later field read return another component (#291)
+class: Probe
+method: m
+tag: Probe$A0 Probe$S0 1
+tag: Probe$B0 Probe$S0 0
+profile: G1 r6 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE steer=291
+arg: 04
+arg: 04
+arg: 9f24202101ff
+arg: d8799f0521ff
+expect: DIVERGE #291 Value/Value
+jvm: Value 01 []
+uplc: Value 21 []
+note: Rediscovered by the G1 r6 campaign under REDISCOVER_291 with -Pdifftest.form=value (ADR-066 D10.1), the shrunk
+note: reproducer as found. R0(v, w) and R1(w, v) have the same components in other orders; the local R1 p declared in
+note: the default arm block keeps its type after the switch, so p.v() on the field R0 p = R0(1, -2) reads index 1:
+note: UPLC returns -2 where Java returns 1, silently, at every level. Provisional until #291 is fixed.
+found.by: G1PropertyTest rediscovery
+found.generator: G1 r6
+found.plan: 0,0,0,0,0,0,0,3,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,778,59,16,164,837,479,8,27,0,377,18,96,23,7,57,333,6,222
+found.inputs: 23,153,509,14,31,4,215,739,43,822,9,119,559
+found.seed: 20261030
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-45-g8cdd831fb93e-dirty
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    record R1(BigInteger w, BigInteger v) {}
+    sealed interface S0 permits B0, A0 {}
+    record B0() implements S0 {}
+    record A0() implements S0 {}
+    record R0(BigInteger v, BigInteger w) {}
+
+    static final R0 v = new R0(BigInteger.valueOf(1), BigInteger.valueOf(-2));
+    static final R0 p = v;
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, R0 v) {
+        S0 v1 = (b.compareTo(a) < 0 ? new B0() : new B0());
+        BigInteger v2 = switch (v1) {
+            case A0 v3 -> {
+                A0 v4 = v3;
+                long i0 = 0;
+                while (i0 < 0) {
+                    v4 = new A0();
+                    i0 = i0 + 1;
+                }
+                yield BigInteger.valueOf(-5);
+            }
+            default -> {
+                R1 p = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+                BigInteger v5 = BigInteger.valueOf(-5);
+                long i1 = 0;
+                while (i1 < 0) {
+                    v5 = BigInteger.valueOf(-5);
+                    i1 = i1 + 1;
+                }
+                yield BigInteger.valueOf(-5);
+            }
+        };
+        return p.v();
+    }
+}
