@@ -1,6 +1,6 @@
 # ADR-067: Switch guards, record patterns, cross-type record `equals`, records with two sealed parents, and record members
 
-**Status:** Accepted (2026-10-30): approved at `f965d061` by the review comment and, after the r6 editorial below, by Codex's round-5 findings being text-only (F46). The implementation follows in the same PR.
+**Status:** Accepted (2026-10-30): approved by the review comment at `f965d061` and by Codex at `189bb4fa`. The implementation follows in the same PR.
 **Date:** 2026-10-30
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. Every defect below is a silent miscompile: a validator built with
@@ -646,7 +646,7 @@ Codes are re-checked against every origin branch before the implementation commi
 
 ADR-062 gets one row per issue, provisionally **T26** (#275), **T27** (#276), **T28** (#277, with the erased-nominal
 cases of E8/E11/E12 noted), **T29** (#279), **T30** (#282: record members ignored, Evidence R6, H5, N1–N10), and **T31** (#283, colon-form
-fall-through; r3), and **T32** (#284, default-package resolution; r4), owned by S5. T24 and T25 are taken by #268 and #270. Final IDs are assigned when the rows merge.
+fall-through; r3), and **T32** (#284, default-package resolution, and user records reaching ledger handlers by simple name, F45; r4, r6), owned by S5. T24 and T25 are taken by #268 and #270. Final IDs are assigned when the rows merge.
 Documentation: `getting-started.md` §8.2/§8.3 (guards, record patterns, the `instanceof` limit), the advanced
 guide's "Switch Best Practices", troubleshooting entries for each code, both AI starter packs, and release notes.
 
@@ -922,7 +922,7 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    that D5 classifies (now a rejection); D4's new rejections (colon fall-through, grouped labels, duplicate `default`,
    pattern-variable conflicts, parameterized sealed selectors, javac-rejected guards); D6; D9 (record bodies, ledger
    redeclaration); #284's resolution change; and named ledger handlers keyed on ledger identity with the
-   implicit-accessor correction (F45). The report classifies each changed program under one of these. Those programs must be byte-identical; every program in a category
+   implicit-accessor correction (F45). The report classifies each changed program under one of these. Programs satisfying (i) and (ii) must be byte-identical; every program in a category
    must appear in the outcome matrix or the report. Programs accepted at the base and rejected at the head are listed
    with their code and must all fall in an approved category. Counts per category go in the PR.
 6. **Mutation checks.** Each of these deliberate faults must make at least one test fail: ignore guards; keep only
@@ -1332,3 +1332,5 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
   Compatibility and to Verification 5's byte-stability exclusions, with the report classifying each changed
   program; the review comment's F27 (P3) → F45 and F45b marked "nested in `Probe`", new row and evidence F45c for the
   top-level shape (#284), catalogue ID T32 instead of T30 for the F45 rows. Status set to Accepted.
+- **r6, editorial 2:** Codex's F47–F49 (P3): Verification 5's byte-identical sentence names (i) and (ii); T32's
+  description includes the F45 handler-identity cause; the status line credits Codex's approval at `189bb4fa`.
