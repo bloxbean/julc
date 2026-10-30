@@ -268,6 +268,13 @@ script-size floor instead; it tested evidence of #146's growth, not the cause of
 genuine T13 runs in smaller scripts. Rounds r4 and r5 used a single 100-times rerun, which failed the
 nested-loops reproducer.
 
+*r7, after #254.* The loop-break fix resolves T21 and T23, so their saved cases expect `AGREE`, and
+`KnownDivergences.RULES` holds T13's rule only. The registry tests still run the ladder with T21's rule as it
+was (`KnownDivergencesTest`, through `KnownDivergences.of`), and the T23 pins as saved before the fix
+(`src/test/resources/known-divergences`). The test that ran the saved T21 hang on the VM is dropped with the
+rule, since that program now agrees (`agree-t21-while-break-first`), so the still-exhausted path has synthetic
+tests only; its VM evidence is historical (rounds r5 to r7 of #253).
+
 ### D7. Exhaustive small programs
 
 Alongside random generation, enumerate every program of a bounded sub-grammar of G0 (`gen/G0Enumeration`,
@@ -916,3 +923,6 @@ Measured on 2026-10-30 (UTC), after round r7 of #253, with T21's 10-times rung:
     of the merged ladder up to its own top rung, so a program with both shapes that finishes within 10 times
     is still T13 (D6). Review notes: the bound at T13's top rung, and D6 says that the 10-times rung is chosen
     for cost, not measured.
+- **r7** (after GHSA-p9v9-f3g2-cqv9): T21 and T23 are resolved by #254 and #255. The T21 rule is removed from
+  `KnownDivergences.RULES`, which keeps T13's; the ladder tests keep T21's rule, with its 10-times rung, as a
+  test fixture (D6).

@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -21,10 +22,25 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * The allowed-divergence registry (ADR-063 D6): a conclusive mismatch passes only as an exact pin, and
  * a rule explains only an inconclusive UPLC side, by its exact reason.
+ * <p>
+ * T21 and T23 are fixed (#254, #255), so the registry the campaigns use has T13's rule only. These tests run
+ * it on the divergences as they were: the T23 cases as saved before the fix, and T21's rule with its 10-times
+ * rung beside T13's.
  */
 class KnownDivergencesTest {
 
-    private static final KnownDivergences KNOWN = CampaignVerifier.KNOWN;
+    private static final Path HISTORICAL_PINS = Path.of("src/test/resources/known-divergences");
+
+    /** T21's only rung, as it was before #254 (round r7 of #253, F16). */
+    private static final int T21_RUNG = 10;
+
+    private static final KnownDivergences.Rule T21 = new KnownDivergences.Rule("T21",
+            "a while loop with break and an if that updates a variable never terminates on UPLC",
+            Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name()), Observation.Value.class, "budget exhausted",
+            KnownDivergences.Confirmation.STILL_INCONCLUSIVE, List.of(T21_RUNG));
+
+    private static final KnownDivergences KNOWN = KnownDivergences.of(
+            Stream.concat(Stream.of(T21), KnownDivergences.RULES.stream()).toList(), RegressionStore.load(HISTORICAL_PINS));
 
     /** The T23 shape of the exhaustive corpus. */
     private static final G0Enumeration.Program T23 = new G0Enumeration.Program(G0Enumeration.Shape.FOR_EACH,
@@ -46,6 +62,13 @@ class KnownDivergencesTest {
 
     private static Optional<String> explain(DiffCase diffCase, Set<String> features, Observation jvm, Observation uplc) {
         return KNOWN.explain(diffCase, CONFIG, features, new DiffRunner.Result(jvm, uplc, Verdict.compare(jvm, uplc)));
+    }
+
+    @Test
+    void theCampaignRegistryHasNoT21OrT23EntryOnceTheyAreFixed() {
+        assertEquals(List.of("T13"), KnownDivergences.RULES.stream().map(KnownDivergences.Rule::id).toList());
+        assertEquals(List.of(), G0PropertyTest.KNOWN.pins().stream()
+                .filter(p -> Set.of("T21", "T23").contains(p.expectation().detail())).toList());
     }
 
     @Test
@@ -131,7 +154,7 @@ class KnownDivergencesTest {
 
     /**
      * ADR-063 D6 (r6, round r5 of #253): T21 explains an exhausted budget only if its rerun with
-     * {@link KnownDivergences#T21_RUNG} times the budget is still exhausted, the opposite of T13.
+     * {@link #T21_RUNG} times the budget is still exhausted, the opposite of T13.
      */
     @Test
     void theT21RuleExplainsOnlyARunThatStillDoesNotFinish() {
@@ -316,31 +339,6 @@ class KnownDivergencesTest {
     }
 
     /**
-     * A T21 non-termination is still exhausted at ten, a hundred and a thousand times the budget, so T13 does not
-     * explain it, even when the program also carries T13's marker; T21 alone does, from the same reruns.
-     */
-    @Test
-    void aT21ExhaustionIsNotExplainedByT13() {
-        var saved = RegressionStore.read(REGRESSIONS.resolve("diverge-t21-while-break-first-hangs.diffcase"));
-        var diffCase = saved.diffCase();
-        var config = new DiffConfig(OptimizationLevel.PV11_SAFE, "Java");
-        var result = RUNNER.run(diffCase).results().get(config);
-        assertEquals(BUDGET, result.uplc());
-        var reruns = new ArrayList<Observation>();
-        KnownDivergences.Rerun rerun = factor -> {
-            var execution = RUNNER.rerun(diffCase, config, factor);
-            reruns.add(execution.observation());
-            return execution;
-        };
-        assertEquals(Optional.empty(), KNOWN.explain(diffCase, config, DEEP, result, rerun), "T13's shape only");
-        assertEquals(List.of(BUDGET, BUDGET), reruns, "both of T13's rungs");
-        assertEquals(Optional.of("T21"), KNOWN.explain(diffCase, config,
-                Set.of(G0.Feature.DEEP_COMPARISON.name(), G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name()), result, rerun), "both shapes");
-        assertEquals(List.of(BUDGET, BUDGET, BUDGET, BUDGET, BUDGET), reruns,
-                "one ladder for both rules: T21's rung, then T13's two");
-    }
-
-    /**
      * Review round r4 of #253, F12: a program with both markers whose T21 {@code if} is never taken, so it does
      * not hang, and whose result includes the saved T13 expression. It exhausts the budget only by cost: the rerun
      * returns the JVM's value, so it is T13 alone at every level. Since round r7 that rerun is T21's 10-times rung,
@@ -376,7 +374,7 @@ class KnownDivergencesTest {
             assertEquals(BUDGET, entry.getValue().uplc(), config.toString());
             var reruns = new ArrayList<Observation>();
             KnownDivergences.Rerun rerun = factor -> {
-                assertEquals(KnownDivergences.T21_RUNG, factor);
+                assertEquals(T21_RUNG, factor);
                 var execution = RUNNER.rerun(diffCase, config, factor);
                 reruns.add(execution.observation());
                 return execution;

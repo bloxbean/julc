@@ -43,9 +43,9 @@ public final class G0 {
         DEEP_COMPARISON;
 
         /**
-         * Shapes of known divergences; they have no coverage quota. The registry's rules match on
-         * {@code WHILE_BREAK_WITH_IF_UPDATE} (T21) and {@code DEEP_COMPARISON} (T13); T23 is explained only
-         * by exact pins, so {@code FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE} is statistics only.
+         * Shapes of known divergences; they have no coverage quota. The registry's rule matches on
+         * {@code DEEP_COMPARISON} (T13). T21 and T23 are fixed (#254, #255), so their shapes are reported as
+         * statistics only, and a run shows how often the fixed shapes were exercised.
          */
         public static final Set<Feature> REGISTRY_MARKERS =
                 EnumSet.of(WHILE_BREAK_WITH_IF_UPDATE, FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE, DEEP_COMPARISON);

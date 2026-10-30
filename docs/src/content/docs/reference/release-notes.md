@@ -145,6 +145,41 @@ location of the construct and a remedy:
   inside `while`. Match the code instead. See the
   [troubleshooting guide](/reference/troubleshooting/) for each code's fix.
 
+## Upcoming preview: loops with `break` continue after an `if` (GHSA-p9v9-f3g2-cqv9)
+
+In a loop body that contains `break`, a path that did not break could leave the loop, or
+skip the statements after its `if`. The script then computed something other than the
+Java code its tests run. In a loop that scans for a forbidden item behind an outer check,
+for example
+
+```java
+for (var output : outputs) {
+    if (!isScript(output)) {
+        if (hasTokens(output)) { clean = false; break; }
+    }
+}
+```
+
+the script stopped at the first output that passed the outer check without being
+forbidden, never examined the rest, and accepted. The same lowering made some `while`
+loops never terminate (#254) and some for-each loops return a wrong value (#255). A path
+that does not break now continues with the statements after the `if`, then with the next
+iteration, as in Java.
+
+- **Recompile and redeploy** validators and libraries with a loop that contains `break`
+  inside a nested `if`, or an `if` with one breaking branch followed by more statements.
+  Their scripts change hash; a new hash means a new script address or policy ID, and
+  funds at the old address stay governed by the old script.
+- `if (c) { ...; break; }` without `else`, the common search loop, keeps its bytes.
+- **A local that shadows a field or `@Param` accumulator**, declared in a loop body or in one of
+  its `if` branches, no longer replaces the accumulator after its declaration, in loops with or
+  without `break`. Java scopes such a local to its block; the script used the local's value as
+  the accumulator's from then on. Only loops with such a local change bytes.
+- **A local declared in an `if` branch of a loop body** no longer changes how a field or `@Param`
+  of the same name is read after that `if` (#209). The script used the local's record type for
+  the field, so it read the wrong component, or failed at run time. Each branch now has its own
+  scope, as the method-level `if` already had.
+
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
 On chain, `keys()` and `values()` returned the entries in reverse order, while off chain

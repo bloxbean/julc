@@ -25,7 +25,8 @@ import java.util.stream.Collectors;
  * <ul>
  * <li>An inconclusive UPLC side is explained by a {@link Rule}: a structural condition on the
  *     program, the JVM kind and the exact inconclusive reason, and a confirmation rerun with a larger budget:
- *     for T13 it must agree with the JVM, for T21 it must still be inconclusive. A rule is weaker than a pin, since
+ *     for T13 it must agree with the JVM, for a non-termination rule (T21, until #254) it must still be
+ *     inconclusive. A rule is weaker than a pin, since
  *     another cause with the same shape and reason passes as it, but an inconclusive case counts
  *     towards no quota (D9).</li>
  * <li>A conclusive UPLC side, a value or a failure, is explained only by a <em>pin</em>: a saved
@@ -63,7 +64,7 @@ public final class KnownDivergences {
         AGREES_WITH_JVM,
         /**
          * The last rerun run still ends with the rule's inconclusive reason: the run does not terminate within
-         * that many times the budget (T21).
+         * that many times the budget (T21, until #254 fixed it).
          */
         STILL_INCONCLUSIVE
     }
@@ -123,11 +124,6 @@ public final class KnownDivergences {
     }
 
     /**
-     * T21's only rung. A T21 run does not terminate, so a small rung confirms it as well as a large one, and a
-     * still-exhausted rerun costs evaluation up to its whole budget (review round r7 of #253, F16).
-     */
-    public static final int T21_RUNG = 10;
-    /**
      * T13's first rung. #146 doubles the script with each nested {@code compareTo} operand, and evaluation can
      * double with it, depending on the branches taken; the saved T13 reproducer needs 1.8 to 3.8 times the memory
      * budget, and most T13 runs in fuzzing fit within this.
@@ -139,25 +135,31 @@ public final class KnownDivergences {
      */
     public static final int T13_SECOND_RUNG = 1000;
 
+    /** T13 only: T21, the last non-terminating rule, was fixed by #254. */
     public static final List<Rule> RULES = List.of(
-            new Rule("T21", "a while loop with break and an if that updates a variable never terminates on UPLC",
-                    Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name()), Observation.Value.class, "budget exhausted",
-                    Confirmation.STILL_INCONCLUSIVE, List.of(T21_RUNG)),
             new Rule("T13", "nested compareTo operands double the script per level (#146) and exhaust the budget",
                     Set.of(G0.Feature.DEEP_COMPARISON.name()), Observation.Value.class, "budget exhausted",
                     Confirmation.AGREES_WITH_JVM, List.of(CONFIRMATION_FACTOR, T13_SECOND_RUNG)));
 
     private static final Pattern CLASS_DECLARATION = Pattern.compile("\\bclass\\s+(\\w+)");
 
+    private final List<Rule> rules;
     private final List<RegressionStore.SavedCase> pins;
 
-    private KnownDivergences(List<RegressionStore.SavedCase> pins) {
+    private KnownDivergences(List<Rule> rules, List<RegressionStore.SavedCase> pins) {
+        this.rules = rules;
         this.pins = pins;
     }
 
-    /** The rules, and the saved cases that pin a conclusive divergence at some optimization level. */
+    /** {@link #RULES}, and the saved cases that pin a conclusive divergence at some optimization level. */
     public static KnownDivergences withPins(List<RegressionStore.SavedCase> saved) {
-        return new KnownDivergences(saved.stream().filter(KnownDivergences::pinsAConclusiveDivergence).toList());
+        return of(RULES, saved);
+    }
+
+    /** These rules, and the saved cases that pin a conclusive divergence at some optimization level. */
+    public static KnownDivergences of(List<Rule> rules, List<RegressionStore.SavedCase> saved) {
+        return new KnownDivergences(List.copyOf(rules),
+                saved.stream().filter(KnownDivergences::pinsAConclusiveDivergence).toList());
     }
 
     private static boolean pinsAConclusiveDivergence(RegressionStore.SavedCase saved) {
@@ -190,10 +192,10 @@ public final class KnownDivergences {
                                     Rerun rerun) {
         var ids = new TreeSet<String>();
         if (result.uplc() instanceof Observation.Inconclusive) {
-            var fitting = RULES.stream().filter(rule -> rule.fits(features, result)).toList();
+            var fitting = rules.stream().filter(rule -> rule.fits(features, result)).toList();
             // One ladder for all the fitting rules: each rung is run once, in ascending order, until one does not
-            // end with the configuration's reason. So a program with both T13's and T21's shapes is decided by
-            // the same reruns, and at most one of the two rules is confirmed.
+            // end with the configuration's reason. So a program that fits a rule of each confirmation, such as
+            // T13 and T21 before #254, is decided by the same reruns, and at most one of them is confirmed.
             var rungs = new ArrayList<Rung>();
             if (rerun != null) {
                 var factors = new TreeSet<Integer>();
