@@ -1,0 +1,20 @@
+format: 2
+name: String.equals with a boolean argument in an if (F75, #292)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T34 Value/Failure
+jvm: Value 02 []
+uplc: Failure []
+note: ADR-067 review F75: Java returns false (2); EqualsString fails on-chain (#292, ADR-062 T34).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(BigInteger a) {
+        if ("a".equals(true)) {
+            return BigInteger.ONE;
+        }
+        return BigInteger.TWO;
+    }
+}

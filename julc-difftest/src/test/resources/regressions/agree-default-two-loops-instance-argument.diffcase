@@ -1,0 +1,33 @@
+format: 2
+name: a default block with two counted loops, as an instance-method argument (#291)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+recorded.jvm: Value 0c []
+recorded.base: Rejected none "Unbound variable: i1"
+note: ADR-067 M1 round 3, #291 second symptom (ADR-066 G1): the default block was compiled in the switch's scope, so the second loop's counter was unbound when the switch is the argument of an instance-method call (rejected, uncoded, at a4a7d834); every arm body now has its own scope.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B, C {}
+    record A() implements S {}
+    record B() implements S {}
+    record C() implements S {}
+
+    public static BigInteger m(BigInteger n) {
+        S w = new C();
+        BigInteger a = BigInteger.ONE;
+        return a.add(switch (w) {
+            case A x -> a;
+            default -> {
+                long i0 = 0;
+                while (i0 < 1) { i0 = i0 + 1; }
+                long i1 = 0;
+                while (i1 < 1) { i1 = i1 + 1; }
+                yield n.add(a).add(a).add(a).add(a).add(a).add(a);
+            }
+        });
+    }
+}

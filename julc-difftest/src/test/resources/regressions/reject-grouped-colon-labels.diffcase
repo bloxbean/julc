@@ -1,0 +1,23 @@
+format: 2
+name: grouped colon-form labels without bindings (F12b)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0075
+note: ADR-067 F12b: legal Java (3); JuLC rejects with a misleading 'not exhaustive'.
+note: ADR-067 M1: grouped labels are rejected with JULC0075 (D4); REJECT none at the base.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface X permits X0, Y0 {}
+    record X0() implements X {}
+    record Y0() implements X {}
+
+    public static BigInteger m(BigInteger a) {
+        X x = a.signum() > 0 ? new X0() : new Y0();
+        return switch (x) {
+            case X0(): case Y0(): yield BigInteger.valueOf(3);
+        };
+    }
+}

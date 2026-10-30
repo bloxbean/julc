@@ -1,0 +1,20 @@
+format: 2
+name: #282 a @NewType declaring a static of (N6)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0055
+note: ADR-067 N6: legal Java (5).
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.NewType;
+
+public class Probe {
+    @NewType record Amt(BigInteger v) {
+        static Amt of(BigInteger v) { return new Amt(v); }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        return Amt.of(a).v();
+    }
+}

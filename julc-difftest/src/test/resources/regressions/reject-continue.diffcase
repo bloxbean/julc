@@ -1,0 +1,21 @@
+format: 2
+name: continue is outside the subset
+class: Probe
+method: m
+arg: 83012103
+expect: REJECT none
+note: Rejected with 'Unsupported statement: ContinueStmt', which has no diagnostic code.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(JulcList<BigInteger> xs) {
+        BigInteger total = BigInteger.ZERO;
+        for (var x : xs) {
+            if (x.signum() < 0) { continue; }
+            total = total.add(x);
+        }
+        return total;
+    }
+}

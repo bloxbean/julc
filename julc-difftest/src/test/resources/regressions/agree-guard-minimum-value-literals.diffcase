@@ -1,0 +1,24 @@
+format: 2
+name: Java's minimum-value literals in a non-constant guard (F82)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: ADR-067 M1 round 4, F82: -2147483648 and -9223372036854775808L are legal only as the direct operand of unary minus and are classified exactly; the bare out-of-range literals are rejected.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    static final int N = -2147483648;
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when N < x.v().signum() && -9223372036854775808L < x.v().signum() && N == 0x80000000 -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

@@ -1,0 +1,20 @@
+format: 2
+name: equals between a sealed value and its variant (E4)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: ADR-067 E4: must stay structural.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return s.equals(new A(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

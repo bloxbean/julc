@@ -1,0 +1,19 @@
+format: 2
+name: equals on a var from a ternary of two record types (F1a)
+class: Probe
+method: m
+arg: 24
+expect: AGREE
+note: ADR-067 F1a: must stay structural.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R1(BigInteger x) {}
+    record R2(BigInteger x) {}
+
+    public static BigInteger m(BigInteger a) {
+        var x = a.signum() > 0 ? new R1(a) : new R2(a);
+        return x.equals(new R2(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

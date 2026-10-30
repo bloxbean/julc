@@ -1,0 +1,32 @@
+format: 2
+name: a guarded switch in a for-each body whose guard reads the loop variable (H7, T27)
+class: Probe
+method: m
+arg: 8301050a
+expect: AGREE
+recorded.jvm: Value 1865 []
+recorded.base: Value 1896 []
+note: ADR-067 H7: Java adds 1 + 50 + 50 = 101; JuLC ignores the guard and adds 150.
+note: ADR-067 M1: guards are lowered with Java's meaning (D1, D2), so the case agrees; it diverged as T27 at the base (recorded.jvm and recorded.base).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(JulcList<BigInteger> xs) {
+        BigInteger acc = BigInteger.ZERO;
+        for (var k : xs) {
+            S s = new A(k);
+            acc = acc.add(switch (s) {
+                case A x when k.compareTo(BigInteger.TWO) > 0 -> BigInteger.valueOf(50);
+                case A x -> x.v();
+                case B y -> BigInteger.ZERO;
+            });
+        }
+        return acc;
+    }
+}

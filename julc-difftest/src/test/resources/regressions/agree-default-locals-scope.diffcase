@@ -1,0 +1,27 @@
+format: 2
+name: default declares a local named like a field a guard reads (F53)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: ADR-067 review F53: M1 compiled default first and leaked its local 'flag' into the guard (JULC0072).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    static boolean flag = true;
+
+    public static BigInteger m(BigInteger a) {
+        S s = a.signum() > 0 ? new B(a) : new A(a);
+        return switch (s) {
+            case A x when flag -> BigInteger.ONE;
+            default -> {
+                BigInteger flag = BigInteger.TEN;
+                yield flag;
+            }
+        };
+    }
+}

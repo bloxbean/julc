@@ -1,0 +1,23 @@
+format: 2
+name: an unnamed pattern variable (R5)
+class: Probe
+method: m
+arg: 22
+expect: REJECT none
+note: ADR-067 R5: not Java 21 (javac 21.0.3 rejects it); the harness's javac 25 accepts it.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A(var _) -> BigInteger.ONE;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

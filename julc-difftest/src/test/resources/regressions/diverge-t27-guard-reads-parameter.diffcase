@@ -1,0 +1,28 @@
+format: 2
+name: a guard that reads a method parameter (G4, T27)
+class: Probe
+method: m
+arg: 03
+arg: 20
+expect: AGREE
+recorded.jvm: Value 20 []
+recorded.base: Value 05 []
+note: ADR-067 G4: the guard reads the parameter b = -1 and is false.
+note: ADR-067 M1: guards are lowered with Java's meaning (D1, D2), so the case agrees; it diverged as T27 at the base (recorded.jvm and recorded.base).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when b.signum() >= 0 -> BigInteger.valueOf(5);
+            case A x -> BigInteger.valueOf(-1);
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

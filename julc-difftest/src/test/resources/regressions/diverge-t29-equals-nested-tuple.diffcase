@@ -1,0 +1,21 @@
+format: 2
+name: equals of Tuple2 of different record types (F16b, T29)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T29 Value/Value
+jvm: Value 00 []
+uplc: Value 01 []
+note: ADR-067 F16b: retained divergence.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.Tuple2;
+
+public class Probe {
+    record R1(BigInteger x) {}
+    record R2(BigInteger x) {}
+
+    public static BigInteger m(BigInteger a) {
+        return new Tuple2<>(new R1(a), new R1(a)).equals(new Tuple2<>(new R2(a), new R2(a))) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

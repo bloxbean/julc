@@ -1,0 +1,22 @@
+format: 2
+name: #284 the same with import org.julclang.ledger.* (F19b, T33)
+class: Probe
+method: m
+arg: 05
+arg: 07
+expect: DIVERGE T33 Value/Value
+jvm: Value 07 []
+uplc: Value 05 []
+note: ADR-067 F19b.
+---
+import java.math.BigInteger;
+import org.julclang.ledger.*;
+record Rational(BigInteger denominator, BigInteger numerator) {}
+
+public class Probe {
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        Rational r = new Rational(a, b);
+        return r.numerator();
+    }
+}

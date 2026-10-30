@@ -1,0 +1,25 @@
+format: 2
+name: a sealed-variant-typed component keeps its tag (F20)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: ADR-067 F20: the component carries B's tag (1), not 0.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    record W(B b) {}
+
+    public static BigInteger m(BigInteger a) {
+        W w = new W(new B(a));
+        S s = w.b();
+        return switch (s) {
+            case A x -> BigInteger.ONE;
+            case B y -> BigInteger.TWO;
+        };
+    }
+}

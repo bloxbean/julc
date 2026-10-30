@@ -1,0 +1,20 @@
+format: 2
+name: a packageless user record named like a ledger hash type (T33)
+class: Probe
+method: m
+arg: 420102
+expect: DIVERGE T33 Value/Failure
+jvm: Value 420102 []
+uplc: Failure []
+note: ADR-067 D9: rejected with JULC0081 in M3b. Baseline as found in M0: TypeResolver resolves ledger hash names by simple name.
+---
+import java.math.BigInteger;
+record PubKeyHash(byte[] h) {}
+
+public class Probe {
+
+    public static byte[] m(byte[] h) {
+        PubKeyHash p = new PubKeyHash(h);
+        return p.h();
+    }
+}

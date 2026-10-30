@@ -1,0 +1,18 @@
+format: 2
+name: a user record Value through a local (F45b)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: ADR-067 F45b: field access resolves first.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record Value(boolean isEmpty) {}
+
+    public static boolean m(BigInteger a) {
+        Value v = new Value(a.signum() > 0);
+        return v.isEmpty();
+    }
+}

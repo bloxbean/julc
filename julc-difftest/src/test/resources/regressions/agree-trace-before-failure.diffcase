@@ -1,0 +1,18 @@
+format: 2
+name: a trace before a failure is kept on both sides
+class: Probe
+method: m
+arg: 00
+expect: AGREE
+note: Failures agree only with equal trace sequences (ADR-063 D3).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    public static BigInteger m(BigInteger n) {
+        PlutusData traced = Builtins.trace("before", Builtins.iData(n));
+        return BigInteger.TEN.divide(n);
+    }
+}

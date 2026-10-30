@@ -1,0 +1,17 @@
+format: 2
+name: unused binding that fails (T15)
+class: Probe
+method: m
+arg: 00
+expect: AGREE
+note: Java fails on division by zero. Agreement means every level keeps the failing binding.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static long m(long n) {
+        BigInteger unused = BigInteger.TEN.divide(BigInteger.valueOf(n));
+        return 1;
+    }
+}
