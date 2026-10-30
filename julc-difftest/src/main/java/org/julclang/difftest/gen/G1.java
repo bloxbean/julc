@@ -3,6 +3,13 @@ package org.julclang.difftest.gen;
 import org.julclang.core.PlutusData;
 import org.julclang.difftest.HarnessException;
 import org.julclang.difftest.TagTable;
+import org.julclang.difftest.gen.G1Ast.Component;
+import org.julclang.difftest.gen.G1Ast.Expr;
+import org.julclang.difftest.gen.G1Ast.Kind;
+import org.julclang.difftest.gen.G1Ast.Stmt;
+import org.julclang.difftest.gen.G1Ast.Type;
+import org.julclang.difftest.gen.G1Ast.Unit;
+import org.julclang.difftest.gen.G1Ast.Var;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -12,11 +19,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import static org.julclang.difftest.gen.G1Ast.BIG;
+import static org.julclang.difftest.gen.G1Ast.BOOL;
+import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
+
 /**
  * The second program grammar (ADR-066 D2, G1 r1): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures. The
- * {@code switch} productions are M3's.
+ * {@code switch} productions are M3's. The productions build a typed AST ({@link G1Ast}), which {@link G1Printer}
+ * prints.
  * <p>
  * A plan decodes left to right through {@link Choices}, as G0's does, and does not share G0's decoding (D1): the
  * declarations (types, fields, helpers) read its even positions and the entry method its odd ones, so that a plan
@@ -223,7 +235,7 @@ public final class G1 {
                 case RECORD -> {
                     var fields = new ArrayList<PlutusData>();
                     for (Component component : type.components) fields.add(value(component.type(), choices));
-                    yield new PlutusData.ConstrData(type.family == null ? 0 : type.family.variants.indexOf(type), fields);
+                    yield new PlutusData.ConstrData(type.tag(), fields);
                 }
             };
         }
@@ -242,82 +254,11 @@ public final class G1 {
     /** The program of a plan under a profile, in the given class; the tags name that class's member types. */
     public static Program decode(List<Integer> plan, Profile profile, String className) {
         var generator = new G1(plan, profile, className);
-        String source = generator.program();
-        return new Program(source, generator.tags(), generator.features, profile, generator.entryParameters);
+        Unit unit = generator.program();
+        return new Program(G1Printer.print(unit), generator.tags(), generator.features, profile, generator.entryParameters);
     }
 
-    // ---------------------------------------------------------------- types and bindings
-
-    private enum Kind { BIG, BOOL, RECORD, SEALED }
-
-    /** A generated type: {@code BigInteger}, {@code boolean}, a record (standalone or a variant), or a sealed family. */
-    private static final class Type {
-        final Kind kind;
-        final String name;
-        final List<Component> components = new ArrayList<>();
-        /** A family's variants in {@code permits} order: a variant's tag is its index. */
-        final List<Type> variants = new ArrayList<>();
-        Type family;
-        int depth;
-
-        Type(Kind kind, String name) {
-            this.kind = kind;
-            this.name = name;
-        }
-
-        boolean isValue() {
-            return kind == Kind.RECORD || kind == Kind.SEALED;
-        }
-
-        /** Whether a value of this type can stand where {@code target} is expected. */
-        boolean fits(Type target) {
-            return this == target || target.kind == Kind.SEALED && family == target;
-        }
-
-        @Override
-        public String toString() {
-            return name;
-        }
-    }
-
-    private static final Type BIG = new Type(Kind.BIG, "BigInteger");
-    private static final Type BOOL = new Type(Kind.BOOL, "boolean");
-    /**
-     * The type of a name being declared: a local's scope includes its own initializer, where it hides a field of
-     * the same name but cannot be read yet. No expression has this type.
-     */
-    private static final Type UNREADABLE = new Type(Kind.BOOL, "unreadable");
-
-    private record Component(String name, Type type) {
-    }
-
-    /**
-     * A variable in scope (ADR-066 D2, bindings). {@code assignable}: a method-level accumulator loops may update;
-     * {@code guardEligible}: a parameter, pattern binding, field or a local that is never assigned, which M3's guards
-     * may read; a counter is a {@code long} read as {@code BigInteger.valueOf}.
-     */
-    private record Var(String name, Type type, boolean counter, boolean assignable, boolean guardEligible, boolean field) {
-        String read() {
-            return counter ? "BigInteger.valueOf(" + name + ")" : name;
-        }
-    }
-
-    /** What code at one point may read and assign. Locals hide fields of the same name. */
-    private record Scope(List<Var> locals, int loopDepth) {
-        Scope with(Var var) {
-            var vars = new ArrayList<>(locals);
-            vars.add(var);
-            return new Scope(vars, loopDepth);
-        }
-
-        Scope inLoop() {
-            return new Scope(locals, loopDepth + 1);
-        }
-
-        List<Var> assignable() {
-            return locals.stream().filter(Var::assignable).toList();
-        }
-    }
+    // ---------------------------------------------------------------- bindings
 
     /** A generated helper: its name, parameters and return type, and whether its body traces, directly or not. */
     private record Helper(String name, List<Var> parameters, Type result, boolean traces) {
@@ -348,6 +289,23 @@ public final class G1 {
         }
     }
 
+    /** What code at one point may read and assign. Locals hide fields of the same name. */
+    private record Scope(List<Var> locals, int loopDepth) {
+        Scope with(Var var) {
+            var vars = new ArrayList<>(locals);
+            vars.add(var);
+            return new Scope(vars, loopDepth);
+        }
+
+        Scope inLoop() {
+            return new Scope(locals, loopDepth + 1);
+        }
+
+        List<Var> assignable() {
+            return locals.stream().filter(Var::assignable).toList();
+        }
+    }
+
     // ---------------------------------------------------------------- the generator
 
     private static final List<String> POOL = List.of("v", "w", "x", "f", "p");
@@ -364,11 +322,12 @@ public final class G1 {
     private final Set<Feature> features = EnumSet.noneOf(Feature.class);
     private final List<Type> types = new ArrayList<>();
     private final List<Var> fields = new ArrayList<>();
+    private final List<G1Ast.Field> fieldDeclarations = new ArrayList<>();
     private final List<Helper> helpers = new ArrayList<>();
+    private final List<G1Ast.Helper> helperDeclarations = new ArrayList<>();
     private final List<Type> entryParameters = new ArrayList<>();
     /** Every variable name declared in the method being generated, so that no local redeclares another. */
     private final Set<String> methodNames = new HashSet<>();
-    private final StringBuilder out = new StringBuilder();
     private int labels;
     private int counters;
 
@@ -383,38 +342,21 @@ public final class G1 {
         this.className = className;
     }
 
-    private String program() {
+    private Unit program() {
         declareTypes();
-        var body = new StringBuilder();
-        declareFields(body);
-        body.append('\n').append("""
-                    static BigInteger t(String k, BigInteger v) {
-                        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
-                    }
-
-                    static BigInteger fail(BigInteger z) {
-                        return Builtins.unIData(Builtins.error());
-                    }
-                """);
-        declareHelpers(body);
-        out.append("import java.math.BigInteger;\n")
-                .append("import org.julclang.core.types.JulcList;\n")
-                .append("import org.julclang.stdlib.Builtins;\n\n")
-                .append("public class ").append(className).append(" {\n");
-        printTypes();
-        out.append(body);
+        declareFields();
+        declareHelpers();
+        var declarations = declarationOrder();
         choices = methodChoices;
-        method();
-        out.append("}\n");
-        return out.toString();
+        return new Unit(className, declarations, fieldDeclarations, helperDeclarations, method());
     }
 
     private TagTable tags() {
         var entries = new ArrayList<TagTable.Entry>();
         for (Type type : types) {
             if (type.kind != Kind.SEALED) continue;
-            for (int i = 0; i < type.variants.size(); i++) {
-                entries.add(new TagTable.Entry(className + "$" + type.variants.get(i).name, className + "$" + type.name, i));
+            for (Type variant : type.variants) {
+                entries.add(new TagTable.Entry(className + "$" + variant.name, className + "$" + type.name, variant.tag()));
             }
         }
         return new TagTable(entries);
@@ -486,30 +428,17 @@ public final class G1 {
         return result;
     }
 
-    /** The types in a declaration order chosen independently of the {@code permits} orders. */
-    private void printTypes() {
-        var declarations = new ArrayList<String>();
+    /**
+     * The order the types are declared in, chosen independently of the {@code permits} orders: a family's interface
+     * and its variants, and the standalone records, permuted together.
+     */
+    private List<Type> declarationOrder() {
+        var declarations = new ArrayList<Type>();
         for (Type type : types) {
-            if (type.kind == Kind.SEALED) {
-                declarations.add("sealed interface " + type.name + " permits "
-                        + String.join(", ", type.variants.stream().map(v -> v.name).toList()) + " {}");
-                for (Type variant : type.variants) declarations.add(record(variant));
-            } else {
-                declarations.add(record(type));
-            }
+            declarations.add(type);
+            if (type.kind == Kind.SEALED) declarations.addAll(type.variants);
         }
-        for (String declaration : permuted(declarations)) line(1, declaration);
-        if (!declarations.isEmpty()) out.append('\n');
-    }
-
-    private static String record(Type record) {
-        var components = record.components.stream().map(c -> javaType(c.type()) + " " + c.name()).toList();
-        return "record " + record.name + "(" + String.join(", ", components) + ")"
-                + (record.family == null ? "" : " implements " + record.family.name) + " {}";
-    }
-
-    private static String javaType(Type type) {
-        return type.name;
+        return permuted(declarations);
     }
 
     private List<Type> valueTypes() {
@@ -524,7 +453,7 @@ public final class G1 {
     }
 
     /** Zero to two {@code static final} fields, named from the pool, each initialized without calls of the class. */
-    private void declareFields(StringBuilder body) {
+    private void declareFields() {
         var names = new ArrayList<>(POOL);
         // Under SHADOW_IN_LOOP_BRANCH, #209 needs a field of a declared type to shadow.
         boolean shadowing = profile.has(Gate.SHADOW_IN_LOOP_BRANCH) && !valueTypes().isEmpty();
@@ -534,10 +463,9 @@ public final class G1 {
             String name = names.remove(choices.below(names.size()));
             var ctx = new Ctx(new Scope(List.of(), 0), List.of(), false, true, null, false);
             int before = fieldReads;
-            String init = expression(type, ctx, EXPRESSION_DEPTH);
+            Expr init = expression(type, ctx, EXPRESSION_DEPTH);
             if (fieldReads > before) features.add(Feature.FIELD_FROM_FIELD);
-            body.append("    static final ").append(javaType(type)).append(' ').append(name).append(" = ").append(init)
-                    .append(";\n");
+            fieldDeclarations.add(new G1Ast.Field(type, name, init));
             fields.add(new Var(name, type, false, false, true, true));
             features.add(Feature.STATIC_FIELD);
         }
@@ -547,7 +475,7 @@ public final class G1 {
     private int fieldReads;
 
     /** Zero to two helpers of one to three parameters (zero under ZERO_ARG_HELPERS), each calling only earlier ones. */
-    private void declareHelpers(StringBuilder body) {
+    private void declareHelpers() {
         var names = new ArrayList<>(POOL);
         for (int n = choices.below(3); n > 0; n--) {
             String name = names.remove(choices.below(names.size()));
@@ -562,22 +490,20 @@ public final class G1 {
             var scope = new Scope(parameters, 0);
             var ctx = new Ctx(scope, List.copyOf(helpers), false, false, null, false);
             int traced = traceSites;
-            String expression = expression(result, ctx, EXPRESSION_DEPTH);
+            Expr body = expression(result, ctx, EXPRESSION_DEPTH);
             if (arity == 0) {
                 features.add(Feature.ZERO_ARG_HELPER);
                 // #280 shows only when the body does something observable at script start.
-                if (result == BIG && !choices.oneIn(4)) expression = trace(expression);
+                if (result == BIG && !choices.oneIn(4)) body = trace(body);
             }
-            body.append('\n').append("    static ").append(javaType(result)).append(' ').append(name).append('(')
-                    .append(String.join(", ", parameters.stream().map(p -> javaType(p.type()) + " " + p.name()).toList()))
-                    .append(") {\n        return ").append(expression).append(";\n    }\n");
+            helperDeclarations.add(new G1Ast.Helper(name, parameters, result, body));
             helpers.add(new Helper(name, parameters, result, traceSites > traced));
         }
     }
 
     // ---------------------------------------------------------------- the entry method
 
-    private void method() {
+    private G1Ast.Method method() {
         methodNames.clear();
         methodNames.addAll(List.of("a", "b", "xs"));
         Type result = anyType();
@@ -585,7 +511,7 @@ public final class G1 {
         if (result.kind == Kind.SEALED) features.add(Feature.SEALED_RESULT);
         var scope = new Scope(new ArrayList<>(List.of(new Var("a", BIG, false, false, true, false),
                 new Var("b", BIG, false, false, true, false))), 0);
-        var parameters = new ArrayList<>(List.of("BigInteger a", "BigInteger b", "JulcList<BigInteger> xs"));
+        var parameters = new ArrayList<Var>();
         var values = new ArrayList<>(valueTypes());
         // Nested types twice as often: their arguments have components to read through.
         for (Type type : valueTypes()) if (type.depth > 1) values.add(type);
@@ -594,41 +520,39 @@ public final class G1 {
                 Type type = values.get(choices.below(values.size()));
                 String name = freshName(false);
                 features.add(type.kind == Kind.SEALED ? Feature.SEALED_ARG : Feature.RECORD_ARG);
-                parameters.add(javaType(type) + " " + name);
-                scope = scope.with(new Var(name, type, false, false, true, false));
+                var parameter = new Var(name, type, false, false, true, false);
+                parameters.add(parameter);
+                scope = scope.with(parameter);
                 entryParameters.add(type);
             }
         }
-        out.append('\n').append("    public static ").append(javaType(result)).append(" m(")
-                .append(String.join(", ", parameters)).append(") {\n");
+        var body = new ArrayList<Stmt>();
         var updated = new ArrayList<String>();
         for (int n = choices.below(5); n > 0; n--) {
             int kind = choices.below(8);
             // Under SHADOW_IN_LOOP_BRANCH, more loops: #209 lives in a loop body.
             if (profile.has(Gate.SHADOW_IN_LOOP_BRANCH) && kind != 1 && choices.oneIn(2)) kind = 1;
             switch (kind) {
-                case 0 -> scope = declaration(scope, 2, true, null);
+                case 0 -> scope = declaration(scope, body, true, null);
                 case 1, 2, 3 -> {
-                    if (scope.assignable().isEmpty()) scope = accumulator(scope);
-                    if (scope.assignable().size() < 2 && !choices.oneIn(3)) scope = accumulator(scope);
-                    loop(scope, 2, updated, choices.oneIn(2));
+                    if (scope.assignable().isEmpty()) scope = accumulator(scope, body);
+                    if (scope.assignable().size() < 2 && !choices.oneIn(3)) scope = accumulator(scope, body);
+                    loop(scope, body, updated, choices.oneIn(2));
                 }
-                case 4 -> earlyReturn(scope, result);
-                case 5, 6 -> scope = instanceOf(scope, result);
-                default -> scope = declaration(scope, 2, false, null);
+                case 4 -> earlyReturn(scope, body, result);
+                case 5, 6 -> scope = instanceOf(scope, body, result);
+                default -> scope = declaration(scope, body, false, null);
             }
         }
         if (choices.oneIn(3)) {
             features.add(Feature.METHOD_LEVEL_IF);
-            line(2, "if (" + condition(ctx(scope), EXPRESSION_DEPTH) + ") {");
-            branch(scope, 3, result);
-            line(2, "} else {");
-            branch(scope, 3, result);
-            line(2, "}");
+            Expr test = condition(ctx(scope), EXPRESSION_DEPTH);
+            var then = branch(scope, result);
+            body.add(new G1Ast.If(test, then, branch(scope, result)));
         } else {
-            line(2, "return " + expression(result, ctx(scope), EXPRESSION_DEPTH) + ";");
+            body.add(new G1Ast.Return(expression(result, ctx(scope), EXPRESSION_DEPTH)));
         }
-        out.append("    }\n");
+        return new G1Ast.Method(result, parameters, body);
     }
 
     private Ctx ctx(Scope scope) {
@@ -636,28 +560,27 @@ public final class G1 {
     }
 
     /** {@code if (c) { locals; return e; }} at method level. */
-    private void earlyReturn(Scope scope, Type result) {
+    private void earlyReturn(Scope scope, List<Stmt> into, Type result) {
         features.add(Feature.METHOD_LEVEL_IF);
-        line(2, "if (" + condition(ctx(scope), EXPRESSION_DEPTH) + ") {");
-        branch(scope, 3, result);
-        line(2, "}");
+        Expr test = condition(ctx(scope), EXPRESSION_DEPTH);
+        into.add(new G1Ast.If(test, branch(scope, result), null));
     }
 
     /**
      * {@code if (s instanceof V y) { locals; return e; }}: the pattern is the whole condition, outside loops. Without
      * a sealed variable in scope, one is declared first; the scope after the statement is returned.
      */
-    private Scope instanceOf(Scope scope, Type result) {
+    private Scope instanceOf(Scope scope, List<Stmt> into, Type result) {
         var sealed = readable(scope).stream().filter(v -> v.type().kind == Kind.SEALED).toList();
         if (sealed.isEmpty()) {
             var families = types.stream().filter(t -> t.kind == Kind.SEALED).toList();
             if (families.isEmpty()) {
-                earlyReturn(scope, result);
+                earlyReturn(scope, into, result);
                 return scope;
             }
             Type family = families.get(choices.below(families.size()));
             String name = freshName(false);
-            line(2, javaType(family) + " " + name + " = " + expression(family, ctx(declaring(scope, name)), EXPRESSION_DEPTH) + ";");
+            into.add(new G1Ast.Declare(family, name, expression(family, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
             if (isField(name)) features.add(Feature.FIELD_SHADOWED);
             scope = scope.with(new Var(name, family, false, false, true, false));
             sealed = List.of(scope.locals().getLast());
@@ -666,27 +589,28 @@ public final class G1 {
         Type variant = subject.type().variants.get(choices.below(subject.type().variants.size()));
         String binding = freshName(true);
         features.add(Feature.INSTANCEOF_PATTERN);
-        line(2, "if (" + subject.name() + " instanceof " + variant.name + " " + binding + ") {");
-        branch(scope.with(new Var(binding, variant, false, false, true, false)), 3, result);
-        line(2, "}");
+        var body = branch(scope.with(new Var(binding, variant, false, false, true, false)), result);
+        into.add(new G1Ast.IfInstance(subject, variant, binding, body));
         return scope;
     }
 
     /** Zero to two locals, then a return. */
-    private void branch(Scope scope, int indent, Type result) {
-        for (int n = choices.below(3); n > 0; n--) scope = declaration(scope, indent, false, null);
-        line(indent, "return " + expression(result, ctx(scope), EXPRESSION_DEPTH) + ";");
+    private List<Stmt> branch(Scope scope, Type result) {
+        var body = new ArrayList<Stmt>();
+        for (int n = choices.below(3); n > 0; n--) scope = declaration(scope, body, false, null);
+        body.add(new G1Ast.Return(expression(result, ctx(scope), EXPRESSION_DEPTH)));
+        return body;
     }
 
     /**
      * {@code T name = e;}. A method-level accumulator is assignable by later loops; any other local is final.
      * {@code shadow}, when not null, decides whether the name may be a field's: null lets the plan decide.
      */
-    private Scope declaration(Scope scope, int indent, boolean accumulator, Boolean shadow) {
+    private Scope declaration(Scope scope, List<Stmt> into, boolean accumulator, Boolean shadow) {
         Type type = anyType();
         boolean mayShadow = shadow == null || shadow;
         String name = freshName(!mayShadow);
-        line(indent, javaType(type) + " " + name + " = " + expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH) + ";");
+        into.add(new G1Ast.Declare(type, name, expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
         if (isField(name)) features.add(Feature.FIELD_SHADOWED);
         return scope.with(new Var(name, type, false, accumulator, !accumulator, false));
     }
@@ -697,11 +621,11 @@ public final class G1 {
     }
 
     /** A method-level accumulator for a loop, of a declared type more often than not. */
-    private Scope accumulator(Scope scope) {
+    private Scope accumulator(Scope scope, List<Stmt> into) {
         var values = valueTypes();
         Type type = !values.isEmpty() && !choices.oneIn(3) ? values.get(choices.below(values.size())) : anyType();
         String name = freshName(false);
-        line(2, javaType(type) + " " + name + " = " + expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH) + ";");
+        into.add(new G1Ast.Declare(type, name, expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
         if (isField(name)) features.add(Feature.FIELD_SHADOWED);
         return scope.with(new Var(name, type, false, true, false, false));
     }
@@ -721,25 +645,25 @@ public final class G1 {
 
     // ---------------------------------------------------------------- loops (G0's sub-grammar, D2)
 
-    private void loop(Scope scope, int indent, List<String> updated, boolean forEach) {
+    private void loop(Scope scope, List<Stmt> into, List<String> updated, boolean forEach) {
         features.add(Feature.LOOP);
         Scope body = scope.inLoop();
+        var statements = new ArrayList<Stmt>();
         if (forEach) {
             String element = freshName(false);
-            line(indent, "for (var " + element + " : xs) {");
             if (isField(element)) features.add(Feature.FIELD_SHADOWED);
-            body(body.with(new Var(element, BIG, false, false, true, false)), indent + 1, updated, null);
+            body(body.with(new Var(element, BIG, false, false, true, false)), statements, updated, false);
+            into.add(new G1Ast.ForEach(element, statements));
         } else {
             String counter = "i" + counters++;
             methodNames.add(counter);
-            line(indent, "long " + counter + " = 0;");
-            line(indent, "while (" + counter + " < " + choices.below(4) + ") {");
-            body(body.with(new Var(counter, BIG, true, false, false, false)), indent + 1, updated, counter);
+            int bound = choices.below(4);
+            body(body.with(new Var(counter, BIG, true, false, false, false)), statements, updated, true);
+            into.add(new G1Ast.While(counter, bound, statements));
         }
-        line(indent, "}");
     }
 
-    private void body(Scope scope, int indent, List<String> updated, String counter) {
+    private void body(Scope scope, List<Stmt> into, List<String> updated, boolean counted) {
         var assigned = new ArrayList<String>();
         boolean hasBreak = false;
         // A body with break contains no loop (reject-nested-loop-in-break-loop). Loop bodies with break and
@@ -754,33 +678,33 @@ public final class G1 {
             if (kind == 2 && !conditionalUpdates) kind = 1;
             if (kind == 5 && (breakAware || scope.loopDepth() >= MAX_LOOP_DEPTH)) kind = 0;
             switch (kind) {
-                case 0, 1 -> assignment(scope, indent, assigned, null);
+                case 0, 1 -> assignment(scope, into, assigned, null);
                 case 2 -> {
                     hasIfUpdate = true;
-                    ifUpdate(scope, indent, assigned);
+                    ifUpdate(scope, into, assigned);
                 }
                 case 3 -> {
                     hasBreak = true;
                     features.add(Feature.BREAK);
-                    line(indent, "if (" + condition(ctx(scope), EXPRESSION_DEPTH) + ") { break; }");
+                    into.add(new G1Ast.BreakIf(condition(ctx(scope), EXPRESSION_DEPTH)));
                 }
-                case 5 -> loop(scope, indent, updated, choices.oneIn(2));
-                default -> scope = declaration(scope, indent, false, null);
+                case 5 -> loop(scope, into, updated, choices.oneIn(2));
+                default -> scope = declaration(scope, into, false, null);
             }
         }
         // A for-each that breaks must update an earlier variable (reject-break-in-for-each-without-accumulator).
-        if (counter == null && assigned.isEmpty() && hasBreak) assignment(scope, indent, assigned, null);
+        if (!counted && assigned.isEmpty() && hasBreak) assignment(scope, into, assigned, null);
         if (hasBreak && hasIfUpdate) features.add(Feature.LOOP_BREAK_SHAPE);
         updated.addAll(assigned);
-        if (counter != null) line(indent, counter + " = " + counter + " + 1;");
     }
 
     /**
      * {@code if (c) { [local;] acc = e; } [else { acc2 = e; }]}. Under SHADOW_IN_LOOP_BRANCH the branch local may
      * shadow a field of another type, and the statement after the if reads that field: #209's composition.
      */
-    private void ifUpdate(Scope scope, int indent, List<String> assigned) {
-        line(indent, "if (" + condition(ctx(scope), EXPRESSION_DEPTH) + ") {");
+    private void ifUpdate(Scope scope, List<Stmt> into, List<String> assigned) {
+        Expr test = condition(ctx(scope), EXPRESSION_DEPTH);
+        var then = new ArrayList<Stmt>();
         Scope branch = scope;
         String shadowed = null;
         Var field = profile.has(Gate.SHADOW_IN_LOOP_BRANCH) ? shadowable(scope) : null;
@@ -788,23 +712,23 @@ public final class G1 {
             if (field != null) {
                 Type type = otherType(field.type());
                 methodNames.add(field.name());
-                line(indent + 1, javaType(type) + " " + field.name() + " = "
-                        + expression(type, ctx(declaring(scope, field.name())), EXPRESSION_DEPTH) + ";");
+                then.add(new G1Ast.Declare(type, field.name(), expression(type, ctx(declaring(scope, field.name())), EXPRESSION_DEPTH)));
                 branch = scope.with(new Var(field.name(), type, false, false, true, false));
                 shadowed = field.name();
                 features.add(Feature.SHADOW_IN_LOOP_BRANCH);
                 features.add(Feature.FIELD_SHADOWED);
             } else {
-                branch = declaration(scope, indent + 1, false, false);
+                branch = declaration(scope, then, false, false);
             }
         }
-        assignment(branch, indent + 1, assigned, null);
+        assignment(branch, then, assigned, null);
+        List<Stmt> otherwise = null;
         if (choices.oneIn(2)) {
-            line(indent, "} else {");
-            assignment(scope, indent + 1, assigned, null);
+            otherwise = new ArrayList<>();
+            assignment(scope, otherwise, assigned, null);
         }
-        line(indent, "}");
-        if (shadowed != null) fieldRead(scope, indent, assigned, shadowed);
+        into.add(new G1Ast.If(test, then, otherwise));
+        if (shadowed != null) fieldRead(scope, into, assigned, shadowed);
     }
 
     /**
@@ -827,30 +751,30 @@ public final class G1 {
     }
 
     /** After the branch, an accumulator assigned from a component read of the field, when one has a fitting type. */
-    private void fieldRead(Scope scope, int indent, List<String> assigned, String field) {
+    private void fieldRead(Scope scope, List<Stmt> into, List<String> assigned, String field) {
         var ctx = ctx(scope).preferring(field);
         var targets = scope.assignable().stream()
                 .filter(t -> paths(t.type(), ctx).stream().anyMatch(p -> p.var().name().equals(field))).toList();
         if (targets.isEmpty()) {
-            assignment(scope, indent, assigned, field);
+            assignment(scope, into, assigned, field);
             return;
         }
         Var target = targets.get(choices.below(targets.size()));
         assigned.add(target.name());
         if (target.type().isValue()) features.add(Feature.RECORD_ACCUMULATOR);
-        line(indent, target.name() + " = " + access(target.type(), ctx) + ";");
+        into.add(new G1Ast.Assign(target.name(), access(target.type(), ctx)));
     }
 
-    private void assignment(Scope scope, int indent, List<String> assigned, String preferred) {
+    private void assignment(Scope scope, List<Stmt> into, List<String> assigned, String preferred) {
         var targets = scope.assignable();
         if (targets.isEmpty()) {
-            declaration(scope, indent, false, false);
+            declaration(scope, into, false, false);
             return;
         }
         Var target = targets.get(choices.below(targets.size()));
         assigned.add(target.name());
         if (target.type().isValue()) features.add(Feature.RECORD_ACCUMULATOR);
-        line(indent, target.name() + " = " + expression(target.type(), ctx(scope).preferring(preferred), EXPRESSION_DEPTH) + ";");
+        into.add(new G1Ast.Assign(target.name(), expression(target.type(), ctx(scope).preferring(preferred), EXPRESSION_DEPTH)));
     }
 
     // ---------------------------------------------------------------- expressions
@@ -869,7 +793,7 @@ public final class G1 {
         return ctx.constant() ? List.copyOf(fields) : readable(ctx.scope());
     }
 
-    private String expression(Type type, Ctx ctx, int depth) {
+    private Expr expression(Type type, Ctx ctx, int depth) {
         return switch (type.kind) {
             case BIG -> integer(ctx, depth);
             case BOOL -> condition(ctx, depth);
@@ -877,13 +801,13 @@ public final class G1 {
         };
     }
 
-    private String integer(Ctx ctx, int depth) {
+    private Expr integer(Ctx ctx, int depth) {
         if (ctx.conditional() && !ctx.constant() && choices.oneIn(6)) return failure(atom(BIG, ctx));
         if (depth == 0 || choices.below(3) == 0) return atom(BIG, ctx);
         return switch (choices.below(12)) {
-            case 0 -> integer(ctx, depth - 1) + ".add(" + integer(ctx, depth - 1) + ")";
-            case 1 -> integer(ctx, depth - 1) + ".subtract(" + integer(ctx, depth - 1) + ")";
-            case 2 -> integer(ctx, depth - 1) + ".multiply(BigInteger.valueOf(" + (1 + choices.below(3)) + "))";
+            case 0 -> new G1Ast.Arith(integer(ctx, depth - 1), "add", integer(ctx, depth - 1));
+            case 1 -> new G1Ast.Arith(integer(ctx, depth - 1), "subtract", integer(ctx, depth - 1));
+            case 2 -> new G1Ast.Scale(integer(ctx, depth - 1), 1 + choices.below(3));
             case 3 -> ctx.constant() ? atom(BIG, ctx) : ternary(BIG, ctx, depth);
             case 4, 10 -> access(BIG, ctx);
             case 5, 9 -> call(BIG, ctx, depth);
@@ -897,25 +821,25 @@ public final class G1 {
     /** Trace sites generated so far, counting calls of helpers that trace. */
     private int traceSites;
 
-    private String trace(String expression) {
+    private Expr trace(Expr expression) {
         traceSites++;
         features.add(Feature.TRACE);
-        return "t(\"k" + labels++ + "\", " + expression + ")";
+        return new G1Ast.Trace("k" + labels++, expression);
     }
 
-    private String failure(String expression) {
+    private Expr failure(Expr expression) {
         features.add(Feature.FAILURE);
-        return "fail(" + expression + ")";
+        return new G1Ast.Fail(expression);
     }
 
-    private String condition(Ctx ctx, int depth) {
-        if (ctx.constant()) return choices.oneIn(2) ? "true" : "false";
+    private Expr condition(Ctx ctx, int depth) {
+        if (ctx.constant()) return new G1Ast.BoolConst(choices.oneIn(2));
         if (depth == 0 || choices.below(3) == 0) return atom(BOOL, ctx);
         return switch (choices.below(8)) {
             case 0, 1 -> comparison(ctx, depth);
-            case 2 -> "(" + condition(ctx, depth - 1) + " && " + condition(ctx.conditionally(), depth - 1) + ")";
-            case 3 -> "(" + condition(ctx, depth - 1) + " || " + condition(ctx.conditionally(), depth - 1) + ")";
-            case 4 -> "!(" + condition(ctx, depth - 1) + ")";
+            case 2 -> new G1Ast.Logic(condition(ctx, depth - 1), "&&", condition(ctx.conditionally(), depth - 1));
+            case 3 -> new G1Ast.Logic(condition(ctx, depth - 1), "||", condition(ctx.conditionally(), depth - 1));
+            case 4 -> new G1Ast.Not(condition(ctx, depth - 1));
             case 5, 6 -> equality(ctx, depth);
             default -> atom(BOOL, ctx);
         };
@@ -925,28 +849,29 @@ public final class G1 {
      * {@code e1.compareTo(e2) OP 0}. Its operands do not trace unless TRACE_IN_COMPARISON is on: the lowering
      * evaluates an operand more than once (#146), so a trace there is an open defect's construct.
      */
-    private String comparison(Ctx ctx, int depth) {
+    private Expr comparison(Ctx ctx, int depth) {
         var operands = profile.has(Gate.TRACE_IN_COMPARISON) ? ctx : ctx.withoutTraces();
         int traced = traceSites;
-        String left = integer(operands, depth - 1);
+        Expr left = integer(operands, depth - 1);
         if (profile.has(Gate.TRACE_IN_COMPARISON) && !ctx.constant() && !ctx.traceFree() && choices.oneIn(3)) left = trace(left);
-        String text = left + ".compareTo(" + integer(operands, depth - 1) + ") "
-                + COMPARISONS[choices.below(COMPARISONS.length)] + " 0";
+        Expr right = integer(operands, depth - 1);
+        var comparison = new G1Ast.Compare(left, right, COMPARISONS[choices.below(COMPARISONS.length)]);
         if (traceSites > traced) features.add(Feature.TRACE_IN_COMPARISON);
-        return text;
+        return comparison;
     }
 
     /** {@code r.equals(e)}: a variable of a declared type against a value of the same type, or of its family. */
-    private String equality(Ctx ctx, int depth) {
+    private Expr equality(Ctx ctx, int depth) {
         var receivers = readable(ctx).stream().filter(v -> v.type().isValue()).toList();
         if (receivers.isEmpty()) return comparison(ctx, depth);
         Var receiver = receivers.get(choices.below(receivers.size()));
         Type type = receiver.type().family != null && choices.oneIn(2) ? receiver.type().family : receiver.type();
         features.add(Feature.RECORD_EQUALS);
-        return read(receiver) + ".equals(" + value(type, ctx, depth - 1) + ")";
+        Expr read = read(receiver);
+        return new G1Ast.Equals(read, value(type, ctx, depth - 1));
     }
 
-    private String value(Type type, Ctx ctx, int depth) {
+    private Expr value(Type type, Ctx ctx, int depth) {
         if (depth == 0 || choices.below(3) == 0) return atom(type, ctx);
         return switch (choices.below(5)) {
             case 0 -> construct(type, ctx, depth);
@@ -958,35 +883,39 @@ public final class G1 {
     }
 
     /** {@code new R(…)}; for a sealed type, a variant's constructor. */
-    private String construct(Type type, Ctx ctx, int depth) {
+    private Expr construct(Type type, Ctx ctx, int depth) {
         Type record = type.kind == Kind.SEALED ? type.variants.get(choices.below(type.variants.size())) : type;
-        var arguments = new ArrayList<String>();
+        var arguments = new ArrayList<Expr>();
         for (Component component : record.components) {
             arguments.add(expression(component.type(), ctx, Math.max(0, depth - 1)));
         }
-        return "new " + record.name + "(" + String.join(", ", arguments) + ")";
+        return new G1Ast.New(record, arguments);
     }
 
-    private String ternary(Type type, Ctx ctx, int depth) {
-        return "(" + condition(ctx, depth - 1) + " ? " + expression(type, ctx.conditionally(), depth - 1) + " : "
-                + expression(type, ctx.conditionally(), depth - 1) + ")";
+    private Expr ternary(Type type, Ctx ctx, int depth) {
+        Expr test = condition(ctx, depth - 1);
+        Expr then = expression(type, ctx.conditionally(), depth - 1);
+        return new G1Ast.Cond(test, then, expression(type, ctx.conditionally(), depth - 1));
     }
 
     /** A call of a helper whose result fits, or an atom. */
-    private String call(Type type, Ctx ctx, int depth) {
+    private Expr call(Type type, Ctx ctx, int depth) {
         if (ctx.constant()) return atom(type, ctx);
         var callable = ctx.callable(type);
         if (callable.isEmpty()) return atom(type, ctx);
         Helper helper = callable.get(choices.below(callable.size()));
         features.add(Feature.HELPER_CALL);
         if (helper.traces()) traceSites++;
-        var arguments = new ArrayList<String>();
+        var arguments = new ArrayList<Expr>();
         for (Var parameter : helper.parameters()) arguments.add(expression(parameter.type(), ctx, Math.max(0, depth - 1)));
-        return helper.name() + "(" + String.join(", ", arguments) + ")";
+        return new G1Ast.Call(helper.name(), helper.result(), arguments);
     }
 
     /** A component read and the variable it starts from. */
-    private record Path(Var var, String text, boolean chained) {
+    private record Path(Var var, List<String> components) {
+        boolean chained() {
+            return components.size() > 1;
+        }
     }
 
     /**
@@ -998,11 +927,10 @@ public final class G1 {
         for (Var var : readable(ctx)) {
             if (var.type().kind != Kind.RECORD) continue;
             for (Component component : var.type().components) {
-                String path = var.read() + "." + component.name() + "()";
-                if (component.type().fits(type)) paths.add(new Path(var, path, false));
+                if (component.type().fits(type)) paths.add(new Path(var, List.of(component.name())));
                 if (component.type().kind == Kind.RECORD) {
                     for (Component inner : component.type().components) {
-                        if (inner.type().fits(type)) paths.add(new Path(var, path + "." + inner.name() + "()", true));
+                        if (inner.type().fits(type)) paths.add(new Path(var, List.of(component.name(), inner.name())));
                     }
                 }
             }
@@ -1011,7 +939,7 @@ public final class G1 {
     }
 
     /** A component read of the type, preferring the context's field; an atom if there is none. */
-    private String access(Type type, Ctx ctx) {
+    private Expr access(Type type, Ctx ctx) {
         var paths = paths(type, ctx);
         if (paths.isEmpty()) return atom(type, ctx);
         var preferred = paths.stream().filter(p -> p.var().name().equals(ctx.preferred())).toList();
@@ -1022,14 +950,14 @@ public final class G1 {
         features.add(Feature.COMPONENT_ACCESS);
         if (path.chained()) features.add(Feature.CHAINED_ACCESS);
         if (path.var().field()) fieldReads++;
-        return path.text();
+        return new G1Ast.Access(path.var(), path.components());
     }
 
     /**
      * A variable of the type, a component read, or a constant: a constructor with atom arguments for a record. An
      * atom calls no helper, so atoms stay small (their nesting is bounded by the types').
      */
-    private String atom(Type type, Ctx ctx) {
+    private Expr atom(Type type, Ctx ctx) {
         var vars = readable(ctx).stream().filter(v -> v.type().fits(type)).toList();
         var preferred = vars.stream().filter(v -> v.name().equals(ctx.preferred())).toList();
         if (!preferred.isEmpty()) return read(preferred.getFirst());
@@ -1038,18 +966,14 @@ public final class G1 {
         if (pick == 3 && !paths.isEmpty() || pick == 2 && paths.stream().anyMatch(Path::chained)) return access(type, ctx);
         if (!vars.isEmpty() && pick > 0) return read(vars.get(choices.below(vars.size())));
         return switch (type.kind) {
-            case BIG -> "BigInteger.valueOf(" + (choices.below(11) - 5) + ")";
-            case BOOL -> ctx.constant() ? (choices.oneIn(2) ? "true" : "false") : comparison(ctx, 1);
+            case BIG -> new G1Ast.IntConst(choices.below(11) - 5);
+            case BOOL -> ctx.constant() ? new G1Ast.BoolConst(choices.oneIn(2)) : comparison(ctx, 1);
             case RECORD, SEALED -> construct(type, ctx, 1);
         };
     }
 
-    private String read(Var var) {
+    private Expr read(Var var) {
         if (var.field()) fieldReads++;
-        return var.read();
-    }
-
-    private void line(int indent, String text) {
-        out.append("    ".repeat(indent)).append(text).append('\n');
+        return new G1Ast.Read(var);
     }
 }
