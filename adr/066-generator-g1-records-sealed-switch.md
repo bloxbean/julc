@@ -271,8 +271,8 @@ nesting 2, 3 arms per variant, 2 sealed families, comparison nesting bounded as 
 
 **Excluded by construction:** `==` and `!=` on non-numeric values (T4), `byte[]` and `String` components (T5,
 T17), `int` and `long` arithmetic other than counters (T6), division and `mod` (T11), `Optional`, `JulcMap`
-(G1b), `@Param` fields (they become outer parameters the harness would have to supply), and every construct
-listed as rejected in "Current behavior".
+(G1b), `@Param` fields (they become outer parameters the harness would have to supply), record members other
+than components (#282; ADR-067 D9 rejects them), and every construct listed as rejected in "Current behavior".
 
 ### D3. Record and sealed values in the value mapping (ADR-063 D4)
 
@@ -335,8 +335,9 @@ switch-arm order are permuted independently, so a table that followed the wrong 
   the default profile; its behaviour and D8 records are unchanged.
 - **New tests.** `G1PropertyTest` (jqwik; PR: fixed seed, 150 tries; nightly: fresh seed, 3,000 tries,
   tag `nightly`), `G1ExhaustiveTest` (JUnit, D7), `G1FuzzTest` (Jazzer, as ADR-063 D13: bytes to arguments then
-  plan; committed seeds; nightly job), `G1GatesTest` (JUnit, D6), `G1SelfCheckTest` (JUnit, D10; a fixed sample
-  on PRs, the full run tagged `nightly`).
+  plan; committed seeds; nightly job), `G1GatesTest` (JUnit, D6), `G1MustRejectTest` (JUnit, D6),
+  `G1TwinTest` (JUnit, D8), `G1SelfCheckTest` (JUnit, D10; a fixed sample on PRs, the full run tagged
+  `nightly`).
 - **Nightly task.** `nightlyDiffTest` includes the JUnit Jupiter engine as well as jqwik, filtered by tag
   `nightly`, so JUnit self-checks run there (today it runs jqwik only).
 - **Regression store.** `.diffcase` format 3 adds `tag:` lines and a `profile:` line. Format 2 files are read
@@ -627,8 +628,9 @@ are read as before; the registry rules keep their behaviour with feature names.
    map results. Lean: a short ADR-063 revision when G1 is done.
 4. **Helpers.** JuLC binds helper methods through a different path from the entry method; should G1 weight
    helper calls higher? Lean: measure in M2 first.
-5. **Shared variants (#279).** Whether ADR-067 rejects all multi-parent records or accepts coinciding tags
-   decides whether `SHARED_VARIANT` generates positive or must-reject cases. Lean: follow ADR-067.
+5. **Shared variants (#279).** ADR-067 D6 proposes rejecting every second sealed parent; D6 here follows it
+   (must-reject only). If ADR-067's review changes that to accept coinciding tags, `SHARED_VARIANT` gains a
+   positive form with coinciding tags.
 
 (r1's open question on the tag source is answered by D3: tags are always carried. r1's open question on VMs is
 answered by D11: Scalus joins the nightly run in M6.)
@@ -665,3 +667,22 @@ answered by D11: Scalus joins the nightly run in M6.)
   - F21 → milestone order fixed (corpus rediscovery in M4); `nightlyDiffTest` runs both engines; Scalus decided
     for the nightly run in M6; the whole PR workload is measured with fixed bounds.
   - New: #280 (zero-parameter helpers, filed while revising) gets the `ZERO_ARG_HELPERS` switch and rediscovery.
+- **r3** (2026-10-30, responds to round 2 at `480eff97`: the review comment F22–F27 and Codex's F31–F34, and the
+  partial items of F1, F4, F11, F14, F15, F16, F17):
+  - F22, F33 (F1) → D3 splits source validation from boundary validation; a two-parent record with different
+    tags may live inside `m`, so #279 can be rediscovered, and its fixed form is must-reject.
+  - F23 (F11) → `ASSIGN_PATTERN_BINDING`, a historical profile for #162; on a fixed compiler such runs must end in
+    the expected rejection.
+  - F24 (F4, F16) → a fixed operator × level applicability table; `GUARD_BYPASS` covers the PV11 bool `case`.
+  - F25, F31 (F14) → `B`'s `boolean f` is read by guards and arms and varied in the inputs; unreachable arm
+    combinations are excluded; reachability witnesses from the twin; precise `equals` replacements; a constant
+    replacement for every field read, including after the shadowing scope; every targeted site needs a
+    distinguishing edit.
+  - F26 (F17) → the cause check per defect state: fixed by code, fixed by rejection, not yet fixed.
+  - F27 → #201's status; the switch-statement message; #47/#50's fallback marked as weaker evidence.
+  - F32 (F15) → arm entry and guard start recorded before evaluation; "threw" is distinct; `G1TwinTest` asserts
+    counters directly.
+  - F34 (F16) → `EAGER` is a defined rewrite that evaluates the unselected branch and keeps the selected result,
+    for both forms, validated on a control pair before scoring.
+  - New: #282 (record members, from ADR-067's author) is excluded from the grammar and joins the must-reject list
+    with ADR-067 D9.
