@@ -1,12 +1,12 @@
 # ADR-066: Generator G1 — records, sealed interfaces, switch and fields
 
-**Status:** Proposed (2026-10-30)
+**Status:** Proposed (2026-10-30), revision r2
 **Date:** 2026-10-30
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md), as a generator stage of
 [ADR-063](063-differential-jvm-uplc-test-harness.md) (D5's G1, and M2b's record mapping and field shadowing)
-**Relates to:** [ADR-067](067-switch-guards-record-patterns.md) (switch guards, record patterns and cross-type
-record `equals`), which G1 depends on for those constructs
+**Relates to:** ADR-067 (switch guards, record patterns, cross-type record `equals` and records with two sealed
+parents; its own PR, stacked on #253), which G1 depends on for those constructs
 **Stacked on:** #253 (ADR-063 D13); restacked on the ADR-067 PR before M3 (open question 1)
 
 ## Context
@@ -19,13 +19,17 @@ generates the constructs they need:
 | Defect | Construct | Found by |
 |---|---|---|
 | #209 | A local in an `if` branch of a loop body, shadowing a static field of another record type | Release review |
-| #201 | `break` naming a label | Review of ADR-060 |
 | #275 | `switch` case guards (`when`) are ignored | Probe while writing this ADR |
 | #276 | Record patterns in `switch` cases are dropped, and `default` runs | Probe while writing this ADR |
 | #277 | `equals` between two different record types with equal fields is true on-chain | Probe while writing this ADR |
+| #279 | A record implementing two sealed interfaces gets one tag; a `switch` over the other takes the wrong arm | Review of this ADR (r1) |
+| #280 | A zero-parameter helper runs once at script start, even if never called | Probe while revising this ADR |
 | #166 (fixed) | A `boolean` record component bound by a switch case pattern was not decoded | Review of PR #165 |
 | #162 (fixed) | Reassigning a switch case-pattern variable in a loop left stale field reads | Review of PR #157 |
 | #47, #50 (fixed) | Switch case bindings collided with method parameters | Users |
+
+(#201, a `break` naming a label, was found the same way; it is now rejected (#272), so it belongs to a negative
+grammar, not to G1.)
 
 Records, sealed interfaces, `switch` and fields are how validators model datums, redeemers and their checks, so
 this is where a silent miscompile is most likely to change what a validator accepts. ADR-063 already plans this
@@ -35,72 +39,104 @@ This ADR makes that plan concrete, and adds what the harness needs to show that 
 
 **Risk:** low for the product, since nothing shipped changes, but correctness-sensitive as evidence (ADR-063,
 "Risk"). The risk this ADR manages is false confidence: a generator that never produces the shape of a defect,
-inputs that never take the branch where it shows, or a value mapping that is wrong in the same way as the
-compiler.
+inputs that never take the branch where it shows, results that cannot reveal evaluation order or failure, or a
+value mapping that is wrong in the same way as the compiler.
+
+**What G1 can and cannot establish.** G1, its corpus and its self-check give bounded evidence: JuLC agrees with
+javac on the programs of a stated grammar, on the inputs drawn, and the harness demonstrably detects the listed
+defects and mutation operators. It does not prove the frontend correct, and constructs outside the grammar are
+not covered (residual risks, below).
 
 ## Goals and non-goals
 
 **Goals**
 - Generate well-typed programs over user records, sealed interfaces with record variants, `switch` expressions
-  with type patterns, record patterns, guards and `default`, record component access, static fields, locals
-  that shadow fields, record and sealed arguments and results, and record-typed loop state.
+  with type patterns, record patterns, guards and `default`, `instanceof` patterns, record component access,
+  static fields, locals that shadow fields, record and sealed arguments and results, record-typed loop state,
+  traces and failures.
 - Map record and sealed values between the JVM and Data independently of JuLC's encoders (ADR-063 H1, D4).
 - Show, with recorded evidence, that the campaigns find this ADR's defect classes: rediscovery of the defects
-  above, an exhaustive corpus with an observability check, and a mutation score.
+  above, an exhaustive corpus with an observability check, exercised coverage, and a mutation score.
 - Keep G0, its saved plans and its corpus unchanged (ADR-063 H4).
 
 **Non-goals**
-- Fixing divergences. ADR-067 fixes #275–#277; #209 has its own fix.
+- Fixing divergences. ADR-067 fixes #275, #276, #277 and #279; #209 and #280 have their own fixes.
 - `Optional` and `JulcMap` (D5 lists them under G1). They have known differences that need their own decisions
   (open question 4) and are deferred to a stage G1b.
-- Validator entry points, ledger types and script contexts (ADR-063's G3).
-- A negative grammar for record constructs JuLC rejects (G1⁻); listed under "Related findings".
+- Validator entry points, ledger types, script contexts and malformed boundary Data (ADR-063's G3).
+- A full negative grammar for record constructs JuLC rejects (G1⁻). D6 adds only the must-reject checks that the
+  defects above need.
 - `==` on records (ADR-062 T4) and `byte[]` components (T5): known differences, excluded by construction.
 
 ## Current behavior
 
 All evidence in this section is from `fd605e77` (#253's head) with probe tests run through
-`DiffRunner.standard()`, four optimization levels, `julc-vm-java`. The probe sources are not committed; their
-programs are quoted in the PR.
+`DiffRunner.standard()`, four optimization levels, `julc-vm-java`, and was reproduced independently by the r1
+review at `5c358dfa` (same code). The probe sources are not committed; their programs are quoted in the PR.
 
 **Harness.**
 - `ValueMapping` (`julc-difftest/.../ValueMapping.java:41-70`, `:73-124`) maps `BigInteger`, `int`, `long`,
   `boolean`, `byte[]`, `String`, `PlutusData`, `Optional`, `JulcList` and `JulcMap`. A record or sealed value, as
   an argument or a result, is a `HarnessException` ("No Data mapping for …", `:68`, `:123`).
+- `fromTerm` (`:127-146`) is lenient about representation: a native `Constr` term and a `ConstrData` constant map
+  to the same Data, and a builtin bool maps to `Constr 0/1`. A result in the wrong representation for its
+  declared type would therefore still agree.
 - `JvmExecutor` converts each argument with `ValueMapping.fromData` and the method's generic parameter type
   (`:58-64`), and the result with `toData` (`:84`). `UplcExecutor` passes the argument Data unchanged
   (`:110`) and maps the result term with `fromTerm` (`:116-126`).
 - G0 is coupled to the registry and the property test: `KnownDivergences.Rule.requires` is a
-  `Set<G0.Feature>` (`gen/KnownDivergences.java:71`), and `G0PropertyTest.verify` takes a `G0.Program` and builds
-  G0's arguments and provenance (`G0PropertyTest.java:162-215`).
+  `Set<G0.Feature>` (`gen/KnownDivergences.java:71`); `G0PropertyTest.verify` takes a `G0.Program` and builds
+  G0's arguments and provenance (`G0PropertyTest.java:162-215`); exact pins match on source, method and
+  arguments (`KnownDivergences.java:204-213`).
+- Quotas divide the conclusive cases containing a feature by **all** cases (`Coverage.java:71-78`).
+- `nightlyDiffTest` runs only the jqwik engine (`julc-difftest/build.gradle:42-50`); `DiffConfig.allLevels()`
+  uses `julc-vm-java` only (`DiffConfig.java:15-20`).
 - There is no fault injection and no mutation measurement (ADR-063 D11 and M3 are not started).
 
 **Compiler, for the constructs G1 needs.** Compiled by `compileMethod`:
 - *Agree with javac:* record-typed and sealed-typed loop accumulators, including a `switch` that rebuilds the
   accumulator in a `while` with `break`; a ternary of record type and chained component access
   (`q.p().x()`); nested `switch` expressions and `yield` blocks; a `switch` value inside a loop body;
-  `static final` record and `BigInteger` fields read in a loop; same-type record `equals`; method-level `if`
-  with an early `return`, and `if`/`else` where both branches return; a loop inside a method-level `if`; a
-  non-recursive helper method with record parameters; `boolean` locals and `boolean` components in conditions; a
-  variant record typed as itself and then as its sealed type; and a local shadowing a `static final` field
-  in an early-return branch, in a `switch` arm block, and directly in a loop body.
+  `static final` record and `BigInteger` fields read in a loop, and a field initialized from another field;
+  same-type record `equals`; method-level `if` with an early `return`, and `if`/`else` where both branches
+  return; a loop inside a method-level `if`; non-recursive helper methods with parameters, including record
+  parameters; `boolean` locals and components in conditions; a variant typed as itself and then as its sealed
+  type; zero-component records and single-variant sealed interfaces; two independent sealed families in one
+  program; `if (s instanceof A x)` as the whole condition of a method-level `if`; a local shadowing a
+  `static final` field in an early-return branch, in a `switch` arm block, and directly in a loop body.
+- *Traces and failures agree:* with a one-parameter helper
+  `t(String k, BigInteger v) { return Builtins.unIData(Builtins.trace(k, Builtins.iData(v))); }` and
+  `fail(BigInteger z) { return Builtins.unIData(Builtins.error()); }`: traced `switch` arms and constructor
+  arguments (order `[first, second]`), traced loop bodies, a failing unselected arm or ternary branch (not
+  evaluated), and a failure after a trace (both fail with `[before]`).
 - *Rejected, so outside the positive grammar:* reassigning a variable outside a loop ("Unsupported expression:
   AssignExpr", ADR-062 T20), so method-level `if`/`else` cannot assign; a declaration without an initializer;
-  `instanceof` without a binding in an expression ("Unsupported instanceof pattern"); compact and explicit
-  canonical constructors, overridden accessors, record instance and static methods, and secondary constructors
-  (JULC0055, JULC0016, "'this' is not supported on-chain" or "Undefined variable"); a sealed interface without
-  `permits` whose variants are top-level siblings ("Unknown type").
-- *Silently different:* #275, #276 and #277 above, at every level. A field shadowed by a local of another record
-  type declared in an `if` branch inside a loop body is #209.
+  `instanceof` without a binding in an expression, and `instanceof` with a binding inside `&&` ("Undefined
+  variable", #204); `switch` statements ("Unsupported statement: SwitchStmt"), also when every arm returns;
+  compact and explicit canonical constructors, overridden accessors, record instance and static methods, and
+  secondary constructors (JULC0055, JULC0016, "'this' is not supported on-chain" or "Undefined variable"); a
+  sealed interface without `permits` whose variants are top-level siblings ("Unknown type"); nested sealed
+  hierarchies (a sealed interface that extends another: "class inheritance is not supported on-chain").
+- *Silently different, at every level:* #275 (guard ignored: JVM 2, UPLC 1), #276 (record pattern dropped: JVM
+  −3, UPLC −99), #277 (`new R1(a).equals(new R2(a))`: JVM false, UPLC true; also through an `Object`-typed
+  argument), #279 (JVM 21, UPLC 11), #280 (a never-called zero-parameter helper that traces and fails: JVM
+  returns, UPLC fails with the trace), and #209 (a field shadowed by a local of another record type declared in
+  an `if` branch inside a loop body: UPLC fails with `HeadList: empty list` or returns a wrong value).
 
-**Representation the mapping must match.** A standalone record is `Constr 0 [components]`; a variant of a sealed
-interface is `Constr i [components]`, where `i` is its position in the `permits` clause, also when it is
-constructed and typed as the variant itself (`TypeResolver.java:153-187`, `:283-290`;
-`docs/src/content/docs/guides/advanced-guide.md:107-130`). Components are encoded as `IData`, `BData`, the Bool
-constructors (`Constr 0 []` false, `Constr 1 []` true), `BData` of UTF-8 for `String`, or nested Data
-(`PirHelpers.wrapEncode`, `PirHelpers.java:182-215`). A `compileMethod` parameter of record or sealed type is
-passed through as Data without a shape check (`JulcCompiler.java:986-1005`); ADR-015's strict boundary applies
-to validator entry points only. A record result comes back as a `DataConst`, which `fromTerm` already maps.
+**Representation the mapping must match.** A standalone record is `ConstrData 0 [components]`; a variant of a
+sealed interface is `ConstrData i [components]`, where `i` is its position in the `permits` clause, also when
+it is constructed and typed as the variant itself (`TypeResolver.java:153-187`, `:283-290`;
+`PirGenerator.java:1771-1808`; `docs/src/content/docs/guides/advanced-guide.md:107-130`). Components are encoded
+as `IData`, `BData`, the Bool constructors (`Constr 0 []` false, `Constr 1 []` true), `BData` of UTF-8 for
+`String`, or nested Data (`PirHelpers.wrapEncode`, `PirHelpers.java:182-215`). A `compileMethod` parameter of
+record or sealed type is passed through as Data without a shape check (`JulcCompiler.java:986-1005`); ADR-015's
+strict boundary applies to validator entry points only. A record result comes back as a `DataConst`.
+
+**Emitted UPLC for these constructs** (printed at every level, r1 review): there is no native `constr` term for
+user records at any level; a record is a `constrData` application over a `mkCons` chain, or a folded Data
+constant; component access is a `headList`/`tailList` chain over `sndPair (unConstrData x)`; sealed dispatch is
+an `ifThenElse` chain over `equalsInteger tag k` at `NONE` and `BASELINE` and an integer `case` at the PV11
+levels (`UplcGenerator.java:176-205`, `:249-274`, `:535-560`).
 
 **javac.** `Class.getPermittedSubclasses()` returned the classes in `permits` order for
 `sealed interface Z permits Z2, Z1, Z3` (JDK 25, probe). Its javadoc does not promise this: "The order of such
@@ -110,22 +146,34 @@ elements is unspecified" (`java.lang.Class.getPermittedSubclasses`, JDK 25 `src.
 
 ADR-063's H1–H7 apply unchanged. In addition:
 
-- **G1-I1. Well-typed and inside the subset.** Every G1 program compiles with javac (H6) and is accepted by JuLC
-  at every level. A JuLC rejection of a G1 program is a finding, not a skip (H7). (D2, D4)
+- **G1-I1. Well-typed and inside the subset.** Every program the positive profile emits compiles with javac (H6)
+  and is accepted by JuLC at every level. A JuLC rejection of such a program is a finding, not a skip (H7). (D2)
 - **G1-I2. Termination by construction.** Loops are G0's (bounded counters, finite `xs`), helpers are
-  non-recursive, record types are acyclic, and every size is bounded. (D2)
-- **G1-I3. Independent mapping.** The record and sealed mapping uses only Java reflection and the rule stated in
-  D3. It never calls JuLC's encoders, decoders or type registry. (D3)
-- **G1-I4. Explicit constructor tags.** The tag of every generated variant is taken from the generator's own
-  type declarations, not from reflection order. (D3)
-- **G1-I5. Reproducibility.** A G1 program is a function of its plan and `G1.VERSION`; any change that decodes a
-  plan differently bumps the version (H4). G0's version and decoding do not change. (D1)
+  non-recursive and called only from later declarations, record types are acyclic, and every size is bounded.
+  (D2)
+- **G1-I3. Independent mapping.** The record and sealed mapping uses only Java reflection, the explicit tag table
+  of D3 and the rule stated there. It never calls JuLC's encoders, decoders or type registry, nor any product
+  converter. (D3)
+- **G1-I4. Explicit constructor tags everywhere.** Mapping a sealed value always uses a persisted tag table,
+  validated as in D3; a case that maps sealed values without one is a harness error. (D3)
+- **G1-I5. Reproducibility.** A G1 case is a function of its plan, `G1.VERSION` and its generation profile
+  (D6). Any change that decodes a plan differently bumps the version. The complete case (source, tags,
+  arguments, features, profile) is deterministic, also for empty and truncated plans and during shrinking.
+  G0's version and decoding do not change. (D1, D6)
 - **G1-I6. Exclusions are explicit.** A construct left out because of an open defect is listed in D6 with its
-  issue, gated by one named switch, and checked by a test that fails if the generator emits it while gated. (D6)
-- **G1-I7. Every arm can be observed.** In the exhaustive corpus, each `switch` arm, each guard outcome and each
-  record-pattern binding is shown to affect some observation on the chosen inputs. (D7)
-- **G1-I8. Mutation sensitivity is measured, not assumed.** The mutation score of D10 is recorded per operator,
-  and every surviving mutant from the exhaustive corpus is classified. (D10)
+  issue, gated by one named switch in the profile, and checked by a test that fails if the generator emits it
+  while gated. (D6)
+- **G1-I7. Every arm, guard and binding can be observed.** In the exhaustive corpus, each applicable
+  observability edit (D7) changes some observation on the corpus inputs, and each edit that does not apply or is
+  equivalent is accounted for. (D7)
+- **G1-I8. Coverage evidence comes from the compared behaviour.** Exercised coverage counts only executions
+  whose instrumented twin produced the same observation as the untouched program. (D8)
+- **G1-I9. Mutation sensitivity is measured, not assumed.** Every operator of D10 has eligible sites on the
+  corpus, an agreeing baseline, and recorded applied, killed, surviving, crashing and exhausted counts per
+  level; every surviving mutant from the corpus is classified. (D10)
+- **G1-I10. Results have the representation of their declared type.** A UPLC result that maps to the right
+  Data in the wrong representation (a native `Constr` for a record, a `Constr` for a `boolean`) is a mismatch.
+  (D4)
 
 ## Decisions
 
@@ -145,90 +193,114 @@ inputs (H4); a single generic generator parameterized by a grammar is more machi
 ### D2. G1 r1 grammar
 
 Programs are typed ASTs printed as Java (ADR-063 D5). One `public class Probe` holds the declarations below and
-the entry method `m`.
+the entry method `m`. The same AST is printed twice: the compared program, and the JVM-only twin of D8.
 
 **Types.** Per program, chosen by the plan:
-- zero to two standalone records, and zero or one sealed interface with two or three record variants and an
-  explicit `permits` clause, all nested in `Probe`;
-- one to three components each, of type `BigInteger`, `boolean`, or a record or sealed type declared earlier
-  (acyclic, nesting depth at most 2);
+- zero to two standalone records, and zero to two sealed interfaces with one to three record variants each and an
+  explicit `permits` clause, all nested in `Probe`. A record is a variant of at most one sealed interface unless
+  the `SHARED_VARIANT` profile switch is on (D6);
+- zero to three components each, of type `BigInteger`, `boolean`, or a record or sealed type declared earlier
+  (acyclic, nesting depth at most 2), so sealed-typed components are included;
 - component names from a small shared pool (`v`, `w`, `x`, `f`, `p`), so that names repeat across records,
-  components, locals and fields. This is where #47 and #50 lived.
+  components, locals, fields and helper names. This is where #47 and #50 lived.
 
 **Fields.** Zero to two `static final` fields of `BigInteger` or a declared record type, initialized with a
-constant constructor expression (no method calls: JULC0057). Field names come from the local-name pool, so a
-local can shadow one (D6 gates the loop-branch case).
+constant constructor expression that may read earlier fields (no method calls: JULC0057). Field names come from
+the local-name pool, so a local can shadow one.
+
+**Helpers.** A fixed trace helper `t(String k, BigInteger v)` and failure helper `fail(BigInteger z)` (bodies as
+in "Current behavior"), plus zero to two generated non-recursive static helpers with one to three parameters,
+whose bodies are an expression of the grammar, called from `m` or from later helpers. Zero-parameter helpers are
+gated (#280, D6).
 
 **Entry method.** `public static R m(params)`, where:
 - the parameters are `a`, `b` (`BigInteger`) and `xs` (`JulcList<BigInteger>`) as in G0, plus zero to two
   parameters of declared record or sealed types;
 - the return type `R` is `BigInteger`, `boolean`, or a declared record or sealed type.
 
+**Bindings.** The generator tracks three sets per scope:
+- *readable:* every variable in scope;
+- *assignable:* method-level variables that loops may update (as G0);
+- *guard-eligible:* parameters, pattern bindings, fields, and locals that are never assigned anywhere in their
+  scope. The generator decides at a local's declaration whether it is final (never assigned) or assignable, so
+  this is known when a later guard is generated. A guard that needs an accumulator reads an immutable snapshot
+  (`BigInteger s0 = acc;`, declared final for the generator) taken in the same block. Guards are never
+  compile-time constants (they always call `compareTo` or read a binding), so javac's constant-false guard rule
+  does not arise (JLS 25 §14.11.1).
+
 **Statements.**
 - Declarations of any generated type, with an initializer.
 - G0's loops: `while` with a bounded counter and for-each over `xs`, nested at most two deep; in loop bodies,
-  assignments, `if`/`else` with assignments, `if (c) break;` and locals. Accumulators may be of any generated
-  type, so a loop can rebuild a record or switch over a sealed accumulator.
-- Method-level `if` whose branch declares locals and returns, and `if`/`else` where both branches return. No
-  method-level reassignment (rejected, ADR-062 T20).
-- Zero to two non-recursive static helper methods with generated bodies of the same grammar, without loops that
-  update fields (JULC0056), called from `m` or from each other in declaration order.
+  assignments, `if`/`else` with assignments, `if (c) break;`, locals, and `if` branches that declare a local
+  before their assignments (the #209 composition: a branch-local declaration followed, after the `if`, by a read
+  of a field with the same name). Accumulators may be of any generated type.
+- Method-level `if` whose branch declares locals and returns, `if`/`else` where both branches return, and
+  `if (s instanceof A x) { … return …; }` with the pattern as the whole condition, outside loops. No method-level
+  reassignment (rejected, ADR-062 T20).
+- Expression statements are not generated; traces appear through `t(…)` inside expressions.
 
 **Expressions,** generated for a requested type:
 - `BigInteger`: G0's expressions (constants −5..5, `add`, `subtract`, `multiply` by 1–3, ternary), component
-  access, chained access and helper calls;
+  access, chained access, helper calls, `t(label, e)` with a label unique per site, and `fail(e)` in positions
+  where it is not always evaluated (an arm, a ternary branch, a guarded operand of `&&`/`||`) or, with low
+  probability, anywhere;
 - `boolean`: comparisons, `&&`, `||`, `!`, `boolean` components, `boolean` locals, and `equals` between two
-  values of the same record type;
+  values of declared types (same type; same sealed family; and, gated, distinct types including types with
+  identical components, so tags and payloads coincide);
 - a record type: its constructor, a variable, a component of that type, a ternary, a helper call, or a `switch`;
 - a sealed type: one of its variants' constructors, a variable, a component, a ternary or a `switch`.
 
-**`switch` expressions,** over a value of the sealed type, producing any requested type:
+**`switch` expressions,** over a value of a sealed type, producing any requested type:
 - labels: type patterns (`case A q ->`), record patterns (`case A(var v, B(var w, var f)) ->`, nested at most
   one level, with `var` or explicit component types), and `default`;
-- guards (`when` with a generated `boolean` over the bindings, locals and fields);
-- arms as expressions, or as blocks that declare locals and `yield`;
-- several arms per variant (guarded arms first), arms in any order javac accepts (the generator emits only
-  orders that javac's dominance rules allow), and exhaustive coverage either by every variant or by `default`;
-- nested `switch` expressions, and `switch` inside loop bodies as a value (never assigning an enclosing
-  variable from an arm, which ADR-048 rejects).
+- guards (`when` with a generated `boolean` over guard-eligible bindings);
+- arms as expressions, or as blocks that declare locals, may contain a loop over an arm-owned accumulator
+  (declared in the arm block, never an enclosing variable), and `yield`;
+- several arms per variant (guarded arms first), only in orders that javac's dominance rules allow, and
+  exhaustive coverage either by every variant or by `default`;
+- nested `switch` expressions, and `switch` inside loop bodies as a value. An arm never assigns an enclosing
+  variable (ADR-048 rejects it); the supported analogue, copying a binding into an arm-owned accumulator, is
+  generated instead (#162's positive form, `LoopConditionalLocalTest.java:286-293`).
 
-Record patterns, guards and cross-type `equals` (between two declared types that cannot be the same class) are
-generated only on a compiler that implements ADR-067; until then their generation switch is off (D6).
-
-**Bounds:** at most 5 top-level statements, 3 statements per loop body, expression depth 2, `switch` nesting 2,
-3 arms per variant, comparison nesting bounded as G0 r2 (`MAX_COMPARISON_NESTING`, #146).
+**Bounds:** at most 5 top-level statements, 3 statements per loop or arm body, expression depth 2, `switch`
+nesting 2, 3 arms per variant, 2 sealed families, comparison nesting bounded as G0 r2 (`MAX_COMPARISON_NESTING`,
+#146), plan length 200.
 
 **Excluded by construction:** `==` and `!=` on non-numeric values (T4), `byte[]` and `String` components (T5,
-T17), `int` and `long` arithmetic other than counters (T6), division and `mod` (T11), `Optional`, `JulcMap`,
-traces (G1b), `@Param` fields (they become outer parameters that the harness would have to supply), and every
-construct listed as rejected in "Current behavior".
+T17), `int` and `long` arithmetic other than counters (T6), division and `mod` (T11), `Optional`, `JulcMap`
+(G1b), `@Param` fields (they become outer parameters the harness would have to supply), and every construct
+listed as rejected in "Current behavior".
 
 ### D3. Record and sealed values in the value mapping (ADR-063 D4)
 
 `ValueMapping` gains user records and sealed interfaces, in both directions, by this rule:
 - a record value maps to `ConstrData(tag, [components in declaration order, each mapped recursively])`;
-- `tag` is the record's position in its sealed parent's `permits` clause if it implements a sealed interface,
-  and 0 otherwise. This holds whatever the static type at the use site (the variant-typed case above);
-- `boolean` components map to the Bool constructors, as at the top level.
+- `tag` is the record's tag from the case's tag table if the record implements a sealed interface, and 0
+  otherwise, whatever the static type at the use site (the variant-typed case above);
+- `boolean` components map to the Bool constructors, as at the top level;
+- `fromData` for a sealed parameter type chooses the variant with the Constr tag, and fails with a
+  `HarnessException` if none does or the arity differs.
 
-For a sealed parameter type, `fromData` chooses the variant whose tag equals the Constr tag, and fails with a
-`HarnessException` if none does or if the arity differs.
+**The tag table.** G1 knows each variant's position in the `permits` clause it printed. The `DiffCase` carries
+that table as a field `tags` (binary class name to tag), saved in `.diffcase` format 3 as `tag: Probe$A 0` lines
+in a fixed order, and it is part of the case's identity: `verify`, replay, D8 records and exact-pin matching all
+carry and compare it. Validation before any run: every record that implements a sealed interface has exactly one
+entry; tags within a family are distinct and cover `0..n-1`; the record's arity matches the source; and a record
+with two sealed parents (only under `SHARED_VARIANT`) must have the same tag in both, otherwise the mapping
+refuses the case (such a value has no single Data encoding, #279). Every hand-written case that maps sealed
+values must carry `tag:` lines too; there is no reflection fallback (G1-I4).
 
-The tag does not come from `getPermittedSubclasses()` order (G1-I4). G1 knows each variant's position in the
-`permits` clause it printed, and the `DiffCase` carries that table as a new optional field, `tags` (binary class
-name to tag), saved in `.diffcase` format 3 as `tag: Probe$A 0` lines. `ValueMapping` takes the tag from that
-table. A hand-written case without `tags` falls back to `getPermittedSubclasses()` order, and only if that order
-matches a check of the source's `permits` clause done by the test author; the regression store records which
-source was used.
-
-*Alternatives:* `getPermittedSubclasses()` order alone matches on JDK 25 (probe) but is unspecified (javadoc); deriving tags by parsing the source on the JVM side would add a second Java parser to the trusted
-components; asking JuLC's `TypeResolver` for tags would violate H1. ReflectivePlutusDataConverter in
-`julc-cardano-client-lib` uses the same encoding rule and is a useful cross-check in tests, but it is not used
-by the harness (it is product code under test elsewhere).
+*Alternatives:* `getPermittedSubclasses()` order matches on JDK 25 but is unspecified (javadoc), and a mapping
+that shares reflection order with a compiler that uses declaration order could agree with it while both are
+wrong; deriving tags by parsing the source on the JVM side would add a second Java parser to the trusted
+components; asking JuLC's `TypeResolver` would violate H1. `ReflectivePlutusDataConverter`
+(`julc-cardano-client-lib`, `:401-424`) uses reflection order, so it is not a cross-check.
 
 The mapping stays trusted (ADR-063 "Trusted components") and gets its own tests against hand-written Data:
-standalone records, variants typed as themselves and as the sealed type, nested records, `boolean` components,
-round trips through `fromData` and `toData`, and the error cases.
+standalone records; variants typed as themselves and as the sealed type, including nonzero tags; nested records
+and sealed components; zero-component records; `boolean` components; round trips; error cases (missing,
+duplicate or gapped tags, wrong arity, unknown tag); and families whose declaration order, `permits` order and
+switch-arm order are permuted independently, so a table that followed the wrong order would fail.
 
 ### D4. Arguments and results
 
@@ -238,8 +310,10 @@ round trips through `fromData` and `toData`, and the error cases.
 - **Inputs** cover each variant of each sealed argument, and values on both sides of each generated guard's
   comparisons, by drawing integers from −6..6 as G0 does and variants uniformly. D7 checks the effect for the
   corpus; D8 measures it for random campaigns.
-- **Results.** A record or sealed result maps by D3 on the JVM side and by `fromTerm` on the UPLC side; a
-  difference in a tag or a component is a value mismatch like any other.
+- **Results.** A record or sealed result maps by D3 on the JVM side. On the UPLC side, G1 checks the result
+  term against the declared return type before mapping (G1-I10): `BigInteger` must be an integer constant,
+  `boolean` a bool constant, a record or sealed type a Data constant holding a `Constr`. A violation is a
+  `Crash("result: representation …")`, which fails the run as a defect.
 
 ### D5. Harness changes
 
@@ -247,101 +321,173 @@ round trips through `fromData` and `toData`, and the error cases.
   (`Set<String>`), as `Coverage` already does, so rules can match G0 and G1 features. G0's features keep their
   names, so existing rules and saved cases are unchanged.
 - **A generator-neutral `verify`.** `G0PropertyTest.verify` becomes a shared helper over
-  `(source, className, method, args, features, generator version, plan)`. G0's behaviour and its D8 records are
-  unchanged.
-- **New tests.** `G1PropertyTest` (PR: fixed seed, 150 tries; nightly: fresh seed, 3,000 tries, tag `nightly`),
-  `G1ExhaustiveTest` (D7), `G1FuzzTest` (Jazzer, as D13: bytes to arguments then plan; committed seeds;
-  nightly job), and `G1SelfCheckTest` (D10).
-- **Regression store.** `.diffcase` format 3 adds the optional `tag:` lines of D3. Format 2 files are read
-  unchanged.
+  `(source, className, method, args, tags, features, generator version, profile, plan)`. G0 passes no tags and
+  the default profile; its behaviour and D8 records are unchanged.
+- **New tests.** `G1PropertyTest` (jqwik; PR: fixed seed, 150 tries; nightly: fresh seed, 3,000 tries,
+  tag `nightly`), `G1ExhaustiveTest` (JUnit, D7), `G1FuzzTest` (Jazzer, as ADR-063 D13: bytes to arguments then
+  plan; committed seeds; nightly job), `G1GatesTest` (JUnit, D6), `G1SelfCheckTest` (JUnit, D10; a fixed sample
+  on PRs, the full run tagged `nightly`).
+- **Nightly task.** `nightlyDiffTest` includes the JUnit Jupiter engine as well as jqwik, filtered by tag
+  `nightly`, so JUnit self-checks run there (today it runs jqwik only).
+- **Regression store.** `.diffcase` format 3 adds `tag:` lines and a `profile:` line. Format 2 files are read
+  unchanged and have neither.
 
-### D6. Known open defects: generation switches
+### D6. Generation profile and switches
 
-A construct whose defect is open is not generated, so that campaigns stay meaningful (an unexplained wrong value
-fails the run, and ADR-063 D6 gives wrong values no rule). Each switch names its issue and is a constant in
-`G1.Gates`; `G1GatesTest` checks that the generator never emits a gated construct while its switch is off.
+A *generation profile* is an immutable value: `G1.VERSION` plus the value of every switch below. It is printed
+in each D8 record and `.diffcase` (`profile: G1 r1 -GUARDS -RECORD_PATTERNS …`), replay uses the recorded
+profile, and the default profile is a constant. A rediscovery run (D10.1) uses a named non-default profile, so
+the same plan and version with a different profile is a different, recorded case (G1-I5).
 
-| Switch | Construct | Issue | Off until |
+A construct whose defect is open is off in the default profile, so that campaigns stay meaningful (an
+unexplained wrong value fails the run, and ADR-063 D6 gives wrong values no rule). `G1GatesTest` decodes 20,000
+random plans under the default profile and fails if any program contains a gated construct.
+
+| Switch | Construct | Issue | On in the default profile when |
 |---|---|---|---|
 | `GUARDS` | `when` guards | #275 | ADR-067 is implemented below this PR |
 | `RECORD_PATTERNS` | Record patterns | #276 | ADR-067 is implemented below this PR |
 | `CROSS_TYPE_EQUALS` | `equals` between distinct record types | #277 | ADR-067 is implemented below this PR |
+| `SHARED_VARIANT` | A record implementing two sealed interfaces | #279 | ADR-067's rule is known: generated as a must-reject case if ADR-067 rejects it, as positive if it accepts coinciding tags |
+| `ZERO_ARG_HELPERS` | Zero-parameter helpers | #280 | #280 is fixed on the base |
 | `SHADOW_IN_LOOP_BRANCH` | A local in an `if` branch inside a loop body shadowing a field of another type | #209 | #209 is fixed on the base |
 | `LOOP_BREAK_SHAPES` | G0's T21 and T23 shapes inside G1 programs | #254, #255 | Both are fixed on the base |
 
-G0 keeps generating the T21 and T23 shapes; its registry entries are unchanged. Turning a switch on is a
-one-line change plus a `G1.VERSION` bump, and D10's rediscovery evidence shows that the campaign finds the
-defect while it is still present.
+**Must-reject checks.** A defect fixed by rejecting a construct cannot be rediscovered by a positive grammar.
+For each such construct G1 has a small fixed list of programs that must be rejected with the expected code on
+every level (`G1MustRejectTest`): #162's case-pattern reassignment in a loop (rejected since its fix,
+`LoopBodyGenerator.java:130-137`), and, when ADR-067 decides it, #279's shared variant. The positive analogue of
+each is generated by the grammar.
 
-### D7. Exhaustive corpus `G1E`
+Turning a switch on is a one-line change to the default profile plus a `G1.VERSION` bump, and D10.1 records
+that the campaign found the defect while it was present. G0 keeps generating the T21 and T23 shapes; its registry
+entries are unchanged.
 
-A bounded enumeration, as ADR-063 D7 does for loops, over the shapes where the defects above live:
-- **switch shapes:** a sealed type with two variants, `A(BigInteger v)` and `B(BigInteger v, boolean f)`; one or
-  two arms per variant from {type pattern, record pattern} × {no guard, guard on a binding, guard on a local},
-  with or without `default`, in every order javac accepts; inside or outside a loop;
-- **field shapes:** a `static final` field read after a local of the same name and another record type is
-  declared in a method-level branch, a `switch` arm block, a loop body, and (gated, D6) a loop `if` branch;
-- **equality shapes:** same type, same sealed family, cross type (gated), variant against its sealed type;
-- **boundary shapes:** each sealed argument variant, and record and sealed results.
+### D7. Exhaustive corpus `G1E r1`
 
-Inputs: each variant of the selector, with component values on both sides of each guard's threshold. The
-observability check runs on the JVM only: removing one guard, swapping two arms, replacing a record pattern's
-binding by a constant, or replacing a field read by the shadowing local must change some observation on the
-inputs; otherwise the corpus or its inputs are too weak and the test fails (G1-I7). The corpus size and run time
-are measured in M4 and recorded here; the target is under 60 s on the PR run.
+A bounded enumeration over the shapes where the defects above live, versioned `G1E r1`, with pinned counts in
+`G1ExhaustiveTest` (as `G0ExhaustiveTest.java:60-108` does). Its subgrammar is finite by definition:
+
+- **Switch shapes.** Sealed type `S` with variants `A(BigInteger v)` and `B(BigInteger v, boolean f)`;
+  selector: a sealed parameter. Arms per variant: one or two, each from {type pattern, record pattern} ×
+  {no guard, guard `v.compareTo(c) > 0` on the binding, guard `a.compareTo(c) > 0` on a parameter}, with `c` in
+  {0, 2}; with or without `default`; every arm order javac accepts; arm bodies `t("armK", e)` where `e` reads
+  the binding, or `fail(e)` in at most one arm; placed at method level or as a value inside a for-each.
+- **Field shapes.** A `static final P p` field read after a local `Q p` (another record type) is declared in: a
+  method-level early-return branch, a `switch` arm block, a loop body, and (gated) a loop `if` branch.
+- **Equality shapes.** Same type, same sealed family, variant against its sealed type, and (gated) distinct types
+  with identical components.
+- **Shared-variant and zero-parameter shapes,** gated.
+- **Boundary shapes.** Each sealed argument variant, a nested record argument, and record and sealed results.
+
+**Inputs:** each variant of the selector, with `v` in {−1, 1, 3} and `a` in {−1, 3}, so each guard is true and
+false for some input.
+
+**Observability edits** run on the JVM only. Each edit has a precondition, and is applied only where the edited
+program is type- and scope-correct and javac accepts it:
+- *drop a guard*, only where no later arm for the same variant would become dominated;
+- *negate a guard*;
+- *replace a binding's use by a constant of its type*;
+- *replace an arm body by the body of another arm for the same variant*, only where every binding it uses exists;
+- *replace a field read by a read of the shadowing local*, only inside that local's scope;
+- *swap the operands of `equals` with a different-type value*, only under the gate.
+
+Each applicable edit must change some observation (value, trace or failure) on the corpus inputs; the input
+that does so is recorded as its witness. An edit whose precondition fails is counted "not applicable"; an edit
+that javac accepts but that is provably equivalent (for example, swapping arms of disjoint variants, which is
+therefore not an edit) is not in the list. Not-applicable counts are pinned per shape, so a change in the corpus
+that silently removes edits fails the test (G1-I7). The corpus size and run time are measured in M4 and
+recorded; the target is under 60 s on the PR run.
 
 ### D8. Coverage and exercised coverage
 
-**Syntactic features** (quotas as ADR-063 D9: at least 3% of conclusive PR tries each): `RECORD`, `SEALED`,
-`NESTED_RECORD`, `RECORD_ARG`, `SEALED_ARG`, `RECORD_RESULT`, `SEALED_RESULT`, `COMPONENT_ACCESS`,
-`CHAINED_ACCESS`, `STATIC_FIELD`, `FIELD_SHADOWED`, `RECORD_EQUALS`, `SWITCH`, `NESTED_SWITCH`, `YIELD_BLOCK`,
-`SWITCH_IN_LOOP`, `RECORD_ACCUMULATOR`, `TYPE_PATTERN`, `DEFAULT_ARM`, `METHOD_LEVEL_IF`, `HELPER_CALL`, and,
+**Syntactic features** (quotas as ADR-063 D9: the conclusive cases containing the feature, divided by **all**
+tries, at least 3% on the PR campaign): `RECORD`, `SEALED`, `TWO_FAMILIES`, `ZERO_COMPONENTS`,
+`NESTED_RECORD`, `SEALED_COMPONENT`, `RECORD_ARG`, `SEALED_ARG`, `RECORD_RESULT`, `SEALED_RESULT`,
+`COMPONENT_ACCESS`, `CHAINED_ACCESS`, `STATIC_FIELD`, `FIELD_FROM_FIELD`, `FIELD_SHADOWED`, `RECORD_EQUALS`,
+`SWITCH`, `NESTED_SWITCH`, `YIELD_BLOCK`, `LOOP_IN_ARM`, `SWITCH_IN_LOOP`, `RECORD_ACCUMULATOR`,
+`TYPE_PATTERN`, `DEFAULT_ARM`, `INSTANCEOF_PATTERN`, `METHOD_LEVEL_IF`, `HELPER_CALL`, `TRACE`, `FAILURE`, and,
 once their switches are on, `RECORD_PATTERN`, `NESTED_RECORD_PATTERN`, `GUARD`, `CROSS_TYPE_EQUALS`.
 
-**Exercised coverage** (ADR-063 M2b's open item, for G1): G1 prints, alongside each program, a JVM-only twin
-in which every `switch` arm and every guard records which way it went through a harness-owned static counter
-(not `Builtins.trace`, so the compared program is unchanged). The twin runs on the JVM for each input, and the
-counts give: arms taken, guards true and false, loop iteration counts (zero, one, many), and early versus normal
-loop exits. Quotas apply to taken arms, guard outcomes in both directions and loops with zero, one and several
-iterations. The twin is never compiled by JuLC, and the comparison uses the untouched program.
+**Exercised coverage** (ADR-063 M2b's open item, for G1), from a JVM-only twin printed from the same AST:
+- **Instrumentation contract.** Each site gets a stable ID from its AST position. A guard `g` is printed as
+  `Cov.guard(id, g)`, a method that records the value and returns it; an arm is entered through
+  `Cov.arm(id, expr)`, which records entry and returns `expr`'s value; loops record their iteration count per
+  loop invocation and whether they exited by `break` or normally. Each wrapper evaluates its argument exactly
+  once, in the same order and scope, and passes exceptions through unchanged, so evaluation count, order, scope
+  and abrupt completion are those of the untouched program.
+- **Counters** live in a static field of the twin class, so a fresh class loader per invocation (H3) resets
+  them. A guard site distinguishes "not evaluated", true and false.
+- **Check.** For each input, the twin's observation (value, traces, failure) must equal the untouched program's
+  JVM observation; otherwise the twin's counts for that input are discarded and the case is reported as a twin
+  defect (G1-I8). The twin is never compiled by JuLC.
+- **Exercised quotas,** counted per case (a case counts once per item) and divided by all tries, at least 3%
+  each: a switch arm entered; a guard evaluated true; a guard evaluated false; a loop with zero, one and several
+  iterations; a loop exited by `break`.
 
 ### D9. Known divergences and pins
 
-ADR-063 D6 applies. #275, #276 and #277 get saved `DIVERGE` cases (pins) on the base before ADR-067's fix and
-flip to `AGREE` with it, in the ADR-067 PR. A G1 mismatch is never explained by a rule unless the UPLC side is
-inconclusive; the existing T13 rule (`DEEP_COMPARISON`) applies to G1 programs with the same marker.
+ADR-063 D6 applies. #275, #276, #277 and #279 get saved `DIVERGE` cases (pins) on the base before ADR-067's fix
+and flip to `AGREE` (or `REJECT`) with it, in the ADR-067 PR. A G1 mismatch is never explained by a rule unless
+the UPLC side is inconclusive; the existing T13 rule (`DEEP_COMPARISON`) applies to G1 programs with the same
+marker. Pins compare the tag table as part of the case (D3).
 
 ### D10. Showing that G1 finds what it should
 
 ADR-063 D11 asks for rediscovery and mutation before a harness counts as evidence. For G1:
 
-1. **Rediscovery, recorded per milestone.** With the relevant switch forced on, the G1 PR campaign and `G1E`
-   must report, on a compiler that still has the defect:
-   - #275, #276 and #277, on the base below ADR-067's fix;
-   - #209, on the current base;
-   - #166 and #162, on a scratch revert of their fixes.
-   The command, commit, seed, time to first failure and the shrunk reproducer are recorded in this ADR. A
-   defect that the campaign does not find within the PR budget is a generator gap and blocks the milestone.
-2. **Mutation score, in CI.** `G1SelfCheckTest` (nightly, and on the PR for a fixed sample) applies mutation
-   operators to the compiled UPLC of `G1E` programs before evaluation, through a test-only transform in
-   `UplcExecutor` (no compiler change): swap two branches of a `Case`; change a `Constr` tag; swap two fields of
-   a constructed `Constr`; swap the branches of an `ifThenElse`; replace an `EqualsData` result by `True`;
-   replace a field projection by its neighbour. A mutant is killed when some input's observation differs from
-   the JVM's. The score per operator is reported; M5 measures it and records a floor per operator, below which the
-   test fails. Every surviving mutant from the corpus is listed and classified (equivalent, or a gap with a
-   corpus or input fix).
+1. **Rediscovery.** On a compiler that still has the defect, with the named profile that enables its construct,
+   the campaign must report a mismatch whose shrunk reproducer contains the defect's construct and whose cause is
+   that defect (checked by applying the defect's fix and seeing the case agree); an earlier unrelated mismatch
+   does not count.
+
+   | Defect | Compiler | Found by |
+   |---|---|---|
+   | #275, #276, #277, #279 | the ADR-067 base, before its fix | PR campaign (M3), `G1E` (M4) |
+   | #209 | the current base | PR campaign (M2), `G1E` (M4) |
+   | #280 | the current base | PR campaign (M2) |
+   | #166, #162 | a scratch revert of their fixes (`git revert` of the fix commits, recorded) | PR campaign and `G1E` (M5) |
+   | #47, #50 | a scratch revert of their fixes, if they still apply; otherwise covered by the binding operators in D10.2 | M5 |
+
+   The command, commits, profile, seed, time to first failure and the shrunk reproducer are recorded in this ADR.
+   A defect that the campaign does not find within the PR budget is a generator gap and blocks the milestone.
+2. **Mutation score.** `G1SelfCheckTest` applies mutation operators to the compiled UPLC of `G1E` programs
+   before evaluation, through a test-only transform in `UplcExecutor` (no compiler change). Operators are defined
+   over the forms JuLC emits ("Current behavior"):
+   - `TAG`: change the tag of a `constrData` application or of a folded `Constr` Data constant;
+   - `FIELD_SWAP`: swap two adjacent elements of a `mkCons` chain feeding `constrData`, or of a folded constant;
+   - `PROJECTION`: replace a component read `headList (tailList^k …)` by `k ± 1`;
+   - `DISPATCH`: swap two branches of an integer `case` (PV11 levels) or of an `ifThenElse` over
+     `equalsInteger tag k` (`NONE`, `BASELINE`);
+   - `BRANCH`: swap the branches of an `ifThenElse` or bool `case` (covers guard inversion);
+   - `GUARD_BYPASS`: replace the condition of an `ifThenElse` by `True` or `False`;
+   - `BOOL_DECODE`: replace the decode of a Bool component by `False`;
+   - `EQUALS_DATA`: replace an `equalsData` application by `True`;
+   - `EAGER`: remove a `delay`/`force` pair around a branch, making it strict;
+   - `VAR_SWAP`: replace a variable reference by another variable bound at the same point (covers wrong binding
+     ownership and stale accumulators).
+
+   For each operator and level the test reports eligible sites, mutants applied, killed (some input's
+   observation differs from the JVM's), surviving, crashing (`Crash`) and exhausted (`Inconclusive`); crashes
+   and exhaustion are not counted as kills. The unmutated program must agree first. An operator with no eligible
+   site at a level where its form is emitted fails the test. M5 measures the scores and records a floor per
+   operator and level, below which the test fails; every surviving mutant from the corpus is listed and
+   classified (equivalent, with the reason, or a gap fixed by a corpus or input change).
 3. **Compiler-level fault injection** (ADR-063 open question 2) stays open; D10.1 and D10.2 do not need it.
 
-*Alternatives:* trusting the generator's feature counts alone shows the constructs were generated, not that a
-defect in them would be seen (#209 and #275 show the gap). Mutating Java source instead of UPLC would mostly
-produce programs that javac or JuLC reject, or that change both sides equally.
+*Alternatives:* trusting feature counts alone shows the constructs were generated, not that a defect in them
+would be seen (#209 and #275 show the gap). Mutating Java source instead of UPLC would mostly produce programs
+that javac or JuLC reject, or that change both sides equally.
 
 ### D11. CI
 
-- PR (`./gradlew build`): G1 regression cases, `G1E`, the fixed-seed property (150 tries), the mapping tests,
-  `G1GatesTest`, and the fixed mutation sample. Target added time: under 2 minutes, measured in M2 and M4.
-- Nightly (`difftest-nightly.yml`): the 3,000-try G1 property with a fresh seed, `G1FuzzTest` for 20 minutes,
-  and the full mutation run; failures upload `build/difftest/`.
+- **PR** (`./gradlew build`): G1 regression cases, `G1E` with its observability edits, the fixed-seed property
+  (150 tries), the mapping tests, `G1GatesTest`, `G1MustRejectTest`, and a fixed mutation sample (one mutant per
+  operator and level on a fixed subset of `G1E`). M6 records the measured time of this whole workload, with its
+  bounds (tries, corpus count, mutants); the target is under 3 minutes added.
+- **Nightly** (`difftest-nightly.yml`, `nightlyDiffTest` with both engines): the 3,000-try G1 property with a
+  fresh seed on `julc-vm-java` and, from M6, the Scalus VM (an extra `DiffConfig`); `G1FuzzTest` for 20 minutes;
+  and the full mutation run. Failures upload `build/difftest/`.
 
 ## Alternatives considered
 
@@ -351,12 +497,15 @@ produce programs that javac or JuLC reject, or that change both sides equally.
 | Wait for ADR-061's typed frontend representation and generate against it | ADR-061 is a proposal; G1 needs only source text and is useful now |
 | Random Java text filtered by javac | Rejected in ADR-063 for G0; the same reasons apply |
 | Generate everything, rely on pins for open defects | Pins are exact (ADR-063 D6): every new program in a defect's shape fails the run, so campaigns stop being informative until the fix lands |
-| Reflection order for sealed tags | Matches today but is unspecified (D3) |
+| Reflection order for sealed tags | Unspecified (D3), and not independent of a compiler that might use the same order |
+| Coverage from traces in the compared program | Changes the program under test; the twin keeps it untouched and is itself checked (D8) |
 
 ## Affected modules
 
-- `julc-difftest` only: `gen/G1` and its printer, `ValueMapping`, `DiffCase` and `RegressionStore` (format 3),
-  `KnownDivergences` (feature names), `UplcExecutor` (test-only transform hook for D10), new tests and seeds.
+- `julc-difftest` only: `gen/G1`, its printer and twin printer, `ValueMapping`, `DiffCase` and `RegressionStore`
+  (format 3), `KnownDivergences` (feature names, tags in pin identity), `UplcExecutor` (result representation
+  check, test-only transform hook for D10), `julc-difftest/build.gradle` (`nightlyDiffTest` engines, Scalus
+  runtime dependency for the nightly configuration), new tests and seeds.
 - `.github/workflows/difftest-nightly.yml`: G1 jobs.
 - ADR-063: D5 and M2b point here for G1 and the items G1 covers; ADR-062: S1 status.
 - No change to the compiler, stdlib, VMs or any published artifact.
@@ -368,35 +517,46 @@ are read as before; the registry rules keep their behaviour with feature names.
 
 ## Risks
 
-- **A wrong mapping that agrees with a wrong compiler.** Mitigated by G1-I3, G1-I4, hand-written mapping tests
-  and the cross-check against `ReflectivePlutusDataConverter`.
-- **Gates that outlive their defects.** Each gate names its issue; the ADR-067 PR and the #209 fix are
-  responsible for turning theirs on, with a `G1.VERSION` bump.
-- **PR run time.** Records and switches compile and evaluate more slowly than G0 programs; budgets are measured
-  in M2 and M4, and campaign sizes stay Gradle properties.
+- **A wrong mapping that agrees with a wrong compiler.** Mitigated by G1-I3, G1-I4, the permuted-order vectors
+  and the representation check (G1-I10).
+- **Gates that outlive their defects.** Each gate names its issue; the ADR-067 PR and the #209 and #280 fixes
+  are responsible for turning theirs on, with a `G1.VERSION` bump.
+- **PR run time.** Records, switches, twins, edits and mutants cost more than G0; the whole workload is measured
+  with fixed bounds (D11).
 - **#146 growth.** Comparisons inside records and switches can nest; G1 uses G0 r2's bound and the T13 rule.
 - **Equivalent mutants.** Some mutants cannot change any result; D10 classifies survivors rather than demanding
   a perfect score.
+
+**Residual risks** (not addressed by G1):
+- *Permissive record-argument boundary.* `compileMethod` passes record arguments without a shape check, so a
+  malformed argument (for example `Constr 2 []` in a `boolean` component, which reads as false) is accepted
+  differently from the JVM, which cannot build it. G1 generates well-formed arguments only; validator entry
+  points have ADR-015's strict boundary; malformed Data is G3's subject.
+- Constructs outside the grammar (`Optional`, `JulcMap`, strings, byte arrays, ledger types, generics, lambdas)
+  are not covered by G1.
+- Agreement on generated inputs is not a proof for all inputs.
 
 ## Implementation milestones
 
 | Milestone | Scope | Entry gate | Exit criteria |
 |---|---|---|---|
-| **M1** | D3, D4 mapping; D5 harness generalization (feature names, shared `verify`, format 3) | ADR accepted | Mapping tests against hand-written Data (G1-I3, G1-I4); all G0 tests unchanged and green; G0 plan → program identical for 20,000 random plans |
-| **M2** | G1 r1 grammar without `switch` (types, fields, arguments, results, loops, method-level `if`, helpers, same-type `equals`); `G1PropertyTest`, `G1GatesTest`, `G1FuzzTest` | M1 | G1-I1, G1-I2, G1-I5, G1-I6; quotas met from conclusive cases; PR time measured; every mismatch found is fixed, pinned with an issue, or gated |
-| **M3** | `switch`: type patterns, `default`, `yield` blocks, nesting, inside loops; then guards, record patterns and cross-type `equals` once ADR-067 is in the stack below | M2; for the gated part, ADR-067's implementation | Quotas; rediscovery of #275, #276 and #277 on the pre-fix base (D10.1) |
-| **M4** | `G1E` with the observability check; exercised coverage (D8) | M3 | G1-I7; corpus size and time recorded; exercised quotas met |
-| **M5** | D10: rediscovery evidence for #209, #166 and #162; mutation operators and floors; survivor classification | M4 | G1-I8; floors recorded here; no unclassified survivor |
-| **M6** | CI wiring (D11), ADR-063/ADR-062 updates, results section here | M5 | PR and nightly jobs green with measured times |
+| **M1** | D3, D4 mapping and representation check; D5 harness generalization (feature names, shared `verify`, format 3 with tags and profile, `nightlyDiffTest` engines) | ADR accepted | Mapping tests including the permuted-order vectors (G1-I3, G1-I4, G1-I10); all G0 tests unchanged and green; G0 plan → program identical for 20,000 random plans |
+| **M2** | G1 r1 grammar without `switch` (types, two families, fields, arguments, results, loops, method-level `if` and `instanceof`, helpers, traces, failures, same-type `equals`); profile and gates; `G1PropertyTest`, `G1GatesTest`, `G1FuzzTest` | M1 | G1-I1, G1-I2, G1-I5, G1-I6; quotas met; rediscovery of #209 and #280 under their profiles (D10.1); PR time measured; every mismatch found is fixed, pinned with an issue, or gated |
+| **M3** | `switch`: type patterns, `default`, `yield` blocks, loops in arms, nesting, inside loops, guard-eligible bindings; then guards, record patterns, cross-type `equals` and shared variants once ADR-067 is in the stack below; `G1MustRejectTest` | M2; for the gated part, ADR-067's implementation | Quotas; rediscovery of #275, #276, #277 and #279 by the PR campaign on the pre-fix base |
+| **M4** | `G1E r1` with its observability edits and pinned counts; exercised coverage with the twin contract (D8) | M3 | G1-I7, G1-I8; corpus rediscovery of #209, #275, #276, #277, #279; corpus size and time recorded; exercised quotas met |
+| **M5** | D10: rediscovery of #166, #162, #47 and #50 at reverted commits; mutation operators, scores and floors; survivor classification | M4 | G1-I9; floors recorded here; no unclassified survivor |
+| **M6** | CI (D11): PR workload with fixed bounds, nightly with both engines and the Scalus VM; ADR-063 and ADR-062 updates; results section here | M5 | PR and nightly jobs green with measured times |
 
 ## Verification strategy
 
 - **Independent oracle:** javac and the JVM (ADR-063); nothing in G1's verdict comes from JuLC's own output.
-- **Hand-written vectors** for the mapping (D3), written from the documented encoding, not from JuLC output.
-- **Rediscovery** of real defects at real commits (D10.1), recorded with commands and seeds.
-- **Mutation score** with classified survivors (D10.2).
-- **Exhaustive corpus** with an observability check (D7), and exercised-coverage quotas (D8).
-- **Negative cases:** gate tests (G1-I6) and mapping error tests.
+- **Hand-written vectors** for the mapping (D3), written from the documented encoding, including permuted orders.
+- **Rediscovery** of real defects at real commits, under recorded profiles (D10.1).
+- **Mutation score** over the emitted forms, with eligibility and classified survivors (D10.2).
+- **Exhaustive corpus** with preconditioned observability edits and witnesses (D7), and exercised coverage from a
+  checked twin (D8).
+- **Traces and failures** in generated programs, so evaluation order and strictness are observable (D2).
+- **Negative checks:** gate tests (G1-I6), must-reject tests (D6), mapping error tests.
 - **Review:** each milestone is reviewed independently (including Codex) before the next starts.
 
 ## Related findings (out of scope)
@@ -404,8 +564,9 @@ are read as before; the registry rules keep their behaviour with feature names.
 - Record constructs that JuLC rejects do so with uncoded or misleading diagnostics: a compact constructor that
   normalizes a component and an overridden accessor report JULC0055 "Cannot resolve x"; a static method on a
   record reports "Undefined variable: P"; an explicit canonical constructor reports "'this' is not supported
-  on-chain"; a sealed interface without `permits` over sibling records reports "Unknown type: T". These belong
-  to a G1⁻ negative grammar and to coded diagnostics (ADR-062 T20's family); an issue should be filed.
+  on-chain"; a sealed interface without `permits` over sibling records reports "Unknown type: T"; `instanceof`
+  with a binding inside `&&` reports "Undefined variable" (#204). These belong to a G1⁻ negative grammar and to
+  coded diagnostics (ADR-062 T20's family); an issue should be filed.
 - `JulcMap` results cannot be mapped by `ValueMapping.fromTerm` today (a native pair list, no `PairConst` case),
   and `JulcMap.get` of a missing key returns `null` on the JVM but fails on-chain. Both are G1b's subject.
 
@@ -413,15 +574,46 @@ are read as before; the registry rules keep their behaviour with feature names.
 
 1. **Order of the stack.** G1's M3 needs ADR-067's implementation below it. Lean: keep the stack #253 → ADR-067
    → ADR-066 and implement ADR-067 first; G1's M1 and M2 do not need it and can proceed in parallel.
-2. **Tag source (D3).** Carry tags in the `DiffCase` (as proposed) or accept `getPermittedSubclasses()` order
-   with a startup self-test? Lean: carry them; the cost is a format bump.
-3. **Mutation floors (D10.2).** Fixed numbers now, or measured in M5? Lean: measured in M5, then fixed.
-4. **G1b scope.** `Optional` and `JulcMap` need decisions on `get` of a missing key, key equality (T10) and
+2. **Mutation floors (D10.2).** Fixed numbers now, or measured in M5? Lean: measured in M5, then fixed.
+3. **G1b scope.** `Optional` and `JulcMap` need decisions on `get` of a missing key, key equality (T10) and
    map results. Lean: a short ADR-063 revision when G1 is done.
-5. **Helpers.** JuLC binds helper methods through a different path (library-style method bindings); should G1
-   weight helper calls higher to cover it? Lean: measure in M2 first.
-6. **VMs.** Lean: `julc-vm-java` on PRs, Scalus added in the nightly G1 run (ADR-063 open question 4).
+4. **Helpers.** JuLC binds helper methods through a different path from the entry method; should G1 weight
+   helper calls higher? Lean: measure in M2 first.
+5. **Shared variants (#279).** Whether ADR-067 rejects all multi-parent records or accepts coinciding tags
+   decides whether `SHARED_VARIANT` generates positive or must-reject cases. Lean: follow ADR-067.
+
+(r1's open question on the tag source is answered by D3: tags are always carried. r1's open question on VMs is
+answered by D11: Scalus joins the nightly run in M6.)
 
 ## Revision history
 
 - **r1** (2026-10-30): initial proposal.
+- **r2** (2026-10-30, responds to the reviews of `5c358dfa`: the review comment F1–F10 and Codex's F11–F21):
+  - F1 → two sealed families per program; `SHARED_VARIANT` switch for #279 (filed from the review); D3's rule for
+    two parents; #279 in rediscovery and pins.
+  - F2, F20 → traces (`t`) and failures (`fail`) in the grammar, verified to agree in "Current behavior"; traces in
+    the observability check; the `EAGER` mutation operator.
+  - F3 → `instanceof` patterns as a whole method-level condition.
+  - F4, F16 → mutation operators defined over the emitted forms per level, with eligibility, kill accounting
+    separate from crashes and exhaustion, an agreeing baseline, and targeted operators (`GUARD_BYPASS`,
+    `BOOL_DECODE`, `PROJECTION`, `VAR_SWAP`, `EAGER`).
+  - F5 → G1-I10 and the result representation check in D4.
+  - F6 → zero-component records, single-variant sealed interfaces, sealed components, fields from fields, helper
+    names from the shared pool.
+  - F7 → #201 moved out of the motivating table; #47 and #50 in rediscovery (D10.1).
+  - F8, F13 → tags always carried and validated, in pin identity and replay; no reflection fallback; permuted
+    vectors.
+  - F9, F14 → `G1E r1` is a finite, versioned subgrammar with pinned counts; observability edits have
+    preconditions, witnesses and not-applicable accounting.
+  - F10 → ADR-067 is referenced by PR rather than by a file link; rejected forms completed (switch statements,
+    sealed hierarchies, `&&` instanceof); the `Object`-typed form of #277; residual risks paragraph.
+  - F11 → must-reject checks (D6) and the positive analogue for #162; #162 rediscovery at a revert (D10.1).
+  - F12 → guard-eligible bindings and accumulator snapshots (D2).
+  - F15 → the twin's instrumentation contract and per-input observation check (D8, G1-I8).
+  - F17 → explicit productions for the #209 composition, loops in arms, nested record patterns and
+    identical-payload distinct types; rediscovery must identify the intended defect.
+  - F18 → generation profiles, persisted and replayed (D6, G1-I5).
+  - F19 → quota denominator is all tries; exercised quotas stated.
+  - F21 → milestone order fixed (corpus rediscovery in M4); `nightlyDiffTest` runs both engines; Scalus decided
+    for the nightly run in M6; the whole PR workload is measured with fixed bounds.
+  - New: #280 (zero-parameter helpers, filed while revising) gets the `ZERO_ARG_HELPERS` switch and rediscovery.
