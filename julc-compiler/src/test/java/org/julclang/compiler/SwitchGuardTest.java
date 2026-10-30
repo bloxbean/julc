@@ -329,6 +329,113 @@ class SwitchGuardTest {
                 """, in(9), in(3), in(-3));
     }
 
+    private static final String LAYOUTS = """
+                record R0(BigInteger v, BigInteger w) {}
+                record R1(BigInteger w, BigInteger v) {}
+                static final R0 p = new R0(BigInteger.ONE, BigInteger.TWO);
+            """;
+
+    @Test
+    void defaultLocalDoesNotLeakPastTheSwitch() throws Exception {
+        // #291: on the ordinary path (no guard) a default local named like a field kept its type after the switch,
+        // so p.v() read the field's Data at the local's layout. Every arm body is now compiled in its own scope.
+        matchesJava(S + LAYOUTS + """
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        BigInteger r = switch (s) { case A q -> a; default -> { R1 p = new R1(a, a); yield a; } };
+                        return p.v().add(r);
+                    }
+                """, in(5), in(-5));
+        // Inside a helper.
+        matchesJava(S + LAYOUTS + """
+                    static BigInteger helper(S s, BigInteger a) {
+                        BigInteger r = switch (s) { case A q -> a; default -> { R1 p = new R1(a, a); yield a; } };
+                        return p.v().add(r);
+                    }
+                    static BigInteger m(BigInteger a) {
+                        return helper(a.signum() > 0 ? new A(a) : new B(a), a).add(BigInteger.valueOf(5));
+                    }
+                """, in(5), in(-5));
+        // A nested switch's default, read after the outer switch.
+        matchesJava(S + LAYOUTS + """
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        BigInteger r = switch (s) {
+                            case A q -> switch (s) { case B z -> a; default -> { R1 p = new R1(a, a); yield a; } };
+                            case B q -> a;
+                        };
+                        return p.v().add(r);
+                    }
+                """, in(5), in(-5));
+        // A colon-form default group.
+        matchesJava(S + LAYOUTS + """
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        BigInteger r = switch (s) {
+                            case A q:
+                                yield a;
+                            default:
+                                R1 p = new R1(a, a);
+                                yield a;
+                        };
+                        return p.v().add(r);
+                    }
+                """, in(5), in(-5));
+        // The guard-aware path.
+        matchesJava(S + LAYOUTS + """
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        BigInteger r = switch (s) { case A q when q.v().signum() > 0 -> a; default -> { R1 p = new R1(a, a); yield a; } };
+                        return p.v().add(r);
+                    }
+                """, in(5), in(-5));
+    }
+
+    @Test
+    void defaultBlockWithTwoLoopsAsAnInstanceMethodArgument() throws Exception {
+        // #291, second symptom: a default block with two counted loops, in a switch that is the argument of an
+        // instance-method call, was rejected with "Unbound variable: i1"; with its own scope it compiles and agrees.
+        matchesJava(S + """
+                    static BigInteger m(BigInteger a) {
+                        S w = a.signum() > 0 ? new A(a) : new B(a);
+                        BigInteger one = BigInteger.ONE;
+                        return one.add(switch (w) {
+                            case A x -> a;
+                            default -> {
+                                long i0 = 0;
+                                while (i0 < 1) { i0 = i0 + 1; }
+                                long i1 = 0;
+                                while (i1 < 2) { i1 = i1 + 1; }
+                                yield BigInteger.valueOf(i0 + i1);
+                            }
+                        });
+                    }
+                """, in(5), in(-5));
+    }
+
+    @Test
+    void constantSubexpressionsOfNonConstantGuardsKeepJavaWidth() throws Exception {
+        // Round 3 (implementer, I9): inside a guard that is not constant, int and long constant expressions are lowered
+        // as their Java values: int overflow, a narrowing cast of a constant, constant variables (declared width
+        // included, F70), a qualified constant and a hex literal. Each conjunct is false under unbounded arithmetic.
+        matchesJava(S + """
+                    static final int N = 2147483647 + 1;
+                    static final long L = 2147483647 + 1;
+                    static final long W = 2147483647;
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        return switch (s) {
+                            case A x when (2147483647 + 1) < x.v().signum() && N < x.v().signum() && L < x.v().signum()
+                                    && ((int) 2147483648L) < x.v().signum() && ((int) (W + 1)) < x.v().signum()
+                                    && Probe.N < x.v().signum() && 0xFFFFFFFF < x.v().signum() -> BigInteger.ONE;
+                            case A x -> BigInteger.TWO;
+                            case B y when W + 1 > y.v().signum() -> BigInteger.TEN;
+                            default -> BigInteger.ZERO;
+                        };
+                    }
+                """, in(5), in(-5));
+    }
+
     @Test
     void booleanListElementsAsGuards() throws Exception {
         // Accepted neighbours of the fail-closed guard typing (F28): generic returns typed Boolean.

@@ -871,6 +871,10 @@ public class PirGenerator {
     }
 
     public PirTerm generateExpression(Expression expr) {
+        if (guardDepth > 0) {
+            var exact = guardFixedWidthConstant(expr);
+            if (exact != null) return exact;
+        }
         if (expr instanceof IntegerLiteralExpr ile) {
             var val = ile.getValue();
             BigInteger intVal;
@@ -2422,8 +2426,14 @@ public class PirGenerator {
 
         for (var entry : se.getEntries()) {
             if (entry.isDefault()) {
-                // Compile the default branch body for use as catch-all for unmatched variants
-                defaultBranchBody = generateSwitchEntryBody(entry);
+                // Compile the default branch body for use as catch-all for unmatched variants, in its own scope:
+                // its locals must not outlive the switch (#291), as each type-pattern arm's do not.
+                symbolTable.pushScope();
+                try {
+                    defaultBranchBody = generateSwitchEntryBody(entry);
+                } finally {
+                    symbolTable.popScope();
+                }
                 continue;
             }
             for (var label : entry.getLabels()) {
@@ -2639,6 +2649,16 @@ public class PirGenerator {
      */
     private PirTerm generateGuard(SwitchPatternChecker.Arm arm) {
         var type = SwitchPatternChecker.sourceType(arm.guard(), this::guardLeafType);
+        for (var call : arm.guard().findAll(MethodCallExpr.class)) {
+            // F75: String.equals lowers to EqualsString, which fails on a non-String argument where Java gives false (#292).
+            if (call.getNameAsString().equals("equals") && call.getArguments().size() == 1 && call.getScope().isPresent()
+                    && SwitchPatternChecker.sourceType(call.getScope().get(), this::guardLeafType) == SwitchPatternChecker.JType.STRING
+                    && SwitchPatternChecker.sourceType(call.getArgument(0), this::guardLeafType) != SwitchPatternChecker.JType.STRING) {
+                throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(call),
+                        SwitchPatternChecker.labelText(arm.entry()), "'" + call + "' compares a String with a value that is "
+                                + "not established as a String, which fails on-chain where Java gives false (#292)");
+            }
+        }
         PirTerm guard;
         guardDepth++;
         try {
@@ -2655,6 +2675,26 @@ public class PirGenerator {
                     SwitchPatternChecker.labelText(arm.entry()), SwitchPatternChecker.notBoolean(arm.guard(), type));
         }
         return guard;
+    }
+
+    /**
+     * ADR-067 M1 review round 3: inside a guard, an {@code int} or {@code long} constant expression of the verified
+     * subset (JLS 15.29, {@link JavaConstants}) is lowered as its Java value, so its overflow, narrowing casts and
+     * constant variables keep Java's fixed width even when the guard as a whole is not constant
+     * ({@code (2147483647 + 1) < x.v().signum()}). The ordinary lowering evaluates them without Java's width (ADR-062
+     * T6), and a guard's value must be Java's (I9). Null when the expression is not such a constant.
+     */
+    private PirTerm guardFixedWidthConstant(Expression expr) {
+        if (!(expr instanceof IntegerLiteralExpr || expr instanceof LongLiteralExpr || expr instanceof UnaryExpr
+                || expr instanceof BinaryExpr || expr instanceof CastExpr || expr instanceof NameExpr
+                || expr instanceof FieldAccessExpr || expr instanceof ConditionalExpr || expr instanceof EnclosedExpr)) {
+            return null;
+        }
+        var constant = JavaConstants.evaluate(expr);
+        if (!constant.constant() || constant.unclassifiable()) return null;
+        var kind = constant.value().kind();
+        if (kind != JavaConstants.Kind.INT && kind != JavaConstants.Kind.LONG) return null;
+        return new PirTerm.Const(Constant.integer(BigInteger.valueOf(constant.value().asLong())));
     }
 
     /** The Java type of a guard leaf (a name or call the source rules leave open), from the symbol table. */

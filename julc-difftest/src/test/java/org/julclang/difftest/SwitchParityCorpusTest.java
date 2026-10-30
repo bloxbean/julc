@@ -169,6 +169,16 @@ class SwitchParityCorpusTest {
         guards.put("same-family instanceof", new String[]{"", "s instanceof B"});
         guards.put("BigInteger relational", new String[]{"", "x0.v() < n"});
         guards.put("record ==", new String[]{"", "x0 == x0", "JULC0072"});
+        // Review round 3: the verified constant subset (int and long width), and guard-binding conflicts.
+        guards.put("long constant widening", new String[]{"        final long nl = 1;\n", "(nl << 32) == 1"});
+        guards.put("int constant overflow", new String[]{"", "(2147483647 + 1) < 0"});
+        guards.put("constant narrowing cast", new String[]{"", "((int) 2147483648L) < 0"});
+        guards.put("guard binding named like a parameter", new String[]{"", "!(s instanceof B n)"});
+        guards.put("guard binding twice", new String[]{"", "(s instanceof A a2) || (s instanceof A a2)"});
+        guards.put("constant overflow beside a binding", new String[]{"", "(2147483647 + 1) < x0.v().signum()"});
+        guards.put("constant narrowing beside a binding", new String[]{"", "((int) 2147483648L) < x0.v().signum()"});
+        guards.put("int arithmetic", new String[]{"", "x0.v().signum() + 2147483647 < 0", "JULC0072"});
+        guards.put("String.equals of a boolean", new String[]{"", "\"a\".equals(true)", "JULC0072"});
         var shapes = Map.of(
                 "A?,B", List.of("A?", "B"),
                 "A?,A,B", List.of("A?", "A", "B"),

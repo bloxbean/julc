@@ -356,6 +356,44 @@ class Javac21ParityTest {
                             default -> BigInteger.TWO;
                 """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.stdlib.Builtins;"),
                 plutusStubs, FIVE, "bad operand types", round2, Julc.rejects("JULC0072")));
+        // ---- M1 review round 3 rows
+        String round3 = "added in M1 review round 3";
+        cases.add(new ParityCase("F70 a long constant shifted past int width, constant false", "F70", probe(S + "    static final long N = 1;\n", """
+                    public static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when (N << 32) == 1 -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "constant expression with value 'false'", round3, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F71 a narrowing declaration read by a non-constant guard", "F71", probe(S + "    static final int N = 4294967296L;\n", """
+                    public static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F71 a qualified narrowing declaration read by a non-constant guard", "F71b", probe(S + "    static final int N = 4294967296L;\n", """
+                    public static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when Probe.N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F71 a narrowing declaration read through another constant", "F71c",
+                probe(S + "    static final int N = 4294967296L;\n    static final int M = N;\n", """
+                    public static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F74 a guard binding named like a local", "F74a", probe(S, """
+                    public static BigInteger m(BigInteger a) {
+                        BigInteger v = a;
+                        S s = new A(a);
+                        return switch (s) { case A x when !(s instanceof B v) -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), Map.of(), FIVE, "already defined", round3, Julc.rejects("JULC0083")));
+        cases.add(new ParityCase("F74 the same binding twice in one guard", "F74b", switchOverA("""
+                            case A x when (s instanceof A a2) || (s instanceof A a2) -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), Map.of(), FIVE, "illegal attempt to redefine an existing match binding", round3, Julc.rejects("JULC0083")));
         return cases;
     }
 

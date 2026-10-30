@@ -14,13 +14,16 @@ their source), with evidence from [ADR-063](063-differential-jvm-uplc-test-harne
 [#282](https://github.com/bloxbean/julc/issues/282) (record members ignored; added in r2),
 [#283](https://github.com/bloxbean/julc/issues/283) (colon-form fall-through; added in r3),
 [#284](https://github.com/bloxbean/julc/issues/284) (a default-package user record replaced by a ledger type of the
-same simple name; added in r4)
+same simple name; added in r4),
+[#291](https://github.com/bloxbean/julc/issues/291) (a `default` local outliving the switch; added in M1 round 3)
 **Relates to:** [ADR-015](verification/015-strict-on-chain-data-boundaries.md) (strict boundaries),
 [ADR-038](038-switch-pair-case-lowering.md) and [ADR-041](041-integer-case-dispatch.md) (switch dispatch),
 [ADR-048](048-loop-conditional-local-updates.md) and [ADR-050](050-if-loop-continuations.md) (switch arms in
 loops, join lambdas), [ADR-051](051-switch-field-decoding.md) (field decoding), [ADR-060](060-generated-binder-namespace.md)
 (generated names), [ADR-066](https://github.com/bloxbean/julc/pull/278) (generator G1, which depends on this ADR),
-[#204](https://github.com/bloxbean/julc/issues/204) (`instanceof` binding scope)
+[#204](https://github.com/bloxbean/julc/issues/204) (`instanceof` binding scope),
+[#287](https://github.com/bloxbean/julc/issues/287) (expression typing, ADR-065),
+[#292](https://github.com/bloxbean/julc/issues/292) (`String.equals` with another type, T34)
 **Base:** `fd605e77` (head of PR #253, `feat/063-jazzer-fuzzing`). Every code citation is at this commit.
 
 ## Context
@@ -91,8 +94,10 @@ runtime type information (the static types decide it), and #279 cannot be repres
 
 - Guards and record patterns in `switch` expressions over sealed interfaces behave as in Java SE 21, at every
   optimization level and target, on every VM.
-- JuLC rejects, with coded diagnostics, every switch shape that javac 21 rejects within the constructs it accepts,
-  because JuLC compiles source without javac (testkit `forSource`, playground, Elci's library provider).
+- JuLC rejects, with coded diagnostics, every switch shape that javac 21 rejects **under the switch-specific rules**
+  within the constructs it accepts, because JuLC compiles source without javac (testkit `forSource`, playground,
+  Elci's library provider). *(M1 round 3.)* Expression-level javac parity inside a non-constant guard (the legality of
+  call arguments and receivers) is the general type-checking gap of every `if` condition, owned by #287 and ADR-065.
 - `equals` between values whose static types provably cannot hold the same class (always `false` in Java) is
   rejected with a code (decided in r4), and never decided from an imprecise type (r3).
 - A record that cannot be represented with one constructor tag is rejected.
@@ -242,8 +247,10 @@ runtime type information (the static types decide it), and #279 cannot be repres
     in-body decoding is open question 9.
 - **Trusted:** javac 21.0.3 as the reference for compile-time verdicts on Java 21 source; the JVM as the reference for
   run-time results on well-formed values (ADR-063 H1); the VMs' conformance (ADR-030).
-- **Compile-time inputs** (source text) are trusted to be the contract author's, but JuLC must not accept source
-  javac rejects, because the author's JVM tests could not have run it.
+- **Compile-time inputs** (source text) are trusted to be the contract author's, but JuLC must not accept a switch
+  that javac rejects under the switch-specific rules (I9), because the author's JVM tests could not have run it.
+  *(M1 round 3.)* Expression-level legality inside non-constant guards is the same gap as in any `if` (#287); the
+  guard subset (D4) fails closed wherever that gap could change a guard's value.
 
 ## Invariants
 
@@ -272,17 +279,26 @@ Each invariant names the decisions it constrains and is testable.
   The pre-existing emission of `default` once per uncovered constructor is unchanged only for switches that keep
   the old lowering (I8).
 - **I7. No silent skip** (D3, D7). Every case label, guard and pattern form is either lowered with Java's meaning or
-  rejected with a coded diagnostic. No label is ignored.
+  rejected with a coded diagnostic. No label is ignored. *(M1 round 3.)* A guard outside D4's guard subset, including
+  a constant-looking guard outside the verified constant subset, is rejected (`JULC0072`), never lowered with a
+  different meaning or reclassified as non-constant.
 - **I8. Byte stability** (D2, D4, D5, D6, D9). A `switch` with no guard and no record pattern compiles to the same PIR
   and the same script bytes as at the base, at every optimization level and target, unless D4 now rejects it (a
-  colon-form group that falls through, #283; a parameterized sealed selector; javac-rejected shapes). An `equals`
+  colon-form group that falls through, #283; a parameterized sealed selector; javac-rejected shapes), or unless a
+  local declared in its `default` body shadows a name read after the switch (#291, M1 round 3). An `equals`
   call that D5 does not classify as disjoint compiles as before. Programs not affected by D6 or D9 are unchanged.
-- **I9. Compile-time parity with JLS 21** (D4; r3). Within the supported constructs (D3), JuLC accepts a switch iff
-  the JLS 21 text accepts it, as operationalized by javac 21.0.3: guard type, constant guards (literals, constant
-  variables and compound constant expressions), effectively-final guard variables (by declaration identity),
-  exhaustiveness, dominance, duplicate `default`, pattern-variable conflicts, applicability and arity. Where JuLC
-  supports less than Java (colon-form fall-through, parameterized sealed selectors), it rejects with a code, never
-  accepts with another meaning.
+- **I9. Compile-time parity with JLS 21** (D4; r3; **revised in M1 round 3**). For an accepted switch, the
+  switch-specific rules match the JLS 21 text exactly, as operationalized by javac 21.0.3: guard type, constant guards
+  (in the verified constant subset), effectively-final guard variables (by declaration identity), guard binding scope
+  and conflicts, exhaustiveness, dominance, duplicate `default`, case kinds and colon forms, pattern-variable
+  conflicts, applicability (by nominal declaration) and arity; and **every accepted guard's value is Java's**. Where
+  JuLC supports less than Java (colon-form fall-through, parameterized sealed selectors, the guard subset), it rejects
+  with a code, never accepts with another meaning. Expression-level javac parity for non-constant call arguments and
+  receivers inside a guard (F73) is not claimed: it is #287 and ADR-065, as for every `if` condition. "Java's value"
+  is relative to the values of the variables the guard reads: a local computed before the switch carries the general
+  gaps of its own expression (ADR-062 T6 and the rest), as in any `if`. Within the guard, `int` and `long` constant
+  subexpressions are lowered as their Java values, and fixed-width operations JuLC cannot evaluate with Java's width
+  (non-constant arithmetic, non-constant narrowing casts) are rejected (D4, round 3).
 - **I10. Bindings** (D3). A record-pattern component variable is bound under its source name (ADR-060), to the
   value `x.c()` yields in JuLC for that component, decoded to its declared type; it shadows a field of the same
   name exactly as in Java. Generated binders use `#` names chosen with `PirHelpers.hygienicName` where terms built
@@ -489,7 +505,24 @@ is a parity-corpus dimension (Verification 3):
   (#288), non-constant `==` on strings and `==` on other references (#289, T4), `char`/`byte`/`short` values, instance
   fields, constant declarations javac rejects, `java.lang` names shadowed by a user type, and `instanceof` whose operand
   is not, by declaration (FQCN), the tested variant or its sealed interface are rejected. Unqualified case-pattern
-  types are resolved to their declaration like qualified ones (`JULC0076`).
+  types are resolved to their declaration like qualified ones (`JULC0076`). *(Round 3.)* Constant folding is kept exact for a **verified
+  subset**: `boolean`, `int`, `long` and `String` constants with JLS fixed-width semantics, a constant variable taking
+  its declared type after the assignment check (F70); every constant declaration a guard reads is validated, constant
+  guard or not (F71); a constant-looking guard outside the subset is rejected, never reclassified as non-constant. Also
+  rejected: a non-constant narrowing cast `(int) e` (T6, F72), a guard pattern variable that conflicts with a variable
+  in scope or another binding of the guard, checked before the unused-binding exemption (F74, `JULC0083`), and
+  `String.equals` with an argument not established as a `String` (#292, F75). Every switch arm body, `default`
+  included, is compiled in its own scope on both lowerings (#291). The declaration check follows qualified names
+  (`Probe.N`) and the initializers of the constants a guard reads. *(Round 3, found while implementing I9.)* Inside a
+  guard that is not constant, an `int` or `long` constant subexpression is lowered as its Java value (so
+  `(2147483647 + 1) < x.v().signum()` and a `static final int N = 2147483647 + 1` read by a guard keep Java's
+  width), and `int`/`long` arithmetic that is not a constant expression (`+`, `-`, `*`, `/`, `%`, shifts, bitwise
+  operators, unary `-` and `~`) is rejected with `JULC0072`, because JuLC evaluates it without Java's overflow
+  (ADR-062 T6). **The expression-typing boundary:** the legality of call arguments and receivers inside a non-constant
+  guard (`ok(true)` for a `long` parameter, `signum()` on a `long`; F73) is the type-checking gap every `if`
+  condition has today; it is #287 and ADR-065, not D4. D4 owns the switch-specific rules and the guard subset, which
+  fails closed wherever that gap could change a guard's value (the guard's type, comparisons, casts, `==`,
+  `instanceof`, `String.equals`, fixed-width arithmetic).
 - **Effectively final guard variables** (§14.11.1, §4.12.4; revised in r3, F7): each name used but not declared in a
   guard is resolved to its declaration (by identity and scope, not by name). If that declaration is a local or
   parameter that occurs as the target of an assignment anywhere in its scope (in JuLC, only loops may reassign), the
@@ -807,7 +840,9 @@ shapes are ordinary `DataMatch`, `IfThenElse`, `Let`, `Lam` and `App`.
   that fall through between groups (#283) are now rejected (r3). A packageless top-level user record named like a
   non-hash ledger type now means the user's record (#284, r4). A user record whose implicit accessor or method call
   reached a named ledger handler by simple name (`Value`'s `isEmpty`, `lovelaceOf`, `containsPolicy`, `assetOf`)
-  now uses its own accessor (F45, r6).
+  now uses its own accessor (F45, r6). A local declared in a `switch`'s `default` body no longer stays visible after
+  the switch (#291, M1 round 3): a later read of a same-named field or variable, which used the local's type, now
+  reads the field Java reads.
   Deployed scripts are unaffected (their hashes are fixed); recompiling changes their hash only if they use one of
   these constructs.
 - **Newly rejected programs** are those javac 21.0.3 rejects (D4), colon-form fall-through and grouped labels and
@@ -924,6 +959,21 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    | Colon-group locals in nested switches: a pattern-variable conflict, a reassigned local in a guard (F55; javac rejects) | JuLC accepts | `REJECT JULC0083` / `JULC0073` | M1 | P |
    | `case Other.A x` naming another declaration called `A` (F56; javac rejects) | JuLC accepts | `REJECT JULC0076` | M1 | P |
    | Arrow rules and colon groups mixed, both orders (F57; javac rejects) | JuLC accepts | `REJECT JULC0075` | M1 | P |
+   | *M1 round 3 rows.* Constant guards with int overflow: `N + 1 < 0` (`static final int N = 2147483647`), `(2147483647 + 1) < 0`, `((int) 2147483648L) < 0` | `AGREE` | `AGREE` (kept exact by the verified subset) | M1 | D |
+   | `(N << 32) == 1` with `static final long N = 1` (F70; javac: constant false) | JuLC accepted | `REJECT JULC0072` | M1 | P |
+   | A narrowing declaration read by a non-constant guard (F71; javac rejects the declaration) | JuLC accepted | `REJECT JULC0072` | M1 | P |
+   | Guard `((int) n) >= 0` with a `long n` (F72) | runs the first arm (narrowing erased) | `REJECT JULC0072` | M1 | D |
+   | The same cast in an `if` (F72, T6) | `DIVERGE` T6 | `DIVERGE` T6 (retained) | — | D |
+   | A guard call whose argument or receiver javac rejects (`ok(true)` for a `long` parameter; `signum()` on a `long`; F73) | JuLC accepts | documented gap (#287, ADR-065), as in an `if` | — | none |
+   | Guard bindings conflicting with a local or with each other (F74; javac rejects) | JuLC accepted | `REJECT JULC0083` | M1 | P |
+   | Guard `"a".equals(true)` (F75) | fails on-chain (`EqualsString`; JVM 2) | `REJECT JULC0072` (#292) | M1 | D |
+   | `"a".equals(true)` in an `if` (#292) | `DIVERGE` T34 (JVM `false`, UPLC fails) | `DIVERGE` T34 (retained) | — | D |
+   | A `default` local named like a field read after the switch (#291) | `DIVERGE` (JVM 1, JuLC 2) | `AGREE` | M1 | D |
+   | A `default` block with two counted loops in a switch that is an instance-method argument (#291, second symptom) | `REJECT none` ("Unbound variable: i1") | `AGREE` | M1 | D |
+   | A narrowing declaration read qualified (`Probe.N`) or through another constant (F71; javac rejects) | JuLC accepted | `REJECT JULC0072` | M1 | P |
+   | `int` constants with overflow inside a non-constant guard (round 3) | first arm skipped (JVM 1, JuLC 2) | `AGREE` | M1 | D |
+   | Non-constant `int` arithmetic in a guard, `x.v().signum() + 2147483647 < 0` (round 3) | first arm skipped (JVM 1, JuLC 2) | `REJECT JULC0072` | M1 | D |
+   | The same arithmetic in an `if` (T6) | `DIVERGE` T6 | `DIVERGE` T6 (retained) | — | D |
    | *Interim (F35):* every record-pattern row above (R1, H2, R2, R7, R4, F9, F30 ×2, `X(W(B(var v)))`, the parameterized component, `Pair`) | as listed | `REJECT JULC0076` ("not yet supported") between M1 and M2a, which sets the final verdicts listed | M1 → M2a | D |
 
    Every new reproducer from review is added as a row with its baseline, final expectation and checker.
@@ -934,7 +984,13 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    `final` local), compound constants (`1 == 1`), a non-`boolean` guard, a non-constant guard reading a parameter, an
    effectively final local, a reassigned loop variable and a for-each variable — with zero, one or two `default`s, in
    arrow and colon form (including groups that fall through and grouped labels), and with pattern variables that
-   collide with a parameter, plus a `Boolean`-typed guard (r4, F33). For each, **javac 21.0.3 invoked by explicit path** (not ADR-063's `JvmExecutor`, which
+   collide with a parameter, plus a `Boolean`-typed guard (r4, F33). *(M1 rounds 1–3.)* Also: JLS 15.29 constants of
+   the verified subset (casts, shifts, `String ==`, numeric promotion, int and long width, constant variables), shapes
+   outside it (`char`, `byte`, `short`, floating point, reference casts, non-constant `String ==`, record `==`),
+   guard bindings introduced when true or false and conflicting with a parameter, `instanceof` on siblings and across
+   families, comparisons with operands of the wrong kind, and mixed case kinds. *(Round 3.)* Also: constant
+   overflow and narrowing beside a binding, non-constant `int` arithmetic, a guard binding declared twice, and
+   `String.equals` of a boolean. Calls whose argument or receiver javac rejects are not generated (#287, F73). For each, **javac 21.0.3 invoked by explicit path** (not ADR-063's `JvmExecutor`, which
    uses the build JDK's default release) gives accept/reject; JuLC must agree, except where the ADR rejects legal
    Java on purpose (colon fall-through, parameterized sealed types), which must carry the expected code. Disagreements
    between javac 21.0.3 and javac 25 `--release 21` are listed in the report, not used as verdicts. Accepted programs
@@ -945,8 +1001,9 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    revisions and (ii) fall outside the approved behaviour-changing categories: a guard or record pattern; an `equals`
    that D5 classifies (now a rejection); D4's new rejections (colon fall-through, grouped labels, duplicate `default`,
    pattern-variable conflicts, parameterized sealed selectors, javac-rejected guards); D6; D9 (record bodies, ledger
-   redeclaration); #284's resolution change; and named ledger handlers keyed on ledger identity with the
-   implicit-accessor correction (F45). The report classifies each changed program under one of these. Programs satisfying (i) and (ii) must be byte-identical; every program in a category
+   redeclaration); #284's resolution change; named ledger handlers keyed on ledger identity with the
+   implicit-accessor correction (F45); and *(M1 round 3)* #291, a local declared in a `default` body that shadows a
+   name read after the switch (every arm body now has its own scope). The report classifies each changed program under one of these. Programs satisfying (i) and (ii) must be byte-identical; every program in a category
    must appear in the outcome matrix or the report. Programs accepted at the base and rejected at the head are listed
    with their code and must all fall in an approved category. Counts per category go in the PR.
 6. **Mutation checks.** Each of these deliberate faults must make at least one test fail: ignore guards; keep only
@@ -1502,6 +1559,79 @@ true (`JULC0074`, D1).
   membership; F63 `char`/`byte`/`short` allowed; F64 unqualified names by spelling; F65 `java.lang` names by spelling;
   F66 a narrowing initializer folded, and an instance field read; F67 `String ==` on non-constants; F39 an unknown
   leaf inside `&&`/`||` counted as boolean.
+
+### M1 review round 3 (2026-10-30; Codex F70–F75, #291, and the I9 scope revision)
+
+Codex requested changes at `a4a7d834` (F70–F75). The author proposed narrowing I9 and dropping `JavaConstants`; the
+review comment agreed with conditions, and Codex agreed with the expression-typing boundary but not with dropping
+constant folding (JLS 14.11.1's constant-false rule and constant-true dominance and exhaustiveness are switch-specific,
+and `(2147483647 + 1) < 0` and `((int) 2147483648L) < 0` would have become wrong values). The revised plan in the
+author's last note is applied here:
+
+- **I9 revised.** For an accepted switch, the switch-specific rules match javac 21 exactly, and every accepted guard's
+  value is Java's. Expression-level parity for non-constant call arguments and receivers (F73) is #287 and ADR-065.
+  Goals, the threat model, I7, I9, D4, Verification 3 and the outcome matrix are updated together.
+- **`JavaConstants` is kept, restricted to a verified subset:** `boolean`, `int`, `long` and `String` with JLS
+  fixed-width semantics. A constant-looking guard outside it is rejected (`JULC0072`), never treated as non-constant.
+
+While implementing the revised I9, the implementer found two more places where an accepted guard's value was not
+Java's (R3a, R3b below; both are ADR-062 T6 inside a guard). They are fixed with D4's existing guard-subset
+mechanism, as F72 is, and need no other design change. **Reviewers should check that they fit the plan.**
+
+| Finding | Change |
+|---|---|
+| Scope (author note; both reviewers) | I9 as above. F73 is not changed: it is a documented gap, owned by #287 and ADR-065, as in every `if`. The outcome-matrix rows for F54, F63 and F66 keep `REJECT`, since folding is kept. |
+| F70: constant width lost | `JavaConstants.initializer` applies the assignment conversion to the declared type after the assignability check (JLS 5.2), widening included. `static final long N = 1` with `(N << 32) == 1` is the constant `false` (`JULC0072`); `static final long N = 2147483647` with `N + 1 > 0` is the constant `true` and covers `A`. |
+| F71: declarations unchecked in non-constant guards | `JavaConstants.invalidDeclaration` validates every constant declaration a guard reads, constant guard or not: by simple name, qualified (`Probe.N`), and through the initializers of the constants it reads (`M = N`). `static final int N = 4294967296L` with `N > x.v().signum()` is `JULC0072`. P rows for all three forms. |
+| F72: narrowing erased | A cast to `int` of an operand that is not a constant is `JULC0072` (T6). The same cast in an `if` is pinned `DIVERGE T6`. A constant cast keeps Java's value (R3a). |
+| F73: argument and receiver legality | Documented gap (#287, ADR-065). Not generated in the corpus. |
+| F74: binding conflicts | `checkGuardPatternVariables` checks, before the unused-binding exemption, that a guard's pattern variable redeclares neither a variable in scope (a local, a parameter, the arm's own binding) nor another pattern variable of the same guard (`JULC0083`). P rows for `!(s instanceof B v)` beside a local `v` and `(s instanceof A a2) \|\| (s instanceof A a2)`; corpus kinds. |
+| F75: `String.equals` of another type | In a guard, `String.equals` with an argument not established as a `String` is `JULC0072`, citing #292. In an `if`, `"a".equals(true)` is pinned `DIVERGE T34` (JVM 2, UPLC fails); ADR-062 has the new T34 row. |
+| #291: a `default` local outlives the switch | On the ordinary (unguarded) lowering, the `default` body is now compiled in its own symbol-table scope, as type-pattern arms already were and as the guard-aware path did since F53. Oracle tests: the issue's shape, inside a helper, a nested switch's `default`, a colon-form `default` group, and the guard-aware path. Pin `agree-default-local-scope-ordinary-path` (`DIVERGE` at `a4a7d834`, JVM 1, JuLC 2; now `AGREE`). The second symptom (a `default` block with two counted loops, in a switch that is an instance-method argument, rejected with "Unbound variable: i1") is fixed by the same change: oracle test and pin `agree-default-two-loops-instance-argument`. A new approved byte-changing category in Verification 5. |
+| Conditions of the review comment and Codex | `N + 1 < 0` (`static final int N = 2147483647`), `(2147483647 + 1) < 0` and `((int) 2147483648L) < 0` are pinned `AGREE`; `when ON`/`when DEBUG` flags still fold. |
+| R3a (implementer): constant subexpressions of a non-constant guard were evaluated without Java's width | Inside a guard, every `int` or `long` constant expression of the verified subset is lowered as its Java value (`PirGenerator.guardFixedWidthConstant`): `(2147483647 + 1) < x.v().signum()`, a `static final int N = 2147483647 + 1` read by a guard, `((int) 2147483648L) < x.v().signum()` and the hex literal `0xFFFFFFFF` (Java -1) now agree; at `a4a7d834` each skipped the arm (JVM 1, JuLC 2). Oracle test and pin `agree-guard-constant-overflow-beside-binding`. Only guards are affected, so I8 is unchanged. |
+| R3b (implementer): non-constant `int`/`long` arithmetic | `+`, `-`, `*`, `/`, `%`, shifts and bitwise operators on numbers, and unary `-` and `~`, are `JULC0072` in a guard unless the operation is a constant expression; JuLC evaluates them without Java's overflow (T6). `x.v().signum() + 2147483647 < 0` gave 2 where Java gives 1. Pinned `REJECT JULC0072`, and the same expression in an `if` as `DIVERGE T6`. |
+| Plan item 7: existing protections | `existingProtectionsHold` re-asserts F67 (#289), the boolean type, F50, F51/F62, F56, F61, F64 and F65 in one place; each keeps its own test as well. |
+
+**Known over-rejections added in round 3 (fail closed; javac accepts each):** non-constant `int`/`long` arithmetic
+in a guard, even where it cannot overflow (`x.v().signum() + 1 > 0`, `-x.v().signum() < 0`); a cast to `int` of any
+non-constant operand, an `int` one included; `String.equals` whose argument JuLC cannot type as a `String` (a
+`Data`-typed or unknown leaf); one pattern-variable name in two separate call arguments of a guard
+(`f(s instanceof A q, s instanceof A q)`, the only duplicate-binding shape javac 21.0.3 accepts among the seven
+checked). The round-2 list stands.
+
+**Evidence.**
+- **Tests** (`./gradlew :julc-compiler:test --rerun :julc-difftest:test --rerun -Pjulc.javac21.required=true`):
+  julc-compiler 2,078, 0 failures (`SwitchDiagnosticsTest` 53, `SwitchGuardTest` 23, `SwitchMalformedDataTest` 11,
+  new `JavaConstantsTest` 5); julc-difftest 258, 0 failures (`RegressionCasesTest` 136 pins, twelve new;
+  `Javac21ParityTest` 42 rows, six new; `SwitchParityCorpusTest`). `./gradlew build -PskipSigning=true`: success;
+  12,243 tests in all modules, 0 failures, 530 skipped (pre-existing).
+- **New pins** (twelve): `AGREE` for the three constant guards of the plan (`agree-guard-int-constant-overflow`,
+  `agree-guard-literal-overflow`, `agree-guard-constant-narrowing-cast`), R3a
+  (`agree-guard-constant-overflow-beside-binding`) and #291 (`agree-default-local-scope-ordinary-path`,
+  `agree-default-two-loops-instance-argument`); `REJECT JULC0072` for F72, F75 and R3b; `DIVERGE T6` for F72 and R3b in
+  an `if`, `DIVERGE T34` for F75 in an `if`. Each pin that records a base (`recorded.base`) was replayed with its fix
+  reverted in the working tree, and reproduces the recorded JVM and JuLC observations.
+- **Parity corpus:** 1,104 programs (nine new guard kinds): 136 accepted by javac 21.0.3 and JuLC (57 run both ways at
+  all four levels on four inputs, all agreeing), 943 rejected by both (one by JuLC's parser, `case A x, B y`), 25
+  rejected by JuLC on purpose (the over-rejections above and earlier); javac 21.0.3 and javac 25 `--release 21` agree
+  on all.
+- **Byte stability** against `fd605e77` (the same harness and corpora as M1: external `../julc-examples-cmp` at
+  22b4e00, in-repo examples, compiler test text blocks, stdlib tests, Blaster fixtures, `../julc-cip113-example`,
+  `../julc-helloworld`): 3,764 (program, level) rows, **784 programs byte-identical, 0 changed, 0 newly rejected, 0
+  newly accepted**. No program in these corpora has a `default` local that shadows a name read after the switch, so
+  the #291 category has zero members here; its effect is shown by the pins and oracle tests above.
+- **Mutations:** all 38 detected. The 27 earlier mutants of the harness again (round 2 reported 28, but its harness holds 27;
+  F66's narrowing-fold mutant, masked by the new declaration check, is now caught by `JavaConstantsTest`), and eleven
+  new: F70 keep the initializer's type; F71
+  validate declarations only in constant guards, ignore qualified references, and do not follow initializers; F72
+  allow non-constant narrowing casts; F74 skip the binding-conflict checks; F75 allow `String.equals` of another type;
+  #291 compile `default` without its own scope on the ordinary path (two tests, including the second symptom); R3a
+  lower guard constants without Java's width; R3b allow non-constant binary arithmetic, and unary minus.
+- **Open point for review.** `JavaConstants` treats a `static final` primitive field with a constant initializer as
+  its Java constant even when it is annotated `@Param` (pre-existing for whole constant guards; R3a extends it to
+  subexpressions). No corpus program declares a `@Param` field `final`; whether such a field should be rejected in a
+  guard is left to the reviewers.
 
 ## Revision history
 

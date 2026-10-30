@@ -23,13 +23,17 @@ import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.type.PrimitiveType;
 import com.github.javaparser.ast.type.Type;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Constant expressions of the Java language (JLS 21 §15.29), as far as a switch guard needs them (ADR-067 D1, D4):
- * literals of type {@code boolean}, {@code int}, {@code long}, {@code char} and {@code String}; casts to those types;
+ * Constant expressions of the Java language (JLS 21 §15.29), for the verified subset a switch guard may use (ADR-067
+ * D1, D4, M1 review round 3): constants of type {@code boolean}, {@code int}, {@code long} and {@code String} with the
+ * JLS's fixed-width semantics; casts to those types;
  * the unary, multiplicative, additive, shift, relational, equality, bitwise and conditional operators; and simple or
  * type-qualified names of constant variables (JLS §4.12.4). Operands follow Java's numeric promotion, so
  * {@code ((true ? 2147483647 : 0L) + 1) > 0} is {@code true}. A form that is a constant expression in Java but that
@@ -74,7 +78,7 @@ final class JavaConstants {
             case BooleanLiteralExpr literal -> Result.of(Kind.BOOLEAN, literal.getValue());
             case IntegerLiteralExpr literal -> number(() -> Result.of(Kind.INT, literal.asNumber().intValue()));
             case LongLiteralExpr literal -> number(() -> Result.of(Kind.LONG, literal.asNumber().longValue()));
-            case CharLiteralExpr literal -> number(() -> Result.of(Kind.CHAR, literal.asChar()));
+            case CharLiteralExpr ignored -> Result.UNCLASSIFIABLE; // outside the verified subset (F63)
             case StringLiteralExpr literal -> number(() -> Result.of(Kind.STRING, literal.asString()));
             case TextBlockLiteralExpr literal -> number(() -> Result.of(Kind.STRING, literal.asString()));
             case DoubleLiteralExpr ignored -> Result.UNCLASSIFIABLE;
@@ -218,10 +222,8 @@ final class JavaConstants {
                 case BOOLEAN -> v.kind() == Kind.BOOLEAN ? operand : Result.NOT_CONSTANT;
                 case INT -> v.isNumeric() ? Result.of(Kind.INT, (int) v.asLong()) : Result.NOT_CONSTANT;
                 case LONG -> v.isNumeric() ? Result.of(Kind.LONG, v.asLong()) : Result.NOT_CONSTANT;
-                case SHORT -> v.isNumeric() ? Result.of(Kind.INT, (int) (short) v.asLong()) : Result.NOT_CONSTANT;
-                case BYTE -> v.isNumeric() ? Result.of(Kind.INT, (int) (byte) v.asLong()) : Result.NOT_CONSTANT;
-                case CHAR -> v.isNumeric() ? Result.of(Kind.CHAR, (char) v.asLong()) : Result.NOT_CONSTANT;
-                case FLOAT, DOUBLE -> Result.UNCLASSIFIABLE;
+                // Outside the verified subset (boolean, int, long, String): never classified (F63).
+                case SHORT, BYTE, CHAR, FLOAT, DOUBLE -> Result.UNCLASSIFIABLE;
             };
         }
         if (type.isClassOrInterfaceType() && type.asClassOrInterfaceType().getNameAsString().equals("String")) {
@@ -264,6 +266,68 @@ final class JavaConstants {
         return field.isPresent() ? constantField(field.get(), visiting) : Result.NOT_CONSTANT;
     }
 
+    /**
+     * F71: a constant declaration that a guard references, simply, qualified ({@code Probe.N}) or through another
+     * constant's initializer, whose initializer is a constant javac rejects for its declared type (a narrowing such as
+     * {@code int N = 4294967296L}), whether or not the guard itself is constant; null if none.
+     */
+    static String invalidDeclaration(Expression guard) {
+        // The declarations the guard names, simply or qualified, and those their initializers name in turn.
+        var pending = new ArrayDeque<VariableDeclarator>(referencedDeclarations(guard));
+        var seen = new HashSet<VariableDeclarator>();
+        while (!pending.isEmpty()) {
+            var declaration = pending.pop();
+            if (!seen.add(declaration)) continue;
+            if (!isConstantType(declaration.getType()) || declaration.getInitializer().isEmpty()) continue;
+            var initializer = declaration.getInitializer().get();
+            if (!declaration.getType().isVarType()) {
+                var value = evaluate(initializer, new HashSet<>());
+                if (value.constant() && !value.unclassifiable() && !assignable(declaration.getType(), value.value())) {
+                    return declaration.toString();
+                }
+            }
+            pending.addAll(referencedDeclarations(initializer));
+        }
+        return null;
+    }
+
+    private static List<VariableDeclarator> referencedDeclarations(Expression expression) {
+        var result = new ArrayList<VariableDeclarator>();
+        for (var name : expression.findAll(NameExpr.class)) {
+            var declaration = declarationOf(name);
+            if (declaration != null) result.add(declaration);
+        }
+        for (var access : expression.findAll(FieldAccessExpr.class)) {
+            if (!(access.getScope() instanceof NameExpr qualifier)) continue;
+            var type = SwitchPatternChecker.typeInScope(qualifier, qualifier.getNameAsString());
+            var field = type.flatMap(t -> fieldOf(t, access.getNameAsString()));
+            if (field.isPresent() && field.get().getParentNode().orElse(null) instanceof FieldDeclaration declaration
+                    && declaration.isFinal() && declaration.isStatic()) {
+                result.add(field.get());
+            }
+        }
+        return result;
+    }
+
+    /** The final local or static final field a name denotes, or null. */
+    private static VariableDeclarator declarationOf(NameExpr name) {
+        var local = SwitchPatternChecker.resolveLocal(name, name.getNameAsString());
+        if (local.isPresent()) {
+            return local.get() instanceof VariableDeclarator variable
+                    && variable.getParentNode().orElse(null) instanceof VariableDeclarationExpr declaration
+                    && declaration.isFinal() ? variable : null;
+        }
+        for (var type = name.findAncestor(TypeDeclaration.class); type.isPresent();
+             type = type.get().findAncestor(TypeDeclaration.class)) {
+            var field = fieldOf(type.get(), name.getNameAsString());
+            if (field.isPresent()) {
+                return field.get().getParentNode().orElse(null) instanceof FieldDeclaration declaration
+                        && declaration.isFinal() && declaration.isStatic() ? field.get() : null;
+            }
+        }
+        return null;
+    }
+
     static Optional<VariableDeclarator> fieldOf(TypeDeclaration<?> type, String name) {
         for (var member : type.getMembers()) {
             if (!(member instanceof FieldDeclaration field)) continue;
@@ -292,7 +356,9 @@ final class JavaConstants {
             if (!value.constant() || value.unclassifiable() || variable.getType().isVarType()) return value;
             // The initializer must be assignable without narrowing (JLS 5.2); a declaration javac rejects
             // (int N = 4294967296L) is not a constant JuLC classifies (F66). char, byte and short are not modelled.
-            return assignable(variable.getType(), value.value()) ? value : Result.UNCLASSIFIABLE;
+            if (!assignable(variable.getType(), value.value())) return Result.UNCLASSIFIABLE;
+            // Then the assignment conversion to the declared type, widening included: a long N = 1 is a long (F70).
+            return variable.getType() instanceof PrimitiveType ? cast(variable.getType(), value) : value;
         } finally {
             visiting.remove(variable);
         }

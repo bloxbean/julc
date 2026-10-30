@@ -94,6 +94,7 @@ reproduce or refute. New entries take the next free ID and are never renumbered.
 | T31 | Record members (explicit accessor, `equals`, compact or secondary constructor) | The declared member runs (JLS §8.10.3) | The record body is ignored: accessor calls read the component, `equals` is `EqualsData`, constructor bodies never run (R6: JVM -5, UPLC 5; N5 fails on-chain) | Reproduced (ADR-067 M0: seven saved cases); #282 | S5 / ADR-067 |
 | T32 | Colon-form `switch` groups that fall through | A group that completes normally falls through into the next group | The group's single expression statement becomes the arm's value (F12a: JVM 2, UPLC -5) | Reproduced (ADR-067 M0); #283 | S5 / ADR-067 |
 | T33 | Type names in packageless sources, and user records reaching ledger handlers by simple name | A top-level type of the compilation unit or package shadows an on-demand import (JLS §6.4.1) | In the unnamed package the implicit ledger import wins (F19: JVM 7, UPLC 5); ledger hash names resolve by simple name; a user `record Value` reaches the ledger `Value` handlers (F45: JVM true, UPLC fails) | Reproduced (ADR-067 M0: six saved cases); #284 | S5 / ADR-067 |
+| T34 | `String.equals` with an argument that is not a `String` | `false` | `EqualsString` fails on-chain (`"a".equals(true)`: JVM 2, UPLC fails) | Reproduced (ADR-067 M1 round 3: one saved case); #292. Rejected inside `switch` guards by ADR-067 | S5 |
 
 ## Decision
 
@@ -199,6 +200,9 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
   - Rows and history are in ID order.
 - **Accepted** (2026-10-28): design accepted at `b75b9619` (review round r2). Issues filed for T20–T23 (#257, #254,
   #256, #255), tracked together in #258.
+- **ADR-067 M1 round 3** (2026-10-30): new T34 (#292), `String.equals` with a non-`String` argument fails on-chain.
+  T6 gains two saved cases outside guards (a narrowing cast of a `long`, `int` overflow in an `if`); inside `switch`
+  guards ADR-067 lowers `int`/`long` constants with Java's width and rejects the non-constant forms.
 - **ADR-067 M0** (2026-10-30): new T27–T33 for #275, #276, #277, #279, #282, #283 and #284, owned by S5 through
   ADR-067, which proposed them as T26–T32. T24 and T25 are claimed by #269 and #271, and T26 by #272, so they take the
   next free IDs. Each has saved `julc-difftest` cases with the base behaviour.

@@ -350,7 +350,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when N > 0 -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "not a constant expression JuLC can evaluate");
+                """), "JULC0072", "narrows its initializer");
         rejected(probe(S + """
                     final boolean ON = true;
                     static BigInteger m(BigInteger a) {
@@ -371,6 +371,219 @@ class SwitchDiagnosticsTest {
                             case A x when "a" + "b" == "ab" -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
                 """));
+    }
+
+    // ---- review round 3
+
+    @Test
+    void constantsUseTheirDeclaredWidth() {
+        // F70: long N = 1 is a long, so N << 32 is 4294967296 and the guard is the constant false.
+        rejected(probe(S + """
+                    static final long N = 1;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when (N << 32) == 1 -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "value false");
+        // long N = 2147483647: N + 1 does not overflow, so the guard is the constant true and covers A.
+        accepted(probe(S + """
+                    static final long N = 2147483647;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when N + 1 > 0 -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
+                    }
+                """));
+    }
+
+    @Test
+    void constantDeclarationsAreValidatedInNonConstantGuards() {
+        // F71: the narrowing declaration is rejected although the guard reads a binding.
+        rejected(probe(S + """
+                    static final int N = 4294967296L;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "narrows its initializer");
+        // Qualified, and through another constant's initializer.
+        rejected(probe(S + """
+                    static final int N = 4294967296L;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when Probe.N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "narrows its initializer");
+        rejected(probe(S + """
+                    static final int N = 4294967296L;
+                    static final int M = N;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "'N = 4294967296L' narrows");
+        // A legal chain is accepted.
+        accepted(probe(S + """
+                    static final int N = 4;
+                    static final int M = N;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
+                    }
+                """));
+    }
+
+    @Test
+    void fixedWidthArithmeticThatIsNotConstant() {
+        // Round 3 (implementer, I9): int and long arithmetic is evaluated without Java's overflow (ADR-062 T6), so
+        // a non-constant one is rejected; constant arithmetic is lowered as its Java value (SwitchGuardTest).
+        rejected(switchOver("""
+                            case A x when x.v().signum() + 2147483647 < 0 -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "int or long arithmetic");
+        rejected(switchOver("""
+                            case A x when -x.v().signum() < 0 -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "int or long arithmetic");
+        rejected(probe(S + """
+                    static BigInteger m(BigInteger a, long n) {
+                        S s = new A(a);
+                        return switch (s) { case A x when n * 2 > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "int or long arithmetic");
+        rejected(probe(S + """
+                    static BigInteger m(BigInteger a, long n) {
+                        S s = new A(a);
+                        return switch (s) { case A x when (n << 1) > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "int or long arithmetic");
+        // Accepted neighbours: constant arithmetic, negative literals, comparisons, BigInteger arithmetic.
+        accepted(probe(S + """
+                    static final int N = 2147483647 + 1;
+                    static BigInteger m(BigInteger a, long n, boolean p) {
+                        S s = new A(a);
+                        return switch (s) {
+                            case A x when (2147483647 + 1) < x.v().signum() && x.v().signum() != -1 && N < n -> BigInteger.ONE;
+                            case A x when p && n > 0 -> BigInteger.TWO;
+                            case A x when x.v().add(a).signum() > 0 -> BigInteger.TEN;
+                            default -> BigInteger.ZERO;
+                        };
+                    }
+                """));
+    }
+
+    @Test
+    void nonConstantNarrowingCast() {
+        // F72: (int) n of a long is erased by the lowering (T6).
+        rejected(probe(S + """
+                    static BigInteger m(BigInteger a, long n) {
+                        S s = new A(a);
+                        return switch (s) { case A x when ((int) n) >= 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "T6");
+        // A constant operand is converted exactly.
+        accepted(switchOver("""
+                            case A x when ((int) 2147483648L) < 0 -> BigInteger.ONE;
+                            case B y -> BigInteger.ZERO;
+                """));
+    }
+
+    @Test
+    void guardBindingConflicts() {
+        // F74: checked before the unused-binding exemption.
+        rejected(probe(S + """
+                    static BigInteger m(BigInteger a) {
+                        BigInteger v = a;
+                        S s = new A(a);
+                        return switch (s) { case A x when !(s instanceof B v) -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0083", "as a local variable");
+        rejected(switchOver("""
+                            case A x when (s instanceof A a2) || (s instanceof A a2) -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0083", "in this guard");
+        rejected(switchOver("""
+                            case A x when !(s instanceof A x) -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0083", "as a pattern variable");
+    }
+
+    @Test
+    void stringEqualsWithAnotherType() {
+        // F75: EqualsString fails on-chain on a non-String argument, where Java gives false (#292).
+        rejected(switchOver("""
+                            case A x when "a".equals(true) -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "#292");
+        accepted(probe(S + """
+                    static BigInteger m(BigInteger a, String t) {
+                        S s = new A(a);
+                        return switch (s) { case A x when "a".equals(t) -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """));
+    }
+
+    @Test
+    void existingProtectionsHold() {
+        // Round 3, plan item 7: the F67 (#289), boolean-type, nominal and qualifier protections (F50, F51, F56, F61,
+        // F62, F64, F65) stay; each also has its own test above or below.
+        rejected(switchOver("""
+                            case A x when (x.v() + "b") == "ab" -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "guard must have type boolean");
+        rejected(switchOver("""
+                            case A x when x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "numeric");
+        rejected(switchOver("""
+                            case A x when x instanceof B -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "can never be a B");
+        // F50: a qualifier that is a local obscures the class (qualifiedConstantNeedsATypeQualifier).
+        rejected(probe(S + """
+                    record Flags(boolean ON) {}
+                    static final boolean ON = true;
+                    static BigInteger m(BigInteger a) {
+                        Flags Probe = new Flags(false);
+                        S s = new A(a);
+                        return switch (s) { case A x when Probe.ON -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "Probe.ON");
+        // F56: a qualified pattern type naming another declaration (qualifiedPatternTypeOfAnotherDeclaration).
+        rejected(probe(S + """
+                    static final class Other {
+                        sealed interface U permits A {}
+                        record A(BigInteger v) implements U {}
+                    }
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case Other.A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0076", "not applicable: Other.A");
+        // F61: a reference cast (referenceCastsInGuards).
+        rejected(switchOver("""
+                            case A x when ((S) (Object) x) instanceof A -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "#288");
+        // F64: an unqualified pattern type resolved by declaration (unqualifiedPatternTypeResolvedByDeclaration).
+        rejected(probe("""
+                    static final class Other {
+                        sealed interface S permits A {}
+                        record A(BigInteger v) implements S {}
+                    }
+                    record A(BigInteger v) {}
+                    static BigInteger m(BigInteger a) {
+                        Other.S s = new Other.A(a);
+                        return switch (s) { case A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0076", "not applicable");
+        // F65: a user type named Boolean (shadowedJavaLangNames).
+        rejected(probe(S + """
+                    static final class Boolean {}
+                    static BigInteger m(BigInteger a, Boolean flag) {
+                        S s = new A(a);
+                        return switch (s) { case A x when flag -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "not established as legal Java");
     }
 
     // ---- JULC0072: constant guards by JLS 15.29 (F54, F29)

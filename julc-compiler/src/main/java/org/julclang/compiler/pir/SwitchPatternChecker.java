@@ -331,6 +331,23 @@ final class SwitchPatternChecker {
      * introduced when true ({@code !(o instanceof A a)}) is accepted as long as the guard does not read it.
      */
     private static void checkGuardPatternVariables(String label, Expression guard) {
+        // F74: a guard's pattern variable may not redeclare a variable in scope (the arm's own binding included) or
+        // another pattern variable of the guard, whether or not it is ever introduced (JLS 6.4).
+        var seen = new HashSet<String>();
+        for (var instanceOf : guard.findAll(InstanceOfExpr.class)) {
+            if (instanceOf.getPattern().isEmpty()) continue;
+            for (var variable : instanceOf.getPattern().get().findAll(TypePatternExpr.class)) {
+                String name = variable.getNameAsString();
+                if (!seen.add(name)) {
+                    throw error(DiagnosticCodes.PATTERN_VARIABLE_CONFLICT, variable, name, "in this guard");
+                }
+                var declaration = resolveLocal(instanceOf, name);
+                if (declaration.isPresent()) {
+                    throw error(DiagnosticCodes.PATTERN_VARIABLE_CONFLICT, variable, name,
+                            "as " + describe(declaration.get()) + " in scope");
+                }
+            }
+        }
         var whenTrue = introducedWhenTrue(guard);
         if (!whenTrue.isEmpty()) {
             throw error(DiagnosticCodes.SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED, guard, label, whenTrue.iterator().next());
@@ -384,6 +401,13 @@ final class SwitchPatternChecker {
      * stdlib's {@code long}-valued helpers). Any other call typed as an integer by the symbol table is taken to be a
      * {@code BigInteger}, a reference: comparing it with {@code <} or {@code ==} is not established as legal.
      */
+    /** Binary operators that, on int or long operands, compute a fixed-width result (JLS 15.17-15.19, 15.22). */
+    private static final Set<BinaryExpr.Operator> FIXED_WIDTH_OPERATORS = Set.of(
+            BinaryExpr.Operator.PLUS, BinaryExpr.Operator.MINUS, BinaryExpr.Operator.MULTIPLY, BinaryExpr.Operator.DIVIDE,
+            BinaryExpr.Operator.REMAINDER, BinaryExpr.Operator.LEFT_SHIFT, BinaryExpr.Operator.SIGNED_RIGHT_SHIFT,
+            BinaryExpr.Operator.UNSIGNED_RIGHT_SHIFT, BinaryExpr.Operator.BINARY_AND, BinaryExpr.Operator.BINARY_OR,
+            BinaryExpr.Operator.XOR);
+
     private static final Set<String> PRIMITIVE_INTEGER_METHODS = Set.of(
             "signum", "compareTo", "intValue", "longValue", "intValueExact", "longValueExact", "bitLength", "bitCount",
             "getLowestSetBit", "size", "length", "hashCode", "at", "countOutputsAt", "countSetBits", "findFirstSetBit",
@@ -705,6 +729,39 @@ final class SwitchPatternChecker {
                 throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, cast, label, "'" + cast + "' casts to a reference type, "
                         + "and JuLC erases the cast's run-time check (#288); a guard may cast only to a primitive type or to Boolean");
             }
+        }
+        for (var cast : guard.findAll(CastExpr.class)) {
+            // F72: a narrowing cast is erased by the lowering (T6); a constant one is lowered as its Java value
+            // (PirGenerator.guardFixedWidthConstant).
+            if (cast.getType() instanceof PrimitiveType primitive && primitive.getType() == PrimitiveType.Primitive.INT
+                    && !isConstant(cast.getExpression())) {
+                throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, cast, label, "'" + cast + "' may narrow a long, and JuLC "
+                        + "erases the narrowing (ADR-062 T6); compare the long value instead");
+            }
+        }
+        // Round 3: int and long arithmetic that is not a constant expression is evaluated without Java's fixed width
+        // (ADR-062 T6), so it may overflow differently; constant arithmetic is lowered as its Java value.
+        for (var binary : guard.findAll(BinaryExpr.class)) {
+            if (!FIXED_WIDTH_OPERATORS.contains(binary.getOperator()) || isConstant(binary)) continue;
+            var left = sourceType(binary.getLeft(), e -> JType.UNKNOWN);
+            var right = sourceType(binary.getRight(), e -> JType.UNKNOWN);
+            if (binary.getOperator() == BinaryExpr.Operator.PLUS && (left == JType.STRING || right == JType.STRING)) continue;
+            if (bool(left) && bool(right)) continue; // boolean &, |, ^
+            throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, binary, label, "'" + binary + "' is int or long arithmetic, "
+                    + "which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic, or compare "
+                    + "the operands without combining them");
+        }
+        for (var unary : guard.findAll(UnaryExpr.class)) {
+            if ((unary.getOperator() == UnaryExpr.Operator.MINUS || unary.getOperator() == UnaryExpr.Operator.BITWISE_COMPLEMENT)
+                    && !isConstant(unary)) {
+                throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, unary, label, "'" + unary + "' is int or long arithmetic, "
+                        + "which JuLC evaluates without Java's overflow (ADR-062 T6); use BigInteger arithmetic instead");
+            }
+        }
+        var invalid = JavaConstants.invalidDeclaration(guard);
+        if (invalid != null) {
+            throw error(DiagnosticCodes.SWITCH_GUARD_INVALID, guard, label, "the constant declaration '" + invalid
+                    + "' narrows its initializer, which javac rejects (JLS 5.2)");
         }
         if (!guard.findAll(CharLiteralExpr.class).isEmpty() || guard.findAll(CastExpr.class).stream()
                 .anyMatch(c -> declaredType(c.getType(), c) == JType.SMALL)) {
