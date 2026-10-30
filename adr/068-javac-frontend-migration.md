@@ -1,7 +1,7 @@
 # ADR-068: Replace JavaParser with javac as JuLC's only Java frontend
 
-**Status:** Proposed (r4)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2, r3, r4)
+**Status:** Proposed (r5)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r5)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -234,7 +234,8 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
   (D14).
 - **I10. A closed compilation environment.** javac sees exactly:
   - the compiled roots and the sources the host's pool offers (D8), on the source path;
-  - signature-only class files for JuLC's **on-chain API**: `julc-core`, `julc-ledger-api`, the `julc-stdlib`
+  - signature-only class files for JuLC's **on-chain API**: `julc-core` (all of it, off-chain classes such as
+    `DebugMetadata` included: visibility never implies support, and I2 rejects their use), `julc-ledger-api`, the `julc-stdlib`
     classes on-chain code may reference (annotations, `Builtins`, the collection and value types; not its
     `@OnchainLibrary` classes, and not compiler-facing classes such as `StdlibRegistry`, `ListsLibHof` or
     `StdlibLibraryProvider`), and the annotation types of `julc-verification`
@@ -367,23 +368,35 @@ testkit expose it. The default is `JAVAPARSER` until M5 and `JAVAC` after it; M6
   (`FRONTEND_CONSTRUCT_NOT_PORTED`, internal status), naming the construct. It never falls back (I8).
 - **The JavaParser frontend is frozen at B0.** It is the I1 reference, so it changes only to keep the build green,
   and by two declared exceptions. Other defects found during the migration, including those this ADR fixes (D6,
-  D11), are fixed in the javac frontend only, with a D13 entry. The exposure this leaves on the default frontend
-  until M5 (open DIVERGE pins for T29, T30, T31, T33 and others) is **accepted**: JuLC is a preview with no
-  production users, the pins stay in the harness, and M5 closes the window. This replaces r1's mirroring rule.
+  D11), are fixed in the javac frontend only, with a D13 entry. This replaces r1's mirroring rule.
+- **Known divergences accepted until M5 (maintainer decision, 2026-10-31).** The maintainer decided that the
+  silent divergences already known and public when this ADR was accepted stay open on the default frontend until
+  M5, rather than being fixed or rejected in the frozen frontend: JuLC is a preview with no production users, each
+  is public (an issue, an ADR-062 row, a saved pin), and M5 closes the window. The list is every ADR-062 row open
+  at B0 and every issue filed against JuLC's semantics by then; M0 freezes it with each pin's ID. Among them: T3–T5
+  (equality), T6 (`int`/`long` width), T7 (`any`/`all`), T11, T12, #146's remaining forms (T13), T29 (cross-type
+  `equals`), T30 (two sealed parents), T31 (record members), T32, T33 (ledger names), T34, #280, #288, #289, #295
+  for the forms D4's exception 1 does not cover, and #296 (`"a" + 1`). The release notes of any release before M5 list them. `SECURITY.md` puts such
+  bugs in scope; M0 adds a sentence there that, during the preview, divergences catalogued publicly in ADR-062
+  are tracked as public issues, and only undisclosed ones go through the private advisory process.
 - **Exception 1: D6's comparison rules go into both frontends at M1.** M1's javac gate forces dialect
   comparisons into the `compareTo` form; with today's lowering that form duplicates operands (#146) and costs
   more (41 against 68 bytes for `a.add(b) > c.multiply(b)`; 60 against 128 for three comparisons). So D6's
   `compareTo` rule, and its left-to-right rule for relational operators, are implemented in the JavaParser
-  frontend too, as a reference change (I1). There the `compareTo` rule matches through JuLC's own receiver typing
-  (an `IntegerType` receiver, method `compareTo`, one argument), which is sound behind the javac gate, since the
-  source is then valid Java and the receiver a `BigInteger`; no javac fact flows into that frontend (I8).
+  frontend too, as a reference change (I1). There the rule must match only a **nominal `java.math.BigInteger`**
+  receiver and argument. `IntegerType` alone is not enough: an integer-backed `@NewType` record also maps to
+  `IntegerType` (`TypeResolver.java:518`), and may declare its own `compareTo` (valid Java, which javac accepts).
+  So the JavaParser-side matcher requires that JuLC's resolver gives the receiver's and the argument's declared
+  Java type as `java.math.BigInteger` (not a `@NewType`, a user record, or a type shadowing the name), and leaves
+  every other `compareTo` to today's lowering; no javac fact flows into that frontend (I8). Tests include a
+  `@NewType` with a declared `compareTo` and a shadowed `BigInteger` name.
   M1 gates that every rewritten corpus source costs no more, in size and budget, than the **order-correct**
   lowering of its dialect original, which is the dialect form plus D6's single binding where one is needed.
 - **Exception 2: security-class fixes go into both frontends.** A security-class defect is any silent divergence
   in a validator's accept/reject outcome from its own Java code, in **either** direction: the script accepts
   what the Java rejects, or rejects (fails, or never terminates) what it accepts, as GHSA-p9v9-f3g2-cqv9 did both.
-  The maintainers classify a defect under `SECURITY.md`. Such a defect is fixed in both frontends, with a
-  regression case, as a reference change (I1). Releases between M1 and M5 are therefore
+  The maintainers classify a defect under `SECURITY.md`. A security-class defect **newly found** during M1–M5
+  (not on the accepted list above) is fixed in both frontends, with a regression case, as a reference change (I1). Releases between M1 and M5 are therefore
   allowed; their notes list the open DIVERGE pins of the default frontend.
 
 ### D5. javac's diagnostics are JuLC's diagnostics for invalid Java
@@ -444,7 +457,8 @@ exceptions D11 lists.
     each operand is built from string literals, constant `String` variables and string `+` alone, with no numeric,
     `char`, boolean or conditional subexpression, **and** the same holds, recursively, for the initializer of every
     constant variable it reaches (alias chains, static, local and imported constants): those have Java's value
-    without integer semantics. Inside
+    without integer semantics. A constant from a class file (a stub) has no initializer tree; it contributes its
+    `getConstantValue()`, which is Java's exact value. Inside
     `switch` guards, ADR-067's evaluator decides as today (Java's widths, I9), so `"a" + "b" == "ab"` keeps its
     meaning there. Any other constant-string comparison (`(2147483647 + 1 < 0 ? "a" : "b") == "a"`, which is true
     on the JVM and false with unbounded lowering), including one reached only through a constant alias
@@ -453,31 +467,37 @@ exceptions D11 lists.
   - **String `+` with a non-`String` operand** (`"a" + 1`) is valid Java, but JuLC lowers it to `appendString`
     over an integer, which fails at run time (#296). The javac frontend rejects it with
     `JULC0090` (`STRING_CONCAT_NON_STRING`) until a decimal conversion is specified; the fix is to concatenate
-    `String`s only.
+    `String`s only. **Exception:** inside a `switch` guard, a constant concatenation that ADR-067's evaluator
+    computes with Java's values (`"a" + (2147483647 + 1) == "a-2147483648"`, `JavaConstants.java:174`, `:225`) keeps
+    its meaning (I9); a regression distinguishes it from runtime concatenation.
   - Other reference equality (§15.21.3: `BigInteger`, `byte[]`, `String`, boxed values, records) is rejected with
     `JULC0086` (`REFERENCE_EQUALITY_UNSUPPORTED`); the fix is `.equals`, or `ByteStringLib.equals(a, b)` for
     bytes.
   - **Equality that would compare an array by identity** is rejected with `JULC0087`
-    (`ARRAY_EQUALS_UNSUPPORTED`; T4, T5). The check applies to **every equality-using operation**, not only
-    `.equals`: `.equals`; `JulcList`'s `contains` and `indexOf`; `JulcMap`'s `get`, `containsKey`, `insert` and
-    `delete`; the same operations on `java.util.List` and `java.util.Map`; and any other library method D6's table
-    in M3 lists as comparing elements. It is decided on the static type `T` being compared (the receiver for
-    `.equals`, the element or key type for collections), after type substitution, and asks whether the JVM's
-    equality for some value of `T` reaches an array compared by identity:
-    - an array type: yes, except as the direct element or key type of a JuLC collection (`JulcList`,
-      `JulcMap`, `JulcArray`), whose JVM implementations M1 changes to compare `byte[]` by value
-      (`Arrays.equals`), as on-chain (`JulcAssocMap.java:52,67,85`, `JulcArrayList.java:89`; their JavaDoc is
-      corrected);
+    (`ARRAY_EQUALS_UNSUPPORTED`; T4, T5). The check applies to **every operation whose JVM implementation compares
+    elements or keys**, and M3 derives the table from that rule over the supported signatures. Today that is:
+    `.equals`; `JulcList.contains`; `JulcMap`'s `get`, `lookup`, `containsKey` and `delete`; `TypedMapLib`'s
+    `lookup`, `member` and `insert` (which deletes first); and the same operations on `java.util.List` and
+    `java.util.Map`. Plain `JulcMap.insert` only prepends, on the JVM and on-chain (`JulcAssocMap.java:75-78`,
+    `TypeMethodRegistry.java:807-816`), so it is not checked; a regression keeps comparison-free insertion
+    accepted. The check is decided on the static type `T` being compared (the receiver for `.equals`, the element
+    or key type for collections), after type substitution, and asks whether the JVM's equality for some value of
+    `T` reaches an array compared by identity:
+    - an array type: yes, except as an element, key or value type of a JuLC collection (`JulcList`, `JulcMap`,
+      `JulcArray`), whose JVM equality M1 makes deep for `byte[]` (below);
     - a record with the implicit `equals`: if any component's type can (each component checked, after
       substitution);
     - a sealed interface: if any permitted variant can (each variant checked);
     - `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `JulcMap`, `JulcArray`, `java.util.List` and `java.util.Map`:
       if any type argument can (an array type argument of `java.util.List` or `Map` is unsafe; of a JuLC
       collection, safe after M1's change);
-    - a type on the **value-equality allow-list**: no. The list is explicit (`BigInteger`, `String`, `Boolean`,
-      the ledger types that declare value `equals`, such as `PubKeyHash` with `Arrays.equals`), and each entry has
-      a test that its `equals` compares every component by value. Declaring `equals` is not enough;
-    - a type variable, or any type the check cannot resolve: rejected, conservatively.
+    - a type on the **value-equality allow-list**: no. The list is explicit (`BigInteger`, `String`, `Boolean`;
+      julc-core's `PlutusData` variants, such as `ConstrData` and `BytesData`, which use `Arrays.equals`; the
+      ledger types that declare value `equals`, such as `PubKeyHash`), and each entry has a test that its
+      `equals` compares every component by value. A type that declares `equals` but is not on the list is
+      rejected: declaring `equals` is not enough;
+    - a type variable, or any type the check cannot resolve: rejected, conservatively, except in generic library
+      methods (below).
 
     The recursion follows finite paths only: a type reaches an array if some finite component path does, so
     recursive types (`PlutusData.ListData`, user recursive sealed types) terminate. The fix is to compare the
@@ -485,7 +505,31 @@ exceptions D11 lists.
     ADR-067 M3b) `ByteStringLib.equals(a.hash(), b.hash())`. M0 scans the corpus and the external examples for
     affected call sites (as ADR-067 M4 did; `CfPaymentSplitterValidator.java:51,83,94` calls `.equals` on `byte[]`)
     and lists them. Tests cover direct, nested record, sealed-component, container, `java.util`, type-argument and
-    recursive-type paths, and the M1 collection change on the JVM.
+    recursive-type paths.
+  - **Generic library methods (Elci, `TypedMapLib`).** In a generic method, equality on a type variable is not
+    checked at the declaration but at each instantiation, on the substituted types. When `JavaLibraryProvider`
+    specializes at a PIR-type environment, a Java type in it is checked by the rule above; a **producer-owned
+    type** (an Elci type with no Java declaration) has no JVM equality, and its equality is the producer
+    language's, which for Elci is Data equality (`EqualsData`), so it passes. `GenericExportsTest`'s
+    specializations (`items.head().equals(target)` at `Bytes`, and the producer-owned sum, `:147-163`, `:242-263`)
+    stay accepted, with tests; ADR-059's provider contract is unchanged.
+  - **JuLC's JVM collections compare `byte[]` by value (M1).** On-chain, every JuLC collection compares by Data
+    equality, so `JulcList<byte[]>.contains(p)` is true for an equal array. On the JVM, `JulcArrayList`,
+    `JulcAssocMap` and `JulcArrayImpl` use `Objects.equals` and `List.equals`, so the same call is `false` for a
+    distinct equal array, and the user's JVM tests do not test the validator. M1 changes all three, wherever a
+    `byte[]` appears as an element, key or value:
+    - membership and lookup (`contains`, `get`, `lookup`, `containsKey`) and `delete` compare by content
+      (`Arrays.equals` for `byte[]`, recursively through nested JuLC collections); duplicate keys keep their
+      prepend semantics, so the first matching entry wins, as on-chain (`JulcMap.of(a, 1).insert(b, 2).get(a)`
+      becomes 2 for equal `a` and `b`, as on-chain, where it was 1);
+    - `equals` and `hashCode` of the collections compare and hash `byte[]` contents (`Arrays.hashCode`), keeping
+      the equals/hashCode contract;
+    - arrays are not copied: a collection holds the caller's arrays, and mutating one after insertion changes the
+      collection's hash, as with any mutable key; the JavaDoc says so.
+
+    Contract tests cover membership, lookup, delete, duplicates, whole-collection equality and hashing (including
+    in a `HashSet`), and mutation. This is an **off-chain behaviour change of julc-core** (Compatibility, release
+    notes); a JVM test that relied on identity matching changes its result, towards the on-chain one.
   - These are policy rejections in D13, with their rejection tests; ADR-062 T3, T4 and T5 are updated in M3.
 
 ### D7. Types from javac
@@ -518,9 +562,12 @@ longer parsed on every compile. This closes #284 and #286 by construction.
   - Elci: the units `JavaLibraryProvider` is given are **roots** (today it compiles every supplied unit's
     non-generic methods, `JavaLibraryProvider.java:45-88`), and `LibrarySources.readJars` dependencies are the
     pool. A test exports an otherwise unreferenced library, with its schemes and specialization.
-  - javac rejects a task with no roots (`error: no source files`), so no `JavacTask` is created for an empty
-    input. `new JavaLibraryProvider(List.of(), …)` stays valid: it builds no task, keeps the ledger metadata (from
-    the stubs) and returns empty exports, as today (`JavaLibraryProvider.java:42`, `:204`), with an API test.
+  - **Empty input.** `new JavaLibraryProvider(List.of(), …)` stays valid (`JavaLibraryProvider.java:42`, `:204`).
+    Through the API, javac accepts a task with no compilation units (`error: no source files` is the launcher's,
+    not the API's), and its `Elements` read the stubs. So an empty input builds a task with no units over the
+    stubs, the same path that reads ledger metadata for every other input (D7, I11), and returns empty exports.
+    `LedgerTypeProvider` is this empty provider, and Elci uses it: a test checks its `types()` and
+    `namedDefinitions()` against the JavaParser frontend's.
 - **Precedence and duplicates.** A qualified name in the roots wins over the pool. Within the pool, same-project
   sources win over JAR sources (today's processor rule, `JulcAnnotationProcessor.java:333-335`). Two JAR sources
   with one name are an error (`LibrarySources.readJars`, today). Every choice is made before javac, so javac
@@ -659,8 +706,8 @@ constants for javac either.
 - **julc-compiler:** new `frontend/javac/` package (`JavacFrontend`, `EmbeddedFileManager`, `JavacFacts`, the
   lowering, the ported `JavaConstants`); `JulcCompiler`, `LibraryCompiler`, `JavaLibraryProvider`,
   `LibrarySources`, `CompilerOptions`; build tasks for the platform blob and the API stubs.
-- **julc-stdlib, julc-ledger-api, julc-core, julc-verification:** stubs generated from their classes (no source
-  change).
+- **julc-stdlib, julc-ledger-api, julc-verification:** stubs generated from their classes (no source change).
+- **julc-core:** stubs; and the JVM collections' `byte[]` equality (D6, M1), a source change.
 - **julc-testkit, julc-gradle-plugin, julc-annotation-processor, julc-cli, julc-tools, julc-playground,
   julc-wasm:** host adapters (D8), the option (D4), the blob in their images, and the M6 ports.
 - **julc-difftest:** D10, D13.
@@ -683,6 +730,9 @@ constants for javac either.
 - **Source that starts compiling:** shapes JuLC's readers rejected but javac accepts inside the subset (ADR-065
   I2c: escape digits that are not ASCII hex digits, a Unicode-escaped backslash before raw backslashes and `u`), with
   javac's meaning on every target; record-pattern switches that javac 25 accepts (D11).
+- **Off-chain behaviour of julc-core's collections:** `JulcList`, `JulcMap` and `JulcArray` compare `byte[]`
+  elements, keys and values by content on the JVM from M1, as on-chain (D6); membership, lookup, delete,
+  `equals` and `hashCode` change for distinct equal arrays.
 - **Whole units type-check:** a test source that used an undeclared helper, a missing import, or another invalid
   construct JuLC never looked at, is now a javac error.
 - **API:** I5; `CompilerOptions.frontend` is new, experimental, and removed in M6.
@@ -838,3 +888,21 @@ milestone's evidence; a skipped check fails the gate.
   - F73 → negative fixtures are marked permanent or scheduled for acceptance in M0's inventory.
   - F75 → CLI, playground and Wasm keep their actual scans and class loaders, with external source-JAR tests.
   - F76 → an empty `JavaLibraryProvider` builds no `JavacTask` and keeps today's metadata and empty exports.
+- **r5** (2026-10-31, responds to the reviews of `5c32a668`: the review comment F80–F83 and Codex's F90–F94):
+  - F82 → maintainer decision (2026-10-31): the known public divergences stay open on the default frontend until
+    M5, listed in D4 and frozen in M0; exception 2 covers security-class defects newly found during M1–M5; M0 adds
+    the preview-tracking sentence to `SECURITY.md`.
+  - F80 → an empty `JavaLibraryProvider` builds a task with no units over the stubs (one path for ledger
+    metadata), with a `LedgerTypeProvider` equality test.
+  - F83, F91 → D6 specifies the JVM collection change across `JulcArrayList`, `JulcAssocMap` and `JulcArrayImpl`
+    (membership, lookup, delete, duplicates, `equals`, `hashCode`, mutation), with contract tests and a
+    Compatibility entry.
+  - F81, F93 → the equality-operation table is derived from "the JVM implementation compares elements or keys"
+    (`lookup` and `TypedMapLib` added, `indexOf` dropped, plain `JulcMap.insert` excluded); the allow-list names
+    `PlutusData`'s variants, and an unlisted type with `equals` is rejected; class-file constants use
+    `getConstantValue()`; I10 says all of julc-core is stubbed.
+  - F90 → the JavaParser-side `compareTo` matcher requires a nominal `java.math.BigInteger` receiver and argument,
+    with `@NewType` and shadowed-name tests.
+  - F92 → `JULC0087` in generic library methods is checked at instantiation; producer-owned types use their
+    language's equality (Data equality for Elci); `GenericExportsTest`'s specializations stay accepted.
+  - F94 → `JULC0090` exempts guard constant concatenation computed by ADR-067's evaluator.
