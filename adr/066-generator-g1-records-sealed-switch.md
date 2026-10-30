@@ -1649,11 +1649,12 @@ Codex confirmed F110 and F111 at `434fcbe9` and raised one item.
 
 ### M3 part 1 review round 6 (2026-10-30, G1 r7)
 
-Codex confirmed F115 at `975969e6` and raised one item.
+Codex confirmed F115 at `975969e6` and raised one item (F120); confirming F120 at `8424c17a`, it raised F121.
 
 | Finding | Change |
 |---|---|
 | F120 (P2), a path rebuilt from javac's normalized URI | Each compilation unit was matched to its written source through `Path.of(unit.toUri())`. javac's URI drops `..` lexically, which after a symlinked directory names another file, so a valid work directory such as `link/../b` was rejected before javac ran (failing closed). The units are now matched through `StandardJavaFileManager.asPath(unit)`, the path javac reads; the URIs stay the ownership keys. `JvmExecutorTest.aWorkDirectoryThroughASymlinkAndDotDotStillVerifiesEveryClass` compiles under `link/../b` with `link` a directory symlink: a sound case returns its value and the javac-unverifiable entry class stays an oracle fault; with the rebuilt path the test fails. |
+| F121 (P2), the regression fails where symbolic links are unavailable | Only the link's creation is guarded: an `IOException` or `UnsupportedOperationException` there aborts the test as an assumption, naming the cause; both executor assertions stay outside the guard. |
 
 The decoding is unchanged (G1 r7). Commands and counts:
 - `./gradlew :julc-difftest:test --rerun`: 248 tests, 0 failures, 0 skipped; `RegressionCasesTest` runs 86

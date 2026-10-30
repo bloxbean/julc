@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** The JVM side's isolation and bounds (ADR-063 H3, H5, H6). */
 class JvmExecutorTest {
@@ -353,7 +354,11 @@ class JvmExecutorTest {
     @Test
     void aWorkDirectoryThroughASymlinkAndDotDotStillVerifiesEveryClass(@TempDir Path temp) throws IOException {
         Files.createDirectories(temp.resolve("real").resolve("b"));
-        Files.createSymbolicLink(temp.resolve("link"), temp.resolve("real").resolve("x"));
+        try {
+            Files.createSymbolicLink(temp.resolve("link"), temp.resolve("real").resolve("x"));
+        } catch (IOException | UnsupportedOperationException e) {
+            assumeTrue(false, "symbolic links are unavailable here: " + e);
+        }
         Files.createDirectories(temp.resolve("real").resolve("x"));
         var executor = new JvmExecutor(5_000, temp.resolve("link").resolve("..").resolve("b"));
         assertEquals(new Observation.Value(integer(2), List.of()),
