@@ -205,11 +205,13 @@ class LoopBreakContinuationTest {
                     var args = List.<PlutusData>of(new PlutusData.IntData(BigInteger.valueOf(INPUTS[k][0])),
                             new PlutusData.IntData(BigInteger.valueOf(INPUTS[k][1])),
                             new PlutusData.ListData(xs.stream().map(v -> (PlutusData) new PlutusData.IntData(v)).toList()));
-                    var result = CompilerTestVm.pv11("Java").evaluateWithArgs(program, args, BUDGET);
-                    var actual = result instanceof EvalResult.Success ok ? ok.resultTerm() : result;
-                    if (!new Term.Const(Constant.integer((BigInteger) expected)).equals(actual)) {
-                        problems.add(shape[0] + " at " + level + " on a=" + INPUTS[k][0] + " b=" + INPUTS[k][1]
-                                + " xs=" + xs + ": JVM " + expected + ", UPLC " + actual);
+                    for (String vm : List.of("Java", "Scalus")) {
+                        var result = CompilerTestVm.pv11(vm).evaluateWithArgs(program, args, BUDGET);
+                        var actual = result instanceof EvalResult.Success ok ? ok.resultTerm() : result;
+                        if (!new Term.Const(Constant.integer((BigInteger) expected)).equals(actual)) {
+                            problems.add(shape[0] + " at " + level + " on " + vm + ", a=" + INPUTS[k][0] + " b=" + INPUTS[k][1]
+                                    + " xs=" + xs + ": JVM " + expected + ", UPLC " + actual);
+                        }
                     }
                 }
             }
