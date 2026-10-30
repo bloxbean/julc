@@ -56,7 +56,8 @@ class JvmExecutorTest {
     void javacsDiagnosticsAreReported() {
         var e = assertThrows(HarnessException.class,
                 () -> new JvmExecutor(5_000).run(probe("public static long m(long n) { return undefined; }", integer(1))));
-        assertTrue(e.getMessage().contains("javac rejected the source") && e.getMessage().contains("undefined"), e.getMessage());
+        // "cannot find symbol" appears only in javac's diagnostic, not in the source the message echoes.
+        assertTrue(e.getMessage().contains("javac rejected the source") && e.getMessage().contains("cannot find symbol"), e.getMessage());
     }
 
     /** A sealed family declared beside the entry class, in the same file, used only inside {@code m}. */

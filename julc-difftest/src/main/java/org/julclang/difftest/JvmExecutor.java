@@ -111,8 +111,8 @@ public final class JvmExecutor {
     }
 
     /**
-     * Source validation over every class javac generated from the case's source, top-level siblings of the entry
-     * class included, never over classes from elsewhere.
+     * Source validation over the case's top-level declarations, siblings of the entry class included, and their
+     * member classes, recursively; never over classes from elsewhere. Local and anonymous classes are not visited.
      */
     private static void validate(DiffCase diffCase, Compiled classes, ClassLoader loader) throws ClassNotFoundException {
         var types = new ArrayList<Class<?>>();

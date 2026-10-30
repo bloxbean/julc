@@ -657,9 +657,11 @@ Implemented, in `julc-difftest` only (no compiler, stdlib, VM or published modul
 
 - **D3, tag table.** `TagTable` holds the `(record binary name, parent binary name, tag)` entries, sorted by
   record, then parent. On construction it rejects duplicate entries and, per parent, duplicate tags and tags that
-  do not cover `0..n-1`. `TagTable.validate(classes)` is the source validation, over every class javac generated
-  from the case's source (top-level siblings of the entry class included, recorded per source by a javac task
-  listener in `JvmExecutor`, also when cases are precompiled together):
+  do not cover `0..n-1`. `TagTable.validate(classes)` is the source validation, over the case's top-level
+  declarations and their member classes, recursively (top-level siblings of the entry class included, recorded per
+  source by a javac task listener in `JvmExecutor`, also when cases are precompiled together). Local and anonymous
+  classes are not visited; javac rejects a sealed family declared in them, and G1 declares its families in `Probe`
+  (review F60):
   - every entry names a record and a sealed parent of the program, never a class from elsewhere such as the
     harness;
   - each entry's record directly implements its parent;
