@@ -139,8 +139,9 @@ class G0ExhaustiveTest {
                 for (var entry : report.results().entrySet()) {
                     var result = entry.getValue();
                     verdicts.put(entry.getKey(), result.verdict().kind());
-                    if (result.verdict().kind() != Verdict.Kind.AGREE
-                            && G0PropertyTest.KNOWN.explain(diffCase, entry.getKey(), program.features(), result).isEmpty()) {
+                    var config = entry.getKey();
+                    if (result.verdict().kind() != Verdict.Kind.AGREE && G0PropertyTest.KNOWN.explain(diffCase, config,
+                            program.features(), result, factor -> runner.rerun(diffCase, config, factor)).isEmpty()) {
                         unexplained = true;
                     }
                 }
