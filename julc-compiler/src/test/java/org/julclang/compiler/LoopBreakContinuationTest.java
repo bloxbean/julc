@@ -43,6 +43,14 @@ class LoopBreakContinuationTest {
                 + " public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {\n" + shape[1] + "\n} }\n";
     }
 
+    /** #209: a field and a record type with the same components in another order, for a local to shadow it. */
+    private static final String POLICY = "record Policy(BigInteger maxPerTx, BigInteger maxTotal) {} "
+            + "record Budget(BigInteger maxTotal, BigInteger maxPerTx) {} "
+            + "static Policy policy = new Policy(BigInteger.TWO, BigInteger.valueOf(1000000));";
+    private static final String LIMITS = "record Bounds(BigInteger min, BigInteger max) {} "
+            + "record Quote(BigInteger max, BigInteger min) {} "
+            + "static Bounds limits = new Bounds(BigInteger.valueOf(-3), BigInteger.valueOf(500));";
+
     /** Loop bodies, each named by the shape it covers. */
     private static final List<String[]> SHAPES = List.of(
             new String[]{"while: an update, then a break (T21)", """
@@ -138,7 +146,43 @@ class LoopBreakContinuationTest {
             // ...and without one.
             new String[]{"a branch local shadowing a field accumulator, no break", """
                     for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; s = s.add(x); } s = s.add(BigInteger.ONE); }
-                    return s;""", "static BigInteger s = BigInteger.TEN;"});
+                    return s;""", "static BigInteger s = BigInteger.TEN;"},
+            // #209: a branch local's type stayed in the symbol table after its if, so a later read of a field
+            // with the same name and another record type projected the wrong field. Each branch now has its
+            // own scope, in loops with and without break.
+            new String[]{"#209: a branch local does not retype a field read after the if", """
+                    boolean ok = true; BigInteger total = BigInteger.ZERO;
+                    for (var w : xs) { total = total.add(w); if (a.compareTo(BigInteger.valueOf(5)) > 0) { Budget policy = new Budget(BigInteger.valueOf(2000000), BigInteger.valueOf(900)); ok = ok && total.compareTo(policy.maxTotal()) <= 0; } ok = ok && w.compareTo(policy.maxPerTx()) <= 0; }
+                    return ok ? BigInteger.ONE : BigInteger.ZERO;""", POLICY},
+            new String[]{"#209: the same, from a branch the input takes", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { Quote limits = new Quote(BigInteger.valueOf(2000), BigInteger.ZERO); s = s.add(limits.max()); } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: an else-branch local", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { s = s.add(x); } else { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: a nested-branch local", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { if (x.compareTo(b) < 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.min()); } s = s.add(limits.max()); } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: a while loop", """
+                    BigInteger s = BigInteger.ZERO; long i = 0;
+                    while (i < 3) { if (a.compareTo(BigInteger.valueOf(i)) > 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } s = s.add(limits.min()); i = i + 1; }
+                    return s;""", LIMITS},
+            new String[]{"#209: a loop with break", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } if (x.compareTo(b) > 0) { break; } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: two accumulators", """
+                    BigInteger s = BigInteger.ZERO; BigInteger n = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } n = n.add(limits.min()); }
+                    return s.add(n.multiply(BigInteger.valueOf(1000)));""", LIMITS},
+            // An else-if chain whose middle branch breaks: the statement after it was skipped.
+            new String[]{"a break inside an else-if chain", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(BigInteger.ZERO) < 0) { s = s.subtract(x); } else if (x.compareTo(b) > 0) { break; } else { s = s.add(x); } s = s.add(BigInteger.ONE); }
+                    return s;"""});
 
     private static final long[][] INPUTS = {{-4, 1}, {1, -3}, {-2, 1}, {2, 3}, {0, 10}, {5, 0}};
     private static final long[][] LISTS = {{0}, {-4, 3, 1, 2}, {-1, 2, 4}, {1, 2, 5, 1}, {-5, -6}, {}};

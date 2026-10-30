@@ -33,6 +33,10 @@ iteration, as in Java.
   its `if` branches, no longer replaces the accumulator after its declaration, in loops with or
   without `break`. Java scopes such a local to its block; the script used the local's value as
   the accumulator's from then on. Only loops with such a local change bytes.
+- **A local declared in an `if` branch of a loop body** no longer changes how a field or `@Param`
+  of the same name is read after that `if` (#209). The script used the local's record type for
+  the field, so it read the wrong component, or failed at run time. Each branch now has its own
+  scope, as the method-level `if` already had.
 
 ## Upcoming preview: on-chain `JulcMap.keys()` and `values()` keep map order
 
