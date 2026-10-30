@@ -1,7 +1,7 @@
 # ADR-068: Replace JavaParser with javac as JuLC's only Java frontend
 
-**Status:** Proposed (r2)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2)
+**Status:** Proposed (r3)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2, r3)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -171,14 +171,18 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
 
 - **I1. Behaviour is preserved, or the difference is recorded and evidenced.** Every corpus case (M0) is compiled by
   both frontends at every optimization level and target, and each milestone's result is written to the frozen
-  ledger of D13. The reference is the JavaParser frontend at B0, frozen (D4).
+  ledger of D13. The reference is the JavaParser frontend at B0, frozen (D4) and re-frozen only by D4's
+  exceptions.
   - **I1a, whole programs:** FLAT bytes and script hash.
   - **I1b, single methods:** the PIR term and type of every lowered method (libraries are lowered whole by
     `LibraryCompiler`), compared up to renaming of bound variables (alpha-equivalence). Binder names do not reach
     the bytes; I13 governs them.
   - A case may differ only with a D13 classification and that class's evidence. An unclassified difference, or a
-    case that leaves the accepted set without a classification, blocks the milestone. No class waives the harness
-    observation check of the classes that require it.
+    case that enters or leaves the accepted set without a classification, blocks the milestone. No class waives the
+    harness observation check of the classes that require it.
+  - **Reference changes.** The reference changes only by D4's two exceptions (the `compareTo` rule at M1, and
+    security-class fixes). Each change re-freezes the reference (B0 → B1 → …), re-runs every reference row, and
+    records the transition in the ledger as reference-change rows; ledger rows are never edited.
 - **I2. The subset does not widen.**
   - **I2a.** M0 builds a **rejection inventory**: every rejection the JavaParser frontend makes, coded (`JULC`) or
     uncoded (for example floating point, `SubsetValidator.java:336`, and inheritance, `:385`), each with a test
@@ -206,9 +210,13 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
     `LedgerTypeProvider.types()` and `namedDefinitions()`; `LibraryType`; `PirLinker`.
 
   M2 and M3 gate each with an equality test between the frontends (D8).
-- **I6. Exported APIs only.** `javax.tools`, `javax.lang.model` and `com.sun.source`, through
-  `ToolProvider.getSystemJavaCompiler()`. No `com.sun.tools.javac.*`, `--add-exports` or `--add-opens`, in code or
-  in image builds. A runtime without `jdk.compiler` (`ToolProvider` returns null) fails with a coded error (D5).
+- **I6. Exported APIs only.** JuLC code uses only `javax.tools`, `javax.lang.model` and `com.sun.source`, through
+  `ToolProvider.getSystemJavaCompiler()`: no reference to `com.sun.tools.javac.*`, and no `--add-exports` or
+  `--add-opens` anywhere, image builds included. Native-image configuration may name internal classes where javac
+  needs them at run time (the spike's reflection entry for `com.sun.tools.javac.api.JavacTrees.instance` and the
+  `com.sun.tools.javac.resources.*` bundles); those entries are listed in one file, and a build check verifies
+  each against the JDK the image is built with. A runtime without `jdk.compiler` (`ToolProvider` returns null)
+  fails with `JULC0089` (D5).
 - **I7. Source provenance.** Source-map and debug-metadata locations are attached while the term is built
   (ADR-060). Lines come from javac's `LineMap`; **columns are character offsets** (offset − line start + 1), not
   `LineMap.getColumnNumber`, which expands tabs (9 where JavaParser gives 2 in a tab-indented method). Remaining
@@ -225,9 +233,12 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
   `getConstantValue()`, and its operators stay JuLC's verified evaluator. A `@Param` field is never a constant
   (D14).
 - **I10. A closed compilation environment.** javac sees exactly:
-  - the compiled roots and the `@OnchainLibrary` sources the host's source pool offers (D8), on the source path;
-  - signature-only class files for JuLC's on-chain API: `julc-core`, `julc-ledger-api`, the non-library classes
-    of `julc-stdlib`, and the annotation types of `julc-verification` (`org.julclang.verification.annotation`);
+  - the compiled roots and the sources the host's pool offers (D8), on the source path;
+  - signature-only class files for JuLC's **on-chain API**: `julc-core`, `julc-ledger-api`, the `julc-stdlib`
+    classes on-chain code may reference (annotations, `Builtins`, the collection and value types; not its
+    `@OnchainLibrary` classes, and not compiler-facing classes such as `StdlibRegistry`, `ListsLibHof` or
+    `StdlibLibraryProvider`), and the annotation types of `julc-verification`
+    (`org.julclang.verification.annotation`);
   - a signature-only platform (D3).
 
   It never reads the host's `jrt:/`, `ct.sym` or the user's class path. **Visibility never implies on-chain
@@ -250,14 +261,20 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
 - **I12. Validated input to lowering.** The lowering only sees trees javac attributed without error. It never
   falls back to a simple name or to a `PirType` representation where an `Element` exists: calls dispatch on the
   resolved `ExecutableElement` (owner FQCN, name, erased signature), field and record access on the
-  `VariableElement` or `RecordComponentElement`, and type tests on the `TypeElement`. A tree whose type is an
-  error type, or whose element is null, is an internal error, never lowered.
+  `VariableElement` or `RecordComponentElement`, and type tests on the `TypeElement`. Requirements per tree kind:
+  identifiers, member selects, method invocations, `new` expressions and declarations must have a non-null
+  element; every expression must have a non-error `TypeMirror`; statements and javac-synthesized trees (the
+  default constructor and its `super()` call) need neither and are handled by kind. Literals and operators have no
+  element (`Trees.getElement` is null for them by contract). A violation is an internal error, never lowered.
 - **I13. Binder hygiene.** Each source `Element` gets one binder name, chosen when its binder is built (ADR-060:
   names are never changed afterwards): its source name, unless a binder of a different element with that name is
   visible at that point in the PIR being built, in which case `name'k` with the smallest `k ≥ 1` not visible.
-  Generated binders keep the `#` namespace (`PirHelpers.hygienicName`). A test-time PIR check walks every lowered
-  term and requires each `Var` built for an element to resolve, by PIR scoping, to that element's binder; it runs
-  over the whole corpus at every milestone. `GeneratedBinderNameLintTest`, `BinderNameIndependenceTest` and
+  Generated binders keep the `#` namespace (`PirHelpers.hygienicName`). Where the lowering duplicates a term (a
+  continuation placed in several branches), every copy reuses the element's name. A test-time PIR check walks
+  every lowered term and requires each `Var` built for an element to resolve, by PIR scoping, to a binder built
+  for that element; it covers every copy and the rebinding of state across iterations and joins. It needs
+  construction-time provenance: an identity-keyed side table, recorded as `Var`s and binders are built, maps each
+  to its element, without changing `PirTerm`. It runs over the whole corpus at every milestone. `GeneratedBinderNameLintTest`, `BinderNameIndependenceTest` and
   `julc.verifyBinderNamespace` stay green.
 
 ## Decisions
@@ -305,25 +322,35 @@ Alternatives (ADR-065 OQ9 answered as (a)):
 - **File manager.** A custom `JavaFileManager` (from the spike's `EmbeddedFileManager`) serves:
   - `SYSTEM_MODULES`: a signature-only `java.base` blob, stored uncompressed (no `Inflater` in Web Image). Its
     contents are **derived**, not hand-listed: the set of platform classes javac loads (`-verbose` class
-    loading) while attributing every bundled source (stdlib, ledger, examples) and the corpus, closed under
-    supertypes. The spike showed that this includes `HashMap`, `TreeSet`, `Stream`, `java.util.function`,
+    loading) while attributing JuLC's in-repo sources (stdlib, ledger, in-repo examples and test sources), closed
+    under supertypes; external repositories are checked against it, never used to derive it. The spike showed that this includes `HashMap`, `TreeSet`, `Stream`, `java.util.function`,
     `Arrays`, `Objects` and `Collections`; visibility never implies support (I10). The derivation and a digest are
     checked in, and a build check fails when they drift;
   - `CLASS_PATH`: the API stubs of I10, generated at build time (keeping the attributes I11 needs);
-  - `SOURCE_PATH`: the host's source pool (D8). `@OnchainLibrary` classes, including the stdlib's, are **only**
-    sources, never stubs.
+  - `SOURCE_PATH`: the host's roots and pool (D8). `@OnchainLibrary` classes, including the stdlib's, are
+    **only** sources, never stubs.
 - **Options.** `-proc:none`, `-source 21` (open question 2 decided: today's level, `JavaSourceParser`'s
   `JAVA_21`), `-implicit:none`, `-Xlint:none`, locale `en`. No `--release`: the blob is the platform.
 - **Supported javac.** On JVM hosts, `ToolProvider` returns the host JDK's javac, which reads a blob built from
   JuLC's build JDK. The supported range is **javac feature release 25**, the release JuLC is built and tested
-  with. `JavacFrontend` checks `SourceVersion.latestSupported()` of the host compiler and fails with
-  `JULC0089` (`JAVAC_UNSUPPORTED`) outside the range; the compiler version and the blob digest are recorded in
-  the compile result's metadata. Widening the range needs a corpus run on the new release (I4).
-- **Ownership check before javac.** On every host, before `analyze()`:
-  - a source whose package is a JuLC API package (`org.julclang.core`, `.ledger`, `.stdlib` and their
-    subpackages, `org.julclang.verification.annotation`) is rejected with `JULC0081` (generalizing ADR-067's
-    ledger-redeclaration code), so no source can replace an API type;
-  - a qualified name offered twice is handled by D8's precedence rule, never by javac's `-Xprefer`.
+  with. `JavacFrontend` checks the host compiler's `JavaCompiler.getSourceVersions()` (its highest version must
+  be `RELEASE_25`) and fails with `JULC0089` (`JAVAC_UNSUPPORTED`) otherwise; the full compiler version
+  (`Runtime.version()` of the host) and the blob digest are recorded in the compile result's metadata.
+  - **Supported builds.** The JDK 25 patch releases in CI's matrix are supported; any other 25 patch runs, with
+    its version recorded. A difference in output between two patch releases on the corpus is **release-blocking**:
+    it is resolved by narrowing the supported builds, or by a versioned decision recorded in this ADR's revision
+    history (which output is right, from the JVM agreement of the affected cases), never left to the host.
+  - Widening the range to another feature release needs a corpus run and the same comparison (I4). The oracle
+    suite keeps its cross-version comparison when retargeted (D11).
+- **Ownership check before javac**, by provenance, on every host, before `analyze()`:
+  - **Bundled sources** are JuLC's own `@OnchainLibrary` sources (the stdlib's `org.julclang.stdlib.lib`
+    classes), shipped in `julc-stdlib`'s resources with a build-time digest list. A source offered with a bundled
+    name is accepted as bundled only if its digest matches; JuLC's own tests (`JulcEval.forClass(MapLib.class)`)
+    therefore compile them as roots, as today.
+  - Any other source is rejected with `JULC0081` (generalizing ADR-067's ledger-redeclaration code) if its
+    qualified name is in the stub set or the bundled set, or its package is one the stubs or bundled sources
+    define. So no source can replace or extend an API type or a bundled library.
+  - A qualified name offered twice is handled by D8's precedence rule, never by javac's `-Xprefer`.
 - **A negative control** (as in the spike): a test removes `BigInteger` from the blob and requires
   `package java.math does not exist`, so javac provably reads nothing else.
 - **Caching.** The parsed blob is cached per process (`JulcEval.forSource` cold starts).
@@ -335,11 +362,20 @@ testkit expose it. The default is `JAVAPARSER` until M5 and `JAVAC` after it; M6
 
 - During M2–M4 the javac frontend rejects a construct it has not yet ported with `JULC0084`
   (`FRONTEND_CONSTRUCT_NOT_PORTED`, internal status), naming the construct. It never falls back (I8).
-- **The JavaParser frontend is frozen at B0.** It is the I1 reference, so it changes only to keep the build green.
-  Defects found during the migration, including those this ADR fixes (D6, D11), are fixed in the javac frontend
-  only, with a D13 entry. The exposure this leaves on the default frontend until M5 (open DIVERGE pins for T29,
-  T30, T31, T33, #146 and others) is **accepted**: JuLC is a preview with no production users, the pins stay in
-  the harness, and M5 closes the window. This replaces r1's mirroring rule.
+- **The JavaParser frontend is frozen at B0.** It is the I1 reference, so it changes only to keep the build green,
+  and by two declared exceptions. Other defects found during the migration, including those this ADR fixes (D6,
+  D11), are fixed in the javac frontend only, with a D13 entry. The exposure this leaves on the default frontend
+  until M5 (open DIVERGE pins for T29, T30, T31, T33 and others) is **accepted**: JuLC is a preview with no
+  production users, the pins stay in the harness, and M5 closes the window. This replaces r1's mirroring rule.
+- **Exception 1: D6's `compareTo` rule goes into both frontends at M1.** M1's javac gate forces dialect
+  comparisons into the `compareTo` form; with today's lowering that form duplicates operands (#146) and costs
+  more (41 against 68 bytes for `a.add(b) > c.multiply(b)`; 60 against 128 for three comparisons). So the rule is
+  implemented in the JavaParser frontend too, as a reference change (I1), and M1 gates that every rewritten
+  corpus source costs no more, in size and budget, than its dialect original.
+- **Exception 2: security-class fixes go into both frontends.** A defect that lets a validator accept what its
+  own Java code rejects (a silent miscompile of that kind, as GHSA-p9v9-f3g2-cqv9 was) is fixed in both
+  frontends, with a regression case, as a reference change (I1). Releases between M1 and M5 are therefore
+  allowed; their notes list the open DIVERGE pins of the default frontend.
 
 ### D5. javac's diagnostics are JuLC's diagnostics for invalid Java
 
@@ -363,30 +399,61 @@ exceptions D11 lists.
   `java.math.BigInteger.compareTo(java.math.BigInteger)`, `OP` one of `<`, `<=`, `>`, `>=`, `==`, `!=`, and `0`
   the `int` literal zero:
   - it evaluates `a`, then `b`, each once, binding each to a `#`-named `let` unless it is a variable or a
-    literal;
-  - then applies one builtin to the bound values: `LessThanInteger`, `LessThanEqualsInteger` (arguments swapped
-    for `>` and `>=`) or `EqualsInteger` (negated for `!=`).
+    literal (call the bound values `x` and `y`);
+  - a zero-left form is first normalized by reversing the operator (`0 < c` is `c > 0`, `0 <= c` is `c >= 0`,
+    and so on; `==` and `!=` are unchanged), so evaluation order stays `a` then `b`;
+  - then it applies one builtin:
+
+    | Form (after normalizing) | Lowering |
+    |---|---|
+    | `a.compareTo(b) < 0` | `LessThanInteger x y` |
+    | `a.compareTo(b) <= 0` | `LessThanEqualsInteger x y` |
+    | `a.compareTo(b) > 0` | `LessThanInteger y x` |
+    | `a.compareTo(b) >= 0` | `LessThanEqualsInteger y x` |
+    | `a.compareTo(b) == 0` | `EqualsInteger x y` |
+    | `a.compareTo(b) != 0` | `not (EqualsInteger x y)` |
+
+    The six zero-left forms (`0 > a.compareTo(b)` is the `< 0` row, `0 < a.compareTo(b)` the `> 0` row, and so
+    on) make twelve.
 
   This is a **behaviour change**: today the operands are evaluated more than once, so traces and failures
-  differ (#146). The flipped pins (`diverge-g1-146-traced-compare-operand*`) are its D13 evidence. ADR-066's
-  `REDISCOVER_146` profile becomes a fixed-defect guard for this form under ADR-066's rule; `TRACE_IN_COMPARISON`
-  and T13 stay open for every other use of `compareTo`, which keeps today's lowering. Tests cover all twelve
-  forms, traced operands, and a failure in either operand.
+  differ (#146). The flipped pins (`diverge-g1-146-traced-compare-operand*`) are its D13 evidence. It goes into
+  both frontends at M1 (D4, exception 1), so ADR-066's `REDISCOVER_146` profile becomes a fixed-defect guard for
+  this form on both; `TRACE_IN_COMPARISON` and T13 stay open for every other use of `compareTo`, which keeps
+  today's lowering. Tests cover all twelve forms with `a > b`, `a = b` and `a < b`, traced operands (one trace
+  each, in source order), and a failure in either operand.
 - **Comparison operators evaluate left to right.** For `<`, `<=`, `>`, `>=` on `int`/`long`, the javac frontend
   binds the operands in source order before swapping, by the same rule. This fixes the existing order divergence
   (filed as an issue and an ADR-062 row in M1) and is a D13 semantic fix.
 - **Equality follows JLS §15.21**, as subset rules of the javac frontend (M3):
-  - `==`/`!=` on numeric or boolean operands, after unboxing and promotion, stays;
-  - `==`/`!=` where both operands are constant `String` expressions (JLS §15.29, interned) stays, so ADR-067's
-    constant-string guards keep their meaning;
-  - other reference equality (§15.21.3: `BigInteger`, `byte[]`, `String`, records) is rejected with `JULC0086`
-    (`REFERENCE_EQUALITY_UNSUPPORTED`); the fix is `.equals`, or `ByteStringLib.equals(a, b)` for bytes;
-  - `.equals` on an array type is rejected with `JULC0087` (`ARRAY_EQUALS_UNSUPPORTED`), since it is identity on
-    the JVM (T4); the fix is `ByteStringLib.equals`;
-  - `.equals` on a record whose `equals` is the implicit one and which has an array component, directly or
-    through a component record with implicit `equals`, is rejected with `JULC0087` (T5): the JVM compares the
-    arrays by identity. Records that declare value `equals` (ledger types such as `PubKeyHash`, which use
-    `Arrays.equals`) are unaffected.
+  - `==`/`!=` is numeric or boolean equality (§15.21.1, §15.21.2) only when at least one operand has a primitive
+    type; it stays. `Boolean == Boolean` and `Integer == Integer` are reference equality.
+  - **Constant strings.** `==`/`!=` where both operands are constant `String` expressions stays **only** when
+    each operand is built from string literals, constant `String` variables and string `+` alone, with no numeric,
+    `char`, boolean or conditional subexpression: those have Java's value without integer semantics. Inside
+    `switch` guards, ADR-067's evaluator decides as today (Java's widths, I9), so `"a" + "b" == "ab"` keeps its
+    meaning there. Any other constant-string comparison (`(2147483647 + 1 < 0 ? "a" : "b") == "a"`, which is true
+    on the JVM and false with unbounded lowering) is rejected with `JULC0086`. Tests cover overflow and
+    conditional operands.
+  - Other reference equality (§15.21.3: `BigInteger`, `byte[]`, `String`, boxed values, records) is rejected with
+    `JULC0086` (`REFERENCE_EQUALITY_UNSUPPORTED`); the fix is `.equals`, or `ByteStringLib.equals(a, b)` for
+    bytes.
+  - **`.equals` that would compare an array by identity** is rejected with `JULC0087`
+    (`ARRAY_EQUALS_UNSUPPORTED`; T4, T5). The check is on the receiver's static type after type substitution, and
+    asks whether the JVM's `equals` for any value of that type can reach an array compared by identity:
+    - an array type: yes;
+    - a record with the implicit `equals`: if any component's type can (each component type checked recursively,
+      after substitution);
+    - a sealed interface: if any permitted variant can (each variant checked);
+    - `Optional<T>`, `Tuple2`, `Tuple3`, `JulcList<E>`, `JulcMap<K, V>`, `JulcArray<E>`: if any type argument can;
+    - a type that declares its own `equals` (ledger records such as `PubKeyHash`, which use `Arrays.equals`):
+      no, and the check stops there;
+    - a type variable, or any type the check cannot resolve: rejected, conservatively.
+
+    The fix is to compare the bytes: `ByteStringLib.equals(a, b)`, or for a `@NewType` byte wrapper (which cannot
+    declare `equals`, ADR-067 M3b) `ByteStringLib.equals(a.hash(), b.hash())`. M0 scans the corpus and the
+    external examples for affected call sites (as ADR-067 M4 did) and lists them; tests cover direct, nested
+    record, sealed-component, container and type-argument paths.
   - These are policy rejections in D13, with their rejection tests; ADR-062 T3, T4 and T5 are updated in M3.
 
 ### D7. Types from javac
@@ -398,16 +465,25 @@ longer parsed on every compile. This closes #284 and #286 by construction.
 ### D8. Libraries and the source pool
 
 - **The source pool, per host.** Each host gives `JavacFrontend` its **roots** (the units it compiles) and a
-  **pool** of discoverable `@OnchainLibrary` sources. javac attributes the roots and, through the source path,
-  exactly the pool units they reference; those units' trees are collected from `ANALYZE` events and lowered in
-  FQCN order (I4). Host adapters, each with a test:
-  - Gradle plugin: the validator as root; the project's other non-validator sources (`CompileJulcTask.java:137`)
-    and `META-INF/plutus-sources` of the compile classpath's JARs as pool;
+  **pool** of discoverable sources. javac attributes the roots and, through the source path, exactly the pool
+  units they reference; those units' trees are collected from `ANALYZE` events and lowered in FQCN order (I4).
+  **Each entry point's pool equals the one it has today**, with the same class loader; each adapter has a test,
+  and the library-roundtrip and multimodule scenarios run on the javac frontend:
+  - Gradle plugin: the validator as root; every other non-validator file of the source directory, annotated or
+    not (`CompileJulcTask.java:102-113`, `:137`), and `META-INF/plutus-sources` of the compile classpath's JARs, as
+    pool;
   - annotation processor: the round's validators as roots; same-project libraries collected per round, plus the
-    processor classloader's `META-INF/plutus-sources`, as pool (`JulcAnnotationProcessor.java:129`, `:197`);
-  - testkit, `compileMethod`: the given sources as roots; the stdlib sources as pool;
+    processor class loader's `META-INF/plutus-sources`, as pool (`JulcAnnotationProcessor.java:129`, `:197`);
+  - testkit: the given sources as roots; `SourceDiscovery.buildLibraryPool` as today (the thread context
+    loader's `META-INF/plutus-sources`, plus same-project sources found through import paths, which take
+    precedence);
+  - `JulcCompiler.compile(String)` and `compileMethod(String)`: the given source as root; the class-loader scan
+    they do today (`JulcCompiler.java:126-133`, `:806-814`) as pool;
   - CLI, playground, `julc-wasm`: the project or editor sources as roots; bundled stdlib sources as pool;
-  - Elci: `JavaLibraryProvider`'s sources and `LibrarySources.readJars` as pool.
+  - Elci: the units `JavaLibraryProvider` is given are **roots** (today it compiles every supplied unit's
+    non-generic methods, `JavaLibraryProvider.java:45-88`), and `LibrarySources.readJars` dependencies are the
+    pool. A test exports an otherwise unreferenced library, with its schemes and specialization. javac rejects a
+    task with no roots (`error: no source files`), so every adapter must supply at least one.
 - **Precedence and duplicates.** A qualified name in the roots wins over the pool. Within the pool, same-project
   sources win over JAR sources (today's processor rule, `JulcAnnotationProcessor.java:333-335`). Two JAR sources
   with one name are an error (`LibrarySources.readJars`, today). Every choice is made before javac, so javac
@@ -425,13 +501,20 @@ longer parsed on every compile. This closes #284 and #286 by construction.
 
 - `compileMethod`, `JulcEval.forSource` and the path-based entry points take **complete compilation units**, which
   now type-check in full (Compatibility).
-- `ExpressionEvaluator` (REPL, julc-tools) wraps expressions. It wraps in two steps: first it attributes
-  `var v = (expr);` (with `v` an identifier that does not occur in the expression) in a probe wrapper to learn the expression's type `T`, then it generates
-  `static R eval() { return E; }` with `R = T` for supported on-chain types and `R = BigInteger`, `E =
-  BigInteger.valueOf(expr)`, for `int` and `long`. The wrapper adds the stdlib and ledger imports. Positions map
-  back by the wrapper's fixed prefix. Integer arithmetic in the REPL therefore follows Java's `int`/`long` before
-  widening, as the JVM would; the REPL docs say so. Tests: numeric, boolean, bytes, library calls, a packaged
-  unit, and diagnostic positions.
+- **REPL expressions.** Two REPLs wrap expressions today, each with its own code: `ExpressionEvaluator`
+  (julc-tools) and the CLI's `ExpressionWrapper` (`ReplEngine.java:67`, `ExpressionWrapper.java:61-88`), both
+  typing integer literals as `BigInteger`, which is not Java. Both move to one shared typed-wrapper service:
+  - it attributes `var v = (expr);` (with `v` an identifier that does not occur in the expression) in a probe
+    wrapper to learn the expression's type `T`;
+  - it then generates `static R eval() { return E; }`, with `R = T` for supported on-chain types, and
+    `R = BigInteger`, `E = BigInteger.valueOf(expr)` for `int` and `long`;
+  - it adds the stdlib and ledger imports, and maps positions back by the wrapper's fixed prefix.
+
+  **Integer arithmetic in the REPL is JuLC's, not Java's:** it is unbounded on-chain (I9, T6), so
+  `2147483647 + 1` evaluates to 2147483648 where the JVM gives -2147483648. The wrapper fixes only the types
+  javac checks; the REPL docs state the T6 difference. Tests: numeric (including an overflow case, pinned as
+  T6), boolean, bytes, library calls, imports, a packaged unit, diagnostic positions, and the CLI's evaluation,
+  `:type` and `:pir` commands.
 
 ### D10. The harness compares frontends
 
@@ -453,8 +536,9 @@ longer parsed on every compile. This closes #284 and #286 by construction.
   differ (the `Pair(C c, var t)` / `Pair(var t, C c)` / `Pair(D d, D d2)` switch, which javac 25 accepts even with
   `--release 21`), JuLC follows javac 25 and must compile the program correctly. ADR-067 gets a revision: I9's
   oracle, the outcome-matrix rows that change, M2b's gate for that shape, and the retirement of
-  `Javac21ParityTest` in favour of the same suite against the supported javac (its recorded 21-vs-25 differences
-  kept as a list).
+  `Javac21ParityTest` in favour of the same suite against the supported javac. The retargeted suite keeps a
+  cross-version comparison: where javac 21.0.3 is available it still runs, and every 21-vs-25 difference is
+  reported against a checked-in list, so a new one fails the suite.
 - **Codes.** javac's `pattern.dominated`, `not.exhaustive` and constant checks replace the JuLC checks that
   replicate them; M3 lists which of `JULC0071`–`JULC0075`, `JULC0082` and `JULC0083` are retired and which stay as
   subset rules (for example colon-form fall-through, `JULC0075`). `SwitchPatternChecker` keeps only subset rules.
@@ -472,21 +556,36 @@ JavaParser from `julc-cli` (lint rules on `TreePathScanner`), `julc-tools`, `jul
 
 ### D13. The I1 ledger
 
-M0 freezes, per corpus case: its source digest, and the JavaParser frontend's acceptance, diagnostic code, FLAT
-digest per level and target, and harness observations (value, traces, failure, cost). Each milestone appends the
-javac frontend's row and, for every difference, one classification with its evidence:
+M0 freezes, per corpus case: its source digest, and the JuLC reference frontend's acceptance, diagnostic (code,
+message, position), FLAT digest per level and target, source locations, and harness observations. Observations
+are split in two:
+
+- **semantic observations:** the value, the traces and the failure, compared with the JVM (and, for UPLC-only
+  cases such as malformed Data, with the case's expected UPLC outcome);
+- **budgets:** CPU, memory and script size.
+
+Each milestone appends the javac frontend's row and, for every difference, one classification with its evidence:
 
 | Class | When | Evidence required |
 |---|---|---|
-| **Semantic fix** | Observations differ, and the javac frontend agrees with the JVM where the reference did not | An issue; a saved `.diffcase` on which the javac frontend agrees and the reference diverges |
+| **Semantic fix** | Semantic observations differ, and the javac frontend agrees with the JVM where the reference did not | An issue; a saved `.diffcase` on which the javac frontend agrees and the reference diverges |
+| **UPLC-only semantic fix** | Semantic observations differ on a case with no JVM counterpart (malformed Data, ADR-067's UPLC-only checks) | The decision that defines the outcome; the UPLC-only test asserting it |
 | **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, I11) | The decision; a rejection test with the code; docs and release notes |
-| **javac rejection** | javac rejects the case (dialect, D6) | The rewritten Java source, which then needs its own row |
-| **Representation only** | Bytes differ, every harness observation equal, cost within 0% | The PIR diff; cost unchanged |
-| **Cost change** | Observations equal, cost differs | The cost and size delta; a review decision if it grows |
+| **javac rejection** | javac rejects a migration case (dialect, D6) | The rewritten Java source, which gets its own row |
+| **Accepted by decision** | The javac frontend accepts a case the reference rejected (escape shapes, javac 25's switch shapes, ADR-067 M2a/M2b record patterns) | The decision; a `.diffcase` per shape on which the javac frontend agrees with the JVM |
+| **Diagnostic change** | Both reject, with a different code, message or position | The decision or javac mapping (I2a, I2b) that causes it |
+| **Provenance change** | Only source locations differ (I7) | The location pairs, and the rule that explains them |
+| **Representation only** | Bytes differ; semantic observations and budgets equal | The PIR diff |
+| **Cost change** | Semantic observations equal; budgets differ | The budget delta; a review decision if any budget grows |
+| **Reference change** | The reference itself changed (D4's exceptions) | The new frozen base, and every reference row re-run |
 
-A difference in observations is never "representation only" or "cost", whatever the cause. A case may move
-between classes only by a new row; rows are never edited. The ledger is a checked-in, generated file per
-milestone, and its totals (accepted, rejected, each class) appear in the milestone's evidence.
+- A difference in semantic observations is never "representation only" or "cost", whatever the cause.
+- **Negative fixtures** (cases the corpus expects to be rejected, such as ADR-063's `reject-*` cases and the I2a
+  inventory) are never rewritten; their rows must stay rejections, and a changed diagnostic is a "diagnostic
+  change". Only migration cases (sources meant to compile) are rewritten for javac.
+- A case may move between classes only by a new row; rows are never edited. The ledger is a checked-in,
+  generated file per milestone, and its totals (accepted, rejected, each class) appear in the milestone's
+  evidence.
 
 ### D14. `@Param` fields are never constant variables
 
@@ -494,7 +593,8 @@ A `@Param` field (an applied script parameter) is runtime input. If it is a cons
 (`static final`, primitive or `String`, constant initializer), javac would fold it, and the program the user's
 JVM tests run would not be the script (ADR-067's `when ENABLED` case is `pattern.dominated` to javac). The javac
 frontend rejects such a declaration with `JULC0088` (`PARAM_CONSTANT_VARIABLE`); the fix is to drop `final`, or to
-initialize from a non-constant expression (`Boolean.valueOf(true)`, `BigInteger.valueOf(5)`). This closes #293;
+initialize from a non-constant expression (`Boolean.valueOf(true)`). `BigInteger` and other reference types other
+than `String` are never constant variables, so their `@Param` fields are unaffected. This closes #293;
 ADR-067's `@Param` guard tests move to the accepted spellings. Constants depending on a `@Param` are then not
 constants for javac either.
 
@@ -532,7 +632,8 @@ constants for javac either.
 - **Source that stops compiling:**
   - JuLC's dialect (D6): `BigInteger` operators, `int` literals as `BigInteger`, implicit imports, `@NewType`
     `of(...)`;
-  - reference equality, array `.equals`, and implicit record `equals` over arrays (D6);
+  - reference equality (outside D6's narrow constant-string case), and `.equals` that would compare an array by
+    identity, through records, sealed variants, containers or type arguments (D6);
   - a constant-variable `@Param` (D14);
   - a sealed interface without `permits` whose implicit permitted subclasses are not exactly its nested records
     (I11);
@@ -555,7 +656,8 @@ constants for javac either.
    binding check, the harness gates (D10), and porting rule by rule.
 2. **Byte-identity long tail.** Tree-shape differences and `TypeMirror` → `PirType` refinements produce many small
    differences. Mitigation: D13's classes force each to be explained by evidence, not by declaration.
-3. **Exposure on the frozen default frontend until M5** (D4). Accepted: preview, pins kept, short window.
+3. **Exposure on the frozen default frontend until M5** (D4). Accepted: preview, pins kept, short window;
+   security-class defects are fixed in both frontends (D4, exception 2).
 4. **Hosts.** Source-pool discovery, the nested javac in the annotation processor, Elci's native image and the
    Web Image (preview) are proven by M1 before lowering work.
 5. **Cold-start cost.** Mitigation: blob cache (D3); M1's E6 gate.
@@ -571,8 +673,8 @@ milestone's evidence; a skipped check fails the gate.
 
 | ID | Scope | Entry gate | Exit criteria | Invariants / tests |
 |---|---|---|---|---|
-| **M0** | Freeze B0 and the corpus: in-repo `julc-examples` validators, the 16 stdlib libraries, ledger sources, `verification/blaster/fixtures`, `verification/c7/fixtures`, every compiler/stdlib/testkit test source, the `.diffcase` set, G0, the G1 fixed-seed corpus, the external `julc-examples`, Elci's smoke and `custom-library`. Build the D13 ledger's reference rows and the I2a rejection inventory | This ADR accepted; the integration's full run green | `adr/evidence/068-javac-frontend-baseline.md` with B0's SHA, the pinned commands, and the generated ledger and inventory | I1, I2a, I7, I11 baselines |
-| **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's dialect rewrite of every in-repo source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every corpus case accepted by both is byte-identical (I1a); every case javac rejects is a ledger row of class "javac rejection" whose rewrite is accepted; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I2b, I2c, I4, I6, I10 |
+| **M0** | Freeze B0 and the corpus: in-repo `julc-examples` validators, the 16 stdlib libraries, ledger sources, `verification/blaster/fixtures`, `verification/c7/fixtures`, every compiler/stdlib/testkit test source, the `.diffcase` set, G0, the G1 fixed-seed corpus, the external `julc-examples`, Elci's smoke and `custom-library`. Build the D13 ledger's reference rows, the I2a rejection inventory, and D6's scan of `.equals` call sites that `JULC0087` would reject. Add this ADR as a step of ADR-062 | This ADR accepted; the integration's full run green | `adr/evidence/068-javac-frontend-baseline.md` with B0's SHA, the pinned commands, and the generated ledger and inventory | I1, I2a, I7, I11 baselines |
+| **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's `compareTo` rule in both frontends (D4 exception 1, re-freezing the reference as B1). D6's dialect rewrite of every in-repo migration source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every migration case accepted by both is byte-identical to B1 (I1a); every migration case javac rejects is a "javac rejection" row whose rewrite is accepted and costs no more, in size and budget, than its dialect original; negative fixtures stay rejected; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I1, I2b, I2c, I4, I6, I10 |
 | **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases agree; `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
 | **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14); calls (stdlib, library, instance dispatch, D6's comparison rules); records, fields, object creation; locals, `if`/`else`, `return`; `instanceof`; `switch` with ADR-067 M1 guards and the ported `JavaConstants`; lambdas; whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix) | M3 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
@@ -648,3 +750,36 @@ milestone's evidence; a skipped check fails the gate.
   - Also: B0 moves to the #267 head after the integration merges (ADR-067 F85, ADR-066's last round, the loop-break
     continuation fix and its harness), so M4 ports the corrected loop lowering and its entry gate no longer
     waits for #254/#255.
+- **r3** (2026-10-31, responds to the reviews of `9f8f0a95`: the review comment F36–F44 and Codex's F50–F59):
+  - F50 → D6 normalizes zero-left forms by reversing the operator and gives the explicit mapping table; tests cover
+    `a > b`, `a = b` and `a < b` for all twelve forms.
+  - F51 → D6's constant-string exception is narrowed to literals, constant `String` variables and string `+`
+    outside guards; other constant-string comparisons are `JULC0086`, with overflow and conditional tests.
+  - F36, F52 → `JULC0087` is defined on the static type after substitution, through records, sealed variants,
+    containers and type arguments, conservatively for unresolved types; the `@NewType` remedy and an M0 call-site
+    scan are added.
+  - F37, F53 → D3's ownership check works by provenance: bundled sources are accepted by digest (JuLC's own
+    tests compile them as roots), and other sources may not replace or extend a stub or bundled name or package.
+  - F38, F57 → D8: each entry point keeps today's pool and class loader (testkit `SourceDiscovery`,
+    `compile`/`compileMethod` class-loader scans, Gradle's whole source directory); Elci's supplied units are
+    roots; I10's pool wording fixed; roundtrip and multimodule scenarios on the javac frontend.
+  - F39, F54 → D13 separates semantic observations from budgets and adds the classes "UPLC-only semantic fix",
+    "Accepted by decision", "Diagnostic change", "Provenance change" and "Reference change"; negative fixtures
+    are never rewritten, and M1's rewrite gate applies to migration cases only.
+  - F40, F56, F58 → D9: one shared typed-wrapper service for both REPLs (`ExpressionEvaluator` and the CLI's
+    `ExpressionWrapper`); REPL integer arithmetic is stated as JuLC's unbounded semantics (T6), with tests for
+    `:type`, `:pir` and an overflow case.
+  - F41 → D4 adds a security exception: such fixes go into both frontends as reference changes, so releases
+    between M1 and M5 are allowed.
+  - F42 → I6 allows listed native-image configuration entries naming internal classes, checked per JDK; code
+    references and `--add-exports`/`--add-opens` stay forbidden.
+  - F43 → D4 exception 1: the `compareTo` rule goes into both frontends at M1, and M1 gates that rewritten sources
+    cost no more than their dialect originals.
+  - F55 → I12 requires elements only for the tree kinds that denote declarations, and non-error types for
+    expressions.
+  - F59 → D3 defines the supported builds and makes a patch-to-patch output difference release-blocking, with a
+    versioned decision; D11's retargeted suite keeps the javac 21.0.3 comparison.
+  - F44 → the `compareTo` rule is in both frontends (no per-frontend profile needed); D14's remedy fixed;
+    `getSourceVersions()`; the blob is derived from in-repo sources only; §15.21 needs a primitive operand; I13
+    covers duplicated continuations; I10's stubs exclude compiler-facing stdlib classes; M0 adds this ADR to
+    ADR-062.
