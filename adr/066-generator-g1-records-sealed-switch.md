@@ -1619,11 +1619,24 @@ The review comment approved M3 part 1 at `77901c66`, with one P3 (F79); Codex ra
 
 | Finding | Change |
 |---|---|
-| F105 (P2), message matching misreads program-thrown errors | The preflight now loads and verifies, without initializing, every class javac emitted for the case: the class files in javac's output that are the case's top-level classes or nest in them, local and anonymous classes included. So every class the program can load from its own source is verified before it runs, and the message matching is removed: whatever is thrown while the program initializes or runs is its `Failure` with its traces, `VerifyError`, `ClassFormatError` and other `LinkageError`s included. `JvmExecutorTest` checks `NoClassDefFoundError("Gone")`, `LinkageError("m")`, `VerifyError("Probe")`, `ClassFormatError("Probe")` and `VerifyError("NotProbeClass")`, each thrown from an initializer (`Failure`, traces `[init]`) and from the method after a trace (`Failure`, traces `[init, m]`). The local class with javac's unverifiable bytecode is now rejected while linking, before anything runs (an oracle fault naming `Probe$1Local`). |
-| F79 (P3), toolchain errors while running | Documented in `JvmExecutor` and here: a `LinkageError` the toolchain raises while the program runs, such as a `BootstrapMethodError` from a pattern switch's bootstrap, counts as the program's `Failure`, not as an oracle fault. The preflight cannot see it, since bootstraps run only when the call site is first executed. Such an error would show as a JVM failure where UPLC agrees with the source, so a campaign would stop on it as a mismatch and it would be examined then. |
+| F105 (P2), message matching misreads program-thrown errors | The preflight now loads and verifies, without initializing, every class javac emitted for the case, local and anonymous classes included (selected by name prefix here; by originating source since round 4, F110). So every class the program can load from its own source is verified before it runs, and the message matching is removed: whatever is thrown while the program initializes or runs is its `Failure` with its traces, `VerifyError`, `ClassFormatError` and other `LinkageError`s included. `JvmExecutorTest` checks `NoClassDefFoundError("Gone")`, `LinkageError("m")`, `VerifyError("Probe")`, `ClassFormatError("Probe")` and `VerifyError("NotProbeClass")`, each thrown from an initializer (`Failure`, traces `[init]`) and from the method after a trace (`Failure`, traces `[init, m]`). The local class with javac's unverifiable bytecode is now rejected while linking, before anything runs (an oracle fault naming `Probe$1Local`). |
+| F79 (P3), toolchain errors while running | Documented in `JvmExecutor` and here: a `LinkageError` the toolchain raises while the program runs, such as a `BootstrapMethodError` from a pattern switch's bootstrap, counts as the program's `Failure`, not as an oracle fault. The preflight cannot see it, since bootstraps run only when the call site is first executed. A campaign stops on such an error only when the outcome kind or the traces differ (ADR-063's observation model compares no failure details, open question 3): if UPLC also fails, with the same traces, the case agrees and the toolchain error goes unnoticed (round 4, F111). |
 
 The decoding is unchanged (G1 r7). Commands and counts:
 - `./gradlew :julc-difftest:test --rerun`: 244 tests, 0 failures, 0 skipped, in 114 s; `RegressionCasesTest` runs 86
+  cases.
+
+### M3 part 1 review round 4 (2026-10-30, G1 r7)
+
+Codex confirmed F105 at `bda959d6` and raised two items.
+
+| Finding | Change |
+|---|---|
+| F110 (P2), class ownership by name prefix | Ownership by `top$` prefix misattributes, in a batch compilation, an unrelated top-level class named like `Probe$Other` or `Probe$$Lambda`. `JvmExecutor` now wraps javac's file manager and records each class file against the source javac passes as the output's sibling in `getJavaFileForOutput`; the preflight verifies exactly the class files of the case's own source. `JvmExecutorTest.aBatchKeepsEachSourcesClassesApart` compiles, in one batch, a sound `Probe` with an unverifiable top-level `Probe$Other`, and a sound `Probe$` with an unverifiable `Probe$$Lambda`: the sound case returns its value, and the other is an oracle fault. With the prefix rule restored the test fails. |
+| F111 (P3), F79's wording | Qualified above: a toolchain `LinkageError` while the program runs is caught by a campaign only when the outcome kind or the traces differ; with a UPLC failure and equal traces the case agrees. |
+
+The decoding is unchanged (G1 r7). Commands and counts:
+- `./gradlew :julc-difftest:test --rerun`: 245 tests, 0 failures, 0 skipped, in 130 s; `RegressionCasesTest` runs 86
   cases.
 
 ## Revision history
