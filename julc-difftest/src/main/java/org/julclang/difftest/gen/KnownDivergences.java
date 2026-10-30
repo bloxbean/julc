@@ -9,12 +9,14 @@ import org.julclang.difftest.UplcExecutor;
 import org.julclang.difftest.Verdict;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * The allowed-divergence registry for generated programs (ADR-063 D6). It explains a generated
@@ -26,12 +28,15 @@ import java.util.regex.Pattern;
  *     another cause with the same shape and reason passes as it, but an inconclusive case counts
  *     towards no quota (D9).</li>
  * <li>A conclusive UPLC side, a value or a failure, is explained only by a <em>pin</em>: a saved
- *     {@code DIVERGE} case with the same program, method and arguments, whose pinned observations
+ *     {@code DIVERGE} case with the same program, method, arguments and tag table (ADR-066 D3), whose pinned observations
  *     the result matches exactly, traces included. Any other wrong value fails the run and is
  *     written out for triage.</li>
  * </ul>
  * Remove a rule, or change a pin's expectation, when its catalogue entry is resolved; runs report
  * how often each entry matched, so one that stops matching is visible.
+ * <p>
+ * Features are names, such as {@code G0.Feature} names, so that rules can match the features of any generator
+ * (ADR-066 D5).
  */
 public final class KnownDivergences {
 
@@ -68,12 +73,13 @@ public final class KnownDivergences {
      * run that is only expensive from one that does not terminate, and both from one that computes a wrong value.
      * The configuration's verdict stays inconclusive (D3, H5).
      */
-    public record Rule(String id, String description, Set<G0.Feature> requires, Class<? extends Observation> jvm,
+    public record Rule(String id, String description, Set<String> requires, Class<? extends Observation> jvm,
                        String uplcReason, Confirmation confirmation, List<Integer> confirmationFactors) {
 
         public Rule {
             if (uplcReason == null) throw new IllegalArgumentException(id + ": a rule names its exact inconclusive reason");
             if (confirmation == null) throw new IllegalArgumentException(id + ": a rule names its confirmation, or NONE");
+            requires = Set.copyOf(requires);
             confirmationFactors = List.copyOf(confirmationFactors);
             if ((confirmation == Confirmation.NONE) != confirmationFactors.isEmpty()) {
                 throw new IllegalArgumentException(id + ": a confirming rule needs rungs, and only it");
@@ -86,13 +92,13 @@ public final class KnownDivergences {
         }
 
         /** A rule without a confirmation rerun. */
-        public Rule(String id, String description, Set<G0.Feature> requires, Class<? extends Observation> jvm,
+        public Rule(String id, String description, Set<String> requires, Class<? extends Observation> jvm,
                     String uplcReason) {
             this(id, description, requires, jvm, uplcReason, Confirmation.NONE, List.of());
         }
 
         /** The shape, the JVM kind and the exact reason: everything but the confirmation. */
-        boolean fits(Set<G0.Feature> features, DiffRunner.Result result) {
+        boolean fits(Set<String> features, DiffRunner.Result result) {
             return features.containsAll(requires) && jvm.isInstance(result.jvm())
                     && result.uplc() instanceof Observation.Inconclusive i && i.reason().equals(uplcReason);
         }
@@ -133,10 +139,10 @@ public final class KnownDivergences {
 
     public static final List<Rule> RULES = List.of(
             new Rule("T21", "a while loop with break and an if that updates a variable never terminates on UPLC",
-                    Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), Observation.Value.class, "budget exhausted",
+                    Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name()), Observation.Value.class, "budget exhausted",
                     Confirmation.STILL_INCONCLUSIVE, List.of(T21_RUNG)),
             new Rule("T13", "nested compareTo operands double the script per level (#146) and exhaust the budget",
-                    Set.of(G0.Feature.DEEP_COMPARISON), Observation.Value.class, "budget exhausted",
+                    Set.of(G0.Feature.DEEP_COMPARISON.name()), Observation.Value.class, "budget exhausted",
                     Confirmation.AGREES_WITH_JVM, List.of(CONFIRMATION_FACTOR, T13_SECOND_RUNG)));
 
     private static final Pattern CLASS_DECLARATION = Pattern.compile("\\bclass\\s+(\\w+)");
@@ -170,7 +176,7 @@ public final class KnownDivergences {
      * The catalogue ID that explains this configuration's mismatch, if exactly one does: a rule for an
      * inconclusive UPLC side, an exact pin otherwise.
      */
-    public Optional<String> explain(DiffCase diffCase, DiffConfig config, Set<G0.Feature> features, DiffRunner.Result result) {
+    public Optional<String> explain(DiffCase diffCase, DiffConfig config, Set<String> features, DiffRunner.Result result) {
         return explain(diffCase, config, features, result, null);
     }
 
@@ -178,7 +184,7 @@ public final class KnownDivergences {
      * As {@link #explain(DiffCase, DiffConfig, Set, DiffRunner.Result)}, with the rerun a confirming rule needs.
      * Without one, such a rule explains nothing.
      */
-    public Optional<String> explain(DiffCase diffCase, DiffConfig config, Set<G0.Feature> features, DiffRunner.Result result,
+    public Optional<String> explain(DiffCase diffCase, DiffConfig config, Set<String> features, DiffRunner.Result result,
                                     Rerun rerun) {
         var ids = new TreeSet<String>();
         if (result.uplc() instanceof Observation.Inconclusive) {
@@ -207,13 +213,19 @@ public final class KnownDivergences {
                 var saved = pin.diffCase();
                 var expectation = pin.expectationFor(config.level());
                 if (expectation.kind() == Verdict.Kind.MISMATCH && saved.method().equals(diffCase.method())
-                        && saved.args().equals(diffCase.args()) && program(saved).equals(program)
+                        && saved.args().equals(diffCase.args()) && saved.tags().equals(diffCase.tags())
+                        && program(saved).equals(program)
                         && expectation.check(result) == null) {
                     ids.add(expectation.detail());
                 }
             }
         }
         return ids.size() == 1 ? Optional.of(ids.getFirst()) : Optional.empty();
+    }
+
+    /** The names of a generator's features, as rules and coverage take them. */
+    public static Set<String> names(Collection<? extends Enum<?>> features) {
+        return features.stream().map(Enum::name).collect(Collectors.toCollection(TreeSet::new));
     }
 
     /** The source with its class renamed, so that a case compiled under another class name still matches. */

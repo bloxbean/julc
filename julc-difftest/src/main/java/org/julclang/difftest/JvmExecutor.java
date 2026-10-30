@@ -51,24 +51,60 @@ public final class JvmExecutor {
         this.timeoutMillis = timeoutMillis;
     }
 
+    /**
+     * Validates the case's tag table against the compiled source (ADR-066 D3), maps the arguments, runs the
+     * entry method and maps its result at its declared return type.
+     */
     public synchronized Observation run(DiffCase diffCase) {
         Path classes = compiled.computeIfAbsent(diffCase.source(), source -> compile(diffCase));
         try (var loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
-            Method method = entryMethod(loader.loadClass(diffCase.className()), diffCase.method());
+            Class<?> type = loader.loadClass(diffCase.className());
+            validate(diffCase, type);
+            Method method = entryMethod(type, diffCase.method());
             var params = method.getGenericParameterTypes();
             if (params.length != diffCase.args().size()) {
                 throw new HarnessException(diffCase.name() + ": " + method.getName() + " takes " + params.length
                         + " arguments, the case has " + diffCase.args().size());
             }
             Object[] args = new Object[params.length];
-            for (int i = 0; i < params.length; i++) args[i] = ValueMapping.fromData(diffCase.args().get(i), params[i]);
-            return invoke(method, args);
+            for (int i = 0; i < params.length; i++) {
+                try {
+                    args[i] = ValueMapping.fromData(diffCase.args().get(i), params[i], diffCase.tags());
+                } catch (HarnessException e) {
+                    throw new HarnessException(diffCase.name() + ": argument " + i + ": " + e.getMessage(), e);
+                }
+            }
+            return invoke(method, args, diffCase.tags());
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
     }
 
-    private Observation invoke(Method method, Object[] args) {
+    /**
+     * The representation the UPLC result must have (ADR-066 D4), from the declared return type of the entry
+     * method as javac compiled it: the oracle's reading of the source, never JuLC's. It also validates the case's
+     * tag table, so that a case with an invalid table fails before any run.
+     */
+    public synchronized ValueMapping.Representation resultRepresentation(DiffCase diffCase) {
+        Path classes = compiled.computeIfAbsent(diffCase.source(), source -> compile(diffCase));
+        try (var loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
+            Class<?> type = loader.loadClass(diffCase.className());
+            validate(diffCase, type);
+            return ValueMapping.Representation.of(entryMethod(type, diffCase.method()).getGenericReturnType());
+        } catch (IOException | ClassNotFoundException e) {
+            throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
+        }
+    }
+
+    private static void validate(DiffCase diffCase, Class<?> type) {
+        try {
+            diffCase.tags().validate(type);
+        } catch (HarnessException e) {
+            throw new HarnessException(diffCase.name() + ": " + e.getMessage(), e);
+        }
+    }
+
+    private Observation invoke(Method method, Object[] args, TagTable tags) {
         var out = new TraceSink();
         PrintStream original = System.out;
         var executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -81,7 +117,7 @@ public final class JvmExecutor {
             var future = executor.submit(() -> method.invoke(null, args));
             try {
                 Object result = future.get(timeoutMillis, TimeUnit.MILLISECONDS);
-                return new Observation.Value(ValueMapping.toData(result), out.traces());
+                return new Observation.Value(ValueMapping.toData(result, method.getGenericReturnType(), tags), out.traces());
             } catch (TimeoutException e) {
                 future.cancel(true);
                 return new Observation.Inconclusive("JVM timeout after " + timeoutMillis + " ms");

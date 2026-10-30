@@ -11,6 +11,7 @@ import java.math.BigInteger;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -23,11 +24,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class KnownDivergencesTest {
 
-    private static final KnownDivergences KNOWN = G0PropertyTest.KNOWN;
+    private static final KnownDivergences KNOWN = CampaignVerifier.KNOWN;
 
     /** The T23 shape of the exhaustive corpus. */
     private static final G0Enumeration.Program T23 = new G0Enumeration.Program(G0Enumeration.Shape.FOR_EACH,
             List.of(G0Enumeration.Statement.IF_ELSE_UPDATE, G0Enumeration.Statement.BREAK), List.of());
+    private static final Set<String> T23_FEATURES = KnownDivergences.names(T23.features());
 
     private static final DiffConfig CONFIG = new DiffConfig(OptimizationLevel.BASELINE, "Java");
 
@@ -42,7 +44,7 @@ class KnownDivergencesTest {
         return new Observation.Value(new PlutusData.IntData(BigInteger.valueOf(v)), List.of(traces));
     }
 
-    private static Optional<String> explain(DiffCase diffCase, Set<G0.Feature> features, Observation jvm, Observation uplc) {
+    private static Optional<String> explain(DiffCase diffCase, Set<String> features, Observation jvm, Observation uplc) {
         return KNOWN.explain(diffCase, CONFIG, features, new DiffRunner.Result(jvm, uplc, Verdict.compare(jvm, uplc)));
     }
 
@@ -55,9 +57,9 @@ class KnownDivergencesTest {
     @Test
     void aPinnedReproducerIsExplainedUnderAnyClassName() {
         // The corpus compiles program 135 as class E135; its saved case declares Probe.
-        assertEquals(Optional.of("T23"), explain(t23("E135", -2, 1, -1, 2, 4), T23.features(), value(8), value(38)));
-        assertEquals(Optional.of("T23"), explain(t23("Probe", -2, -3, -4, 3, 1, 2), T23.features(), value(-1), value(26)));
-        assertEquals(Optional.of("T23"), explain(t23("Probe", 1, -3, -4, -5), T23.features(), value(-6), value(-5)));
+        assertEquals(Optional.of("T23"), explain(t23("E135", -2, 1, -1, 2, 4), T23_FEATURES, value(8), value(38)));
+        assertEquals(Optional.of("T23"), explain(t23("Probe", -2, -3, -4, 3, 1, 2), T23_FEATURES, value(-1), value(26)));
+        assertEquals(Optional.of("T23"), explain(t23("Probe", 1, -3, -4, -5), T23_FEATURES, value(-6), value(-5)));
     }
 
     @Test
@@ -66,23 +68,44 @@ class KnownDivergencesTest {
         var empty = t23("Probe", 0, 3);
         var jvm = new JvmExecutor(5_000).run(empty);
         assertEquals(value(9), jvm);
-        assertEquals(Optional.empty(), explain(empty, T23.features(), jvm, value(999)), "an unrelated wrong value");
-        assertEquals(Optional.empty(), explain(empty, T23.features(), jvm, value(9, "unexpected trace")), "a trace-only change");
+        assertEquals(Optional.empty(), explain(empty, T23_FEATURES, jvm, value(999)), "an unrelated wrong value");
+        assertEquals(Optional.empty(), explain(empty, T23_FEATURES, jvm, value(9, "unexpected trace")), "a trace-only change");
         // A pinned program and input, but a value other than the pinned one.
         var pinned = t23("Probe", -2, 1, -1, 2, 4);
-        assertEquals(Optional.empty(), explain(pinned, T23.features(), value(8), value(39)));
-        assertEquals(Optional.empty(), explain(pinned, T23.features(), value(8), value(38, "t")));
-        assertEquals(Optional.empty(), explain(pinned, T23.features(), value(7), value(38)), "another JVM value");
+        assertEquals(Optional.empty(), explain(pinned, T23_FEATURES, value(8), value(39)));
+        assertEquals(Optional.empty(), explain(pinned, T23_FEATURES, value(8), value(38, "t")));
+        assertEquals(Optional.empty(), explain(pinned, T23_FEATURES, value(7), value(38)), "another JVM value");
         // The pinned observations on another input, or on another program.
-        assertEquals(Optional.empty(), explain(t23("Probe", -2, 1, -1, 2, 5), T23.features(), value(8), value(38)));
+        assertEquals(Optional.empty(), explain(t23("Probe", -2, 1, -1, 2, 5), T23_FEATURES, value(8), value(38)));
         var other = new DiffCase("other", pinned.source().replace("BigInteger.valueOf(3)", "BigInteger.valueOf(4)"),
                 "Probe", "m", pinned.args());
-        assertEquals(Optional.empty(), explain(other, T23.features(), value(8), value(38)));
+        assertEquals(Optional.empty(), explain(other, T23_FEATURES, value(8), value(38)));
+    }
+
+    /** A pin matches only a case with its tag table (ADR-066 D3): the same Data under other tags is other values. */
+    @Test
+    void aPinMatchesOnlyItsTagTable() {
+        var tags = TagTable.of(new TagTable.Entry("Probe$R", "Probe$S", 0), new TagTable.Entry("Probe$Q", "Probe$S", 1),
+                new TagTable.Entry("Probe$R", "Probe$T", 1), new TagTable.Entry("Probe$U", "Probe$T", 0));
+        var swapped = TagTable.of(new TagTable.Entry("Probe$R", "Probe$S", 1), new TagTable.Entry("Probe$Q", "Probe$S", 0),
+                new TagTable.Entry("Probe$R", "Probe$T", 0), new TagTable.Entry("Probe$U", "Probe$T", 1));
+        var base = t23("Probe", -2, 1, -1, 2, 4);
+        var tagged = new DiffCase("tagged", base.source(), "Probe", "m", base.args(), tags, "G1 r1");
+        var expectation = RegressionStore.Expectation.parse("DIVERGE T99 Value/Value").pinned(value(8), value(38));
+        var pin = new RegressionStore.SavedCase(Path.of("tagged.diffcase"), tagged, expectation, Map.of(), null, Map.of(), Map.of());
+        var known = KnownDivergences.withPins(List.of(pin));
+        var result = new DiffRunner.Result(value(8), value(38), Verdict.compare(value(8), value(38)));
+        assertEquals(Optional.of("T99"), known.explain(tagged, CONFIG, Set.of(), result));
+        assertEquals(Optional.of("T99"), known.explain(new DiffCase("other profile", base.source(), "Probe", "m", base.args(),
+                tags, null), CONFIG, Set.of(), result), "the profile generates; it does not change what runs");
+        assertEquals(Optional.empty(), known.explain(new DiffCase("swapped", base.source(), "Probe", "m", base.args(), swapped,
+                "G1 r1"), CONFIG, Set.of(), result));
+        assertEquals(Optional.empty(), known.explain(base, CONFIG, Set.of(), result), "no tags");
     }
 
     @Test
     void aRuleExplainsOnlyItsExactInconclusiveReason() {
-        var features = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var features = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name());
         var hangs = fixed(BUDGET, new ArrayList<>());
         assertEquals(Optional.of("T21"), explain(features, value(3), BUDGET, hangs));
         assertEquals(Optional.empty(), explain(features, value(3), new Observation.Inconclusive("stack overflow"), hangs));
@@ -98,7 +121,7 @@ class KnownDivergencesTest {
      */
     @Test
     void theT21RuleExplainsOnlyARunThatStillDoesNotFinish() {
-        var t21 = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var t21 = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name());
         var factors = new ArrayList<Long>();
         assertEquals(Optional.of("T21"), explain(t21, value(3), BUDGET, fixed(BUDGET, factors)));
         assertEquals(Optional.empty(), explain(t21, value(3), BUDGET, fixed(value(3), factors)), "it finishes: not T21");
@@ -114,7 +137,7 @@ class KnownDivergencesTest {
 
     private static final Path REGRESSIONS = Path.of("src/test/resources/regressions");
     private static final DiffRunner RUNNER = DiffRunner.standard();
-    private static final Set<G0.Feature> DEEP = Set.of(G0.Feature.DEEP_COMPARISON);
+    private static final Set<String> DEEP = Set.of(G0.Feature.DEEP_COMPARISON.name());
     private static final Observation BUDGET = new Observation.Inconclusive("budget exhausted");
 
     /** A rerun that returns a fixed observation, and remembers the factors it was asked for. */
@@ -125,7 +148,7 @@ class KnownDivergencesTest {
         };
     }
 
-    private static Optional<String> explain(Set<G0.Feature> features, Observation jvm, Observation uplc,
+    private static Optional<String> explain(Set<String> features, Observation jvm, Observation uplc,
                                             KnownDivergences.Rerun rerun) {
         return KNOWN.explain(t23("Probe", 0, 3), CONFIG, features, new DiffRunner.Result(jvm, uplc, Verdict.compare(jvm, uplc)),
                 rerun);
@@ -194,8 +217,8 @@ class KnownDivergencesTest {
      */
     @Test
     void t13ClimbsToItsSecondRungAndT21NeedsTheLastRungExhausted() {
-        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
-        var t21 = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var both = Set.of(G0.Feature.DEEP_COMPARISON.name(), G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name());
+        var t21 = Set.of(G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name());
         var factors = new ArrayList<Long>();
         assertEquals(Optional.of("T13"), explain(DEEP, value(-5), BUDGET, ladder(1000, value(-5), factors)));
         assertEquals(List.of(100L, 1000L), factors);
@@ -220,7 +243,7 @@ class KnownDivergencesTest {
      */
     @Test
     void withBothShapesT13AcceptsAgreementOnT21sRung() {
-        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var both = Set.of(G0.Feature.DEEP_COMPARISON.name(), G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name());
         var factors = new ArrayList<Long>();
         assertEquals(Optional.of("T13"), explain(both, value(-5), BUDGET, ladder(10, value(-5), factors)));
         assertEquals(List.of(10L), factors);
@@ -298,7 +321,7 @@ class KnownDivergencesTest {
         assertEquals(Optional.empty(), KNOWN.explain(diffCase, config, DEEP, result, rerun), "T13's shape only");
         assertEquals(List.of(BUDGET, BUDGET), reruns, "both of T13's rungs");
         assertEquals(Optional.of("T21"), KNOWN.explain(diffCase, config,
-                Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE), result, rerun), "both shapes");
+                Set.of(G0.Feature.DEEP_COMPARISON.name(), G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name()), result, rerun), "both shapes");
         assertEquals(List.of(BUDGET, BUDGET, BUDGET, BUDGET, BUDGET), reruns,
                 "one ladder for both rules: T21's rung, then T13's two");
     }
@@ -331,7 +354,7 @@ class KnownDivergencesTest {
                 }
                 """.formatted(expression);
         var diffCase = new DiffCase("both shapes, finishing", source, "Probe", "m", t13.args());
-        var both = Set.of(G0.Feature.DEEP_COMPARISON, G0.Feature.WHILE_BREAK_WITH_IF_UPDATE);
+        var both = Set.of(G0.Feature.DEEP_COMPARISON.name(), G0.Feature.WHILE_BREAK_WITH_IF_UPDATE.name());
         var report = RUNNER.run(diffCase);
         assertEquals(value(2), report.jvm());
         for (var entry : report.results().entrySet()) {

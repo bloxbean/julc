@@ -35,14 +35,19 @@ public final class DiffRunner {
      * rerun of a registry rule (ADR-063 D6, r6). The comparison of {@link #run} never uses it.
      */
     public UplcExecutor.Execution rerun(DiffCase diffCase, DiffConfig config, long factor) {
-        return uplc.run(diffCase, config, UplcExecutor.budgetTimes(factor));
+        return uplc.run(diffCase, config, UplcExecutor.budgetTimes(factor), jvm.resultRepresentation(diffCase));
     }
 
+    /**
+     * Validates the case's tag table, then runs it. Each UPLC result must have the representation of the entry
+     * method's declared return type, which the JVM side reads from javac's class (ADR-066 D4).
+     */
     public Report run(DiffCase diffCase) {
+        var representation = jvm.resultRepresentation(diffCase);
         Observation jvmObservation = jvm.run(diffCase);
         var results = new LinkedHashMap<DiffConfig, Result>();
         for (DiffConfig config : configs) {
-            var execution = uplc.run(diffCase, config);
+            var execution = uplc.run(diffCase, config, UplcExecutor.BUDGET, representation);
             Observation observation = execution.observation();
             results.put(config, new Result(jvmObservation, observation, Verdict.compare(jvmObservation, observation),
                     execution.measurement()));

@@ -26,6 +26,9 @@ import java.util.stream.Stream;
  * name: ContextsLib.trace is a no-op off-chain (T12)
  * class: Probe
  * method: m
+ * tag: Probe$A Probe$S 0           (format 3 only: one line per record and sealed parent, sorted by
+ *                                   record, then parent; ADR-066 D3)
+ * profile: G1 r1 -GUARDS           (format 3 only, optional: the generation profile; ADR-066 D6)
  * arg: 01                          (one line per argument: CBOR of the Data, in hex)
  * expect: DIVERGE T12 Value/Value  (AGREE, REJECT &lt;code&gt;, REJECT none, or DIVERGE &lt;catalogue id&gt;
  *                                  &lt;JVM kind&gt;/&lt;UPLC kind&gt;)
@@ -53,11 +56,16 @@ import java.util.stream.Stream;
  * The {@code recorded.} lines are history: the observations of the run that found the case, which
  * replaying against a later compiler can contradict. The {@code expect} lines are what that replay
  * must produce.
+ * <p>
+ * Format 3 (ADR-066 D5) adds the {@code tag:} and {@code profile:} lines; format 2 files are read as before and
+ * have neither. A case without tags and without a profile is written as format 2, so G0's records do not change.
  */
 public final class RegressionStore {
 
-    /** The header format this class reads and writes. */
-    public static final int FORMAT = 2;
+    /** The newest header format this class reads and writes. */
+    public static final int FORMAT = 3;
+    /** The format of a case without tags and without a profile, which this class also reads and writes. */
+    public static final int FORMAT_2 = 2;
 
     private RegressionStore() {
     }
@@ -194,6 +202,8 @@ public final class RegressionStore {
         var provenance = new LinkedHashMap<String, String>();
         var recorded = new LinkedHashMap<String, String>();
         var args = new ArrayList<PlutusData>();
+        var tags = new ArrayList<TagTable.Entry>();
+        String profile = null;
         for (String line : text.substring(0, separator).split("\n")) {
             if (line.isBlank() || line.startsWith("#")) continue;
             int colon = line.indexOf(':');
@@ -208,6 +218,11 @@ public final class RegressionStore {
                     case "method" -> method = value;
                     case "note" -> note = note == null ? value : note + " " + value;
                     case "arg" -> args.add(PlutusDataCborDecoder.decode(HexFormat.of().parseHex(value)));
+                    case "tag" -> tags.add(TagTable.Entry.parse(value));
+                    case "profile" -> {
+                        if (profile != null) throw new HarnessException("two profile lines");
+                        profile = value;
+                    }
                     case "expect" -> expectation = Expectation.parse(value);
                     case "jvm" -> jvmPin = ObservationText.parse(value);
                     case "uplc" -> uplcPin = ObservationText.parse(value);
@@ -231,8 +246,11 @@ public final class RegressionStore {
                 throw new HarnessException(file + ": " + e.getMessage(), e);
             }
         }
-        if (format == null || format != FORMAT) {
-            throw new HarnessException(file + ": format " + FORMAT + " is required, found " + format);
+        if (format == null || format != FORMAT && format != FORMAT_2) {
+            throw new HarnessException(file + ": format " + FORMAT_2 + " or " + FORMAT + " is required, found " + format);
+        }
+        if (format == FORMAT_2 && (!tags.isEmpty() || profile != null)) {
+            throw new HarnessException(file + ": tag: and profile: lines need format " + FORMAT);
         }
         if (name == null || className == null || method == null || expectation == null) {
             throw new HarnessException(file + ": name, class, method and expect are required");
@@ -253,7 +271,12 @@ public final class RegressionStore {
         } catch (HarnessException e) {
             throw new HarnessException(file + ": " + e.getMessage(), e);
         }
-        var diffCase = new DiffCase(name, text.substring(separator + 5), className, method, args);
+        DiffCase diffCase;
+        try {
+            diffCase = new DiffCase(name, text.substring(separator + 5), className, method, args, new TagTable(tags), profile);
+        } catch (HarnessException e) {
+            throw new HarnessException(file + ": " + e.getMessage(), e);
+        }
         return new SavedCase(file, diffCase, expectation, Collections.unmodifiableMap(overrides), note,
                 Collections.unmodifiableMap(provenance), Collections.unmodifiableMap(recorded));
     }
@@ -274,10 +297,13 @@ public final class RegressionStore {
     public static void write(Path file, DiffCase diffCase, Expectation expectation, String note,
                              Map<String, String> provenance, DiffRunner.Report report) {
         var text = new StringBuilder();
-        text.append("format: ").append(FORMAT).append('\n');
+        boolean format2 = diffCase.tags().isEmpty() && diffCase.profile() == null;
+        text.append("format: ").append(format2 ? FORMAT_2 : FORMAT).append('\n');
         text.append("name: ").append(diffCase.name()).append('\n');
         text.append("class: ").append(diffCase.className()).append('\n');
         text.append("method: ").append(diffCase.method()).append('\n');
+        for (String tag : diffCase.tags().lines()) text.append("tag: ").append(tag).append('\n');
+        if (diffCase.profile() != null) text.append("profile: ").append(diffCase.profile()).append('\n');
         for (PlutusData arg : diffCase.args()) {
             text.append("arg: ").append(HexFormat.of().formatHex(PlutusDataCborEncoder.encode(arg))).append('\n');
         }

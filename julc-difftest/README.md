@@ -45,4 +45,10 @@ every level and checks the expectation in its header:
 Arguments are given as `arg:` lines, one per parameter, each holding the CBOR of the Data in hex. The JVM
 side converts each argument to the parameter's declared type using `ValueMapping`.
 
+A case whose program has sealed interfaces carries their constructor tags as `tag: <record> <parent> <tag>`
+lines, such as `tag: Probe$A Probe$S 0`, and a generated case may carry a `profile:` line; both need
+`format: 3` ([ADR-066](../adr/066-generator-g1-records-sealed-switch.md) D3, D5). Records map to
+`Constr tag [components]`, with tag 0 for a record without a sealed parent; the tags come only from these lines.
+A case without tags or a profile is written as `format: 2`.
+
 When the owning step fixes a divergence, change its expectation. Never delete a case.

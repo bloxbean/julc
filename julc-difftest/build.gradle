@@ -38,14 +38,15 @@ test {
     if (cases.isPresent()) systemProperty 'difftest.cases', file(cases.get()).absolutePath
 }
 
-// The scheduled campaign (ADR-063 D12): fresh seeds and more tries than a pull-request run.
+// The scheduled campaign (ADR-063 D12): fresh seeds and more tries than a pull-request run. Both engines, so
+// that JUnit tests tagged nightly, such as full self-checks, run here too (ADR-066 D5).
 tasks.register('nightlyDiffTest', Test) {
     group = 'verification'
     description = 'Differential JVM/UPLC campaign with fresh seeds'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
-        includeEngines 'jqwik'
+        includeEngines 'junit-jupiter', 'jqwik'
         includeTags 'nightly'
     }
 }

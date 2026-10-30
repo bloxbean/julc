@@ -96,6 +96,15 @@ public final class UplcExecutor {
 
     /** Runs the case under the configuration with another evaluation budget. */
     public Execution run(DiffCase diffCase, DiffConfig config, ExBudget budget) {
+        return run(diffCase, config, budget, ValueMapping.Representation.ANY);
+    }
+
+    /**
+     * Runs the case under the configuration with another evaluation budget. A result whose term does not have the
+     * {@code representation} of the entry method's declared return type is a {@code Crash("result: representation
+     * …")} (ADR-066 D4, G1-I10).
+     */
+    public Execution run(DiffCase diffCase, DiffConfig config, ExBudget budget, ValueMapping.Representation representation) {
         String key = config.level() + "\0" + diffCase.method() + "\0" + diffCase.source();
         Compiled entry = cached(key);
         if (entry == null) {
@@ -116,7 +125,7 @@ public final class UplcExecutor {
         Observation observation = switch (result) {
             case EvalResult.Success s -> {
                 try {
-                    yield new Observation.Value(ValueMapping.fromTerm(s.resultTerm()), s.traces());
+                    yield new Observation.Value(ValueMapping.fromTerm(s.resultTerm(), representation), s.traces());
                 } catch (HarnessException e) {
                     yield new Observation.Crash("result: " + e.getMessage());
                 }
