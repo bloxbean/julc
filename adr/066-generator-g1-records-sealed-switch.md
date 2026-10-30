@@ -373,7 +373,12 @@ random plans under the default profile and fails if any program contains a gated
 | `ASSIGN_PATTERN_BINDING` | Reassigning a `switch` case-pattern binding inside a loop | #162 | Never: a historical profile only; the fix rejects it |
 | `ZERO_ARG_HELPERS` | Zero-parameter helpers | #280 | #280 is fixed on the base |
 | `SHADOW_IN_LOOP_BRANCH` | A local in an `if` branch inside a loop body shadowing a field of another type | #209 | #209 is fixed on the base |
-| `LOOP_BREAK_SHAPES` | G0's T21 and T23 shapes inside G1 programs | #254, #255 | Both are fixed on the base |
+| `LOOP_BREAK_SHAPES` | Loop bodies with `break` and conditional updates (M2: broadened from G0's T21 and T23 shapes) | #254, #255 | Both are fixed on the base |
+| `TRACE_IN_COMPARISON` | A trace in an operand of `compareTo`, directly or through a helper whose body traces (added in M2) | #146 | #146 is fixed on the base |
+
+`TRACE_IN_COMPARISON` (M2): #146's lowering evaluates a `compareTo` operand more than once, so a traced operand
+traces more often on UPLC than on the JVM. ADR-063's T13 rule covers only #146's size and budget effect; a
+duplicated trace is a conclusive mismatch, so the construct is gated.
 
 **Must-reject checks.** A defect fixed by rejecting a construct cannot be found by the positive grammar. For
 each such construct, G1 has a small fixed list of programs that must be rejected with the expected code at every
@@ -790,6 +795,164 @@ Commands and counts:
 
 Findings: JuLC tags each variant by its `permits` position for all six permutations at every level, and returns a
 record or sealed result as a Data constant holding a `Constr` (the check passes). No deviation from the ADR.
+
+## M2 results (2026-10-30)
+
+Implemented, in `julc-difftest` only (G0, its corpus and its saved inputs untouched):
+
+- **`gen/G1`, version `G1 r1`:** D2's grammar without `switch`. It generates:
+  - up to two standalone records and two sealed families of one to three variants, with `permits` orders, and so
+    tags, that are permutations independent of the declaration order; components from the pool `v, w, x, f, p`;
+  - up to two `static final` fields, initialized from constructors, constants and earlier fields;
+  - the fixed helpers `t` and `fail`, and up to two generated helpers of one to three parameters;
+  - G0's loops with accumulators of any generated type;
+  - method-level `if` with an early return, a final `if`/`else` that returns from both branches, and
+    `if (s instanceof V y)` as a whole condition outside loops;
+  - same-type and same-family `equals`, traces, and failures in conditionally evaluated positions;
+  - record and sealed parameters and results.
+- **Binding model:** each variable records whether it is assignable (a method-level accumulator) and whether it is
+  guard-eligible (a parameter, pattern binding, field or never-assigned local), for M3's guards.
+- **Profiles (D6):** `G1.Gate` defines every switch, and `G1.Profile` prints and parses
+  `G1 r1 ±GATE …`. The profile is written in each record as `profile:`, and `G1PropertyTest.profile` replays it. The
+  default profile has every gate off.
+- **Arguments:** decoded from the program's types and a second choice sequence. `a`, `b` and the elements of `xs`
+  are drawn from −6..6; each sealed argument picks its variant uniformly. Each value is mapped to Data by D3's rule
+  with the generator's tag table.
+- **Tests:**
+  - `G1PropertyTest`: the PR campaign (fixed seed `20261030`, 150 tries, quotas), the nightly campaign (3,000
+    tries, tag `nightly`), and the rediscovery campaign (tag `rediscovery`). The rediscovery campaign runs only in the
+    new task `rediscoveryDiffTest`, and `test` excludes it.
+  - `G1GatesTest`: 20,000 default-profile plans contain no gated construct, judged by the markers and by an
+    independent reading of the printed source; each historical profile generates its construct; the M3 switches
+    change no program.
+  - `G1DecodeTest`: determinism of the complete case for whole, truncated and empty plans; ADR-063 H6 for 400
+    programs through `JvmExecutor` (javac, source validation, argument mapping, a run).
+  - `G1FuzzTest`: Jazzer, bytes to inputs then plan, 12 committed seeds.
+  - `G1RediscoveryTest`: the cause checks below.
+
+Decisions and deviations:
+
+1. **A new switch, `TRACE_IN_COMPARISON` (#146),** added to D6's table. The default campaign found that a traced
+   `compareTo` operand traces twice on UPLC. Under the gate off, `compareTo` operands contain no `t(...)` and no call
+   of a helper whose body traces.
+2. **`LOOP_BREAK_SHAPES` is broader than G0's markers:** loop bodies with `break` and conditional updates are gated
+   (`LOOP_BREAK_SHAPES`, #254, #255).
+3. **The arguments come from a second choice sequence**, jqwik's second list and Jazzer's first bytes, rather than
+   from the plan. The program is a function of the plan, `G1.VERSION` and the profile (G1-I5). The complete case
+   adds the input sequence, as G0's `a`, `b` and `xs` are jqwik inputs. Records carry `found.inputs`.
+4. **The declarations read the plan's even positions and the entry method its odd ones,** so that a plan used up by
+   types, fields and helpers still leaves `m` its choices. Without this, about half of all programs had a trivial
+   `m`.
+5. **The M3 switches are defined and inert:** `GUARDS`, `RECORD_PATTERNS`, `CROSS_TYPE_EQUALS`, `SHARED_VARIANT` and
+   `ASSIGN_PATTERN_BINDING`. M2's scope is same-type `equals`, and the M3 row takes cross-type `equals` and shared
+   variants.
+6. **Each historical profile generates its construct often enough** to be found within the PR budget. The default
+   profile's decoding is unaffected:
+   - `REDISCOVER_209`: one or two fields of a declared type, more loops and conditional updates, a branch local that
+     shadows a record field with another record type, and a component read of that field after the `if`;
+   - `REDISCOVER_280`: half of the helpers take no parameter, and most such helpers' bodies trace;
+   - `REDISCOVER_146`: a third of the comparisons trace their left operand.
+7. **Subset rules the grammar keeps** (G1-I1):
+   - a pattern variable never has a field's name (JULC0059);
+   - a local's initializer never reads the field the local shadows (Java scoping);
+   - field initializers use no ternaries or comparisons, and `boolean` components there are literals;
+   - an accessor is called only on a variable or a chain from one (JULC0055);
+   - an atom calls no helper. An earlier draft nested calls in atoms, and #146's duplication grew one script to
+     347 KB and exhausted the budget.
+8. **Bounds:** five top-level statements, counted as G0 counts them (a loop with its accumulator declarations is one);
+   expression depth 2; plan length 200; 40 inputs. In the default profile a loop-branch local never takes any field's
+   name, which is stricter than D6's "of another type".
+9. **No `DEEP_COMPARISON` marker in G1:** depth 2 keeps `compareTo` nesting shallow, so a budget exhaustion would be
+   unexplained. None occurred.
+10. **Quotas apply to D8's 22 features without the `switch` ones;** `LOOP` and `BREAK` are statistics.
+
+Quotas (conclusive cases containing the feature, divided by all tries; quota 3%). Every PR and nightly case was
+conclusive at every level.
+
+| Feature | PR, 150 tries | Nightly, 3,000 tries |
+|---|---|---|
+| `RECORD` | 82 (54.7%) | 1826 (60.9%) |
+| `SEALED` | 79 (52.7%) | 1615 (53.8%) |
+| `TWO_FAMILIES` | 38 (25.3%) | 767 (25.6%) |
+| `ZERO_COMPONENTS` | 66 (44.0%) | 1231 (41.0%) |
+| `NESTED_RECORD` | 27 (18.0%) | 768 (25.6%) |
+| `SEALED_COMPONENT` | 23 (15.3%) | 393 (13.1%) |
+| `RECORD_ARG` | 39 (26.0%) | 903 (30.1%) |
+| `SEALED_ARG` | 29 (19.3%) | 673 (22.4%) |
+| `RECORD_RESULT` | 24 (16.0%) | 613 (20.4%) |
+| `SEALED_RESULT` | 22 (14.7%) | 448 (14.9%) |
+| `COMPONENT_ACCESS` | 34 (22.7%) | 777 (25.9%) |
+| `CHAINED_ACCESS` | 9 (6.0%) | 221 (7.4%) |
+| `STATIC_FIELD` | 63 (42.0%) | 1568 (52.3%) |
+| `FIELD_FROM_FIELD` | 21 (14.0%) | 394 (13.1%) |
+| `FIELD_SHADOWED` | 30 (20.0%) | 687 (22.9%) |
+| `RECORD_EQUALS` | 14 (9.3%) | 333 (11.1%) |
+| `RECORD_ACCUMULATOR` | 33 (22.0%) | 681 (22.7%) |
+| `INSTANCEOF_PATTERN` | 17 (11.3%) | 339 (11.3%) |
+| `METHOD_LEVEL_IF` | 46 (30.7%) | 966 (32.2%) |
+| `HELPER_CALL` | 17 (11.3%) | 323 (10.8%) |
+| `TRACE` | 19 (12.7%) | 427 (14.2%) |
+| `FAILURE` | 29 (19.3%) | 365 (12.2%) |
+| `LOOP` (statistics, no quota) | 51 (34.0%) | 1159 (38.6%) |
+| `BREAK` (statistics, no quota) | 3 (2.0%) | 76 (2.5%) |
+
+Rediscovery (D10.1). The base is 744ab54f, the defects are open, and the command is
+`./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=<profile>`. Each run uses the PR seed `20261030`
+and bounds and starts afresh (`AfterFailureMode.PREVIOUS_SEED`); each command takes about 12 s.
+
+| Defect | Profile | First failing try | Time to first failure | Shrunk reproducer | JVM | UPLC, every level |
+|---|---|---|---|---|---|---|
+| #209 | `REDISCOVER_209` | 2 | 0.8 s | below | `Value -5 [k0]` | `Rejected JULC0055` "Cannot resolve v" |
+| #280 | `REDISCOVER_280` | 5 | 1.5 s | `static BigInteger v() { return t("k0", BigInteger.valueOf(-5)); }`, never called; `m` returns −5 | `Value -5 []` | `Value -5 [k0]` |
+| #146 | `REDISCOVER_146` | 12 | 1.7 s | `return (t("k0", BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 ? … : …).add(…);` | `Value -10 [k0]` | `Value -10 [k0, k0]` |
+
+The #209 reproducer is in a loop body:
+
+```java
+record R0(BigInteger v) {}
+static final R0 f = new R0(BigInteger.valueOf(-2).multiply(BigInteger.valueOf(2)));
+// in m(a = 6, b = 3, xs = [2]):
+BigInteger w = t("k0", a);
+for (var w1 : xs) {
+    w = BigInteger.valueOf(4);
+    if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
+        BigInteger f = BigInteger.valueOf(-5);
+        w = BigInteger.valueOf(-5);
+    }
+    w = f.v();
+}
+```
+
+The branch local `BigInteger f` keeps its type after the `if`, so `f.v()` resolves against `BigInteger` and the
+program is rejected.
+
+Cause checks: all three defects are not yet fixed, so each check is a constrained counterfactual. Each discovery is
+**provisional** until the fix-based check succeeds in the fix's PR. The reproducers of #280 and #146 are saved as
+`DIVERGE` pins; each counterfactual is saved as an `AGREE` case. `G1RediscoveryTest` asserts that every
+counterfactual keeps the JVM observation and agrees, and that every reproducer still diverges or, for #209, is
+rejected with JULC0055.
+
+| Defect | Counterfactual | Saved as |
+|---|---|---|
+| #209 | The branch local is renamed `f1` (alpha-renaming) | `agree-g1-209-counterfactual` |
+| #280 | The helper takes an unused parameter; there is no call site to give an argument | `diverge-g1-280-uncalled-zero-arg-helper`, `agree-g1-280-counterfactual` |
+| #146 | The traced operand is bound to a local before the comparison | `diverge-g1-146-traced-compare-operand`, `agree-g1-146-counterfactual` |
+
+Commands and counts:
+- `./gradlew :julc-difftest:test --rerun`: 180 tests, 0 failures, 0 errors, 0 skipped, in 67 s (M1's 146 tests,
+  unchanged; +34).
+  - The G1 PR workload takes 9.8 s: `G1PropertyTest` 6.2 s, `G1GatesTest` 1.4 s, `G1DecodeTest` 1.2 s,
+    `G1FuzzTest` seeds 0.8 s and `G1RediscoveryTest` 0.3 s.
+  - `RegressionCasesTest` replays 43 cases, 5 of them new.
+- `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`, run twice with fresh seeds:
+  3,000 tries each, all conclusive at every level, in 134 s and 132 s.
+- `./gradlew :julc-difftest:fuzz --tests '*G1FuzzTest' -Pfuzz.duration=4m`: 4,670 runs and no finding.
+
+Findings:
+- #146 has an observable consequence: a traced `compareTo` operand traces more than once at every level. It is
+  recorded in #146 and gated by `TRACE_IN_COMPARISON`.
+- Loop bodies with `break` and conditional updates are gated (`LOOP_BREAK_SHAPES`, #254, #255).
+- No other mismatch was found by the default-profile campaigns: PR, two nightly runs and Jazzer.
 
 ## Revision history
 
