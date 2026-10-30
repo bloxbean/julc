@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * still shows its defect, and its constrained counterfactual, which changes only the defect's trigger, keeps the JVM
  * observation and agrees. When a fix lands, its reproducer agrees and the check becomes the fix-based one: a
  * regression guard that the reproducer agrees with the JVM at every level, with the counterfactual kept beside it
- * (#291, fixed by ADR-067 M1 round 3).
+ * (#291, fixed by ADR-067 M1 round 3; #209, fixed by the loop-break continuation fix).
  */
 class G1RediscoveryTest {
 
@@ -36,8 +36,12 @@ class G1RediscoveryTest {
      * every level, and its counterfactual still keeps the JVM observation and agrees.
      */
     private static void fixed(String reproducer, String counterfactual) {
-        var found = RUNNER.run(saved(reproducer));
-        var changed = RUNNER.run(saved(counterfactual));
+        fixed(saved(reproducer), saved(counterfactual));
+    }
+
+    private static void fixed(DiffCase reproducer, DiffCase counterfactual) {
+        var found = RUNNER.run(reproducer);
+        var changed = RUNNER.run(counterfactual);
         assertEquals(found.jvm(), changed.jvm(), "the counterfactual keeps the JVM observation");
         assertTrue(found.jvm() instanceof Observation.Value, found.describe());
         assertTrue(found.all(Verdict.Kind.AGREE), found.describe());
@@ -73,16 +77,26 @@ class G1RediscoveryTest {
         for (String revision : List.of("-r3", "-r4", "-r5")) pinned("146-traced-compare-operand" + revision, Verdict.Kind.MISMATCH);
     }
 
-    /** #209, runtime form: the branch local is renamed apart; UPLC fails reading the field through the wrong layout. */
+    /**
+     * #209, runtime form, fixed by the loop-break continuation fix (#254, #255): UPLC failed reading the field through
+     * the branch local's layout; the reproducers now agree. The counterfactual renames the branch local apart.
+     */
     @Test
-    void localShadowingAFieldMakesAReadFail() {
-        for (String revision : List.of("", "-r3", "-r4", "-r5")) pinned("209-runtime-misread" + revision, Verdict.Kind.MISMATCH);
+    void localShadowingAFieldNoLongerMakesAReadFail() {
+        for (String revision : List.of("", "-r3", "-r4", "-r5")) {
+            fixed("diverge-g1-209-runtime-misread" + revision, "agree-g1-209-runtime-misread" + revision + "-counterfactual");
+        }
     }
 
-    /** #209, silent form (the issue's own shape): the read returns another component of the same type. */
+    /**
+     * #209, silent form (the issue's own shape), fixed by the loop-break continuation fix: the read returned another
+     * component of the same type; the reproducers now agree.
+     */
     @Test
-    void localShadowingAFieldMakesAReadReturnAnotherComponent() {
-        for (String revision : List.of("", "-r3", "-r4", "-r5")) pinned("209-silent-misread" + revision, Verdict.Kind.MISMATCH);
+    void localShadowingAFieldNoLongerReturnsAnotherComponent() {
+        for (String revision : List.of("", "-r3", "-r4", "-r5")) {
+            fixed("diverge-g1-209-silent-misread" + revision, "agree-g1-209-silent-misread" + revision + "-counterfactual");
+        }
     }
 
     /**
@@ -119,18 +133,17 @@ class G1RediscoveryTest {
 
     /**
      * #209, rejection form, found under G1 r1: the counterfactual renames the branch local apart; the reproducer is
-     * that program with the local named like the field {@code R0 f}. JuLC keeps the local's type {@code BigInteger} for
-     * {@code f.v()} after the {@code if} and rejects the program, which Java accepts.
+     * that program with the local named like the field {@code R0 f}. JuLC kept the local's type {@code BigInteger} for
+     * {@code f.v()} after the {@code if} and rejected the program (JULC0055), which Java accepts; since the loop-break
+     * continuation fix it resolves the field and agrees.
      */
     @Test
-    void localShadowingAFieldMakesAReadUnresolvable() {
+    void localShadowingAFieldNoLongerMakesAReadUnresolvable() {
         var counterfactual = saved("agree-g1-209-rejection-counterfactual");
         String source = counterfactual.source().replace("BigInteger f1 = ", "BigInteger f = ");
         assertNotEquals(counterfactual.source(), source);
         var reproducer = new DiffCase("#209 reproducer", source, counterfactual.className(), counterfactual.method(),
                 counterfactual.args(), counterfactual.tags(), counterfactual.profile());
-        counterfactualAgrees(reproducer, counterfactual, Verdict.Kind.REJECTED);
-        RUNNER.run(reproducer).results().values().forEach(result ->
-                assertEquals("JULC0055", ((Observation.Rejected) result.uplc()).code()));
+        fixed(reproducer, counterfactual);
     }
 }

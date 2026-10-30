@@ -6,19 +6,21 @@ profile: G1 r3 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSI
 arg: 04
 arg: 04
 arg: 9f24202101ff
-expect: DIVERGE #209 Value/Value
-jvm: Value d8799f2424ff []
-uplc: Value d8799f2323ff []
+expect: AGREE
 note: Rediscovered by the G1 r3 campaign under REDISCOVER_209 (ADR-066 D10.1, M2), the shrunk reproducer as found:
 note: #209's own shape. R0(v, w) and R1(w, v) have the same components in other orders; the branch local R1 w keeps
 note: its type after the if, so w.v() on the field R0 w = R0(-5, -4) reads index 1, which is R0's w: UPLC returns
 note: R0(-4, -4) where Java returns R0(-5, -5), silently, at every level. Provisional until #209 is fixed.
+note: The loop-break continuation fix (#254, #255) also fixed #209: the case agrees at every level, so its
+note: expectation is AGREE (ADR-066 D9, merge reconciliation); recorded.jvm and recorded.base keep the old pins.
 found.by: G1PropertyTest rediscovery
 found.generator: G1 r3
 found.plan: 0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,0,0,0,0,0,57,333,6,222,17,3,5,2,35,303,1,857,36,16,50,60,547
 found.inputs: 23,153,509,14,31,4,215,739,43,822,9,119,559
 found.seed: 20261030
 found.compiler: 0.1.0-pre20 v0.1.0-pre20-39-gb9f8ba9eba06-dirty
+recorded.jvm: Value d8799f2424ff []
+recorded.base: Value d8799f2323ff []
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

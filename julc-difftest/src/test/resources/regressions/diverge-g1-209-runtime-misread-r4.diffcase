@@ -7,19 +7,21 @@ arg: 04
 arg: 04
 arg: 9f24202101ff
 arg: d8799f05d87a80ff
-expect: DIVERGE #209 Value/Failure
-jvm: Value d8799f24d87980ff []
-uplc: Failure []
+expect: AGREE
 note: Rediscovered by the G1 r4 campaign under REDISCOVER_209 with -Pdifftest.form=failure (ADR-066 D10.1, M2), the
 note: shrunk reproducer as found. The branch local R1 w keeps its type after the if, so w.v() reads the field R0 w
 note: through R1's layout: index 1, a Bool, where R0 has its integer at index 0. UPLC fails with UnIData at every
 note: level. Provisional until #209 is fixed.
+note: The loop-break continuation fix (#254, #255) also fixed #209: the case agrees at every level, so its
+note: expectation is AGREE (ADR-066 D9, merge reconciliation); recorded.jvm and recorded.base keep the old pins.
 found.by: G1PropertyTest rediscovery
 found.generator: G1 r4
 found.plan: 0,0,0,0,0,0,0,1,5,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,8,27,0,377,18,96,23,7,57,333,6,222,17,3,5,2,35,303,1,857,36,16,50,60,547
 found.inputs: 23,153,509,14,31,4,215,739,43,822,9,119,559
 found.seed: 20261030
 found.compiler: 0.1.0-pre20 v0.1.0-pre20-41-g86496b664c61-dirty
+recorded.jvm: Value d8799f24d87980ff []
+recorded.base: Failure []
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r8): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r9): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
  * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
@@ -60,7 +60,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r8";
+    public static final String VERSION = "G1 r9";
 
     /**
      * The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open; once the fix is
@@ -82,9 +82,15 @@ public final class G1 {
         ASSIGN_PATTERN_BINDING,
         /** Zero-parameter helpers (#280). */
         ZERO_ARG_HELPERS,
-        /** A local in an {@code if} branch inside a loop body shadowing a field of another type (#209). */
+        /**
+         * A local in an {@code if} branch inside a loop body shadowing a field of another type (#209). Fixed by the
+         * loop-break continuation fix, so on in the default profile since G1 r9.
+         */
         SHADOW_IN_LOOP_BRANCH,
-        /** Loop bodies with {@code break} and conditional updates (#254, #255). */
+        /**
+         * Loop bodies with {@code break} and conditional updates (#254, #255). Both fixed by the loop-break continuation
+         * fix, so on in the default profile since G1 r9.
+         */
         LOOP_BREAK_SHAPES,
         /**
          * A trace in an operand of {@code compareTo}, directly or through a helper (#146). {@code signum} lowers its
@@ -145,15 +151,18 @@ public final class G1 {
 
     /**
      * A generation profile: {@link #VERSION}, the value of every {@link Gate} (ADR-066 D6) and its {@link Steer}s. Its
-     * text, such as {@code G1 r8 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
+     * text, such as {@code G1 r9 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
      */
     public record Profile(Set<Gate> on, Set<Steer> steering) {
 
         /**
          * The campaigns' profile: every gate off whose defect is open, and on for each defect fixed below (ADR-066 D6,
-         * "After a fix"): {@link Gate#DEFAULT_BLOCK_SCOPE} since #291's fix (G1 r8).
+         * "After a fix"): {@link Gate#DEFAULT_BLOCK_SCOPE} since #291's fix (G1 r8), and
+         * {@link Gate#SHADOW_IN_LOOP_BRANCH} and {@link Gate#LOOP_BREAK_SHAPES} since the loop-break continuation fix
+         * (#209, #254, #255; G1 r9).
          */
-        public static final Profile DEFAULT = new Profile(EnumSet.of(Gate.DEFAULT_BLOCK_SCOPE));
+        public static final Profile DEFAULT =
+                new Profile(EnumSet.of(Gate.SHADOW_IN_LOOP_BRANCH, Gate.LOOP_BREAK_SHAPES, Gate.DEFAULT_BLOCK_SCOPE));
         /** The historical profile that rediscovers #209 (ADR-066 D10.1). */
         public static final Profile REDISCOVER_209 = DEFAULT.with(Gate.SHADOW_IN_LOOP_BRANCH).steered(Steer.ISSUE_209);
         /** The historical profile that rediscovers #280 (ADR-066 D10.1). */
