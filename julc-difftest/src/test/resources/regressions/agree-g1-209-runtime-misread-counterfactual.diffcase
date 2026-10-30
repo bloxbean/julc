@@ -1,0 +1,44 @@
+format: 3
+name: the #209 reproducer 209-runtime-misread with its trigger removed agrees (counterfactual)
+class: Probe
+method: m
+profile: G1 r2 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON
+arg: 02
+arg: 05
+arg: 9f0100ff
+expect: AGREE
+note: ADR-066 D10.1 cause check for #209: only the trigger changes (the shadowing local is renamed apart); the JVM
+note: observation is unchanged and UPLC agrees.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    record R1(BigInteger w, boolean v) {}
+    record R0(boolean v, BigInteger w) {}
+
+    static final R0 v = new R0(false, BigInteger.valueOf(-5));
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger w = BigInteger.valueOf(-5);
+        long i0 = 0;
+        while (i0 < 1) {
+            if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
+                R1 v1 = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+                w = BigInteger.valueOf(-5);
+            }
+            w = v.w();
+            i0 = i0 + 1;
+        }
+        return new R0(w.compareTo(w) < 0, w);
+    }
+}

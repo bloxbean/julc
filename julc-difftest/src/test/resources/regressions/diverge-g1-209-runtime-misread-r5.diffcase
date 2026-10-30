@@ -1,0 +1,57 @@
+format: 3
+name: a branch local shadowing a field in a loop makes a later field read fail (#209)
+class: Probe
+method: m
+profile: G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
+arg: 01
+arg: 20
+arg: 9f22252525ff
+arg: d8799f25d87980ff
+expect: DIVERGE #209 Value/Failure
+jvm: Value d8799f24d87980ff []
+uplc: Failure []
+note: Rediscovered by the G1 r5 campaign under REDISCOVER_209 with -Pdifftest.form=failure (ADR-066 D10.1), the
+note: shrunk reproducer as found. The branch local R1 w keeps its type after the if, so w.w() reads the field R0 w
+note: through R1's layout: index 0, an integer, where R0 has its Bool at index 1. UPLC fails with UnConstrData at
+note: every level. Provisional until #209 is fixed.
+found.by: G1PropertyTest rediscovery
+found.generator: G1 r5
+found.plan: 0,0,0,0,0,0,0,1,0,0,2,0,0,0,0,0,0,1,2,2,1,0,0,2,0,0,0,0,199,164,987,167,6,102,30,4,306,94,146,94,11,116,180,28,999,94,4,0,116,532,259,36,2,262,109,38,70,534,802,6,936,0,134,569,6,9
+found.inputs: 7,109,289,29
+found.seed: 20261030
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-43-gd954df360526-dirty
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    record R1(boolean w, BigInteger v) {}
+    record R0(BigInteger v, boolean w) {}
+
+    static final R0 w = new R0(BigInteger.valueOf(-4), true);
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, R0 v) {
+        boolean v1 = v.equals(new R0(a, a.compareTo(BigInteger.valueOf(-2)) == 0));
+        long i0 = 0;
+        while (i0 < 2) {
+            if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
+                R1 w = new R1(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0, BigInteger.valueOf(-5));
+                v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+            }
+            v1 = w.w();
+            v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+            v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+            i0 = i0 + 1;
+        }
+        return new R0(BigInteger.valueOf(-5), v1);
+    }
+}

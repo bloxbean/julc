@@ -1,0 +1,38 @@
+format: 3
+name: a traced compareTo operand traces twice on UPLC (#146)
+class: Probe
+method: m
+profile: G1 r1 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES +TRACE_IN_COMPARISON
+arg: 25
+arg: 25
+arg: 80
+expect: DIVERGE #146 Value/Value
+jvm: Value 29 ["k0"]
+uplc: Value 29 ["k0", "k0"]
+note: Rediscovered by the G1 campaign under REDISCOVER_146 (ADR-066 D10.1, M2), the shrunk reproducer as found.
+note: The lowering of compareTo evaluates an operand more than once (#146), so its trace repeats at every level.
+note: Provisional until #146 is fixed; agree-g1-146-counterfactual binds the operand to a local first.
+found.by: G1PropertyTest rediscovery
+found.generator: G1 r1
+found.plan: 0,0,0,0,0,0,0,1,0,0,0,1,0,3,0,0,0,0,0,0,0,2
+found.seed: 20261030
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-34-g744ab54f133d-dirty
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        return (t("k0", BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).add(BigInteger.valueOf(-5));
+    }
+}

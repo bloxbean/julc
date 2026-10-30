@@ -12,12 +12,18 @@ import java.util.Map;
 public final class DiffRunner {
 
     private final JvmExecutor jvm;
-    private final UplcExecutor uplc = new UplcExecutor();
+    private final UplcExecutor uplc;
     private final List<DiffConfig> configs;
 
     public DiffRunner(List<DiffConfig> configs, long jvmTimeoutMillis) {
+        this(configs, jvmTimeoutMillis, new UplcExecutor());
+    }
+
+    /** A runner over the given UPLC executor: a test seam (ADR-066 D4). */
+    DiffRunner(List<DiffConfig> configs, long jvmTimeoutMillis, UplcExecutor uplc) {
         this.configs = List.copyOf(configs);
         this.jvm = new JvmExecutor(jvmTimeoutMillis);
+        this.uplc = uplc;
     }
 
     /** The pull-request matrix: every optimization level on the Java VM, with a 10-second JVM bound. */
@@ -35,14 +41,19 @@ public final class DiffRunner {
      * rerun of a registry rule (ADR-063 D6, r6). The comparison of {@link #run} never uses it.
      */
     public UplcExecutor.Execution rerun(DiffCase diffCase, DiffConfig config, long factor) {
-        return uplc.run(diffCase, config, UplcExecutor.budgetTimes(factor));
+        return uplc.run(diffCase, config, UplcExecutor.budgetTimes(factor), jvm.resultRepresentation(diffCase));
     }
 
+    /**
+     * Validates the case's tag table, then runs it. Each UPLC result must have the representation of the entry
+     * method's declared return type, which the JVM side reads from javac's class (ADR-066 D4).
+     */
     public Report run(DiffCase diffCase) {
+        var representation = jvm.resultRepresentation(diffCase);
         Observation jvmObservation = jvm.run(diffCase);
         var results = new LinkedHashMap<DiffConfig, Result>();
         for (DiffConfig config : configs) {
-            var execution = uplc.run(diffCase, config);
+            var execution = uplc.run(diffCase, config, UplcExecutor.BUDGET, representation);
             Observation observation = execution.observation();
             results.put(config, new Result(jvmObservation, observation, Verdict.compare(jvmObservation, observation),
                     execution.measurement()));
