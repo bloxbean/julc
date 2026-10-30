@@ -1,7 +1,10 @@
 # ADR-065: javac frontend spike (replace JavaParser)
 
-**Status:** Proposed (spike; design only). This ADR proposes a time-boxed investigation with exit criteria. It
-does not commit JuLC to a migration. A migration, if the spike recommends one, needs its own ADR.
+**Status:** Spike done (2026-10-30). The platform part (M1's native-image and Web Image rows) is recorded in
+[`evidence/065-javac-frontend-spike.md`](evidence/065-javac-frontend-spike.md) (branch `spike/065-javac-frontend`).
+The maintainer decided to migrate; the decision and its plan are [ADR-068](068-javac-frontend-migration.md), which
+supersedes this ADR's D1, D5 and open questions 1 and 9. The spike's remaining rows (a stdlib-using validator in
+the real `julc-wasm`, Elci's native shape, the annotation-processor route) move to ADR-068 M1.
 **Date:** 2026-10-30 (r1); revised 2026-10-30 (r2)
 **Label:** `spike`
 **Programme:** candidate step of [ADR-062](https://github.com/bloxbean/julc/pull/250) (JVM–UPLC semantic
@@ -879,3 +882,4 @@ Added in r2:
     option A some node starts differ (declarators, folded negative literals). The javac frontend derives JuLC's
     anchors from javac's exported position API, and a residual mismatch is a prototype defect, not a reason to
     drop the gate.
+- **r5** (2026-10-30): status updated: the spike ran (evidence file), and ADR-068 records the migration decision.
