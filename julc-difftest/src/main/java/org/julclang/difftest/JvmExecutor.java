@@ -251,7 +251,10 @@ public final class JvmExecutor {
         return compile(List.of(diffCase), diffCase.name()).get(diffCase.source());
     }
 
-    /** The source written to the file javac names, compared as files, not by the spelling of their paths. */
+    /**
+     * The source written to the file javac reads, compared as files, not by the spelling of their paths. The unit's
+     * path, not one rebuilt from its normalized URI: removing {@code ..} after a symlink names another file.
+     */
     private static String sourceOf(Path unit, Map<Path, String> files) throws IOException {
         for (var file : files.entrySet()) {
             if (Files.isSameFile(unit, file.getKey())) return file.getValue();
@@ -313,7 +316,7 @@ public final class JvmExecutor {
                 var units = new ArrayList<JavaFileObject>();
                 standard.getJavaFileObjectsFromPaths(files.keySet()).forEach(units::add);
                 var sources = new LinkedHashMap<URI, String>();
-                for (JavaFileObject unit : units) sources.put(unit.toUri(), sourceOf(Path.of(unit.toUri()), files));
+                for (JavaFileObject unit : units) sources.put(unit.toUri(), sourceOf(standard.asPath(unit), files));
                 var outputs = new Outputs(sources.keySet());
                 var manager = new ForwardingJavaFileManager<>(standard) {
                     @Override

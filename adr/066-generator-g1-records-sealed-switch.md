@@ -1647,8 +1647,16 @@ Codex confirmed F110 and F111 at `434fcbe9` and raised one item.
 |---|---|
 | F115 (P2), ownership keys that javac's URIs need not match | The keys were `Path.toUri()` of the written files, made before javac built its file objects; javac normalizes dot segments, so under a compile directory such as `/tmp/../tmp/…` no sibling matched, every list was empty, and the preflight verified nothing. Both the class-file ownership and the top-level classes are now keyed by the compilation units' own `JavaFileObject.toUri()`, each unit matched to its written source with `Files.isSameFile`. Ownership fails closed: a class file with no sibling, or with a sibling that is not a source of the batch, and a source whose top-level classes are not all among its class files, are `HarnessException`s. `JvmExecutor` takes a compile directory for tests. `JvmExecutorTest.aWorkDirectoryWithDotSegmentsStillVerifiesEveryClass` compiles under `…/a/../b`: the javac-unverifiable local class and entry class stay oracle faults, and a sound case returns its value; with the old keys the test fails. `anUnownedClassFileIsAHarnessError` checks a foreign sibling and a missing one. |
 
+### M3 part 1 review round 6 (2026-10-30, G1 r7)
+
+Codex confirmed F115 at `975969e6` and raised one item.
+
+| Finding | Change |
+|---|---|
+| F120 (P2), a path rebuilt from javac's normalized URI | Each compilation unit was matched to its written source through `Path.of(unit.toUri())`. javac's URI drops `..` lexically, which after a symlinked directory names another file, so a valid work directory such as `link/../b` was rejected before javac ran (failing closed). The units are now matched through `StandardJavaFileManager.asPath(unit)`, the path javac reads; the URIs stay the ownership keys. `JvmExecutorTest.aWorkDirectoryThroughASymlinkAndDotDotStillVerifiesEveryClass` compiles under `link/../b` with `link` a directory symlink: a sound case returns its value and the javac-unverifiable entry class stays an oracle fault; with the rebuilt path the test fails. |
+
 The decoding is unchanged (G1 r7). Commands and counts:
-- `./gradlew :julc-difftest:test --rerun`: 247 tests, 0 failures, 0 skipped, in 138 s; `RegressionCasesTest` runs 86
+- `./gradlew :julc-difftest:test --rerun`: 248 tests, 0 failures, 0 skipped; `RegressionCasesTest` runs 86
   cases.
 
 ## Revision history

@@ -345,6 +345,23 @@ class JvmExecutorTest {
                 executor.run(probe("public static long m(long n) { return n + 1; }", integer(1))));
     }
 
+    /**
+     * javac's URIs drop {@code ..} lexically, which after a symlinked directory names another file: the sources are
+     * matched by the paths javac reads, so such a work directory still compiles and verifies every class (review of
+     * M3 part 1 round 5, F120).
+     */
+    @Test
+    void aWorkDirectoryThroughASymlinkAndDotDotStillVerifiesEveryClass(@TempDir Path temp) throws IOException {
+        Files.createDirectories(temp.resolve("real").resolve("b"));
+        Files.createSymbolicLink(temp.resolve("link"), temp.resolve("real").resolve("x"));
+        Files.createDirectories(temp.resolve("real").resolve("x"));
+        var executor = new JvmExecutor(5_000, temp.resolve("link").resolve("..").resolve("b"));
+        assertEquals(new Observation.Value(integer(2), List.of()),
+                executor.run(probe("public static long m(long n) { return n + 1; }", integer(1))));
+        var entry = new DiffCase("entry", unverifiable("Entry"), "Entry", "m", List.of(new PlutusData.ConstrData(1, List.of())));
+        assertTrue(assertThrows(HarnessException.class, () -> executor.run(entry)).getMessage().contains("VerifyError"));
+    }
+
     /** A class file javac writes for no source of the batch, or without a source, fails the compilation closed. */
     @Test
     void anUnownedClassFileIsAHarnessError() {
