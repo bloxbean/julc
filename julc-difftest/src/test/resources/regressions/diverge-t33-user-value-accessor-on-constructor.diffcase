@@ -1,0 +1,19 @@
+format: 2
+name: a user record Value reaches the ledger handler by simple name (F45, T33)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T33 Value/Failure
+jvm: Value d87a80 []
+uplc: Failure []
+note: ADR-067 F45: nested in Probe, on the constructor.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record Value(boolean isEmpty) {}
+
+    public static boolean m(BigInteger a) {
+        return new Value(a.signum() > 0).isEmpty();
+    }
+}

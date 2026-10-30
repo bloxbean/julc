@@ -1,0 +1,21 @@
+format: 2
+name: #282 an explicit equals that is always true (T31)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T31 Value/Value
+jvm: Value 01 []
+uplc: Value 00 []
+note: ADR-067 #282.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record P(BigInteger v) {
+        public boolean equals(Object o) { return true; }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        return new P(a).equals(new P(a.add(BigInteger.ONE))) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

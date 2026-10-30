@@ -1,0 +1,21 @@
+format: 2
+name: #282 toString and hashCode declared and unused (N7)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: ADR-067 N7: agrees at the base; D9 rejects it (M3b).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x) {
+        public String toString() { return "R"; }
+        public int hashCode() { return 1; }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        R r = new R(a);
+        return r.x();
+    }
+}

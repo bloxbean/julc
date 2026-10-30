@@ -1,0 +1,23 @@
+format: 2
+name: a guard calling String.equals with a boolean (F75, #292)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0072
+note: ADR-067 review F75: Java returns false (2); EqualsString fails on-chain (#292), so the guard is rejected.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when "a".equals(true) -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

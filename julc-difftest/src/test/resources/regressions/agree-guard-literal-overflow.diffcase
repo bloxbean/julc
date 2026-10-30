@@ -1,0 +1,23 @@
+format: 2
+name: a constant guard with literal int overflow (round 3)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: ADR-067 M1 round 3 (Codex): constant true; a non-constant reading would be T6.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when (2147483647 + 1) < 0 -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

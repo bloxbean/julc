@@ -1,0 +1,24 @@
+format: 2
+name: #282 a compact constructor normalizing a component (N3, T31)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T31 Value/Value
+jvm: Value 05 []
+uplc: Value 24 []
+note: ADR-067 N3.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x) {
+        R {
+            x = x.abs();
+        }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        R r = new R(a.negate());
+        return r.x();
+    }
+}

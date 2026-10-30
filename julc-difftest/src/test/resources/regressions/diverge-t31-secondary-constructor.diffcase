@@ -1,0 +1,24 @@
+format: 2
+name: #282 a secondary constructor delegating to the canonical one (N5, T31)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T31 Value/Failure
+jvm: Value 0a []
+uplc: Failure []
+note: ADR-067 N5.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x, BigInteger y) {
+        R(BigInteger x) {
+            this(x, BigInteger.TEN);
+        }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        R r = new R(a);
+        return r.y();
+    }
+}

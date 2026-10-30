@@ -1,0 +1,22 @@
+format: 2
+name: #282 an explicit accessor called through a helper's parameter (N9, T31)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T31 Value/Value
+jvm: Value 24 []
+uplc: Value 05 []
+note: ADR-067 N9.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record P(BigInteger v) {
+        public BigInteger v() { return v.negate(); }
+    }
+    static BigInteger h(P p) { return p.v(); }
+
+    public static BigInteger m(BigInteger a) {
+        return h(new P(a));
+    }
+}

@@ -1,0 +1,23 @@
+format: 2
+name: equals between a sealed value and a record (E6, T29)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T29 Value/Value
+jvm: Value 00 []
+uplc: Value 01 []
+note: ADR-067 E6.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R1(BigInteger x) {}
+    record R2(BigInteger x) {}
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        return ((S) new A(a)).equals(new R1(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

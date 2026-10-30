@@ -1,0 +1,26 @@
+format: 2
+name: minimum-value literals with underscores and a lowercase l in a guard (F85)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+recorded.jvm: Value 01 []
+recorded.base: Rejected JULC0072 "'2_147_483_648' is not a constant expression JuLC can evaluate exactly"
+note: ADR-067 M1 round 5, F85: the decimal literal under a direct unary minus is legal with underscores and either suffix case (JLS 3.10.1); at 46e1e532 the subexpression check evaluated it on its own and rejected the guard.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when -2_147_483_648 < x.v().signum() && -9_223_372_036_854_775_808L < x.v().signum()
+                    && -9223372036854775808l < x.v().signum() -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

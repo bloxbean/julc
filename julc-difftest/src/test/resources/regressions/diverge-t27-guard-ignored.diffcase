@@ -1,0 +1,28 @@
+format: 2
+name: #275 a false guard is ignored (G1, T27)
+class: Probe
+method: m
+arg: 22
+arg: 00
+expect: AGREE
+recorded.jvm: Value 02 []
+recorded.base: Value 01 []
+note: ADR-067 G1: the guard is false for a = -3, so Java runs the second arm (2); JuLC ignores the guard (1).
+note: ADR-067 M1: guards are lowered with Java's meaning (D1, D2), so the case agrees; it diverged as T27 at the base (recorded.jvm and recorded.base).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when x.v().compareTo(BigInteger.TEN) > 0 -> BigInteger.ONE;
+            case A x -> BigInteger.TWO;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

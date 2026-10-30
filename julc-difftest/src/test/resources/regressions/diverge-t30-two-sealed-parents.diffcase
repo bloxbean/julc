@@ -1,0 +1,27 @@
+format: 2
+name: #279 a record with two sealed parents (M1, T30)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T30 Value/Value
+jvm: Value 15 []
+uplc: Value 0b []
+note: ADR-067 M1: B is at position 1 in S and 0 in T.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    sealed interface T permits B, C {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S, T {}
+    record C(BigInteger v) implements T {}
+
+    public static BigInteger m(BigInteger a) {
+        T t = new B(a);
+        S s = new B(a);
+        BigInteger x = switch (t) { case B q -> BigInteger.ONE; case C q -> BigInteger.TWO; };
+        BigInteger y = switch (s) { case A q -> BigInteger.TEN; case B q -> BigInteger.valueOf(20); };
+        return x.add(y);
+    }
+}

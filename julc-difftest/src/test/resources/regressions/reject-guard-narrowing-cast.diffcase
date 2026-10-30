@@ -1,0 +1,24 @@
+format: 2
+name: a guard narrowing a non-constant long (F72)
+class: Probe
+method: m
+arg: 05
+arg: 1b0000000080000000
+expect: REJECT JULC0072
+note: ADR-067 review F72: Java narrows (2); JuLC erases the narrowing (T6), so the guard is rejected.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, long n) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when ((int) n) >= 0 -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

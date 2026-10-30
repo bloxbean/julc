@@ -1,0 +1,25 @@
+format: 2
+name: #275 reproducer with a true guard (G2)
+class: Probe
+method: m
+arg: 14
+arg: 00
+expect: AGREE
+note: ADR-067 G2: the guard is true for a = 20; both sides run the first arm.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when x.v().compareTo(BigInteger.TEN) > 0 -> BigInteger.ONE;
+            case A x -> BigInteger.TWO;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

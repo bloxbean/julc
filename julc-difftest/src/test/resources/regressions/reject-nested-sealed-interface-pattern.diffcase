@@ -1,0 +1,25 @@
+format: 2
+name: a pattern naming a nested sealed interface (M4)
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 M4: out of scope.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, U {}
+    sealed interface U extends S permits B, C {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements U {}
+    record C(BigInteger v) implements U {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new C(a);
+        return switch (s) {
+            case A x -> BigInteger.ONE;
+            case U q -> BigInteger.TWO;
+        };
+    }
+}

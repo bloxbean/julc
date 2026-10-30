@@ -1,0 +1,20 @@
+format: 2
+name: a narrowing cast of a long in an if (F72, T6)
+class: Probe
+method: m
+arg: 1b0000000080000000
+expect: DIVERGE T6 Value/Value
+jvm: Value 02 []
+uplc: Value 01 []
+note: ADR-067 review F72, outside guards: (int) 2147483648L is negative in Java (2); JuLC erases the narrowing (1). ADR-062 T6.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(long n) {
+        if (((int) n) >= 0) {
+            return BigInteger.ONE;
+        }
+        return BigInteger.TWO;
+    }
+}

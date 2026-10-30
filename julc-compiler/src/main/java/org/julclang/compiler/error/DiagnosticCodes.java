@@ -61,6 +61,14 @@ public final class DiagnosticCodes {
             "break statement outside of a loop",
             "Place the `break` inside a loop, or refactor to use early `return` from a helper method.");
 
+    public static final DiagnosticInfo CASE_PATTERN_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0076",
+            "CASE_PATTERN_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Unsupported case pattern ''{0}'': {1}",
+            "Name a permitted variant in each case label, and use `default` for the remaining ones.");
+
     public static final DiagnosticInfo CIRCULAR_TYPE_DEPENDENCY = new DiagnosticInfo(
             "JULC0030",
             "CIRCULAR_TYPE_DEPENDENCY",
@@ -157,6 +165,14 @@ public final class DiagnosticCodes {
             "{0} entrypoint must have {1} parameters{2}, found {3} in {4}.{5}(){6}",
             "Adjust the entrypoint signature to match the validator annotation. Spending: `(Datum, Redeemer, ScriptContext)`. Others: `(Redeemer, ScriptContext)`.");
 
+    public static final DiagnosticInfo EQUALS_ALWAYS_FALSE = new DiagnosticInfo(
+            "JULC0078",
+            "EQUALS_ALWAYS_FALSE",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0}.equals({1}) is always false in Java: the operand types have no class in common",
+            "Compare through one typed value (decode the datum to the record type first), or compare the components explicitly.");
+
     public static final DiagnosticInfo FIELD_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(
             "JULC0056",
             "FIELD_ASSIGNMENT_UNSUPPORTED",
@@ -173,6 +189,14 @@ public final class DiagnosticCodes {
             "floating point types (float/double) are not supported on-chain",
             "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params.");
 
+    public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0077",
+            "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "instanceof with record pattern {0} is not supported",
+            "Use a switch expression with a record pattern instead.");
+
     public static final DiagnosticInfo LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0022",
             "LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED",
@@ -180,6 +204,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "Lambda cannot be stored in a variable",
             "Pass the lambda directly: `list.map(x -> ...)`, `list.filter(p -> ...)`. If you need to share lambda logic, extract it as a regular static method (not as a lambda).");
+
+    public static final DiagnosticInfo LEDGER_TYPE_REDECLARED = new DiagnosticInfo(
+            "JULC0081",
+            "LEDGER_TYPE_REDECLARED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0} redeclares the bundled ledger type {1}",
+            "Rename the type.");
 
     public static final DiagnosticInfo LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
             "JULC0058",
@@ -293,6 +325,14 @@ public final class DiagnosticCodes {
             "@Param type ''{0}'' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpret the runtime representation.",
             "Use byte[], BigInteger, typed records, redeemers, or @Param PlutusData only for opaque data.");
 
+    public static final DiagnosticInfo PATTERN_VARIABLE_CONFLICT = new DiagnosticInfo(
+            "JULC0083",
+            "PATTERN_VARIABLE_CONFLICT",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Pattern variable ''{0}'' is already defined {1}",
+            "Rename the pattern variable.");
+
     public static final DiagnosticInfo PATTERN_VARIABLE_SHADOWS_FIELD = new DiagnosticInfo(
             "JULC0059",
             "PATTERN_VARIABLE_SHADOWS_FIELD",
@@ -324,6 +364,22 @@ public final class DiagnosticCodes {
             "BACKEND",
             "Unsupported PIR structure in {0}: {1}",
             "Restructure the term as described; for example bind recursive values as lambdas and give a DataMatch exactly one branch per constructor in tag order.");
+
+    public static final DiagnosticInfo RECORD_MEMBER_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0080",
+            "RECORD_MEMBER_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Record {0} declares {1}, which JuLC does not compile; a record body may contain only nested type declarations",
+            "Move the logic into a static helper method of the enclosing class.");
+
+    public static final DiagnosticInfo RECORD_MULTIPLE_SEALED_PARENTS = new DiagnosticInfo(
+            "JULC0079",
+            "RECORD_MULTIPLE_SEALED_PARENTS",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Record {0} implements sealed interfaces {1} and {2}; a record may have at most one sealed parent",
+            "Wrap the record in a separate variant for the second interface.");
 
     public static final DiagnosticInfo RETURN_INSIDE_WHILE = new DiagnosticInfo(
             "JULC0003",
@@ -357,6 +413,14 @@ public final class DiagnosticCodes {
             "Stdlib method called with wrong number of arguments: {0}",
             "See the message itself \u2014 it includes a `Usage:` hint with the correct signature.");
 
+    public static final DiagnosticInfo SWITCH_DUPLICATE_DEFAULT = new DiagnosticInfo(
+            "JULC0082",
+            "SWITCH_DUPLICATE_DEFAULT",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Switch has more than one default label (second at {0})",
+            "Keep one `default` label.");
+
     public static final DiagnosticInfo SWITCH_FIELD_SHADOWS_PARAMETER = new DiagnosticInfo(
             "JULC0021",
             "SWITCH_FIELD_SHADOWS_PARAMETER",
@@ -365,13 +429,53 @@ public final class DiagnosticCodes {
             "Switch case binding name shadows a method parameter",
             "Always use distinct names. Example: rename `time` parameter to `point` when switching on `IntervalBoundType.Finite(time)`.");
 
+    public static final DiagnosticInfo SWITCH_GROUP_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0075",
+            "SWITCH_GROUP_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Unsupported switch group ''{0}'': {1}",
+            "End every group with `yield`, give each group its own label, or use the arrow form `case X x -> ...`.");
+
+    public static final DiagnosticInfo SWITCH_GUARD_INVALID = new DiagnosticInfo(
+            "JULC0072",
+            "SWITCH_GUARD_INVALID",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Invalid guard on ''{0}'': {1}",
+            "Use a boolean condition that depends on the matched value or other inputs; delete an arm whose guard is always false.");
+
+    public static final DiagnosticInfo SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0074",
+            "SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Guard on ''{0}'' declares pattern variable ''{1}'', which is not supported",
+            "Use a nested record pattern instead, `case P(C c) -> c.w()`, or test the type without a binding (`p.t() instanceof C`) and read the value in the arm.");
+
+    public static final DiagnosticInfo SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL = new DiagnosticInfo(
+            "JULC0073",
+            "SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Guard on ''{0}'' reads ''{1}'', which is reassigned; a variable used in a guard must be final or effectively final",
+            "Copy the variable's final value into a new local after the loop, and use that local in the guard.");
+
+    public static final DiagnosticInfo SWITCH_LABEL_DOMINATED = new DiagnosticInfo(
+            "JULC0071",
+            "SWITCH_LABEL_DOMINATED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Switch label ''{0}'' is dominated by {1} and can never be selected",
+            "Remove the dominated label, or move the more specific (or guarded) label before the general one and `default` last.");
+
     public static final DiagnosticInfo SWITCH_NOT_EXHAUSTIVE = new DiagnosticInfo(
             "JULC0005",
             "SWITCH_NOT_EXHAUSTIVE",
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
             "Switch on sealed interface {0} is not exhaustive. Missing cases: {1}",
-            "Add the missing case branches or include a `default ->` branch to handle all remaining variants.");
+            "Add the missing case branches (an unguarded one per variant when the others are guarded) or include a `default ->` branch to handle all remaining variants.");
 
     public static final DiagnosticInfo SWITCH_REQUIRES_SEALED_INTERFACE = new DiagnosticInfo(
             "JULC0007",
@@ -486,6 +590,7 @@ public final class DiagnosticCodes {
             BACKEND_UNSUPPORTED_REQUEST,
             BACKEND_UNSUPPORTED_REVISION,
             BREAK_OUTSIDE_LOOP,
+            CASE_PATTERN_UNSUPPORTED,
             CIRCULAR_TYPE_DEPENDENCY,
             COMPILER_BUILTIN_UNAVAILABLE,
             COMPILER_EVALUATION_TARGET_MISMATCH,
@@ -498,9 +603,12 @@ public final class DiagnosticCodes {
             DUPLICATE_TYPE_DECLARATION,
             ENTRYPOINT_MISSING,
             ENTRYPOINT_WRONG_PARAMETER_COUNT,
+            EQUALS_ALWAYS_FALSE,
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
+            INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
+            LEDGER_TYPE_REDECLARED,
             LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
@@ -515,15 +623,24 @@ public final class DiagnosticCodes {
             NULL_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
             PARAM_RAW_PLUTUS_DATA,
+            PATTERN_VARIABLE_CONFLICT,
             PATTERN_VARIABLE_SHADOWS_FIELD,
             PIR_INVALID_BINDING,
             PIR_TYPE_MISMATCH,
             PIR_UNSUPPORTED_STRUCTURE,
+            RECORD_MEMBER_UNSUPPORTED,
+            RECORD_MULTIPLE_SEALED_PARENTS,
             RETURN_INSIDE_WHILE,
             SOURCE_PARSE_FAILED,
             STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,
+            SWITCH_DUPLICATE_DEFAULT,
             SWITCH_FIELD_SHADOWS_PARAMETER,
+            SWITCH_GROUP_UNSUPPORTED,
+            SWITCH_GUARD_INVALID,
+            SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED,
+            SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL,
+            SWITCH_LABEL_DOMINATED,
             SWITCH_NOT_EXHAUSTIVE,
             SWITCH_REQUIRES_SEALED_INTERFACE,
             THROW_UNSUPPORTED,

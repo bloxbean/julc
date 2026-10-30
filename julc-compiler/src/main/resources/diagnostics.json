@@ -72,13 +72,13 @@
     {
       "code": "JULC0005",
       "constant": "SWITCH_NOT_EXHAUSTIVE",
-      "status": "planned",
+      "status": "emitted",
       "title": "Switch is not exhaustive on sealed interface",
       "category": "CONTROL_FLOW",
       "severity": "error",
       "template": "Switch on sealed interface {0} is not exhaustive. Missing cases: {1}",
-      "summary": "A `switch` expression on a sealed interface is missing one or more permitted variants.",
-      "fix": "Add the missing case branches or include a `default ->` branch to handle all remaining variants.",
+      "summary": "A `switch` expression on a sealed interface is missing one or more permitted variants. Only unguarded case labels count: a label whose guard is not the constant `true` may not apply, so it does not cover its variant (JLS 14.11.1.1, ADR-067 D4).",
+      "fix": "Add the missing case branches (an unguarded one per variant when the others are guarded) or include a `default ->` branch to handle all remaining variants.",
       "example": {
         "bad": "sealed interface Action permits A, B, C {}\n// ...\nreturn switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    // missing C\n};",
         "good": "return switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    case C c -> ...;\n};"
@@ -98,12 +98,12 @@
     {
       "code": "JULC0007",
       "constant": "SWITCH_REQUIRES_SEALED_INTERFACE",
-      "status": "planned",
+      "status": "emitted",
       "title": "Switch expression requires a sealed interface type",
       "category": "TYPE",
       "severity": "error",
       "template": "switch expression requires a sealed interface type, got: {0}",
-      "summary": "`switch` was used on a non-sealed type. Records (including `Tuple2`/`Tuple3`) cannot be switched on.",
+      "summary": "`switch` was used on a type that is not a sealed interface, or on a sealed interface that declares type parameters. Records (including `Tuple2`/`Tuple3`) cannot be switched on. JuLC drops type arguments, so it cannot decide which variants of a parameterized sealed interface apply or whether a switch over one is exhaustive (ADR-067 D4).",
       "fix": "Use field access (`pair.first()`, `pair.second()`) for records. Reserve `switch` for sealed interfaces with permitted record variants."
     },
     {
@@ -709,6 +709,181 @@
       "example": {
         "bad": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid best) { return best.amount(); }",
         "good": "static Bid best = new Bid(BigInteger.ZERO);\n...\nif (action instanceof Bid bid) { return bid.amount(); }"
+      }
+    },
+    {
+      "code": "JULC0071",
+      "constant": "SWITCH_LABEL_DOMINATED",
+      "status": "emitted",
+      "title": "Switch label is dominated by an earlier label",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Switch label ''{0}'' is dominated by {1} and can never be selected",
+      "summary": "A case label is dominated when a preceding unguarded label already matches every value it matches, or when a `default` label precedes a pattern label (JLS 14.11.1, 14.30.3). javac rejects such a switch; JuLC used to compile it with first-match meaning (ADR-067 D4).",
+      "fix": "Remove the dominated label, or move the more specific (or guarded) label before the general one and `default` last.",
+      "example": {
+        "bad": "return switch (s) {\n    case A a -> 1;\n    case A a when a.v().signum() > 0 -> 2;\n    case B b -> 0;\n};",
+        "good": "return switch (s) {\n    case A a when a.v().signum() > 0 -> 2;\n    case A a -> 1;\n    case B b -> 0;\n};"
+      }
+    },
+    {
+      "code": "JULC0072",
+      "constant": "SWITCH_GUARD_INVALID",
+      "status": "emitted",
+      "title": "Switch guard is not a usable boolean condition",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Invalid guard on ''{0}'': {1}",
+      "summary": "A guard (`when`) must have type boolean or Boolean, and must not be a constant expression with value false, such as `false`, a `static final boolean` that is false, or `1 == 2` (JLS 14.11.1). A constant `true` guard is allowed and makes the label unguarded (ADR-067 D1, D4).",
+      "fix": "Use a boolean condition that depends on the matched value or other inputs; delete an arm whose guard is always false.",
+      "example": {
+        "bad": "case A a when 3 -> ONE;",
+        "good": "case A a when a.v().compareTo(BigInteger.valueOf(3)) > 0 -> ONE;"
+      }
+    },
+    {
+      "code": "JULC0073",
+      "constant": "SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL",
+      "status": "emitted",
+      "title": "Switch guard reads a variable that is reassigned",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Guard on ''{0}'' reads ''{1}'', which is reassigned; a variable used in a guard must be final or effectively final",
+      "summary": "Any local variable or parameter used but not declared in a guard must be final or effectively final (JLS 14.11.1, 4.12.4). In JuLC only loops reassign variables, so this is a variable a loop updates. The check uses the declaration the name resolves to, not the name (ADR-067 D4).",
+      "fix": "Copy the variable's final value into a new local after the loop, and use that local in the guard.",
+      "example": {
+        "bad": "BigInteger lim = BigInteger.ZERO;\nfor (var x : xs) { lim = lim.add(x); }\nreturn switch (s) { case A a when a.v().compareTo(lim) > 0 -> ONE; default -> ZERO; };",
+        "good": "BigInteger lim = BigInteger.ZERO;\nfor (var x : xs) { lim = lim.add(x); }\nBigInteger total = lim;\nreturn switch (s) { case A a when a.v().compareTo(total) > 0 -> ONE; default -> ZERO; };"
+      }
+    },
+    {
+      "code": "JULC0074",
+      "constant": "SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Switch guard introduces a pattern variable",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Guard on ''{0}'' declares pattern variable ''{1}'', which is not supported",
+      "summary": "Java lets a guard introduce pattern variables (`when p.t() instanceof C c`, JLS 6.3.3), but JuLC binds instanceof pattern variables only as the whole condition of an if statement (#204). A guard may still use instanceof as a plain type test (ADR-067 D1).",
+      "fix": "Use a nested record pattern instead, `case P(C c) -> c.w()`, or test the type without a binding (`p.t() instanceof C`) and read the value in the arm.",
+      "example": {
+        "bad": "case P p when p.t() instanceof C c -> c.w();",
+        "good": "case P p when p.t() instanceof C -> ((C) p.t()).w();"
+      }
+    },
+    {
+      "code": "JULC0075",
+      "constant": "SWITCH_GROUP_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Colon-form switch group is not supported",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Unsupported switch group ''{0}'': {1}",
+      "summary": "JuLC compiles a colon-form switch expression only when every statement group has exactly one label and yields on every path. Java lets a group fall through into the next one; JuLC does not implement fall-through, and used to return the group's last expression instead (#283). Several labels on one group, or several patterns in one label, are rejected too (ADR-067 D4, I16).",
+      "fix": "End every group with `yield`, give each group its own label, or use the arrow form `case X x -> ...`.",
+      "example": {
+        "bad": "case A x: x.v().negate();\ndefault: yield BigInteger.TWO;",
+        "good": "case A x: yield x.v().negate();\ndefault: yield BigInteger.TWO;"
+      }
+    },
+    {
+      "code": "JULC0076",
+      "constant": "CASE_PATTERN_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Case pattern is not supported",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Unsupported case pattern ''{0}'': {1}",
+      "summary": "A case pattern must name a permitted variant of the selector's sealed interface. A pattern for a type that is not a variant is not applicable; the total type pattern `case S s` on a selector of type S is valid Java but not supported (ADR-067 D3, D4).",
+      "fix": "Name a permitted variant in each case label, and use `default` for the remaining ones.",
+      "example": {
+        "bad": "case S t -> 2;",
+        "good": "default -> 2;"
+      }
+    },
+    {
+      "code": "JULC0077",
+      "constant": "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
+      "status": "planned",
+      "title": "instanceof with a record pattern is not supported",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "instanceof with record pattern {0} is not supported",
+      "summary": "Reserved by ADR-067 (D3): `x instanceof R(var c)` stays unsupported until #204 settles where instanceof binds variables.",
+      "fix": "Use a switch expression with a record pattern instead."
+    },
+    {
+      "code": "JULC0078",
+      "constant": "EQUALS_ALWAYS_FALSE",
+      "status": "planned",
+      "title": "equals between types that can never be equal",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0}.equals({1}) is always false in Java: the operand types have no class in common",
+      "summary": "Reserved by ADR-067 (D5): an equals call whose operands' known class sets are disjoint is always false in Java, but compared structurally on-chain.",
+      "fix": "Compare through one typed value (decode the datum to the record type first), or compare the components explicitly."
+    },
+    {
+      "code": "JULC0079",
+      "constant": "RECORD_MULTIPLE_SEALED_PARENTS",
+      "status": "planned",
+      "title": "Record implements two sealed interfaces",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Record {0} implements sealed interfaces {1} and {2}; a record may have at most one sealed parent",
+      "summary": "Reserved by ADR-067 (D6): a Data value has one constructor tag, so a record cannot be a variant of two sealed interfaces.",
+      "fix": "Wrap the record in a separate variant for the second interface."
+    },
+    {
+      "code": "JULC0080",
+      "constant": "RECORD_MEMBER_UNSUPPORTED",
+      "status": "planned",
+      "title": "Record body member is not supported",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Record {0} declares {1}, which JuLC does not compile; a record body may contain only nested type declarations",
+      "summary": "Reserved by ADR-067 (D9): JuLC compiles a record as its components only, so a declared accessor, equals, constructor or method would be ignored.",
+      "fix": "Move the logic into a static helper method of the enclosing class."
+    },
+    {
+      "code": "JULC0081",
+      "constant": "LEDGER_TYPE_REDECLARED",
+      "status": "planned",
+      "title": "User type redeclares a ledger type",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} redeclares the bundled ledger type {1}",
+      "summary": "Reserved by ADR-067 (D9): a user declaration of a bundled ledger FQCN, or of a ledger hash simple name, would be confused with the ledger type.",
+      "fix": "Rename the type."
+    },
+    {
+      "code": "JULC0082",
+      "constant": "SWITCH_DUPLICATE_DEFAULT",
+      "status": "emitted",
+      "title": "Switch has more than one default label",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Switch has more than one default label (second at {0})",
+      "summary": "A switch block may have at most one default label (JLS 14.11.1). JuLC used to let the second replace the first (ADR-067 D4).",
+      "fix": "Keep one `default` label.",
+      "example": {
+        "bad": "case A a -> 1;\ndefault -> 2;\ndefault -> 3;",
+        "good": "case A a -> 1;\ndefault -> 2;"
+      }
+    },
+    {
+      "code": "JULC0083",
+      "constant": "PATTERN_VARIABLE_CONFLICT",
+      "status": "emitted",
+      "title": "Pattern variable redeclares a variable in scope",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Pattern variable ''{0}'' is already defined {1}",
+      "summary": "A pattern variable may not have the name of a local variable, parameter or pattern variable in scope, and a pattern may not declare one name twice (JLS 6.4, 14.30.1). JuLC used to let it shadow the outer variable. It may have the name of a field, as in Java (ADR-067 D4).",
+      "fix": "Rename the pattern variable.",
+      "example": {
+        "bad": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A a -> a.v(); case B b -> ZERO; };\n}",
+        "good": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A x -> x.v(); case B b -> ZERO; };\n}"
       }
     }
   ]

@@ -1,0 +1,21 @@
+format: 2
+name: #282 an explicit canonical constructor (N4)
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 N4: legal Java (6).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x) {
+        R(BigInteger x) {
+            this.x = x.add(BigInteger.ONE);
+        }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        return new R(a).x();
+    }
+}

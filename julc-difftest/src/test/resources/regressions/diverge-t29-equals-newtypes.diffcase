@@ -1,0 +1,21 @@
+format: 2
+name: equals between two @NewType types (E8, T29)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T29 Value/Value
+jvm: Value 00 []
+uplc: Value 01 []
+note: ADR-067 E8: retained (open question 2).
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.NewType;
+
+public class Probe {
+    @NewType record Amt(BigInteger v) {}
+    @NewType record Price(BigInteger v) {}
+
+    public static BigInteger m(BigInteger a) {
+        return new Amt(a).equals(new Price(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}
