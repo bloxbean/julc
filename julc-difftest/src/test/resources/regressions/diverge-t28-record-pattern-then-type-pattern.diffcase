@@ -1,0 +1,26 @@
+format: 2
+name: a record pattern followed by the same type pattern (H2, T28)
+class: Probe
+method: m
+arg: 03
+expect: DIVERGE T28 Value/Value
+jvm: Value 03 []
+uplc: Value 0a []
+note: ADR-067 H2: legal Java; the second arm is dead in Java.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A(var v) -> v;
+            case A x -> BigInteger.TEN;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

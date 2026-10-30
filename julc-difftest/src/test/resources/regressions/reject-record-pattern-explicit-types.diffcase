@@ -1,0 +1,24 @@
+format: 2
+name: record patterns with explicit component types and a guard (R7)
+class: Probe
+method: m
+arg: 04
+expect: REJECT none
+note: ADR-067 R7: legal Java (4).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A(BigInteger v) when v.signum() < 0 -> v.negate();
+            case A(BigInteger v) -> v;
+            case B(BigInteger v) -> BigInteger.ZERO;
+        };
+    }
+}

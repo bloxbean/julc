@@ -1,0 +1,20 @@
+format: 2
+name: #277 equals between two record types (E1, T29)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T29 Value/Value
+jvm: Value 00 []
+uplc: Value 01 []
+note: ADR-067 E1.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R1(BigInteger x) {}
+    record R2(BigInteger x) {}
+
+    public static BigInteger m(BigInteger a) {
+        return new R1(a).equals(new R2(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

@@ -1,0 +1,23 @@
+format: 2
+name: record patterns without default (R2)
+class: Probe
+method: m
+arg: 22
+expect: REJECT none
+note: ADR-067 R2: legal Java (-3).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A(var v) -> v;
+            case B y -> y.v();
+        };
+    }
+}

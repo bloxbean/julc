@@ -1,0 +1,26 @@
+format: 2
+name: #276 a record pattern is dropped and default runs (R1, T28)
+class: Probe
+method: m
+arg: 22
+arg: 00
+expect: DIVERGE T28 Value/Value
+jvm: Value 22 []
+uplc: Value 3862 []
+note: ADR-067 R1.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        S s = new A(a);
+        return switch (s) {
+            case A(var v) -> v;
+            default -> BigInteger.valueOf(-99);
+        };
+    }
+}

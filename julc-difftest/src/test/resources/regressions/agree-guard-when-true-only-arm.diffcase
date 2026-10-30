@@ -1,0 +1,24 @@
+format: 2
+name: when true as the only arm for a variant (G8b)
+class: Probe
+method: m
+arg: 22
+arg: 00
+expect: AGREE
+note: ADR-067 G8b: a constant true guard makes the label unguarded, so the switch is exhaustive.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when true -> BigInteger.ONE;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

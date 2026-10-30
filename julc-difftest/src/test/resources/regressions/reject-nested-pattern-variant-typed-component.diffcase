@@ -1,0 +1,27 @@
+format: 2
+name: a nested pattern on a variant-typed component, X(W(B(var v)))
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 D2 step 3 (F20): legal Java (5).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    record W(B b) {}
+    sealed interface V permits X, Y {}
+    record X(W w) implements V {}
+    record Y(BigInteger z) implements V {}
+
+    public static BigInteger m(BigInteger a) {
+        V val = new X(new W(new B(a)));
+        return switch (val) {
+            case X(W(B(var v))) -> v;
+            case Y(var z) -> z;
+        };
+    }
+}

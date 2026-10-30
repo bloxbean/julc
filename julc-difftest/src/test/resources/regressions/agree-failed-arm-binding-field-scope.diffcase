@@ -1,0 +1,25 @@
+format: 2
+name: a failed arm's binding does not shadow a field a later arm reads (F9)
+class: Probe
+method: m
+arg: 20
+expect: AGREE
+note: ADR-067 F9: Java returns the field (99). At the base the record pattern is dropped, so JuLC agrees by accident.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    static BigInteger limit = BigInteger.valueOf(99);
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A(var limit) when limit.signum() > 0 -> BigInteger.ONE;
+            case A q -> limit;
+            case B q -> BigInteger.ZERO;
+        };
+    }
+}

@@ -1,0 +1,19 @@
+format: 2
+name: #282 a static method declared in a record (N1)
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 N1: legal Java (10).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x) {
+        static BigInteger twice(BigInteger v) { return v.add(v); }
+    }
+
+    public static BigInteger m(BigInteger a) {
+        return R.twice(a);
+    }
+}

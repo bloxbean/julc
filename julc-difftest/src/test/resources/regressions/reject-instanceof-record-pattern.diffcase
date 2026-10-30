@@ -1,0 +1,23 @@
+format: 2
+name: instanceof with a record pattern (R3)
+class: Probe
+method: m
+arg: 22
+expect: REJECT none
+note: ADR-067 R3: legal Java (-3).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        if (s instanceof A(var v)) {
+            return v;
+        }
+        return BigInteger.ZERO;
+    }
+}

@@ -298,7 +298,7 @@ Each invariant names the decisions it constrains and is testable.
   `DataType`). When both are known and disjoint (the call is constant `false` in Java), the program is rejected with
   `JULC0078` (decided in r4); otherwise the existing structural comparison is used, unchanged. Structural comparison is not claimed
   exact for overlapping classes: nested nominal differences (`Tuple2<R1, R1>` vs `Tuple2<R2, R2>`) remain a
-  documented divergence (T28).
+  documented divergence (T29).
 - **I13. One constructor tag per record class** (D6). A record class is a variant of at most one sealed interface;
   its tag is its position in that interface's `permits` list (or implicit order) everywhere: construction,
   dispatch, schema and boundary checks.
@@ -557,11 +557,11 @@ Otherwise (overlapping or unknown) the existing `EqualsData` lowering is kept, u
 structural comparison is exact for overlapping sets: with D6, two top-level classes in one sealed family have
 distinct tags, but nominal differences *inside* components are erased (`new Tuple2<>(new R1(a), new R1(a))` vs
 `new Tuple2<>(new R2(a), new R2(a))`, and the same with `Optional`, are false in Java and true on-chain; Evidence
-F16b, F16d). That residual divergence stays in T28 with saved pins; D5 decides only top-level disjointness.
+F16b, F16d). That residual divergence stays in T29 with saved pins; D5 decides only top-level disjointness.
 
 With D9 (r2), an explicit `equals` can no longer be silently replaced by `EqualsData`: every user record JuLC
 accepts has the implicit `equals`. *(Reworded in r4, F16.)* That removes one source of divergence; it does not make
-same-type comparison exact, which keeps T5's `byte[]` components and T28's nested nominal erasure.
+same-type comparison exact, which keeps T5's `byte[]` components and T29's nested nominal erasure.
 
 The known-source rules above exist because PIR inference is not Java's type: it types a conditional by its then
 branch, and it falls back to `DataType` where the Java type is a record (the comment at `PirGenerator.java:2376`
@@ -644,9 +644,9 @@ Codes are re-checked against every origin branch before the implementation commi
 
 ### D8. Catalogue and documentation
 
-ADR-062 gets one row per issue, provisionally **T26** (#275), **T27** (#276), **T28** (#277, with the erased-nominal
-cases of E8/E11/E12 noted), **T29** (#279), **T30** (#282: record members ignored, Evidence R6, H5, N1–N10), and **T31** (#283, colon-form
-fall-through; r3), and **T32** (#284, default-package resolution, and user records reaching ledger handlers by simple name, F45; r4, r6), owned by S5. T24 and T25 are taken by #268 and #270. Final IDs are assigned when the rows merge.
+ADR-062 gets one row per issue, provisionally **T27** (#275), **T28** (#276), **T29** (#277, with the erased-nominal
+cases of E8/E11/E12 noted), **T30** (#279), **T31** (#282: record members ignored, Evidence R6, H5, N1–N10), and **T32** (#283, colon-form
+fall-through; r3), and **T33** (#284, default-package resolution, and user records reaching ledger handlers by simple name, F45; r4, r6), owned by S5. T24 and T25 are taken by #268 and #270. Final IDs are assigned when the rows merge. *(M0 re-check.)* #272 (#257) added a T26 row of its own after acceptance, so this ADR's rows take the next free IDs, T27–T33; every ID in this ADR was shifted by one (the proposal's T26–T32).
 Documentation: `getting-started.md` §8.2/§8.3 (guards, record patterns, the `instanceof` limit), the advanced
 guide's "Switch Best Practices", troubleshooting entries for each code, both AI starter packs, and release notes.
 
@@ -822,7 +822,7 @@ the Java VM and the Scalus VM (and Truffle where the existing switch suites run 
 
 | Milestone | Scope | Entry gate | Exit criteria | Invariants / tests |
 |---|---|---|---|---|
-| **M0** | Baselines | ADR accepted | *(Scoped in r5, F24/F40.)* For every outcome-matrix row whose checker is **D**: a `.diffcase` under `julc-difftest/src/test/resources/regressions/` with its **actual** base verdict (`AGREE`, `DIVERGE <provisional id>` or `REJECT <code>|none`), replaying green on the base. Rows with checker **P** are entered in the parity suite's case list with javac 21.0.3's verdict and JuLC's base verdict; rows with checker **U** are JuLC-only tests asserting the base behaviour. ADR-062 rows T26–T32 added so the `DIVERGE` IDs exist; codes re-checked (D7); the pinned javac 21.0.3 available to the build (r3) | Evidence G1, R1, E1, M1, R6, F12a, F16b, F16d, F19 |
+| **M0** | Baselines | ADR accepted | *(Scoped in r5, F24/F40.)* For every outcome-matrix row whose checker is **D**: a `.diffcase` under `julc-difftest/src/test/resources/regressions/` with its **actual** base verdict (`AGREE`, `DIVERGE <provisional id>` or `REJECT <code>|none`), replaying green on the base. Rows with checker **P** are entered in the parity suite's case list with javac 21.0.3's verdict and JuLC's base verdict; rows with checker **U** are JuLC-only tests asserting the base behaviour. ADR-062 rows T27–T33 added so the `DIVERGE` IDs exist; codes re-checked (D7); the pinned javac 21.0.3 available to the build (r3) | Evidence G1, R1, E1, M1, R6, F12a, F16b, F16d, F19 |
 | **M1** | Guards on type patterns: D1 (incl. `instanceof` in guards as total dispatch), D2 (steps 1, 2, 4, 5, 6, incl. the single-constructor tag check and r3's continuation placement), D4 checks except record-pattern exhaustiveness (`JULC0071`–`0075`, `0082`, `0083`; colon-form rule, #283), ADR-048 validation of guards | M0 | #275 pin flips to `AGREE`; #283 pin becomes `REJECT` (`JULC0075`); oracle tests for: guard reads its binding, a parameter, a static field; several guarded arms per variant with different binding names; guarded arm then unguarded; guarded arm then `default`; failing guard; guard traces in order; `when true`, `when ON` (constant variable), `when 1 == 1`; colon form that yields in every group; nested switch in a guarded arm; switch with guards inside for-each (the for-each variable read by the guard) and while bodies; **F9 scope:** a failed guard whose arm binds a name that a later arm or `default` reads as a field or `@Param` (Java's value, e.g. 99); **malformed tags (r3, F5a, F11, F3):** an out-of-range selector tag in a switch with guards and `default` fails and never reaches `#case_default`, a wrong tag on a one-constructor sum type fails, and a guard `instanceof` over a malformed component fails; rejection tests for every D4 matrix row; byte-stability check (I8) green | I1–I3, I5, I6, I8, I9, I10, I11, I16 |
 | **M2a** | Flat record patterns: D3 for `V(var x, T y)`, guards on them, mixing with type patterns, exhaustiveness and dominance for flat patterns, the "constructor-encoded?" registry query, `JULC0076`, `JULC0077` | M1 | #276 pin flips; oracle tests incl. `case A(var v) -> …; case A x -> …` (legal, second arm dead), record pattern before `default`, explicit component types, field shadowing by a component name, a component name equal to a field that a later arm reads (F9); negative tests for every `JULC0076` reason, including `Value` (r3, F4); the registry-vs-`toPlutusData` encoding test over every ledger record | I2, I4, I7, I9, I10 |
 | **M2b** | Nested record patterns: D2 step 3, the JLS rewrite/reduce exhaustiveness rules, nested dominance; parameterized sealed selectors rejected with `JULC0007` and record patterns on parameterized sealed components with `JULC0076` (r3, F14; aligned in r5) | M2a | Oracle tests for `P(C(var w))`/`P(D(var w))`, `Pair(C c, T t)`, a nested pattern on a component declared as a sealed variant at position ≥ 1 (`X(W(B(var v)))` with `record W(B b)`) plus a malformed-tag test for it (r4, F20), a malformed child inside a parent built with `new` from raw Data (r4, F31, pinned as documented behaviour), the JLS `Box` and `IPair` examples (exhaustive / not exhaustive), the javac 21/25 divergence shape (rejected, `JULC0005`), guards on nested patterns; malformed-tag tests (I5) on a component cast from raw Data: an out-of-range tag fails and never reaches `default`, and a nested standalone record with tag ≠ 0 fails; the lenient field-content cases pinned as documented behaviour (malformed `Bool`, extra fields, wrong Data kind, a failed guard falling to `default`; threat model); F14a/F14b rejected with `JULC0007` (selector) and a parameterized-sealed component pattern rejected with `JULC0076` (r4); size measurement linear in arms (I6) | I4–I6, I9 |
@@ -858,16 +858,16 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
 
    | Case (Evidence) | Baseline | Final | Milestone | Checker |
    |---|---|---|---|---|
-   | #275 guards: G1, G3, G4, G5, G11, H4, H7; F33 `Boolean` guard | `DIVERGE` T26 | `AGREE` | M1 | D |
+   | #275 guards: G1, G3, G4, G5, G11, H4, H7; F33 `Boolean` guard | `DIVERGE` T27 | `AGREE` | M1 | D |
    | G2 (guard true), G8b (`when true` only arm) | `AGREE` | `AGREE` | M1 | D |
    | F9 (a failed arm's binding shadows a field a later arm reads) | `AGREE` (99; guards ignored) | `AGREE` | M1, M2a | D |
-   | #283 colon fall-through (F12a) | `DIVERGE` T31 | `REJECT JULC0075` | M1 | D |
+   | #283 colon fall-through (F12a) | `DIVERGE` T32 | `REJECT JULC0075` | M1 | D |
    | Grouped labels without bindings (F12b) | `REJECT none` | `REJECT JULC0075` | M1 | D |
    | Guard-introduced pattern variable (G12) | `REJECT none` | `REJECT JULC0074` | M1 | D |
    | Total pattern `case S t` (K3) | `REJECT none` | `REJECT JULC0076` (reason "unsupported: total type pattern"; r6) | M1 | D |
    | javac-rejected guard and label shapes: G6 (guarded only), G7 (dominated), G8 (`when false`), H1 (non-final local), F13a (`when 3`), F13b (two `default`s), F13c (binding clashes with a parameter) | JuLC accepts (values in Evidence) | `REJECT` `JULC0005`, `0071`, `0072`, `0073`, `0072`, `0082`, `0083` | M1 | P |
    | Malformed top-level tag on the new path (F5a), wrong tag on a one-constructor sum type (F11), guard `instanceof` over a malformed component (F3) | F5a fails; F11 accepted as the constructor; F3 guard ignored (the guarded arm runs; the `instanceof` is never evaluated; r6) | evaluation fails; never reaches `#case_default` or a later arm | M1 | U |
-   | #276 record patterns: R1, H2 | `DIVERGE` T27 | `AGREE` | M2a | D |
+   | #276 record patterns: R1, H2 | `DIVERGE` T28 | `AGREE` | M2a | D |
    | R2, R7 (record patterns, no `default`) | `REJECT none` | `AGREE` | M2a | D |
    | Nested record patterns (R4) | `REJECT none` | `AGREE` | M2b | D |
    | `instanceof` record pattern (R3) | `REJECT none` | `REJECT JULC0077` | M2a | D |
@@ -881,25 +881,25 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    | Parameterized sealed component pattern | `REJECT none` | `REJECT JULC0076` | M2b | D |
    | javac 21/25 `Pair` shape | `REJECT none` (patterns dropped) | `REJECT JULC0005` | M2b | D (the harness's javac 25 accepts it) and P (javac 21.0.3 rejects it) |
    | Record-typed selector (K2) | `REJECT none` | `AGREE` if open question 4 is (a); `REJECT JULC0007` if (b) | M2b | D |
-   | #279 two sealed parents: M1, M6 | `DIVERGE` T29 | `REJECT JULC0079` | M3 | D |
+   | #279 two sealed parents: M1, M6 | `DIVERGE` T30 | `REJECT JULC0079` | M3 | D |
    | M2 (equal positions) | `AGREE` | `REJECT JULC0079` | M3 | D |
    | M5 (a sealed variant also implementing a plain interface) | `AGREE` | `AGREE` | M3 | D |
-   | #282 record members: R6, H5, N3, N5, N9 | `DIVERGE` T30 | `REJECT JULC0080` | M3b | D |
+   | #282 record members: R6, H5, N3, N5, N9 | `DIVERGE` T31 | `REJECT JULC0080` | M3b | D |
    | N1, N2, N4, N6, N8, N10 | `REJECT none` or `REJECT JULC0055` | `REJECT JULC0080` | M3b | D |
    | N7 (unused `toString`, `hashCode`) | `AGREE` | `REJECT JULC0080` | M3b | D |
-   | #284 `Rational` packageless, with and without the wildcard import (F19, F19b) | `DIVERGE` T32 | `AGREE` | M3b | D |
+   | #284 `Rational` packageless, with and without the wildcard import (F19, F19b) | `DIVERGE` T33 | `AGREE` | M3b | D |
    | F19c (the same record nested) | `AGREE` | `AGREE` | M3b | D |
    | Packageless user record named like a ledger hash type (`record PubKeyHash(byte[] h) {}`) | as found in M0 | `REJECT JULC0081` | M3b | D |
    | User source declaring a bundled ledger FQCN (`package org.julclang.ledger; record Value…`) | as found in M0 | `REJECT JULC0081` | M3b | P (javac accepts; JuLC rejects on purpose) or a `julc-compiler` unit test: `JvmExecutor` writes `<className>.java` and loads the class by simple name (`JvmExecutor.java:57`, `:158`), so it cannot run a packaged source (r6, F26) |
-   | User `record Value(boolean isEmpty)` nested in `Probe`, `new Value(…).isEmpty()` (F45) | `DIVERGE` T32 (JVM `true`; JuLC fails "UnMapData") | `AGREE` | M3b | D |
-   | The same record at top level in a packageless source, on the constructor and through a local (F45c) | `DIVERGE` T32 (JVM `true`; JuLC fails "MapData: expected list", #284 resolves it to the ledger type) | `AGREE` | M3b | D |
+   | User `record Value(boolean isEmpty)` nested in `Probe`, `new Value(…).isEmpty()` (F45) | `DIVERGE` T33 (JVM `true`; JuLC fails "UnMapData") | `AGREE` | M3b | D |
+   | The same record at top level in a packageless source, on the constructor and through a local (F45c) | `DIVERGE` T33 (JVM `true`; JuLC fails "MapData: expected list", #284 resolves it to the ledger type) | `AGREE` | M3b | D |
    | Mixed user/ledger `Rational`: a ledger value assigned or passed to the user's `Rational` (F23, #287) | JuLC accepts, 7 (javac: incompatible types) | unchanged: JuLC accepts, recorded as a known parity exception owned by #287 | M3b | P (exception entry) and U (value pinned) |
-   | #277 known-disjoint `equals`: E1, E2, E6, E7, E9 | `DIVERGE` T28 | `REJECT JULC0078` | M4 | D |
+   | #277 known-disjoint `equals`: E1, E2, E6, E7, E9 | `DIVERGE` T29 | `REJECT JULC0078` | M4 | D |
    | E3, E5 (known-disjoint, already `false`), E10 (failing operand) | `AGREE` | `REJECT JULC0078` | M4 | D |
    | E4, F1a–F1c (same family; unknown operands) | `AGREE` | `AGREE` (must stay) | M4 | D |
-   | Unknown operand disjoint in Java: `var x = c ? new R1(a) : new R1(b); x.equals(new R2(a))` (Evidence D5u) | `DIVERGE` T28 | `DIVERGE` T28 (retained; closed only if the optional least-upper-bound rule is adopted) | — | D |
-   | Nested nominal `equals` (F16b, F16d) | `DIVERGE` T28 | `DIVERGE` T28 (retained) | — | D |
-   | Erased nominal `equals` (E8, E11, E12) | `DIVERGE` T28 | `DIVERGE` (retained; open question 2) | — | D |
+   | Unknown operand disjoint in Java: `var x = c ? new R1(a) : new R1(b); x.equals(new R2(a))` (Evidence D5u) | `DIVERGE` T29 | `DIVERGE` T29 (retained; closed only if the optional least-upper-bound rule is adopted) | — | D |
+   | Nested nominal `equals` (F16b, F16d) | `DIVERGE` T29 | `DIVERGE` T29 (retained) | — | D |
+   | Erased nominal `equals` (E8, E11, E12) | `DIVERGE` T29 | `DIVERGE` (retained; open question 2) | — | D |
    | Out of scope, unchanged: generic record (K1), `switch` statement (G9), unnamed pattern (R5), nested sealed interfaces (M3, M4) | `REJECT none` | `REJECT none` (retained) | — | D (R5: the harness's javac 25 accepts `_`; javac 21.0.3 rejects it, P) |
 
    Every new reproducer from review is added as a row with its baseline, final expectation and checker.
@@ -1003,7 +1003,7 @@ stated. Issues are to be filed.
 - **`Value.inner()` (r3, F4).** On a `Value` field of a record, `q.val().inner().isEmpty()` fails with "UnConstrData:
   not ConstrData" at every level (JVM 2; Evidence F4b); `q.val().isEmpty()` agrees.
 - **Nested nominal `equals` (r3, F16).** `Tuple2`/`Optional` of different record types compare equal on-chain
-  (Evidence F16b, F16d); kept in T28 with pins. `JulcList.of(r1).equals(JulcList.of(r2))` is rejected with
+  (Evidence F16b, F16d); kept in T29 with pins. `JulcList.of(r1).equals(JulcList.of(r2))` is rejected with
   `JULC0055` "Cannot resolve equals" (F16c). `new Tuple2<>(new R1(a), a)` fails at run time ("MkCons: element type
   Integer[] does not match list element type Data[]", F16, first shape).
 - **No nominal check across record types (r5, F23): #287.** `R1 r = new R2(a, b);` and a ledger `Rational` assigned to
@@ -1243,6 +1243,40 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
 `julc-core` declare none either. Diagnostic codes were read from `diagnostics.json` on every origin branch
 (`git show <branch>:julc-compiler/src/main/resources/diagnostics.json`).
 
+## Implementation results
+
+### M0: baseline pins (2026-10-30)
+
+- **Catalogue IDs.** Re-checked on every origin branch: #269 and #271 add T24 and T25, and #272 (#257) added a T26
+  row of its own after this ADR was accepted. The rows therefore take T27–T33 (#275 T27, #276 T28, #277 T29, #279
+  T30, #282 T31, #283 T32, #284 T33), and every ID in this ADR was shifted by one. ADR-062 has the seven rows.
+- **Diagnostic codes.** `diagnostics.json` re-read on every origin branch: `JULC0060`–`JULC0066` (#272) and
+  `JULC0070` (#271) are the only codes above `JULC0059`, so `JULC0071`–`JULC0083` remain free.
+- **D rows.** 78 new `.diffcase` files under `julc-difftest/src/test/resources/regressions/`, one per D row and
+  reproducer (several rows have more than one), with the base's actual verdict: 37 `DIVERGE` (T27 8, T28 2, T29 11,
+  T30 2, T31 7, T32 1, T33 6), 16 `AGREE` and 25 `REJECT` (22 `none`, 3 `JULC0055`). Every JVM and JuLC value equals
+  the Evidence table, with three findings: the accessor-on-a-constructor shapes of N3, N5, N7 and F20 are rejected with
+  `JULC0055` (as #282 and #284 report), so those pins read through a local, as the Evidence probes did; and the
+  packageless `record PubKeyHash(byte[] h)` ("as found in M0") diverges (JVM the bytes, JuLC fails "UnBData"), pinned
+  as T33. Recorded with `DiffRunner.standard()` (Java VM, all four levels; every verdict was level-independent).
+- **P suite.** `julc-difftest` `Javac21ParityTest` holds the twelve P rows (G6, G7, G8, H1, F13a, F13b, F13c, F14b,
+  the `Pair` shape, the bundled-FQCN source, F23, R5) with javac 21.0.3's verdict, JuLC's base verdict and its
+  current expectation. javac 21.0.3 (Temurin, `~/.sdkman/candidates/java/21.0.3-tem`) runs by explicit path
+  (`Javac21`): `-Pjulc.javac21=<javac>`, else `JULC_JAVAC21`, else the SDKMAN path; a javac whose `-version` is not
+  `javac 21.0.3` is refused; without one the suite is skipped unless `-Pjulc.javac21.required=true`. JuLC's class files
+  target Java 25, which javac 21 cannot read, so P sources are self-contained and F23 compiles against a stub of the
+  ledger `Rational`; a one-file driver runs every case in one JVM of that JDK. Findings: javac 21.0.3 reports R5 as
+  "unnamed variables are a preview feature" (javac 25 `--release 21`: "not supported in -source 21"); the only 21/25
+  verdict difference is the `Pair` shape, as recorded; the bundled-FQCN source is rejected at the base with
+  `JULC0055` (the user's `Value` is replaced by the ledger one).
+- **U suite.** `julc-compiler` `SwitchMalformedDataTest` (eleven tests, every level, Java and Scalus VMs) pins the
+  base: F5a fails; F11 accepted as the constructor (1); F3 runs the guarded arm (1); the M2b nested-tag rows run a
+  later arm or `default`; lenient field contents (malformed `Bool` is `false`, extra fields ignored, wrong kind
+  fails, a guard over a malformed `Bool` ignored, F31's malformed child kept); F23 returns 7.
+- **Commands.** `./gradlew :julc-difftest:test --tests '*RegressionCasesTest*' --rerun` (116 cases, 0 failures),
+  `./gradlew :julc-difftest:test --tests '*Javac21ParityTest*' --rerun` (12, 0 failures),
+  `./gradlew :julc-compiler:test --tests '*SwitchMalformedDataTest*' --rerun` (11, 0 failures).
+
 ## Revision history
 
 - **r1** (2026-10-30): initial proposal, including #279 (D6), added at the coordinator's request from the ADR-066
@@ -1252,7 +1286,7 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
   - **F45** → the r5 premise ("reaching the `Value` handlers needs javac-invalid source") is withdrawn: an implicit
     accessor reaches them from valid Java (Evidence F45, reproduced: JVM `true`, JuLC "UnMapData" at all four
     levels; through a local it agrees). Fixed in M3b: named ledger handlers key on ledger identity (FQCN plus
-    provenance, as D3's layout query); outcome-matrix row (`DIVERGE` T30 → `AGREE`, D); mutation; Related findings
+    provenance, as D3's layout query); outcome-matrix row (`DIVERGE` T31 → `AGREE`, D); mutation; Related findings
     updated. #287 keeps the assignment, argument and return checks.
   - **F26** → bundled-FQCN redeclaration rows checked by P or `julc-compiler` unit tests (packaged sources cannot run
     in `JvmExecutor`), packageless hash-name records stay D; F3's baseline is "guard ignored"; K3's `JULC0076` reason
@@ -1275,7 +1309,7 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
   partial notes on F10, F13, F14, F16):
   - **F19 / #284** → added to scope; D9 decides Java's shadowing rule (the user's type wins, unnamed package
     included) for non-hash ledger names, keeps `JULC0081` for FQCNs and hash names; I15 extended; M0 pin, M3b tests
-    for every ledger simple name against javac 21.0.3; mutation; Related findings corrected; T32.
+    for every ledger simple name against javac 21.0.3; mutation; Related findings corrected; T33.
   - **F20** → D2 step 3 and I5 use the construction tag from the registry (variant position or 0); M2b test with a
     variant at position ≥ 1; mutation.
   - **F21** → D5: a known accessor result needs a known receiver; M4 test; mutation.
@@ -1315,11 +1349,11 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
     path unchanged (I8), recorded in Related findings.
   - **F12** → #283 added to scope; D4's colon-form wording corrected; colon form accepted only when every group has
     one label and yields; everything else `JULC0075` (renamed `SWITCH_GROUP_UNSUPPORTED`), on today's path too; new
-    I16; T31.
+    I16; T32.
   - **F13** → D4 is a matrix: guard type (`JULC0072`, renamed `SWITCH_GUARD_INVALID`), duplicate `default` (new
     `JULC0082`), pattern-variable conflicts (new `JULC0083`), applicability, declaration-identity effective finality.
   - **F14** → switches over, and record patterns on, parameterized sealed interfaces rejected with `JULC0007`.
-  - **F16** → D5's exactness claim dropped; nested nominal erasure kept in T28 with pins.
+  - **F16** → D5's exactness claim dropped; nested nominal erasure kept in T29 with pins.
   - **F17** → D9 runs as a declaration preflight before `SubsetValidator`; diagnostic precedence stated.
   - **F18** → the deserialization claim corrected (the canonical constructor *is* invoked).
   - Reservation extended to `JULC0083`; #283 in the header and context. No ID renumbered.
@@ -1327,10 +1361,10 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
   related finding R6/H5): new D9 (reject every user record body member except nested types, `JULC0080`, ledger types
   excluded), I15, M3b, mutation checks for D9, Evidence N1–N10 and the record-body scan, open question 8. D3's
   explicit-accessor rejection marked subsumed by D9; D5 notes its reliance on D9; D7 reservation extended to
-  `JULC0080`; D8's T30 now names #282; R6/H5 moved from Related findings into scope. No ID renumbered.
+  `JULC0080`; D8's T31 now names #282; R6/H5 moved from Related findings into scope. No ID renumbered.
 - **r6, editorial** (after approval at `f965d061`): Codex's F46 (P2) → the F45 handler and accessor change added to
   Compatibility and to Verification 5's byte-stability exclusions, with the report classifying each changed
   program; the review comment's F27 (P3) → F45 and F45b marked "nested in `Probe`", new row and evidence F45c for the
-  top-level shape (#284), catalogue ID T32 instead of T30 for the F45 rows. Status set to Accepted.
-- **r6, editorial 2:** Codex's F47–F49 (P3): Verification 5's byte-identical sentence names (i) and (ii); T32's
+  top-level shape (#284), catalogue ID T33 instead of T31 for the F45 rows. Status set to Accepted.
+- **r6, editorial 2:** Codex's F47–F49 (P3): Verification 5's byte-identical sentence names (i) and (ii); T33's
   description includes the F45 handler-identity cause; the status line credits Codex's approval at `189bb4fa`.

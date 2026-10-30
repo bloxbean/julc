@@ -1,0 +1,25 @@
+format: 2
+name: #283 a colon-form group that falls through into default (F12a, T32)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T32 Value/Value
+jvm: Value 02 []
+uplc: Value 24 []
+note: ADR-067 F12a: Java falls through into default (2); JuLC uses the discarded expression (-5).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x: x.v().negate();
+            default: yield BigInteger.TWO;
+        };
+    }
+}

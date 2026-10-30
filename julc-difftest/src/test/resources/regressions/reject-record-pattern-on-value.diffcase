@@ -1,0 +1,24 @@
+format: 2
+name: a record pattern on the ledger Value (F30)
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 F30: legal Java (1). Value is encoded as a Map, so it has no record layout.
+---
+import java.math.BigInteger;
+import org.julclang.ledger.Value;
+
+public class Probe {
+    sealed interface SV permits VA, VB {}
+    record VA(Value val) implements SV {}
+    record VB(BigInteger z) implements SV {}
+
+    public static BigInteger m(BigInteger a) {
+        SV sv = new VA(Value.lovelace(a));
+        return switch (sv) {
+            case VA(Value(var m)) -> BigInteger.ONE;
+            case VB vb -> BigInteger.TWO;
+        };
+    }
+}

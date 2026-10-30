@@ -1,0 +1,22 @@
+format: 2
+name: a switch over a parameterized sealed interface, valid Java (F14a)
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 F14a: legal Java (5); JuLC drops type arguments.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface G<X> permits GC, GD {}
+    record GC(BigInteger c) implements G<String> {}
+    record GD(BigInteger d) implements G<BigInteger> {}
+
+    public static BigInteger m(BigInteger a) {
+        G<BigInteger> g = new GD(a);
+        return switch (g) {
+            case GD d -> d.d();
+        };
+    }
+}

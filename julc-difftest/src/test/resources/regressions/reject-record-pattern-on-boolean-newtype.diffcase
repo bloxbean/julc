@@ -1,0 +1,25 @@
+format: 2
+name: a record pattern on a boolean @NewType (F30)
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 F30: legal Java (1). A boolean @NewType is the Bool itself, with no component list.
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.NewType;
+
+public class Probe {
+    @NewType record Flag(boolean value) {}
+    sealed interface SF permits FA, FB {}
+    record FA(Flag flag) implements SF {}
+    record FB(BigInteger z) implements SF {}
+
+    public static BigInteger m(BigInteger a) {
+        SF sf = new FA(new Flag(a.signum() > 0));
+        return switch (sf) {
+            case FA(Flag(var b)) -> b ? BigInteger.ONE : BigInteger.ZERO;
+            case FB fb -> BigInteger.TWO;
+        };
+    }
+}

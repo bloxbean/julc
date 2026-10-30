@@ -1,0 +1,27 @@
+format: 2
+name: nested record patterns (R4)
+class: Probe
+method: m
+arg: 24
+expect: REJECT none
+note: ADR-067 R4: legal Java (-5).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface T permits C, D {}
+    record C(BigInteger w) implements T {}
+    record D(BigInteger w) implements T {}
+    sealed interface U permits P, Q {}
+    record P(T t) implements U {}
+    record Q(BigInteger z) implements U {}
+
+    public static BigInteger m(BigInteger a) {
+        U u = new P(new D(a));
+        return switch (u) {
+            case P(C(var w)) -> w.negate();
+            case P(D(var w)) -> w;
+            case Q(var z) -> z;
+        };
+    }
+}

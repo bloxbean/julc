@@ -1,0 +1,27 @@
+format: 2
+name: a guard that divides by zero (H4, T27)
+class: Probe
+method: m
+arg: 03
+arg: 00
+expect: DIVERGE T27 Failure/Value
+jvm: Failure []
+uplc: Value 01 []
+note: ADR-067 H4: the guard throws ArithmeticException on the JVM; JuLC never evaluates it.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when x.v().divide(b).signum() > 0 -> BigInteger.ONE;
+            case A x -> BigInteger.TWO;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

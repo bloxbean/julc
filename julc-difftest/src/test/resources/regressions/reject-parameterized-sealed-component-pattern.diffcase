@@ -1,0 +1,26 @@
+format: 2
+name: a record pattern on a parameterized sealed component
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 D3 (F14): legal Java (5).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface G<X> permits GC, GD {}
+    record GC(BigInteger c) implements G<String> {}
+    record GD(BigInteger d) implements G<BigInteger> {}
+    sealed interface H permits PW, PZ {}
+    record PW(G<BigInteger> g) implements H {}
+    record PZ(BigInteger z) implements H {}
+
+    public static BigInteger m(BigInteger a) {
+        H h = new PW(new GD(a));
+        return switch (h) {
+            case PW(GD(var d)) -> d;
+            case PZ(var z) -> z;
+        };
+    }
+}
