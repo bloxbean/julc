@@ -51,6 +51,11 @@ class JavaConstantsTest {
         constant("", "-2147483648 == 0x80000000", true);
         constant("", "-9223372036854775808L < 0", true);
         constant("", "-2_147_483_648 == -2147483647 - 1", true);
+        constant("", "-9_223_372_036_854_775_808L == -9223372036854775807L - 1", true);
+        constant("", "-9223372036854775808l < 0", true);
+        assertTrue(evaluate("", "2_147_483_648 > 0").unclassifiable());
+        assertTrue(evaluate("", "-(2_147_483_648) < 0").unclassifiable());
+        assertTrue(evaluate("", "9223372036854775808l > 0").unclassifiable());
         assertTrue(evaluate("", "-(2147483648) < 0").unclassifiable());
         assertTrue(evaluate("", "2147483648 > 0").unclassifiable());
         assertTrue(evaluate("", "9223372036854775808L > 0").unclassifiable());

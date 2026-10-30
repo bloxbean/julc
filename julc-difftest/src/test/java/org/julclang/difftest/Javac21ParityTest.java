@@ -424,6 +424,29 @@ class Javac21ParityTest {
                         return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
                 """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0072")));
+        // ---- M1 review round 5 (F85): minimum-value spellings, and the overflows that stay rejected
+        String round5 = "added in M1 review round 5";
+        cases.add(new ParityCase("F85 minimum values with underscores and a lowercase l, beside a binding", "F85a", switchOverA("""
+                            case A x when -2_147_483_648 < x.v().signum() && -9_223_372_036_854_775_808L < x.v().signum()
+                                    && -9223372036854775808l < x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), Map.of(), FIVE, null, "REJECT JULC0072 (bbf815a1..46e1e532)", Julc.value(1)));
+        cases.add(new ParityCase("F85 a constant true guard with an underscored minimum value", "F85b", switchOverA("""
+                            case A x when -2_147_483_648 < 0 -> BigInteger.ONE;
+                            case B y -> BigInteger.ZERO;
+                """), Map.of(), FIVE, null, "REJECT JULC0072 (46e1e532)", Julc.value(1)));
+        cases.add(new ParityCase("F85 a positive underscored int overflow", "F85c", switchOverA("""
+                            case A x when 2_147_483_648 > x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), Map.of(), FIVE, "integer number too large", round5, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F85 a parenthesised minimum value", "F85d", switchOverA("""
+                            case A x when -(2_147_483_648) < x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), Map.of(), FIVE, "integer number too large", round5, Julc.rejects("JULC0072")));
+        cases.add(new ParityCase("F85 a positive long overflow with a lowercase l", "F85e", switchOverA("""
+                            case A x when 9223372036854775808l > x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), Map.of(), FIVE, "integer number too large", round5, Julc.rejects("JULC0072")));
         return cases;
     }
 

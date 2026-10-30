@@ -76,6 +76,8 @@ final class JavaConstants {
     private static Result evaluate(Expression expression, Set<Node> visiting) {
         return switch (expression) {
             case BooleanLiteralExpr literal -> Result.of(Kind.BOOLEAN, literal.getValue());
+            case IntegerLiteralExpr literal when minimumValueOperand(literal) != null -> minimumValueOperand(literal);
+            case LongLiteralExpr literal when minimumValueOperand(literal) != null -> minimumValueOperand(literal);
             case IntegerLiteralExpr literal -> number(() -> Result.of(Kind.INT, literal.asNumber().intValue()));
             case LongLiteralExpr literal -> number(() -> Result.of(Kind.LONG, literal.asNumber().longValue()));
             case CharLiteralExpr ignored -> Result.UNCLASSIFIABLE; // outside the verified subset (F63)
@@ -83,7 +85,6 @@ final class JavaConstants {
             case TextBlockLiteralExpr literal -> number(() -> Result.of(Kind.STRING, literal.asString()));
             case DoubleLiteralExpr ignored -> Result.UNCLASSIFIABLE;
             case EnclosedExpr enclosed -> evaluate(enclosed.getInner(), visiting);
-            case UnaryExpr unary when minimumValue(unary) != null -> minimumValue(unary);
             case UnaryExpr unary -> unary(unary.getOperator(), evaluate(unary.getExpression(), visiting));
             case BinaryExpr binary -> binary(binary.getOperator(), evaluate(binary.getLeft(), visiting),
                     evaluate(binary.getRight(), visiting));
@@ -112,20 +113,32 @@ final class JavaConstants {
     }
 
     /**
-     * F82: {@code -2147483648} and {@code -9223372036854775808L}, where the decimal literal is legal only as the
-     * direct operand of unary minus (JLS 3.10.1); anywhere else it is out of range and unclassifiable. Null otherwise.
+     * F82, F85: {@code -2147483648} and {@code -9223372036854775808L}, where the decimal literal is legal only as the
+     * direct operand of unary minus (JLS 3.10.1), with underscores and either suffix case ({@code -2_147_483_648},
+     * {@code -9223372036854775808l}); anywhere else it is out of range and unclassifiable. Null otherwise.
      */
     private static Result minimumValue(UnaryExpr unary) {
         if (unary.getOperator() != UnaryExpr.Operator.MINUS) return null;
-        if (unary.getExpression() instanceof IntegerLiteralExpr literal
-                && literal.getValue().replace("_", "").equals("2147483648")) {
-            return Result.of(Kind.INT, Integer.MIN_VALUE);
-        }
-        if (unary.getExpression() instanceof LongLiteralExpr literal
-                && literal.getValue().replace("_", "").replaceAll("[lL]$", "").equals("9223372036854775808")) {
-            return Result.of(Kind.LONG, Long.MIN_VALUE);
-        }
-        return null;
+        return switch (unary.getExpression()) {
+            case IntegerLiteralExpr literal when digits(literal.getValue()).equals("2147483648") -> Result.of(Kind.INT, Integer.MIN_VALUE);
+            case LongLiteralExpr literal when digits(literal.getValue()).equals("9223372036854775808") -> Result.of(Kind.LONG, Long.MIN_VALUE);
+            default -> null;
+        };
+    }
+
+    /**
+     * The literal operand of {@link #minimumValue}: legal there, with the minimum as its two's-complement value, which
+     * the negation keeps ({@code -Integer.MIN_VALUE == Integer.MIN_VALUE}), so both the operand on its own (as the
+     * checker evaluates every part of a guard) and the negation are exact. Null otherwise.
+     */
+    private static Result minimumValueOperand(Expression literal) {
+        return literal.getParentNode().orElse(null) instanceof UnaryExpr unary && unary.getExpression() == literal
+                ? minimumValue(unary) : null;
+    }
+
+    /** A decimal literal's digits, without underscores or a long suffix. */
+    private static String digits(String literal) {
+        return literal.replace("_", "").replaceAll("[lL]$", "");
     }
 
     private static Result unary(UnaryExpr.Operator operator, Result operand) {

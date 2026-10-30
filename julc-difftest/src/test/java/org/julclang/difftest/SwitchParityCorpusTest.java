@@ -184,6 +184,9 @@ class SwitchParityCorpusTest {
         guards.put("long minimum literal beside a binding", new String[]{"", "-9223372036854775808L < x0.v().signum()"});
         guards.put("out-of-range int literal", new String[]{"", "2147483648 > x0.v().signum()"});
         guards.put("intValue", new String[]{"", "x0.v().intValue() < 0", "JULC0072"});
+        // Review round 5 (F85): minimum values with underscores and a lowercase l; the underscored overflow.
+        guards.put("underscored minimum literals", new String[]{"", "-2_147_483_648 < x0.v().signum() && -9223372036854775808l < x0.v().signum()"});
+        guards.put("underscored int overflow", new String[]{"", "2_147_483_648 > x0.v().signum()"});
         var shapes = Map.of(
                 "A?,B", List.of("A?", "B"),
                 "A?,A,B", List.of("A?", "A", "B"),

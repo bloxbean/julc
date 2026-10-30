@@ -509,6 +509,27 @@ class SwitchDiagnosticsTest {
                             case A x when 2147483648L < x.v().signum() || -(2147483648) < x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
                 """), "JULC0072", "'-(2147483648)' is not a constant expression JuLC can evaluate exactly");
+        // F85: the same overflows with underscores or a lowercase l stay rejected, positive or parenthesised.
+        rejected(switchOver("""
+                            case A x when 2_147_483_648 > x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "'2_147_483_648' is not a constant expression JuLC can evaluate exactly");
+        rejected(switchOver("""
+                            case A x when -(2_147_483_648) < x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "is not a constant expression JuLC can evaluate exactly");
+        rejected(switchOver("""
+                            case A x when 9223372036854775808l > x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "'9223372036854775808l' is not a constant expression JuLC can evaluate exactly");
+        // F85: the minimum values spelled with underscores and a lowercase l are accepted, in a non-constant guard and as
+        // a constant true guard that makes the switch exhaustive.
+        accepted(switchOver("""
+                            case A x when -2_147_483_648 < x.v().signum() && -9_223_372_036_854_775_808L < x.v().signum()
+                                    && -9223372036854775808l < x.v().signum() -> BigInteger.ONE;
+                            case A x when -2_147_483_648 < 0 -> BigInteger.TWO;
+                            case B y -> BigInteger.ZERO;
+                """));
         // Java's minimum-value forms are legal as the direct operand of unary minus (JLS 3.10.1).
         accepted(probe(S + """
                     static final int N = -2147483648;
