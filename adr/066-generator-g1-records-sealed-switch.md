@@ -965,6 +965,8 @@ Findings:
 
 ### M2 review round 1 (2026-10-30, G1 r2)
 
+(Round 2 below supersedes this round's quota table, rediscovery table and saved cases with G1 r3's.)
+
 The round answers the review comment's F61–F64 and Codex's F70–F73.
 
 | Finding | Change |
@@ -1081,6 +1083,104 @@ Deviations from the ADR, added in this round:
   and as the result, and a variant accumulator.
 - `LOOP_LOCAL_SHADOWS_FIELD` is decode-checked rather than given a quota.
 - The #209 historical profile is steered to the issue's own shape.
+
+### M2 review round 2 (2026-10-30, G1 r3)
+
+The round answers the review comment's F65–F67 and Codex's F80, and extends the #146 gate to `signum`.
+
+| Finding | Change |
+|---|---|
+| F65 (P2), steering keyed to the gate | Rediscovery emphasis is now a separate `G1.Steer` (`ISSUE_209`, `ISSUE_280`, `ISSUE_146`). Each steer requires its gate and is printed in the profile text as `steer=209`, `steer=280` or `steer=146` (`… +SHADOW_IN_LOOP_BRANCH … steer=209`). `REDISCOVER_x` is `DEFAULT.with(gate).steered(x)`. A gate alone only allows its construct: under `SHADOW_IN_LOOP_BRANCH`, a branch local shadows a field half of the time it can; under `ZERO_ARG_HELPERS`, a quarter of the helpers have no parameter; under `TRACE_IN_COMPARISON`, traces enter operands by the default productions. The mirrored records, the extra loops, the absence of `break`, the result's preference, half of the helpers zero-argument and most of their bodies traced, and the traced left operands are all steering. `G1GatesTest.aGateAloneKeepsTheDefaultDistribution` checks each implemented gate over 4,000 plans: the shares of programs with a `break`, a loop, a zero-parameter helper (except under its own gate) and mirrored records stay within 2 points of the default. The `REDISCOVER_*` profiles differ, and `steer=209` with the gate off is refused. |
+| F80 (P2), variant-typed components | A component may be a variant of a family declared earlier (acyclic, within the depth limit). A quarter of the components are a nonzero-tag variant when one fits (witness). New quota feature `VARIANT_COMPONENT`, and `G1ShapesTest` reads it from the source and tag table. Argument mapping goes through D3 with the variant's own tag, and accessor chains pass through variant components. |
+| F66 (P3), thin quotas | Variant accumulators half of the time (was a quarter), boolean helper calls in 3 of 12 condition cases, `equals` in boolean atoms a third of the time, and receivers that can compare against a family three times in four. A `permits` order is never the creation (name) order. The PR minimum is now 8 (`SEALED_ARG`); the three former 4.0% quotas are at 9 to 16. |
+| F67 (P3), loop-body shadowing in the PR run | `agree-g1-loop-local-shadows-field`, from a default-profile decoding: a `boolean f` declared directly in a `while` body shadows the field `R0 f`, and `f.equals(x)` reads the field after the loop. It agrees at every level. |
+| `signum` (coordinator) | Covered in round 1's table. |
+
+G1 r3 decodes differently from r2 because of F80, F66 and the steering split, so the version is bumped and the G1
+pins and counterfactuals are re-recorded from r3 rediscovery runs.
+
+Quotas (G1 r3):
+
+| Feature | PR, 150 tries | Nightly, 3,000 tries |
+|---|---|---|
+| `RECORD` | 82 (54.7%) | 1872 (62.4%) |
+| `SEALED` | 79 (52.7%) | 1667 (55.6%) |
+| `TWO_FAMILIES` | 39 (26.0%) | 788 (26.3%) |
+| `ZERO_COMPONENTS` | 65 (43.3%) | 1271 (42.4%) |
+| `NESTED_RECORD` | 43 (28.7%) | 1118 (37.3%) |
+| `SEALED_COMPONENT` | 15 (10.0%) | 347 (11.6%) |
+| `RECORD_ARG` | 30 (20.0%) | 678 (22.6%) |
+| `SEALED_ARG` | 8 (5.3%) | 360 (12.0%) |
+| `RECORD_RESULT` | 39 (26.0%) | 874 (29.1%) |
+| `SEALED_RESULT` | 36 (24.0%) | 480 (16.0%) |
+| `COMPONENT_ACCESS` | 38 (25.3%) | 932 (31.1%) |
+| `CHAINED_ACCESS` | 16 (10.7%) | 358 (11.9%) |
+| `STATIC_FIELD` | 60 (40.0%) | 1506 (50.2%) |
+| `FIELD_FROM_FIELD` | 16 (10.7%) | 363 (12.1%) |
+| `FIELD_SHADOWED` | 30 (20.0%) | 691 (23.0%) |
+| `RECORD_EQUALS` | 36 (24.0%) | 770 (25.7%) |
+| `RECORD_ACCUMULATOR` | 25 (16.7%) | 713 (23.8%) |
+| `INSTANCEOF_PATTERN` | 16 (10.7%) | 308 (10.3%) |
+| `METHOD_LEVEL_IF` | 42 (28.0%) | 918 (30.6%) |
+| `HELPER_CALL` | 22 (14.7%) | 345 (11.5%) |
+| `TRACE` | 19 (12.7%) | 347 (11.6%) |
+| `FAILURE` | 10 (6.7%) | 272 (9.1%) |
+| `VARIANT_ARG` | 14 (9.3%) | 376 (12.5%) |
+| `VARIANT_RESULT` | 13 (8.7%) | 386 (12.9%) |
+| `VARIANT_ACCUMULATOR` | 9 (6.0%) | 323 (10.8%) |
+| `VARIANT_COMPONENT` | 14 (9.3%) | 300 (10.0%) |
+| `BOOLEAN_HELPER_CALL` | 14 (9.3%) | 197 (6.6%) |
+| `PERMITS_PERMUTED` | 11 (7.3%) | 284 (9.5%) |
+| `FAMILY_EQUALS` | 16 (10.7%) | 400 (13.3%) |
+| `LOOP_LOCAL_SHADOWS_FIELD` (decode-checked; saved case, F67) | 0 (0.0%) | 102 (3.4%) |
+| `LOOP` (statistics, no quota) | 42 (28.0%) | 1129 (37.6%) |
+| `BREAK` (statistics, no quota) | 3 (2.0%) | 72 (2.4%) |
+
+Rediscovery (G1 r3). The command is `./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=<profile>
+[-Pdifftest.form=failure]`, with seed `20261030`, 150 tries and the 744ab54f compiler.
+
+| Defect | Profile, form | First failing try | Time to first failure | JVM | UPLC, every level | Saved as |
+|---|---|---|---|---|---|---|
+| #209 | `REDISCOVER_209` (`steer=209`) | 20 | 2.4 s | `Value R0(-5, -5)` | `Value R0(-4, -4)` (silent) | `diverge-g1-209-silent-misread` |
+| #209 | `REDISCOVER_209`, `form=failure` | 20 | 2.1 s | `Value R0(-5, false)` | `Failure UnIData: not IntData` | `diverge-g1-209-runtime-misread` |
+| #280 | `REDISCOVER_280` (`steer=280`) | 18 | 1.8 s | `Value -5 []` | `Value -5 [k0]` | `diverge-g1-280-uncalled-zero-arg-helper` |
+| #146 | `REDISCOVER_146` (`steer=146`) | 2 | 0.9 s | `Value -5 [k0]` | `Value -5 [k0, k0]` | `diverge-g1-146-traced-compare-operand` |
+
+The default form of the #209 run now shrinks to the silent form, the issue's own shape:
+
+```java
+record R1(BigInteger w, BigInteger v) {}
+record R0(BigInteger v, BigInteger w) {}
+static final R0 w = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-4));
+// in m, a for-each over xs = [-5, -1, -2, 1]:
+if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
+    R1 w = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+    v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+}
+v1 = w.v();   // Java: the field's v, -5. JuLC: R1's index of v, 1, on R0's Data: w, -4.
+```
+
+`G1RediscoveryTest` checks the four r3 pairs and r1's rejection-form counterfactual. All are provisional.
+
+Unsteered gate: `DEFAULT.with(SHADOW_IN_LOOP_BRANCH)` is the profile that will guard #209 once D6 turns it on
+after the fix. It did not find #209 within the PR budget (150 tries, seed `20261030`) on the base that has the defect.
+The guard after the fix is therefore the default campaign at the default rate, plus the saved #209 cases, which flip
+to `AGREE` with the fix. The steered profile is what finds the defect quickly.
+
+#209 outcomes under G1 r3's steered profile (seed 7, random inputs): of 200 marked plans out of 1,296 decoded, 180
+agree, 10 are JVM value against UPLC failure, and 10 are silent value against value.
+
+Commands and counts (G1 r3):
+- `./gradlew :julc-difftest:test --rerun`: 192 tests, 0 failures, 0 errors, 0 skipped, in 69 s.
+  - The G1 workload takes 12.7 s.
+  - `RegressionCasesTest` replays 48 cases.
+- `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`: 3,000 tries, all conclusive at
+  every level, 142 s.
+
+Deviations from the ADR, added in this round:
+- Steers are a second component of a profile, next to its gates. D6 names only gates. They are printed and parsed
+  like the gates, and the default profile has none.
+- A record component may be a variant, with a quarter-of-the-time witness.
 
 ## Revision history
 
