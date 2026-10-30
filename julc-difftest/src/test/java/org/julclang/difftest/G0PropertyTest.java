@@ -44,6 +44,8 @@ class G0PropertyTest {
 
     private static Coverage coverage = new Coverage();
     private static boolean quotasApply;
+    /** Set by the first failing try: shrinking calls then count towards no quota, and no quota is checked. */
+    private static boolean failed;
 
     @Provide
     Arbitrary<List<Integer>> plans() {
@@ -66,6 +68,7 @@ class G0PropertyTest {
     void startCoverage() {
         coverage = new Coverage();
         quotasApply = false;
+        failed = false;
     }
 
     /**
@@ -75,7 +78,7 @@ class G0PropertyTest {
     @AfterProperty
     void checkCoverage() {
         System.out.println("G0 coverage\n" + coverage.report());
-        if (!quotasApply) return;
+        if (!quotasApply || failed) return;
         var failures = coverage.quotaFailures(QUOTA_FEATURES, MIN_PERCENT);
         if (!failures.isEmpty()) fail("Coverage quotas not met:\n" + String.join("\n", failures) + "\n" + coverage.report());
     }
@@ -102,7 +105,14 @@ class G0PropertyTest {
     static void check(List<Integer> plan, BigInteger a, BigInteger b, List<BigInteger> xs) {
         var program = G0.decode(plan);
         Statistics.label("xs size").collect(xs.size() < 2 ? String.valueOf(xs.size()) : "2+");
-        var outcome = verify("G0PropertyTest", plan, program, a, b, xs);
+        CampaignVerifier.Outcome outcome;
+        try {
+            outcome = verify("G0PropertyTest", plan, program, a, b, xs);
+        } catch (AssertionError e) {
+            failed = true;
+            throw e;
+        }
+        if (failed) return;
         Statistics.label("allowed divergence")
                 .collect(outcome.explained().isEmpty() ? "none" : String.join(",", outcome.explained()));
         coverage.record(KnownDivergences.names(program.features()), outcome.verdicts());

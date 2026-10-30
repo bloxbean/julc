@@ -2,14 +2,19 @@ package org.julclang.difftest;
 
 import org.julclang.difftest.gen.G1;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * G1's decoding (ADR-066 D1, G1-I5, ADR-063 H6): the complete case is a function of the plan, the inputs and the
@@ -59,16 +64,71 @@ class G1DecodeTest {
         assertEquals(G1.Profile.DEFAULT, program.profile());
     }
 
-    /** The profile is part of the case: the same plan under another profile is another, recorded case (G1-I5). */
+    private static List<Integer> numbers(String text) {
+        return text == null || text.isBlank() ? List.of() : Arrays.stream(text.split(",")).map(Integer::valueOf).toList();
+    }
+
+    /**
+     * The profile and the inputs are part of the recorded case (G1-I5; review of M2, F73). A case that fails under a
+     * historical profile, with inputs, goes through the real failure-record path ({@link G1PropertyTest#verify},
+     * {@link CampaignVerifier}, {@link RegressionStore}); its record names the profile, the plan and the inputs, and
+     * regenerating from them gives back its source, tags and arguments.
+     */
     @Test
-    void theProfileIsPartOfTheCase() {
-        var random = new Random(20261034);
-        int differ = 0;
-        for (int i = 0; i < 200; i++) {
+    void aFailureRecordRegeneratesItsCase() {
+        var random = new Random(20261038);
+        var inputs = List.of(7, 11, 3, 5, 9, 2);
+        for (int i = 0; i < 2000; i++) {
             var plan = random(random, 200);
-            if (!G1.decode(plan, G1.Profile.DEFAULT).source().equals(G1.decode(plan, G1.Profile.REDISCOVER_280).source())) differ++;
+            var program = G1.decode(plan, G1.Profile.REDISCOVER_280);
+            if (!program.features().contains(G1.Feature.ZERO_ARG_HELPER)) continue;
+            try {
+                G1PropertyTest.verify("G1DecodeTest", plan, inputs, program);
+                continue;
+            } catch (AssertionError expected) {
+                // The case diverges (#280) and is written to the failure record.
+            }
+            var saved = RegressionStore.read(CampaignVerifier.LAST_FAILURE);
+            try {
+                assertEquals(G1.Profile.REDISCOVER_280.text(), saved.diffCase().profile());
+                var profile = G1.Profile.parse(saved.diffCase().profile());
+                var again = G1.decode(numbers(saved.provenance().get("plan")), profile);
+                assertEquals(saved.diffCase().source(), again.source());
+                assertEquals(saved.diffCase().tags(), again.tags());
+                assertEquals(saved.diffCase().args(), again.arguments(numbers(saved.provenance().get("inputs"))));
+                assertEquals(program.arguments(inputs), saved.diffCase().args());
+                assertEquals(G1.VERSION, saved.provenance().get("generator"));
+                return;
+            } finally {
+                // The record is this test's, not a finding: do not leave it for triage.
+                CampaignVerifier.LAST_FAILURE.toFile().delete();
+            }
         }
-        assertNotEquals(0, differ);
+        fail("no #280 case found to record");
+    }
+
+    /**
+     * An inert switch changes no program, but a case under it is still another case: its record keeps its profile
+     * (G1-I5, F73).
+     */
+    @Test
+    void equalSourcesUnderDifferentProfilesAreDifferentCases(@TempDir Path dir) {
+        var random = new Random(20261034);
+        var plan = random(random, 200);
+        var inputs = random(random, 40);
+        var plain = G1.decode(plan, G1.Profile.DEFAULT);
+        var guarded = G1.decode(plan, G1.Profile.DEFAULT.with(G1.Gate.GUARDS));
+        assertEquals(plain.source(), guarded.source());
+        var cases = new ArrayList<DiffCase>();
+        for (var program : List.of(plain, guarded)) {
+            var diffCase = new DiffCase("g1", program.source(), "Probe", "m", program.arguments(inputs), program.tags(),
+                    program.profile().text());
+            Path file = dir.resolve(cases.size() + ".diffcase");
+            RegressionStore.write(file, diffCase, RegressionStore.Expectation.AGREE, null, Map.of(), null);
+            cases.add(RegressionStore.read(file).diffCase());
+        }
+        assertNotEquals(cases.get(0), cases.get(1));
+        assertEquals(G1.Profile.DEFAULT.with(G1.Gate.GUARDS).text(), cases.get(1).profile());
     }
 
     /**

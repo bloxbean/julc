@@ -14,6 +14,7 @@ import org.julclang.difftest.gen.G1Ast.Var;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
@@ -24,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r1): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r2): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures. The
  * {@code switch} productions are M3's. The productions build a typed AST ({@link G1Ast}), which {@link G1Printer}
@@ -58,7 +59,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r1";
+    public static final String VERSION = "G1 r2";
 
     /** The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open. */
     public enum Gate {
@@ -78,10 +79,13 @@ public final class G1 {
         SHADOW_IN_LOOP_BRANCH,
         /** Loop bodies with {@code break} and conditional updates (#254, #255). */
         LOOP_BREAK_SHAPES,
-        /** A trace in an operand of {@code compareTo}, directly or through a helper (#146). */
+        /**
+         * A trace in an operand of {@code compareTo}, directly or through a helper (#146). {@code signum} lowers its
+         * receiver the same way; G1 emits none, and probes found no other emitted operation that does.
+         */
         TRACE_IN_COMPARISON;
 
-        /** The switches G1 r1 defines but does not implement yet: they change no program until M3. */
+        /** The switches G1 r2 defines but does not implement yet: they change no program until M3. */
         public static final Set<Gate> INERT =
                 Collections.unmodifiableSet(EnumSet.of(GUARDS, RECORD_PATTERNS, CROSS_TYPE_EQUALS, SHARED_VARIANT,
                         ASSIGN_PATTERN_BINDING));
@@ -89,7 +93,7 @@ public final class G1 {
 
     /**
      * A generation profile: {@link #VERSION} and the value of every {@link Gate} (ADR-066 D6). Its text, such as
-     * {@code G1 r1 -GUARDS -RECORD_PATTERNS … +ZERO_ARG_HELPERS …}, is printed in every record and replayed.
+     * {@code G1 r2 -GUARDS -RECORD_PATTERNS … +ZERO_ARG_HELPERS …}, is printed in every record and replayed.
      */
     public record Profile(Set<Gate> on) {
 
@@ -119,7 +123,7 @@ public final class G1 {
             return new Profile(gates);
         }
 
-        /** {@code G1 r1} followed by {@code +NAME} or {@code -NAME} for every gate, in declaration order. */
+        /** {@link #VERSION} followed by {@code +NAME} or {@code -NAME} for every gate, in declaration order. */
         public String text() {
             var text = new StringBuilder(VERSION);
             for (Gate gate : Gate.values()) text.append(' ').append(has(gate) ? '+' : '-').append(gate.name());
@@ -160,13 +164,28 @@ public final class G1 {
         RECORD_RESULT, SEALED_RESULT, COMPONENT_ACCESS, CHAINED_ACCESS, STATIC_FIELD, FIELD_FROM_FIELD,
         FIELD_SHADOWED, RECORD_EQUALS, RECORD_ACCUMULATOR, INSTANCEOF_PATTERN, METHOD_LEVEL_IF, HELPER_CALL, TRACE,
         FAILURE,
+        /** A parameter, or the result, of a variant type with a nonzero tag: the variant typed as itself. */
+        VARIANT_ARG, VARIANT_RESULT,
+        /** An accumulator of a variant type, assigned in a loop. */
+        VARIANT_ACCUMULATOR,
+        /** A call of a helper that returns {@code boolean}. */
+        BOOLEAN_HELPER_CALL,
+        /** A family whose {@code permits} order differs from its variants' declaration order and name order. */
+        PERMITS_PERMUTED,
+        /** {@code equals} against a value of a sealed family's type. */
+        FAMILY_EQUALS,
+        /** A local declared in a loop body with a field's name; too rare for a PR quota, so {@code G1GatesTest} checks it. */
+        LOOP_LOCAL_SHADOWS_FIELD,
         /** Statistics only. */
         LOOP, BREAK,
         /** Gated constructs (ADR-066 D6): a program under the default profile never contains one. */
         SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE, TRACE_IN_COMPARISON;
 
-        /** The features with a quota in M2: D8's list without the {@code switch} features, which are M3's. */
-        public static final Set<Feature> QUOTA = Collections.unmodifiableSet(EnumSet.range(RECORD, FAILURE));
+        /**
+         * The features with a quota: D8's list without the {@code switch} features, which are M3's, and the
+         * sub-features that keep a shape from hiding behind a sibling's quota (review of M2, F63, F70, F71).
+         */
+        public static final Set<Feature> QUOTA = Collections.unmodifiableSet(EnumSet.range(RECORD, FAMILY_EQUALS));
         /** The marker of each implemented gate's construct. */
         public static final Set<Feature> GATED =
                 Collections.unmodifiableSet(EnumSet.of(SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE,
@@ -365,6 +384,20 @@ public final class G1 {
     /** Zero to two standalone records and zero to two sealed families of one to three variants, acyclic. */
     private void declareTypes() {
         int records = 0, families = 0;
+        if (profile.has(Gate.SHADOW_IN_LOOP_BRANCH)) {
+            // #209's own shape: two records with the same components in different orders (see mirror).
+            Type first = new Type(Kind.RECORD, "R0");
+            var names = new ArrayList<>(POOL);
+            for (int i = 2 + choices.below(2); i > 0; i--) {
+                first.components.add(new Component(names.remove(choices.below(names.size())), choices.oneIn(4) ? BOOL : BIG));
+            }
+            first.depth = 1;
+            Type second = new Type(Kind.RECORD, "R1");
+            mirror(second, first);
+            types.addAll(List.of(first, second));
+            records = 2;
+            features.add(Feature.RECORD);
+        }
         for (int n = choices.below(5); n > 0; n--) {
             boolean family = choices.below(5) < 2;
             if (family && families < 2) {
@@ -422,6 +455,19 @@ public final class G1 {
         record.depth = depth;
     }
 
+    /**
+     * Under SHADOW_IN_LOOP_BRANCH, #209's own shape: a second record with the first one's components in another
+     * order, so that a component read through the wrong type reads a component of the same name at another index,
+     * and with components of the same type, the wrong value silently.
+     */
+    private void mirror(Type record, Type first) {
+        var order = permuted(first.components);
+        if (order.equals(first.components)) order = new ArrayList<>(order.subList(1, order.size()));
+        if (order.size() < first.components.size()) order.add(first.components.getFirst());
+        record.components.addAll(order);
+        record.depth = first.depth;
+    }
+
     private <T> List<T> permuted(List<T> items) {
         var result = new ArrayList<>(items);
         for (int i = result.size() - 1; i > 0; i--) Collections.swap(result, i, choices.below(i + 1));
@@ -433,23 +479,47 @@ public final class G1 {
      * and its variants, and the standalone records, permuted together.
      */
     private List<Type> declarationOrder() {
-        var declarations = new ArrayList<Type>();
+        var declarations = permuted(valueTypes());
         for (Type type : types) {
-            declarations.add(type);
-            if (type.kind == Kind.SEALED) declarations.addAll(type.variants);
+            var byName = type.variants.stream().sorted(Comparator.comparing(t -> t.name)).toList();
+            if (type.kind == Kind.SEALED && !type.variants.equals(byName)
+                    && !declarations.stream().filter(type.variants::contains).toList().equals(type.variants)) {
+                features.add(Feature.PERMITS_PERMUTED);
+            }
         }
-        return permuted(declarations);
+        return declarations;
     }
 
+    /** The declared types a declaration may have: standalone records, sealed families and their variants. */
     private List<Type> valueTypes() {
-        return types.stream().filter(Type::isValue).toList();
+        var values = new ArrayList<Type>();
+        for (Type type : types) {
+            values.add(type);
+            if (type.kind == Kind.SEALED) values.addAll(type.variants);
+        }
+        return values;
     }
 
     /** A type for a declaration, a parameter or a result: {@code BigInteger}, {@code boolean} or a declared type. */
     private Type anyType() {
-        var values = valueTypes();
-        if (!values.isEmpty() && choices.oneIn(2)) return values.get(choices.below(values.size()));
+        if (!types.isEmpty() && choices.oneIn(2)) return declaredType();
         return choices.oneIn(3) ? BOOL : BIG;
+    }
+
+    /**
+     * A declared type: first a kind (standalone record, sealed family, variant) among those declared, then a type of
+     * that kind, so that variants, more numerous than families, do not crowd the families out.
+     */
+    private Type declaredType() {
+        var kinds = new ArrayList<List<Type>>();
+        for (var kind : List.of(
+                valueTypes().stream().filter(t -> t.kind == Kind.RECORD && t.family == null).toList(),
+                valueTypes().stream().filter(t -> t.kind == Kind.SEALED).toList(),
+                valueTypes().stream().filter(t -> t.family != null).toList())) {
+            if (!kind.isEmpty()) kinds.add(kind);
+        }
+        var kind = kinds.get(choices.below(kinds.size()));
+        return kind.get(choices.below(kind.size()));
     }
 
     /** Zero to two {@code static final} fields, named from the pool, each initialized without calls of the class. */
@@ -458,8 +528,7 @@ public final class G1 {
         // Under SHADOW_IN_LOOP_BRANCH, #209 needs a field of a declared type to shadow.
         boolean shadowing = profile.has(Gate.SHADOW_IN_LOOP_BRANCH) && !valueTypes().isEmpty();
         for (int n = shadowing ? 1 + choices.below(2) : choices.below(3); n > 0; n--) {
-            var values = valueTypes();
-            Type type = !values.isEmpty() && (shadowing || choices.oneIn(2)) ? values.get(choices.below(values.size())) : BIG;
+            Type type = shadowing ? types.get(choices.below(2)) : !types.isEmpty() && choices.oneIn(2) ? declaredType() : BIG;
             String name = names.remove(choices.below(names.size()));
             var ctx = new Ctx(new Scope(List.of(), 0), List.of(), false, true, null, false);
             int before = fieldReads;
@@ -470,6 +539,9 @@ public final class G1 {
             features.add(Feature.STATIC_FIELD);
         }
     }
+
+    /** The accumulator #209's composition last assigned from a field read, which the result then prefers. */
+    private String shadowRead;
 
     /** How many field reads expressions have generated, to tell a field initialized from another. */
     private int fieldReads;
@@ -486,7 +558,8 @@ public final class G1 {
                 parameters.add(new Var(parameterNames.remove(choices.below(parameterNames.size())), anyType(), false, false,
                         true, false));
             }
-            Type result = anyType();
+            // Boolean helpers are called from conditions (BOOLEAN_HELPER_CALL).
+            Type result = choices.oneIn(2) ? BOOL : anyType();
             var scope = new Scope(parameters, 0);
             var ctx = new Ctx(scope, List.copyOf(helpers), false, false, null, false);
             int traced = traceSites;
@@ -506,9 +579,13 @@ public final class G1 {
     private G1Ast.Method method() {
         methodNames.clear();
         methodNames.addAll(List.of("a", "b", "xs"));
-        Type result = anyType();
-        if (result.kind == Kind.RECORD) features.add(Feature.RECORD_RESULT);
+        Type result = !types.isEmpty() && !choices.oneIn(3) ? declaredType() : anyType();
+        // A variant typed as itself, with a nonzero tag, as the result a quarter of the time (VARIANT_RESULT).
+        var tagged = valueTypes().stream().filter(t -> t.family != null && t.tag() != 0).toList();
+        if (!tagged.isEmpty() && choices.oneIn(4)) result = tagged.get(choices.below(tagged.size()));
+        if (result.kind == Kind.RECORD && result.family == null) features.add(Feature.RECORD_RESULT);
         if (result.kind == Kind.SEALED) features.add(Feature.SEALED_RESULT);
+        if (result.family != null && result.tag() != 0) features.add(Feature.VARIANT_RESULT);
         var scope = new Scope(new ArrayList<>(List.of(new Var("a", BIG, false, false, true, false),
                 new Var("b", BIG, false, false, true, false))), 0);
         var parameters = new ArrayList<Var>();
@@ -518,8 +595,12 @@ public final class G1 {
         if (!values.isEmpty()) {
             for (int n = choices.below(3); n > 0; n--) {
                 Type type = values.get(choices.below(values.size()));
+                // A variant typed as itself, with a nonzero tag, a quarter of the time (VARIANT_ARG).
+                if (!tagged.isEmpty() && choices.oneIn(4)) type = tagged.get(choices.below(tagged.size()));
                 String name = freshName(false);
-                features.add(type.kind == Kind.SEALED ? Feature.SEALED_ARG : Feature.RECORD_ARG);
+                if (type.kind == Kind.SEALED) features.add(Feature.SEALED_ARG);
+                else if (type.family == null) features.add(Feature.RECORD_ARG);
+                else if (type.tag() != 0) features.add(Feature.VARIANT_ARG);
                 var parameter = new Var(name, type, false, false, true, false);
                 parameters.add(parameter);
                 scope = scope.with(parameter);
@@ -528,7 +609,8 @@ public final class G1 {
         }
         var body = new ArrayList<Stmt>();
         var updated = new ArrayList<String>();
-        for (int n = choices.below(5); n > 0; n--) {
+        boolean shadowing = profile.has(Gate.SHADOW_IN_LOOP_BRANCH);
+        for (int n = choices.below(5) + (shadowing ? 1 : 0); n > 0; n--) {
             int kind = choices.below(8);
             // Under SHADOW_IN_LOOP_BRANCH, more loops: #209 lives in a loop body.
             if (profile.has(Gate.SHADOW_IN_LOOP_BRANCH) && kind != 1 && choices.oneIn(2)) kind = 1;
@@ -550,7 +632,7 @@ public final class G1 {
             var then = branch(scope, result);
             body.add(new G1Ast.If(test, then, branch(scope, result)));
         } else {
-            body.add(new G1Ast.Return(expression(result, ctx(scope), EXPRESSION_DEPTH)));
+            body.add(new G1Ast.Return(expression(result, ctx(scope).preferring(shadowRead), EXPRESSION_DEPTH)));
         }
         return new G1Ast.Method(result, parameters, body);
     }
@@ -615,6 +697,21 @@ public final class G1 {
         return scope.with(new Var(name, type, false, accumulator, !accumulator, false));
     }
 
+    /**
+     * A local in a loop body: two times in three with the name of a field that no local hides and that the method
+     * has not used, which agrees on the base (D2, "a local shadowing a field directly in a loop body").
+     */
+    private Scope loopLocal(Scope scope, List<Stmt> into) {
+        var free = fields.stream().filter(f -> !methodNames.contains(f.name()) && readable(scope).contains(f)).toList();
+        if (free.isEmpty() || choices.oneIn(3)) return declaration(scope, into, false, null);
+        Type type = anyType();
+        String name = free.get(choices.below(free.size())).name();
+        methodNames.add(name);
+        into.add(new G1Ast.Declare(type, name, expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
+        features.add(Feature.FIELD_SHADOWED);
+        return scope.with(new Var(name, type, false, false, true, false));
+    }
+
     /** The scope of a declaration's initializer: the declared name hides a field of that name, unreadable. */
     private static Scope declaring(Scope scope, String name) {
         return scope.with(new Var(name, UNREADABLE, false, false, false, false));
@@ -622,8 +719,10 @@ public final class G1 {
 
     /** A method-level accumulator for a loop, of a declared type more often than not. */
     private Scope accumulator(Scope scope, List<Stmt> into) {
-        var values = valueTypes();
-        Type type = !values.isEmpty() && !choices.oneIn(3) ? values.get(choices.below(values.size())) : anyType();
+        Type type = !types.isEmpty() && !choices.oneIn(3) ? declaredType() : anyType();
+        // A variant accumulator a quarter of the time (VARIANT_ACCUMULATOR).
+        var variants = valueTypes().stream().filter(t -> t.family != null).toList();
+        if (!variants.isEmpty() && choices.oneIn(4)) type = variants.get(choices.below(variants.size()));
         String name = freshName(false);
         into.add(new G1Ast.Declare(type, name, expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
         if (isField(name)) features.add(Feature.FIELD_SHADOWED);
@@ -668,7 +767,7 @@ public final class G1 {
         boolean hasBreak = false;
         // A body with break contains no loop (reject-nested-loop-in-break-loop). Loop bodies with break and
         // conditional updates are gated (LOOP_BREAK_SHAPES, #254, #255).
-        boolean breakAware = choices.oneIn(3);
+        boolean breakAware = choices.oneIn(3) && !profile.has(Gate.SHADOW_IN_LOOP_BRANCH);
         boolean conditionalUpdates = !breakAware || profile.has(Gate.LOOP_BREAK_SHAPES);
         boolean hasIfUpdate = false;
         for (int n = 1 + choices.below(3); n > 0; n--) {
@@ -689,7 +788,10 @@ public final class G1 {
                     into.add(new G1Ast.BreakIf(condition(ctx(scope), EXPRESSION_DEPTH)));
                 }
                 case 5 -> loop(scope, into, updated, choices.oneIn(2));
-                default -> scope = declaration(scope, into, false, null);
+                default -> {
+                    scope = loopLocal(scope, into);
+                    if (isField(scope.locals().getLast().name())) features.add(Feature.LOOP_LOCAL_SHADOWS_FIELD);
+                }
             }
         }
         // A for-each that breaks must update an earlier variable (reject-break-in-for-each-without-accumulator).
@@ -742,10 +844,16 @@ public final class G1 {
         return candidates.isEmpty() ? null : candidates.get(choices.below(candidates.size()));
     }
 
-    /** A type other than {@code type}: another record with components if there is one, else another declared type. */
+    /**
+     * A type other than {@code type}: another record with the same component names if there is one (#209's own shape),
+     * else another record with components, else another declared type.
+     */
     private Type otherType(Type type) {
         var others = valueTypes().stream().filter(t -> t != type).toList();
         var records = others.stream().filter(t -> t.kind == Kind.RECORD && !t.components.isEmpty()).toList();
+        var names = type.components.stream().map(Component::name).sorted().toList();
+        var alike = records.stream().filter(t -> t.components.stream().map(Component::name).sorted().toList().equals(names)).toList();
+        if (!alike.isEmpty()) records = alike;
         if (!records.isEmpty()) others = records;
         return others.isEmpty() ? BIG : others.get(choices.below(others.size()));
     }
@@ -761,8 +869,9 @@ public final class G1 {
         }
         Var target = targets.get(choices.below(targets.size()));
         assigned.add(target.name());
-        if (target.type().isValue()) features.add(Feature.RECORD_ACCUMULATOR);
+        accumulatorFeatures(target);
         into.add(new G1Ast.Assign(target.name(), access(target.type(), ctx)));
+        shadowRead = target.name();
     }
 
     private void assignment(Scope scope, List<Stmt> into, List<String> assigned, String preferred) {
@@ -773,8 +882,13 @@ public final class G1 {
         }
         Var target = targets.get(choices.below(targets.size()));
         assigned.add(target.name());
-        if (target.type().isValue()) features.add(Feature.RECORD_ACCUMULATOR);
+        accumulatorFeatures(target);
         into.add(new G1Ast.Assign(target.name(), expression(target.type(), ctx(scope).preferring(preferred), EXPRESSION_DEPTH)));
+    }
+
+    private void accumulatorFeatures(Var target) {
+        if (target.type().isValue()) features.add(Feature.RECORD_ACCUMULATOR);
+        if (target.type().family != null) features.add(Feature.VARIANT_ACCUMULATOR);
     }
 
     // ---------------------------------------------------------------- expressions
@@ -835,12 +949,13 @@ public final class G1 {
     private Expr condition(Ctx ctx, int depth) {
         if (ctx.constant()) return new G1Ast.BoolConst(choices.oneIn(2));
         if (depth == 0 || choices.below(3) == 0) return atom(BOOL, ctx);
-        return switch (choices.below(8)) {
+        return switch (choices.below(10)) {
             case 0, 1 -> comparison(ctx, depth);
             case 2 -> new G1Ast.Logic(condition(ctx, depth - 1), "&&", condition(ctx.conditionally(), depth - 1));
             case 3 -> new G1Ast.Logic(condition(ctx, depth - 1), "||", condition(ctx.conditionally(), depth - 1));
             case 4 -> new G1Ast.Not(condition(ctx, depth - 1));
             case 5, 6 -> equality(ctx, depth);
+            case 7, 8 -> call(BOOL, ctx, depth);
             default -> atom(BOOL, ctx);
         };
     }
@@ -864,9 +979,12 @@ public final class G1 {
     private Expr equality(Ctx ctx, int depth) {
         var receivers = readable(ctx).stream().filter(v -> v.type().isValue()).toList();
         if (receivers.isEmpty()) return comparison(ctx, depth);
+        var familial = receivers.stream().filter(v -> v.type().kind == Kind.SEALED || v.type().family != null).toList();
+        if (!familial.isEmpty() && choices.oneIn(2)) receivers = familial;
         Var receiver = receivers.get(choices.below(receivers.size()));
-        Type type = receiver.type().family != null && choices.oneIn(2) ? receiver.type().family : receiver.type();
+        Type type = receiver.type().family != null && !choices.oneIn(3) ? receiver.type().family : receiver.type();
         features.add(Feature.RECORD_EQUALS);
+        if (type.kind == Kind.SEALED) features.add(Feature.FAMILY_EQUALS);
         Expr read = read(receiver);
         return new G1Ast.Equals(read, value(type, ctx, depth - 1));
     }
@@ -905,6 +1023,7 @@ public final class G1 {
         if (callable.isEmpty()) return atom(type, ctx);
         Helper helper = callable.get(choices.below(callable.size()));
         features.add(Feature.HELPER_CALL);
+        if (helper.result() == BOOL) features.add(Feature.BOOLEAN_HELPER_CALL);
         if (helper.traces()) traceSites++;
         var arguments = new ArrayList<Expr>();
         for (Var parameter : helper.parameters()) arguments.add(expression(parameter.type(), ctx, Math.max(0, depth - 1)));

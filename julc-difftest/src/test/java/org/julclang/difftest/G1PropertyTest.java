@@ -39,6 +39,8 @@ class G1PropertyTest {
 
     private static Coverage coverage = new Coverage();
     private static boolean quotasApply;
+    /** Set by the first failing try: shrinking calls then count towards no quota, and no quota is checked (F62). */
+    private static boolean failed;
     private static long started;
     private static int tries;
     private static String firstFailure;
@@ -59,6 +61,7 @@ class G1PropertyTest {
     void startCoverage() {
         coverage = new Coverage();
         quotasApply = false;
+        failed = false;
         started = System.nanoTime();
         tries = 0;
         firstFailure = null;
@@ -68,7 +71,7 @@ class G1PropertyTest {
     void checkCoverage() {
         System.out.println("G1 coverage\n" + coverage.report());
         if (firstFailure != null) System.out.println(firstFailure);
-        if (!quotasApply) return;
+        if (!quotasApply || failed) return;
         var failures = coverage.quotaFailures(QUOTA_FEATURES, MIN_PERCENT);
         if (!failures.isEmpty()) fail("Coverage quotas not met:\n" + String.join("\n", failures) + "\n" + coverage.report());
     }
@@ -94,7 +97,30 @@ class G1PropertyTest {
     @Property(tries = 150, seed = "20261030", afterFailure = AfterFailureMode.PREVIOUS_SEED)
     @Tag("rediscovery")
     void generatedProgramsAgreeUnderProfile(@ForAll("plans") List<Integer> plan, @ForAll("inputs") List<Integer> inputs) {
-        check("G1PropertyTest rediscovery", plan, inputs, profile(System.getProperty("difftest.profile", "DEFAULT")));
+        var profile = profile(System.getProperty("difftest.profile", "DEFAULT"));
+        // -Pdifftest.form=runtime or =value looks past other forms of the defect (review of M2, F61).
+        String form = System.getProperty("difftest.form", "any");
+        if (!form.equals("any") && otherForm(plan, inputs, profile, form)) return;
+        check("G1PropertyTest rediscovery", plan, inputs, profile);
+    }
+
+    /**
+     * Whether a case that disagrees does so in another form than {@code form}: {@code runtime}, where some
+     * configuration runs and disagrees (not only rejections); or {@code value}, where the JVM and some configuration
+     * both return a value.
+     */
+    private static boolean otherForm(List<Integer> plan, List<Integer> inputs, G1.Profile profile, String form) {
+        var program = G1.decode(plan, profile);
+        var report = CampaignVerifier.RUNNER.run(new DiffCase("g1 " + plan, program.source(), "Probe", "m",
+                program.arguments(inputs), program.tags(), program.profile().text()));
+        var disagreeing = report.results().values().stream().filter(r -> r.verdict().kind() != Verdict.Kind.AGREE).toList();
+        if (disagreeing.isEmpty()) return false;
+        return switch (form) {
+            case "runtime" -> disagreeing.stream().allMatch(r -> r.verdict().kind() == Verdict.Kind.REJECTED);
+            case "value" -> disagreeing.stream().noneMatch(r -> r.jvm() instanceof Observation.Value
+                    && r.uplc() instanceof Observation.Value);
+            default -> throw new IllegalArgumentException("difftest.form is any, runtime or value: " + form);
+        };
     }
 
     /** A named profile ({@code DEFAULT}, {@code REDISCOVER_209}, {@code _280}, {@code _146}) or a profile's text. */
@@ -119,8 +145,10 @@ class G1PropertyTest {
             if (firstFailure == null) {
                 firstFailure = "first failure at try " + tries + " after " + (System.nanoTime() - started) / 1_000_000 + " ms";
             }
+            failed = true;
             throw e;
         }
+        if (failed) return;
         Statistics.label("allowed divergence")
                 .collect(outcome.explained().isEmpty() ? "none" : String.join(",", outcome.explained()));
         coverage.record(KnownDivergences.names(program.features()), outcome.verdicts());

@@ -1,5 +1,5 @@
 format: 3
-name: the #209 reproducer with the shadowing local renamed apart agrees (counterfactual)
+name: the G1 r1 #209 rejection reproducer with the shadowing local renamed apart agrees (counterfactual)
 class: Probe
 method: m
 profile: G1 r1 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON
@@ -10,7 +10,8 @@ expect: AGREE
 note: ADR-066 D10.1 cause check for #209: the G1 campaign under REDISCOVER_209 found its reproducer rejected with
 note: JULC0055 at every level (a branch local BigInteger f, shadowing the field R0 f in a loop body, keeps its type
 note: for the read f.v() after the if). Renaming the local apart changes only the trigger; the JVM observation is
-note: unchanged and UPLC agrees. Provisional until #209 is fixed; the reproducer is recorded in ADR-066, M2 results.
+note: unchanged and UPLC agrees. Found under G1 r1, whose REDISCOVER_209 profile no longer gives this form in G1 r2.
+note: Provisional until #209 is fixed; the reproducer is recorded in ADR-066, M2 results.
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

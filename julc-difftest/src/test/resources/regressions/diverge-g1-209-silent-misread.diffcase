@@ -1,0 +1,63 @@
+format: 3
+name: a branch local shadowing a field in a loop makes a later field read return another component (#209)
+class: Probe
+method: m
+profile: G1 r2 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON
+arg: 02
+arg: 05
+arg: 9f0100ff
+expect: DIVERGE #209 Value/Value
+jvm: Value d8799f2020ff []
+uplc: Value d8799f0202ff []
+note: Rediscovered by the G1 r2 campaign under REDISCOVER_209 with -Pdifftest.form=value (ADR-066 D10.1, M2), the
+note: shrunk reproducer as found: #209's own shape. R0(v, w) and R1(w, v) have the same components in other orders; the
+note: branch local R0 x keeps its type after the if, so x.w() on the field R1 x reads index 1, which is R1's v: UPLC
+note: returns R0(2, 2) where Java returns R0(-1, -1), silently, at every level. Provisional until #209 is fixed.
+found.by: G1PropertyTest rediscovery
+found.generator: G1 r2
+found.plan: 0,0,0,0,0,0,0,0,0,1,0,0,0,3,0,0,1,0,2,1,1,15,109,308,0,96,260,23,4,684,280,30,249,26,0,694,7,34,159,33,756,857,284,112,21,10,739,306,36,24,308,896,836,58,165,4,25,120,5,5,243,999,90,28,13,35,753,2,6,6,3,712,110,31,589,58,227,264,2,879,7,1,414,92,204,49,193,861,10,27,457,125,31,4,33,717,1,66,87,211,291,107,929,239,91,8,5,595,268,698,957,18,35
+found.inputs: 8,37,27,20,32,80,90,13,326,715,36,285,723,887,47,89,215,493,375,28,2,11,32,35,199,280,169,34,9,82,7,970,74,8,30,0,859,744,874,13
+found.seed: 20261030
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-37-gf555b5e7cee9-dirty
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    record R0(BigInteger v, BigInteger w) {}
+    record R1(BigInteger w, BigInteger v) {}
+
+    static final R1 x = new R1(BigInteger.valueOf(-1), BigInteger.valueOf(2));
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        R1 v = x;
+        BigInteger f = x.w();
+        long i0 = 0;
+        while (i0 < 0) {
+            R0 x = new R0(v.w(), BigInteger.valueOf(5));
+            f = v.v();
+            i0 = i0 + 1;
+        }
+        long i1 = 0;
+        while (i1 < 3) {
+            if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
+                R0 x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+                v = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+            }
+            f = x.w();
+            v = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+            v = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+            i1 = i1 + 1;
+        }
+        return new R0(f, f);
+    }
+}

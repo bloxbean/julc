@@ -28,28 +28,42 @@ class G1RediscoveryTest {
         assertTrue(changed.all(Verdict.Kind.AGREE), changed.describe());
     }
 
+    private void pinned(String name, Verdict.Kind defect) {
+        counterfactualAgrees(saved("diverge-g1-" + name), saved("agree-g1-" + name + "-counterfactual"), defect);
+    }
+
     /** #280: the helper gets an unused parameter. */
     @Test
     void zeroArgumentHelper() {
-        counterfactualAgrees(saved("diverge-g1-280-uncalled-zero-arg-helper"), saved("agree-g1-280-counterfactual"),
-                Verdict.Kind.MISMATCH);
+        pinned("280-uncalled-zero-arg-helper", Verdict.Kind.MISMATCH);
     }
 
     /** #146: the traced operand is bound to a local before the comparison. */
     @Test
     void tracedComparisonOperand() {
-        counterfactualAgrees(saved("diverge-g1-146-traced-compare-operand"), saved("agree-g1-146-counterfactual"),
-                Verdict.Kind.MISMATCH);
+        pinned("146-traced-compare-operand", Verdict.Kind.MISMATCH);
+    }
+
+    /** #209, runtime form: the branch local is renamed apart; UPLC fails reading the field through the wrong layout. */
+    @Test
+    void localShadowingAFieldMakesAReadFail() {
+        pinned("209-runtime-misread", Verdict.Kind.MISMATCH);
+    }
+
+    /** #209, silent form (the issue's own shape): the read returns another component of the same type. */
+    @Test
+    void localShadowingAFieldMakesAReadReturnAnotherComponent() {
+        pinned("209-silent-misread", Verdict.Kind.MISMATCH);
     }
 
     /**
-     * #209: the counterfactual renames the branch local apart; the reproducer is that program with the local named
-     * like the field {@code R0 f}. JuLC keeps the local's type {@code BigInteger} for {@code f.v()} after the
-     * {@code if} and rejects the program, which Java accepts.
+     * #209, rejection form, found under G1 r1: the counterfactual renames the branch local apart; the reproducer is
+     * that program with the local named like the field {@code R0 f}. JuLC keeps the local's type {@code BigInteger} for
+     * {@code f.v()} after the {@code if} and rejects the program, which Java accepts.
      */
     @Test
-    void localShadowingAFieldInALoopBranch() {
-        var counterfactual = saved("agree-g1-209-counterfactual");
+    void localShadowingAFieldMakesAReadUnresolvable() {
+        var counterfactual = saved("agree-g1-209-rejection-counterfactual");
         String source = counterfactual.source().replace("BigInteger f1 = ", "BigInteger f = ");
         assertNotEquals(counterfactual.source(), source);
         var reproducer = new DiffCase("#209 reproducer", source, counterfactual.className(), counterfactual.method(),

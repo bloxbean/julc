@@ -80,16 +80,24 @@ class G1GatesTest {
         }
     }
 
+    /** The source reading sees a trace in a {@code signum} receiver as well as in a {@code compareTo} operand. */
+    @Test
+    void theSourceReadingCoversSignumReceivers() {
+        String traced = "    public static boolean m(BigInteger a) {\n        return t(\"k0\", a).signum() > 0;\n    }\n";
+        assertEquals(Set.of(G1.Feature.TRACE_IN_COMPARISON), GatedShapes.in(traced));
+        assertEquals(Set.of(), GatedShapes.in(traced.replace("t(\"k0\", a)", "a")));
+    }
+
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r1 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+        assertEquals("G1 r2 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
                 + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON", G1.Profile.DEFAULT.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280,
                 G1.Profile.REDISCOVER_146, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
             assertEquals(profile, G1.Profile.parse(profile.text()));
         }
         String text = G1.Profile.DEFAULT.text();
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("-GUARDS ", ""), text + " -GUARDS",
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r2", "G1 r1"), text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }
@@ -146,7 +154,11 @@ class G1GatesTest {
             return false;
         }
 
-        /** The receiver and argument of every {@code .compareTo(…)}. */
+        /**
+         * The receiver and argument of every {@code .compareTo(…)}, and the receiver of every {@code .signum()}: the
+         * operations whose lowering evaluates an operand more than once (#146). G1 r2 emits no {@code signum}; it is
+         * read here so that a grammar that starts to emit it stays gated.
+         */
         static List<String> comparisonOperands(String source) {
             var operands = new ArrayList<String>();
             int at = source.indexOf(".compareTo(");
@@ -156,6 +168,11 @@ class G1GatesTest {
                 operands.add(source.substring(open + 1, close));
                 operands.add(source.substring(receiverStart(source, at), at));
                 at = source.indexOf(".compareTo(", at + 1);
+            }
+            at = source.indexOf(".signum()");
+            while (at >= 0) {
+                operands.add(source.substring(receiverStart(source, at), at));
+                at = source.indexOf(".signum()", at + 1);
             }
             return operands;
         }

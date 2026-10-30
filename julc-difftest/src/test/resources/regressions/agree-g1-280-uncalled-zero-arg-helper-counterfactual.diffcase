@@ -1,14 +1,14 @@
 format: 3
-name: the #280 reproducer with an unused helper parameter agrees (counterfactual)
+name: the #280 reproducer 280-uncalled-zero-arg-helper with its trigger removed agrees (counterfactual)
 class: Probe
 method: m
-profile: G1 r1 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING +ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON
+profile: G1 r2 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING +ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON
 arg: 25
 arg: 25
 arg: 80
 expect: AGREE
-note: ADR-066 D10.1 cause check for #280: only the trigger changes (the helper gets an unused parameter); the JVM
-note: observation is unchanged and UPLC agrees.
+note: ADR-066 D10.1 cause check for #280: only the trigger changes (the helper gets an unused parameter; it has no
+note: call site to pass an argument at); the JVM observation is unchanged and UPLC agrees.
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;
@@ -24,7 +24,11 @@ public class Probe {
         return Builtins.unIData(Builtins.error());
     }
 
-    static BigInteger v(BigInteger u) {
+    static BigInteger v(BigInteger v) {
+        return BigInteger.valueOf(-5);
+    }
+
+    static BigInteger w(BigInteger u) {
         return t("k0", BigInteger.valueOf(-5));
     }
 
