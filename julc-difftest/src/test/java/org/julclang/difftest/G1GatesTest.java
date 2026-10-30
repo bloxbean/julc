@@ -14,6 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -67,7 +68,62 @@ class G1GatesTest {
         });
     }
 
-    /** The switches of M3 are defined, printed and parsed, and change no program in G1 r1. */
+    private static final Pattern RECORD = Pattern.compile("(?m)^    record (R\\d)\\((.*)\\) \\{}$");
+
+    /** Whether the program declares two standalone records with the same components in different orders (#209's steer). */
+    static boolean mirrored(String source) {
+        var records = new ArrayList<List<String>>();
+        Matcher record = RECORD.matcher(source);
+        while (record.find()) records.add(List.of(record.group(2).split(", ")));
+        return records.size() == 2 && !records.get(0).equals(records.get(1)) && records.get(0).size() > 1
+                && records.get(0).stream().sorted().toList().equals(records.get(1).stream().sorted().toList());
+    }
+
+    /** The share of programs with a break, a loop, a zero-parameter helper and mirrored records. */
+    private static double[] shares(G1.Profile profile) {
+        var random = new Random(20261039);
+        double[] counts = new double[4];
+        int plans = 4000;
+        for (int i = 0; i < plans; i++) {
+            var program = G1.decode(plan(random), profile);
+            if (program.features().contains(G1.Feature.BREAK)) counts[0]++;
+            if (program.features().contains(G1.Feature.LOOP)) counts[1]++;
+            if (ZERO_ARG.matcher(program.source()).find()) counts[2]++;
+            if (mirrored(program.source())) counts[3]++;
+        }
+        for (int k = 0; k < counts.length; k++) counts[k] /= plans;
+        return counts;
+    }
+
+    private static final Pattern ZERO_ARG = Pattern.compile("(?m)^    static \\w+ \\w+\\(\\) \\{$");
+
+    /**
+     * A gate alone only allows its construct (review of M2, F65): turning it on keeps the default distribution of
+     * unrelated shapes, so that D6's one-line change after a fix does not narrow the default campaign. The rediscovery
+     * profiles' steering is what changes it.
+     */
+    @Test
+    void aGateAloneKeepsTheDefaultDistribution() {
+        double[] plain = shares(G1.Profile.DEFAULT);
+        String[] names = {"break", "loop", "zero-parameter helper", "mirrored records"};
+        for (G1.Gate gate : List.of(G1.Gate.SHADOW_IN_LOOP_BRANCH, G1.Gate.ZERO_ARG_HELPERS, G1.Gate.TRACE_IN_COMPARISON,
+                G1.Gate.LOOP_BREAK_SHAPES)) {
+            double[] gated = shares(G1.Profile.DEFAULT.with(gate));
+            for (int k = 0; k < names.length; k++) {
+                // A zero-parameter helper is the ZERO_ARG_HELPERS construct itself.
+                if (k == 2 && gate == G1.Gate.ZERO_ARG_HELPERS) continue;
+                assertTrue(Math.abs(gated[k] - plain[k]) < 0.02, gate + " moves the share of " + names[k] + " from " + plain[k]
+                        + " to " + gated[k]);
+            }
+        }
+        double[] steered = shares(G1.Profile.REDISCOVER_209);
+        assertTrue(steered[3] > 0.9 && steered[0] < plain[0] / 2, "the #209 steer: " + steered[3] + " mirrored, " + steered[0] + " break");
+        assertTrue(shares(G1.Profile.REDISCOVER_280)[2] > shares(G1.Profile.DEFAULT.with(G1.Gate.ZERO_ARG_HELPERS))[2],
+                "the #280 steer generates more zero-parameter helpers than the gate alone");
+        assertNotEquals(G1.Profile.REDISCOVER_209, G1.Profile.DEFAULT.with(G1.Gate.SHADOW_IN_LOOP_BRANCH));
+    }
+
+    /** The switches of M3 are defined, printed and parsed, and change no program in G1 r3. */
     @Test
     void inertGatesChangeNothing() {
         var random = new Random(20261032);
@@ -90,14 +146,17 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r2 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+        assertEquals("G1 r3 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
                 + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON", G1.Profile.DEFAULT.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280,
                 G1.Profile.REDISCOVER_146, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
             assertEquals(profile, G1.Profile.parse(profile.text()));
         }
         String text = G1.Profile.DEFAULT.text();
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r2", "G1 r1"), text.replace("-GUARDS ", ""), text + " -GUARDS",
+        assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209"),
+                G1.Profile.REDISCOVER_209.text());
+        assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_209));
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r3", "G1 r2"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }

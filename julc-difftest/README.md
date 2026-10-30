@@ -15,7 +15,7 @@ It then compares the two results. A difference in value, outcome kind or trace s
 ./gradlew :julc-difftest:nightlyDiffTest               # 3000 G0 and 3000 G1 programs with fresh seeds
 ./gradlew :julc-difftest:test -Pdifftest.cases=<dir>   # replay another directory of .diffcase files
 ./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_209   # G1 under a historical profile
-./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_209 -Pdifftest.form=value   # only value mismatches
+./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_209 -Pdifftest.form=value   # only value mismatches (or =failure, =runtime)
 ```
 
 ## Generated programs

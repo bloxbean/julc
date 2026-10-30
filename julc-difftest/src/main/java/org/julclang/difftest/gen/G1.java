@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r2): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r3): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures. The
  * {@code switch} productions are M3's. The productions build a typed AST ({@link G1Ast}), which {@link G1Printer}
@@ -59,7 +59,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r2";
+    public static final String VERSION = "G1 r3";
 
     /** The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open. */
     public enum Gate {
@@ -85,48 +85,99 @@ public final class G1 {
          */
         TRACE_IN_COMPARISON;
 
-        /** The switches G1 r2 defines but does not implement yet: they change no program until M3. */
+        /** The switches G1 r3 defines but does not implement yet: they change no program until M3. */
         public static final Set<Gate> INERT =
                 Collections.unmodifiableSet(EnumSet.of(GUARDS, RECORD_PATTERNS, CROSS_TYPE_EQUALS, SHARED_VARIANT,
                         ASSIGN_PATTERN_BINDING));
     }
 
     /**
-     * A generation profile: {@link #VERSION} and the value of every {@link Gate} (ADR-066 D6). Its text, such as
-     * {@code G1 r2 -GUARDS -RECORD_PATTERNS … +ZERO_ARG_HELPERS …}, is printed in every record and replayed.
+     * Rediscovery emphasis (ADR-066 D10.1; review of M2, F65): a historical profile turns its gate on and also steers
+     * generation towards the defect's shape, so that the PR budget finds it. A gate alone only allows its construct
+     * and keeps the default distribution, so that turning a gate on in the default profile after a fix (D6) does not
+     * narrow the default campaign. Each steer requires its gate.
      */
-    public record Profile(Set<Gate> on) {
+    public enum Steer {
+        /** #209's own shape: two records with the same components in other orders, more loops, no break. */
+        ISSUE_209(Gate.SHADOW_IN_LOOP_BRANCH),
+        /** Half of the helpers without parameters, most of their bodies traced. */
+        ISSUE_280(Gate.ZERO_ARG_HELPERS),
+        /** A third of the comparisons trace their left operand. */
+        ISSUE_146(Gate.TRACE_IN_COMPARISON);
+
+        final Gate gate;
+
+        Steer(Gate gate) {
+            this.gate = gate;
+        }
+
+        String label() {
+            return name().substring("ISSUE_".length());
+        }
+    }
+
+    /**
+     * A generation profile: {@link #VERSION}, the value of every {@link Gate} (ADR-066 D6) and its {@link Steer}s. Its
+     * text, such as {@code G1 r3 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
+     */
+    public record Profile(Set<Gate> on, Set<Steer> steering) {
 
         /** Every gate off: the campaigns' profile while every gated defect is open. */
         public static final Profile DEFAULT = new Profile(EnumSet.noneOf(Gate.class));
         /** The historical profile that rediscovers #209 (ADR-066 D10.1). */
-        public static final Profile REDISCOVER_209 = DEFAULT.with(Gate.SHADOW_IN_LOOP_BRANCH);
+        public static final Profile REDISCOVER_209 = DEFAULT.with(Gate.SHADOW_IN_LOOP_BRANCH).steered(Steer.ISSUE_209);
         /** The historical profile that rediscovers #280 (ADR-066 D10.1). */
-        public static final Profile REDISCOVER_280 = DEFAULT.with(Gate.ZERO_ARG_HELPERS);
+        public static final Profile REDISCOVER_280 = DEFAULT.with(Gate.ZERO_ARG_HELPERS).steered(Steer.ISSUE_280);
         /** The historical profile that rediscovers #146's double evaluation of a traced operand (ADR-066 D10.1). */
-        public static final Profile REDISCOVER_146 = DEFAULT.with(Gate.TRACE_IN_COMPARISON);
+        public static final Profile REDISCOVER_146 = DEFAULT.with(Gate.TRACE_IN_COMPARISON).steered(Steer.ISSUE_146);
 
         public Profile {
-            var copy = EnumSet.noneOf(Gate.class);
-            copy.addAll(on);
-            on = Collections.unmodifiableSet(copy);
+            var gates = EnumSet.noneOf(Gate.class);
+            gates.addAll(on);
+            on = Collections.unmodifiableSet(gates);
+            var steers = EnumSet.noneOf(Steer.class);
+            steers.addAll(steering);
+            for (Steer steer : steers) {
+                if (!gates.contains(steer.gate)) throw new HarnessException("steer=" + steer.label() + " needs +" + steer.gate);
+            }
+            steering = Collections.unmodifiableSet(steers);
+        }
+
+        /** A profile without steering. */
+        public Profile(Set<Gate> on) {
+            this(on, EnumSet.noneOf(Steer.class));
         }
 
         public boolean has(Gate gate) {
             return on.contains(gate);
         }
 
+        public boolean steers(Steer steer) {
+            return steering.contains(steer);
+        }
+
         public Profile with(Gate gate) {
             var gates = EnumSet.noneOf(Gate.class);
             gates.addAll(on);
             gates.add(gate);
-            return new Profile(gates);
+            return new Profile(gates, steering);
         }
 
-        /** {@link #VERSION} followed by {@code +NAME} or {@code -NAME} for every gate, in declaration order. */
+        public Profile steered(Steer steer) {
+            var steers = EnumSet.noneOf(Steer.class);
+            steers.addAll(steering);
+            steers.add(steer);
+            return new Profile(on, steers);
+        }
+
+        /**
+         * {@link #VERSION}, then {@code +NAME} or {@code -NAME} for every gate in declaration order, then
+         * {@code steer=N} for every steer.
+         */
         public String text() {
             var text = new StringBuilder(VERSION);
             for (Gate gate : Gate.values()) text.append(' ').append(has(gate) ? '+' : '-').append(gate.name());
+            for (Steer steer : steering) text.append(" steer=").append(steer.label());
             return text.toString();
         }
 
@@ -135,7 +186,18 @@ public final class G1 {
             if (!text.startsWith(VERSION + " ")) throw new HarnessException("Not a " + VERSION + " profile: " + text);
             var on = EnumSet.noneOf(Gate.class);
             var seen = EnumSet.noneOf(Gate.class);
+            var steers = EnumSet.noneOf(Steer.class);
             for (String token : text.substring(VERSION.length()).trim().split("\\s+")) {
+                if (token.startsWith("steer=")) {
+                    try {
+                        if (!steers.add(Steer.valueOf("ISSUE_" + token.substring("steer=".length())))) {
+                            throw new HarnessException("Steer " + token + " twice in " + text);
+                        }
+                    } catch (IllegalArgumentException e) {
+                        throw new HarnessException("Unknown steer " + token + " in " + text);
+                    }
+                    continue;
+                }
                 if (token.length() < 2 || token.charAt(0) != '+' && token.charAt(0) != '-') {
                     throw new HarnessException("Not a gate: " + token + " in " + text);
                 }
@@ -149,7 +211,7 @@ public final class G1 {
                 if (token.charAt(0) == '+') on.add(gate);
             }
             if (!seen.equals(EnumSet.allOf(Gate.class))) throw new HarnessException("A profile names every gate: " + text);
-            return new Profile(on);
+            return new Profile(on, steers);
         }
 
         @Override
@@ -168,6 +230,8 @@ public final class G1 {
         VARIANT_ARG, VARIANT_RESULT,
         /** An accumulator of a variant type, assigned in a loop. */
         VARIANT_ACCUMULATOR,
+        /** A record component typed as a variant with a nonzero tag. */
+        VARIANT_COMPONENT,
         /** A call of a helper that returns {@code boolean}. */
         BOOLEAN_HELPER_CALL,
         /** A family whose {@code permits} order differs from its variants' declaration order and name order. */
@@ -384,12 +448,12 @@ public final class G1 {
     /** Zero to two standalone records and zero to two sealed families of one to three variants, acyclic. */
     private void declareTypes() {
         int records = 0, families = 0;
-        if (profile.has(Gate.SHADOW_IN_LOOP_BRANCH)) {
+        if (profile.steers(Steer.ISSUE_209)) {
             // #209's own shape: two records with the same components in different orders (see mirror).
             Type first = new Type(Kind.RECORD, "R0");
             var names = new ArrayList<>(POOL);
             for (int i = 2 + choices.below(2); i > 0; i--) {
-                first.components.add(new Component(names.remove(choices.below(names.size())), choices.oneIn(4) ? BOOL : BIG));
+                first.components.add(new Component(names.remove(choices.below(names.size())), choices.oneIn(6) ? BOOL : BIG));
             }
             first.depth = 1;
             Type second = new Type(Kind.RECORD, "R1");
@@ -410,8 +474,11 @@ public final class G1 {
                     components(variant);
                     created.add(variant);
                 }
-                // The permits order, and so the tags, is a permutation of the creation order (ADR-066 D3).
-                sealed.variants.addAll(permuted(created));
+                // The permits order, and so the tags, is a permutation of the creation (and name) order, never that
+                // order itself, so that tags follow neither the names nor, mostly, the declarations (ADR-066 D3).
+                var permits = permuted(created);
+                if (permits.size() > 1 && permits.equals(created)) permits.add(permits.removeFirst());
+                sealed.variants.addAll(permits);
                 sealed.depth = created.stream().mapToInt(t -> t.depth).max().orElse(1);
                 types.add(sealed);
                 families++;
@@ -427,7 +494,11 @@ public final class G1 {
         if (families == 2) features.add(Feature.TWO_FAMILIES);
     }
 
-    /** Zero to three components of {@code BigInteger}, {@code boolean} or an earlier type, names from the pool. */
+    /**
+     * Zero to three components of {@code BigInteger}, {@code boolean} or an earlier type, names from the pool. Earlier
+     * types include the variants of families already declared, so types stay acyclic; a quarter of the components
+     * are a nonzero-tag variant when one fits the depth limit (VARIANT_COMPONENT, review of M2, F80).
+     */
     private void components(Type record) {
         int count = Math.min(3, choices.below(6));
         if (count == 0) features.add(Feature.ZERO_COMPONENTS);
@@ -436,6 +507,7 @@ public final class G1 {
         // A standalone record often holds an earlier standalone record with components: chained reads need one.
         var inner = types.stream().filter(t -> t.kind == Kind.RECORD && t.depth < 2 && !t.components.isEmpty()).toList();
         boolean nest = record.family == null && !inner.isEmpty() && count > 0 && choices.oneIn(2);
+        var tagged = valueTypes().stream().filter(t -> t.family != null && t.tag() != 0 && t.depth < 2).toList();
         for (int i = 0; i < count; i++) {
             var candidates = new ArrayList<>(List.of(BIG, BIG, BOOL));
             if (i == 0 && nest) candidates = new ArrayList<>(inner);
@@ -444,8 +516,13 @@ public final class G1 {
                 candidates.addAll(List.of(type, type));
                 // A standalone record inside a record gives chained reads (CHAINED_ACCESS).
                 if (type.kind == Kind.RECORD) candidates.addAll(List.of(type, type));
+                if (type.kind == Kind.SEALED) {
+                    for (Type variant : type.variants) if (variant.depth < 2) candidates.add(variant);
+                }
             }
             Type type = candidates.get(choices.below(candidates.size()));
+            if (!(i == 0 && nest) && !tagged.isEmpty() && choices.oneIn(4)) type = tagged.get(choices.below(tagged.size()));
+            if (type.family != null && type.tag() != 0) features.add(Feature.VARIANT_COMPONENT);
             if (type.kind == Kind.RECORD) features.add(Feature.NESTED_RECORD);
             if (type.kind == Kind.SEALED) features.add(Feature.SEALED_COMPONENT);
             if (type.isValue()) depth = Math.max(depth, type.depth + 1);
@@ -456,7 +533,7 @@ public final class G1 {
     }
 
     /**
-     * Under SHADOW_IN_LOOP_BRANCH, #209's own shape: a second record with the first one's components in another
+     * Steered to #209 (ISSUE_209), the issue's own shape: a second record with the first one's components in another
      * order, so that a component read through the wrong type reads a component of the same name at another index,
      * and with components of the same type, the wrong value silently.
      */
@@ -525,8 +602,8 @@ public final class G1 {
     /** Zero to two {@code static final} fields, named from the pool, each initialized without calls of the class. */
     private void declareFields() {
         var names = new ArrayList<>(POOL);
-        // Under SHADOW_IN_LOOP_BRANCH, #209 needs a field of a declared type to shadow.
-        boolean shadowing = profile.has(Gate.SHADOW_IN_LOOP_BRANCH) && !valueTypes().isEmpty();
+        // Steered to #209, a field of one of the two records to shadow.
+        boolean shadowing = profile.steers(Steer.ISSUE_209);
         for (int n = shadowing ? 1 + choices.below(2) : choices.below(3); n > 0; n--) {
             Type type = shadowing ? types.get(choices.below(2)) : !types.isEmpty() && choices.oneIn(2) ? declaredType() : BIG;
             String name = names.remove(choices.below(names.size()));
@@ -540,18 +617,22 @@ public final class G1 {
         }
     }
 
-    /** The accumulator #209's composition last assigned from a field read, which the result then prefers. */
+    /** The accumulator #209's composition last assigned from a field read, which a result steered to #209 prefers. */
     private String shadowRead;
 
     /** How many field reads expressions have generated, to tell a field initialized from another. */
     private int fieldReads;
 
-    /** Zero to two helpers of one to three parameters (zero under ZERO_ARG_HELPERS), each calling only earlier ones. */
+    /**
+     * Zero to two helpers of one to three parameters, each calling only earlier ones. Under ZERO_ARG_HELPERS a quarter
+     * of them have none, and half of them steered to #280.
+     */
     private void declareHelpers() {
         var names = new ArrayList<>(POOL);
         for (int n = choices.below(3); n > 0; n--) {
             String name = names.remove(choices.below(names.size()));
-            int arity = profile.has(Gate.ZERO_ARG_HELPERS) && choices.oneIn(2) ? 0 : 1 + choices.below(3);
+            int arity = profile.steers(Steer.ISSUE_280) ? (choices.oneIn(2) ? 0 : 1 + choices.below(3))
+                    : profile.has(Gate.ZERO_ARG_HELPERS) ? choices.below(4) : 1 + choices.below(3);
             var parameters = new ArrayList<Var>();
             var parameterNames = new ArrayList<>(POOL);
             for (int i = 0; i < arity; i++) {
@@ -566,8 +647,8 @@ public final class G1 {
             Expr body = expression(result, ctx, EXPRESSION_DEPTH);
             if (arity == 0) {
                 features.add(Feature.ZERO_ARG_HELPER);
-                // #280 shows only when the body does something observable at script start.
-                if (result == BIG && !choices.oneIn(4)) body = trace(body);
+                // Steered to #280, whose defect shows only when the body does something observable at script start.
+                if (profile.steers(Steer.ISSUE_280) && result == BIG && !choices.oneIn(4)) body = trace(body);
             }
             helperDeclarations.add(new G1Ast.Helper(name, parameters, result, body));
             helpers.add(new Helper(name, parameters, result, traceSites > traced));
@@ -609,11 +690,11 @@ public final class G1 {
         }
         var body = new ArrayList<Stmt>();
         var updated = new ArrayList<String>();
-        boolean shadowing = profile.has(Gate.SHADOW_IN_LOOP_BRANCH);
+        boolean shadowing = profile.steers(Steer.ISSUE_209);
         for (int n = choices.below(5) + (shadowing ? 1 : 0); n > 0; n--) {
             int kind = choices.below(8);
-            // Under SHADOW_IN_LOOP_BRANCH, more loops: #209 lives in a loop body.
-            if (profile.has(Gate.SHADOW_IN_LOOP_BRANCH) && kind != 1 && choices.oneIn(2)) kind = 1;
+            // Steered to #209, more loops: #209 lives in a loop body.
+            if (shadowing && kind != 1 && choices.oneIn(2)) kind = 1;
             switch (kind) {
                 case 0 -> scope = declaration(scope, body, true, null);
                 case 1, 2, 3 -> {
@@ -632,7 +713,8 @@ public final class G1 {
             var then = branch(scope, result);
             body.add(new G1Ast.If(test, then, branch(scope, result)));
         } else {
-            body.add(new G1Ast.Return(expression(result, ctx(scope).preferring(shadowRead), EXPRESSION_DEPTH)));
+            String preferred = profile.steers(Steer.ISSUE_209) ? shadowRead : null;
+            body.add(new G1Ast.Return(expression(result, ctx(scope).preferring(preferred), EXPRESSION_DEPTH)));
         }
         return new G1Ast.Method(result, parameters, body);
     }
@@ -720,9 +802,9 @@ public final class G1 {
     /** A method-level accumulator for a loop, of a declared type more often than not. */
     private Scope accumulator(Scope scope, List<Stmt> into) {
         Type type = !types.isEmpty() && !choices.oneIn(3) ? declaredType() : anyType();
-        // A variant accumulator a quarter of the time (VARIANT_ACCUMULATOR).
+        // A variant accumulator half of the time (VARIANT_ACCUMULATOR).
         var variants = valueTypes().stream().filter(t -> t.family != null).toList();
-        if (!variants.isEmpty() && choices.oneIn(4)) type = variants.get(choices.below(variants.size()));
+        if (!variants.isEmpty() && choices.oneIn(2)) type = variants.get(choices.below(variants.size()));
         String name = freshName(false);
         into.add(new G1Ast.Declare(type, name, expression(type, ctx(declaring(scope, name)), EXPRESSION_DEPTH)));
         if (isField(name)) features.add(Feature.FIELD_SHADOWED);
@@ -767,12 +849,12 @@ public final class G1 {
         boolean hasBreak = false;
         // A body with break contains no loop (reject-nested-loop-in-break-loop). Loop bodies with break and
         // conditional updates are gated (LOOP_BREAK_SHAPES, #254, #255).
-        boolean breakAware = choices.oneIn(3) && !profile.has(Gate.SHADOW_IN_LOOP_BRANCH);
+        boolean breakAware = choices.oneIn(3) && !profile.steers(Steer.ISSUE_209);
         boolean conditionalUpdates = !breakAware || profile.has(Gate.LOOP_BREAK_SHAPES);
         boolean hasIfUpdate = false;
         for (int n = 1 + choices.below(3); n > 0; n--) {
             int kind = choices.below(7);
-            if (kind <= 1 && profile.has(Gate.SHADOW_IN_LOOP_BRANCH) && choices.oneIn(2)) kind = 2;
+            if (kind <= 1 && profile.steers(Steer.ISSUE_209) && choices.oneIn(2)) kind = 2;
             if (kind == 3 && !breakAware) kind = 0;
             if (kind == 2 && !conditionalUpdates) kind = 1;
             if (kind == 5 && (breakAware || scope.loopDepth() >= MAX_LOOP_DEPTH)) kind = 0;
@@ -809,9 +891,11 @@ public final class G1 {
         var then = new ArrayList<Stmt>();
         Scope branch = scope;
         String shadowed = null;
+        // Under the gate a branch local may shadow a field, half of the time it can; steered to #209, every time.
         Var field = profile.has(Gate.SHADOW_IN_LOOP_BRANCH) ? shadowable(scope) : null;
-        if (field != null || choices.oneIn(3)) {
-            if (field != null) {
+        boolean steered = profile.steers(Steer.ISSUE_209);
+        if (steered && field != null || choices.oneIn(3)) {
+            if (field != null && (steered || choices.oneIn(2))) {
                 Type type = otherType(field.type());
                 methodNames.add(field.name());
                 then.add(new G1Ast.Declare(type, field.name(), expression(type, ctx(declaring(scope, field.name())), EXPRESSION_DEPTH)));
@@ -949,13 +1033,13 @@ public final class G1 {
     private Expr condition(Ctx ctx, int depth) {
         if (ctx.constant()) return new G1Ast.BoolConst(choices.oneIn(2));
         if (depth == 0 || choices.below(3) == 0) return atom(BOOL, ctx);
-        return switch (choices.below(10)) {
+        return switch (choices.below(12)) {
             case 0, 1 -> comparison(ctx, depth);
             case 2 -> new G1Ast.Logic(condition(ctx, depth - 1), "&&", condition(ctx.conditionally(), depth - 1));
             case 3 -> new G1Ast.Logic(condition(ctx, depth - 1), "||", condition(ctx.conditionally(), depth - 1));
             case 4 -> new G1Ast.Not(condition(ctx, depth - 1));
-            case 5, 6 -> equality(ctx, depth);
-            case 7, 8 -> call(BOOL, ctx, depth);
+            case 5, 6, 10 -> equality(ctx, depth);
+            case 7, 8, 9 -> call(BOOL, ctx, depth);
             default -> atom(BOOL, ctx);
         };
     }
@@ -968,7 +1052,7 @@ public final class G1 {
         var operands = profile.has(Gate.TRACE_IN_COMPARISON) ? ctx : ctx.withoutTraces();
         int traced = traceSites;
         Expr left = integer(operands, depth - 1);
-        if (profile.has(Gate.TRACE_IN_COMPARISON) && !ctx.constant() && !ctx.traceFree() && choices.oneIn(3)) left = trace(left);
+        if (profile.steers(Steer.ISSUE_146) && !ctx.constant() && !ctx.traceFree() && choices.oneIn(3)) left = trace(left);
         Expr right = integer(operands, depth - 1);
         var comparison = new G1Ast.Compare(left, right, COMPARISONS[choices.below(COMPARISONS.length)]);
         if (traceSites > traced) features.add(Feature.TRACE_IN_COMPARISON);
@@ -980,9 +1064,9 @@ public final class G1 {
         var receivers = readable(ctx).stream().filter(v -> v.type().isValue()).toList();
         if (receivers.isEmpty()) return comparison(ctx, depth);
         var familial = receivers.stream().filter(v -> v.type().kind == Kind.SEALED || v.type().family != null).toList();
-        if (!familial.isEmpty() && choices.oneIn(2)) receivers = familial;
+        if (!familial.isEmpty() && !choices.oneIn(4)) receivers = familial;
         Var receiver = receivers.get(choices.below(receivers.size()));
-        Type type = receiver.type().family != null && !choices.oneIn(3) ? receiver.type().family : receiver.type();
+        Type type = receiver.type().family != null && !choices.oneIn(4) ? receiver.type().family : receiver.type();
         features.add(Feature.RECORD_EQUALS);
         if (type.kind == Kind.SEALED) features.add(Feature.FAMILY_EQUALS);
         Expr read = read(receiver);
@@ -1086,7 +1170,8 @@ public final class G1 {
         if (!vars.isEmpty() && pick > 0) return read(vars.get(choices.below(vars.size())));
         return switch (type.kind) {
             case BIG -> new G1Ast.IntConst(choices.below(11) - 5);
-            case BOOL -> ctx.constant() ? new G1Ast.BoolConst(choices.oneIn(2)) : comparison(ctx, 1);
+            case BOOL -> ctx.constant() ? new G1Ast.BoolConst(choices.oneIn(2))
+                    : choices.oneIn(3) ? equality(ctx, 1) : comparison(ctx, 1);
             case RECORD, SEALED -> construct(type, ctx, 1);
         };
     }

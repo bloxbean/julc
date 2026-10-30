@@ -2,7 +2,7 @@ format: 3
 name: the #146 reproducer 146-traced-compare-operand with its trigger removed agrees (counterfactual)
 class: Probe
 method: m
-profile: G1 r2 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES +TRACE_IN_COMPARISON
+profile: G1 r3 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES +TRACE_IN_COMPARISON steer=146
 arg: 25
 arg: 25
 arg: 80
@@ -25,8 +25,11 @@ public class Probe {
     }
 
     public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
-        BigInteger o = t("k0", BigInteger.valueOf(-5));
-        boolean v = o.compareTo(BigInteger.valueOf(-5)) < 0;
-        return BigInteger.valueOf(-5);
+        BigInteger o = t("k0", BigInteger.valueOf(-5).add(BigInteger.valueOf(0)));
+        if (o.compareTo(BigInteger.valueOf(-5)) < 0) {
+            return BigInteger.valueOf(-5);
+        } else {
+            return BigInteger.valueOf(-5);
+        }
     }
 }

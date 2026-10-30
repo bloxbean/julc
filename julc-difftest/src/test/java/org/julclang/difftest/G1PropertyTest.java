@@ -98,7 +98,7 @@ class G1PropertyTest {
     @Tag("rediscovery")
     void generatedProgramsAgreeUnderProfile(@ForAll("plans") List<Integer> plan, @ForAll("inputs") List<Integer> inputs) {
         var profile = profile(System.getProperty("difftest.profile", "DEFAULT"));
-        // -Pdifftest.form=runtime or =value looks past other forms of the defect (review of M2, F61).
+        // -Pdifftest.form=runtime, =value or =failure looks past other forms of the defect (review of M2, F61).
         String form = System.getProperty("difftest.form", "any");
         if (!form.equals("any") && otherForm(plan, inputs, profile, form)) return;
         check("G1PropertyTest rediscovery", plan, inputs, profile);
@@ -106,8 +106,8 @@ class G1PropertyTest {
 
     /**
      * Whether a case that disagrees does so in another form than {@code form}: {@code runtime}, where some
-     * configuration runs and disagrees (not only rejections); or {@code value}, where the JVM and some configuration
-     * both return a value.
+     * configuration runs and disagrees (not only rejections); {@code value}, where the JVM and some configuration
+     * both return a value; or {@code failure}, where the JVM returns a value and some configuration fails.
      */
     private static boolean otherForm(List<Integer> plan, List<Integer> inputs, G1.Profile profile, String form) {
         var program = G1.decode(plan, profile);
@@ -119,7 +119,9 @@ class G1PropertyTest {
             case "runtime" -> disagreeing.stream().allMatch(r -> r.verdict().kind() == Verdict.Kind.REJECTED);
             case "value" -> disagreeing.stream().noneMatch(r -> r.jvm() instanceof Observation.Value
                     && r.uplc() instanceof Observation.Value);
-            default -> throw new IllegalArgumentException("difftest.form is any, runtime or value: " + form);
+            case "failure" -> disagreeing.stream().noneMatch(r -> r.jvm() instanceof Observation.Value
+                    && r.uplc() instanceof Observation.Failure);
+            default -> throw new IllegalArgumentException("difftest.form is any, runtime, value or failure: " + form);
         };
     }
 

@@ -14,8 +14,8 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Shapes of G1 r2 read from the printed programs, independently of the generator's own markers (review of M2: F63,
- * F70, F71): variants typed as themselves with nonzero tags, {@code permits} orders that differ from the declaration
+ * Shapes of G1 read from the printed programs, independently of the generator's own markers (review of M2: F63,
+ * F70, F71, F80): variants typed as themselves with nonzero tags, also as record components, {@code permits} orders that differ from the declaration
  * order, loop-body locals that shadow fields, and boolean helper calls whose result decides the outcome.
  */
 class G1ShapesTest {
@@ -45,7 +45,7 @@ class G1ShapesTest {
     @Test
     void theShapesAppearInThePrintedPrograms() {
         var random = new Random(20261036);
-        int variantResults = 0, variantArguments = 0, permuted = 0, loopShadows = 0;
+        int variantResults = 0, variantArguments = 0, variantComponents = 0, permuted = 0, loopShadows = 0;
         for (int i = 0; i < PLANS; i++) {
             var program = G1.decode(plan(random), G1.Profile.DEFAULT);
             String source = program.source();
@@ -59,13 +59,28 @@ class G1ShapesTest {
                     break;
                 }
             }
+            if (variantComponent(source, tags)) variantComponents++;
             if (permitsPermuted(source)) permuted++;
             if (loopLocalShadowsField(source)) loopShadows++;
         }
         assertTrue(variantResults > PLANS / 50, "nonzero-tag variant results: " + variantResults);
         assertTrue(variantArguments > PLANS / 50, "nonzero-tag variant arguments: " + variantArguments);
+        assertTrue(variantComponents > PLANS / 50, "components of a nonzero-tag variant: " + variantComponents);
         assertTrue(permuted > PLANS / 50, "permits orders that differ from declaration and name order: " + permuted);
         assertTrue(loopShadows > PLANS / 100, "loop-body locals shadowing a field: " + loopShadows);
+    }
+
+    private static final Pattern RECORD_COMPONENTS = Pattern.compile("(?m)^    record \\w+\\((.*)\\)");
+
+    /** Whether some record has a component typed as a variant with a nonzero tag (F80). */
+    static boolean variantComponent(String source, Map<String, Integer> tags) {
+        Matcher record = RECORD_COMPONENTS.matcher(source);
+        while (record.find()) {
+            for (String component : record.group(1).split(", ")) {
+                if (!component.isEmpty() && tags.getOrDefault(component.split(" ")[0], 0) != 0) return true;
+            }
+        }
+        return false;
     }
 
     /**
