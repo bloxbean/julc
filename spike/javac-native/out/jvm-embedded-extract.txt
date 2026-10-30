@@ -1,0 +1,73 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode embedded, latest source version RELEASE_25
+embedded platform: 23 class files
+== case ok ==
+no diagnostics
+  expr MEMBER_SELECT `java.math.BigInteger` : java.math.BigInteger ; element CLASS java.math.BigInteger
+  expr MEMBER_SELECT `java.math` : java.math ; element PACKAGE java.math
+  expr IDENTIFIER `java` : java ; element PACKAGE java
+  expr METHOD_INVOCATION `<no position>` : void ; element CONSTRUCTOR java.lang.Object.<init>() : void
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+  expr IDENTIFIER `<no position>` : ()void ; element CONSTRUCTOR java.lang.Object.<init>() : void
+  expr IDENTIFIER `A` : Probe.A ; element RECORD Probe.A
+  expr IDENTIFIER `B` : Probe.B ; element RECORD Probe.B
+  expr IDENTIFIER `S` : Probe.S ; element INTERFACE Probe.S
+  expr IDENTIFIER `<no position>` : java.math.BigInteger ; element CLASS java.math.BigInteger
+  expr METHOD_INVOCATION `<no position>` : void ; element CONSTRUCTOR java.lang.Record.<init>() : void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+  expr IDENTIFIER `<no position>` : ()void ; element CONSTRUCTOR java.lang.Record.<init>() : void
+  expr IDENTIFIER `BigInteger` : java.math.BigInteger ; element CLASS java.math.BigInteger
+  expr IDENTIFIER `S` : Probe.S ; element INTERFACE Probe.S
+  expr IDENTIFIER `<no position>` : java.math.BigInteger ; element CLASS java.math.BigInteger
+  expr METHOD_INVOCATION `<no position>` : void ; element CONSTRUCTOR java.lang.Record.<init>() : void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+  expr IDENTIFIER `<no position>` : ()void ; element CONSTRUCTOR java.lang.Record.<init>() : void
+  expr IDENTIFIER `BigInteger` : java.math.BigInteger ; element CLASS java.math.BigInteger
+  expr IDENTIFIER `BigInteger` : java.math.BigInteger ; element CLASS java.math.BigInteger
+  expr IDENTIFIER `S` : Probe.S ; element INTERFACE Probe.S
+  expr IDENTIFIER `BigInteger` : java.math.BigInteger ; element CLASS java.math.BigInteger
+  expr SWITCH_EXPRESSION `switch (s) { case A a when a.v().compareTo(k) > 0 -> a.v().add(k); case A a -> a.v(); case B b -> b.v().negate(); }` : java.math.BigInteger
+switch expression type: java.math.BigInteger (selector type Probe.S)
+  expr PARENTHESIZED `(s)` : Probe.S ; element PARAMETER s
+  expr IDENTIFIER `s` : Probe.S ; element PARAMETER s
+  expr IDENTIFIER `A` : Probe.A ; element RECORD Probe.A
+  expr GREATER_THAN `a.v().compareTo(k) > 0` : boolean
+  expr METHOD_INVOCATION `a.v().compareTo(k)` : int ; element METHOD java.math.BigInteger.compareTo(java.math.BigInteger) : int
+call `a.v().compareTo(k)` -> METHOD java.math.BigInteger.compareTo(java.math.BigInteger) : int ; type int
+  expr MEMBER_SELECT `a.v().compareTo` : (java.math.BigInteger)int ; element METHOD java.math.BigInteger.compareTo(java.math.BigInteger) : int
+  expr METHOD_INVOCATION `a.v()` : java.math.BigInteger ; element METHOD Probe.A.v() : java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+  expr MEMBER_SELECT `a.v` : ()java.math.BigInteger ; element METHOD Probe.A.v() : java.math.BigInteger
+  expr IDENTIFIER `a` : Probe.A ; element BINDING_VARIABLE a
+  expr IDENTIFIER `k` : java.math.BigInteger ; element PARAMETER k
+  expr INT_LITERAL `0` : int
+  expr METHOD_INVOCATION `a.v().add(k)` : java.math.BigInteger ; element METHOD java.math.BigInteger.add(java.math.BigInteger) : java.math.BigInteger
+call `a.v().add(k)` -> METHOD java.math.BigInteger.add(java.math.BigInteger) : java.math.BigInteger ; type java.math.BigInteger
+  expr MEMBER_SELECT `a.v().add` : (java.math.BigInteger)java.math.BigInteger ; element METHOD java.math.BigInteger.add(java.math.BigInteger) : java.math.BigInteger
+  expr METHOD_INVOCATION `a.v()` : java.math.BigInteger ; element METHOD Probe.A.v() : java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+  expr MEMBER_SELECT `a.v` : ()java.math.BigInteger ; element METHOD Probe.A.v() : java.math.BigInteger
+  expr IDENTIFIER `a` : Probe.A ; element BINDING_VARIABLE a
+  expr IDENTIFIER `k` : java.math.BigInteger ; element PARAMETER k
+  expr IDENTIFIER `A` : Probe.A ; element RECORD Probe.A
+  expr METHOD_INVOCATION `a.v()` : java.math.BigInteger ; element METHOD Probe.A.v() : java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+  expr MEMBER_SELECT `a.v` : ()java.math.BigInteger ; element METHOD Probe.A.v() : java.math.BigInteger
+  expr IDENTIFIER `a` : Probe.A ; element BINDING_VARIABLE a
+  expr IDENTIFIER `B` : Probe.B ; element RECORD Probe.B
+  expr METHOD_INVOCATION `b.v().negate()` : java.math.BigInteger ; element METHOD java.math.BigInteger.negate() : java.math.BigInteger
+call `b.v().negate()` -> METHOD java.math.BigInteger.negate() : java.math.BigInteger ; type java.math.BigInteger
+  expr MEMBER_SELECT `b.v().negate` : ()java.math.BigInteger ; element METHOD java.math.BigInteger.negate() : java.math.BigInteger
+  expr METHOD_INVOCATION `b.v()` : java.math.BigInteger ; element METHOD Probe.B.v() : java.math.BigInteger
+call `b.v()` -> METHOD Probe.B.v() : java.math.BigInteger ; type java.math.BigInteger
+  expr MEMBER_SELECT `b.v` : ()java.math.BigInteger ; element METHOD Probe.B.v() : java.math.BigInteger
+  expr IDENTIFIER `b` : Probe.B ; element BINDING_VARIABLE b
+== case error ==
+diagnostic ERROR 7:16 compiler.err.prob.found.req: incompatible types: java.lang.String cannot be converted to java.math.BigInteger
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+TIMING round 1: ok-case 140.0 ms, error-case 10.8 ms
+TIMING round 2: ok-case 14.6 ms, error-case 6.1 ms
+TIMING platform load 6.5 ms; main total 186.7 ms

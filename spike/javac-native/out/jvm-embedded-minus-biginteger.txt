@@ -1,0 +1,70 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode embedded, latest source version RELEASE_25
+embedded platform: 22 class files
+== case ok ==
+diagnostic ERROR 1:17 compiler.err.doesnt.exist: package java.math does not exist
+diagnostic ERROR 4:14 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe.A
+diagnostic ERROR 5:14 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe.B
+diagnostic ERROR 6:30 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe
+diagnostic ERROR 6:12 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+switch expression type: BigInteger (selector type Probe.S)
+call `a.v().compareTo(k)` -> CLASS BigInteger.compareTo ; type <any>
+call `a.v()` -> METHOD Probe.A.v() : BigInteger ; type BigInteger
+call `a.v().add(k)` -> CLASS BigInteger.add ; type <any>
+call `a.v()` -> METHOD Probe.A.v() : BigInteger ; type BigInteger
+call `a.v()` -> METHOD Probe.A.v() : BigInteger ; type <any>
+call `b.v().negate()` -> CLASS BigInteger.negate ; type <any>
+call `b.v()` -> METHOD Probe.B.v() : BigInteger ; type BigInteger
+== case error ==
+diagnostic ERROR 1:17 compiler.err.doesnt.exist: package java.math does not exist
+diagnostic ERROR 4:14 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe.A
+diagnostic ERROR 5:14 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe.B
+diagnostic ERROR 6:30 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe
+diagnostic ERROR 6:12 compiler.err.cant.resolve.location: cannot find symbol
+  symbol:   class BigInteger
+  location: class Probe
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+TIMING round 1: ok-case 129.3 ms, error-case 7.6 ms
+TIMING round 2: ok-case 8.6 ms, error-case 5.7 ms
+OPENED minus-biginteger 20
+OPENED java.base/java/io/Serializable.class
+OPENED java.base/java/lang/AutoCloseable.class
+OPENED java.base/java/lang/Boolean.class
+OPENED java.base/java/lang/Byte.class
+OPENED java.base/java/lang/Character.class
+OPENED java.base/java/lang/Deprecated.class
+OPENED java.base/java/lang/Double.class
+OPENED java.base/java/lang/Float.class
+OPENED java.base/java/lang/Integer.class
+OPENED java.base/java/lang/Long.class
+OPENED java.base/java/lang/Object.class
+OPENED java.base/java/lang/Record.class
+OPENED java.base/java/lang/Short.class
+OPENED java.base/java/lang/String.class
+OPENED java.base/java/lang/Void.class
+OPENED java.base/java/lang/annotation/ElementType.class
+OPENED java.base/java/lang/annotation/Retention.class
+OPENED java.base/java/lang/annotation/RetentionPolicy.class
+OPENED java.base/java/lang/annotation/Target.class
+OPENED java.base/module-info.class
+TIMING platform load 5.6 ms; main total 166.9 ms

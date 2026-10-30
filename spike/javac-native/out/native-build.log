@@ -1,0 +1,84 @@
+========================================================================================================================
+GraalVM Native Image: Generating 'javac-probe' (executable)...
+========================================================================================================================
+For detailed information and explanations on the build output, visit:
+https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/BuildOutput.md
+------------------------------------------------------------------------------------------------------------------------
+[1/8] Initializing...                                                                                    (3.6s @ 0.41GB)
+ Java version: 25.0.2+10-LTS, vendor version: Oracle GraalVM 25.0.2+10.1
+ Graal compiler: optimization level: 2, target machine: armv8.1-a, PGO: ML-inferred
+ C compiler: cc (apple, arm64, 17.0.0)
+ Garbage collector: Serial GC (max heap size: 80% of RAM)
+ 1 user-specific feature(s):
+ - com.oracle.svm.thirdparty.gson.GsonFeature
+------------------------------------------------------------------------------------------------------------------------
+Build resources:
+ - 28.45GB of memory (20.7% of system memory, using available memory)
+ - 16 thread(s) (100.0% of 16 available processor(s), determined at start)
+[2/8] Performing analysis...  [*****]                                                                    (8.4s @ 1.92GB)
+    7,642 types,  10,853 fields, and  39,788 methods found reachable
+    2,480 types,      60 fields, and   1,039 methods registered for reflection
+       59 types,      59 fields, and      52 methods registered for JNI access
+        0 downcalls and 0 upcalls registered for foreign access
+        4 native libraries: -framework Foundation, dl, pthread, z
+[3/8] Building universe...                                                                               (1.3s @ 1.98GB)
+[4/8] Parsing methods...      [**]                                                                       (2.9s @ 0.88GB)
+[5/8] Inlining methods...     [***]                                                                      (0.4s @ 0.90GB)
+[6/8] Compiling methods...    [****]                                                                    (17.4s @ 1.39GB)
+[7/8] Laying out methods...   [**]                                                                       (3.3s @ 1.67GB)
+[8/8] Creating image...       [**]                                                                       (2.1s @ 1.78GB)
+  20.32MB (53.60%) for code area:    22,552 compilation units
+  17.04MB (44.93%) for image heap:  244,578 objects and 71 resources
+ 558.60kB ( 1.47%) for other data
+  37.92MB in total image size, 37.92MB in total file size
+------------------------------------------------------------------------------------------------------------------------
+Top 10 origins of code area:                                Top 10 object types in image heap:
+   8.04MB java.base                                            5.75MB byte[] for code metadata
+   7.93MB jdk.compiler                                         2.71MB byte[] for java.lang.String
+   2.87MB svm.jar (Native Image)                               1.59MB java.lang.String
+ 231.00kB jdk.zipfs                                            1.01MB java.lang.Class
+ 227.00kB jdk.javadoc                                        794.77kB com.oracle.svm.core.hub.DynamicHubCompanion
+ 203.05kB jdk.internal.md                                    657.12kB byte[] for general heap data
+ 130.55kB java.logging                                       451.10kB java.util.concurrent.ConcurrentHashMap$Node
+  86.50kB com.oracle.svm.svm_enterprise                      424.38kB heap alignment
+  80.58kB jdk.charsets                                       408.06kB java.util.HashMap$Node
+  57.76kB jdk.proxy2                                         329.79kB java.lang.Object[]
+ 323.92kB for 13 more packages                                 2.92MB for 1818 more object types
+                            Use '--emit build-report' to create a report with more details.
+------------------------------------------------------------------------------------------------------------------------
+Security report:
+ - Binary includes Java deserialization.
+ - CycloneDX SBOM with 5 component(s) is embedded in binary (417B). 6 type(s) could not be associated to a component.
+ - Advanced obfuscation not enabled; enable with '-H:AdvancedObfuscation=""' (experimental support).
+------------------------------------------------------------------------------------------------------------------------
+Recommendations:
+ PGO:  Use Profile-Guided Optimizations ('--pgo') for improved throughput.
+ FUTR: Use '--future-defaults=all' to prepare for future releases.
+ HEAP: Set max heap for improved and more predictable memory usage.
+ CPU:  Enable more CPU features with '-march=native' for improved performance.
+ QBM:  Use the quick build mode ('-Ob') to speed up builds during development.
+------------------------------------------------------------------------------------------------------------------------
+                        2.6s (6.3% of total time) in 374 GCs | Peak RSS: 3.30GB | CPU load: 9.51
+------------------------------------------------------------------------------------------------------------------------
+Build artifacts:
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/native/javac-probe (executable)
+========================================================================================================================
+Finished generating 'javac-probe' in 40.5s.
+       41.18 real       376.29 user        14.58 sys
+          3304734720  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              576123  page reclaims
+                4238  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                2823  signals received
+                5363  voluntary context switches
+             1192144  involuntary context switches
+           645720523  instructions retired
+           191903450  cycles elapsed
+            24887920  peak memory footprint

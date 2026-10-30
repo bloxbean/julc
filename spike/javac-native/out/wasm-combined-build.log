@@ -1,0 +1,97 @@
+Warning: The option '-H:ReflectionConfigurationResources=META-INF/native-image/com.networknt/json-schema-validator/reflect-config.json' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: The option '-H:ResourceConfigurationResources=META-INF/native-image/com.networknt/json-schema-validator/resource-config.json' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: Please re-evaluate whether any experimental option is required, and either remove or unlock it. The build output lists all active experimental options, including where they come from and possible alternatives. If you think an experimental option should be considered as stable, please file an issue.
+========================================================================================================================
+GraalVM Native Image: Generating 'julc' (executable)...
+========================================================================================================================
+For detailed information and explanations on the build output, visit:
+https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/BuildOutput.md
+------------------------------------------------------------------------------------------------------------------------
+[1/8] Initializing...                                                                                   (4.4s @ 0.63GiB)
+ Builder configuration:
+ - Java version: 25.0.4.1.1+1-LTS, vendor version: Oracle GraalVM 25.3.4.1-dev+1.1
+ - Graal compiler: optimization level: 2, target machine: unknown, PGO: off
+ - C compiler: cc (apple, arm64, 17.0.0)
+ - Assertions: disabled, system assertions: disabled
+ Image configuration:
+ - Garbage collector: JS-runtime-provided GC (max heap size: unknown)
+ - Assertions: disabled (class-specific config may apply), system assertions: disabled
+------------------------------------------------------------------------------------------------------------------------
+ 2 experimental option(s) unlocked:
+ - '-H:ResourceConfigurationResources' (origin(s): 'META-INF/native-image/com.networknt/json-schema-validator/native-image.properties' in 'file:///Users/satya/.gradle/caches/modules-2/files-2.1/com.networknt/json-schema-validator/2.0.4/57ec5a08b2fd6dab50a48b84ec42fdcd0436690f/json-schema-validator-2.0.4.jar')
+ - '-H:ReflectionConfigurationResources' (origin(s): 'META-INF/native-image/com.networknt/json-schema-validator/native-image.properties' in 'file:///Users/satya/.gradle/caches/modules-2/files-2.1/com.networknt/json-schema-validator/2.0.4/57ec5a08b2fd6dab50a48b84ec42fdcd0436690f/json-schema-validator-2.0.4.jar')
+------------------------------------------------------------------------------------------------------------------------
+Build resources:
+ - 30.00GiB of memory (23.4% of system memory, capped at 30GiB)
+ - 16 thread(s) (100.0% of 16 available processor(s), determined at start)
+Warning: Registered down- and upcall stubs will be ignored because calling foreign functions is currently not supported on platform: darwin-aarch64
+[2/8] Performing analysis...  [****]                                                                   (12.5s @ 1.61GiB)
+   13,595 types,  19,461 fields, and  65,711 methods found reachable
+      713 types,   1,348 fields, and   2,693 methods registered for reflection
+      203 resource accesses registered with 1.82MiB total size
+[3/8] Building universe...                                                                              (2.2s @ 1.70GiB)
+[4/8] Parsing methods...      [*]                                                                       (1.1s @ 2.01GiB)
+[5/8] Inlining methods...     [***]                                                                     (0.8s @ 1.86GiB)
+[6/8] Compiling methods...    [**]                                                                      (3.4s @ 2.59GiB)
+[7/8] Laying out methods...   [*]                                                                       (0.9s @ 2.76GiB)
+[8/8] Creating image...       [*****]                                                                  (29.3s @ 3.23GiB)
+        0B ( 0.00%) for code area:    43,676 compilation units
+  18.42MiB (55.69%) for image heap:  261,967 objects and 144 resources
+  14.66MiB (44.31%) for other data
+  33.08MiB in total image size
+------------------------------------------------------------------------------------------------------------------------
+Top 10 origins of code area:                                Top 10 object types in image heap:
+        0B j.i.vm.ci/jdk.vm.ci.meta                            3.55MiB byte[] for string data
+        0B java.base/sun.reflect.generics.tree                 2.29MiB java.base/java.lang.String
+        0B o.g.n.runtime/c.o.svm.core.sboutlining.concat       2.28MiB o.g.n.runtime/c.o.s.core.hub.DynamicHubCompanion
+        0B java.base/java.lang.foreign                         1.82MiB byte[] for embedded resources
+        0B j.internal.md/jdk.internal.org.commonmark.text      1.80MiB java.base/java.lang.Class
+        0B java.base/sun.reflect.generics.visitor              0.98MiB byte[] for general heap data
+        0B org.bouncycastle.math.raw                         859.91KiB byte[] for reflection metadata
+        0B java.base/sun.net.util                            760.87KiB java.base/java.lang.Object[]
+        0B java.base/javax.security.auth.x500                492.86KiB java.base/java.lang.String[]
+        0B com.github.javaparser.ast.visitor                 413.32KiB java.base/java.util.HashMap$Node
+        0B for 411 more packages                               3.23MiB for 3083 more object types
+                            Use '--emit build-report' to create a report with more details.
+------------------------------------------------------------------------------------------------------------------------
+Security report:
+ - Binary includes Java deserialization.
+ - CycloneDX SBOM with 46 component(s) is embedded in binary (2.20KiB). 7 type(s) could not be associated to a component.
+ - Advanced obfuscation not enabled; enable with '-H:AdvancedObfuscation=""' (experimental support).
+------------------------------------------------------------------------------------------------------------------------
+Recommendations:
+ PGO:  Use Profile-Guided Optimizations ('--pgo') for improved throughput.
+ FUTR: Use '--future-defaults=all' to prepare for future releases.
+ HEAP: Set max heap for improved and more predictable memory usage.
+ CPU:  Enable more CPU features with '-march=native' for improved performance.
+ QBM:  Use the quick build mode ('-Ob') to speed up builds during development.
+------------------------------------------------------------------------------------------------------------------------
+                       2.6s (4.6% of total time) in 117 GCs | Peak RSS: 5.03GiB | CPU load: 4.85
+------------------------------------------------------------------------------------------------------------------------
+Build artifacts:
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-combined/julc.js (executable, 108.88KiB)
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-combined/julc.js.wasm (executable, 32.98MiB)
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-combined/julc.js.wat (build_info, 949.28MiB)
+========================================================================================================================
+Finished generating 'julc' in 55.5s.
+
+The build process encountered 4 warnings.
+
+       56.34 real       280.36 user        13.21 sys
+          5401821184  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              812167  page reclaims
+                1886  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                 667  signals received
+                1002  voluntary context switches
+              940511  involuntary context switches
+          2146423919  instructions retired
+           537785871  cycles elapsed
+            55476800  peak memory footprint

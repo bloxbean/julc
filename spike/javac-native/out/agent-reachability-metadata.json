@@ -1,0 +1,66 @@
+{
+  "reflection": [
+    {
+      "type": "com.sun.tools.javac.api.JavacTrees",
+      "methods": [
+        {
+          "name": "instance",
+          "parameterTypes": [
+            "javax.tools.JavaCompiler$CompilationTask"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "javax.tools.JavaCompiler$CompilationTask"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/services/com.sun.source.util.Plugin"
+    },
+    {
+      "glob": "com/sun/tools/javac/resources/compiler_en.properties"
+    },
+    {
+      "glob": "com/sun/tools/javac/resources/compiler_en_SG.properties"
+    },
+    {
+      "glob": "com/sun/tools/javac/resources/javac_en.properties"
+    },
+    {
+      "glob": "com/sun/tools/javac/resources/javac_en_SG.properties"
+    },
+    {
+      "glob": "platform.bin"
+    },
+    {
+      "module": "jdk.compiler",
+      "glob": "com/sun/tools/javac/resources/compiler_en.properties"
+    },
+    {
+      "module": "jdk.compiler",
+      "glob": "com/sun/tools/javac/resources/compiler_en_SG.properties"
+    },
+    {
+      "module": "jdk.compiler",
+      "glob": "com/sun/tools/javac/resources/javac_en.properties"
+    },
+    {
+      "module": "jdk.compiler",
+      "glob": "com/sun/tools/javac/resources/javac_en_SG.properties"
+    },
+    {
+      "bundle": "com.sun.tools.javac.resources.compiler"
+    },
+    {
+      "bundle": "com.sun.tools.javac.resources.javac"
+    }
+  ]
+}

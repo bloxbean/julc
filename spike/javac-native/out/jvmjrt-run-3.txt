@@ -1,0 +1,24 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode jrt, latest source version RELEASE_25
+== case ok ==
+no diagnostics
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+switch expression type: java.math.BigInteger (selector type Probe.S)
+call `a.v().compareTo(k)` -> METHOD java.math.BigInteger.compareTo(java.math.BigInteger) : int ; type int
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `a.v().add(k)` -> METHOD java.math.BigInteger.add(java.math.BigInteger) : java.math.BigInteger ; type java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `b.v().negate()` -> METHOD java.math.BigInteger.negate() : java.math.BigInteger ; type java.math.BigInteger
+call `b.v()` -> METHOD Probe.B.v() : java.math.BigInteger ; type java.math.BigInteger
+== case error ==
+diagnostic ERROR 7:16 compiler.err.prob.found.req: incompatible types: java.lang.String cannot be converted to java.math.BigInteger
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+TIMING round 1: ok-case 225.4 ms, error-case 28.5 ms
+TIMING round 2: ok-case 31.4 ms, error-case 19.9 ms
+TIMING platform load 23.7 ms; main total 341.9 ms

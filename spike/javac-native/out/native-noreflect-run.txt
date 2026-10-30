@@ -1,0 +1,17 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode embedded, latest source version RELEASE_25
+embedded platform: 23 class files
+== case ok ==
+no diagnostics
+Exception in thread "main" java.lang.AssertionError: java.lang.NoSuchMethodException: com.sun.tools.javac.api.JavacTrees.instance(javax.tools.JavaCompiler$CompilationTask)
+	at jdk.compiler@25.0.2/com.sun.source.util.Trees.getJavacTrees(Trees.java:96)
+	at jdk.compiler@25.0.2/com.sun.source.util.Trees.instance(Trees.java:73)
+	at spike.JavacProbe.run(JavacProbe.java:155)
+	at spike.JavacProbe.main(JavacProbe.java:118)
+	at java.base@25.0.2/java.lang.invoke.LambdaForm$DMH/sa346b79c.invokeStaticInit(LambdaForm$DMH)
+Caused by: java.lang.NoSuchMethodException: com.sun.tools.javac.api.JavacTrees.instance(javax.tools.JavaCompiler$CompilationTask)
+	at java.base@25.0.2/java.lang.Class.checkMethod(DynamicHub.java:1343)
+	at java.base@25.0.2/java.lang.Class.getMethod(DynamicHub.java:1337)
+	at jdk.compiler@25.0.2/com.sun.source.util.Trees.getJavacTrees(Trees.java:93)
+	... 4 more

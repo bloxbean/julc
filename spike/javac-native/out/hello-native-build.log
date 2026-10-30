@@ -1,0 +1,66 @@
+========================================================================================================================
+GraalVM Native Image: Generating 'hello' (executable)...
+========================================================================================================================
+For detailed information and explanations on the build output, visit:
+https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/BuildOutput.md
+------------------------------------------------------------------------------------------------------------------------
+[1/8] Initializing...                                                                                    (4.6s @ 0.39GB)
+ Java version: 25.0.2+10-LTS, vendor version: Oracle GraalVM 25.0.2+10.1
+ Graal compiler: optimization level: 2, target machine: armv8.1-a, PGO: ML-inferred
+ C compiler: cc (apple, arm64, 17.0.0)
+ Garbage collector: Serial GC (max heap size: 80% of RAM)
+ 1 user-specific feature(s):
+ - com.oracle.svm.thirdparty.gson.GsonFeature
+------------------------------------------------------------------------------------------------------------------------
+Build resources:
+ - 28.45GB of memory (20.7% of system memory, using available memory)
+ - 16 thread(s) (100.0% of 16 available processor(s), determined at start)
+[2/8] Performing analysis...  [*****]                                                                    (3.0s @ 0.36GB)
+    2,071 types,   1,926 fields, and   8,984 methods found reachable
+      743 types,      35 fields, and     284 methods registered for reflection
+       49 types,      34 fields, and      48 methods registered for JNI access
+        0 downcalls and 0 upcalls registered for foreign access
+        4 native libraries: -framework Foundation, dl, pthread, z
+[3/8] Building universe...                                                                               (0.8s @ 0.34GB)
+[4/8] Parsing methods...      [*]                                                                        (0.8s @ 0.41GB)
+[5/8] Inlining methods...     [***]                                                                      (0.2s @ 0.71GB)
+[6/8] Compiling methods...    [***]                                                                      (7.1s @ 0.51GB)
+[7/8] Laying out methods...   [*]                                                                        (0.8s @ 0.63GB)
+[8/8] Creating image...       [*]                                                                        (1.0s @ 0.32GB)
+   2.73MB (43.20%) for code area:     4,040 compilation units
+   3.41MB (53.85%) for image heap:   60,167 objects and 52 resources
+ 186.65kB ( 2.95%) for other data
+   6.33MB in total image size, 6.33MB in total file size
+------------------------------------------------------------------------------------------------------------------------
+Top 10 origins of code area:                                Top 10 object types in image heap:
+   1.35MB java.base                                          709.34kB byte[] for code metadata
+   1.12MB svm.jar (Native Image)                             640.56kB byte[] for java.lang.String
+  43.15kB com.oracle.svm.svm_enterprise                      329.88kB java.lang.String
+  41.36kB org.graalvm.nativeimage.configure                  208.38kB java.lang.Class
+  40.64kB jdk.graal.compiler                                 198.82kB com.oracle.svm.core.hub.DynamicHubCompanion
+  30.54kB org.graalvm.nativeimage.base                       173.50kB java.util.HashMap$Node
+  24.39kB jdk.proxy2                                         118.30kB char[]
+  22.42kB org.graalvm.collections                            110.24kB jdk.internal.util.SoftReferenceKey
+  20.19kB jdk.proxy1                                          99.64kB java.lang.Object[]
+  13.38kB jdk.internal.vm.ci                                  90.75kB java.util.concurrent.ConcurrentHashMap$Node
+   7.32kB for 6 more packages                                728.46kB for 570 more object types
+                            Use '--emit build-report' to create a report with more details.
+------------------------------------------------------------------------------------------------------------------------
+Security report:
+ - Binary includes Java deserialization.
+ - CycloneDX SBOM with 5 component(s) is embedded in binary (417B). 1 type(s) could not be associated to a component.
+ - Advanced obfuscation not enabled; enable with '-H:AdvancedObfuscation=""' (experimental support).
+------------------------------------------------------------------------------------------------------------------------
+Recommendations:
+ PGO:  Use Profile-Guided Optimizations ('--pgo') for improved throughput.
+ FUTR: Use '--future-defaults=all' to prepare for future releases.
+ HEAP: Set max heap for improved and more predictable memory usage.
+ CPU:  Enable more CPU features with '-march=native' for improved performance.
+ QBM:  Use the quick build mode ('-Ob') to speed up builds during development.
+------------------------------------------------------------------------------------------------------------------------
+                        0.6s (3.1% of total time) in 34 GCs | Peak RSS: 1.96GB | CPU load: 7.66
+------------------------------------------------------------------------------------------------------------------------
+Build artifacts:
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/hello-native/hello (executable)
+========================================================================================================================
+Finished generating 'hello' in 18.8s.

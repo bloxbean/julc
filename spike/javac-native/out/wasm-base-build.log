@@ -1,0 +1,79 @@
+Warning: The option '-H:ReflectionConfigurationResources=META-INF/native-image/com.networknt/json-schema-validator/reflect-config.json' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: The option '-H:ResourceConfigurationResources=META-INF/native-image/com.networknt/json-schema-validator/resource-config.json' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: Please re-evaluate whether any experimental option is required, and either remove or unlock it. The build output lists all active experimental options, including where they come from and possible alternatives. If you think an experimental option should be considered as stable, please file an issue.
+========================================================================================================================
+GraalVM Native Image: Generating 'julc' (executable)...
+========================================================================================================================
+For detailed information and explanations on the build output, visit:
+https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/BuildOutput.md
+------------------------------------------------------------------------------------------------------------------------
+[1/8] Initializing...                                                                                   (5.1s @ 0.61GiB)
+ Builder configuration:
+ - Java version: 25.0.4.1.1+1-LTS, vendor version: Oracle GraalVM 25.3.4.1-dev+1.1
+ - Graal compiler: optimization level: 2, target machine: unknown, PGO: off
+ - C compiler: cc (apple, arm64, 17.0.0)
+ - Assertions: disabled, system assertions: disabled
+ Image configuration:
+ - Garbage collector: JS-runtime-provided GC (max heap size: unknown)
+ - Assertions: disabled (class-specific config may apply), system assertions: disabled
+------------------------------------------------------------------------------------------------------------------------
+ 2 experimental option(s) unlocked:
+ - '-H:ResourceConfigurationResources' (origin(s): 'META-INF/native-image/com.networknt/json-schema-validator/native-image.properties' in 'file:///Users/satya/.gradle/caches/modules-2/files-2.1/com.networknt/json-schema-validator/2.0.4/57ec5a08b2fd6dab50a48b84ec42fdcd0436690f/json-schema-validator-2.0.4.jar')
+ - '-H:ReflectionConfigurationResources' (origin(s): 'META-INF/native-image/com.networknt/json-schema-validator/native-image.properties' in 'file:///Users/satya/.gradle/caches/modules-2/files-2.1/com.networknt/json-schema-validator/2.0.4/57ec5a08b2fd6dab50a48b84ec42fdcd0436690f/json-schema-validator-2.0.4.jar')
+------------------------------------------------------------------------------------------------------------------------
+Build resources:
+ - 30.00GiB of memory (23.4% of system memory, capped at 30GiB)
+ - 16 thread(s) (100.0% of 16 available processor(s), determined at start)
+Warning: Registered down- and upcall stubs will be ignored because calling foreign functions is currently not supported on platform: darwin-aarch64
+[2/8] Performing analysis...  [******]                                                                  (9.7s @ 1.70GiB)
+   10,056 types,  13,468 fields, and  48,402 methods found reachable
+      590 types,   1,348 fields, and   2,487 methods registered for reflection
+      187 resource accesses registered with 1.77MiB total size
+[3/8] Building universe...                                                                              (1.7s @ 1.83GiB)
+[4/8] Parsing methods...      [*]                                                                       (0.9s @ 1.76GiB)
+[5/8] Inlining methods...     [***]                                                                     (0.6s @ 1.33GiB)
+[6/8] Compiling methods...    [**]                                                                      (2.9s @ 1.77GiB)
+[7/8] Laying out methods...   [*]                                                                       (0.7s @ 1.90GiB)
+[8/8] Creating image...       [*****]                                                                  (23.0s @ 2.25GiB)
+        0B ( 0.00%) for code area:    31,877 compilation units
+  13.88MiB (59.17%) for image heap:  184,245 objects and 136 resources
+   9.58MiB (40.83%) for other data
+  23.46MiB in total image size
+------------------------------------------------------------------------------------------------------------------------
+Top 10 origins of code area:                                Top 10 object types in image heap:
+        0B c.bloxbean.cardano.client.plutus.blueprint.model    2.65MiB byte[] for string data
+        0B java.logging/java.util.logging                      1.77MiB byte[] for embedded resources
+        0B org.bouncycastle.asn1.cryptopro                     1.69MiB o.g.n.runtime/c.o.s.core.hub.DynamicHubCompanion
+        0B org.julclang.compiler.validate                      1.64MiB java.base/java.lang.String
+        0B java.base/sun.reflect.generics.reflectiveObjects    1.26MiB java.base/java.lang.Class
+        0B org.julclang.compiler.uplc                        765.22KiB byte[] for reflection metadata
+        0B c.f.jackson.core.internal.shaded.fdp.v2_21_0      667.68KiB java.base/java.lang.Object[]
+        0B o.g.n.shared/com.oracle.svm.shared.option         511.11KiB byte[] for general heap data
+        0B java.base/sun.security.jca                        385.09KiB java.base/java.lang.String[]
+        0B java.base/java.lang.invoke                        285.08KiB java.base/java.util.HashMap$Node
+        0B for 359 more packages                               2.32MiB for 2338 more object types
+                            Use '--emit build-report' to create a report with more details.
+------------------------------------------------------------------------------------------------------------------------
+Security report:
+ - Binary includes Java deserialization.
+ - CycloneDX SBOM with 46 component(s) is embedded in binary (2.26KiB).
+ - Advanced obfuscation not enabled; enable with '-H:AdvancedObfuscation=""' (experimental support).
+------------------------------------------------------------------------------------------------------------------------
+Recommendations:
+ PGO:  Use Profile-Guided Optimizations ('--pgo') for improved throughput.
+ FUTR: Use '--future-defaults=all' to prepare for future releases.
+ HEAP: Set max heap for improved and more predictable memory usage.
+ CPU:  Enable more CPU features with '-march=native' for improved performance.
+ QBM:  Use the quick build mode ('-Ob') to speed up builds during development.
+------------------------------------------------------------------------------------------------------------------------
+                        1.9s (4.1% of total time) in 75 GCs | Peak RSS: 4.16GiB | CPU load: 4.84
+------------------------------------------------------------------------------------------------------------------------
+Build artifacts:
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-base/julc.js (executable, 108.88KiB)
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-base/julc.js.wasm (executable, 23.35MiB)
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-base/julc.js.wat (build_info, 619.01MiB)
+========================================================================================================================
+Finished generating 'julc' in 45.4s.
+
+The build process encountered 4 warnings.
+

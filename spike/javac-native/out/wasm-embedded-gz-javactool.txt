@@ -1,0 +1,13 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode embedded, latest source version RELEASE_25
+Exception in thread "main" java.lang.UnsatisfiedLinkError: Can't load library: zip | java.library.path = [., /usr/lib]
+	at genBacktrace (/Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-gz/javac-probe.js:1195:12)
+	at genBacktrace (/Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/wasm-gz/javac-probe.js:1265:32)
+	at wasm://wasm/0492acfa:wasm-function[16641]:0x71ca22
+	at wasm://wasm/0492acfa:wasm-function[18724]:0x79c765
+	at wasm://wasm/0492acfa:wasm-function[16823]:0x7275e2
+	at wasm://wasm/0492acfa:wasm-function[8008]:0x4cfe15
+	at wasm://wasm/0492acfa:wasm-function[8023]:0x4d14b1
+	at wasm://wasm/0492acfa:wasm-function[9282]:0x51fe4a
+	at wasm://wasm/0492acfa:wasm-function[458]:0x2d3ffc

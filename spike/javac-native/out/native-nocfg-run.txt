@@ -1,0 +1,7 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode embedded, latest source version RELEASE_25
+Exception in thread "main" java.io.IOException: missing resource /platform.bin
+	at spike.EmbeddedFileManager.fromResource(EmbeddedFileManager.java:98)
+	at spike.JavacProbe.main(JavacProbe.java:107)
+	at java.base@25.0.2/java.lang.invoke.LambdaForm$DMH/sa346b79c.invokeStaticInit(LambdaForm$DMH)

@@ -1,0 +1,35 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using toolprovider, mode embedded, latest source version RELEASE_25
+embedded platform: 23 class files
+Exception in thread "main" java.lang.InternalError: Cannot find requested resource bundle for locale en_SG
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JavacMessages.getBundles(JavacMessages.java:153)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JavacMessages.setCurrentLocale(JavacMessages.java:80)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JavacMessages.<init>(JavacMessages.java:122)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JavacMessages.<init>(JavacMessages.java:90)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JavacMessages.instance(JavacMessages.java:58)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JCDiagnostic$Factory.<init>(JCDiagnostic.java:74)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JCDiagnostic$Factory.instance(JCDiagnostic.java:63)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.Log.<init>(Log.java:335)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.Log.<init>(Log.java:270)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.Log.instance(Log.java:249)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.main.Arguments.<init>(Arguments.java:124)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.main.Arguments.instance(Arguments.java:115)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.api.JavacTool.getTask(JavacTool.java:190)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.api.JavacTool.getTask(JavacTool.java:119)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.api.JavacTool.getTask(JavacTool.java:68)
+	at spike.JavacProbe.run(JavacProbe.java:138)
+	at spike.JavacProbe.main(JavacProbe.java:118)
+	at java.base@25.0.2/java.lang.invoke.LambdaForm$DMH/sa346b79c.invokeStaticInit(LambdaForm$DMH)
+Caused by: java.util.MissingResourceException: Can't find bundle for base name com.sun.tools.javac.resources.compiler, locale en_SG
+	at java.base@25.0.2/java.util.ResourceBundle.throwMissingResourceException(ResourceBundle.java:2012)
+	at java.base@25.0.2/java.util.ResourceBundle.getBundleImpl(ResourceBundle.java:1664)
+	at org.graalvm.nativeimage.builder/com.oracle.svm.core.jdk.localization.substitutions.Target_java_util_ResourceBundle$1.get(Target_java_util_ResourceBundle.java:123)
+	at org.graalvm.nativeimage.builder/com.oracle.svm.core.jdk.localization.substitutions.Target_java_util_ResourceBundle$1.get(Target_java_util_ResourceBundle.java:120)
+	at org.graalvm.nativeimage.builder/com.oracle.svm.core.MissingRegistrationUtils.runIgnoringMissingRegistrations(MissingRegistrationUtils.java:143)
+	at java.base@25.0.2/java.util.ResourceBundle.getBundleImpl(ResourceBundle.java:120)
+	at java.base@25.0.2/java.util.ResourceBundle.getBundleImpl(ResourceBundle.java:1529)
+	at java.base@25.0.2/java.util.ResourceBundle.getBundle(ResourceBundle.java:921)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JavacMessages.lambda$add$0(JavacMessages.java:131)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.util.JavacMessages.getBundles(JavacMessages.java:150)
+	... 17 more

@@ -1,0 +1,49 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode embedded, latest source version RELEASE_25
+embedded platform: 23 class files
+== case ok ==
+no diagnostics
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+switch expression type: java.math.BigInteger (selector type Probe.S)
+call `a.v().compareTo(k)` -> METHOD java.math.BigInteger.compareTo(java.math.BigInteger) : int ; type int
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `a.v().add(k)` -> METHOD java.math.BigInteger.add(java.math.BigInteger) : java.math.BigInteger ; type java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `b.v().negate()` -> METHOD java.math.BigInteger.negate() : java.math.BigInteger ; type java.math.BigInteger
+call `b.v()` -> METHOD Probe.B.v() : java.math.BigInteger ; type java.math.BigInteger
+== case error ==
+diagnostic ERROR 7:16 compiler.err.prob.found.req: incompatible types: java.lang.String cannot be converted to java.math.BigInteger
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+TIMING round 1: ok-case 131.4 ms, error-case 10.8 ms
+TIMING round 2: ok-case 11.1 ms, error-case 7.1 ms
+OPENED minimal-none 23
+OPENED java.base/java/io/Serializable.class
+OPENED java.base/java/lang/AutoCloseable.class
+OPENED java.base/java/lang/Boolean.class
+OPENED java.base/java/lang/Byte.class
+OPENED java.base/java/lang/Character.class
+OPENED java.base/java/lang/Comparable.class
+OPENED java.base/java/lang/Deprecated.class
+OPENED java.base/java/lang/Double.class
+OPENED java.base/java/lang/Float.class
+OPENED java.base/java/lang/Integer.class
+OPENED java.base/java/lang/Long.class
+OPENED java.base/java/lang/Number.class
+OPENED java.base/java/lang/Object.class
+OPENED java.base/java/lang/Record.class
+OPENED java.base/java/lang/Short.class
+OPENED java.base/java/lang/String.class
+OPENED java.base/java/lang/Void.class
+OPENED java.base/java/lang/annotation/ElementType.class
+OPENED java.base/java/lang/annotation/Retention.class
+OPENED java.base/java/lang/annotation/RetentionPolicy.class
+OPENED java.base/java/lang/annotation/Target.class
+OPENED java.base/java/math/BigInteger.class
+OPENED java.base/module-info.class
+TIMING platform load 5.6 ms; main total 175.8 ms

@@ -1,0 +1,25 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode embedded, latest source version RELEASE_25
+embedded platform: 23 class files
+== case ok ==
+no diagnostics
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+switch expression type: java.math.BigInteger (selector type Probe.S)
+call `a.v().compareTo(k)` -> METHOD java.math.BigInteger.compareTo(java.math.BigInteger) : int ; type int
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `a.v().add(k)` -> METHOD java.math.BigInteger.add(java.math.BigInteger) : java.math.BigInteger ; type java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `a.v()` -> METHOD Probe.A.v() : java.math.BigInteger ; type java.math.BigInteger
+call `b.v().negate()` -> METHOD java.math.BigInteger.negate() : java.math.BigInteger ; type java.math.BigInteger
+call `b.v()` -> METHOD Probe.B.v() : java.math.BigInteger ; type java.math.BigInteger
+== case error ==
+diagnostic ERROR 7:16 compiler.err.prob.found.req: incompatible types: java.lang.String cannot be converted to java.math.BigInteger
+call `<no position>` -> CONSTRUCTOR java.lang.Object.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+call `<no position>` -> CONSTRUCTOR java.lang.Record.<init>() : void ; type void
+TIMING round 1: ok-case 63.7 ms, error-case 5.2 ms
+TIMING round 2: ok-case 6.2 ms, error-case 2.8 ms
+TIMING platform load 1.5 ms; main total 84.5 ms

@@ -1,0 +1,16 @@
+ToolProvider.getSystemJavaCompiler() = com.sun.tools.javac.api.JavacTool
+JavacTool.create() = com.sun.tools.javac.api.JavacTool
+using javactool, mode jrt, latest source version RELEASE_25
+Exception in thread "main" java.lang.ExceptionInInitializerError
+	at jdk.compiler@25.0.2/com.sun.tools.javac.file.BaseFileManager.createLocations(BaseFileManager.java:126)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.file.BaseFileManager.<init>(BaseFileManager.java:82)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.file.JavacFileManager.<init>(JavacFileManager.java:161)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.api.JavacTool.getStandardFileManager(JavacTool.java:108)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.api.JavacTool.getStandardFileManager(JavacTool.java:68)
+	at spike.JavacProbe.main(JavacProbe.java:111)
+	at java.base@25.0.2/java.lang.invoke.LambdaForm$DMH/sa346b79c.invokeStaticInit(LambdaForm$DMH)
+Caused by: java.lang.NullPointerException
+	at java.base@25.0.2/java.util.Objects.requireNonNull(Objects.java:220)
+	at java.base@25.0.2/sun.nio.fs.UnixFileSystem.getPath(UnixFileSystem.java:257)
+	at jdk.compiler@25.0.2/com.sun.tools.javac.file.Locations.<clinit>(Locations.java:139)
+	... 7 more

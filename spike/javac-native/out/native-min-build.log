@@ -1,0 +1,66 @@
+========================================================================================================================
+GraalVM Native Image: Generating 'javac-probe' (executable)...
+========================================================================================================================
+For detailed information and explanations on the build output, visit:
+https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/BuildOutput.md
+------------------------------------------------------------------------------------------------------------------------
+[1/8] Initializing...                                                                                    (4.6s @ 0.38GB)
+ Java version: 25.0.2+10-LTS, vendor version: Oracle GraalVM 25.0.2+10.1
+ Graal compiler: optimization level: 2, target machine: armv8.1-a, PGO: ML-inferred
+ C compiler: cc (apple, arm64, 17.0.0)
+ Garbage collector: Serial GC (max heap size: 80% of RAM)
+ 1 user-specific feature(s):
+ - com.oracle.svm.thirdparty.gson.GsonFeature
+------------------------------------------------------------------------------------------------------------------------
+Build resources:
+ - 28.45GB of memory (20.7% of system memory, using available memory)
+ - 16 thread(s) (100.0% of 16 available processor(s), determined at start)
+[2/8] Performing analysis...  [*****]                                                                    (7.4s @ 1.79GB)
+    7,628 types,  10,852 fields, and  39,774 methods found reachable
+    2,450 types,      41 fields, and     932 methods registered for reflection
+       59 types,      59 fields, and      52 methods registered for JNI access
+        0 downcalls and 0 upcalls registered for foreign access
+        4 native libraries: -framework Foundation, dl, pthread, z
+[3/8] Building universe...                                                                               (1.7s @ 1.74GB)
+[4/8] Parsing methods...      [**]                                                                       (3.0s @ 1.15GB)
+[5/8] Inlining methods...     [***]                                                                      (0.5s @ 1.03GB)
+[6/8] Compiling methods...    [****]                                                                    (19.3s @ 1.67GB)
+[7/8] Laying out methods...   [**]                                                                       (4.5s @ 1.85GB)
+[8/8] Creating image...       [**]                                                                       (2.3s @ 2.05GB)
+  20.32MB (54.43%) for code area:    22,539 compilation units
+  16.45MB (44.07%) for image heap:  238,538 objects and 65 resources
+ 560.15kB ( 1.50%) for other data
+  37.33MB in total image size, 37.33MB in total file size
+------------------------------------------------------------------------------------------------------------------------
+Top 10 origins of code area:                                Top 10 object types in image heap:
+   8.04MB java.base                                            5.75MB byte[] for code metadata
+   7.93MB jdk.compiler                                         2.57MB byte[] for java.lang.String
+   2.87MB svm.jar (Native Image)                               1.53MB java.lang.String
+ 231.00kB jdk.zipfs                                            1.01MB java.lang.Class
+ 227.00kB jdk.javadoc                                        793.31kB com.oracle.svm.core.hub.DynamicHubCompanion
+ 203.06kB jdk.internal.md                                    657.05kB byte[] for general heap data
+ 130.55kB java.logging                                       450.94kB java.util.concurrent.ConcurrentHashMap$Node
+  86.50kB com.oracle.svm.svm_enterprise                      370.50kB java.util.HashMap$Node
+  80.58kB jdk.charsets                                       329.54kB java.lang.Object[]
+  57.76kB jdk.proxy2                                         226.78kB c.o.svm.core.hub.DynamicHub$ReflectionMetadata
+ 319.91kB for 13 more packages                                 2.77MB for 1815 more object types
+                            Use '--emit build-report' to create a report with more details.
+------------------------------------------------------------------------------------------------------------------------
+Security report:
+ - Binary includes Java deserialization.
+ - CycloneDX SBOM with 5 component(s) is embedded in binary (417B). 6 type(s) could not be associated to a component.
+ - Advanced obfuscation not enabled; enable with '-H:AdvancedObfuscation=""' (experimental support).
+------------------------------------------------------------------------------------------------------------------------
+Recommendations:
+ PGO:  Use Profile-Guided Optimizations ('--pgo') for improved throughput.
+ FUTR: Use '--future-defaults=all' to prepare for future releases.
+ HEAP: Set max heap for improved and more predictable memory usage.
+ CPU:  Enable more CPU features with '-march=native' for improved performance.
+ QBM:  Use the quick build mode ('-Ob') to speed up builds during development.
+------------------------------------------------------------------------------------------------------------------------
+                        2.7s (6.1% of total time) in 357 GCs | Peak RSS: 3.34GB | CPU load: 8.20
+------------------------------------------------------------------------------------------------------------------------
+Build artifacts:
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/native-min/javac-probe (executable)
+========================================================================================================================
+Finished generating 'javac-probe' in 44.1s.

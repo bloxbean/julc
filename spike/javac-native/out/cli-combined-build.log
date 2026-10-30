@@ -1,0 +1,76 @@
+Warning: The option '-H:ReflectionConfigurationResources=META-INF/native-image/com.networknt/json-schema-validator/reflect-config.json' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: The option '-H:ResourceConfigurationResources=META-INF/native-image/com.networknt/json-schema-validator/resource-config.json' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: Please re-evaluate whether any experimental option is required, and either remove or unlock it. The build output lists all active experimental options, including where they come from and possible alternatives. If you think an experimental option should be considered as stable, please file an issue.
+Warning: Option 'DynamicProxyConfigurationResources' is deprecated and might be removed in a future release: This can be caused by a proxy-config.json file in your META-INF directory. Consider including proxy configuration in the reflection section of reachability-metadata.md instead.. Please refer to the GraalVM release notes.
+========================================================================================================================
+GraalVM Native Image: Generating 'julc' (executable)...
+========================================================================================================================
+For detailed information and explanations on the build output, visit:
+https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/BuildOutput.md
+------------------------------------------------------------------------------------------------------------------------
+[1/8] Initializing...                                                                                    (4.3s @ 0.37GB)
+ Java version: 25.0.2+10-LTS, vendor version: Oracle GraalVM 25.0.2+10.1
+ Graal compiler: optimization level: 2, target machine: armv8.1-a, PGO: ML-inferred
+ C compiler: cc (apple, arm64, 17.0.0)
+ Garbage collector: Serial GC (max heap size: 80% of RAM)
+ 1 user-specific feature(s):
+ - com.oracle.svm.thirdparty.gson.GsonFeature
+------------------------------------------------------------------------------------------------------------------------
+ 3 experimental option(s) unlocked:
+ - '-H:JNIConfigurationResources' (origin(s): 'META-INF/native-image/org.jline/jline-native/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar')
+ - '-H:ResourceConfigurationResources' (origin(s): 'META-INF/native-image/com.networknt/json-schema-validator/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-jni/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-jna/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-jansi/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-ffm/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-native/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jansi-core/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar')
+ - '-H:ReflectionConfigurationResources' (origin(s): 'META-INF/native-image/com.networknt/json-schema-validator/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-jni/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-jna/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-jansi/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-terminal-ffm/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar', 'META-INF/native-image/org.jline/jline-native/native-image.properties' in 'file:///Users/satya/work/bloxbean/julc-javac-spike/julc-cli/build/libs/julc.jar')
+------------------------------------------------------------------------------------------------------------------------
+Build resources:
+ - 28.45GB of memory (20.7% of system memory, using available memory)
+ - 16 thread(s) (100.0% of 16 available processor(s), determined at start)
+[2/8] Performing analysis...  [******]                                                                  (16.5s @ 3.62GB)
+   21,088 types,  32,968 fields, and 117,271 methods found reachable
+    6,264 types,   2,279 fields, and  12,184 methods registered for reflection
+       77 types,     180 fields, and      55 methods registered for JNI access
+        2 downcalls and 0 upcalls registered for foreign access
+        5 native libraries: -framework CoreServices, -framework Foundation, dl, pthread, z
+[3/8] Building universe...                                                                               (2.9s @ 3.74GB)
+[4/8] Parsing methods...      [***]                                                                      (8.2s @ 1.81GB)
+[5/8] Inlining methods...     [***]                                                                      (1.2s @ 2.00GB)
+[6/8] Compiling methods...    [******]                                                                  (32.9s @ 4.49GB)
+[7/8] Laying out methods...   [***]                                                                     (10.5s @ 5.10GB)
+[8/8] Creating image...       [**]                                                                       (4.3s @ 5.47GB)
+  60.50MB (56.87%) for code area:    69,081 compilation units
+  44.63MB (41.96%) for image heap:  488,991 objects and 455 resources
+   1.25MB ( 1.17%) for other data
+ 106.38MB in total image size, 106.38MB in total file size
+------------------------------------------------------------------------------------------------------------------------
+Top 10 origins of code area:                                Top 10 object types in image heap:
+  23.74MB julc.jar                                            17.09MB byte[] for code metadata
+  14.92MB java.base                                            6.47MB byte[] for java.lang.String
+   7.59MB jdk.compiler                                         3.41MB java.lang.String
+   6.18MB svm.jar (Native Image)                               3.22MB byte[] for embedded resources
+   3.70MB java.xml                                             2.97MB java.lang.Class
+   1.27MB java.net.http                                        2.19MB com.oracle.svm.core.hub.DynamicHubCompanion
+ 411.72kB jdk.proxy4                                           1.09MB byte[] for reflection metadata
+ 259.40kB java.rmi                                           878.37kB byte[] for general heap data
+ 258.93kB java.naming                                        638.34kB c.o.svm.core.hub.DynamicHub$ReflectionMetadata
+ 247.77kB jdk.zipfs                                          539.20kB java.util.HashMap$Node
+   1.48MB for 24 more packages                                 6.12MB for 4837 more object types
+                            Use '--emit build-report' to create a report with more details.
+------------------------------------------------------------------------------------------------------------------------
+Security report:
+ - Binary includes Java deserialization.
+ - CycloneDX SBOM with 46 component(s) is embedded in binary (2.51kB). 7 type(s) could not be associated to a component.
+ - Advanced obfuscation not enabled; enable with '-H:AdvancedObfuscation=""' (experimental support).
+------------------------------------------------------------------------------------------------------------------------
+Recommendations:
+ PGO:  Use Profile-Guided Optimizations ('--pgo') for improved throughput.
+ FUTR: Use '--future-defaults=all' to prepare for future releases.
+ HEAP: Set max heap for improved and more predictable memory usage.
+ CPU:  Enable more CPU features with '-march=native' for improved performance.
+ QBM:  Use the quick build mode ('-Ob') to speed up builds during development.
+------------------------------------------------------------------------------------------------------------------------
+                        6.2s (7.4% of total time) in 787 GCs | Peak RSS: 7.49GB | CPU load: 9.29
+------------------------------------------------------------------------------------------------------------------------
+Build artifacts:
+ /Users/satya/work/bloxbean/julc-javac-spike/spike/javac-native/build/cli-combined/julc (executable)
+========================================================================================================================
+Finished generating 'julc' in 1m 22s.
+       83.33 real       749.19 user        24.61 sys
