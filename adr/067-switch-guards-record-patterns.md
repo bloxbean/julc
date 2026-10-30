@@ -1,4 +1,4 @@
-# ADR-067: Switch guards, record patterns, cross-type record `equals`, and records with two sealed parents
+# ADR-067: Switch guards, record patterns, cross-type record `equals`, records with two sealed parents, and record members
 
 **Status:** Proposed (2026-10-30). Design only; the implementation will follow in the same PR after acceptance.
 **Date:** 2026-10-30
@@ -10,7 +10,8 @@ their source), with evidence from [ADR-063](063-differential-jvm-uplc-test-harne
 **Issues:** [#275](https://github.com/bloxbean/julc/issues/275) (guards ignored),
 [#276](https://github.com/bloxbean/julc/issues/276) (record patterns dropped),
 [#277](https://github.com/bloxbean/julc/issues/277) (cross-type record `equals`),
-[#279](https://github.com/bloxbean/julc/issues/279) (a record with two sealed parents)
+[#279](https://github.com/bloxbean/julc/issues/279) (a record with two sealed parents),
+[#282](https://github.com/bloxbean/julc/issues/282) (record members ignored; added in r2)
 **Relates to:** [ADR-015](verification/015-strict-on-chain-data-boundaries.md) (strict boundaries),
 [ADR-038](038-switch-pair-case-lowering.md) and [ADR-041](041-integer-case-dispatch.md) (switch dispatch),
 [ADR-048](048-loop-conditional-local-updates.md) and [ADR-050](050-if-loop-continuations.md) (switch arms in
@@ -23,7 +24,8 @@ loops, join lambdas), [ADR-051](051-switch-field-decoding.md) (field decoding), 
 
 JuLC lowers a `switch` expression over a sealed interface to one `PirTerm.DataMatch` with one branch per
 constructor (`PirGenerator.generateSwitchExpr`, `PirGenerator.java:2370`). Four reported defects come from this
-area and from record encoding; each was reproduced at the base with the ADR-063 harness (Evidence, below).
+area and from record encoding, and a fifth (#282, added in r2) from records whose bodies JuLC ignores; each was
+reproduced at the base with the ADR-063 harness (Evidence, below).
 
 | Issue | Construct | JVM | JuLC (all four optimization levels) | Cause at the base |
 |---|---|---|---|---|
@@ -31,6 +33,7 @@ area and from record encoding; each was reproduced at the base with the ADR-063 
 | #276 | `case A(var v) ->` | -3 | -99 (the `default` arm) | The label loop handles only `TypePatternExpr` (`PirGenerator.java:2401`); a `RecordPatternExpr` label is skipped without a diagnostic, so `default` covers the variant. Without `default` the error is a misleading "not exhaustive. Missing cases: A" |
 | #277 | `new R1(a).equals(new R2(a))` | false | true | `equals` on `RecordType`, `SumType` and `DataType` lowers to `EqualsData` (`TypeMethodRegistry.java:364-375`). Every standalone record is `Constr 0`, so two record classes with equal fields are equal |
 | #279 | `record B(...) implements S, T` | 21 | 11 | A variant has one constructor tag. `TypeResolver` maps each variant to one sum type, and a second sealed parent overwrites the first (`variantToSumType.put`, `TypeResolver.java:184`, `:222`). `B` is built with its position in one parent and read with its position in the other |
+| #282 | A record body: explicit accessor, `equals`, compact or secondary constructor, methods | -5 (accessor), 1 (`equals`), 5 (compact constructor) | 5, 0, -5; other members rejected uncoded or with misleading messages | `TypeResolver.registerRecord` keeps only the components (`TypeResolver.java:70-83`); nothing in `julc-compiler/src/main` reads a user record's member declarations. Accessor calls resolve to the component (`PirGenerator.resolveRecordFieldAccess`), `equals` to `EqualsData`, and `new R(a)` builds the components directly, so constructor bodies never run |
 
 The maintainer's decision for #275 and #276 is to implement guards and record patterns with Java's meaning,
 not only to reject them. #277 and #279 are representation problems: #277 has a Java-exact answer that needs no
@@ -71,6 +74,7 @@ runtime type information (the static types decide it), and #279 cannot be repres
   because JuLC compiles source without javac (testkit `forSource`, playground, Elci's library provider).
 - `equals` between values whose static types cannot hold the same class is `false`, as in Java.
 - A record that cannot be represented with one constructor tag is rejected.
+- A user record whose body would change its meaning in Java (members JuLC does not compile) is rejected (r2).
 - Programs that use none of these constructs compile to byte-identical scripts.
 - Nothing is skipped silently: every case label is lowered or rejected with a code.
 
@@ -150,6 +154,10 @@ runtime type information (the static types decide it), and #279 cannot be repres
   - **§15.12.4 (run-time evaluation of method invocation).** Its subsections are, in order, "15.12.4.1. Compute
     Target Reference (If Necessary)" and "15.12.4.2. Evaluate Arguments": the receiver is evaluated before the
     argument, and both before the method runs.
+  - **§8.10.3 (record members)**, chapter 8 fetched the same way in r2: "for each record component, a record class has
+    a method with the same name as the record component and an empty formal parameter list. This method, which is
+    declared explicitly or implicitly, is known as an accessor method." An explicit accessor is therefore what every
+    call `x.c()` and every record pattern (§14.30.2) invokes; D9 relies on this.
 - **`java.lang.Record.equals`**, Java SE 21 API,
   `https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Record.html`, fetched 2026-10-30: "The
   implicitly provided implementation returns true if and only if the argument is an instance of the same record
@@ -222,6 +230,11 @@ Each invariant names the decisions it constrains and is testable.
   its tag is its position in that interface's `permits` list (or implicit order) everywhere: construction,
   dispatch, schema and boundary checks.
 - **I14. Determinism** (all). The same source and configuration give the same PIR, bytes and diagnostics.
+- **I15. A record means its components** (D9, r2). Every record JuLC compiles from user or library source has a body
+  that contains nothing except nested type declarations. Its construction, accessors, `equals` and pattern matching
+  are therefore exactly the implicit ones Java declares (JLS §8.10.3, `Record.equals`), which are what JuLC
+  lowers. Ledger types bundled from `julc-ledger-api` are outside this rule: their on-chain meaning is defined by
+  the compiler's registries, not by their bodies.
 
 ## Decisions
 
@@ -314,9 +327,10 @@ Rejected with `JULC0076` (with a reason argument):
 - A component type pattern that would need a run-time test JuLC cannot perform on Data, or that javac accepts but
   can never match: for example `IntData i` on a `PlutusData` component (a Data-kind test), or `PlutusData d` on a
   `BigInteger` component.
-- A record pattern over a record that declares an explicit accessor method for a component. Java's record pattern
-  invokes the accessor (JLS §14.30.2); JuLC's `x.c()` ignores explicit accessors today (Related findings, R6), so
-  supporting both would create a second path to the same divergence. The general accessor defect needs its own fix.
+- *(Subsumed by D9 in r2.)* A record pattern over a record that declares an explicit accessor method for a
+  component. Java's record pattern invokes the accessor (JLS §14.30.2), and JuLC ignores explicit accessors (#282).
+  D9 now rejects such a record at its declaration, so no record pattern can name one; D3 needs no check of its own,
+  and `JULC0076` has no accessor reason. A future ADR that admits record members must revisit D3 together with D9.
 - Generic records, and any other `PatternExpr` form.
 
 `instanceof` with a record pattern stays rejected, now with `JULC0077` (pointing at `switch` and #204), not with
@@ -374,6 +388,10 @@ argument once each (JLS §15.12.4), so a failing operand still fails. Otherwise 
 `EqualsData` lowering is kept. With D6 in place, overlapping sets mean the same sealed family or one of its variants,
 whose tags are distinct and consistent, so structural comparison is exact (E4, E5). Each statically false call also
 emits the warning `JULC0078` ("always false in Java"), because a validator almost never means it.
+
+With D9 (r2), every user record JuLC accepts uses the implicit `equals`, so "same class and equal components" is
+what `EqualsData` computes for two values of one record type (up to T5's `byte[]` components). An explicit `equals`
+can no longer be silently replaced by `EqualsData`.
 
 The classification must use the source-level type, not the PIR type: PIR inference falls back to `DataType` where
 the Java type is a record (the comment at `PirGenerator.java:2376` describes one such case), and deciding `false`
@@ -439,26 +457,94 @@ regenerated, troubleshooting entries and an example each.
 | `JULC0077` | `INSTANCEOF_RECORD_PATTERN_UNSUPPORTED` | error | `instanceof` with a record pattern |
 | `JULC0078` | `EQUALS_ALWAYS_FALSE` | warning | `equals` between types with disjoint class sets (D5) |
 | `JULC0079` | `RECORD_MULTIPLE_SEALED_PARENTS` | error | A record implementing two sealed interfaces (D6) |
+| `JULC0080` | `RECORD_MEMBER_UNSUPPORTED` | error | A user record body member other than a nested type (D9, r2), with the member kind |
 
 **Code reservation.** The base's highest code is `JULC0059`. Open PRs use `JULC0060`–`JULC0066` (#272,
 `fix/257-coded-loop-diagnostics`) and `JULC0070` (#271, `fix/t25-integer-literals`); `JULC0067`–`JULC0069` are
-used by no branch but were skipped by #271, so this ADR does not take them. It reserves `JULC0071`–`JULC0079`.
+used by no branch but were skipped by #271, so this ADR does not take them. It reserves `JULC0071`–`JULC0080`
+(`JULC0080` added in r2).
 Codes are re-checked against every origin branch before the implementation commit.
 
 ### D8. Catalogue and documentation
 
 ADR-062 gets one row per issue, provisionally **T26** (#275), **T27** (#276), **T28** (#277, with the erased-nominal
-cases of E8/E11/E12 noted), **T29** (#279), and **T30** (record explicit accessors and explicit `equals`, Related
-findings R6/H5), owned by S5. T24 and T25 are taken by #268 and #270. Final IDs are assigned when the rows merge.
+cases of E8/E11/E12 noted), **T29** (#279), and **T30** (#282: record members ignored, Evidence R6, H5, N1–N10), owned by S5. T24 and T25 are taken by #268 and #270. Final IDs are assigned when the rows merge.
 Documentation: `getting-started.md` §8.2/§8.3 (guards, record patterns, the `instanceof` limit), the advanced
 guide's "Switch Best Practices", troubleshooting entries for each code, both AI starter packs, and release notes.
+
+### D9. Record members (#282, r2)
+
+JuLC compiles a record as its components only. Everything else in a record body is either ignored, which silently
+changes the program's meaning, or rejected with an uncoded or misleading message (Evidence N1–N10):
+
+| Member | Java | JuLC at the base |
+|---|---|---|
+| Explicit accessor (`v()` returning `v.negate()`), called on a local, a helper parameter or a switch binding | -5 | 5, silently (R6, N9) |
+| Explicit `equals` | 1 | 0, silently (`EqualsData`, H5) |
+| Compact constructor normalizing a component (`R { x = x.abs(); }`) | 5 | -5, silently (N3) |
+| Secondary constructor delegating to the canonical one | 10 | fails on-chain ("HeadList: empty list"), because the record is built with one field (N5) |
+| Explicit canonical constructor | 6 | rejected: "'this' is not supported on-chain" (N4) |
+| Static method, static field | 10, 15 | rejected: "Undefined variable: R" (N1, N8) |
+| Instance method | 10 | rejected: `JULC0055` "Cannot resolve twice" (N2, N10) |
+| `toString`, `hashCode` declared and unused | 5 | 5 (N7) |
+
+**Decision.** Fail closed. A record declared in source that JuLC compiles as user or library code (validator
+classes, `@OnchainLibrary` libraries, testkit and playground sources, Elci library sources) may contain only nested
+type declarations in its body. Every other member is rejected at the record's declaration with `JULC0080`, naming
+the record and the member kind:
+
+- an explicit accessor (a method named after a component, with no parameters);
+- `equals`, `hashCode` or `toString`;
+- a compact canonical constructor or an explicit canonical constructor;
+- any other constructor;
+- any other instance or static method;
+- a static field or an initializer block.
+
+The check runs during type registration, before any use, so it does not depend on whether or how the record is
+used (a declared but unused `toString` is rejected too). It replaces today's messages for these members ("Undefined
+variable: R", "'this' is not supported on-chain", and `JULC0055` where the receiver is a user record that declares the
+method). `@NewType` records are included: their constructor and `.of(...)` are compiler intrinsics, and a declared
+`of` or accessor would be a second, unused definition.
+
+**Scope: ledger types are excluded.** The `julc-ledger-api` types are registered from bundled sources by a separate
+path (`LedgerSourceLoader`, `JulcCompiler.java:350`, `:878`; `JavaLibraryProvider.java:69`). Their bodies are
+off-chain conveniences whose on-chain meaning the compiler defines itself: the hash types (`PubKeyHash`, `ScriptHash`,
+`ValidatorHash`, `PolicyId`, `TokenName`, `DatumHash`, `TxId`) declare compact constructors, cloning accessors,
+`equals`, `hashCode`, `toString` and static `of`/`fromPlutusData`, and are byte strings on-chain with `.of` as
+identity; sum variants declare `toPlutusData`; `Interval` declares static factories; `Value` declares instance
+methods (`assetOf`, `lovelaceOf`, `isEmpty`, `containsPolicy`) that `TypeMethodRegistry` implements. Rejecting them
+would reject every validator, and their semantics are an S2 concern (one implementation per semantic fact), not a
+source-body concern.
+
+**Corpus check.** Apart from the ledger types, no record with a non-empty body exists in the main sources of
+`julc-stdlib` (4 records), `julc-core/.../types` (4), in-repo `julc-examples` (16 records, all trees), `../julc-examples`
+(146), `../julc-helloworld` (1) or `../julc-cip113-example` (15) (Evidence, scan). In JuLC's own tests, one source
+would change: `SubsetValidatorTest.acceptsRecordApply` (`SubsetValidatorTest.java:180-194`) declares a record with an
+`apply()` method to check that `SubsetValidator` does not flag it; with D9 that source is rejected, so the test must
+be rewritten (the `apply` check can use a top-level method instead). `FqcnResolutionTest` (`:361`) nests a record
+inside a record, which D9 allows.
+
+**Interaction with D3 and D5.** D3's rejection of record patterns over records with explicit accessors is subsumed:
+no such record survives registration. D5 relies on D9: an accepted user record has the implicit `equals`.
+
+*Alternatives:*
+- *Implement record members* (accessors as methods, `equals` overrides as calls, constructor bodies at `new`): the
+  right long-term answer, but it touches construction, field access, pattern matching, boundaries (does a decoded
+  datum run the compact constructor? Java's deserialization does not) and equality everywhere; it needs its own ADR
+  (open question 8).
+- *Reject only the members that change meaning silently* (accessors, `equals`, constructors) and keep today's
+  messages for the rest: leaves uncoded and misleading rejections, and a member that is harmless today (an unused
+  `toString`) would need its own rule when members are supported. One rule for the whole body is simpler to explain
+  and to test.
+- *Reject records with bodies only when the member is used*: depends on use analysis across methods and libraries;
+  an unused accessor in a library becomes used by a later caller.
 
 ## Affected stages and modules
 
 | Module | Stage | Change |
 |---|---|---|
 | `julc-compiler` | Validation (`SubsetValidator` or a new switch checker) | D4 checks, D6 check at type registration, `JULC0074`/`0077` |
-| `julc-compiler` | Type registration (`TypeRegistrar`, `TypeResolver`) | D6: detect a second sealed parent instead of overwriting |
+| `julc-compiler` | Type registration (`TypeRegistrar`, `TypeResolver`) | D6: detect a second sealed parent instead of overwriting; D9: reject record body members for non-ledger sources |
 | `julc-compiler` | PIR generation (`PirGenerator`, `PatternMatchDesugarer`, `LoopBodyGenerator`) | D2/D3 lowering; guard and record-pattern variables in the ADR-048 validation |
 | `julc-compiler` | Instance methods (`TypeMethodRegistry`, `PirGenerator`) | D5 classification before the `EqualsData` handler |
 | `julc-compiler` | Diagnostics catalogue | D7 |
@@ -480,7 +566,10 @@ shapes are ordinary `DataMatch`, `IfThenElse`, `Let`, `Lam` and `App`.
   Deployed scripts are unaffected (their hashes are fixed); recompiling changes their hash only if they use one of
   these constructs.
 - **Newly rejected programs** are those javac 21 rejects (D4), patterns outside D3's subset (previously silently
-  dropped or rejected uncoded), and D6's records.
+  dropped or rejected uncoded), D6's records, and (r2) user records with body members (D9). Of the last, those with
+  accessors, `equals`, compact or secondary constructors were silently miscompiled; the others were already
+  rejected, now with `JULC0080` instead of uncoded or misleading messages. The corpus scan found none outside the
+  ledger types, which D9 excludes.
 - **Byte stability (I8).** Everything else compiles byte-identically. The implementation must show this against the
   base for in-repo `julc-examples`, `../julc-examples`, the stdlib, the ADR-038/041 switch goldens and the Blaster
   fixtures under `verification/blaster/fixtures`.
@@ -503,10 +592,11 @@ the Java VM and the Scalus VM (and Truffle where the existing switch suites run 
 | **M2a** | Flat record patterns: D3 for `V(var x, T y)`, guards on them, mixing with type patterns, exhaustiveness and dominance for flat patterns, `JULC0076`, `JULC0077` | M1 | #276 pin flips; oracle tests incl. `case A(var v) -> …; case A x -> …` (legal, second arm dead), record pattern before `default`, explicit component types, field shadowing by a component name; negative tests for every `JULC0076` reason | I2, I4, I7, I9, I10 |
 | **M2b** | Nested record patterns: D2 step 3, the JLS rewrite/reduce exhaustiveness rules, nested dominance | M2a | Oracle tests for `P(C(var w))`/`P(D(var w))`, `Pair(C c, T t)`, the JLS `Box` and `IPair` examples (exhaustive / not exhaustive), guards on nested patterns; malformed-tag tests (I5) on a component cast from raw Data: an out-of-range tag fails and never reaches `default`; size measurement linear in arms (I6) | I4–I6, I9 |
 | **M3** | D6: reject a second sealed parent, `JULC0079` | M0 (independent of M1/M2) | #279 pin becomes a `REJECT` case; javac accepts and runs it (21), JuLC rejects with `JULC0079`; equal positions also rejected; a record with one sealed parent and a plain interface still compiles byte-identically | I8, I13 |
-| **M4** | D5 cross-type `equals`, `JULC0078` | M3 (D5's exactness relies on disjoint families) | #277 pin flips; oracle tests for E1–E10 (R1/R2, record vs tag-0 variant, record vs tag-1 variant, sealed vs its variant, two variants, sealed vs record, record vs `PlutusData` with the same encoding, two sealed families, failing argument); unknown static type keeps structural equality; I8 for intersecting types | I8, I12 |
-| **M5** | Documentation, catalogue rows, release notes, AI starter packs; full validation | M1–M4 | `./gradlew build -PskipSigning=true` green; external `../julc-examples` built against the published snapshot; byte-stability report attached to the PR; ADR status line and evidence updated | All |
+| **M3b** | D9 (r2): reject user record body members, `JULC0080`; rewrite `SubsetValidatorTest.acceptsRecordApply` | M0 (independent of M1/M2) | Pins for #282 (accessor through a local, a parameter and a switch binding; `equals` by sign and always-true; compact constructor; secondary constructor) become `REJECT` cases with `JULC0080`; javac accepts and runs each (N1–N10 values); every member kind in D9's list has a rejection test, including on a sealed variant and a `@NewType`; a record with a nested type declaration and every ledger type still compile byte-identically; the corpus scan is repeated and attached | I8, I15 |
+| **M4** | D5 cross-type `equals`, `JULC0078` | M3 and M3b (D5's exactness relies on disjoint families and implicit `equals`) | #277 pin flips; oracle tests for E1–E10 (R1/R2, record vs tag-0 variant, record vs tag-1 variant, sealed vs its variant, two variants, sealed vs record, record vs `PlutusData` with the same encoding, two sealed families, failing argument); unknown static type keeps structural equality; I8 for intersecting types | I8, I12 |
+| **M5** | Documentation, catalogue rows, release notes, AI starter packs; full validation | M1–M4, M3b | `./gradlew build -PskipSigning=true` green; external `../julc-examples` built against the published snapshot; byte-stability report attached to the PR; ADR status line and evidence updated | All |
 
-M1 and M3 can proceed in parallel. ADR-066's G1 generates guards, record patterns and cross-type `equals` only once
+M1, M3 and M3b can proceed in parallel. ADR-066's G1 generates guards, record patterns and cross-type `equals` only once
 M1, M2 and M4 are below it in the stack (ADR-066 open question 1).
 
 ## Verification and test strategy
@@ -530,14 +620,15 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
 6. **Mutation checks.** Each of these deliberate faults must make at least one test fail: ignore guards; keep only
    the first arm per variant; evaluate the guard before binding; decode a nested component before its tag test;
    treat an unknown nested tag as "no match"; duplicate instead of join (size test); compile same-family `equals` to
-   `false`; derive `false` from an inferred `DataType`; accept a second sealed parent.
+   `false`; derive `false` from an inferred `DataType`; accept a second sealed parent; accept a compact constructor
+   or an explicit accessor in a user record (r2); apply D9 to ledger types (r2, must break the ledger suites).
 7. **Long run.** ADR-066's G1 generates these constructs once the milestones are below it and is the continuing
    check; its rediscovery of #275–#277 on the pre-fix base is ADR-066's own gate.
 
 ## Production and audit gates
 
 - Accepting this ADR is design acceptance only; it does not certify the implementation.
-- Before merge: independent review of the diff against D1–D7 and I1–I14, the byte-stability report, and the
+- Before merge: independent review of the diff against D1–D9 and I1–I15, the byte-stability report, and the
   external examples run. JuLC remains experimental; this ADR makes no production-safety claim.
 - Blaster fixtures: if any fixture uses a construct whose bytes change, follow the artifact refresh procedure; the
   expectation (to be confirmed in M5) is that none does.
@@ -564,10 +655,11 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
 Found while writing this ADR; each reproduced at the base with the ADR-063 harness (Java VM, all four levels) unless
 stated. Issues are to be filed.
 
-- **R6. Explicit record accessors are ignored.** `record Neg(BigInteger v) { public BigInteger v() { return
-  v.negate(); } }`, `new Neg(a).v()`: JVM -5, JuLC 5. Proposed T30.
-- **H5. Explicit `equals` in a record is ignored.** A record whose `equals` compares absolute values: JVM 1, JuLC 0
-  (`EqualsData`). Proposed T30.
+- **R6, H5.** Explicit record accessors and explicit `equals` are ignored. *Moved into scope in r2* as #282 and D9.
+- **`@NewType` accessor and `.of`.** On a `@NewType` local, the accessor (`t.v()`) is rejected with `JULC0055`
+  (Evidence N6). The getting-started guide (§5.3) shows `AssetId.of(someBytes)` for a `@NewType record AssetId(byte[]
+  hash) {}`, which JuLC compiles as an intrinsic but javac rejects, because the record declares no `of`; D9 keeps
+  user-declared `of` out, so the guide should show `new AssetId(bytes)` for code that must also run on the JVM.
 - **H6. For-each over `JulcList.of(a, b)` of `BigInteger`s.** `acc = acc.add(k)` fails on-chain ("AddInteger:
   expected integer, got VCon(Data[])"); JVM 7.
 - **G9. A `switch` statement** (`switch (s) { case A x -> { return …; } … }`) is rejected with the misleading,
@@ -608,6 +700,11 @@ stated. Issues are to be filed.
    stability under edits to `permits`.
 7. **Catalogue IDs and diagnostic codes** may collide with work merged in parallel (ADR-066 and the open fix PRs).
    They are provisional until the implementation commit re-checks them.
+8. **Record members (r2).** Options: (a) reject every body member except nested types (D9); (b) implement members
+   (accessors, `equals`, constructor bodies) in a later ADR, which must also decide whether a datum decoded at a
+   boundary runs a compact constructor. Lean: (a) now, (b) only on demand; no example or library needs members today.
+   A narrower allowance worth considering later is a `@NewType` `static of(x) { return new T(x); }`, which would let the
+   guide's `.of` example compile with javac.
 
 ## Evidence
 
@@ -616,6 +713,7 @@ All at `fd605e77` on macOS, JDK 25.0.2, Java VM (`DiffConfig.allLevels()`), via 
 
 ```bash
 ./gradlew :julc-difftest:test --tests 'org.julclang.difftest.Adr067ProbeTest'   # temporary, deleted
+# r1 also: Adr067Probe2Test (M1-M6); r2: Adr067Probe3Test (N1-N10); same harness, also deleted
 ```
 
 Declarations shared by the probes: `sealed interface S permits A, B`, `record A(BigInteger v)`, `record
@@ -671,6 +769,16 @@ records `Amt`, `Price`. JuLC's result was the same at `NONE`, `BASELINE`, `PV11_
 | M4 | Same hierarchy, `case U q` on `S` | 2 | rejected: same |
 | M5 | Variant also implementing a plain `interface Marker` | 5 | 5 |
 | M6 | #279 declarations, `S` holding `B` vs `A` | false | true |
+| N1 | Static factory `R.twice(a)` declared in the record (r2) | 10 | rejected: "Undefined variable: R" |
+| N2 | Instance method `r.twice()` (r2) | 10 | rejected: `JULC0055` "Cannot resolve twice" |
+| N3 | Compact constructor `R { x = x.abs(); }`, `new R(-a).x()` (r2) | 5 | -5 |
+| N4 | Explicit canonical constructor adding one (r2) | 6 | rejected: "'this' is not supported on-chain" |
+| N5 | Secondary constructor `R(x) { this(x, TEN); }`, `.y()` (r2) | 10 | fails: "HeadList: empty list" |
+| N6 | `@NewType Amt` with a declared `static of`, `Amt.of(a).v()` (r2) | 5 | rejected: `JULC0055` "Cannot resolve v" |
+| N7 | `toString` and `hashCode` declared, unused (r2) | 5 | 5 |
+| N8 | Static field `R.K` (r2) | 15 | rejected: "Undefined variable: R" |
+| N9 | Explicit accessor called through a helper's parameter (r2) | -5 | 5 |
+| N10 | Instance method on a sealed variant, called on a switch binding (r2) | 10 | rejected: `JULC0055` "Cannot resolve d" |
 
 **javac `--release 21`** (javac 25.0.2), each a one-class file:
 
@@ -703,6 +811,17 @@ records `Amt`, `Price`. JuLC's result was the same at `NONE`, `BASELINE`, `PV11_
 | `switch (w)` on a record type with `case W(var x)` | accepted |
 | `new R1(a).equals(new R2(a))` | accepted |
 
+**Record-body scan (r2).** A script that finds each `record` declaration (comments and string literals removed)
+and lists the ones with a non-empty body, run over the main sources of `julc-ledger-api`, `julc-stdlib`,
+`julc-core/src/main/java/org/julclang/core/types`, and over all sources (main and test) of in-repo `julc-examples`,
+`../julc-examples/src`, `../julc-helloworld` and `../julc-cip113-example`. Only `julc-ledger-api` has records with
+bodies (74: the seven hash types with constructors, accessors, `equals`, `hashCode`, `toString`, `of` and
+`fromPlutusData`; the sum variants with `toPlutusData`; product types with static `fromPlutusData`/`toPlutusData`;
+`Interval` static factories; `Value` instance methods). Record counts in the others: 4, 4, 16, 146, 1, 15, none with a
+body. A `grep` over the text-block sources in every module's tests found two records with bodies:
+`SubsetValidatorTest.acceptsRecordApply` (a method, rejected by D9) and `FqcnResolutionTest` (a nested record,
+allowed).
+
 **Searches.** `grep -rn "getGuard\|RecordPatternExpr"` over all Java sources at the base: no match outside
 JavaParser itself. No on-chain source in in-repo `julc-examples`, `../julc-examples` or `../julc-cip113-example`
 uses a guard or a record pattern in a `switch` (the matches are JuLC's own off-chain code in `julc-core` and test
@@ -714,3 +833,8 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
 
 - **r1** (2026-10-30): initial proposal, including #279 (D6), added at the coordinator's request from the ADR-066
   review.
+- **r2** (2026-10-30, before any review; responds to the coordinator's request after filing #282 from this ADR's
+  related finding R6/H5): new D9 (reject every user record body member except nested types, `JULC0080`, ledger types
+  excluded), I15, M3b, mutation checks for D9, Evidence N1–N10 and the record-body scan, open question 8. D3's
+  explicit-accessor rejection marked subsumed by D9; D5 notes its reliance on D9; D7 reservation extended to
+  `JULC0080`; D8's T30 now names #282; R6/H5 moved from Related findings into scope. No ID renumbered.
