@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
  * <ul>
  * <li>An inconclusive UPLC side is explained by a {@link Rule}: a structural condition on the
  *     program, the JVM kind and the exact inconclusive reason, and a confirmation rerun with a larger budget:
- *     for T13 it must agree with the JVM, for T21 it must still be inconclusive. A rule is weaker than a pin, since
+ *     for T13 it must agree with the JVM, for a non-termination rule (T21, until #254) it must still be
+ *     inconclusive. A rule is weaker than a pin, since
  *     another cause with the same shape and reason passes as it, but an inconclusive case counts
  *     towards no quota (D9).</li>
  * <li>A conclusive UPLC side, a value or a failure, is explained only by a <em>pin</em>: a saved
@@ -50,12 +51,13 @@ public final class KnownDivergences {
         NONE,
         /**
          * A rerun finishes and agrees with the JVM, value and traces: the run is only expensive (T13). Any rung of
-         * the shared ladder counts, since agreement with less budget than the rule's own rungs shows the same.
+         * the shared ladder up to the rule's own top rung counts, since agreement with less budget shows the same;
+         * a higher rung, from another rule, would widen what the rule means.
          */
         AGREES_WITH_JVM,
         /**
          * The last rerun run still ends with the rule's inconclusive reason: the run does not terminate within
-         * that many times the budget (T21).
+         * that many times the budget (T21, until #254 fixed it).
          */
         STILL_INCONCLUSIVE
     }
@@ -100,8 +102,8 @@ public final class KnownDivergences {
         boolean confirmedBy(DiffRunner.Result result, List<Rung> rungs) {
             return switch (confirmation) {
                 case NONE -> true;
-                case AGREES_WITH_JVM -> rungs.stream().anyMatch(rung ->
-                        Verdict.compare(result.jvm(), rung.observation()).kind() == Verdict.Kind.AGREE);
+                case AGREES_WITH_JVM -> rungs.stream().anyMatch(rung -> rung.factor() <= confirmationFactors.getLast()
+                        && Verdict.compare(result.jvm(), rung.observation()).kind() == Verdict.Kind.AGREE);
                 case STILL_INCONCLUSIVE -> !rungs.isEmpty()
                         && rungs.getLast().observation() instanceof Observation.Inconclusive again
                         && again.reason().equals(uplcReason);

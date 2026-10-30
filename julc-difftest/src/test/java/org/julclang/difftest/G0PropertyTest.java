@@ -84,7 +84,7 @@ class G0PropertyTest {
 
     /**
      * Quotas count conclusive cases only (H5): an inconclusive or allowed-divergence case, such as a
-     * T21 budget exhaustion, satisfies no quota, whatever features its program has.
+     * T13 budget exhaustion, satisfies no quota, whatever features its program has.
      */
     @AfterProperty
     void checkCoverage() {
