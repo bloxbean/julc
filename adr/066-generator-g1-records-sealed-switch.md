@@ -1632,11 +1632,23 @@ Codex confirmed F105 at `bda959d6` and raised two items.
 
 | Finding | Change |
 |---|---|
-| F110 (P2), class ownership by name prefix | Ownership by `top$` prefix misattributes, in a batch compilation, an unrelated top-level class named like `Probe$Other` or `Probe$$Lambda`. `JvmExecutor` now wraps javac's file manager and records each class file against the source javac passes as the output's sibling in `getJavaFileForOutput`; the preflight verifies exactly the class files of the case's own source. `JvmExecutorTest.aBatchKeepsEachSourcesClassesApart` compiles, in one batch, a sound `Probe` with an unverifiable top-level `Probe$Other`, and a sound `Probe$` with an unverifiable `Probe$$Lambda`: the sound case returns its value, and the other is an oracle fault. With the prefix rule restored the test fails. |
+| F110 (P2), class ownership by name prefix | (Keys corrected in round 5, F115.) Ownership by `top$` prefix misattributes, in a batch compilation, an unrelated top-level class named like `Probe$Other` or `Probe$$Lambda`. `JvmExecutor` now wraps javac's file manager and records each class file against the source javac passes as the output's sibling in `getJavaFileForOutput`; the preflight verifies exactly the class files of the case's own source. `JvmExecutorTest.aBatchKeepsEachSourcesClassesApart` compiles, in one batch, a sound `Probe` with an unverifiable top-level `Probe$Other`, and a sound `Probe$` with an unverifiable `Probe$$Lambda`: the sound case returns its value, and the other is an oracle fault. With the prefix rule restored the test fails. |
 | F111 (P3), F79's wording | Qualified above: a toolchain `LinkageError` while the program runs is caught by a campaign only when the outcome kind or the traces differ; with a UPLC failure and equal traces the case agrees. |
 
 The decoding is unchanged (G1 r7). Commands and counts:
 - `./gradlew :julc-difftest:test --rerun`: 245 tests, 0 failures, 0 skipped, in 130 s; `RegressionCasesTest` runs 86
+  cases.
+
+### M3 part 1 review round 5 (2026-10-30, G1 r7)
+
+Codex confirmed F110 and F111 at `434fcbe9` and raised one item.
+
+| Finding | Change |
+|---|---|
+| F115 (P2), ownership keys that javac's URIs need not match | The keys were `Path.toUri()` of the written files, made before javac built its file objects; javac normalizes dot segments, so under a compile directory such as `/tmp/../tmp/…` no sibling matched, every list was empty, and the preflight verified nothing. Both the class-file ownership and the top-level classes are now keyed by the compilation units' own `JavaFileObject.toUri()`, each unit matched to its written source with `Files.isSameFile`. Ownership fails closed: a class file with no sibling, or with a sibling that is not a source of the batch, and a source whose top-level classes are not all among its class files, are `HarnessException`s. `JvmExecutor` takes a compile directory for tests. `JvmExecutorTest.aWorkDirectoryWithDotSegmentsStillVerifiesEveryClass` compiles under `…/a/../b`: the javac-unverifiable local class and entry class stay oracle faults, and a sound case returns its value; with the old keys the test fails. `anUnownedClassFileIsAHarnessError` checks a foreign sibling and a missing one. |
+
+The decoding is unchanged (G1 r7). Commands and counts:
+- `./gradlew :julc-difftest:test --rerun`: 247 tests, 0 failures, 0 skipped, in 138 s; `RegressionCasesTest` runs 86
   cases.
 
 ## Revision history
