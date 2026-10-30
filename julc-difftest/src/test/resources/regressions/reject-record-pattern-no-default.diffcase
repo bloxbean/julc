@@ -3,8 +3,9 @@ name: record patterns without default (R2)
 class: Probe
 method: m
 arg: 22
-expect: REJECT none
+expect: REJECT JULC0005
 note: ADR-067 R2: legal Java (-3).
+note: ADR-067 M1 (interim): the not-exhaustive rejection is now coded, JULC0005; record patterns are still dropped until M2a/M2b, which set the final verdict. REJECT none at the base.
 ---
 import java.math.BigInteger;
 

@@ -2,12 +2,14 @@ package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.SwitchDiagnostics;
 import org.julclang.compiler.CompilerTargetDiagnostics;
 import org.julclang.compiler.LoweringRequirements;
 import org.julclang.compiler.desugar.LoopDesugarer;
 import org.julclang.compiler.desugar.PatternMatchDesugarer;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
@@ -82,7 +84,14 @@ public class PirGenerator {
      */
     private final java.util.Deque<PatternScope> patternScopes = new java.util.ArrayDeque<>();
 
-    private record PatternScope(String patternVar, Set<String> fieldNames) {}
+    /**
+     * {@code bindings.get(i)} holds the decoded field {@code i}: {@code #__pfield-<var>-<i>} on the base
+     * lowering, a per-constructor name on the guard-aware one (ADR-067 D2), shared by that constructor's arms.
+     */
+    private record PatternScope(String patternVar, Set<String> fieldNames, List<String> bindings) {}
+
+    /** Above zero while a {@code switch} guard is lowered: instanceof is then a total dispatch (ADR-067 D1, F3). */
+    private int guardDepth;
     /**
      * When true, each {@code return <boolExpr>} is compiled as
      * {@code IfThenElse(expr, True, Error)} with the Error mapped to the return statement.
@@ -1578,9 +1587,10 @@ public class PirGenerator {
         // which silently returned the wrong record's field when two records in the same scope
         // shared a field name (e.g. accessing box.amount() inside `case Transfer t` where both
         // Transfer and Box have an `amount` field) — a check-bypass miscompilation (issue #47).
-        if (ownsDestructuredField(varName, fieldName)) {
+        var owner = destructuredFieldOwner(varName, fieldName);
+        if (owner != null) {
             final PirType fType = fieldType;
-            final String binding = destructuredFieldBinding(varName, fieldIndex);
+            final String binding = owner.bindings().get(fieldIndex);
             return java.util.Optional.of(scope -> new PirTerm.Var(binding, fType));
         }
 
@@ -1590,21 +1600,21 @@ public class PirGenerator {
     }
 
     /**
-     * True iff {@code varName.fieldName()} may reuse the internal binding produced by pattern
-     * destructuring instead of re-extracting from the record Data.
+     * The pattern scope whose field binding {@code varName.fieldName()} may reuse instead of re-extracting
+     * the field from the record Data, or null.
      * <p>
      * The reuse is sound only when the innermost active pattern scope that contains
      * {@code fieldName} belongs to {@code varName}; otherwise an inner case that destructured a
      * same-named field would shadow it (e.g. an outer {@code a.amount()} must not pick up an inner
      * {@code case D d}'s {@code amount}). {@code patternScopes} is iterated innermost-first.
      */
-    private boolean ownsDestructuredField(String varName, String fieldName) {
+    private PatternScope destructuredFieldOwner(String varName, String fieldName) {
         for (var ps : patternScopes) { // innermost first
             if (ps.fieldNames().contains(fieldName)) {
-                return ps.patternVar().equals(varName);
+                return ps.patternVar().equals(varName) ? ps : null;
             }
         }
-        return false;
+        return null;
     }
 
     /**
@@ -2383,9 +2393,22 @@ public class PirGenerator {
             }
         }
         if (!(selectorType instanceof PirType.SumType sumType)) {
-            throw enrichedError("switch expression requires a sealed interface type, got: " + selectorType,
-                    "Ensure the switch variable's type is a sealed interface with record variants.", se);
+            throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_REQUIRES_SEALED_INTERFACE, sourceLocation(se),
+                    LibraryMethodRegistry.pirTypeName(selectorType));
         }
+        if (typeResolver.isParameterizedSumType(sumType)) {
+            // ADR-067 D4 (F14): type arguments are dropped, so neither applicability nor exhaustiveness
+            // can be decided for a sealed interface that declares type parameters.
+            throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_REQUIRES_SEALED_INTERFACE, sourceLocation(se),
+                    sumType.name() + ", a sealed interface with type parameters; JuLC drops type arguments, so it "
+                            + "cannot decide which variants apply or whether the switch is exhaustive");
+        }
+        // ADR-067 D4: every compile-time rule JuLC owns, on the source, before anything is lowered.
+        var model = SwitchPatternChecker.check(se, sumType);
+        if (model.guarded()) {
+            return generateGuardedSwitch(selector, sumType, model);
+        }
+        // A switch without a guard keeps the base lowering, byte for byte (ADR-067 I8).
 
         var desugarer = new PatternMatchDesugarer(typeResolver);
         var matchEntries = new ArrayList<PatternMatchDesugarer.MatchEntry>();
@@ -2403,18 +2426,8 @@ public class PirGenerator {
                     var typeName = tpe.getType().asClassOrInterfaceType().getNameAsString();
                     var varName = tpe.getNameAsString();
 
-                    // Find the constructor fields for this variant
-                    var ctorOpt = sumType.constructors().stream()
-                            .filter(c -> c.name().equals(typeName))
-                            .findFirst();
-                    if (ctorOpt.isEmpty()) {
-                        String available = sumType.constructors().stream()
-                                .map(PirType.Constructor::name)
-                                .reduce((a, b) -> a + ", " + b).orElse("none");
-                        throw enrichedError("Unknown variant in switch: " + typeName,
-                                "Available variants: " + available, se);
-                    }
-                    var ctor = ctorOpt.get();
+                    // The checker proved the label applicable: typeName is a constructor.
+                    var ctor = constructorNamed(sumType, typeName);
 
                     symbolTable.pushScope();
                     // Bind the destructured fields under INTERNAL names (not their bare field
@@ -2434,7 +2447,9 @@ public class PirGenerator {
                     symbolTable.define(varName, varRecordType);
                     // Record which pattern variable owns these destructured fields so that
                     // var.field() reuse is restricted to this variable (see resolveRecordFieldAccess).
-                    patternScopes.push(new PatternScope(varName, fieldNames));
+                    patternScopes.push(new PatternScope(varName, fieldNames,
+                            java.util.stream.IntStream.range(0, ctorFields.size())
+                                    .mapToObj(fi -> destructuredFieldBinding(varName, fi)).toList()));
 
                     // Generate body from the entry's statements
                     PirTerm bodyTerm = generateSwitchEntryBody(entry);
@@ -2462,25 +2477,168 @@ public class PirGenerator {
                             ctor.name(), List.of(), defaultBranchBody));
                 }
             }
-        } else {
-            // Exhaustiveness check: verify all constructors are covered
-            var coveredCases = matchEntries.stream()
-                    .map(PatternMatchDesugarer.MatchEntry::variantName)
-                    .collect(java.util.stream.Collectors.toSet());
-            var missingCases = new LinkedHashSet<String>();
-            for (var ctor : sumType.constructors()) {
-                if (!coveredCases.contains(ctor.name())) {
-                    missingCases.add(ctor.name());
-                }
+        }
+        // Without default the checker proved every constructor covered (JULC0005).
+
+        return desugarer.buildDataMatch(selector, sumType, matchEntries);
+    }
+
+    private static PirType.Constructor constructorNamed(PirType.SumType sumType, String name) {
+        return sumType.constructors().stream().filter(c -> c.name().equals(name)).findFirst()
+                .orElseThrow(() -> new CompilerException("Unknown variant in switch: " + name));
+    }
+
+    /**
+     * ADR-067 D2: a switch with a guard. It keeps one {@code DataMatch} over the selector with one branch per
+     * constructor in tag order, so ADR-038 and ADR-041 dispatch apply unchanged. In a constructor's branch its
+     * fields are decoded once (ADR-051) under names all of its arms share, and its arms form a chain in source
+     * order: each binds its pattern variable to the scrutinee, then tests its guard, then runs its body; a false
+     * guard continues with the next arm for the constructor, and finally with {@code default}. A continuation is
+     * bound as a unit lambda before the arm's binder and inlined only when the arm's variable is not free in it
+     * (F9), so a later arm or {@code default} never resolves a name under an earlier arm's binding; {@code default}
+     * is a join bound outside the {@code DataMatch}. Constructors without an arm call {@code default} and decode
+     * nothing. A one-constructor sum type checks the tag first (F11). Every generated name is chosen here, before
+     * the term is built, against the free names of the terms in its scope (ADR-060).
+     */
+    private PirTerm generateGuardedSwitch(PirTerm selector, PirType.SumType sumType, SwitchPatternChecker.Model model) {
+        var avoid = new HashSet<>(symbolTable.allVisibleVariables().keySet());
+        var fieldBindings = new LinkedHashMap<String, List<String>>();
+        for (var ctor : sumType.constructors()) {
+            if (model.arms().stream().noneMatch(arm -> arm.variant().equals(ctor.name()))) continue;
+            var names = new ArrayList<String>();
+            for (int i = 0; i < ctor.fields().size(); i++) {
+                var name = PirHelpers.hygienicName("#case_" + ctor.name() + "_" + i, avoid);
+                avoid.add(name);
+                names.add(name);
             }
-            if (!missingCases.isEmpty()) {
-                collectError("Switch on sealed interface '" + sumType.name()
-                                + "' is not exhaustive. Missing cases: " + String.join(", ", missingCases),
-                        "Add explicit cases for all variants.", se);
+            fieldBindings.put(ctor.name(), names);
+        }
+
+        // default and every arm are compiled in the switch's scope; an arm adds only its own bindings (F9).
+        PirTerm defaultBody = model.defaultEntry() == null ? null : generateSwitchEntryBody(model.defaultEntry());
+        record CompiledArm(SwitchPatternChecker.Arm arm, PirTerm guard, PirTerm body) {
+        }
+        var compiled = new ArrayList<CompiledArm>();
+        for (var arm : model.arms()) {
+            var ctor = constructorNamed(sumType, arm.variant());
+            var bindings = fieldBindings.get(ctor.name());
+            symbolTable.pushScope();
+            var fieldNames = new HashSet<String>();
+            for (int i = 0; i < ctor.fields().size(); i++) {
+                symbolTable.define(bindings.get(i), ctor.fields().get(i).type());
+                fieldNames.add(ctor.fields().get(i).name());
+            }
+            symbolTable.define(arm.patternVar(), new PirType.RecordType(arm.variant(), ctor.fields()));
+            patternScopes.push(new PatternScope(arm.patternVar(), fieldNames, bindings));
+            try {
+                PirTerm guard = arm.guard() == null ? null : generateGuard(arm);
+                compiled.add(new CompiledArm(arm, guard, generateSwitchEntryBody(arm.entry())));
+            } finally {
+                patternScopes.pop();
+                symbolTable.popScope();
             }
         }
 
-        return desugarer.buildDataMatch(selector, sumType, matchEntries);
+        var userTerms = new ArrayList<PirTerm>();
+        userTerms.add(selector);
+        if (defaultBody != null) userTerms.add(defaultBody);
+        for (var arm : compiled) {
+            if (arm.guard() != null) userTerms.add(arm.guard());
+            userTerms.add(arm.body());
+        }
+        avoid.addAll(PirHelpers.freeVariables(userTerms.toArray(PirTerm[]::new)));
+        var dataName = PirHelpers.hygienicName("#case_data", avoid);
+        avoid.add(dataName);
+        var defaultName = PirHelpers.hygienicName("#case_default", avoid);
+        avoid.add(defaultName);
+        var unitName = PirHelpers.hygienicName("#case_unit", avoid);
+        avoid.add(unitName);
+        var unit = new PirTerm.Const(Constant.unit());
+        PirTerm defaultCall = defaultBody == null ? null
+                : new PirTerm.App(new PirTerm.Var(defaultName, new PirType.FunType(new PirType.UnitType(),
+                inferPirType(defaultBody))), unit);
+
+        var branches = new ArrayList<PirTerm.MatchBranch>();
+        for (var ctor : sumType.constructors()) {
+            var arms = compiled.stream().filter(arm -> arm.arm().variant().equals(ctor.name())).toList();
+            // Unreachable for well-formed values: without default, the checker proved every constructor
+            // covered by an unguarded arm.
+            PirTerm rest = defaultCall != null ? defaultCall : new PirTerm.Error(new PirType.UnitType());
+            if (arms.isEmpty()) {
+                branches.add(new PirTerm.MatchBranch(ctor.name(), List.of(), List.of(), rest));
+                continue;
+            }
+            for (int i = arms.size() - 1; i >= 0; i--) {
+                var arm = arms.get(i);
+                var variable = arm.arm().patternVar();
+                var bindData = new PirTerm.Var(dataName, new PirType.DataType());
+                if (arm.guard() == null) {
+                    // An unguarded arm ends the chain; the checker rejected any later arm for it as dominated.
+                    rest = new PirTerm.Let(variable, bindData, arm.body());
+                } else if (!PirHelpers.freeVariables(rest).contains(variable)) {
+                    rest = new PirTerm.Let(variable, bindData, new PirTerm.IfThenElse(arm.guard(), arm.body(), rest));
+                } else {
+                    var scoped = new HashSet<>(avoid);
+                    scoped.addAll(PirHelpers.freeVariables(arm.guard(), arm.body()));
+                    var nextName = PirHelpers.hygienicName("#case_next", scoped);
+                    var next = new PirTerm.Var(nextName, new PirType.FunType(new PirType.UnitType(), inferPirType(rest)));
+                    rest = new PirTerm.Let(nextName, new PirTerm.Lam(unitName, new PirType.UnitType(), rest),
+                            new PirTerm.Let(variable, bindData,
+                                    new PirTerm.IfThenElse(arm.guard(), arm.body(), new PirTerm.App(next, unit))));
+                }
+            }
+            var fieldTypes = ctor.fields().stream().map(PirType.Field::type).toList();
+            branches.add(new PirTerm.MatchBranch(ctor.name(), fieldBindings.get(ctor.name()), fieldTypes, rest, dataName));
+        }
+
+        PirTerm scrutinee = sumType.constructors().size() == 1 ? singleConstructorTagCheck(selector, avoid) : selector;
+        PirTerm match = new PirTerm.DataMatch(scrutinee, branches);
+        if (defaultBody != null && PirHelpers.freeVariables(match).contains(defaultName)) {
+            match = new PirTerm.Let(defaultName, new PirTerm.Lam(unitName, new PirType.UnitType(), defaultBody), match);
+        }
+        return match;
+    }
+
+    /**
+     * The selector of a one-constructor sum type on the guard-aware path, with its tag checked: a
+     * {@code DataMatch} with one branch dispatches without a tag test, which would accept any {@code Constr}
+     * value as the constructor (ADR-067 D2, F11, I5).
+     */
+    private static PirTerm singleConstructorTagCheck(PirTerm selector, Set<String> avoid) {
+        var name = PirHelpers.hygienicName("#case_selector", avoid);
+        avoid.add(name);
+        var value = new PirTerm.Var(name, new PirType.DataType());
+        var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), value));
+        return new PirTerm.Let(name, selector, new PirTerm.IfThenElse(
+                builtinApp2(DefaultFun.EqualsInteger, tag, new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                value, new PirTerm.Error(new PirType.DataType())));
+    }
+
+    /**
+     * A guard's PIR (ADR-067 D1). Inside it, {@code instanceof} on a sealed type is a total dispatch. The guard
+     * must be {@code boolean} or {@code Boolean} (JULC0072); a guard whose type JuLC cannot infer is accepted and,
+     * if it is not a Bool at run time, fails there.
+     */
+    private PirTerm generateGuard(SwitchPatternChecker.Arm arm) {
+        PirTerm guard;
+        guardDepth++;
+        try {
+            guard = generateExpression(arm.guard());
+        } finally {
+            guardDepth--;
+        }
+        var type = typeResolver.resolveNamed(inferPirType(guard));
+        if (type instanceof PirType.DataType) {
+            type = typeResolver.resolveNamed(resolveExpressionType(arm.guard()));
+        }
+        if (!(type instanceof PirType.BoolType) && !(type instanceof PirType.DataType)) {
+            throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(arm.guard()),
+                    "case " + arm.pattern() + " when " + arm.guard(),
+                    "a guard must have type boolean or Boolean, but '" + arm.guard() + "' has type "
+                            + LibraryMethodRegistry.pirTypeName(type));
+        }
+        return guard;
     }
 
     private PirTerm generateSwitchEntryBody(com.github.javaparser.ast.stmt.SwitchEntry entry) {
@@ -2513,6 +2671,9 @@ public class PirGenerator {
     }
 
     private PirTerm generateInstanceOf(InstanceOfExpr ioe) {
+        if (guardDepth > 0 && ioe.getPattern().isEmpty()) {
+            return generateGuardInstanceOf(ioe);
+        }
         // For pattern matching: expr instanceof TypeName varName
         // This is used in if/else chains for ad-hoc matching
         // For now, just check the constructor tag
@@ -2540,6 +2701,33 @@ public class PirGenerator {
         throw enrichedError("Unsupported instanceof pattern: " + ioe,
                 "instanceof is supported only with sealed interface variants: if (x instanceof Variant v) { ... }",
                 ioe);
+    }
+
+    /**
+     * {@code x instanceof V} inside a switch guard (ADR-067 D1, F3): a total dispatch over the constructors of V's
+     * sealed interface, {@code true} for V and {@code false} for the others, so a tag that is no constructor fails
+     * instead of selecting a later arm (I5). Outside guards, instanceof keeps its tag comparison.
+     */
+    private PirTerm generateGuardInstanceOf(InstanceOfExpr ioe) {
+        var type = ioe.getType();
+        var typeName = type.isClassOrInterfaceType() ? type.asClassOrInterfaceType().getNameAsString() : type.asString();
+        var sumType = typeResolver.lookupSumTypeForVariant(typeName);
+        if (sumType.isEmpty()) {
+            throw enrichedError("Unsupported instanceof pattern: " + ioe,
+                    "instanceof is supported only with sealed interface variants: if (x instanceof Variant v) { ... }",
+                    ioe);
+        }
+        var scrutinee = generateExpression(ioe.getExpression());
+        var constructors = sumType.get().constructors();
+        var branches = constructors.stream()
+                .map(c -> new PirTerm.MatchBranch(c.name(), List.of(), List.of(),
+                        new PirTerm.Const(Constant.bool(c.name().equals(typeName)))))
+                .toList();
+        var avoid = new HashSet<>(PirHelpers.freeVariables(scrutinee));
+        var selected = constructors.size() == 1 ? singleConstructorTagCheck(scrutinee, avoid) : scrutinee;
+        PirTerm result = new PirTerm.DataMatch(selected, branches);
+        typeInference.recordTermType(result, new PirType.BoolType());
+        return result;
     }
 
     private PirTerm generateLambda(LambdaExpr le) {

@@ -21,6 +21,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * which the {@code .diffcase} format cannot hold. Each case records javac 21.0.3's verdict, JuLC's verdict at
  * the base ({@code fd605e77}, history) and JuLC's expected verdict now; both current verdicts are checked.
  * Disagreements between javac 21.0.3 and the build JDK's {@code javac --release 21} are printed, not checked.
+ * <p>
+ * M1 moved G6, G7, G8, H1, F13a, F13b and F13c to their final codes, and F14b to {@code JULC0007} (the ADR places it in
+ * M2b; it shares M1's selector check). The {@code Pair} shape is {@code JULC0005} from M1 because its record
+ * patterns are still dropped; M2b keeps that code for the JLS 21 reason.
  */
 class Javac21ParityTest {
 
@@ -84,17 +88,17 @@ class Javac21ParityTest {
         cases.add(new ParityCase("G6 only a guarded arm for A, no default", "G6", switchOverA("""
                             case A x when x.v().signum() > 0 -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "does not cover all possible input values", "accepts, 1", Julc.value(1)));
+                """), Map.of(), FIVE, "does not cover all possible input values", "accepts, 1", Julc.rejects("JULC0005")));
         cases.add(new ParityCase("G7 guarded arm after the same unguarded pattern", "G7", switchOverA("""
                             case A x -> BigInteger.ONE;
                             case A x when x.v().signum() > 0 -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "dominated by a preceding case label", "accepts, 1", Julc.value(1)));
+                """), Map.of(), FIVE, "dominated by a preceding case label", "accepts, 1", Julc.rejects("JULC0071")));
         cases.add(new ParityCase("G8 when false", "G8", switchOverA("""
                             case A x when false -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "constant expression with value 'false'", "accepts, 1", Julc.value(1)));
+                """), Map.of(), FIVE, "constant expression with value 'false'", "accepts, 1", Julc.rejects("JULC0072")));
         cases.add(new ParityCase("H1 guard reads a loop-updated local", "H1", probe(S, """
                     public static BigInteger m(BigInteger a) {
                         BigInteger lim = BigInteger.ZERO;
@@ -108,12 +112,12 @@ class Javac21ParityTest {
                             case B y -> BigInteger.ZERO;
                         };
                     }
-                """), Map.of(), FIVE, "must be final or effectively final", "accepts, 1", Julc.value(1)));
+                """), Map.of(), FIVE, "must be final or effectively final", "accepts, 1", Julc.rejects("JULC0073")));
         cases.add(new ParityCase("F13a when 3", "F13a", switchOverA("""
                             case A x when 3 -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "incompatible types: int cannot be converted to boolean", "accepts, 1", Julc.value(1)));
+                """), Map.of(), FIVE, "incompatible types: int cannot be converted to boolean", "accepts, 1", Julc.rejects("JULC0072")));
         cases.add(new ParityCase("F13b two default labels", "F13b", probe(S, """
                     public static BigInteger m(BigInteger a) {
                         S s = new B(a);
@@ -123,11 +127,11 @@ class Javac21ParityTest {
                             default -> BigInteger.TEN;
                         };
                     }
-                """), Map.of(), FIVE, "duplicate default label", "accepts, 10", Julc.value(10)));
+                """), Map.of(), FIVE, "duplicate default label", "accepts, 10", Julc.rejects("JULC0082")));
         cases.add(new ParityCase("F13c binding named like a parameter", "F13c", switchOverA("""
                             case A a -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "variable a is already defined", "accepts, 1", Julc.value(1)));
+                """), Map.of(), FIVE, "variable a is already defined", "accepts, 1", Julc.rejects("JULC0083")));
         cases.add(new ParityCase("F14b parameterized sealed selector, javac-invalid", "F14b", probe("""
                     sealed interface G<X> permits GC, GD {}
                     record GC(BigInteger c) implements G<String> {}
@@ -140,7 +144,7 @@ class Javac21ParityTest {
                             case GD d -> d.d();
                         };
                     }
-                """), Map.of(), FIVE, "incompatible types", "accepts, 5", Julc.value(5)));
+                """), Map.of(), FIVE, "incompatible types", "accepts, 5", Julc.rejects("JULC0007")));
         cases.add(new ParityCase("javac 21/25 Pair shape", "Pair", probe("""
                     sealed interface T permits C, D {}
                     record C(BigInteger w) implements T {}
@@ -156,7 +160,7 @@ class Javac21ParityTest {
                             case Pair(D d, D d2) -> d.w();
                         };
                     }
-                """), Map.of(), FIVE, "does not cover all possible input values", "REJECT none", Julc.rejects("none")));
+                """), Map.of(), FIVE, "does not cover all possible input values", "REJECT none", Julc.rejects("JULC0005")));
         cases.add(new ParityCase("a user source declaring a bundled ledger FQCN", "FQCN", """
                 package org.julclang.ledger;
 

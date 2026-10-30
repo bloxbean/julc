@@ -3,8 +3,9 @@ name: a guard that introduces a pattern variable (G12)
 class: Probe
 method: m
 arg: 07
-expect: REJECT none
+expect: REJECT JULC0074
 note: ADR-067 G12: legal Java (7); JuLC rejects ('Undefined variable: c').
+note: ADR-067 M1: JULC0074 (D1); REJECT none at the base.
 ---
 import java.math.BigInteger;
 

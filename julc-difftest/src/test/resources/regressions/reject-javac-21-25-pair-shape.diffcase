@@ -3,8 +3,9 @@ name: the Pair shape javac 21.0.3 rejects and javac 25 accepts
 class: Probe
 method: m
 arg: 05
-expect: REJECT none
+expect: REJECT JULC0005
 note: ADR-067 (javac table, open question 10): not exhaustive under JLS 21 (javac 21.0.3); the harness's javac 25 accepts it (5).
+note: ADR-067 M1 (interim): the not-exhaustive rejection is now coded, JULC0005; record patterns are still dropped until M2a/M2b, which set the final verdict. REJECT none at the base.
 ---
 import java.math.BigInteger;
 

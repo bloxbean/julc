@@ -103,7 +103,7 @@ class SwitchMalformedDataTest {
 
     /**
      * F11: a wrong tag on a one-constructor sum type. Base: accepted as the constructor, because the only
-     * branch has no tag test, and the guard is ignored (1).
+     * branch has no tag test, and the guard is ignored (1). M1: the guard-aware lowering checks the tag, so it fails.
      */
     @Test
     void wrongTagOnSingleConstructorSumType() {
@@ -118,12 +118,12 @@ class SwitchMalformedDataTest {
                         };
                     }
                 """);
-        assertValue(1, run(source, PlutusData.constr(3, PlutusData.integer(5))));
+        assertFails(run(source, PlutusData.constr(3, PlutusData.integer(5))), null);
     }
 
     /**
      * F3: {@code instanceof} in a guard over a malformed component. Base: the guard is never compiled, so the
-     * guarded arm runs (1).
+     * guarded arm runs (1). M1: instanceof in a guard is a total dispatch, so tag 7 fails and never reaches a later arm.
      */
     @Test
     void guardInstanceofOverMalformedComponent() {
@@ -136,7 +136,7 @@ class SwitchMalformedDataTest {
                         };
                     }
                 """);
-        assertValue(1, run(source, PlutusData.constr(0, PlutusData.constr(7, PlutusData.integer(1)))));
+        assertFails(run(source, PlutusData.constr(0, PlutusData.constr(7, PlutusData.integer(1)))), null);
     }
 
     // ---- M2b rows (malformed nested tags; lenient field contents)
@@ -241,7 +241,7 @@ class SwitchMalformedDataTest {
                         };
                     }
                 """);
-        assertValue(1, run(source, PlutusData.constr(0, PlutusData.constr(5))));
+        assertValue(2, run(source, PlutusData.constr(0, PlutusData.constr(5))));
     }
 
     /**

@@ -101,7 +101,11 @@ final class LoopBodyGenerator {
         // Lambdas have independent scope; their own loops are checked at their lowering entry.
     }
 
-    /** A switch arm exports only its yielded value, never rebindings of enclosing variables. */
+    /**
+     * A switch arm exports only its yielded value, never rebindings of enclosing variables. A guard updates
+     * nothing, and record-pattern component variables are case bindings like type-pattern variables
+     * (ADR-067 I11).
+     */
     void validateSwitchExpressionUpdates(SwitchExpr expression) {
         for (var entry : expression.getEntries()) {
             var declaredInArm = new HashSet<String>();
@@ -109,6 +113,7 @@ final class LoopBodyGenerator {
                 label.findAll(TypePatternExpr.class).forEach(pattern -> declaredInArm.add(pattern.getNameAsString()));
             }
             var caseBindings = Set.copyOf(declaredInArm);
+            entry.getGuard().ifPresent(guard -> validateSwitchArmUpdates(guard, new HashSet<>(caseBindings), caseBindings));
             for (var statement : entry.getStatements()) {
                 validateSwitchArmUpdates(statement, declaredInArm, caseBindings);
             }

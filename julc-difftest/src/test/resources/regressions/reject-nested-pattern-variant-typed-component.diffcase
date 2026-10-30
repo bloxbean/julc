@@ -3,8 +3,9 @@ name: a nested pattern on a variant-typed component, X(W(B(var v)))
 class: Probe
 method: m
 arg: 05
-expect: REJECT none
+expect: REJECT JULC0005
 note: ADR-067 D2 step 3 (F20): legal Java (5).
+note: ADR-067 M1 (interim): the not-exhaustive rejection is now coded, JULC0005; record patterns are still dropped until M2a/M2b, which set the final verdict. REJECT none at the base.
 ---
 import java.math.BigInteger;
 

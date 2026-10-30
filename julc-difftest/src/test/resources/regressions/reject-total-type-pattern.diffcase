@@ -3,8 +3,9 @@ name: the total type pattern case S t (K3)
 class: Probe
 method: m
 arg: 01
-expect: REJECT none
+expect: REJECT JULC0076
 note: ADR-067 K3: legal Java (1); unsupported in JuLC (non-goal).
+note: ADR-067 M1: JULC0076, reason "unsupported: total type pattern" (D4, r6); REJECT none at the base.
 ---
 import java.math.BigInteger;
 

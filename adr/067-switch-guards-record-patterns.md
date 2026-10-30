@@ -1,6 +1,6 @@
 # ADR-067: Switch guards, record patterns, cross-type record `equals`, records with two sealed parents, and record members
 
-**Status:** Accepted (2026-10-30): approved by the review comment at `f965d061` and by Codex at `189bb4fa`. The implementation follows in the same PR.
+**Status:** Accepted (2026-10-30): approved by the review comment at `f965d061` and by Codex at `189bb4fa`. The implementation follows in the same PR. M0 and M1 are implemented (Implementation results).
 **Date:** 2026-10-30
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. Every defect below is a silent miscompile: a validator built with
@@ -1276,6 +1276,114 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
 - **Commands.** `./gradlew :julc-difftest:test --tests '*RegressionCasesTest*' --rerun` (116 cases, 0 failures),
   `./gradlew :julc-difftest:test --tests '*Javac21ParityTest*' --rerun` (12, 0 failures),
   `./gradlew :julc-compiler:test --tests '*SwitchMalformedDataTest*' --rerun` (11, 0 failures).
+
+### M1: guards, and D4's compile-time checks (2026-10-30)
+
+- **Lowering (D1, D2).** `SwitchPatternChecker` (new, `julc-compiler/.../pir`) runs D4 on the source of every
+  switch expression before it is lowered and returns the type-pattern arms. A switch with at least one guard takes
+  `PirGenerator.generateGuardedSwitch`: one `DataMatch` over the selector, one branch per constructor in tag order;
+  in a constructor's branch its fields are decoded once (ADR-051's `wrapDecode`, unchanged) under names chosen with
+  `PirHelpers.hygienicName("#case_<C>_<i>", names in scope)` and shared by that constructor's arms; the arms form a
+  chain in source order (`let x = #case_data in if g then b else <next>`); a continuation is bound as a unit lambda
+  (`#case_next`) before the arm's binder and inlined only when the arm's variable is not free in it (F9); `default`
+  is one join (`#case_default`) bound outside the `DataMatch`; a constructor with no arm calls it and decodes
+  nothing. Every other switch keeps the base lowering (I8). Constant `true` guards are unguarded, so their arms emit
+  no test.
+- **Deviation (implementation choice, same semantics):** D2's single-constructor tag check (F11) is a check on the
+  selector (`let #case_selector = s in if fstPair(unConstrData #case_selector) == 0 then #case_selector else
+  error`) placed before the `DataMatch`, not a change to `UplcGenerator`'s one-branch dispatch, so no other
+  `DataMatch` (ADR-038/041 passes, decompiler) sees a new shape. The tag is checked before any field is decoded.
+  It costs one `unConstrData` and one `fstPair` per evaluation, only for one-constructor sum types on the new path.
+- **`instanceof` in guards (D1, F3):** a plain type test `x instanceof V` inside a guard is a `DataMatch` over V's
+  sealed interface with `true`/`false` branches (and the same tag check for one constructor); `instanceof V v` in a
+  guard is `JULC0074`. Outside guards, `instanceof` is unchanged.
+- **D4 and D7.** New codes `JULC0071`–`JULC0076`, `JULC0082`, `JULC0083` emitted; `JULC0005` and `JULC0007` promoted
+  to emitted; `JULC0077`–`JULC0081` added to the catalogue as `planned` (their milestones emit them). Codes were
+  re-checked on every origin branch before the commit. The checks: guard type (`boolean`/`Boolean`; constant
+  non-boolean guards on the source, others on the inferred PIR type), constant `false` (literals, constant variables
+  — `final` locals and `static final` fields of primitive or `String` type, simple or `Type.NAME` — and compound
+  constants), effectively final by resolved declaration (sibling blocks independent, for-each variables accepted),
+  guard-introduced pattern variables, dominance (a preceding unguarded type pattern of the same type, including over
+  a later record pattern; `default` before a pattern), duplicate `default`, pattern-variable conflicts (parameter,
+  local, for-each variable, enclosing pattern variable, or twice in one pattern; a field is allowed), applicability
+  and the total type pattern (`JULC0076`), colon-form groups that can complete normally or share labels (`JULC0075`,
+  also on the base lowering: #283), non-sealed and parameterized sealed selectors (`JULC0007`), exhaustiveness
+  without guarded labels (`JULC0005`). ADR-048's arm validation now visits guards (I11).
+- **Scope notes.** Record patterns are not lowered yet (M2a): their labels are still dropped, as at the base, and
+  a switch whose only new construct is a record pattern stays on the base lowering. Their labels do take part in the
+  checks above, so the R2, R7, R4, F30, `X(W(B(var v)))`, parameterized-component and `Pair` pins moved from
+  `REJECT none` to `REJECT JULC0005` (still a rejection; M2a/M2b set the final verdict), and K2 from `REJECT none`
+  to `REJECT JULC0007` (open question 4 decides it in M2b). F14a/F14b's `JULC0007` is done here although the matrix
+  places it in M2b: it is the same selector check.
+- **Pins (D).** The eight T27 pins flipped from `DIVERGE` to `AGREE` at all four levels; F12a (T32) and F12b are
+  `REJECT JULC0075`, G12 `REJECT JULC0074`, K3 `REJECT JULC0076` with reason "unsupported: total type pattern". Each
+  flipped file keeps the base observations as `recorded.jvm` / `recorded.base` and a history note.
+- **P suite.** G6 `JULC0005`, G7 `JULC0071`, G8 `JULC0072`, H1 `JULC0073`, F13a `JULC0072`, F13b `JULC0082`, F13c
+  `JULC0083`, F14b `JULC0007`, `Pair` `JULC0005`; javac 21.0.3 rejects each. The bundled-FQCN, F23 and R5 rows are
+  unchanged (M3b and out of scope).
+- **Parity corpus (Verification 3, M1 dimensions):** `SwitchParityCorpusTest` generates 1,002 programs (every
+  sequence of up to four labels from `A`, `A when g`, `B`, `B when g`, `default` in arrow form and up to three in
+  colon form; sixteen guard kinds in three shapes; colon fall-through, grouped and multi-pattern labels;
+  pattern-variable collisions; one-constructor and parameterized sealed types). Result: 114 accepted by javac 21.0.3
+  and JuLC, 884 rejected by both (every JuLC rejection carries a D4 code, except one JavaParser parse error for
+  `case A x, B y`, which javac rejects too), 4 rejected by JuLC on purpose (colon fall-through, grouped labels without
+  bindings, a parameterized selector); 35 accepted programs run on the JVM and on JuLC at all four levels on four
+  inputs each, all agreeing. javac 21.0.3 and javac 25 `--release 21` agree on all 1,002 (the known `Pair` difference
+  needs record patterns, M2b).
+- **Oracle tests.** `SwitchGuardTest` (javac + JVM vs JuLC at all four levels on the Java and Scalus VMs, values and
+  traces): a guard reading its binding, a parameter and a static field; several guarded arms per variant with
+  different binding names; guarded then unguarded; guarded then `default`; a failing guard; guard and body traces in
+  Java's order; `when true`, `when ON`, `when 1 == 1`; colon form that yields in every group; nested switches in a
+  guard and in a guarded arm; guard `instanceof`; a `Boolean` guard; a one-constructor sum type; guards in for-each
+  (reading the loop variable) and while bodies; F9 scope (a failed arm's binding named like a static field that a later
+  arm, `default` and another guard read: Java's 99); size linear in guarded arms (1 to 12 pairs of join-forcing arms: every
+  added pair costs the same within 8 bytes); `default` emitted once. `SwitchDiagnosticsTest`: one rejection test per D4 row
+  plus accepted neighbours. `SwitchMalformedDataTest` (U): F5a fails without reaching `default`, F11 and F3 now fail;
+  the guard over a malformed `Bool` now falls to `default` (2).
+- **Byte stability (I8, Verification 5).** Compiled at the base (`fd605e77`, a separate worktree) and at the head,
+  every level, with the annotation processor's library resolution, and compared by SHA-256 of the FLAT bytes: 3,764
+  (program, level) rows; **784 programs compile at both revisions and all are byte-identical** (external
+  `../julc-examples` at 22b4e00 via the clean worktree `../julc-examples-cmp`: 42; in-repo `julc-examples`: 32,
+  mostly text-block validators; `julc-compiler` test text blocks containing `switch`: 697, one row per static method;
+  `julc-stdlib` tests: 1; Blaster fixtures: 7; `../julc-cip113-example`: 4; `../julc-helloworld`: 1). 0 changed, 0
+  newly rejected, 0 newly accepted; 157 programs are rejected at both revisions for reasons unrelated to this ADR
+  (test files and off-chain demos without a validator class, stale CIP-113 API names, `return` in `while`, arrays).
+  No approved behaviour-changing category occurs in these corpora (none uses a guard, a record pattern or a D4
+  rejection). The Blaster fixtures' bytes are unchanged, so no artifact refresh is needed. `GoldenUplcTest`,
+  `Adr060ByteSnapshotTest` and the O-series fixtures pass unchanged in `:julc-compiler:test`.
+- **Mutation checks** (each fault injected in the working tree, the focused tests run, the file restored; none
+  committed): all eleven M1 mutations are detected.
+  | Mutation (Verification 6) | Detected by |
+  |---|---|
+  | ignore guards | 13 tests, e.g. `SwitchGuardTest.guardReadsItsBinding` |
+  | keep only the first arm per variant | 12 tests, e.g. `severalGuardedArmsWithDifferentBindingNames` |
+  | evaluate the guard before binding | `guardPassesItsWholeBindingToAHelper` (a guard reading `x.v()` uses the decoded field, so this test passes the binding itself) |
+  | duplicate instead of join (`default` copied to each use) | `defaultBodyIsEmittedOnce` |
+  | route an unknown top-level tag to the default join (F5a; injected in the legacy tag chain) | `SwitchMalformedDataTest.outOfRangeTagWithGuardsAndDefaultFails`, `guardInstanceofOverMalformedComponent` |
+  | omit the single-constructor tag check (F11) | `wrongTagOnSingleConstructorSumType` |
+  | lower guard `instanceof` with `EqualsInteger` (F3) | `guardInstanceofOverMalformedComponent` |
+  | inline a continuation under an earlier arm's binders (F9) | `failedArmBindingNeverShadowsLaterArmOrDefault` |
+  | key the effectively-final check on names (F7) | `sameNameReassignedInAnotherMethodIsAnotherVariable` (JuLC renames block locals apart within a method, ADR-060, so the discriminating case is another method's variable) |
+  | treat colon-form fall-through as a value (#283) | `colonGroupThatFallsThrough`, `lastColonGroupMustYield` |
+  | reject a `Boolean` guard (F33) | `booleanGuard` |
+
+  The first run left two mutations undetected (guard before binding; names for F7); the two tests above were added
+  for them. The M2a/M2b/M3/M3b/M4 mutations belong to those milestones.
+- **Commands.** `./gradlew :julc-compiler:test :julc-difftest:test --rerun`: julc-compiler 2,041 tests, 0
+  failures (new: `SwitchGuardTest` 17, `SwitchDiagnosticsTest` 27, `SwitchMalformedDataTest` 11); julc-difftest 208,
+  0 failures (`RegressionCasesTest` 116, `Javac21ParityTest` 12, `SwitchParityCorpusTest` 1 over 1,002 programs).
+  `./gradlew build -PskipSigning=true`: success; 12,156 tests in all modules, 0 failures, 530 skipped (pre-existing
+  skips). Byte stability and mutations as above (harness and mutants in a scratch directory, not committed).
+- **Related findings (new, out of scope).** `x.signum()` evaluates its receiver twice when the receiver is a call
+  (`said(m, ONE).signum()` traces twice on-chain, once on the JVM); `compareTo` lowers the same way. A divergence in
+  traces and cost (T12-like), not in values; to be filed. JavaParser's JAVA_21 grammar rejects `case A x, B y` before
+  JuLC's checks, as an uncoded parse error.
+- **Open points.** (1) A guard whose type JuLC cannot infer (PIR `DataType`, for example a generic call) is accepted
+  and fails at run time if it is not a Bool; javac would reject a non-boolean one. (2) The P suite and the parity
+  corpus skip when javac 21.0.3 is not installed (CI); `-Pjulc.javac21.required=true` makes that a failure. (3) Truffle
+  is not in the oracle tests (the existing switch suites run it only in `pairCaseTest`). (4) The F9 test uses a static
+  field; an `@Param` field is the same name-resolution path but is not exercised (`compileMethod` has no `@Param`).
+  (5) Docs, troubleshooting entries and release notes are M5.
 
 ## Revision history
 

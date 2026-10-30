@@ -3,8 +3,9 @@ name: a switch over a parameterized sealed interface, valid Java (F14a)
 class: Probe
 method: m
 arg: 05
-expect: REJECT none
+expect: REJECT JULC0007
 note: ADR-067 F14a: legal Java (5); JuLC drops type arguments.
+note: ADR-067 M1: a parameterized sealed selector is rejected with JULC0007 (D4, F14); REJECT none (not exhaustive) at the base.
 ---
 import java.math.BigInteger;
 

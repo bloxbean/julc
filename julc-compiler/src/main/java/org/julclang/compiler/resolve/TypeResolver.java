@@ -31,6 +31,9 @@ public class TypeResolver {
     private final Map<String, PirType.SumType> sumTypes = new LinkedHashMap<>();
     // Map of variant FQCN -> its enclosing SumType (for constructor tag lookup)
     private final Map<String, PirType.SumType> variantToSumType = new LinkedHashMap<>();
+    // Sealed interfaces that declare type parameters; type arguments are dropped, so a switch over
+    // one cannot be checked (ADR-067 D4, JULC0007)
+    private final Set<String> parameterizedSumTypes = new LinkedHashSet<>();
     // Map of @NewType FQCNs -> their underlying PIR type
     private final Map<String, PirType> newTypes = new LinkedHashMap<>();
     // Forward identities visible only while one recursive declaration SCC is registered.
@@ -173,6 +176,7 @@ public class TypeResolver {
         var sumType = new PirType.SumType(interfaceName, constructors);
         sumTypes.put(fqcn, sumType);
         forwardTypes.remove(fqcn);
+        if (!decl.getTypeParameters().isEmpty()) parameterizedSumTypes.add(fqcn);
         simpleNameIndex.computeIfAbsent(interfaceName, k -> new LinkedHashSet<>()).add(fqcn);
         // Register each variant -> sum type mapping using resolved FQCNs
         for (int i = 0; i < constructors.size(); i++) {
@@ -184,6 +188,17 @@ public class TypeResolver {
             variantToSumType.put(actualFqcn, sumType);
             simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(actualFqcn);
         }
+    }
+
+    /**
+     * True when {@code sumType} is a registered sealed interface that declares type parameters. A switch over one
+     * is rejected (ADR-067 D4), because type arguments are dropped and applicability and exhaustiveness depend on them.
+     */
+    public boolean isParameterizedSumType(PirType.SumType sumType) {
+        for (var fqcn : parameterizedSumTypes) {
+            if (sumType.equals(sumTypes.get(fqcn))) return true;
+        }
+        return false;
     }
 
     /**
@@ -214,6 +229,7 @@ public class TypeResolver {
         var sumType = new PirType.SumType(interfaceName, constructors);
         sumTypes.put(fqcn, sumType);
         forwardTypes.remove(fqcn);
+        if (!decl.getTypeParameters().isEmpty()) parameterizedSumTypes.add(fqcn);
         simpleNameIndex.computeIfAbsent(interfaceName, k -> new LinkedHashSet<>()).add(fqcn);
         // Register each variant -> sum type mapping
         for (int i = 0; i < variantFqcns.size(); i++) {

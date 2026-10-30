@@ -3,8 +3,9 @@ name: grouped colon-form labels without bindings (F12b)
 class: Probe
 method: m
 arg: 05
-expect: REJECT none
+expect: REJECT JULC0075
 note: ADR-067 F12b: legal Java (3); JuLC rejects with a misleading 'not exhaustive'.
+note: ADR-067 M1: grouped labels are rejected with JULC0075 (D4); REJECT none at the base.
 ---
 import java.math.BigInteger;
 

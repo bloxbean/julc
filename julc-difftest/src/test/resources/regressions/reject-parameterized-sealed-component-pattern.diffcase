@@ -3,8 +3,9 @@ name: a record pattern on a parameterized sealed component
 class: Probe
 method: m
 arg: 05
-expect: REJECT none
+expect: REJECT JULC0005
 note: ADR-067 D3 (F14): legal Java (5).
+note: ADR-067 M1 (interim): the not-exhaustive rejection is now coded, JULC0005; record patterns are still dropped until M2a/M2b, which set the final verdict. REJECT none at the base.
 ---
 import java.math.BigInteger;
 
