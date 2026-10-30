@@ -6,6 +6,7 @@ import com.sun.source.util.TaskListener;
 
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -76,7 +77,7 @@ public final class JvmExecutor {
                 throw new HarnessException(diffCase.name() + ": " + method.getName() + " takes " + params
                         + " arguments, the case has " + diffCase.args().size());
             }
-            return invoke(diffCase, method);
+            return invoke(diffCase, classes, method);
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
@@ -129,15 +130,34 @@ public final class JvmExecutor {
     }
 
     /**
-     * The exception a class initializer threw, if {@code thrown} reports one: an {@code ExceptionInInitializerError},
-     * or the {@code NoClassDefFoundError} of a later use of a class whose initializer failed.
+     * What a failure while the program ran reports: the exception a class initializer threw, for an
+     * {@code ExceptionInInitializerError} or the {@code NoClassDefFoundError} of a later use of that class; else the
+     * throwable itself.
      */
-    private static Throwable initializerFailure(Throwable thrown) {
-        if (thrown instanceof NoClassDefFoundError && thrown.getCause() instanceof ExceptionInInitializerError first) {
-            thrown = first;
+    private static Throwable reported(Throwable thrown) {
+        Throwable error = thrown instanceof NoClassDefFoundError && thrown.getCause() instanceof ExceptionInInitializerError first
+                ? first : thrown;
+        return error instanceof ExceptionInInitializerError && error.getCause() != null ? error.getCause() : error;
+    }
+
+    /**
+     * Whether the JVM rejected a class javac compiled from this case when it loaded lazily, such as a local or
+     * anonymous class, which the preflight does not visit: a {@code VerifyError} or {@code ClassFormatError} whose
+     * message names one of the case's compiled classes. Such an error thrown by the program itself would be read the
+     * same way; generated programs throw none.
+     */
+    private static boolean rejectsOwnClass(Throwable thrown, Compiled classes) {
+        if (!(thrown instanceof VerifyError || thrown instanceof ClassFormatError) || thrown.getMessage() == null) return false;
+        String message = thrown.getMessage().replace('/', '.');
+        try (var files = Files.walk(classes.dir())) {
+            return files.map(file -> classes.dir().relativize(file).toString())
+                    .filter(file -> file.endsWith(".class"))
+                    .map(file -> file.substring(0, file.length() - ".class".length()).replace(File.separatorChar, '.'))
+                    .filter(name -> classes.classes().stream().anyMatch(top -> name.equals(top) || name.startsWith(top + "$")))
+                    .anyMatch(message::contains);
+        } catch (IOException e) {
+            throw new HarnessException("cannot list the classes in " + classes.dir(), e);
         }
-        if (!(thrown instanceof ExceptionInInitializerError error)) return null;
-        return error.getCause() != null ? error.getCause() : error;
     }
 
     private static Object[] arguments(DiffCase diffCase, Method method) {
@@ -155,9 +175,11 @@ public final class JvmExecutor {
 
     /**
      * Maps the arguments and invokes the entry method with standard output captured. Both may initialize classes:
-     * that is part of the program's run, so an initializer that throws gives a {@code Failure} with its traces.
+     * that is part of the program's run. So whatever the run throws, from an initializer or the method, a
+     * {@code LinkageError} included, is the program's {@code Failure} with its traces; the exceptions are a stack
+     * overflow (inconclusive) and a class of the case that the JVM rejects while loading it lazily (an oracle fault).
      */
-    private Observation invoke(DiffCase diffCase, Method method) {
+    private Observation invoke(DiffCase diffCase, Compiled classes, Method method) {
         var out = new TraceSink();
         PrintStream original = System.out;
         var executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -179,13 +201,10 @@ public final class JvmExecutor {
                 if (e.getCause() instanceof HarnessException harness) throw harness;
                 Throwable cause = e.getCause() instanceof InvocationTargetException ite ? ite.getCause() : e.getCause();
                 if (cause instanceof StackOverflowError) return new Observation.Inconclusive("JVM stack overflow");
-                Throwable initializer = initializerFailure(cause);
-                if (initializer != null) return new Observation.Failure(String.valueOf(initializer), out.traces());
-                // Any other linkage error is a class javac produced that the JVM cannot link: no observation (H6).
-                if (cause instanceof LinkageError linkage) {
-                    throw new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + linkage, linkage);
+                if (rejectsOwnClass(cause, classes)) {
+                    throw new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + cause, cause);
                 }
-                return new Observation.Failure(String.valueOf(cause), out.traces());
+                return new Observation.Failure(String.valueOf(reported(cause)), out.traces());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return new Observation.Inconclusive("interrupted");

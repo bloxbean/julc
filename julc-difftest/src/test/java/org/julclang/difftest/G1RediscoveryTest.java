@@ -40,14 +40,14 @@ class G1RediscoveryTest {
 
     /**
      * #280: the helper gets an unused parameter. The cases found by earlier G1 revisions stay (ADR-063 D8): G1 r1's,
-     * then one per revision that found another program.
+     * then one per later revision, with its own provenance (r4 found r2's program again).
      */
     @Test
     void zeroArgumentHelper() {
         pinned("diverge-g1-280-uncalled-zero-arg-helper", "agree-g1-280-counterfactual", Verdict.Kind.MISMATCH);
         pinned("diverge-g1-280-uncalled-zero-arg-helper-r2", "agree-g1-280-uncalled-zero-arg-helper-counterfactual",
                 Verdict.Kind.MISMATCH);
-        for (String revision : List.of("-r3", "-r5")) pinned("280-uncalled-zero-arg-helper" + revision, Verdict.Kind.MISMATCH);
+        for (String revision : List.of("-r3", "-r4", "-r5")) pinned("280-uncalled-zero-arg-helper" + revision, Verdict.Kind.MISMATCH);
     }
 
     /** #146: the traced operand is bound to a local before the comparison. */
@@ -79,17 +79,20 @@ class G1RediscoveryTest {
     }
 
     /**
-     * #291, second symptom: two loops in a default arm block of a switch passed to a method are rejected with a
-     * diagnostic that has no code; the counterfactual assigns the switch to a local first.
+     * #291, second symptom: a local declared after a loop in a default arm block of a switch passed to a method, here
+     * a second loop's counter and a plain local, is rejected with a diagnostic that has no code; the counterfactual
+     * assigns the switch to a local first.
      */
     @Test
-    void defaultBlockLoopsInAnArgumentAreRejected() {
-        pinned("reject-g1-291-default-block-loops", "agree-g1-291-default-block-loops-counterfactual", Verdict.Kind.REJECTED);
-        RUNNER.run(saved("reject-g1-291-default-block-loops")).results().values().forEach(result -> {
-            var rejected = (Observation.Rejected) result.uplc();
-            assertEquals(null, rejected.code());
-            assertTrue(rejected.message().startsWith("Unbound variable"), rejected.message());
-        });
+    void aLocalAfterALoopInADefaultBlockInAnArgumentIsRejected() {
+        for (String name : List.of("291-default-block-loops", "291-local-after-loop")) {
+            pinned("reject-g1-" + name, "agree-g1-" + name + "-counterfactual", Verdict.Kind.REJECTED);
+            RUNNER.run(saved("reject-g1-" + name)).results().values().forEach(result -> {
+                var rejected = (Observation.Rejected) result.uplc();
+                assertEquals(null, rejected.code());
+                assertTrue(rejected.message().startsWith("Unbound variable"), rejected.message());
+            });
+        }
     }
 
     /** #291, rejection form: JuLC rejects the read of the field the default arm block's local named (JULC0055). */

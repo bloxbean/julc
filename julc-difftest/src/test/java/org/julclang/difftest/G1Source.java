@@ -57,7 +57,7 @@ final class G1Source {
     static final Set<G1.Feature> FEATURES = Collections.unmodifiableSet(EnumSet.of(G1.Feature.SWITCH,
             G1.Feature.NESTED_SWITCH, G1.Feature.YIELD_BLOCK, G1.Feature.LOOP_IN_ARM, G1.Feature.SWITCH_IN_LOOP,
             G1.Feature.TYPE_PATTERN, G1.Feature.DEFAULT_ARM, G1.Feature.BINDING_ACCUMULATOR,
-            G1.Feature.ASSIGN_PATTERN_BINDING, G1.Feature.DEFAULT_BLOCK_SHADOW, G1.Feature.DEFAULT_BLOCK_LOOPS));
+            G1.Feature.ASSIGN_PATTERN_BINDING, G1.Feature.DEFAULT_BLOCK_SHADOW, G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
 
     /**
      * @param features     the {@link #FEATURES} the program has
@@ -224,8 +224,8 @@ final class G1Source {
             }
             if (!(body instanceof BlockTree block)) return;
             features.add(G1.Feature.YIELD_BLOCK);
-            if (binding == null && inArgument && block.getStatements().stream().filter(Reader::loop).count() > 1) {
-                features.add(G1.Feature.DEFAULT_BLOCK_LOOPS);
+            if (binding == null && inArgument && declaresAfterLoop(block.getStatements())) {
+                features.add(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP);
             }
             for (StatementTree statement : block.getStatements()) {
                 if (!(statement instanceof VariableTree local)) continue;
@@ -236,6 +236,24 @@ final class G1Source {
                     features.add(G1.Feature.BINDING_ACCUMULATOR);
                 }
             }
+        }
+
+        /** Whether a statement after the first loop declares anything, also through a switch's bindings or blocks. */
+        private static boolean declaresAfterLoop(List<? extends StatementTree> statements) {
+            int first = 0;
+            while (first < statements.size() && !loop(statements.get(first))) first++;
+            var declares = new boolean[1];
+            var scanner = new TreeScanner<Void, Void>() {
+                @Override
+                public Void visitVariable(VariableTree node, Void unused) {
+                    declares[0] = true;
+                    return null;
+                }
+            };
+            for (StatementTree statement : statements.subList(Math.min(first + 1, statements.size()), statements.size())) {
+                scanner.scan(statement, null);
+            }
+            return declares[0];
         }
 
         private static String target(ExpressionTree variable) {

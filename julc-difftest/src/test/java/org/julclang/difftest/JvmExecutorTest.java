@@ -205,6 +205,81 @@ class JvmExecutorTest {
         assertTrue(failure.detail().contains("ArithmeticException"), failure.detail());
     }
 
+    private static DiffCase thrown(String members, String body) {
+        return new DiffCase("thrown", """
+                import java.math.BigInteger;
+                import org.julclang.stdlib.Builtins;
+
+                public class Probe {
+                    static final BigInteger T = Builtins.unIData(Builtins.trace("init", Builtins.iData(BigInteger.ONE)));
+                %s
+
+                    public static BigInteger m(BigInteger a) {
+                        %s
+                    }
+                }
+                """.formatted(members, body), "Probe", "m", List.of(integer(1)));
+    }
+
+    /**
+     * Whatever the program throws while it runs is its failure, with its traces, also an error the JVM uses for
+     * linkage (review of M3 part 1 round 2, F95): the phase decides, not the throwable's class.
+     */
+    @Test
+    void linkageErrorsThrownWhileRunningAreFailures() {
+        var executor = new JvmExecutor(5_000);
+        var cases = List.of(
+                // An initializer that throws NoClassDefFoundError or LinkageError directly: errors are not wrapped.
+                thrown("    static final BigInteger F = gone();\n    static BigInteger gone() { throw new NoClassDefFoundError(\"Gone\"); }",
+                        "return a.add(F);"),
+                thrown("    static final BigInteger F = gone();\n    static BigInteger gone() { throw new LinkageError(\"init\"); }",
+                        "return a.add(F);"),
+                // The method, after a trace of its own.
+                thrown("", "Builtins.trace(\"m\", Builtins.iData(a));\n        throw new LinkageError(\"m\");"),
+                thrown("", "Builtins.trace(\"m\", Builtins.iData(a));\n        throw new NoClassDefFoundError(\"Gone\");"),
+                thrown("", "Builtins.trace(\"m\", Builtins.iData(a));\n        throw new VerifyError(\"not about this case\");"));
+        var traces = List.of(List.of("init"), List.of("init"), List.of("init", "m"), List.of("init", "m"), List.of("init", "m"));
+        for (int i = 0; i < cases.size(); i++) {
+            var failure = assertInstanceOf(Observation.Failure.class, executor.run(cases.get(i)), cases.get(i).source());
+            assertEquals(traces.get(i), failure.traces(), cases.get(i).source());
+        }
+    }
+
+    /**
+     * A class of the case that the JVM rejects when it loads lazily, here a local class with javac's unverifiable
+     * bytecode, is still an oracle fault: the error names the class.
+     */
+    @Test
+    void aLocalClassTheJvmRejectsIsAHarnessError() {
+        String source = """
+                import java.math.BigInteger;
+
+                public class Probe {
+                    sealed interface S0 permits C0, B0, A0 {}
+                    record C0(BigInteger w) implements S0 {}
+                    record B0() implements S0 {}
+                    record A0(boolean x) implements S0 {}
+                    static final S0 x = new C0(BigInteger.ONE);
+
+                    public static boolean m(boolean c) {
+                        class Local {
+                            boolean f(boolean c) {
+                                if (switch (x) { case A0 f1 -> f1.x(); default -> c; }) { return c; }
+                                return x.equals(switch (x) { case A0 p -> new B0(); default -> new B0(); });
+                            }
+                        }
+                        return new Local().f(c);
+                    }
+                }
+                """;
+        var tags = TagTable.of(new TagTable.Entry("Probe$C0", "Probe$S0", 0), new TagTable.Entry("Probe$B0", "Probe$S0", 1),
+                new TagTable.Entry("Probe$A0", "Probe$S0", 2));
+        var e = assertThrows(HarnessException.class, () -> new JvmExecutor(5_000).run(new DiffCase("lazy", source, "Probe",
+                "m", List.of(new PlutusData.ConstrData(0, List.of())), tags, null)));
+        assertTrue(e.getMessage().contains("the JVM rejects javac's class") && e.getMessage().contains("VerifyError")
+                && e.getMessage().contains("Probe$1Local"), e.getMessage());
+    }
+
     @Test
     void argumentsMustMatchTheParameters() {
         assertThrows(HarnessException.class,

@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r5): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r7): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
  * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
@@ -60,7 +60,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r6";
+    public static final String VERSION = "G1 r7";
 
     /** The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open. */
     public enum Gate {
@@ -90,9 +90,10 @@ public final class G1 {
         TRACE_IN_COMPARISON,
         /**
          * A {@code default} arm block's missing scope (#291), whether the arm runs or not. Its two symptoms: a local
-         * declared directly in the block with a field's name keeps its type after the switch; and two loops directly
-         * in the block, in a switch inside an argument of a method call, make JuLC reject the program. Loop-body
-         * locals in the block are scoped and stay ungated.
+         * declared directly in the block with a field's name keeps its type after the switch; and, in a switch inside
+         * an argument of a method call, a local declared in the block after a loop (directly, or by a switch in the
+         * rest of the block) and read later makes JuLC reject the program. Loop-body locals in the block are scoped
+         * and stay ungated.
          */
         DEFAULT_BLOCK_SCOPE;
 
@@ -122,8 +123,9 @@ public final class G1 {
          */
         ISSUE_291(Gate.DEFAULT_BLOCK_SCOPE),
         /**
-         * #291's rejection with loops: a family, a {@code default} arm in every switch over more than one variant, half
-         * of the method-call arguments a switch, and a default block there of two loops, the second a {@code while}.
+         * #291's rejection after a loop: a family, a {@code default} arm in every switch over more than one variant,
+         * half of the method-call arguments a switch, and a default block there of a loop followed by a declaration or
+         * by a {@code while} loop, whose counter is declared after the first loop.
          */
         ISSUE_291_LOOPS(Gate.DEFAULT_BLOCK_SCOPE);
 
@@ -140,7 +142,7 @@ public final class G1 {
 
     /**
      * A generation profile: {@link #VERSION}, the value of every {@link Gate} (ADR-066 D6) and its {@link Steer}s. Its
-     * text, such as {@code G1 r5 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
+     * text, such as {@code G1 r7 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
      */
     public record Profile(Set<Gate> on, Set<Steer> steering) {
 
@@ -291,7 +293,7 @@ public final class G1 {
         LOOP, BREAK,
         /** Gated constructs (ADR-066 D6): a program under the default profile never contains one. */
         SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE, TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING,
-        DEFAULT_BLOCK_SHADOW, DEFAULT_BLOCK_LOOPS;
+        DEFAULT_BLOCK_SHADOW, DEFAULT_BLOCK_AFTER_LOOP;
 
         /**
          * The features with a quota: D8's list without the features of the gated constructs (guards, record patterns,
@@ -303,7 +305,7 @@ public final class G1 {
         public static final Set<Feature> GATED =
                 Collections.unmodifiableSet(EnumSet.of(SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE,
                         TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING, DEFAULT_BLOCK_SHADOW,
-                        DEFAULT_BLOCK_LOOPS));
+                        DEFAULT_BLOCK_AFTER_LOOP));
     }
 
     /** A decoded program: its source, its tag table, its features, its profile and its entry parameters. */
@@ -1192,9 +1194,9 @@ public final class G1 {
     private int receivers;
 
     /**
-     * The argument of an {@code add}, {@code subtract}, {@code compareTo} or {@code equals} call. A switch anywhere
-     * inside it has at most one loop directly in a default block unless DEFAULT_BLOCK_SCOPE is on (#291); steered to
-     * #291's loops, half of these arguments are switches.
+     * The argument of an {@code add}, {@code subtract}, {@code compareTo} or {@code equals} call. In a default block of
+     * a switch anywhere inside it, nothing is declared after the block's first loop unless DEFAULT_BLOCK_SCOPE is on
+     * (#291); steered to #291's loops, half of these arguments are switches.
      */
     private Expr argument(Type type, Ctx ctx, int depth) {
         methodArguments++;
@@ -1319,6 +1321,10 @@ public final class G1 {
     private int switchNesting;
     /** How many enclosing loop bodies contain a break: an arm there contains no loop. */
     private int breakAwareBodies;
+    /** How many switches have been generated. */
+    private int switches;
+    /** How many restricted default blocks enclose the yield being generated after their loop: no switch there (#291). */
+    private int afterDefaultLoop;
 
     /** A value a switch can select on: a variable of a family's type, or a component of that type read from one. */
     private record Subject(Var var, Expr expression, Type family) {
@@ -1349,12 +1355,16 @@ public final class G1 {
      * orders, or some of them followed by {@code default}: one arm per variant until guards (M3 part 2).
      */
     private Expr switchExpression(Type result, Ctx ctx, int depth) {
-        if (ctx.constant() || depth < 1 || switchNesting >= MAX_SWITCH_NESTING || receivers > 0 || tests > 0) return null;
+        if (ctx.constant() || depth < 1 || switchNesting >= MAX_SWITCH_NESTING || receivers > 0 || tests > 0
+                || afterDefaultLoop > 0) {
+            return null;
+        }
         var subjects = subjects(ctx);
         if (subjects.isEmpty()) return null;
         Subject subject = subjects.get(choices.below(subjects.size()));
         if (subject.var().field()) fieldReads++;
         features.add(Feature.SWITCH);
+        switches++;
         if (switchNesting > 0) features.add(Feature.NESTED_SWITCH);
         if (ctx.scope().loopDepth() > 0) features.add(Feature.SWITCH_IN_LOOP);
         var order = permuted(subject.family().variants);
@@ -1394,10 +1404,11 @@ public final class G1 {
         var armCtx = new Ctx(scope, ctx.helpers(), true, false, null, ctx.traceFree());
         boolean defaultBlock = variant == null;
         boolean steered = defaultBlock && profile.steers(Steer.ISSUE_291);
-        // Two loops directly in a default block, in a switch inside a method-call argument, are rejected (#291).
+        // A local declared after a loop in a default block, in a switch inside a method-call argument, is lost (#291):
+        // without the gate, nothing is declared there after the first loop, not even by a switch in the yield.
         boolean inArgument = defaultBlock && methodArguments > 0;
         boolean loopsSteered = inArgument && profile.steers(Steer.ISSUE_291_LOOPS);
-        boolean oneLoop = inArgument && !profile.has(Gate.DEFAULT_BLOCK_SCOPE);
+        boolean restricted = inArgument && !profile.has(Gate.DEFAULT_BLOCK_SCOPE);
         if (ctx.traceFree() || !steered && !loopsSteered && choices.oneIn(2)) {
             // A nested switch as the arm a third of the time it can be one (NESTED_SWITCH).
             Expr nested = choices.oneIn(3) ? switchExpression(result, armCtx, depth - 1) : null;
@@ -1412,17 +1423,27 @@ public final class G1 {
         if (steered) owned = defaultShadow(owned, body);
         var updated = new ArrayList<String>();
         int loops = 0;
+        Var yielded = null;
         for (int n = loopsSteered ? 2 : 1 + choices.below(2); n > 0; n--) {
-            boolean loop = breakAwareBodies == 0 && owned.loopDepth() < MAX_LOOP_DEPTH && (loopsSteered || !choices.oneIn(3));
-            if (loop && !(oneLoop && loops > 0)) {
+            if (restricted && loops > 0) break;
+            if (inArgument && loops > 0) features.add(Feature.DEFAULT_BLOCK_AFTER_LOOP);
+            // Steered to #291's loops: a loop, then a declaration or a while loop, whose counter is declared after it.
+            boolean loop = breakAwareBodies == 0 && owned.loopDepth() < MAX_LOOP_DEPTH
+                    && (loopsSteered ? loops == 0 || choices.oneIn(2) : !choices.oneIn(3));
+            if (loop) {
                 owned = armLoop(owned, body, bound, shadow, updated, loopsSteered && loops > 0);
                 loops++;
+            } else if (loopsSteered && loops > 0) {
+                // The reviewer's form: a local of the arm's type declared after the loop, which the yield reads.
+                String name = freshName(true);
+                body.add(new G1Ast.Declare(result, name, expression(result, ctx(declaring(owned, name)), EXPRESSION_DEPTH - 1)));
+                owned = owned.with(new Var(name, result, false, false, true, false));
+                yielded = owned.locals().getLast();
             } else {
                 owned = declaration(owned, body, false, shadow);
             }
             if (defaultBlock && isField(owned.locals().getLast().name())) features.add(Feature.DEFAULT_BLOCK_SHADOW);
         }
-        if (inArgument && loops > 1) features.add(Feature.DEFAULT_BLOCK_LOOPS);
         if (bound != null && updated.contains(binding)) features.add(Feature.ASSIGN_PATTERN_BINDING);
         for (Stmt statement : body) {
             if (bound != null && statement instanceof G1Ast.Declare local && local.init() instanceof G1Ast.Read read
@@ -1431,7 +1452,18 @@ public final class G1 {
             }
         }
         var valueCtx = new Ctx(owned, ctx.helpers(), true, false, null, false);
-        return new G1Ast.Arm(variant, binding, body, expression(result, valueCtx, depth - 1));
+        // After a loop there, the yield declares nothing either: no switch, whose bindings and blocks would.
+        boolean quiet = restricted && loops > 0;
+        int before = switches;
+        if (quiet) afterDefaultLoop++;
+        Expr value;
+        try {
+            value = yielded != null ? read(yielded) : expression(result, valueCtx, depth - 1);
+        } finally {
+            if (quiet) afterDefaultLoop--;
+        }
+        if (inArgument && loops > 0 && switches > before) features.add(Feature.DEFAULT_BLOCK_AFTER_LOOP);
+        return new G1Ast.Arm(variant, binding, body, value);
     }
 
     /**

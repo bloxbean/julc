@@ -54,7 +54,7 @@ class G1SwitchShapesTest {
             else expected.remove(G1.Feature.ASSIGN_PATTERN_BINDING);
             // #291's symptoms appear only under DEFAULT_BLOCK_SCOPE, and either may then; G1GatesTest checks that
             // each steered profile generates its own.
-            var symptoms = Set.of(G1.Feature.DEFAULT_BLOCK_SHADOW, G1.Feature.DEFAULT_BLOCK_LOOPS);
+            var symptoms = Set.of(G1.Feature.DEFAULT_BLOCK_SHADOW, G1.Feature.DEFAULT_BLOCK_AFTER_LOOP);
             expected.removeAll(symptoms);
             if (profile.has(G1.Gate.DEFAULT_BLOCK_SCOPE)) seen.removeAll(symptoms);
             assertEquals(expected, seen, profile + ": the switch features the source shows");
@@ -104,11 +104,18 @@ class G1SwitchShapesTest {
                         return v;""").features());
         String loops = "long i0 = 0; while (i0 < 1) { i0 = i0 + 1; } long i1 = 0; while (i1 < 1) { i1 = i1 + 1; }";
         assertTrue(reading("return a.add(switch (s) { case A q -> a; default -> { " + loops + " yield a; } });")
-                .features().contains(G1.Feature.DEFAULT_BLOCK_LOOPS));
+                .features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
         assertFalse(reading("BigInteger r = switch (s) { case A q -> a; default -> { " + loops + " yield a; } }; return a.add(r);")
-                .features().contains(G1.Feature.DEFAULT_BLOCK_LOOPS));
+                .features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
         assertFalse(reading("return a.add(switch (s) { case A q -> { " + loops + " yield a; } default -> a; });")
-                .features().contains(G1.Feature.DEFAULT_BLOCK_LOOPS));
+                .features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
+        String loop = "BigInteger k = a; long i0 = 0; while (i0 < 1) { k = k.add(a); i0 = i0 + 1; }";
+        assertTrue(reading("return a.add(switch (s) { case A q -> a; default -> { " + loop + " BigInteger j = k; yield j; } });")
+                .features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
+        assertTrue(reading("return a.add(switch (s) { case A q -> a; default -> { " + loop + " yield switch (s) { case B r -> k; "
+                + "default -> k; }; } });").features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
+        assertFalse(reading("return a.add(switch (s) { case A q -> a; default -> { BigInteger j = a; " + loop + " yield k.add(j); } });")
+                .features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
         var accumulator = reading("""
                 return switch (s) {
                             case A q -> {

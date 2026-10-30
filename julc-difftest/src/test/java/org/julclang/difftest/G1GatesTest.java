@@ -56,7 +56,7 @@ class G1GatesTest {
                 G1.Profile.REDISCOVER_146, G1.Feature.TRACE_IN_COMPARISON,
                 G1.Profile.REDISCOVER_162, G1.Feature.ASSIGN_PATTERN_BINDING,
                 G1.Profile.REDISCOVER_291, G1.Feature.DEFAULT_BLOCK_SHADOW,
-                G1.Profile.REDISCOVER_291_LOOPS, G1.Feature.DEFAULT_BLOCK_LOOPS,
+                G1.Profile.REDISCOVER_291_LOOPS, G1.Feature.DEFAULT_BLOCK_AFTER_LOOP,
                 G1.Profile.DEFAULT.with(G1.Gate.LOOP_BREAK_SHAPES), G1.Feature.LOOP_BREAK_SHAPE);
         cases.forEach((profile, marker) -> {
             var random = new Random(20261031);
@@ -149,7 +149,7 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r6 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+        assertEquals("G1 r7 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
                 + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON -DEFAULT_BLOCK_SCOPE",
                 G1.Profile.DEFAULT.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_162,
@@ -162,7 +162,7 @@ class G1GatesTest {
                         + "-DEFAULT_BLOCK_SCOPE steer=209"),
                 G1.Profile.REDISCOVER_209.text());
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_209));
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r6", "G1 r5"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r7", "G1 r6"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }
@@ -193,8 +193,8 @@ class G1GatesTest {
             var lines = source.split("\n");
             if (shadowsInDefaultBlock(lines, fields)) found.add(G1.Feature.DEFAULT_BLOCK_SHADOW);
             // Whether a default block's switch is inside a call argument needs the syntax tree, not lines.
-            if (source.contains("default -> {") && G1Source.read(source).features().contains(G1.Feature.DEFAULT_BLOCK_LOOPS)) {
-                found.add(G1.Feature.DEFAULT_BLOCK_LOOPS);
+            if (source.contains("default -> {") && G1Source.read(source).features().contains(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP)) {
+                found.add(G1.Feature.DEFAULT_BLOCK_AFTER_LOOP);
             }
             for (int i = 0; i < lines.length; i++) {
                 Matcher loop = LOOP.matcher(lines[i]);
