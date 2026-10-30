@@ -509,6 +509,27 @@ class SwitchDiagnosticsTest {
                             case A x when 2147483648L < x.v().signum() || -(2147483648) < x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
                 """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
+        // F85: the same overflows with underscores or a lowercase l stay rejected, positive or parenthesised (by T25, JULC0070).
+        rejected(switchOver("""
+                            case A x when 2_147_483_648 > x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0070", "Integer literal 2_147_483_648 is invalid");
+        rejected(switchOver("""
+                            case A x when -(2_147_483_648) < x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0070", "Integer literal 2_147_483_648 is invalid");
+        rejected(switchOver("""
+                            case A x when 9223372036854775808l > x.v().signum() -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0070", "Integer literal 9223372036854775808l is invalid");
+        // F85: the minimum values spelled with underscores and a lowercase l are accepted, in a non-constant guard and as
+        // a constant true guard that makes the switch exhaustive.
+        accepted(switchOver("""
+                            case A x when -2_147_483_648 < x.v().signum() && -9_223_372_036_854_775_808L < x.v().signum()
+                                    && -9223372036854775808l < x.v().signum() -> BigInteger.ONE;
+                            case A x when -2_147_483_648 < 0 -> BigInteger.TWO;
+                            case B y -> BigInteger.ZERO;
+                """));
         // Java's minimum-value forms are legal as the direct operand of unary minus (JLS 3.10.1).
         accepted(probe(S + """
                     static final int N = -2147483648;

@@ -1689,6 +1689,29 @@ lowers them from `JavaConstants`; outside guards they are the ordinary lowering'
   `intValue()`/`longValue()`; F82 leave unclassifiable declarations to the ordinary lowering, check only the whole
   guard for unclassifiable constants, and drop the minimum-value forms.
 
+### M1 review round 5 (2026-10-30; Codex F85)
+
+The review comment approved `46e1e532`. Codex found F80, F81 and F42 resolved and raised one P2.
+
+| Finding | Change |
+|---|---|
+| F85 (P2): the per-part check of round 4 evaluated the literal operand of a direct unary minus on its own, so legal minimum-value spellings were `JULC0072`: `-2_147_483_648 < x.v()`, `-9_223_372_036_854_775_808L < x.v()`, `-9223372036854775808l < x.v()`, `-2_147_483_648 < 0`. (JavaParser recognises only the exact spellings `2147483648` and `…808L` under a minus, which is why round 4's tests passed.) | `JavaConstants` classifies a decimal literal `2147483648` or `9223372036854775808` (underscores ignored, either suffix case) that is the direct operand of unary minus as the minimum value, both on its own and negated (`-Integer.MIN_VALUE == Integer.MIN_VALUE`), so every part of the guard is exact. Round 4's separate case for the negation is now redundant and removed. Positive overflows (`2_147_483_648`, `9223372036854775808l`) and `-(2_147_483_648)` stay unclassifiable and rejected. End-to-end: a javac + JVM oracle test (`minimumValueSpellingsAgreeWithJava`, a non-constant guard, and a constant true guard that makes the switch exhaustive), diagnostics tests for the three rejections, `JavaConstantsTest` cases, five P rows (F85a, F85b accepted with value 1; F85c–F85e rejected by both), two corpus kinds, and the pin `agree-guard-minimum-value-underscores`. |
+
+**Evidence.**
+- **Tests** (`./gradlew :julc-compiler:test --rerun :julc-difftest:test --rerun -Pjulc.javac21.required=true`):
+  julc-compiler 2,088, 0 failures (`SwitchGuardTest` 24, `SwitchDiagnosticsTest` 55, `JavaConstantsTest` 7);
+  julc-difftest 276, 0 failures (`RegressionCasesTest` 145 pins, one new; `Javac21ParityTest` 51 rows, five new;
+  `SwitchParityCorpusTest`). `./gradlew build -PskipSigning=true`: success; 12,271 tests in all modules, 0 failures,
+  530 skipped (pre-existing).
+- **Parity corpus:** 1,122 programs (two new guard kinds): 142 accepted by javac 21.0.3 and JuLC (63 run both ways at
+  all four levels, all agreeing), 953 rejected by both, 27 rejected by JuLC on purpose; javac 21.0.3 and javac 25
+  `--release 21` agree on all.
+- **Mutations:** all 43 detected: round 4's set, with its "drop the minimum-value forms" mutant (now equivalent, the
+  negation case being redundant) replaced by F85 "evaluate a minimum-value operand on its own" (three tests, including
+  the oracle test). The pin, with the fix reverted, is rejected with `JULC0072` again.
+- **Byte stability:** the change is confined to `JavaConstants`, which only guards use (the checker and R3a), so no
+  unguarded program can change; the harness was not re-run.
+
 ### Integration with T25 (2026-10-30, merge reconciliation)
 
 ADR-062 T25 (#270, `IntegerLiterals`) reached the same base as M1. Its `SubsetValidator` check rejects every integer
@@ -1708,6 +1731,9 @@ validity, and `JULC0070` is the right code.
   stay for what T25 does not cover (floating point, `char`) and for sources `SubsetValidator` does not validate.
   `guardFixedWidthConstant` reads its constants from `JavaConstants`, so it sees no out-of-range literal either.
 - `diagnostics.json` and the docs give no `JULC0072` example with such a literal, so neither changes.
+- F85 (round 5) merged after this note: its rejected overflows (`2_147_483_648`, `-(2_147_483_648)`,
+  `9223372036854775808l`, Javac21ParityTest F85c–e) are likewise `JULC0070` from T25, and its accepted minimum-value
+  spellings pass T25 and reach `JavaConstants` as round 5 describes.
 - Round 4's "Related finding" (underscores and `0xFFFFFFFF` in the ordinary lowering) is T25's subject and is
   resolved there.
 

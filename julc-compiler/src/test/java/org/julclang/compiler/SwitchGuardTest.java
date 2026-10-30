@@ -437,6 +437,23 @@ class SwitchGuardTest {
     }
 
     @Test
+    void minimumValueSpellingsAgreeWithJava() throws Exception {
+        // F85: underscores and a lowercase l are legal in the minimum-value literals (JLS 3.10.1); they are classified
+        // exactly in a guard that is not constant and in a constant true guard (which makes the B-free switch exhaustive).
+        matchesJava(S + """
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        return switch (s) {
+                            case A x when -2_147_483_648 < x.v().signum() && -9_223_372_036_854_775_808L < x.v().signum()
+                                    && -9223372036854775808l < x.v().signum() && - 2147483648 == 0x8000_0000 -> BigInteger.ONE;
+                            case A x -> BigInteger.TWO;
+                            case B y when -2_147_483_648 < 0 -> BigInteger.TEN;
+                        };
+                    }
+                """, in(5), in(-5));
+    }
+
+    @Test
     void booleanListElementsAsGuards() throws Exception {
         // Accepted neighbours of the fail-closed guard typing (F28): generic returns typed Boolean.
         matchesJava(S + """
