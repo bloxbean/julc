@@ -147,7 +147,7 @@ class JvmExecutorTest {
         assertTrue(e.getMessage().contains("the JVM rejects javac's class") && e.getMessage().contains("VerifyError"),
                 e.getMessage());
         // Raised while linking, before any initializer or the method runs.
-        assertTrue(Arrays.stream(e.getCause().getStackTrace()).anyMatch(frame -> frame.getMethodName().equals("link")
+        assertTrue(Arrays.stream(e.getCause().getStackTrace()).anyMatch(frame -> frame.getMethodName().equals("linked")
                 && frame.getClassName().equals(JvmExecutor.class.getName())), "raised while linking");
     }
 
@@ -223,31 +223,29 @@ class JvmExecutorTest {
 
     /**
      * Whatever the program throws while it runs is its failure, with its traces, also an error the JVM uses for
-     * linkage (review of M3 part 1 round 2, F95): the phase decides, not the throwable's class.
+     * linkage, whatever its message names (review of M3 part 1 round 2, F95, F105): the phase decides, not the
+     * throwable's class or text.
      */
     @Test
     void linkageErrorsThrownWhileRunningAreFailures() {
         var executor = new JvmExecutor(5_000);
-        var cases = List.of(
-                // An initializer that throws NoClassDefFoundError or LinkageError directly: errors are not wrapped.
-                thrown("    static final BigInteger F = gone();\n    static BigInteger gone() { throw new NoClassDefFoundError(\"Gone\"); }",
-                        "return a.add(F);"),
-                thrown("    static final BigInteger F = gone();\n    static BigInteger gone() { throw new LinkageError(\"init\"); }",
-                        "return a.add(F);"),
-                // The method, after a trace of its own.
-                thrown("", "Builtins.trace(\"m\", Builtins.iData(a));\n        throw new LinkageError(\"m\");"),
-                thrown("", "Builtins.trace(\"m\", Builtins.iData(a));\n        throw new NoClassDefFoundError(\"Gone\");"),
-                thrown("", "Builtins.trace(\"m\", Builtins.iData(a));\n        throw new VerifyError(\"not about this case\");"));
-        var traces = List.of(List.of("init"), List.of("init"), List.of("init", "m"), List.of("init", "m"), List.of("init", "m"));
-        for (int i = 0; i < cases.size(); i++) {
-            var failure = assertInstanceOf(Observation.Failure.class, executor.run(cases.get(i)), cases.get(i).source());
-            assertEquals(traces.get(i), failure.traces(), cases.get(i).source());
+        var errors = List.of("new NoClassDefFoundError(\"Gone\")", "new LinkageError(\"m\")", "new VerifyError(\"Probe\")",
+                "new ClassFormatError(\"Probe\")", "new VerifyError(\"NotProbeClass\")");
+        for (String error : errors) {
+            // From an initializer, which throws the error directly (errors are not wrapped), and from the method.
+            var initializer = thrown("    static final BigInteger F = gone();\n    static BigInteger gone() { throw " + error + "; }",
+                    "return a.add(F);");
+            var method = thrown("", "Builtins.trace(\"m\", Builtins.iData(a));\n        throw " + error + ";");
+            var failure = assertInstanceOf(Observation.Failure.class, executor.run(initializer), initializer.source());
+            assertEquals(List.of("init"), failure.traces(), initializer.source());
+            failure = assertInstanceOf(Observation.Failure.class, executor.run(method), method.source());
+            assertEquals(List.of("init", "m"), failure.traces(), method.source());
         }
     }
 
     /**
-     * A class of the case that the JVM rejects when it loads lazily, here a local class with javac's unverifiable
-     * bytecode, is still an oracle fault: the error names the class.
+     * Every class javac emitted for the case is verified before the run, so a local class with javac's unverifiable
+     * bytecode, which would load lazily, is an oracle fault found while linking.
      */
     @Test
     void aLocalClassTheJvmRejectsIsAHarnessError() {
@@ -278,6 +276,8 @@ class JvmExecutorTest {
                 "m", List.of(new PlutusData.ConstrData(0, List.of())), tags, null)));
         assertTrue(e.getMessage().contains("the JVM rejects javac's class") && e.getMessage().contains("VerifyError")
                 && e.getMessage().contains("Probe$1Local"), e.getMessage());
+        assertTrue(Arrays.stream(e.getCause().getStackTrace()).anyMatch(frame -> frame.getMethodName().equals("linked")
+                && frame.getClassName().equals(JvmExecutor.class.getName())), "raised while linking");
     }
 
     @Test

@@ -54,8 +54,11 @@ public final class JvmExecutor {
     private final long timeoutMillis;
     private final Map<String, Compiled> compiled = new ConcurrentHashMap<>();
 
-    /** Where a source's classes are, and the binary names of the top-level classes javac generated from it. */
-    private record Compiled(Path dir, List<String> classes) {
+    /**
+     * Where a source's classes are, the binary names of the top-level classes javac generated from it, and the binary
+     * names of every class it emitted for that source: member, local and anonymous classes included.
+     */
+    private record Compiled(Path dir, List<String> classes, List<String> emitted) {
     }
 
     public JvmExecutor(long timeoutMillis) {
@@ -77,7 +80,7 @@ public final class JvmExecutor {
                 throw new HarnessException(diffCase.name() + ": " + method.getName() + " takes " + params
                         + " arguments, the case has " + diffCase.args().size());
             }
-            return invoke(diffCase, classes, method);
+            return invoke(diffCase, method);
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
@@ -102,17 +105,18 @@ public final class JvmExecutor {
     }
 
     /**
-     * Loads, links and verifies the case's top-level classes and their member classes, recursively, without
-     * initializing them; validates the tag table over them (ADR-066 D3); and returns the entry method. A class the
-     * JVM rejects here, such as a {@code VerifyError}, is javac's fault, not an observation of the program: an
-     * oracle fault (ADR-063 H6). Local and anonymous classes are not visited.
+     * Loads, links and verifies every class javac emitted for the case, local and anonymous classes included, without
+     * initializing them; validates the tag table over the top-level classes and their members (ADR-066 D3); and returns
+     * the entry method. A class the JVM rejects here, such as a {@code VerifyError}, is javac's fault, not an
+     * observation of the program: an oracle fault (ADR-063 H6). Afterwards every class the program can load from its
+     * own source is verified, so nothing the run throws is read as one.
      */
     private static Method linked(DiffCase diffCase, Compiled classes, ClassLoader loader) throws ClassNotFoundException {
         var types = new ArrayList<Class<?>>();
         try {
             for (String name : classes.classes()) types.add(Class.forName(name, false, loader));
             // Reflecting on a class's methods links it, which verifies it, and does not initialize it.
-            for (Class<?> type : types) link(type);
+            for (String name : classes.emitted()) Class.forName(name, false, loader).getDeclaredMethods();
         } catch (LinkageError e) {
             throw new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + e, e);
         }
@@ -124,11 +128,6 @@ public final class JvmExecutor {
         return entryMethod(Class.forName(diffCase.className(), false, loader), diffCase.method());
     }
 
-    private static void link(Class<?> type) {
-        type.getDeclaredMethods();
-        for (Class<?> member : type.getDeclaredClasses()) link(member);
-    }
-
     /**
      * What a failure while the program ran reports: the exception a class initializer threw, for an
      * {@code ExceptionInInitializerError} or the {@code NoClassDefFoundError} of a later use of that class; else the
@@ -138,26 +137,6 @@ public final class JvmExecutor {
         Throwable error = thrown instanceof NoClassDefFoundError && thrown.getCause() instanceof ExceptionInInitializerError first
                 ? first : thrown;
         return error instanceof ExceptionInInitializerError && error.getCause() != null ? error.getCause() : error;
-    }
-
-    /**
-     * Whether the JVM rejected a class javac compiled from this case when it loaded lazily, such as a local or
-     * anonymous class, which the preflight does not visit: a {@code VerifyError} or {@code ClassFormatError} whose
-     * message names one of the case's compiled classes. Such an error thrown by the program itself would be read the
-     * same way; generated programs throw none.
-     */
-    private static boolean rejectsOwnClass(Throwable thrown, Compiled classes) {
-        if (!(thrown instanceof VerifyError || thrown instanceof ClassFormatError) || thrown.getMessage() == null) return false;
-        String message = thrown.getMessage().replace('/', '.');
-        try (var files = Files.walk(classes.dir())) {
-            return files.map(file -> classes.dir().relativize(file).toString())
-                    .filter(file -> file.endsWith(".class"))
-                    .map(file -> file.substring(0, file.length() - ".class".length()).replace(File.separatorChar, '.'))
-                    .filter(name -> classes.classes().stream().anyMatch(top -> name.equals(top) || name.startsWith(top + "$")))
-                    .anyMatch(message::contains);
-        } catch (IOException e) {
-            throw new HarnessException("cannot list the classes in " + classes.dir(), e);
-        }
     }
 
     private static Object[] arguments(DiffCase diffCase, Method method) {
@@ -175,11 +154,12 @@ public final class JvmExecutor {
 
     /**
      * Maps the arguments and invokes the entry method with standard output captured. Both may initialize classes:
-     * that is part of the program's run. So whatever the run throws, from an initializer or the method, a
-     * {@code LinkageError} included, is the program's {@code Failure} with its traces; the exceptions are a stack
-     * overflow (inconclusive) and a class of the case that the JVM rejects while loading it lazily (an oracle fault).
+     * that is part of the program's run. So whatever the run throws, from an initializer or the method, is the
+     * program's {@code Failure} with its traces, whatever its class: a {@code VerifyError} or another
+     * {@code LinkageError} the program throws, and also one the toolchain raises while the program runs, such as a
+     * {@code BootstrapMethodError} from a pattern switch's bootstrap. Only a stack overflow is inconclusive.
      */
-    private Observation invoke(DiffCase diffCase, Compiled classes, Method method) {
+    private Observation invoke(DiffCase diffCase, Method method) {
         var out = new TraceSink();
         PrintStream original = System.out;
         var executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -201,9 +181,6 @@ public final class JvmExecutor {
                 if (e.getCause() instanceof HarnessException harness) throw harness;
                 Throwable cause = e.getCause() instanceof InvocationTargetException ite ? ite.getCause() : e.getCause();
                 if (cause instanceof StackOverflowError) return new Observation.Inconclusive("JVM stack overflow");
-                if (rejectsOwnClass(cause, classes)) {
-                    throw new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + cause, cause);
-                }
                 return new Observation.Failure(String.valueOf(reported(cause)), out.traces());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -263,6 +240,17 @@ public final class JvmExecutor {
         return compile(List.of(diffCase), diffCase.name()).get(diffCase.source());
     }
 
+    /** The binary names of the class files under {@code dir}. */
+    private static List<String> classFiles(Path dir) throws IOException {
+        try (var files = Files.walk(dir)) {
+            return files.map(file -> dir.relativize(file).toString())
+                    .filter(file -> file.endsWith(".class"))
+                    .map(file -> file.substring(0, file.length() - ".class".length()).replace(File.separatorChar, '.'))
+                    .sorted()
+                    .toList();
+        }
+    }
+
     /**
      * javac must accept every case; a rejection is a harness or generator bug (ADR-063 H6). Returns each source's
      * classes; a listener records which top-level classes javac analyzed in which source file.
@@ -298,8 +286,17 @@ public final class JvmExecutor {
                             + (cases.size() == 1 ? "\n" + cases.getFirst().source() : ""));
                 }
             }
+            var files = classFiles(dir);
             var result = new LinkedHashMap<String, Compiled>();
-            sources.forEach((uri, source) -> result.put(source, new Compiled(dir, List.copyOf(emitted.getOrDefault(uri, List.of())))));
+            sources.forEach((uri, source) -> {
+                var classes = List.copyOf(emitted.getOrDefault(uri, List.of()));
+                // Distinct sources declare distinct top-level classes, so a class file belongs to the one whose class
+                // it is or nests in.
+                var own = files.stream()
+                        .filter(name -> classes.stream().anyMatch(top -> name.equals(top) || name.startsWith(top + "$")))
+                        .toList();
+                result.put(source, new Compiled(dir, classes, own));
+            });
             return result;
         } catch (IOException e) {
             throw new HarnessException(label + ": cannot write the source", e);
