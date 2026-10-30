@@ -178,6 +178,19 @@ class LoopBreakContinuationTest {
                     BigInteger s = BigInteger.ZERO; BigInteger n = BigInteger.ZERO;
                     for (var x : xs) { if (x.compareTo(a) > 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } n = n.add(limits.min()); }
                     return s.add(n.multiply(BigInteger.valueOf(1000)));""", LIMITS},
+            // A second accumulator assigned between an updating if and a later break (found by ADR-066 M2 probes).
+            new String[]{"two accumulators: an updating if, a plain update, then a break on it", """
+                    BigInteger acc = a; BigInteger pa = a;
+                    for (var z : xs) { if (z.compareTo(a) > 0) { acc = z; } pa = z; if (pa.compareTo(a) > 0) { break; } }
+                    return acc.add(pa.multiply(BigInteger.TEN));"""},
+            new String[]{"two accumulators: an if/else update, a plain update, then a break", """
+                    BigInteger acc = a; BigInteger pa = a;
+                    for (var z : xs) { if (z.compareTo(a) > 0) { acc = z; } else { acc = acc.add(BigInteger.ONE); } pa = z; if (pa.compareTo(a) > 0) { break; } }
+                    return acc.add(pa.multiply(BigInteger.TEN));"""},
+            new String[]{"two accumulators: a plain update, an updating if, then a break", """
+                    BigInteger acc = a; BigInteger pa = a;
+                    for (var z : xs) { pa = z; if (z.compareTo(a) > 0) { acc = z; } if (pa.compareTo(a) > 0) { break; } }
+                    return acc.add(pa.multiply(BigInteger.TEN));"""},
             // An else-if chain whose middle branch breaks: the statement after it was skipped.
             new String[]{"a break inside an else-if chain", """
                     BigInteger s = a;
