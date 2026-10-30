@@ -116,6 +116,51 @@ class G0PropertyTest {
     static void check(List<Integer> plan, BigInteger a, BigInteger b, List<BigInteger> xs) {
         var program = G0.decode(plan);
         Statistics.label("xs size").collect(xs.size() < 2 ? String.valueOf(xs.size()) : "2+");
+        var outcome = verify("G0PropertyTest", plan, program, a, b, xs);
+        Statistics.label("allowed divergence")
+                .collect(outcome.explained().isEmpty() ? "none" : String.join(",", outcome.explained()));
+        coverage.record(program.features().stream().map(Enum::name).collect(Collectors.toSet()), outcome.verdicts());
+    }
+
+    /**
+     * What {@link #verify} found: the catalogue IDs that explained a mismatch, each configuration's verdict, and
+     * the confirmation reruns the registry asked for (D6, r6).
+     */
+    record Outcome(Set<String> explained, Map<DiffConfig, Verdict.Kind> verdicts, List<Confirmation> confirmations) {
+    }
+
+    /**
+     * One confirmation rerun: the configuration, the budget factor, what it produced, whether that agrees with the
+     * JVM (value and traces), and its time.
+     */
+    record Confirmation(DiffConfig config, long factor, UplcExecutor.Execution execution, boolean agrees, long millis) {
+
+        String observation() {
+            return ObservationText.format(execution.observation());
+        }
+
+        /** The budget and what the rerun used: deterministic, so it goes into the D8 record (H4). */
+        String cost() {
+            var budget = UplcExecutor.budgetTimes(factor);
+            return "factor " + factor + " budget cpu " + budget.cpuSteps() + " mem " + budget.memoryUnits()
+                    + (execution.measurement() == null ? "" : " used " + execution.measurement());
+        }
+
+        /** The line reported with an input, with the rerun's wall-clock time, which no record keeps. */
+        @Override
+        public String toString() {
+            return config + " rerun x" + factor + ": " + observation() + (agrees ? ", agrees" : ", disagrees")
+                    + " (" + cost() + " in " + millis + " ms)";
+        }
+    }
+
+    /**
+     * Runs one decoded program, shared by the jqwik campaigns and {@link G0FuzzTest} (D13). It fails, after
+     * writing the case to {@link #LAST_FAILURE} with {@code finder} as its provenance, unless every configuration
+     * agrees or the registry explains each one that disagrees.
+     */
+    static Outcome verify(String finder, List<Integer> plan, G0.Program program, BigInteger a, BigInteger b,
+                          List<BigInteger> xs) {
         var items = new ArrayList<PlutusData>();
         for (BigInteger x : xs) items.add(new PlutusData.IntData(x));
         var diffCase = new DiffCase("g0 " + plan, program.source(), "Probe", "m",
@@ -126,22 +171,37 @@ class G0PropertyTest {
         var explained = new TreeSet<String>();
         boolean unexplained = false;
         var verdicts = new LinkedHashMap<DiffConfig, Verdict.Kind>();
+        var confirmations = new ArrayList<Confirmation>();
         for (var entry : report.results().entrySet()) {
+            var config = entry.getKey();
             var result = entry.getValue();
-            verdicts.put(entry.getKey(), result.verdict().kind());
+            verdicts.put(config, result.verdict().kind());
             if (result.verdict().kind() == Verdict.Kind.AGREE) continue;
-            var known = KNOWN.explain(diffCase, entry.getKey(), program.features(), result);
+            KnownDivergences.Rerun rerun = factor -> {
+                long start = System.nanoTime();
+                var execution = RUNNER.rerun(diffCase, config, factor);
+                boolean agrees = Verdict.compare(result.jvm(), execution.observation()).kind() == Verdict.Kind.AGREE;
+                confirmations.add(new Confirmation(config, factor, execution, agrees, (System.nanoTime() - start) / 1_000_000));
+                return execution;
+            };
+            var known = KNOWN.explain(diffCase, config, program.features(), result, rerun);
             if (known.isPresent()) explained.add(known.get());
             else unexplained = true;
         }
-        Statistics.label("allowed divergence").collect(explained.isEmpty() ? "none" : String.join(",", explained));
         if (unexplained) {
             RegressionStore.write(LAST_FAILURE, diffCase, RegressionStore.Expectation.AGREE, null,
-                    provenance("G0PropertyTest", plan), report);
+                    provenance(finder, plan), report);
+            for (var confirmation : confirmations) {
+                // One pair of lines per rung, for example recorded.Java/NONE.rerun.x1000 (D6, r6).
+                String key = confirmation.config() + ".rerun.x" + confirmation.factor();
+                RegressionStore.addRecorded(LAST_FAILURE, key, confirmation.observation());
+                RegressionStore.addRecorded(LAST_FAILURE, key + ".cost", confirmation.cost());
+            }
             failureWritten = true;
-            fail(report.describe() + "\n\n" + program.source());
+            fail(report.describe() + "\n\n" + confirmations.stream().map(Confirmation::toString)
+                    .collect(Collectors.joining("\n")) + "\n\n" + program.source());
         }
-        coverage.record(program.features().stream().map(Enum::name).collect(Collectors.toSet()), verdicts);
+        return new Outcome(explained, verdicts, List.copyOf(confirmations));
     }
 
     /** Where a generated case came from (D8); the seed is added when jqwik reports it. */

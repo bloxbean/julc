@@ -50,3 +50,7 @@ bin/
 /doc-site-bak/
 /verification/e3/generated/
 /verification/p4/generated/
+
+### Jazzer: the corpus generated while fuzzing, and slow inputs it saves next to the seeds ###
+.cifuzz-corpus/
+slow-unit-*

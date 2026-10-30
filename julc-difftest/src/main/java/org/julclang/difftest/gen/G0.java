@@ -10,7 +10,8 @@ import java.util.Set;
  * {@code m(BigInteger a, BigInteger b, JulcList<BigInteger> xs)} returning {@code BigInteger}, with
  * method-level declarations, {@code while} loops with a bounded counter, for-each loops over
  * {@code xs}, nesting up to two loops deep, accumulator updates (also inside {@code if}/{@code else}),
- * {@code if (...) break;}, loop-body locals, ternaries, {@code &&} and {@code ||}.
+ * {@code if (...) break;}, loop-body locals, ternaries, {@code &&} and {@code ||}. Since G0 r2 a ternary appears
+ * inside fewer than {@link #MAX_COMPARISON_NESTING} {@code compareTo} operands (#146).
  * <p>
  * The grammar stays inside the subset JuLC documents as supported and inside the semantic
  * intersection of ADR-062:
@@ -34,40 +35,76 @@ public final class G0 {
         /** A while body with a break and an if that assigns: the shape of ADR-062 T21. */
         WHILE_BREAK_WITH_IF_UPDATE,
         /** A for-each body with a break and an if/else whose branches assign different variables: ADR-062 T23. */
-        FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE;
+        FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE,
+        /**
+         * A ternary inside {@link G0#DEEP_COMPARISON_NESTING} nested {@code compareTo} operands. The lowering
+         * repeats each operand (#146), so the script doubles per level and can exhaust the budget (ADR-062 T13).
+         */
+        DEEP_COMPARISON;
 
         /**
-         * Shapes of the divergences T21 and T23, fixed by #254 and #255; they have no coverage quota and
-         * are reported as statistics, so a run shows how often the fixed shapes were exercised.
+         * Shapes of known divergences; they have no coverage quota. The registry's rule matches on
+         * {@code DEEP_COMPARISON} (T13). T21 and T23 are fixed (#254, #255), so their shapes are reported as
+         * statistics only, and a run shows how often the fixed shapes were exercised.
          */
         public static final Set<Feature> REGISTRY_MARKERS =
-                EnumSet.of(WHILE_BREAK_WITH_IF_UPDATE, FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE);
+                EnumSet.of(WHILE_BREAK_WITH_IF_UPDATE, FOR_EACH_BREAK_WITH_SPLIT_IF_ELSE, DEEP_COMPARISON);
     }
 
     /**
      * The decoding's version, saved with every failure it finds (ADR-063 D8). Change it whenever a
      * choice sequence would decode to a different program.
      */
-    public static final String VERSION = "G0 r1";
+    public static final String VERSION = "G0 r2";
 
-    /** A decoded program: the source of class {@code Probe} and the features it uses. */
-    public record Program(String source, Set<Feature> features) {
+    /**
+     * G0 r2 bounds comparison nesting: a ternary is generated only inside fewer than this many
+     * {@code compareTo} operands, and an atom takes its place at the bound. #146 doubles the script with
+     * each nested operand, and deeper programs ran the compiler out of memory (ADR-063 D13, open question
+     * 8). Remove the bound, as G0 r3, when #146 is fixed.
+     */
+    public static final int MAX_COMPARISON_NESTING = 14;
+    /** No bound on comparison nesting: {@code decode(plan, UNBOUNDED)} is G0 r1. */
+    public static final int UNBOUNDED = Integer.MAX_VALUE;
+
+    /**
+     * A decoded program: the source of class {@code Probe}, the features it uses, and the most
+     * {@code compareTo} operands that enclose any of its ternaries.
+     */
+    public record Program(String source, Set<Feature> features, int comparisonNesting) {
     }
 
     private static final int MAX_LOOP_DEPTH = 2;
+    /** Nesting at which #146's duplication alone multiplies the operand 256 times. */
+    public static final int DEEP_COMPARISON_NESTING = 8;
 
     private final Choices choices;
     private final StringBuilder out = new StringBuilder();
     private final Set<Feature> features = EnumSet.noneOf(Feature.class);
     private int fresh;
+    private final int maxComparisonNesting;
+    /** How many {@code compareTo} operands enclose the expression being generated. */
+    private int comparisonOperands;
+    private int deepestTernary;
 
-    private G0(Choices choices) {
+    private G0(Choices choices, int maxComparisonNesting) {
         this.choices = choices;
+        this.maxComparisonNesting = maxComparisonNesting;
     }
 
+    /** The program this plan decodes to under the current version, {@link #VERSION}. */
     public static Program decode(List<Integer> plan) {
-        var generator = new G0(new Choices(plan));
-        return new Program(generator.method(), generator.features);
+        return decode(plan, MAX_COMPARISON_NESTING);
+    }
+
+    /**
+     * The program this plan decodes to with the given comparison-nesting bound. {@link #UNBOUNDED} gives G0 r1,
+     * so an r1 plan from a D8 record still decodes to the program it was found with.
+     */
+    public static Program decode(List<Integer> plan, int maxComparisonNesting) {
+        if (maxComparisonNesting < 1) throw new IllegalArgumentException("the nesting bound must be positive");
+        var generator = new G0(new Choices(plan), maxComparisonNesting);
+        return new Program(generator.method(), generator.features, generator.deepestTernary);
     }
 
     /** One variable in scope: {@code BigInteger} unless it is a loop counter, which is {@code long}. */
@@ -216,7 +253,10 @@ public final class G0 {
             case 1 -> expression(scope, depth - 1) + ".subtract(" + expression(scope, depth - 1) + ")";
             case 2 -> expression(scope, depth - 1) + ".multiply(BigInteger.valueOf(" + (1 + choices.below(3)) + "))";
             case 3 -> {
+                if (comparisonOperands >= maxComparisonNesting) yield atom(scope);
+                deepestTernary = Math.max(deepestTernary, comparisonOperands);
                 features.add(Feature.TERNARY);
+                if (comparisonOperands >= DEEP_COMPARISON_NESTING) features.add(Feature.DEEP_COMPARISON);
                 yield "(" + condition(scope, 1) + " ? " + expression(scope, depth - 1) + " : " + expression(scope, depth - 1) + ")";
             }
             default -> atom(scope);
@@ -238,8 +278,11 @@ public final class G0 {
             String operator = choices.oneIn(2) ? " || " : " && ";
             return "(" + condition(scope, depth - 1) + operator + condition(scope, depth - 1) + ")";
         }
-        return expression(scope, 1) + ".compareTo(" + expression(scope, 1) + ") "
-                + COMPARISONS[choices.below(COMPARISONS.length)] + " 0";
+        comparisonOperands++;
+        String left = expression(scope, 1);
+        String right = expression(scope, 1);
+        comparisonOperands--;
+        return left + ".compareTo(" + right + ") " + COMPARISONS[choices.below(COMPARISONS.length)] + " 0";
     }
 
     private void line(int indent, String text) {

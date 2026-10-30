@@ -30,6 +30,14 @@ public final class DiffRunner {
         jvm.precompile(cases);
     }
 
+    /**
+     * Runs the UPLC side of one configuration again with {@code factor} times the budget: the confirmation
+     * rerun of a registry rule (ADR-063 D6, r6). The comparison of {@link #run} never uses it.
+     */
+    public UplcExecutor.Execution rerun(DiffCase diffCase, DiffConfig config, long factor) {
+        return uplc.run(diffCase, config, UplcExecutor.budgetTimes(factor));
+    }
+
     public Report run(DiffCase diffCase) {
         Observation jvmObservation = jvm.run(diffCase);
         var results = new LinkedHashMap<DiffConfig, Result>();

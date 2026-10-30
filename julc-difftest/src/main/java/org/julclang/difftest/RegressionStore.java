@@ -308,11 +308,24 @@ public final class RegressionStore {
 
     /** Adds one provenance line to a saved file, before its source; for facts known only later, such as the seed. */
     public static void addProvenance(Path file, String key, String value) {
+        addHeader(file, "found." + key, value);
+    }
+
+    /**
+     * Adds one {@code recorded.} history line to a saved file, before its source, such as the outcome of a
+     * confirmation rerun (ADR-063 D6, r6). A key that does not end in {@code .cost} must hold an observation.
+     */
+    public static void addRecorded(Path file, String key, String value) {
+        if (!key.endsWith(".cost")) ObservationText.parse(value);
+        addHeader(file, "recorded." + key, value);
+    }
+
+    private static void addHeader(Path file, String key, String value) {
         try {
             String text = Files.readString(file);
             int separator = text.indexOf("\n---\n");
             if (separator < 0) throw new HarnessException(file + ": no --- line between header and source");
-            Files.writeString(file, text.substring(0, separator) + "\nfound." + key + ": " + value + text.substring(separator));
+            Files.writeString(file, text.substring(0, separator) + "\n" + key + ": " + value + text.substring(separator));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

@@ -54,6 +54,20 @@ class RegressionStoreTest {
         assertEquals("cpu 10 mem 20 size 30", saved.recorded().get("Java/BASELINE.cost"));
     }
 
+    /** A confirmation rerun is history in the failure record (ADR-063 D6, r6): readable, and never checked. */
+    @Test
+    void aConfirmationRerunIsRecorded(@TempDir Path dir) {
+        Path file = dir.resolve("case.diffcase");
+        RegressionStore.write(file, CASE, RegressionStore.Expectation.AGREE, null, Map.of(), null);
+        RegressionStore.addRecorded(file, "Java/NONE.rerun", "Value 24 []");
+        RegressionStore.addRecorded(file, "Java/NONE.rerun.cost", "factor 100 budget cpu 1000000000000 mem 1400000000");
+        var saved = RegressionStore.read(file);
+        assertEquals(value(-5), ObservationText.parse(saved.recorded().get("Java/NONE.rerun")));
+        assertEquals("factor 100 budget cpu 1000000000000 mem 1400000000", saved.recorded().get("Java/NONE.rerun.cost"));
+        assertEquals(RegressionStore.Expectation.AGREE, saved.expectation());
+        assertThrows(RuntimeException.class, () -> RegressionStore.addRecorded(file, "Java/NONE.rerun", "not an observation"));
+    }
+
     @Test
     void aDivergenceRoundTripsWithItsPins(@TempDir Path dir) {
         var expectation = RegressionStore.Expectation.parse("DIVERGE T12 Value/Value").pinned(value(1), value(1, "checked"));
