@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a guard that reads a method parameter (G4, T27)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 03
 arg: 20
 expect: AGREE

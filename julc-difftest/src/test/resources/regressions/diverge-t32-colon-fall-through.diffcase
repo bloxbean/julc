@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: #283 a colon-form group that falls through into default (F12a, T32)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: REJECT JULC0075
 recorded.jvm: Value 02 []

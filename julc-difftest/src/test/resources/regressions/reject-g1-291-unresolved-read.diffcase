@@ -13,11 +13,13 @@ arg: 25
 arg: 9f20ff
 arg: d87a80
 arg: d8799fd8799f00ffd8799f0421ffd8799f2401ffff
-expect: REJECT JULC0055
+expect: AGREE
 note: Rediscovered by the G1 r6 campaign under REDISCOVER_291 with -Pdifftest.form=rejection (ADR-066 D10.1), the
 note: shrunk reproducer as found. Java accepts it and returns -5. The local BigInteger v declared in the default arm
 note: block keeps its type after the switch, so JuLC cannot resolve v.v() on the field R0 v and rejects the program
 note: at every level (JULC0055). This expectation pins #291's rejection form; it becomes AGREE when #291 is fixed.
+note: ADR-067 M1 round 3 fixed #291 (the default arm block is scoped): the program compiles and agrees at every
+note: level, so its expectation is AGREE (ADR-066 D9, merge reconciliation); it was REJECT JULC0055.
 found.by: G1PropertyTest rediscovery
 found.generator: G1 r6
 found.plan: 0,2,0,0,0,0,0,0,0,0,0,2,0,0,2,3,0,0,1,1,0,6,1,0,0,1,0,570,6,239,5,103,38,437,469,93,221,6,208,43,724,679,28,28,86,9,217,18,0,61,22,334,417,35,11,26,145,32,6,927,246,321,8,9,1000,3,10,2,18,305,24,755,206,186,55,323

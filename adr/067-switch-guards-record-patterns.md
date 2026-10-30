@@ -986,7 +986,7 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    | *M1 round 4 rows.* `@Param static final boolean ENABLED = true` / `long LIMIT = 5` read by a guard, applied with another value (F41 = F80), directly, negated and through `M = LIMIT`; a minting validator | guard folded the initializer (JVM-inlined value; the `if` control read the applied one) | the guard reads the applied value, as the `if` control does; `when ENABLED` is guarded (`JULC0005` without `default`) | M1 | U |
    | Guard `x.v().intValue() < 0` / `longValue()` (F81, #294) | narrowing erased (JVM 1, JuLC 2 at 2^31) | `REJECT JULC0072` (#294) | M1 | D |
    | `intValue()`/`longValue()` in an `if` at the sign boundaries (#294) | `DIVERGE` T6 above `Integer.MAX_VALUE`, below `Integer.MIN_VALUE` and above `Long.MAX_VALUE`; `AGREE` at the boundaries | retained | — | D |
-   | Out-of-range literals in a referenced declaration (field, `long` field, final local, `M = N`) or in the guard (F82; javac rejects) | JuLC accepted | `REJECT JULC0072` | M1 | P |
+   | Out-of-range literals in a referenced declaration (field, `long` field, final local, `M = N`) or in the guard (F82; javac rejects) | JuLC accepted | `REJECT JULC0072`; `REJECT JULC0070` once T25 is below (see "Integration with T25") | M1 | P |
    | `-2147483648`, `-9223372036854775808L` beside a binding (F82) | `AGREE` | `AGREE` | M1 | D |
    | *Interim (F35):* every record-pattern row above (R1, H2, R2, R7, R4, F9, F30 ×2, `X(W(B(var v)))`, the parameterized component, `Pair`) | as listed | `REJECT JULC0076` ("not yet supported") between M1 and M2a, which sets the final verdicts listed | M1 → M2a | D |
 
@@ -1688,6 +1688,28 @@ lowers them from `JavaConstants`; outside guards they are the ordinary lowering'
   code) and five new: F41 fold a `@Param` constant (six `SwitchGuardParamTest`/`JavaConstantsTest` tests); F81 allow
   `intValue()`/`longValue()`; F82 leave unclassifiable declarations to the ordinary lowering, check only the whole
   guard for unclassifiable constants, and drop the minimum-value forms.
+
+### Integration with T25 (2026-10-30, merge reconciliation)
+
+ADR-062 T25 (#270, `IntegerLiterals`) reached the same base as M1. Its `SubsetValidator` check rejects every integer
+literal javac rejects with `JULC0070` before PIR generation, so F82's out-of-range literals (`int N = 2147483648`,
+`long L = 9223372036854775808L`, a final local, `M = N`, and `-(2147483648)` in the guard) no longer reach the guard
+checker: the literal is rejected (`JULC0070`) before the guard would have been (`JULC0072`). javac rejects them too
+("integer number too large"), so the parity outcome is unchanged, JuLC rejects where javac rejects; T25 owns literal
+validity, and `JULC0070` is the right code.
+- Expectations changed: `SwitchDiagnosticsTest.outOfRangeLiteralsInDeclarationsAndGuards` (code and message
+  fragment) and `Javac21ParityTest` F82a–d now expect `JULC0070`, and `SwitchParityCorpusTest` takes `JULC0070` as
+  the code of a program javac rejects for such a literal (its "out-of-range int literal" guard kind; any other
+  non-D4 code still fails); the outcome-matrix row above is amended. The
+  minimum-value forms stay accepted by both (`-2147483648` and `-9223372036854775808L` are directly negated, which
+  T25 accepts) and keep their `AGREE` pin.
+- The guard path assumed nothing more: `JavaConstants` is unchanged. `minimumValue` still classifies the two
+  minimum-value forms, and the unclassifiable fallbacks (`number()`, `invalidDeclaration`'s F82 branch, `checkGuard`)
+  stay for what T25 does not cover (floating point, `char`) and for sources `SubsetValidator` does not validate.
+  `guardFixedWidthConstant` reads its constants from `JavaConstants`, so it sees no out-of-range literal either.
+- `diagnostics.json` and the docs give no `JULC0072` example with such a literal, so neither changes.
+- Round 4's "Related finding" (underscores and `0xFFFFFFFF` in the ordinary lowering) is T25's subject and is
+  resolved there.
 
 ## Revision history
 

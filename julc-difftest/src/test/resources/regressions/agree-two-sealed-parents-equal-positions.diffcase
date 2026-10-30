@@ -1,7 +1,11 @@
-format: 2
+format: 3
 name: a record with two sealed parents at equal positions (M2)
 class: Probe
 method: m
+tag: Probe$A Probe$S 1
+tag: Probe$B Probe$S 0
+tag: Probe$B Probe$T 0
+tag: Probe$C Probe$T 1
 arg: 05
 expect: AGREE
 note: ADR-067 M2: agrees at the base; D6 rejects it (M3).

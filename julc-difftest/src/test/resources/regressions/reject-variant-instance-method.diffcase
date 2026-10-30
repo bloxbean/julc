@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: #282 an instance method on a sealed variant, called on a switch binding (N10)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: REJECT JULC0055
 note: ADR-067 N10: legal Java (10).

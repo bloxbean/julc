@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a guard whose signum receiver is a traced call (F36, #146)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: DIVERGE T12 Value/Value
 jvm: Value 01 ["receiver"]

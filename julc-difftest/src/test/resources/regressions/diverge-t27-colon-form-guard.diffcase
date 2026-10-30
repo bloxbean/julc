@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a guard in a colon-form switch that yields in every group (G11, T27)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 22
 arg: 00
 expect: AGREE

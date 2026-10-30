@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: record patterns without default (R2)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 22
 expect: REJECT JULC0076
 note: ADR-067 R2: legal Java (-3).

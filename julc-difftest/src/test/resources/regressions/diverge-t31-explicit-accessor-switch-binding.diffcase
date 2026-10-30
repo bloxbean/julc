@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: #282 an explicit accessor called on a switch binding (T31)
 class: Probe
 method: m
+tag: Probe$P Probe$SP 0
+tag: Probe$Z Probe$SP 1
 arg: 05
 expect: DIVERGE T31 Value/Value
 jvm: Value 24 []

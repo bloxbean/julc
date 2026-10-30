@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: Java's minimum-value literals in a non-constant guard (F82)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: AGREE
 note: ADR-067 M1 round 4, F82: -2147483648 and -9223372036854775808L are legal only as the direct operand of unary minus and are classified exactly; the bare out-of-range literals are rejected.

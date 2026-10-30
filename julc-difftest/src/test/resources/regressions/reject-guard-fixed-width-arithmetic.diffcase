@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: int arithmetic that is not constant in a guard (round 3)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: REJECT JULC0072
 recorded.jvm: Value 01 []

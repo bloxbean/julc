@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a guard calling BigInteger.intValue() (F81, #294)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 1a80000000
 expect: REJECT JULC0072
 recorded.jvm: Value 01 []

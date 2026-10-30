@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: when true as the only arm for a variant (G8b)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 22
 arg: 00
 expect: AGREE

@@ -1,7 +1,10 @@
-format: 2
+format: 3
 name: a default block with two counted loops, as an instance-method argument (#291)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+tag: Probe$C Probe$S 2
 arg: 05
 expect: AGREE
 recorded.jvm: Value 0c []

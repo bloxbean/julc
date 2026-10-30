@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: equals between two variants of one family (E5)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: AGREE
 note: ADR-067 E5.

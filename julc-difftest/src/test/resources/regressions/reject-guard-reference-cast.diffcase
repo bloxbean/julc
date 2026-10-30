@@ -1,7 +1,11 @@
-format: 2
+format: 3
 name: a guard instanceof over a reference cast that Java checks (F61, #288)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+tag: Probe$C Probe$T 0
+tag: Probe$D Probe$T 1
 arg: 03
 expect: REJECT JULC0072
 note: ADR-067 review F61: the cast throws ClassCastException on the JVM; JuLC erased it and returned 1 (#288). Reference casts are outside the guard subset.

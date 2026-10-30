@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: #275 reproducer with a true guard (G2)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 14
 arg: 00
 expect: AGREE

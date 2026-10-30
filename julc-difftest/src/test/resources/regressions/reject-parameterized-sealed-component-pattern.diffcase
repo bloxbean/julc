@@ -1,7 +1,11 @@
-format: 2
+format: 3
 name: a record pattern on a parameterized sealed component
 class: Probe
 method: m
+tag: Probe$GC Probe$G 0
+tag: Probe$GD Probe$G 1
+tag: Probe$PW Probe$H 0
+tag: Probe$PZ Probe$H 1
 arg: 05
 expect: REJECT JULC0076
 note: ADR-067 D3 (F14): legal Java (5).

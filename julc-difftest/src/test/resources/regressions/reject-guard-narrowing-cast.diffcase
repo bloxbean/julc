@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a guard narrowing a non-constant long (F72)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 arg: 1b0000000080000000
 expect: REJECT JULC0072

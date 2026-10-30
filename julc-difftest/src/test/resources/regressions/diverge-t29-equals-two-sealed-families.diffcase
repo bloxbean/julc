@@ -1,7 +1,11 @@
-format: 2
+format: 3
 name: equals between two sealed families with tag 0 (E9, T29)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+tag: Probe$C Probe$T 0
+tag: Probe$D Probe$T 1
 arg: 05
 expect: DIVERGE T29 Value/Value
 jvm: Value 00 []

@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: guards in a switch statement (G9)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 22
 expect: REJECT none
 note: ADR-067 G9: switch statements are out of scope.

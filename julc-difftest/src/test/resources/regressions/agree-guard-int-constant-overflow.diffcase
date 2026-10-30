@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a constant guard with int overflow through a constant variable (round 3)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: AGREE
 note: ADR-067 M1 round 3: int arithmetic wraps (JLS 15.18.2), so the guard is the constant true; kept exact by the verified constant subset.

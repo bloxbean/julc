@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a constant guard with literal int overflow (round 3)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: AGREE
 note: ADR-067 M1 round 3 (Codex): constant true; a non-constant reading would be T6.

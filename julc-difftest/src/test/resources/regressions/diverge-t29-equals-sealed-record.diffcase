@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: equals between a sealed value and a record (E6, T29)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: DIVERGE T29 Value/Value
 jvm: Value 00 []

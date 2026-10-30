@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ADR-067 Verification 3 (I9), the M1 corpus: generated switch expressions over a fixed universe, each compiled by
  * javac 21.0.3 (by explicit path, {@link Javac21}) and by JuLC. JuLC must accept exactly what javac accepts, except
  * where the ADR rejects legal Java on purpose (colon-form fall-through and grouped labels, JULC0075; parameterized
- * sealed selectors, JULC0007), and every rejection must carry one of the D4 codes. A sample of the accepted programs
- * is also run on the JVM and on JuLC at every level.
+ * sealed selectors, JULC0007), and every rejection must carry one of the D4 codes, or T25's JULC0070 for a literal
+ * javac rejects. A sample of the accepted programs is also run on the JVM and on JuLC at every level.
  * <p>
  * Dimensions: every sequence of up to four labels drawn from {@code A}, {@code A when <guard>}, {@code B},
  * {@code B when <guard>} and {@code default} (arrow form; colon form up to three labels); every guard kind (literal
@@ -39,6 +39,12 @@ class SwitchParityCorpusTest {
 
     private static final Set<String> D4_CODES = Set.of("JULC0005", "JULC0007", "JULC0071", "JULC0072", "JULC0073",
             "JULC0074", "JULC0075", "JULC0076", "JULC0082", "JULC0083");
+
+    /**
+     * An integer literal javac rejects (ADR-062 T25): JuLC rejects the literal itself before any D4 check, so a program
+     * javac rejects for such a literal carries this code instead (ADR-067, "Integration with T25").
+     */
+    private static final String INVALID_LITERAL = "JULC0070";
 
     /** A generated program; {@code intended} is the code JuLC must reject it with although javac accepts it. */
     record Program(String name, String source, String intended, boolean run) {
@@ -356,7 +362,8 @@ class SwitchParityCorpusTest {
             String code = julcRejection(program.source());
             boolean julcAccepts = code == null;
             if (PARSE_ERROR.equals(code)) parseErrors++;
-            if (code != null && !D4_CODES.contains(code) && !code.equals(PARSE_ERROR)) {
+            boolean invalidLiteral = INVALID_LITERAL.equals(code) && !verdict.accepted();
+            if (code != null && !D4_CODES.contains(code) && !code.equals(PARSE_ERROR) && !invalidLiteral) {
                 problems.add(program.name() + ": JuLC rejects with " + code + ", not a D4 code");
             }
             if (program.intended() != null && verdict.accepted()) {
@@ -375,7 +382,7 @@ class SwitchParityCorpusTest {
                     for (long a : new long[]{5, -5}) {
                         for (long n : new long[]{3, -3}) {
                             var report = runner.run(new DiffCase(program.name(), program.source(), "Probe", "m",
-                                    List.of(PlutusData.integer(a), PlutusData.integer(n))));
+                                    List.of(PlutusData.integer(a), PlutusData.integer(n)), tags(program), null));
                             report.results().forEach((config, result) -> {
                                 if (result.verdict().kind() != Verdict.Kind.AGREE) {
                                     problems.add(program.name() + " (" + a + ", " + n + ") " + config + ": " + result.verdict());
@@ -393,6 +400,20 @@ class SwitchParityCorpusTest {
                 + intended + " rejected by JuLC on purpose");
         release21Differences.forEach(d -> System.out.println("[javac 21.0.3 vs --release 21] " + d));
         assertTrue(problems.isEmpty(), String.join("\n", problems));
+    }
+
+    /** {@link #HEADER}'s family in its {@code permits} order (ADR-066 D3, G1-I4). */
+    private static final List<TagTable.Entry> HEADER_TAGS = List.of(
+            new TagTable.Entry("Probe$A", "Probe$S", 0), new TagTable.Entry("Probe$B", "Probe$S", 1));
+
+    /**
+     * The tag table of a program that is run: {@link #HEADER}'s family, and {@code O}'s one variant where the program
+     * declares it. Any other family is in no run program, so the source validation fails closed if one ever is.
+     */
+    private static TagTable tags(Program program) {
+        var entries = new ArrayList<>(HEADER_TAGS);
+        if (program.source().contains("sealed interface O permits OA {}")) entries.add(new TagTable.Entry("Probe$OA", "Probe$O", 0));
+        return new TagTable(entries);
     }
 
     private static Map<String, String> javacSources(Program program) {

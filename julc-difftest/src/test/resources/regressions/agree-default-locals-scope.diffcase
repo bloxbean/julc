@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: default declares a local named like a field a guard reads (F53)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: AGREE
 note: ADR-067 review F53: M1 compiled default first and leaked its local 'flag' into the guard (JULC0072).

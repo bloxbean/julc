@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a record pattern followed by the same type pattern (H2, T28)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 03
 expect: REJECT JULC0076
 recorded.jvm: Value 03 []

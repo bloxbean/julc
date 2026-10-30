@@ -9,19 +9,21 @@ arg: 22
 arg: 23
 arg: 9f20012121ff
 arg: d8799fd8798025ff
-expect: DIVERGE #291 Value/Failure
-jvm: Value 24 []
-uplc: Failure []
+expect: AGREE
 note: Rediscovered by the G1 r6 campaign under REDISCOVER_291 with -Pdifftest.form=failure (ADR-066 D10.1), the
 note: shrunk reproducer as found. The local R1 w declared in the default arm block keeps its type after the switch,
 note: so w.w() reads the field R0 w = R0(false, -5) through R1's layout: index 0, R0's Bool, where an integer is
 note: expected. UPLC fails at every level; Java returns -5. Provisional until #291 is fixed.
+note: ADR-067 M1 round 3 fixed #291 (the default arm block is scoped): the case agrees at every level, so its
+note: expectation is AGREE (ADR-066 D9, merge reconciliation); recorded.jvm and recorded.base keep the old pins.
 found.by: G1PropertyTest rediscovery
 found.generator: G1 r6
 found.plan: 0,0,0,0,0,0,2,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1
 found.inputs: 3,15,49,421,20,212,537,1000,273,424,829,84,0,1,13,167,278,25,541,7,311,949,211,82,268,6,245,0
 found.seed: 20261030
 found.compiler: 0.1.0-pre20 v0.1.0-pre20-45-g8cdd831fb93e-dirty
+recorded.jvm: Value 24 []
+recorded.base: Failure []
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

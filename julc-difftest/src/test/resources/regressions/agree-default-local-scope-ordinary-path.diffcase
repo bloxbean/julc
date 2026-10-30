@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a default local named like a field, read after the switch (#291)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: AGREE
 recorded.jvm: Value 01 []

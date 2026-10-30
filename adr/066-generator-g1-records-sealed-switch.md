@@ -1659,6 +1659,53 @@ The decoding is unchanged (G1 r7). Commands and counts:
 - `./gradlew :julc-difftest:test --rerun`: 248 tests, 0 failures, 0 skipped; `RegressionCasesTest` runs 86
   cases.
 
+### Integration with ADR-067 M1 (2026-10-30, merge reconciliation, G1 r8)
+
+ADR-067 M1, whose review round 3 fixed #291 (the `default` arm block is scoped), is now below this generator, with
+T25 and #272. Reconciling the merge:
+
+- **#291's pins flip (D9, ADR-063 D6).** `diverge-g1-291-silent-misread`, `diverge-g1-291-runtime-misread`,
+  `reject-g1-291-unresolved-read`, `reject-g1-291-default-block-loops` and `reject-g1-291-local-after-loop` keep their
+  names, sources, tags, profiles and provenance; their `expect` lines are `AGREE`. The two `DIVERGE` pins' `jvm:` and
+  `uplc:` lines, which a non-`DIVERGE` case cannot carry, are kept as `recorded.jvm` and `recorded.base` history, and
+  each case gains a note line saying why it changed. Their counterfactuals are unchanged.
+- **Fix-based cause checks (D10.1).** `G1RediscoveryTest`'s three #291 tests are now regression guards: each reproducer
+  agrees with the JVM at every level (the JVM returns a value), and its counterfactual still keeps the JVM observation
+  and agrees.
+- **The gate opens (D6, "After a fix").** On the merged compiler, `rediscoveryDiffTest` under `REDISCOVER_291` and
+  `REDISCOVER_291_LOOPS` (seed `20261030`, 150 tries, no `form=` filter) agrees: 150 of 150 cases conclusive at every
+  level (`REDISCOVER_291`: `DEFAULT_BLOCK_SHADOW` in 19; `REDISCOVER_291_LOOPS`: `DEFAULT_BLOCK_AFTER_LOOP` in 6,
+  `DEFAULT_BLOCK_SHADOW` in 2); run at G1 r7 and again at r8, which decodes these two profiles identically. `DEFAULT_BLOCK_SCOPE` is
+  therefore on in `Profile.DEFAULT`, and `G1.VERSION` is `G1 r8`: the default profile, and the historical profiles
+  built on it (`REDISCOVER_209`, `_280`, `_146`, `_162`), decode differently. Saved cases keep their r6 and r7
+  profiles.
+- **Tests.** `G1GatesTest` checks that the default profile has exactly `DEFAULT_BLOCK_SCOPE` on, that 20,000 default
+  plans contain no construct of a gate still off (markers and source), and that both #291 markers now occur in them;
+  opening the gate keeps the distribution of the all-gates-off profile (G1 r7's default) within 0.02. Round-trip texts
+  follow r8.
+- **Campaigns at r8.** The PR campaign (seed `20261030`, 150 tries) is unchanged: 150 conclusive, the same quota
+  counts as r7, and no #291 construct among its programs, as F68 anticipated. A nightly run (3,000 tries, seed
+  `6494089969812623075`): 3,000 conclusive at every level, all agreeing, `DEFAULT_BLOCK_SHADOW` in 9. No new
+  divergence was found, so nothing new is pinned.
+- **Not done here.** The permanent nightly steered guard for #291 (D11) is M6's; until then the steered profiles run
+  on demand through `rediscoveryDiffTest`.
+
+**Format 3 for ADR-067's cases (D3, G1-I4).** 63 hand-written ADR-067 cases were format 2 without tags and failed
+source validation. Each is now format 3 with its `tag:` lines, derived mechanically from javac's classes: the index in
+`getPermittedSubclasses()` for an explicit `permits` clause (none of the cases uses implicit permits), sorted by
+record then parent and placed where `RegressionStore.write` puts them; every other line is unchanged (checked by
+reading each file back). The derived tags equal `TypeResolver`'s constructor tags for all 62 cases JuLC registers
+(one with the ledger types); `reject-unnamed-pattern` cannot be registered, since JuLC's parser rejects `_`, and its
+`permits A, B` gives the same tags by JuLC's permits-order rule. No mismatch. `SwitchParityCorpusTest`'s run programs
+carry their families' tag tables too.
+
+**Open finding.** `reject-nested-sealed-interface` and `reject-nested-sealed-interface-pattern` (ADR-067 M3, M4: `sealed
+interface S permits A, U` with `sealed interface U extends S permits B, C`) cannot be given a valid tag table: D3's
+table admits only record variants, and source validation rejects `S` permitting the interface `U`. They stay format 2
+and fail with a `HarnessException` before running, although no sealed value crosses their boundary. D3 needs a
+decision for them (for example, source validation that admits a nested sealed interface as a permitted subclass when
+the case maps no value of the hierarchy); this reconciliation does not make it.
+
 ## Revision history
 
 - **r1** (2026-10-30): initial proposal.

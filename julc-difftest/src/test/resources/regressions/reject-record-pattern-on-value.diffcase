@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a record pattern on the ledger Value (F30)
 class: Probe
 method: m
+tag: Probe$VA Probe$SV 0
+tag: Probe$VB Probe$SV 1
 arg: 05
 expect: REJECT JULC0076
 note: ADR-067 F30: legal Java (1). Value is encoded as a Map, so it has no record layout.

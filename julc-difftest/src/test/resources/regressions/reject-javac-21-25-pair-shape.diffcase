@@ -1,7 +1,10 @@
-format: 2
+format: 3
 name: the Pair shape javac 21.0.3 rejects and javac 25 accepts
 class: Probe
 method: m
+tag: Probe$C Probe$T 0
+tag: Probe$D Probe$T 1
+tag: Probe$Pair Probe$PP 0
 arg: 05
 expect: REJECT JULC0076
 note: ADR-067 (javac table, open question 10): not exhaustive under JLS 21 (javac 21.0.3); the harness's javac 25 accepts it (5).

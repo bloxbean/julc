@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: record patterns with explicit component types and a guard (R7)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 04
 expect: REJECT JULC0076
 note: ADR-067 R7: legal Java (4).

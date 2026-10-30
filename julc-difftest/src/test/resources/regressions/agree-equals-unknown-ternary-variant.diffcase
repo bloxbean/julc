@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: equals on a var from a ternary of a variant and a sealed value (F1b)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 24
 expect: AGREE
 note: ADR-067 F1b: must stay structural.

@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: #276 a record pattern is dropped and default runs (R1, T28)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 22
 arg: 00
 expect: REJECT JULC0076

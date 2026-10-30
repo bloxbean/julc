@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a colon group ending in if without else (F34)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: REJECT JULC0075
 note: ADR-067 review F34: legal Java that falls through when the condition is false (JVM 2); JuLC rejects colon-form fall-through (D4, I16).

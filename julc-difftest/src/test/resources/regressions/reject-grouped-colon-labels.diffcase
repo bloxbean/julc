@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: grouped colon-form labels without bindings (F12b)
 class: Probe
 method: m
+tag: Probe$X0 Probe$X 0
+tag: Probe$Y0 Probe$X 1
 arg: 05
 expect: REJECT JULC0075
 note: ADR-067 F12b: legal Java (3); JuLC rejects with a misleading 'not exhaustive'.

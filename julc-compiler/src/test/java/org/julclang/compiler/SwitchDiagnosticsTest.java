@@ -473,30 +473,30 @@ class SwitchDiagnosticsTest {
 
     @Test
     void outOfRangeLiteralsInDeclarationsAndGuards() {
-        // F82: javac rejects these literals ("integer number too large"); the checker cannot classify them, so they are
-        // rejected rather than left to the ordinary lowering, in a field, a long field, a final local, through
-        // another constant, and in the guard itself.
+        // F82: javac rejects these literals ("integer number too large"), in a field, a long field, a final local,
+        // through another constant, and in the guard itself. JuLC rejects them too: since T25 (ADR-062), the literal
+        // itself is rejected first with JULC0070, before the guard checker would have rejected the guard (JULC0072).
         rejected(probe(S + """
                     static final int N = 2147483648;
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "'N = 2147483648' cannot be evaluated exactly");
+                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
         rejected(probe(S + """
                     static final long L = 9223372036854775808L;
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when L > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "'L = 9223372036854775808L' cannot be evaluated exactly");
+                """), "JULC0070", "Integer literal 9223372036854775808L is invalid: this magnitude is allowed only directly after a unary minus");
         rejected(probe(S + """
                     static BigInteger m(BigInteger a) {
                         final int n = 2147483648;
                         S s = new A(a);
                         return switch (s) { case A x when n > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "'n = 2147483648' cannot be evaluated exactly");
+                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
         rejected(probe(S + """
                     static final int N = 2147483648;
                     static final int M = N;
@@ -504,11 +504,11 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "'N = 2147483648' cannot be evaluated exactly");
+                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
         rejected(switchOver("""
                             case A x when 2147483648L < x.v().signum() || -(2147483648) < x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "'-(2147483648)' is not a constant expression JuLC can evaluate exactly");
+                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
         // Java's minimum-value forms are legal as the direct operand of unary minus (JLS 3.10.1).
         accepted(probe(S + """
                     static final int N = -2147483648;

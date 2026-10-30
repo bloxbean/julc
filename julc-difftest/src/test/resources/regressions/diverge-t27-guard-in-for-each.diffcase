@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a guarded switch in a for-each body whose guard reads the loop variable (H7, T27)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 8301050a
 expect: AGREE
 recorded.jvm: Value 1865 []

@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a record pattern on a boolean @NewType (F30)
 class: Probe
 method: m
+tag: Probe$FA Probe$SF 0
+tag: Probe$FB Probe$SF 1
 arg: 05
 expect: REJECT JULC0076
 note: ADR-067 F30: legal Java (1). A boolean @NewType is the Bool itself, with no component list.

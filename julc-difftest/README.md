@@ -31,7 +31,8 @@ fields, helpers, method-level `if` and `instanceof`, `switch` expressions with t
 blocks and loops in arms, traces and failures, with record and sealed arguments and results. Constructs whose
 defect is open are gated by a generation profile, printed in every record; the historical profiles
 `REDISCOVER_209`, `REDISCOVER_280`, `REDISCOVER_146`, `REDISCOVER_162`, `REDISCOVER_291` and `REDISCOVER_291_LOOPS`
-turn one gate on each and steer generation to its construct.
+turn one gate on each and steer generation to its construct. Once a defect is fixed below, its gate is on in the
+default profile (`DEFAULT_BLOCK_SCOPE`, #291, since G1 r8).
 
 jqwik generates and shrinks the choice list, so a failure is reported as a small program. The last failing
 case is also written to `build/difftest/last-failure.diffcase`.

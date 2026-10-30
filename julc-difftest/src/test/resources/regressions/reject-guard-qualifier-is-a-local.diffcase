@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a qualified guard constant whose qualifier is a local named like the class (F50)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: REJECT JULC0072
 note: ADR-067 review F50: Java reads the component (false) and returns 2. M1 folded Probe.ON as the class constant (true) and returned 1; the guard is now never folded, and fails closed because JuLC cannot type the component read.

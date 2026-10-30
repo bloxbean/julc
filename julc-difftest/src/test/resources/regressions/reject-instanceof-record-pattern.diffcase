@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: instanceof with a record pattern (R3)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 22
 expect: REJECT none
 note: ADR-067 R3: legal Java (-3).

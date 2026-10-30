@@ -19,13 +19,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Generation profiles and their gates (ADR-066 D6, G1-I6). Under the default profile no program contains a gated
- * construct, judged both by the generator's markers and by reading the printed source; under each historical
- * profile the construct is generated; and the switches that M3 implements change nothing yet.
+ * Generation profiles and their gates (ADR-066 D6, G1-I6). Under the default profile no program contains a construct
+ * whose gate is off there, judged both by the generator's markers and by reading the printed source; under each
+ * historical profile the construct is generated; and the switches that M3 implements change nothing yet.
  */
 class G1GatesTest {
 
     static final int PLANS = 20_000;
+
+    /**
+     * The markers of the gates that are on in the default profile, because their defect is fixed below (D6, "After a
+     * fix"): #291's two symptoms ({@code DEFAULT_BLOCK_SCOPE}, G1 r8).
+     */
+    static final Set<G1.Feature> OPEN_IN_DEFAULT =
+            Set.copyOf(EnumSet.of(G1.Feature.DEFAULT_BLOCK_SHADOW, G1.Feature.DEFAULT_BLOCK_AFTER_LOOP));
+
+    /** Every gate off: the default profile before any gated defect was fixed (G1 r7's). */
+    static final G1.Profile ALL_GATES_OFF = new G1.Profile(EnumSet.noneOf(G1.Gate.class));
 
     private static List<Integer> plan(Random random) {
         var plan = new ArrayList<Integer>();
@@ -35,16 +45,24 @@ class G1GatesTest {
 
     @Test
     void theDefaultProfileGeneratesNoGatedConstruct() {
+        assertEquals(EnumSet.of(G1.Gate.DEFAULT_BLOCK_SCOPE), G1.Profile.DEFAULT.on(), "the gates open in the default profile");
+        var closed = EnumSet.copyOf(G1.Feature.GATED);
+        closed.removeAll(OPEN_IN_DEFAULT);
         var random = new Random(20261030);
+        var open = EnumSet.noneOf(G1.Feature.class);
         for (int i = 0; i < PLANS; i++) {
             var plan = plan(random);
             var program = G1.decode(plan, G1.Profile.DEFAULT);
-            var gated = EnumSet.copyOf(G1.Feature.GATED);
+            var gated = EnumSet.copyOf(closed);
             gated.retainAll(program.features());
             assertTrue(gated.isEmpty(), gated + " in plan " + plan + "\n" + program.source());
             var found = GatedShapes.in(program.source());
+            found.retainAll(closed);
             assertTrue(found.isEmpty(), found + " in plan " + plan + "\n" + program.source());
+            for (var marker : OPEN_IN_DEFAULT) if (program.features().contains(marker)) open.add(marker);
         }
+        // Fixed below, #291's constructs are allowed again; the default campaign generates both.
+        assertEquals(OPEN_IN_DEFAULT, open, "the open gates' constructs in " + PLANS + " default plans");
     }
 
     /** Each implemented gate's profile generates its construct, as the markers and the source both show. */
@@ -109,8 +127,14 @@ class G1GatesTest {
     void aGateAloneKeepsTheDefaultDistribution() {
         double[] plain = shares(G1.Profile.DEFAULT);
         String[] names = {"break", "loop", "zero-parameter helper", "mirrored records"};
+        // DEFAULT_BLOCK_SCOPE is on in the default profile (G1 r8): opening it kept G1 r7's distribution.
+        double[] closed = shares(ALL_GATES_OFF);
+        for (int k = 0; k < names.length; k++) {
+            assertTrue(Math.abs(closed[k] - plain[k]) < 0.02, "DEFAULT_BLOCK_SCOPE moves the share of " + names[k] + " from "
+                    + closed[k] + " to " + plain[k]);
+        }
         for (G1.Gate gate : List.of(G1.Gate.SHADOW_IN_LOOP_BRANCH, G1.Gate.ZERO_ARG_HELPERS, G1.Gate.TRACE_IN_COMPARISON,
-                G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.ASSIGN_PATTERN_BINDING, G1.Gate.DEFAULT_BLOCK_SCOPE)) {
+                G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.ASSIGN_PATTERN_BINDING)) {
             double[] gated = shares(G1.Profile.DEFAULT.with(gate));
             for (int k = 0; k < names.length; k++) {
                 // A zero-parameter helper is the ZERO_ARG_HELPERS construct itself.
@@ -149,20 +173,20 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r7 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
-                + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON -DEFAULT_BLOCK_SCOPE",
+        assertEquals("G1 r8 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+                + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE",
                 G1.Profile.DEFAULT.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_162,
                 G1.Profile.REDISCOVER_291, G1.Profile.REDISCOVER_291_LOOPS,
-                G1.Profile.REDISCOVER_146, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
+                G1.Profile.REDISCOVER_146, ALL_GATES_OFF, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
             assertEquals(profile, G1.Profile.parse(profile.text()));
         }
         String text = G1.Profile.DEFAULT.text();
         assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON "
-                        + "-DEFAULT_BLOCK_SCOPE steer=209"),
+                        + "+DEFAULT_BLOCK_SCOPE steer=209"),
                 G1.Profile.REDISCOVER_209.text());
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_209));
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r7", "G1 r6"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r8", "G1 r7"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }

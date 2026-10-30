@@ -9,12 +9,14 @@ arg: 21
 arg: 23
 arg: 80
 arg: d8799fd87980ff
-expect: REJECT none
+expect: AGREE
 note: Rediscovered by the G1 r6 campaign under REDISCOVER_291_LOOPS (ADR-066 D10.1), the shrunk reproducer as found:
 note: #291's second symptom. The default arm block holds two counted loops, and the switch is an argument of a method
 note: call (v.equals(...)). Java accepts the program and returns R0(-5, -5, -5); JuLC rejects it at every level with a
 note: diagnostic that has no code, "Unbound variable: i2", naming the second loop's counter. The default arm need not
 note: run. This expectation pins #291's rejection form; it becomes AGREE when #291 is fixed.
+note: ADR-067 M1 round 3 fixed #291 (the default arm block is scoped): the program compiles and agrees at every
+note: level, so its expectation is AGREE (ADR-066 D9, merge reconciliation); it was REJECT none.
 found.by: G1PropertyTest rediscovery
 found.generator: G1 r6
 found.plan: 1,0,2,0,3,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,1,0,0,0,0,0,1,1,2,0,0,12,298,129,405,707,64,946,526,164,7,118,1000,22,80,899

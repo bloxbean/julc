@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a switch over a parameterized sealed interface, valid Java (F14a)
 class: Probe
 method: m
+tag: Probe$GC Probe$G 0
+tag: Probe$GD Probe$G 1
 arg: 05
 expect: REJECT JULC0007
 note: ADR-067 F14a: legal Java (5); JuLC drops type arguments.

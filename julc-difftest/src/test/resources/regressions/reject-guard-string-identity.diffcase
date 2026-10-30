@@ -1,7 +1,9 @@
-format: 2
+format: 3
 name: a guard comparing a non-constant String with == (F67, #289)
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
 arg: 05
 expect: REJECT JULC0072
 note: ADR-067 review F67: Java compares identity (false, 2); JuLC compared values and returned 1 (#289). Non-constant String == is outside the guard subset.

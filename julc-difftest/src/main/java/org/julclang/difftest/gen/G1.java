@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r7): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r8): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures, and
  * {@code switch} expressions with type patterns, {@code default}, {@code yield} blocks, loops in arms and nesting
@@ -60,9 +60,12 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r7";
+    public static final String VERSION = "G1 r8";
 
-    /** The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open. */
+    /**
+     * The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open; once the fix is
+     * below, the gate is on in {@link Profile#DEFAULT} (D6, "After a fix").
+     */
     public enum Gate {
         /** {@code when} guards (#275); M3. */
         GUARDS,
@@ -93,7 +96,7 @@ public final class G1 {
          * declared directly in the block with a field's name keeps its type after the switch; and, in a switch inside
          * an argument of a method call, a local declared in the block after a loop (directly, or by a switch in the
          * rest of the block) and read later makes JuLC reject the program. Loop-body locals in the block are scoped
-         * and stay ungated.
+         * and stay ungated. Fixed by ADR-067 M1 round 3 (the block is scoped), so on in the default profile since G1 r8.
          */
         DEFAULT_BLOCK_SCOPE;
 
@@ -142,12 +145,15 @@ public final class G1 {
 
     /**
      * A generation profile: {@link #VERSION}, the value of every {@link Gate} (ADR-066 D6) and its {@link Steer}s. Its
-     * text, such as {@code G1 r7 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
+     * text, such as {@code G1 r8 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
      */
     public record Profile(Set<Gate> on, Set<Steer> steering) {
 
-        /** Every gate off: the campaigns' profile while every gated defect is open. */
-        public static final Profile DEFAULT = new Profile(EnumSet.noneOf(Gate.class));
+        /**
+         * The campaigns' profile: every gate off whose defect is open, and on for each defect fixed below (ADR-066 D6,
+         * "After a fix"): {@link Gate#DEFAULT_BLOCK_SCOPE} since #291's fix (G1 r8).
+         */
+        public static final Profile DEFAULT = new Profile(EnumSet.of(Gate.DEFAULT_BLOCK_SCOPE));
         /** The historical profile that rediscovers #209 (ADR-066 D10.1). */
         public static final Profile REDISCOVER_209 = DEFAULT.with(Gate.SHADOW_IN_LOOP_BRANCH).steered(Steer.ISSUE_209);
         /** The historical profile that rediscovers #280 (ADR-066 D10.1). */
@@ -301,7 +307,7 @@ public final class G1 {
          * (review of M2, F63, F70, F71).
          */
         public static final Set<Feature> QUOTA = Collections.unmodifiableSet(EnumSet.range(RECORD, FAMILY_EQUALS));
-        /** The marker of each implemented gate's construct. */
+        /** The marker of each implemented gate's construct; a gate on in the default profile allows its marker there. */
         public static final Set<Feature> GATED =
                 Collections.unmodifiableSet(EnumSet.of(SHADOW_IN_LOOP_BRANCH, ZERO_ARG_HELPER, LOOP_BREAK_SHAPE,
                         TRACE_IN_COMPARISON, ASSIGN_PATTERN_BINDING, DEFAULT_BLOCK_SHADOW,

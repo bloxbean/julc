@@ -1,7 +1,11 @@
-format: 2
+format: 3
 name: a nested pattern on a variant-typed component, X(W(B(var v)))
 class: Probe
 method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+tag: Probe$X Probe$V 0
+tag: Probe$Y Probe$V 1
 arg: 05
 expect: REJECT JULC0076
 note: ADR-067 D2 step 3 (F20): legal Java (5).
