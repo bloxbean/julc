@@ -79,6 +79,17 @@ final class CampaignVerifier {
      */
     static Outcome verify(String finder, String source, String className, String method, List<PlutusData> args,
                           TagTable tags, Set<String> features, String generator, String profile, List<Integer> plan) {
+        return verify(finder, source, className, method, args, tags, features, generator, profile, plan, null);
+    }
+
+    /**
+     * As {@link #verify(String, String, String, String, List, TagTable, Set, String, String, List)}, for a generator
+     * whose arguments are decoded from a second choice sequence, {@code inputs}, saved as {@code found.inputs}
+     * (ADR-066 D4).
+     */
+    static Outcome verify(String finder, String source, String className, String method, List<PlutusData> args,
+                          TagTable tags, Set<String> features, String generator, String profile, List<Integer> plan,
+                          List<Integer> inputs) {
         String name = generator.split(" ")[0].toLowerCase(Locale.ROOT) + " " + plan;
         var diffCase = new DiffCase(name, source, className, method, args, tags, profile);
         var report = RUNNER.run(diffCase);
@@ -106,7 +117,7 @@ final class CampaignVerifier {
         }
         if (unexplained) {
             RegressionStore.write(LAST_FAILURE, diffCase, RegressionStore.Expectation.AGREE, null,
-                    provenance(finder, generator, plan), report);
+                    provenance(finder, generator, plan, inputs), report);
             for (var confirmation : confirmations) {
                 // One pair of lines per rung, for example recorded.Java/NONE.rerun.x1000 (D6, r6).
                 String key = confirmation.config() + ".rerun.x" + confirmation.factor();
@@ -121,11 +132,12 @@ final class CampaignVerifier {
     }
 
     /** Where a generated case came from (D8); the seed is added when jqwik reports it. */
-    static Map<String, String> provenance(String finder, String generator, List<Integer> plan) {
+    static Map<String, String> provenance(String finder, String generator, List<Integer> plan, List<Integer> inputs) {
         var provenance = new LinkedHashMap<String, String>();
         provenance.put("by", finder);
         provenance.put("generator", generator);
         provenance.put("plan", plan.stream().map(String::valueOf).collect(Collectors.joining(",")));
+        if (inputs != null) provenance.put("inputs", inputs.stream().map(String::valueOf).collect(Collectors.joining(",")));
         provenance.put("compiler", System.getProperty("difftest.compiler", "unknown"));
         return provenance;
     }

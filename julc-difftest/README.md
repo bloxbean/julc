@@ -11,9 +11,10 @@ The harness runs the same Java source in two ways:
 It then compares the two results. A difference in value, outcome kind or trace sequence counts as a mismatch.
 
 ```sh
-./gradlew :julc-difftest:test                          # saved cases, exhaustive G0, fixed-seed G0 campaign
-./gradlew :julc-difftest:nightlyDiffTest               # 3000 G0 programs with a fresh seed
+./gradlew :julc-difftest:test                          # saved cases, exhaustive G0, fixed-seed G0 and G1 campaigns
+./gradlew :julc-difftest:nightlyDiffTest               # 3000 G0 and 3000 G1 programs with fresh seeds
 ./gradlew :julc-difftest:test -Pdifftest.cases=<dir>   # replay another directory of .diffcase files
+./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=REDISCOVER_209   # G1 under a historical profile
 ```
 
 ## Generated programs
@@ -23,6 +24,11 @@ It then compares the two results. A difference in value, outcome kind or trace s
 - nesting up to two loops deep;
 - accumulator updates, including inside `if`/`else`;
 - `break`, loop-body locals, ternaries, `&&` and `||`.
+
+`gen/G1` ([ADR-066](../adr/066-generator-g1-records-sealed-switch.md)) adds records, sealed interfaces, static
+fields, helpers, method-level `if` and `instanceof`, traces and failures, with record and sealed arguments and
+results. Constructs whose defect is open are gated by a generation profile, printed in every record; the
+historical profiles `REDISCOVER_209`, `REDISCOVER_280` and `REDISCOVER_146` turn one gate on each.
 
 jqwik generates and shrinks the choice list, so a failure is reported as a small program. The last failing
 case is also written to `build/difftest/last-failure.diffcase`.
