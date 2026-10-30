@@ -472,6 +472,9 @@ public class PirGenerator {
             return cont == null ? new PirTerm.Const(Constant.unit()) : cont.get();
         }
         var stmt = stmts.get(index);
+        if (isLabelled(stmt)) {
+            throw labelUnsupported(stmt);
+        }
         if (stmt instanceof ReturnStmt rs) {
             var result = rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
@@ -838,6 +841,9 @@ public class PirGenerator {
     }
 
     PirTerm generateStatement(Statement stmt) {
+        if (isLabelled(stmt)) {
+            throw labelUnsupported(stmt);
+        }
         if (stmt instanceof BlockStmt block) {
             symbolTable.pushScope();
             var result = generateBlock(block);
@@ -1887,6 +1893,7 @@ public class PirGenerator {
 
     PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        rejectLabels(fes);
         rejectContinue(fes);
         loopBody.validateConditionalLocalUpdates(fes.getBody(),
                 Set.of(fes.getVariable().getVariable(0).getNameAsString()));
@@ -2208,6 +2215,43 @@ public class PirGenerator {
     }
 
     /**
+     * True for a labelled statement and for a {@code break} or {@code continue} that names a label.
+     * Labels are outside the subset; a {@code break} naming one used to compile as a plain
+     * {@code break} of the innermost loop (#201).
+     */
+    private static boolean isLabelled(Node node) {
+        return node instanceof LabeledStmt
+                || node instanceof BreakStmt bs && bs.getLabel().isPresent()
+                || node instanceof ContinueStmt cs && cs.getLabel().isPresent();
+    }
+
+    /** JULC0066 for a node {@link #isLabelled} accepts, naming the construct as written. */
+    private static CompilerException labelUnsupported(Node node) {
+        String construct;
+        if (node instanceof LabeledStmt ls) {
+            construct = ls.getLabel().asString() + ":";
+        } else if (node instanceof BreakStmt bs) {
+            construct = "break " + bs.getLabel().orElseThrow().asString();
+        } else {
+            construct = "continue " + ((ContinueStmt) node).getLabel().orElseThrow().asString();
+        }
+        return CompilerTypeDiagnostics.labelUnsupported(construct, sourceLocation(node));
+    }
+
+    /**
+     * JULC0066: a loop the compiler lowers contains a label. Checked before the loop's other
+     * checks and its lowering, which would treat {@code break outer} as a plain {@code break}, so
+     * the label is reported wherever it is in the loop: in a nested loop, an if/else or switch
+     * arm, or a lambda (#201).
+     */
+    private static void rejectLabels(Statement loop) {
+        var found = loop.findFirst(Node.class, PirGenerator::isLabelled);
+        if (found.isPresent()) {
+            throw labelUnsupported(found.get());
+        }
+    }
+
+    /**
      * A loop with no accumulator compiles its body as plain statements, which cannot stop the
      * loop, so its {@code break} is rejected before the body is lowered. Nested in a loop that has
      * an accumulator, the break used to be lowered as a no-op (ADR-062 T26, #273).
@@ -2340,6 +2384,7 @@ public class PirGenerator {
 
     PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        rejectLabels(ws);
         rejectContinue(ws);
         loopBody.validateConditionalLocalUpdates(ws.getBody(), Set.of());
         if (containsReturn(ws.getBody())) {

@@ -107,6 +107,9 @@ public final class JulcResources {
                 9. **No try/catch.** JULC0015. UPLC has no exception model.
                 10. **No C-style for, do-while, floating point.** JULC0018, JULC0019, JULC0020.
                 11. **No `continue`.** Guard the rest of the loop body with an `if`. JULC0060.
+                12. **No labels.** `outer:`, `break outer;` and `continue outer;` are rejected
+                    (JULC0066). To leave an outer loop, set a variable declared before the loops
+                    and skip the rest of the outer loop while it is set.
 
                 ## Type / API gotchas
 

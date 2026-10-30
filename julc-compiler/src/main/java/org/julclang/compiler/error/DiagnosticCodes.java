@@ -205,6 +205,14 @@ public final class DiagnosticCodes {
             "JulcMap.of is off-chain only and has no on-chain implementation",
             "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`. insert adds at the front, so JulcMap.of(a, x, b, y) is `JulcMap.<K, V>empty().insert(b, y).insert(a, x)`.");
 
+    public static final DiagnosticInfo LABEL_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0066",
+            "LABEL_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Labels are not supported on-chain: ''{0}''",
+            "Remove the label. To leave an outer loop from an inner one, declare a variable before the loops, set it where the inner loop breaks and skip the rest of the outer loop while it is set: `boolean stop = false; for (var x : xs) { if (!stop) { for (var y : ys) { if (found) { stop = true; break; } } } }`. continue is not supported with or without a label (JULC0060).");
+
     public static final DiagnosticInfo LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0022",
             "LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED",
@@ -552,6 +560,7 @@ public final class DiagnosticCodes {
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             JULCMAP_OF_OFF_CHAIN_ONLY,
+            LABEL_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
             LOOP_UPDATE_POSITION_UNSUPPORTED,

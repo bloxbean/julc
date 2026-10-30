@@ -139,6 +139,7 @@ var total = BigInteger.ZERO;
 **Cause:** A `break` statement appeared outside of a for-each or while loop scope.
 A `break` inside a loop that updates no variable declared before it reports
 `JULC0063` instead ([1.22](#122-julc0063-break-is-not-supported-in-a-loop-that-updates-no-variable-declared-before-the-loop)).
+A `break` that names a label reports `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Move the `break` inside a loop body, or restructure your logic to use
 `return` instead.
@@ -168,7 +169,8 @@ expression statements are supported on-chain.`
 **Cause:** A Java statement type that has no on-chain equivalent was used.
 Unsupported statements include `switch` statements (as opposed to `switch`
 expressions), `try`/`catch`, `do`/`while`, labeled statements, and others.
-`continue` reports `JULC0060` ([1.25](#125-julc0060-continue-is-not-supported-on-chain)).
+`continue` reports `JULC0060` ([1.25](#125-julc0060-continue-is-not-supported-on-chain)),
+and a labelled statement `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Rewrite using the supported statement forms: variable declarations, if/else,
 for-each, while, return, and expression statements.
@@ -803,6 +805,56 @@ for (var x : xs) {
 
 ---
 
+### 1.26 `JULC0066` `Labels are not supported on-chain: '<construct>'`
+
+**Cause:** Labelled statements are outside the on-chain subset, so no `break` or
+`continue` can name a label. A labelled statement (`outer:`), a `break` that names a
+label (`break outer`) and a `continue` that names one (`continue outer`) report this
+code, at that statement, whether or not a matching label exists. `continue` is not
+supported without a label either ([1.25](#125-julc0060-continue-is-not-supported-on-chain)).
+
+Before [#201](https://github.com/bloxbean/julc/issues/201), a `break` that named a
+label was accepted and compiled as a plain `break` of the innermost loop. javac
+rejects `break outer;` when no statement carries the label `outer`, so a Gradle build
+stopped there, but tools that compile source text without javac (the testkit's
+`compileMethod`, the playground) compiled it with a different meaning: the example
+below returned 3 instead of leaving both loops. A labelled statement used to be
+reported as `Unsupported statement: LabeledStmt`, without a code. A label is reported
+when the compiler lowers the code that contains it, so code JuLC never compiles, such
+as a nested off-chain helper class, is not affected. Only a labelled `break` outside
+any loop, which subset validation already rejected
+([2.5](#25-break-is-only-supported-inside-for-each-or-while-loops-on-chain)), is
+reported there.
+
+**Fix:** Remove the label. To leave an outer loop from an inner one, declare a
+variable before the loops, set it where the inner loop breaks, and skip the rest of
+the outer loop while it is set.
+
+```java
+// WRONG
+long count = 0;
+for (var x : xs) {
+    for (var y : xs) {
+        if (y.equals(BigInteger.TWO)) { break outer; }
+        count = count + 1;
+    }
+}
+
+// CORRECT: returns 1 for [1, 2, 3], as `outer:` on the outer loop and `break outer` do in Java
+long count = 0;
+boolean stop = false;
+for (var x : xs) {
+    if (!stop) {
+        for (var y : xs) {
+            if (y.equals(BigInteger.TWO)) { stop = true; break; }
+            count = count + 1;
+        }
+    }
+}
+```
+
+---
+
 ## 2. Validation Errors (SubsetValidator)
 
 These errors are emitted during the subset validation pass, before PIR generation
@@ -902,6 +954,7 @@ while (i < BigInteger.TEN) {
 **Suggestion:** `Use for-each or while with an accumulator and break to exit early`
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop.
+A `break` there that names a label reports `JULC0066` instead ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Place `break` inside a for-each or while loop.
 

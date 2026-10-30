@@ -771,4 +771,206 @@ class LoopStatementDiagnosticsTest {
                     }
                 """, List.of(ints(1, 2, -1, 4)), integer(9));
     }
+
+    // --- labels, and a break or continue that names one: JULC0066 (#201) ---
+
+    private static final String LABEL_MESSAGE = "Labels are not supported on-chain: '%s'";
+
+    /** The #201 reproducer, with {@code exit} as the statement that leaves the inner loop. */
+    private static String nestedCount(String exit) {
+        return """
+                    public static long m(JulcList<BigInteger> xs) {
+                        long count = 0;
+                        for (var x : xs) {
+                            for (var y : xs) {
+                                if (y.equals(BigInteger.TWO)) { %s }
+                                count = count + 1;
+                            }
+                        }
+                        return count;
+                    }
+                """.formatted(exit);
+    }
+
+    @Test
+    void labelledBreakWithoutLabelIssue201() {
+        // #201: javac rejects this (undefined label outer). JuLC used to compile the break as a
+        // plain break of the inner loop and return 3 for [1, 2, 3].
+        rejected(nestedCount("break outer;"), DiagnosticCodes.LABEL_UNSUPPORTED,
+                LABEL_MESSAGE.formatted("break outer"), "break outer;");
+    }
+
+    @Test
+    void labelledBreakInNestedWhile() {
+        rejected("""
+                    public static long m(long n) {
+                        long count = 0;
+                        long i = 0;
+                        while (i < n) {
+                            long j = 0;
+                            while (j < n) {
+                                if (j == 2) { break outer; }
+                                count = count + 1;
+                                j = j + 1;
+                            }
+                            i = i + 1;
+                        }
+                        return count;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
+    }
+
+    @Test
+    void labelledBreakWithMatchingLabel() throws Exception {
+        // Valid Java: javac leaves both loops at the first 2, so m([1, 2, 3]) = 1. JuLC rejects
+        // the label itself, which comes first.
+        String members = """
+                    public static long m(JulcList<BigInteger> xs) {
+                        long count = 0;
+                        outer:
+                        for (var x : xs) {
+                            for (var y : xs) {
+                                if (y.equals(BigInteger.TWO)) { break outer; }
+                                count = count + 1;
+                            }
+                        }
+                        return count;
+                    }
+                """;
+        assertEquals(1L, javaResult(members, JulcList.of(BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(3))));
+        rejected(members, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("outer:"), "outer:");
+    }
+
+    @Test
+    void labelledContinue() {
+        // continue is not supported with or without a label; the labelled form reports the label
+        // (JULC0066), and its fix says continue is JULC0060 too.
+        rejected(nestedCount("continue outer;"), DiagnosticCodes.LABEL_UNSUPPORTED,
+                LABEL_MESSAGE.formatted("continue outer"), "continue outer;");
+        rejected("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long count = 0;
+                        outer:
+                        for (var x : xs) {
+                            for (var y : xs) {
+                                if (y.equals(BigInteger.TWO)) { continue outer; }
+                                count = count + 1;
+                            }
+                        }
+                        return count;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("outer:"), "outer:");
+        assertTrue(DiagnosticCodes.LABEL_UNSUPPORTED.fix().contains("JULC0060"));
+    }
+
+    @Test
+    void labelsAtMethodLevel() {
+        // A labelled break outside any loop (reported by subset validation), a labelled block and
+        // a labelled continue outside any loop (reported where the statement is lowered).
+        rejected("""
+                    public static long m(long n) {
+                        if (n > 1) { break outer; }
+                        return n;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
+        rejected("""
+                    public static long m(long n) {
+                        done: {
+                            if (n > 1) { break done; }
+                        }
+                        return n;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break done"), "break done;");
+        rejected("""
+                    public static long m(long n) {
+                        done: {
+                            Builtins.trace("n");
+                        }
+                        return n;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("done:"), "done:");
+        rejected("""
+                    public static long m(long n) {
+                        if (n > 1) { continue outer; }
+                        return n;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("continue outer"), "continue outer;");
+    }
+
+    @Test
+    void labelledBreakInSwitchArmAndLambda() {
+        rejected("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long count = 0;
+                        for (var x : xs) {
+                            count = count + 1;
+                            switch (x.intValue()) {
+                                case 2 -> { break outer; }
+                                default -> { }
+                            }
+                        }
+                        return count;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
+        rejected("""
+                    public static long m(JulcList<BigInteger> xs) {
+                        long n = xs.filter(y -> {
+                            boolean found = false;
+                            for (var z : xs) {
+                                if (z.equals(y)) { found = true; break outer; }
+                            }
+                            return found;
+                        }).size();
+                        return n;
+                    }
+                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
+    }
+
+    @Test
+    void plainBreakIsUnaffected() throws Exception {
+        // Control: the unlabelled break leaves the inner loop only. Java and JuLC: 3 for [1, 2, 3].
+        String members = nestedCount("break;");
+        assertEquals(3L, javaResult(members, JulcList.of(BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(3))));
+        evaluates(members, List.of(ints(1, 2, 3)), integer(3));
+    }
+
+    @Test
+    void labelRemedy() throws Exception {
+        // The fix: a variable set where the inner loop breaks, and the rest of the outer loop
+        // skipped while it is set. Java and JuLC: 1 for [1, 2, 3], as `break outer` gives.
+        String members = """
+                    public static long m(JulcList<BigInteger> xs) {
+                        long count = 0;
+                        boolean stop = false;
+                        for (var x : xs) {
+                            if (!stop) {
+                                for (var y : xs) {
+                                    if (y.equals(BigInteger.TWO)) { stop = true; break; }
+                                    count = count + 1;
+                                }
+                            }
+                        }
+                        return count;
+                    }
+                """;
+        assertEquals(1L, javaResult(members, JulcList.of(BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(3))));
+        evaluates(members, List.of(ints(1, 2, 3)), integer(1));
+        // The catalogue's example, where the flag is the only variable the loops update.
+        String flagOnly = """
+                    public static boolean m(JulcList<BigInteger> xs) {
+                        boolean stop = false;
+                        for (var x : xs) {
+                            if (!stop) {
+                                for (var y : xs) {
+                                    if (y.equals(BigInteger.TWO)) { stop = true; break; }
+                                }
+                            }
+                        }
+                        return stop;
+                    }
+                """;
+        assertEquals(true, javaResult(flagOnly, JulcList.of(BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(3))));
+        evaluates(flagOnly, List.of(ints(1, 2, 3)), Constant.bool(true));
+        evaluates(flagOnly, List.of(ints(1, 3)), Constant.bool(false));
+    }
 }

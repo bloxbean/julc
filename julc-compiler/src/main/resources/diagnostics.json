@@ -800,6 +800,21 @@
         "bad": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    switch (x.intValue()) { case 1 -> c = c + 1; default -> c = c + 2; }\n}",
         "good": "for (var x : xs) {\n    if (x.signum() < 0) { break; }\n    if (x.intValue() == 1) { c = c + 1; } else { c = c + 2; }\n}"
       }
+    },
+    {
+      "code": "JULC0066",
+      "constant": "LABEL_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Labels are not supported",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Labels are not supported on-chain: ''{0}''",
+      "summary": "Labelled statements are outside the on-chain subset, so no `break` or `continue` can name a label. A `break` that named a label used to be accepted and compiled as a plain `break` of the innermost loop, even when no statement carried the label (#201); javac rejects that source, but tools that compile source text without javac did not. A labelled statement, a `break` that names a label and a `continue` that names a label all report this code, located at the labelled statement, the `break` or the `continue`, whether or not a matching label exists. The diagnostic is reported when the compiler lowers the code, so code JuLC does not compile, such as a nested off-chain helper class, is not affected; only a labelled `break` outside any loop, which subset validation already rejected, is reported there.",
+      "fix": "Remove the label. To leave an outer loop from an inner one, declare a variable before the loops, set it where the inner loop breaks and skip the rest of the outer loop while it is set: `boolean stop = false; for (var x : xs) { if (!stop) { for (var y : ys) { if (found) { stop = true; break; } } } }`. continue is not supported with or without a label (JULC0060).",
+      "example": {
+        "bad": "long count = 0;\nfor (var x : xs) {\n    for (var y : xs) {\n        if (y.equals(BigInteger.TWO)) { break outer; }\n        count = count + 1;\n    }\n}",
+        "good": "long count = 0;\nboolean stop = false;\nfor (var x : xs) {\n    if (!stop) {\n        for (var y : xs) {\n            if (y.equals(BigInteger.TWO)) { stop = true; break; }\n            count = count + 1;\n        }\n    }\n}"
+      }
     }
   ]
 }

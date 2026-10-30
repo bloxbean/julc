@@ -152,6 +152,16 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(statement), location);
     }
 
+    /**
+     * JULC0066: a labelled statement, or a {@code break} or {@code continue} that names a label;
+     * {@code construct} is the construct as written, for example {@code "break outer"} or
+     * {@code "outer:"} (#201).
+     */
+    public static CompilerException labelUnsupported(String construct, SourceLocation location) {
+        var info = DiagnosticCodes.LABEL_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(construct), location);
+    }
+
     /** JULC0057: a static field initializer that calls a method of its class. */
     public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
         var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;
