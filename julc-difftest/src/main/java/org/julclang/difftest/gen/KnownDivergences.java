@@ -50,7 +50,8 @@ public final class KnownDivergences {
         NONE,
         /**
          * A rerun finishes and agrees with the JVM, value and traces: the run is only expensive (T13). Any rung of
-         * the shared ladder counts, since agreement with less budget than the rule's own rungs shows the same.
+         * the shared ladder up to the rule's own top rung counts, since agreement with less budget shows the same;
+         * a higher rung, from another rule, would widen what the rule means.
          */
         AGREES_WITH_JVM,
         /**
@@ -100,8 +101,8 @@ public final class KnownDivergences {
         boolean confirmedBy(DiffRunner.Result result, List<Rung> rungs) {
             return switch (confirmation) {
                 case NONE -> true;
-                case AGREES_WITH_JVM -> rungs.stream().anyMatch(rung ->
-                        Verdict.compare(result.jvm(), rung.observation()).kind() == Verdict.Kind.AGREE);
+                case AGREES_WITH_JVM -> rungs.stream().anyMatch(rung -> rung.factor() <= confirmationFactors.getLast()
+                        && Verdict.compare(result.jvm(), rung.observation()).kind() == Verdict.Kind.AGREE);
                 case STILL_INCONCLUSIVE -> !rungs.isEmpty()
                         && rungs.getLast().observation() instanceof Observation.Inconclusive again
                         && again.reason().equals(uplcReason);

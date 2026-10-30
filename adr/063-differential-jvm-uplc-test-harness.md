@@ -235,8 +235,9 @@ ladder of budgets (`Rule.confirmation`, `Rule.confirmationFactors`):
 - the ladder stops at the first rung that ends otherwise, and each rung is run at most once per configuration.
 
 T13 explains the configuration if a rung finishes and agrees with the JVM, value and traces (`Verdict.compare`).
-Any rung of the merged ladder counts, including T21's: agreement with less budget than T13's own rungs shows the
-same thing, that the run is only expensive. Without that, a program with both shapes that finishes within
+Any rung of the merged ladder up to T13's own top rung counts, including T21's: agreement with less budget shows
+the same thing, that the run is only expensive. A rung above T13's top, from a future rule, would not count, so T13
+keeps meaning "terminates within 1000 times the budget". Without that, a program with both shapes that finishes within
 10 times the budget would stop the ladder at T21's rung and be explained by neither rule.
 T21 explains it if the last rung run still ends with `budget exhausted`, so a T21-shaped program that only runs
 long is not T21. Any other outcome is not explained and fails the run as a finding. So:
@@ -251,8 +252,10 @@ The rungs come from measurement. The saved T13 reproducer needs 1.8 to 3.8 times
 runs in fuzzing finish within 38 times. Loops multiply the cost: the nested-loops reproducer, two `while` loops of
 three iterations around a deep comparison at the nesting bound, needs about 107 times at `NONE`, beyond the first
 rung, and the round-r6 fuzz runs confirmed 18 runs on the second rung, needing up to 148 times. A single rung of 1000 would make every T21 rerun ten times slower. A T21 run does not terminate, so a still-exhausted
-rerun costs evaluation up to its whole budget, and a larger rung confirms nothing a smaller one does not; the
-ladder keeps T21-only programs, such as those of D7, at one 10-times rerun (round r7 of #253, F16). The price is
+rerun costs evaluation up to its whole budget; the ladder keeps T21-only programs, such as those of D7, at one
+10-times rerun (round r7 of #253, F16). Unlike T13's rungs, 10 is not measured from runs that needed it: it is
+chosen for cost. The evidence that it hides little is indirect: once T21 is fixed (#254), the exhaustive corpus
+and fuzzing with T13's rule only show no T21-shaped run without T13's marker exhausting even 1 times the budget. The price is
 a weaker T21: a T21-shaped run that would finish between 10 and 100 times the budget is explained as T21 and not
 compared. That stays inconclusive, never a pass (H5), and the T21 rule is removed when the owning step resolves
 T21. The reruns are deterministic (H4). Each rung's budget, factor, observation
@@ -910,4 +913,6 @@ Measured on 2026-10-30 (UTC), after round r7 of #253, with T21's 10-times rung:
     rung (D6). Both rungs are recorded per input, per rung in the tally, and in the D8 record. A saved
     reproducer and a fuzz replay for the nested-loops input.
   - Round r7 of #253: F16, T21's rung is lowered to 10 times the budget, and T13 accepts agreement on any rung
-    of the merged ladder, so a program with both shapes that finishes within 10 times is still T13 (D6).
+    of the merged ladder up to its own top rung, so a program with both shapes that finishes within 10 times
+    is still T13 (D6). Review notes: the bound at T13's top rung, and D6 says that the 10-times rung is chosen
+    for cost, not measured.
