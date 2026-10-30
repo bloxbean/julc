@@ -4,9 +4,11 @@ import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 
+import javax.tools.FileObject;
+import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
 import javax.tools.ToolProvider;
-import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -56,7 +58,8 @@ public final class JvmExecutor {
 
     /**
      * Where a source's classes are, the binary names of the top-level classes javac generated from it, and the binary
-     * names of every class it emitted for that source: member, local and anonymous classes included.
+     * names of every class file javac wrote for that source (by the source javac passed with each output), member,
+     * local and anonymous classes included.
      */
     private record Compiled(Path dir, List<String> classes, List<String> emitted) {
     }
@@ -105,9 +108,9 @@ public final class JvmExecutor {
     }
 
     /**
-     * Loads, links and verifies every class javac emitted for the case, local and anonymous classes included, without
-     * initializing them; validates the tag table over the top-level classes and their members (ADR-066 D3); and returns
-     * the entry method. A class the JVM rejects here, such as a {@code VerifyError}, is javac's fault, not an
+     * Loads, links and verifies every class javac wrote for the case's source, local and anonymous classes included,
+     * without initializing them; validates the tag table over the top-level classes and their members (ADR-066 D3);
+     * and returns the entry method. A class the JVM rejects here, such as a {@code VerifyError}, is javac's fault, not an
      * observation of the program: an oracle fault (ADR-063 H6). Afterwards every class the program can load from its
      * own source is verified, so nothing the run throws is read as one.
      */
@@ -240,17 +243,6 @@ public final class JvmExecutor {
         return compile(List.of(diffCase), diffCase.name()).get(diffCase.source());
     }
 
-    /** The binary names of the class files under {@code dir}. */
-    private static List<String> classFiles(Path dir) throws IOException {
-        try (var files = Files.walk(dir)) {
-            return files.map(file -> dir.relativize(file).toString())
-                    .filter(file -> file.endsWith(".class"))
-                    .map(file -> file.substring(0, file.length() - ".class".length()).replace(File.separatorChar, '.'))
-                    .sorted()
-                    .toList();
-        }
-    }
-
     /**
      * javac must accept every case; a rejection is a harness or generator bug (ADR-063 H6). Returns each source's
      * classes; a listener records which top-level classes javac analyzed in which source file.
@@ -269,8 +261,20 @@ public final class JvmExecutor {
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             var errors = new StringWriter();
             var emitted = new LinkedHashMap<URI, List<String>>();
-            try (var files = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
-                var units = files.getJavaFileObjectsFromPaths(sources.keySet().stream().map(Path::of).toList());
+            var outputs = new LinkedHashMap<URI, List<String>>();
+            try (var standard = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
+                var units = standard.getJavaFileObjectsFromPaths(sources.keySet().stream().map(Path::of).toList());
+                // Each class file javac writes, recorded against the source it was compiled from (its sibling).
+                var files = new ForwardingJavaFileManager<>(standard) {
+                    @Override
+                    public JavaFileObject getJavaFileForOutput(Location location, String className, JavaFileObject.Kind kind,
+                                                               FileObject sibling) throws IOException {
+                        if (kind == JavaFileObject.Kind.CLASS && sibling != null) {
+                            outputs.computeIfAbsent(sibling.toUri(), uri -> new ArrayList<>()).add(className);
+                        }
+                        return super.getJavaFileForOutput(location, className, kind, sibling);
+                    }
+                };
                 var task = (JavacTask) compiler.getTask(errors, files, null, options, null, units);
                 task.addTaskListener(new TaskListener() {
                     @Override
@@ -286,17 +290,9 @@ public final class JvmExecutor {
                             + (cases.size() == 1 ? "\n" + cases.getFirst().source() : ""));
                 }
             }
-            var files = classFiles(dir);
             var result = new LinkedHashMap<String, Compiled>();
-            sources.forEach((uri, source) -> {
-                var classes = List.copyOf(emitted.getOrDefault(uri, List.of()));
-                // Distinct sources declare distinct top-level classes, so a class file belongs to the one whose class
-                // it is or nests in.
-                var own = files.stream()
-                        .filter(name -> classes.stream().anyMatch(top -> name.equals(top) || name.startsWith(top + "$")))
-                        .toList();
-                result.put(source, new Compiled(dir, classes, own));
-            });
+            sources.forEach((uri, source) -> result.put(source, new Compiled(dir, List.copyOf(emitted.getOrDefault(uri, List.of())),
+                    List.copyOf(outputs.getOrDefault(uri, List.of())))));
             return result;
         } catch (IOException e) {
             throw new HarnessException(label + ": cannot write the source", e);

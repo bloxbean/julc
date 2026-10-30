@@ -280,6 +280,43 @@ class JvmExecutorTest {
                 && frame.getClassName().equals(JvmExecutor.class.getName())), "raised while linking");
     }
 
+    /** A program whose entry class has javac's unverifiable bytecode, which the JVM rejects while linking. */
+    private static String unverifiable(String className) {
+        return """
+                import java.math.BigInteger;
+
+                public class %s {
+                    sealed interface S0 permits C0, B0 {}
+                    record C0(BigInteger w) implements S0 {}
+                    record B0(boolean x) implements S0 {}
+                    static final S0 x = new C0(BigInteger.ONE);
+
+                    public static boolean m(boolean c) {
+                        if (switch (x) { case B0 f1 -> f1.x(); default -> c; }) { return c; }
+                        return x.equals(switch (x) { case B0 p -> new C0(BigInteger.ONE); default -> new C0(BigInteger.ONE); });
+                    }
+                }
+                """.formatted(className);
+    }
+
+    /**
+     * Compiled in one batch, a case owns only the class files javac wrote for its own source, also when another
+     * source's top-level class has a name that extends it with {@code $} (review of M3 part 1 round 3, F110).
+     */
+    @Test
+    void aBatchKeepsEachSourcesClassesApart() {
+        for (var names : List.of(List.of("Probe", "Probe$Other"), List.of("Probe$", "Probe$$Lambda"))) {
+            var executor = new JvmExecutor(5_000);
+            var sound = new DiffCase("sound", "public class " + names.get(0) + " {\n    public static long m(long n) { return n + 1; }\n}\n",
+                    names.get(0), "m", List.of(integer(1)));
+            var rejected = new DiffCase("rejected", unverifiable(names.get(1)), names.get(1), "m", List.of(new PlutusData.ConstrData(1, List.of())));
+            executor.precompile(List.of(sound, rejected));
+            assertEquals(new Observation.Value(integer(2), List.of()), executor.run(sound), names.toString());
+            var e = assertThrows(HarnessException.class, () -> executor.run(rejected), names.toString());
+            assertTrue(e.getMessage().contains("VerifyError"), e.getMessage());
+        }
+    }
+
     @Test
     void argumentsMustMatchTheParameters() {
         assertThrows(HarnessException.class,
