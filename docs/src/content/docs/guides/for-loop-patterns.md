@@ -443,7 +443,8 @@ Any type supported by the compiler can be used as a loop accumulator:
 | `while (cond) { ... }` | Supported | With accumulator threading |
 | `break` in for-each | Supported | Single and multi-accumulator |
 | `break` in while | Supported | Single and multi-accumulator |
-| `continue` | Not supported | Use conditional logic instead |
+| `continue` | Not supported (JULC0060) | Use conditional logic instead |
+| Labelled statements, `break label;`, `continue label;` | Rejected (JULC0066) | Set a variable declared before the loops where the inner loop breaks, and skip the rest of the outer loop while it is set ([#201](https://github.com/bloxbean/julc/issues/201)) |
 | `for (int i = 0; ...)` | Rejected | C-style for loops not allowed |
 | `do { } while (cond)` | Rejected | Use `while` instead |
 | `break` outside loops | Rejected | Compile-time error |

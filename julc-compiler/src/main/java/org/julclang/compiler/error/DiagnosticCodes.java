@@ -53,6 +53,22 @@ public final class DiagnosticCodes {
             "{0} targets backend contract revision {1}; this backend supports revisions {2}",
             "Produce the descriptor for a supported revision reported by CompilerBackend.capabilities, or use a compiler release that implements the requested revision.");
 
+    public static final DiagnosticInfo BREAK_IN_LOOP_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
+            "JULC0063",
+            "BREAK_IN_LOOP_WITHOUT_ACCUMULATOR",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "break is not supported in a loop that updates no variable declared before the loop",
+            "Declare a variable before the loop and set it where the loop breaks: `boolean stopped = false;` before the loop and `if (found) { stopped = true; break; }` in it.");
+
+    public static final DiagnosticInfo BREAK_LOOP_STATEMENT_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0064",
+            "BREAK_LOOP_STATEMENT_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "{0} is not supported in a loop that contains break and updates one variable declared before the loop",
+            "Move the nested loop into a helper method that returns the value it computes, and call the helper from the loop body.");
+
     public static final DiagnosticInfo BREAK_OUTSIDE_LOOP = new DiagnosticInfo(
             "JULC0004",
             "BREAK_OUTSIDE_LOOP",
@@ -124,6 +140,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "Compound assignment operator {0} is not supported on-chain",
             "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;");
+
+    public static final DiagnosticInfo CONTINUE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0060",
+            "CONTINUE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "continue is not supported on-chain",
+            "Guard the rest of the loop body with an if instead: replace `if (skip) { continue; } rest;` with `if (!skip) { rest; }`.");
 
     public static final DiagnosticInfo C_STYLE_FOR_UNSUPPORTED = new DiagnosticInfo(
             "JULC0018",
@@ -205,6 +229,22 @@ public final class DiagnosticCodes {
             "instanceof with record pattern {0} is not supported",
             "Use a switch expression with a record pattern instead.");
 
+    public static final DiagnosticInfo JULCMAP_OF_OFF_CHAIN_ONLY = new DiagnosticInfo(
+            "JULC0062",
+            "JULCMAP_OF_OFF_CHAIN_ONLY",
+            CompilerDiagnostic.Level.ERROR,
+            "STDLIB",
+            "JulcMap.of is off-chain only and has no on-chain implementation",
+            "Build the map from JulcMap.empty() with insert, for example `JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, value);`. insert adds at the front, so JulcMap.of(a, x, b, y) is `JulcMap.<K, V>empty().insert(b, y).insert(a, x)`.");
+
+    public static final DiagnosticInfo LABEL_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0066",
+            "LABEL_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Labels are not supported on-chain: ''{0}''",
+            "Remove the label. To leave an outer loop from an inner one, declare a variable before the loops, set it where the inner loop breaks and skip the rest of the outer loop while it is set: `boolean stop = false; for (var x : xs) { if (!stop) { for (var y : ys) { if (found) { stop = true; break; } } } }`. continue is not supported with or without a label (JULC0060).");
+
     public static final DiagnosticInfo LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0022",
             "LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED",
@@ -228,6 +268,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "Reassigning {0} ''{1}'' is not supported in a loop that updates no variable declared before the loop",
             "Declare a new local for the new value instead of reassigning, for example var adjusted = amount.subtract(fee);");
+
+    public static final DiagnosticInfo LOOP_UPDATE_POSITION_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0065",
+            "LOOP_UPDATE_POSITION_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Updating ''{0}'' {1} is not supported in this loop",
+            "Write the update as a statement of its own, directly in the loop body or in an if/else branch: for example `if (k == 1) { c = c + 1; } else { c = c + 2; }` instead of a switch statement, `c = c + 1;` before the `if` instead of `if ((c = c + 1) > 5)`, and `while (x - 1 > 0) { x = x - 1; ... }` instead of `while ((x = x - 1) > 0)`.");
 
     public static final DiagnosticInfo METHOD_BODY_MISSING = new DiagnosticInfo(
             "JULC0001",
@@ -389,13 +437,21 @@ public final class DiagnosticCodes {
             "Record {0} implements sealed interfaces {1} and {2}; a record may have at most one sealed parent",
             "Wrap the record in a separate variant for the second interface.");
 
+    public static final DiagnosticInfo REASSIGNMENT_OUTSIDE_LOOP = new DiagnosticInfo(
+            "JULC0061",
+            "REASSIGNMENT_OUTSIDE_LOOP",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Reassigning ''{0}'' is not supported outside a loop",
+            "Declare a new local for the new value, for example `long squared = x * n;`, or choose the value in one expression, for example `var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;`.");
+
     public static final DiagnosticInfo RETURN_INSIDE_WHILE = new DiagnosticInfo(
             "JULC0003",
             "RETURN_INSIDE_WHILE",
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
-            "Cannot return inside while loop",
-            "Use a boolean accumulator and return after the loop. `break` works inside `for-each` if you only need early termination.");
+            "'return' is not supported inside while loop body",
+            "Exit the loop with break, or keep the result in a variable declared before the loop, and return after the loop.");
 
     public static final DiagnosticInfo SOURCE_PARSE_FAILED = new DiagnosticInfo(
             "JULC0028",
@@ -597,6 +653,8 @@ public final class DiagnosticCodes {
             BACKEND_TARGET_MISMATCH,
             BACKEND_UNSUPPORTED_REQUEST,
             BACKEND_UNSUPPORTED_REVISION,
+            BREAK_IN_LOOP_WITHOUT_ACCUMULATOR,
+            BREAK_LOOP_STATEMENT_UNSUPPORTED,
             BREAK_OUTSIDE_LOOP,
             CASE_PATTERN_UNSUPPORTED,
             CIRCULAR_TYPE_DEPENDENCY,
@@ -606,6 +664,7 @@ public final class DiagnosticCodes {
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,
             COMPOUND_ASSIGNMENT_UNSUPPORTED,
+            CONTINUE_UNSUPPORTED,
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
@@ -616,9 +675,12 @@ public final class DiagnosticCodes {
             FLOATING_POINT_UNSUPPORTED,
             INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
             INTEGER_LITERAL_INVALID,
+            JULCMAP_OF_OFF_CHAIN_ONLY,
+            LABEL_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             LEDGER_TYPE_REDECLARED,
             LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
+            LOOP_UPDATE_POSITION_UNSUPPORTED,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
             METHOD_OVERLOAD_UNSUPPORTED,
@@ -637,6 +699,7 @@ public final class DiagnosticCodes {
             PIR_INVALID_BINDING,
             PIR_TYPE_MISMATCH,
             PIR_UNSUPPORTED_STRUCTURE,
+            REASSIGNMENT_OUTSIDE_LOOP,
             RECORD_MEMBER_UNSUPPORTED,
             RECORD_MULTIPLE_SEALED_PARENTS,
             RETURN_INSIDE_WHILE,

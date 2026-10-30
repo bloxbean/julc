@@ -3,8 +3,9 @@ name: reassigning a local outside a loop is outside the subset
 class: Probe
 method: m
 arg: 03
-expect: REJECT none
-note: Rejected as 'Unsupported expression: AssignExpr', without a code.
+expect: REJECT JULC0061
+note: Rejected with JULC0061 ("Reassigning 'x' is not supported outside a loop"). Before #257 it was
+note: 'Unsupported expression: AssignExpr', without a code (ADR-062 T20).
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

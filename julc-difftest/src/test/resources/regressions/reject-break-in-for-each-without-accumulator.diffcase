@@ -5,10 +5,11 @@ method: m
 arg: 00
 arg: 00
 arg: 80
-expect: REJECT none
-note: Found by G0PropertyTest (plan [1, 2, 1, 4, 0, 0, 0, 3], shrunk). Java returns -5. JuLC rejects it with
-note: 'break statement outside of a loop', although the break is inside the for-each: a loop that updates no
-note: earlier variable compiles its body as plain statements (ADR-062 T20).
+expect: REJECT JULC0063
+note: Found by G0PropertyTest (plan [1, 2, 1, 4, 0, 0, 0, 3], shrunk). Java returns -5. A loop that updates no
+note: earlier variable compiles its body as plain statements, so JuLC rejects the break with JULC0063. Before
+note: #257 the diagnostic was 'break statement outside of a loop', although the break is inside the for-each
+note: (ADR-062 T20).
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;
