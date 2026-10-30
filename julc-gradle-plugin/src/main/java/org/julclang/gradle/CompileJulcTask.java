@@ -113,6 +113,12 @@ public abstract class CompileJulcTask extends DefaultTask {
             }
 
             JavaSourceIntrospector.SourceInfo sourceInfo = inspect(javaFile, source);
+            if (sourceInfo == null) {
+                getLogger().info("Treating {} as a library source: text matched a validator annotation, but read as"
+                        + " javac reads it the source declares no JuLC annotation", javaFile);
+                libraryFiles.add(javaFile);
+                continue;
+            }
             rejectRoleConflicts(sourceInfo);
             if (sourceInfo.legacyValidatorType().isPresent()) {
                 throw new GradleException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
@@ -280,10 +286,12 @@ public abstract class CompileJulcTask extends DefaultTask {
         }
     }
 
+    /** The source's info, or null for a candidate JuLC cannot read that plainly declares no JuLC annotation. */
     private static JavaSourceIntrospector.SourceInfo inspect(File javaFile, String source) {
         try {
             return JavaSourceIntrospector.inspect(source);
         } catch (JavaSourceIntrospector.SourceParseException e) {
+            if (JavaSourceIntrospector.declaresNoJulcRole(source)) return null;
             throw new GradleException("Could not parse validator candidate " + javaFile
                     + ": " + e.problems(), e);
         }

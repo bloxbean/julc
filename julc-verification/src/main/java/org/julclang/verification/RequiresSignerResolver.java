@@ -1,5 +1,6 @@
 package org.julclang.verification;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.verification.dsl.PropertyIrCodec;
@@ -7,7 +8,6 @@ import org.julclang.verification.dsl.RequiresSignerDslLowering;
 import org.julclang.verification.dsl.type.ContractTypeProjection;
 import org.julclang.verification.dsl.DslPropertyValidator;
 import org.julclang.core.source.SourceLocation;
-import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
@@ -30,7 +30,7 @@ public final class RequiresSignerResolver {
 
     public static Optional<RequiresSignerProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        var unit = StaticJavaParser.parse(source);
+        var unit = JavaSourceParser.parseCompilationUnit(source);
         List<TypeDeclaration<?>> matches = new ArrayList<>();
         for (TypeDeclaration<?> type : unit.getTypes()) {
             if (type.getNameAsString().equals(validatorTitle)) matches.add(type);

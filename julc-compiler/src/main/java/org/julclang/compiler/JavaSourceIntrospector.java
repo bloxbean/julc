@@ -1,8 +1,7 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
@@ -106,9 +105,7 @@ public final class JavaSourceIntrospector {
     }
 
     public static SourceInfo inspect(String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
+        var result = JavaSourceParser.parse(source);
         if (!result.isSuccessful() || result.getResult().isEmpty()) {
             var problems = result.getProblems().stream()
                     .map(problem -> {
@@ -171,6 +168,30 @@ public final class JavaSourceIntrospector {
 
     public static boolean mightContainTestAnnotation(String source) {
         return mightContainAnnotation(source, "Test");
+    }
+
+    /**
+     * Whether a pre-filter candidate that the strict reading rejects (ADR-062 T24) plainly has no JuLC role: read
+     * leniently, as javac reads it, no type declares a validator or on-chain library annotation. Such a source
+     * only mentions an annotation, in a comment, an import or a link, and is skipped as a non-candidate would be.
+     * False when that cannot be decided, so that the caller keeps the strict diagnostic and fails closed.
+     */
+    public static boolean declaresNoJulcRole(String source) {
+        return JavaSourceParser.parseLeniently(source)
+                .map(unit -> unit.findAll(TypeDeclaration.class).stream()
+                        .flatMap(type -> annotationNames((TypeDeclaration<?>) type).stream())
+                        .noneMatch(name -> SUPPORTED_VALIDATOR_SET.contains(name)
+                                || LEGACY_VALIDATOR_ANNOTATIONS.contains(name)
+                                || ONCHAIN_LIBRARY_ANNOTATION.equals(name)))
+                .orElse(false);
+    }
+
+    /** As {@link #declaresNoJulcRole}, for test discovery: no method is annotated {@code Test}. */
+    public static boolean declaresNoTestMethod(String source) {
+        return JavaSourceParser.parseLeniently(source)
+                .map(unit -> unit.findAll(MethodDeclaration.class).stream()
+                        .noneMatch(method -> hasAnnotation(method, "Test")))
+                .orElse(false);
     }
 
     public static boolean isSupportedValidatorAnnotation(String annotationName) {
@@ -292,8 +313,26 @@ public final class JavaSourceIntrospector {
                 .toList();
     }
 
+    /**
+     * A quick text test before parsing. javac reads a Unicode escape as the character it denotes (ADR-062 T24),
+     * so the escapes are also translated, leniently: a source that fails JuLC's stricter reading is not
+     * rejected here. Only a source that names the annotation goes on to the strict parser, which then fails
+     * closed if it cannot read it.
+     */
     private static boolean mightContainAnnotation(String source, String annotationName) {
-        return source.contains("@" + annotationName) || source.contains("." + annotationName);
+        if (namesAnnotation(source, annotationName)) return true;
+        return source.contains("\\u") && namesAnnotation(UnicodeEscapes.readLeniently(source).text(), annotationName);
+    }
+
+    /** {@code @Name}, with whitespace allowed after the {@code @} as Java allows it, or {@code .Name}. */
+    private static boolean namesAnnotation(String text, String annotationName) {
+        if (text.contains("." + annotationName)) return true;
+        for (int at = text.indexOf('@'); at >= 0; at = text.indexOf('@', at + 1)) {
+            int k = at + 1;
+            while (k < text.length() && Character.isWhitespace(text.charAt(k))) k++;
+            if (text.startsWith(annotationName, k)) return true;
+        }
+        return false;
     }
 
     private static String simpleName(String name) {

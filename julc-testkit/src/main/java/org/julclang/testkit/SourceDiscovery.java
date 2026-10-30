@@ -381,6 +381,8 @@ public final class SourceDiscovery {
         try {
             sourceInfo = JavaSourceIntrospector.inspect(source);
         } catch (JavaSourceIntrospector.SourceParseException e) {
+            // Read as javac reads it, a source that only mentions the annotation has no JuLC role.
+            if (JavaSourceIntrospector.declaresNoJulcRole(source)) return Optional.empty();
             throw new AssertionError("Could not parse @OnchainLibrary candidate "
                     + sourceFile + ": " + e.problems(), e);
         }

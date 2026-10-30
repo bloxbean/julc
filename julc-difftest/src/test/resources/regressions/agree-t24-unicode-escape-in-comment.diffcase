@@ -1,0 +1,20 @@
+format: 2
+name: a Unicode escape in a line comment is read as javac reads it (T24, fixed)
+class: Probe
+method: m
+arg: 05
+expect: AGREE
+note: javac translates Unicode escapes before anything else (JLS 21 §3.3), so the escape for a line
+note: terminator ends the line comment and the rest of the line is code: the JVM returns 2a. JuLC's
+note: parsers left escapes untranslated, so the whole line was a comment and UPLC returned a.
+note: Fixed for T24: every parser comes from JavaSourceParser, which translates escapes first. Before
+note: the fix the expectation was DIVERGE T24 Value/Value, with JVM Value 0a and UPLC Value 05.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(BigInteger a) {
+        return a // \u000a .add(a)
+        ;
+    }
+}

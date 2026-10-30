@@ -1,5 +1,6 @@
 package org.julclang.cli.mcp.lint;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.cli.mcp.lint.rules.BannedParamTypesRule;
 import org.julclang.cli.mcp.lint.rules.ByteStringLibOffChainRule;
 import org.julclang.cli.mcp.lint.rules.DoubleHashRule;
@@ -15,8 +16,6 @@ import org.julclang.cli.mcp.lint.rules.ReturnInLoopRule;
 import org.julclang.cli.mcp.lint.rules.SwitchFieldShadowRule;
 import org.julclang.cli.mcp.lint.rules.Tuple2SwitchRule;
 import org.julclang.cli.mcp.lint.rules.UninitializedVarRule;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -77,9 +76,7 @@ public final class LintEngine {
     public List<LintFinding> lint(String source) {
         // JavaParser 3.26.3 maxes out at JAVA_21; JuLC source uses sealed
         // interfaces + records (Java 21 features) so this is sufficient.
-        var parser = new JavaParser(new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
-        var parseResult = parser.parse(source);
+        var parseResult = JavaSourceParser.parse(source);
         if (parseResult.getResult().isEmpty()) {
             return List.of();
         }

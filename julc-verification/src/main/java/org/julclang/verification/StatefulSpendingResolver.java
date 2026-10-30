@@ -1,5 +1,6 @@
 package org.julclang.verification;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.verification.dsl.PropertyIrCodec;
@@ -7,7 +8,6 @@ import org.julclang.verification.dsl.StatefulSpendingDslLowering;
 import org.julclang.verification.dsl.type.ContractTypeProjection;
 import org.julclang.verification.dsl.DslPropertyValidator;
 import org.julclang.core.source.SourceLocation;
-import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
@@ -30,7 +30,7 @@ public final class StatefulSpendingResolver {
 
     public static Optional<StatefulSpendingProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        CompilationUnit unit = StaticJavaParser.parse(source);
+        CompilationUnit unit = JavaSourceParser.parseCompilationUnit(source);
         TypeDeclaration<?> type = exactType(unit, validatorTitle, fileName);
         List<AnnotationExpr> monotonic = annotations(type, unit, "Monotonic");
         List<AnnotationExpr> preserves = annotations(type, unit, "PreservesValue");

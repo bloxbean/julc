@@ -1581,7 +1581,9 @@ Compiles to `EncodeUtf8("FACTORY_MARKER")` — produces the UTF-8 encoded bytes 
 static final byte[] TOKEN_PREFIX = new byte[]{0x46, 0x41, 0x43, 0x54};
 ```
 
-Compiles to a `ByteString` constant. All array elements must be integer literals (no variables or expressions).
+Compiles to a `ByteString` constant. Each element must be an integer literal, optionally negated
+(`-1`), with a value in -128 to 127, as Java requires of an `int` constant assigned to a `byte`
+(`JULC0070` otherwise). Variables and other expressions are not supported.
 
 ### Usage in Validators
 

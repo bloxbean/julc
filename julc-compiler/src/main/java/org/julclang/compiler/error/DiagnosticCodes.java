@@ -189,6 +189,14 @@ public final class DiagnosticCodes {
             "floating point types (float/double) are not supported on-chain",
             "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params.");
 
+    public static final DiagnosticInfo INTEGER_LITERAL_INVALID = new DiagnosticInfo(
+            "JULC0070",
+            "INTEGER_LITERAL_INVALID",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Integer literal {0} is invalid: {1}",
+            "Add the L suffix for a long literal, use BigInteger for a larger value, write a negated most-negative literal without parentheses (-2147483648), and keep byte[] elements in -128 to 127.");
+
     public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
             "JULC0077",
             "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
@@ -607,6 +615,7 @@ public final class DiagnosticCodes {
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
+            INTEGER_LITERAL_INVALID,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             LEDGER_TYPE_REDECLARED,
             LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,

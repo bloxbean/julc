@@ -1,0 +1,20 @@
+format: 2
+name: an escape in a string literal is decoded as Java decodes it (T22, fixed)
+class: Probe
+method: m
+arg: 01
+expect: AGREE
+note: Found by the trace-payload case (ADR-063 r4). PirGenerator lowered a StringLiteralExpr with
+note: getValue(), JavaParser's source text with its escapes, so the script held a backslash and an n
+note: where Java holds a line break.
+note: Fixed by #256: string literals are decoded as javac decodes them, so both sides trace a line
+note: break. Before the fix the expectation was DIVERGE T22, with UPLC tracing "a\\n[TRACE] b".
+---
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    public static PlutusData m(PlutusData n) {
+        return Builtins.trace("a\n[TRACE] b", n);
+    }
+}

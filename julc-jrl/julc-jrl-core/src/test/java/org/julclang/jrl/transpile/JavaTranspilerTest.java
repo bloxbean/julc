@@ -89,6 +89,20 @@ class JavaTranspilerTest {
     // ── Params ──────────────────────────────────────────────────
 
     @Nested
+    class LiteralTests {
+
+        @Test
+        void aStringLiteralDoublesEachBackslash() {
+            var java = transpile("""
+                    contract "T" version "1" purpose spending
+                    rule "r" when Condition( "a\\nb" == "a\\nb" ) then allow
+                    default: deny
+                    """);
+            assertTrue(java.contains("\"a\\\\nb\" == \"a\\\\nb\""), java);
+        }
+    }
+
+    @Nested
     class ParamTests {
 
         @Test
