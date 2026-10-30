@@ -1541,7 +1541,7 @@ Each reviewer had one item left at `f4a9fa6a`.
 | Finding | Change |
 |---|---|
 | F78 (P2), #291's second symptom is wider than two loops | The trigger is a local declared after a loop in such a `default` block and read later; a second loop's counter is one instance. The gated construct is now: in a `default` block of a switch inside a method-call argument, anything declared after the block's first loop. Without the gate, `G1.arm()` ends such a block after its first loop and generates its yield with no switch, since a switch's bindings and its `default` block's locals are declarations too (probed: a local declared by a nested switch's `default` block after the loop is rejected the same way; a nested type-pattern arm block's agrees). The marker is renamed `DEFAULT_BLOCK_AFTER_LOOP`, and `G1Source` reads it as any declaration after the first direct loop of such a block. The `291_LOOPS` steer follows a loop with a `while` loop or with a local of the arm's type that the yield reads. New pin `reject-g1-291-local-after-loop` (`REJECT none`, "Unbound variable: v4", one loop), with the counterfactual that assigns the switch to a local first. |
-| F95 (P1), a `LinkageError` the program throws read as an oracle fault | The phase decides, not the throwable's class. An error while the preflight loads or links a class is the oracle fault. Whatever is thrown while the program initializes or runs is its `Failure` with its traces, a `LinkageError` included; an `ExceptionInInitializerError` reports its cause. The exception is a `VerifyError` or `ClassFormatError` whose message names a class compiled from the case's own source, such as a lazily loaded local or anonymous class: that stays an oracle fault. A program that threw such an error naming its own class would be read the same way; generated programs throw none. `JvmExecutorTest` checks an initializer that throws `NoClassDefFoundError` or `LinkageError` directly, and a method that throws `LinkageError`, `NoClassDefFoundError` or an unrelated `VerifyError` after a trace (each `Failure` with its traces), and a local class with javac's unverifiable bytecode (`Probe$1Local`, an oracle fault). |
+| F95 (P1), a `LinkageError` the program throws read as an oracle fault | (The message-matching exception below is replaced in round 3.) The phase decides, not the throwable's class. An error while the preflight loads or links a class is the oracle fault. Whatever is thrown while the program initializes or runs is its `Failure` with its traces, a `LinkageError` included; an `ExceptionInInitializerError` reports its cause. The exception is a `VerifyError` or `ClassFormatError` whose message names a class compiled from the case's own source, such as a lazily loaded local or anonymous class: that stays an oracle fault. A program that threw such an error naming its own class would be read the same way; generated programs throw none. `JvmExecutorTest` checks an initializer that throws `NoClassDefFoundError` or `LinkageError` directly, and a method that throws `LinkageError`, `NoClassDefFoundError` or an unrelated `VerifyError` after a trace (each `Failure` with its traces), and a local class with javac's unverifiable bytecode (`Probe$1Local`, an oracle fault). |
 | F96 (P2), the #280 r4 pair | Restored under `-r4` names with its own provenance, although its program is r2's. |
 
 G1 r7 decodes differently from r6 (the `default` block rule and the steer), so the version is bumped; the r6 pins
@@ -1612,6 +1612,19 @@ Commands and counts (G1 r7):
   which `G1GatesTest` 25.1 s and `G1SwitchShapesTest` 19.0 s); `RegressionCasesTest` runs 86 cases.
 - `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`: 3,000 tries, all conclusive at
   every level, 179 s (under the same load).
+
+### M3 part 1 review round 3 (2026-10-30, G1 r7)
+
+The review comment approved M3 part 1 at `77901c66`, with one P3 (F79); Codex raised one P2 (F105).
+
+| Finding | Change |
+|---|---|
+| F105 (P2), message matching misreads program-thrown errors | The preflight now loads and verifies, without initializing, every class javac emitted for the case: the class files in javac's output that are the case's top-level classes or nest in them, local and anonymous classes included. So every class the program can load from its own source is verified before it runs, and the message matching is removed: whatever is thrown while the program initializes or runs is its `Failure` with its traces, `VerifyError`, `ClassFormatError` and other `LinkageError`s included. `JvmExecutorTest` checks `NoClassDefFoundError("Gone")`, `LinkageError("m")`, `VerifyError("Probe")`, `ClassFormatError("Probe")` and `VerifyError("NotProbeClass")`, each thrown from an initializer (`Failure`, traces `[init]`) and from the method after a trace (`Failure`, traces `[init, m]`). The local class with javac's unverifiable bytecode is now rejected while linking, before anything runs (an oracle fault naming `Probe$1Local`). |
+| F79 (P3), toolchain errors while running | Documented in `JvmExecutor` and here: a `LinkageError` the toolchain raises while the program runs, such as a `BootstrapMethodError` from a pattern switch's bootstrap, counts as the program's `Failure`, not as an oracle fault. The preflight cannot see it, since bootstraps run only when the call site is first executed. Such an error would show as a JVM failure where UPLC agrees with the source, so a campaign would stop on it as a mismatch and it would be examined then. |
+
+The decoding is unchanged (G1 r7). Commands and counts:
+- `./gradlew :julc-difftest:test --rerun`: 244 tests, 0 failures, 0 skipped, in 114 s; `RegressionCasesTest` runs 86
+  cases.
 
 ## Revision history
 
