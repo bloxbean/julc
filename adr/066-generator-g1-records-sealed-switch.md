@@ -164,10 +164,12 @@ ADR-063's H1–H7 apply unchanged. In addition:
   converter. (D3)
 - **G1-I4. Explicit constructor tags everywhere.** Mapping a sealed value always uses a persisted tag table,
   validated as in D3; a case that maps sealed values without one is a harness error. (D3)
-- **G1-I5. Reproducibility.** A G1 case is a function of its plan, `G1.VERSION` and its generation profile
-  (D6). Any change that decodes a plan differently bumps the version. The complete case (source, tags,
-  arguments, features, profile) is deterministic, also for empty and truncated plans and during shrinking.
-  G0's version and decoding do not change. (D1, D6)
+- **G1-I5. Reproducibility.** A G1 program is a function of its plan, `G1.VERSION` and its generation profile
+  (D6); a G1 case adds the input sequence its arguments are decoded from (D4, M2). Any change that decodes a plan
+  or an input sequence differently bumps the version. The complete case (source, tags, arguments, features,
+  profile) is deterministic, also for empty and truncated plans and during shrinking; `G1DecodeTest` checks this
+  within one JVM process, and G1 iterates only lists and enum sets. G0's version and decoding do not change. (D1,
+  D6)
 - **G1-I6. Exclusions are explicit.** A construct left out because of an open defect is listed in D6 with its
   issue, gated by one named switch in the profile, and checked by a test that fails if the generator emits it
   while gated. (D6)
@@ -187,9 +189,12 @@ ADR-063's H1–H7 apply unchanged. In addition:
 
 ### D1. A separate generator, `gen/G1`, version `G1 r1`
 
-G1 is a new class next to G0, sharing `Choices` and the plan model: a `List<Integer>` decoded left to right,
+G1 is a new class next to G0, sharing `Choices` and the plan model: a `List<Integer>` read through `Choices`,
 choice 0 always the smallest valid construct, shrinking by jqwik on the plan, no discards. G0's decoding is not
-touched, so every saved G0 plan, the G0 corpus and G0's fuzz inputs keep their meaning.
+touched, so every saved G0 plan, the G0 corpus and G0's fuzz inputs keep their meaning. (M2: G1's declarations
+read the plan's even positions left to right and the entry method its odd positions, so that declarations that use
+up their share leave the method its choices; removing one element while shrinking shifts the parity of the rest,
+which makes shrinking less local but keeps every candidate valid.)
 
 G1 contains a loop sub-grammar equivalent to G0's (D2), so it can put records and switches inside loops, but it
 does not call G0: their plans would otherwise couple, and a change to one would change the other's programs.
@@ -374,10 +379,11 @@ random plans under the default profile and fails if any program contains a gated
 | `ZERO_ARG_HELPERS` | Zero-parameter helpers | #280 | #280 is fixed on the base |
 | `SHADOW_IN_LOOP_BRANCH` | A local in an `if` branch inside a loop body shadowing a field of another type | #209 | #209 is fixed on the base |
 | `LOOP_BREAK_SHAPES` | Loop bodies with `break` and conditional updates (M2: broadened from G0's T21 and T23 shapes) | #254, #255 | Both are fixed on the base |
-| `TRACE_IN_COMPARISON` | A trace in an operand of `compareTo`, directly or through a helper whose body traces (added in M2) | #146 | #146 is fixed on the base |
+| `TRACE_IN_COMPARISON` | A trace in an operand of `compareTo`, or in a receiver of `signum`, directly or through a helper whose body traces (added in M2) | #146 | #146 is fixed on the base |
 
-`TRACE_IN_COMPARISON` (M2): #146's lowering evaluates a `compareTo` operand more than once, so a traced operand
-traces more often on UPLC than on the JVM. ADR-063's T13 rule covers only #146's size and budget effect; a
+`TRACE_IN_COMPARISON` (M2): #146's lowering evaluates a `compareTo` operand, and a `signum` receiver, more than
+once, so a traced operand traces more often on UPLC than on the JVM. G1 emits no `signum`; the other operations it
+emits evaluate their operands once (probed in M2). ADR-063's T13 rule covers only #146's size and budget effect; a
 duplicated trace is a conclusive mismatch, so the construct is gated.
 
 **Must-reject checks.** A defect fixed by rejecting a construct cannot be found by the positive grammar. For
@@ -798,6 +804,9 @@ record or sealed result as a Data constant holding a `Constr` (the check passes)
 
 ## M2 results (2026-10-30)
 
+These are the results at `98c47c78` (G1 r1). The review round below changed the decoding to G1 r2 and supersedes
+the quota table, the rediscovery table, the saved cases and the counts.
+
 Implemented, in `julc-difftest` only (G0, its corpus and its saved inputs untouched):
 
 - **`gen/G1`, version `G1 r1`:** D2's grammar without `switch`. It generates:
@@ -953,6 +962,125 @@ Findings:
   recorded in #146 and gated by `TRACE_IN_COMPARISON`.
 - Loop bodies with `break` and conditional updates are gated (`LOOP_BREAK_SHAPES`, #254, #255).
 - No other mismatch was found by the default-profile campaigns: PR, two nightly runs and Jazzer.
+
+### M2 review round 1 (2026-10-30, G1 r2)
+
+The round answers the review comment's F61–F64 and Codex's F70–F73.
+
+| Finding | Change |
+|---|---|
+| F72 (P2), typed AST | `G1Ast` holds the types, bindings, expressions, statements and declarations, and `G1Printer` prints them. Every production builds nodes. Committed alone (`f555b5e7`): over 20,000 random plans under five profiles (default, the three rediscovery profiles, `LOOP_BREAK_SHAPES`), source, tags, features and arguments were byte-identical to `98c47c78`, so that commit is still G1 r1. |
+| F70 (P1), variant-typed declarations | Variants enter type selection: a declaration, field, accumulator, parameter or result can be typed as a variant. `declaredType` picks a kind first (standalone record, family, variant) so variants do not crowd out families. New quota features `VARIANT_ARG` and `VARIANT_RESULT` (a variant with a nonzero tag) and `VARIANT_ACCUMULATOR`, each with a quarter-of-the-time witness production. `G1ShapesTest` reads nonzero-tag variant parameters and results from the printed source and the tag table. |
+| F71 (P1), boolean helper calls | Conditions call boolean helpers (two cases of ten, bounded like other calls, respecting `TRACE_IN_COMPARISON` through `Ctx.callable`). Half of the helpers return `boolean`. New quota feature `BOOLEAN_HELPER_CALL`. `G1ShapesTest.aBooleanHelperCallDecidesTheOutcome`: negating the boolean helpers' bodies changes the JVM observation on some input for at least 5 of 40 calling programs. |
+| F73 (P2), recorded case identity | `G1DecodeTest.aFailureRecordRegeneratesItsCase` takes a case that fails under `REDISCOVER_280`, with inputs, through `G1PropertyTest.verify`, `CampaignVerifier` and `RegressionStore`. It reads the record back, regenerates from its `profile:`, `found.plan` and `found.inputs`, and compares source, tags and arguments. Replacing the adapter's profile with `DEFAULT` fails it (mutation run). `equalSourcesUnderDifferentProfilesAreDifferentCases`: equal sources under `DEFAULT` and `+GUARDS` are different, recorded cases. |
+| F61 (P2), #209 evidence | Below: runtime and silent forms, both with counterfactuals, and the outcome distribution. |
+| F62 (P3), quota check after a failure | `G0PropertyTest` and `G1PropertyTest` skip coverage for the failing try and every shrinking call after it, and skip the quota check when the property failed. |
+| F63 (P3), shapes hidden behind sibling quotas | New quota features `PERMITS_PERMUTED` (a family whose `permits` order differs from both its declaration order and its variants' name order) and `FAMILY_EQUALS`. `LOOP_LOCAL_SHADOWS_FIELD` is about 4% raw, too rare for a stable PR quota, so `G1ShapesTest` reads it from the printed source over 4,000 plans, together with `PERMITS_PERMUTED`. Loop-body locals take a free field's name two times in three. The review's three surviving mutants are now killed: `permits` equal to the creation order (by the `PERMITS_PERMUTED` quota and `G1ShapesTest`), no `equals` against the family (by the `FAMILY_EQUALS` quota), and loop-body locals that never shadow a field (by `G1ShapesTest`). |
+| F64 (P3), wording | G1-I5 names the input sequence and says the determinism test is a same-process check. D1 describes the even/odd split. |
+| #146 and `signum` (coordinator) | `signum` evaluates its receiver twice like `compareTo`. G1 emits no `signum`. Probes with traced operands showed that `add`, `subtract`, `multiply`, `equals`, constructors, helper calls (integer and boolean), ternaries, `&&`, `||` and `!` evaluate them once at every level. The gate's definition and `G1GatesTest`'s source reading now cover `signum` receivers (`theSourceReadingCoversSignumReceivers`). |
+
+G1 r2 decodes differently from r1 because of F70, F71, F63 and the #209 steering. So the version is bumped, and the
+saved G1 cases are re-recorded from r2 rediscovery runs.
+
+#209's profile now steers towards the issue's own shape:
+- R0 and R1 are two records with the same components in different orders;
+- two out of three top-level statements are loops, and loop bodies have no `break`;
+- a branch local shadows a field of the other record;
+- after the `if`, a component of the field is read into an accumulator that the result prefers.
+
+Quotas (G1 r2):
+
+| Feature | PR, 150 tries | Nightly, 3,000 tries |
+|---|---|---|
+| `RECORD` | 82 (54.7%) | 1912 (63.7%) |
+| `SEALED` | 79 (52.7%) | 1634 (54.5%) |
+| `TWO_FAMILIES` | 38 (25.3%) | 749 (25.0%) |
+| `ZERO_COMPONENTS` | 66 (44.0%) | 1193 (39.8%) |
+| `NESTED_RECORD` | 27 (18.0%) | 829 (27.6%) |
+| `SEALED_COMPONENT` | 23 (15.3%) | 437 (14.6%) |
+| `RECORD_ARG` | 31 (20.7%) | 726 (24.2%) |
+| `SEALED_ARG` | 10 (6.7%) | 345 (11.5%) |
+| `RECORD_RESULT` | 39 (26.0%) | 883 (29.4%) |
+| `SEALED_RESULT` | 36 (24.0%) | 472 (15.7%) |
+| `COMPONENT_ACCESS` | 39 (26.0%) | 1005 (33.5%) |
+| `CHAINED_ACCESS` | 11 (7.3%) | 320 (10.7%) |
+| `STATIC_FIELD` | 63 (42.0%) | 1538 (51.3%) |
+| `FIELD_FROM_FIELD` | 19 (12.7%) | 352 (11.7%) |
+| `FIELD_SHADOWED` | 25 (16.7%) | 721 (24.0%) |
+| `RECORD_EQUALS` | 18 (12.0%) | 329 (11.0%) |
+| `RECORD_ACCUMULATOR` | 28 (18.7%) | 675 (22.5%) |
+| `INSTANCEOF_PATTERN` | 15 (10.0%) | 326 (10.9%) |
+| `METHOD_LEVEL_IF` | 45 (30.0%) | 899 (30.0%) |
+| `HELPER_CALL` | 18 (12.0%) | 330 (11.0%) |
+| `TRACE` | 14 (9.3%) | 330 (11.0%) |
+| `FAILURE` | 16 (10.7%) | 354 (11.8%) |
+| `VARIANT_ARG` | 12 (8.0%) | 429 (14.3%) |
+| `VARIANT_RESULT` | 13 (8.7%) | 376 (12.5%) |
+| `VARIANT_ACCUMULATOR` | 6 (4.0%) | 230 (7.7%) |
+| `BOOLEAN_HELPER_CALL` | 6 (4.0%) | 172 (5.7%) |
+| `PERMITS_PERMUTED` | 10 (6.7%) | 223 (7.4%) |
+| `FAMILY_EQUALS` | 6 (4.0%) | 142 (4.7%) |
+| `LOOP_LOCAL_SHADOWS_FIELD` (decode-checked in `G1ShapesTest`) | 0 (0.0%) | 113 (3.8%) |
+| `LOOP` (statistics, no quota) | 44 (29.3%) | 1157 (38.6%) |
+| `BREAK` (statistics, no quota) | 2 (1.3%) | 73 (2.4%) |
+
+Rediscovery (G1 r2). The command is `./gradlew :julc-difftest:rediscoveryDiffTest -Pdifftest.profile=<profile>`, with
+`-Pdifftest.form=value` for the silent form. Each run uses seed `20261030`, 150 tries, the 744ab54f compiler and
+about 10 s per command.
+
+| Defect | Profile, form | First failing try | Time to first failure | JVM | UPLC, every level | Saved as |
+|---|---|---|---|---|---|---|
+| #209 | `REDISCOVER_209` | 5 | 1.3 s | `Value R0(false, -5)` | `Failure UnIData: not IntData` | `diverge-g1-209-runtime-misread` |
+| #209 | `REDISCOVER_209`, `form=value` | 5 | 1.3 s | `Value R0(-1, -1)` | `Value R0(2, 2)` | `diverge-g1-209-silent-misread` |
+| #280 | `REDISCOVER_280` | 18 | 2.0 s | `Value -5 []` | `Value -5 [k0]` | `diverge-g1-280-uncalled-zero-arg-helper` |
+| #146 | `REDISCOVER_146` | 12 | 1.7 s | `Value -5 [k0]` | `Value -5 [k0, k0]` | `diverge-g1-146-traced-compare-operand` |
+
+The silent #209 reproducer is the issue's shape:
+
+```java
+record R0(BigInteger v, BigInteger w) {}
+record R1(BigInteger w, BigInteger v) {}
+static final R1 x = new R1(BigInteger.valueOf(-1), BigInteger.valueOf(2));
+// in m, in the second loop:
+if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
+    R0 x = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+    v = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+}
+f = x.w();   // Java: the field's w, -1. JuLC: R0's index of w, 1, on R1's Data: v, 2.
+```
+
+Every reproducer has an `agree-…-counterfactual` case: the shadowing local renamed apart (#209), an unused
+parameter (#280), or the operand bound to a local (#146). `G1RediscoveryTest` checks each pair: the JVM observation
+is equal, the reproducer diverges and the counterfactual agrees. G1 r1's rejection form of #209 stays as
+`agree-g1-209-rejection-counterfactual`, and the test still checks it. All are provisional until the fixes land.
+
+#209 outcomes:
+
+| Run | Marked plans | Agree | Rejected JULC0055 | JVM value, UPLC failure | Value against value |
+|---|---|---|---|---|---|
+| G1 r1 profile (the review, seed 7) | 101 | 79 | 18 | 4 | 0 |
+| G1 r2 profile (seed 7, random inputs) | 200 of 1,412 decoded | 183 | 0 | 9 | 8 |
+
+Under r1 no silent value-against-value read was seen. It needs a leaked type with a same-named component at
+another index and the same decoding; the r1 grammar could produce that but rarely did. The r2 profile produces the
+issue's two-record shape and reads the field into the result, and 4% of its marked plans show the silent form.
+Under the r2 profile, rejections no longer occur: both records share their component names, so the leaked type
+always resolves the component. The first form the default campaign shrinks to is therefore the runtime one, and
+`-Pdifftest.form=value` keeps shrinking within the silent form.
+
+Commands and counts (G1 r2):
+- `./gradlew :julc-difftest:test --rerun`: 190 tests, 0 failures, 0 errors, 0 skipped, in 68 s.
+  - The G1 workload takes 12.3 s: property 5.9 s, shapes 2.7 s, gates 1.5 s, decode 1.1 s, fuzz seeds 0.7 s,
+    rediscovery checks 0.5 s.
+  - `RegressionCasesTest` replays 47 cases.
+- `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`: 3,000 tries, all conclusive at
+  every level, 133 s.
+
+Deviations from the ADR, added in this round:
+- Variant-typed declarations get witness productions: a quarter of the time a nonzero-tag variant as a parameter
+  and as the result, and a variant accumulator.
+- `LOOP_LOCAL_SHADOWS_FIELD` is decode-checked rather than given a quota.
+- The #209 historical profile is steered to the issue's own shape.
 
 ## Revision history
 
