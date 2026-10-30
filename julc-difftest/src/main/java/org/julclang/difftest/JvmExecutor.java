@@ -63,30 +63,20 @@ public final class JvmExecutor {
 
     /**
      * Validates the case's tag table against the compiled source (ADR-066 D3), maps the arguments, runs the
-     * entry method and maps its result at its declared return type.
+     * entry method and maps its result at its declared return type. The classes are loaded, linked and verified
+     * first, without being initialized; initialization belongs to the run, so a failing initializer is the
+     * program's failure.
      */
     public synchronized Observation run(DiffCase diffCase) {
         Compiled classes = compiled(diffCase);
         try (var loader = new URLClassLoader(new URL[]{classes.dir().toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
-            Class<?> type = loader.loadClass(diffCase.className());
-            validate(diffCase, classes, loader);
-            Method method = entryMethod(type, diffCase.method());
-            var params = method.getGenericParameterTypes();
-            if (params.length != diffCase.args().size()) {
-                throw new HarnessException(diffCase.name() + ": " + method.getName() + " takes " + params.length
+            Method method = linked(diffCase, classes, loader);
+            int params = method.getParameterCount();
+            if (params != diffCase.args().size()) {
+                throw new HarnessException(diffCase.name() + ": " + method.getName() + " takes " + params
                         + " arguments, the case has " + diffCase.args().size());
             }
-            Object[] args = new Object[params.length];
-            for (int i = 0; i < params.length; i++) {
-                try {
-                    args[i] = ValueMapping.fromData(diffCase.args().get(i), params[i], diffCase.tags());
-                } catch (HarnessException e) {
-                    throw new HarnessException(diffCase.name() + ": argument " + i + ": " + e.getMessage(), e);
-                }
-            }
-            return invoke(method, args, diffCase.tags());
-        } catch (LinkageError e) {
-            throw unverifiable(diffCase, e);
+            return invoke(diffCase, method);
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
@@ -100,11 +90,7 @@ public final class JvmExecutor {
     public synchronized ValueMapping.Representation resultRepresentation(DiffCase diffCase) {
         Compiled classes = compiled(diffCase);
         try (var loader = new URLClassLoader(new URL[]{classes.dir().toUri().toURL()}, JvmExecutor.class.getClassLoader())) {
-            Class<?> type = loader.loadClass(diffCase.className());
-            validate(diffCase, classes, loader);
-            return ValueMapping.Representation.of(entryMethod(type, diffCase.method()).getGenericReturnType());
-        } catch (LinkageError e) {
-            throw unverifiable(diffCase, e);
+            return ValueMapping.Representation.of(linked(diffCase, classes, loader).getGenericReturnType());
         } catch (IOException | ClassNotFoundException e) {
             throw new HarnessException(diffCase.name() + ": cannot load " + diffCase.className(), e);
         }
@@ -115,25 +101,63 @@ public final class JvmExecutor {
     }
 
     /**
-     * Source validation over the case's top-level declarations, siblings of the entry class included, and their
-     * member classes, recursively; never over classes from elsewhere. Local and anonymous classes are not visited.
+     * Loads, links and verifies the case's top-level classes and their member classes, recursively, without
+     * initializing them; validates the tag table over them (ADR-066 D3); and returns the entry method. A class the
+     * JVM rejects here, such as a {@code VerifyError}, is javac's fault, not an observation of the program: an
+     * oracle fault (ADR-063 H6). Local and anonymous classes are not visited.
      */
-    /** javac accepted the source but produced a class the JVM rejects, such as a VerifyError: an oracle fault (H6). */
-    private static HarnessException unverifiable(DiffCase diffCase, LinkageError e) {
-        return new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + e, e);
-    }
-
-    private static void validate(DiffCase diffCase, Compiled classes, ClassLoader loader) throws ClassNotFoundException {
+    private static Method linked(DiffCase diffCase, Compiled classes, ClassLoader loader) throws ClassNotFoundException {
         var types = new ArrayList<Class<?>>();
-        for (String name : classes.classes()) types.add(Class.forName(name, false, loader));
+        try {
+            for (String name : classes.classes()) types.add(Class.forName(name, false, loader));
+            // Reflecting on a class's methods links it, which verifies it, and does not initialize it.
+            for (Class<?> type : types) link(type);
+        } catch (LinkageError e) {
+            throw new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + e, e);
+        }
         try {
             diffCase.tags().validate(types);
         } catch (HarnessException e) {
             throw new HarnessException(diffCase.name() + ": " + e.getMessage(), e);
         }
+        return entryMethod(Class.forName(diffCase.className(), false, loader), diffCase.method());
     }
 
-    private Observation invoke(Method method, Object[] args, TagTable tags) {
+    private static void link(Class<?> type) {
+        type.getDeclaredMethods();
+        for (Class<?> member : type.getDeclaredClasses()) link(member);
+    }
+
+    /**
+     * The exception a class initializer threw, if {@code thrown} reports one: an {@code ExceptionInInitializerError},
+     * or the {@code NoClassDefFoundError} of a later use of a class whose initializer failed.
+     */
+    private static Throwable initializerFailure(Throwable thrown) {
+        if (thrown instanceof NoClassDefFoundError && thrown.getCause() instanceof ExceptionInInitializerError first) {
+            thrown = first;
+        }
+        if (!(thrown instanceof ExceptionInInitializerError error)) return null;
+        return error.getCause() != null ? error.getCause() : error;
+    }
+
+    private static Object[] arguments(DiffCase diffCase, Method method) {
+        var params = method.getGenericParameterTypes();
+        Object[] args = new Object[params.length];
+        for (int i = 0; i < params.length; i++) {
+            try {
+                args[i] = ValueMapping.fromData(diffCase.args().get(i), params[i], diffCase.tags());
+            } catch (HarnessException e) {
+                throw new HarnessException(diffCase.name() + ": argument " + i + ": " + e.getMessage(), e);
+            }
+        }
+        return args;
+    }
+
+    /**
+     * Maps the arguments and invokes the entry method with standard output captured. Both may initialize classes:
+     * that is part of the program's run, so an initializer that throws gives a {@code Failure} with its traces.
+     */
+    private Observation invoke(DiffCase diffCase, Method method) {
         var out = new TraceSink();
         PrintStream original = System.out;
         var executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -143,18 +167,24 @@ public final class JvmExecutor {
         });
         System.setOut(out);
         try {
-            var future = executor.submit(() -> method.invoke(null, args));
+            var future = executor.submit(() -> method.invoke(null, arguments(diffCase, method)));
             try {
                 Object result = future.get(timeoutMillis, TimeUnit.MILLISECONDS);
-                return new Observation.Value(ValueMapping.toData(result, method.getGenericReturnType(), tags), out.traces());
+                return new Observation.Value(ValueMapping.toData(result, method.getGenericReturnType(), diffCase.tags()),
+                        out.traces());
             } catch (TimeoutException e) {
                 future.cancel(true);
                 return new Observation.Inconclusive("JVM timeout after " + timeoutMillis + " ms");
             } catch (ExecutionException e) {
+                if (e.getCause() instanceof HarnessException harness) throw harness;
                 Throwable cause = e.getCause() instanceof InvocationTargetException ite ? ite.getCause() : e.getCause();
                 if (cause instanceof StackOverflowError) return new Observation.Inconclusive("JVM stack overflow");
-                // A class javac produced that the JVM cannot link is no observation of the program (H6).
-                if (e.getCause() instanceof LinkageError linkage) throw new HarnessException("the JVM rejects javac's class: " + linkage, linkage);
+                Throwable initializer = initializerFailure(cause);
+                if (initializer != null) return new Observation.Failure(String.valueOf(initializer), out.traces());
+                // Any other linkage error is a class javac produced that the JVM cannot link: no observation (H6).
+                if (cause instanceof LinkageError linkage) {
+                    throw new HarnessException(diffCase.name() + ": the JVM rejects javac's class: " + linkage, linkage);
+                }
                 return new Observation.Failure(String.valueOf(cause), out.traces());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

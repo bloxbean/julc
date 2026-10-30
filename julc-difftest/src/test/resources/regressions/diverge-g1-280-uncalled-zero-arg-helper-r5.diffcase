@@ -1,0 +1,49 @@
+format: 3
+name: a zero-parameter helper that is never called traces on UPLC (#280)
+class: Probe
+method: m
+profile: G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING +ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=280
+arg: 06
+arg: 03
+arg: 9f02ff
+expect: DIVERGE #280 Value/Value
+jvm: Value 24 []
+uplc: Value 24 ["k0"]
+note: Rediscovered by the G1 r5 campaign under REDISCOVER_280 (ADR-066 D10.1), the shrunk reproducer as found.
+note: UPLC evaluates the body of a zero-parameter helper at script start, so its trace appears although Java never
+note: calls it. Provisional until #280 is fixed.
+found.by: G1PropertyTest rediscovery
+found.generator: G1 r5
+found.plan: 0,0,2,0,0,0,0,0,0,0,0,0,0,0,1,0,3,0,0,0,0,0,2,0,0,0,0,0,1,0,0,0,2,0,0,101,19,26,13,799,48,11,49,679,567,13,2,287,13,64,11
+found.inputs: 467,22,6,307
+found.seed: 20261030
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-43-gd954df360526-dirty
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    static final BigInteger v = BigInteger.valueOf(-5);
+    static final BigInteger w = BigInteger.valueOf(-5);
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    static boolean v(boolean v, BigInteger w) {
+        return v;
+    }
+
+    static BigInteger f() {
+        return t("k0", BigInteger.valueOf(-5));
+    }
+
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        return BigInteger.valueOf(-5);
+    }
+}

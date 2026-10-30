@@ -23,7 +23,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 class G1DecodeTest {
 
     private static final List<G1.Profile> PROFILES = List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209,
-            G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_146, G1.Profile.REDISCOVER_162,
+            G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_146, G1.Profile.REDISCOVER_162, G1.Profile.REDISCOVER_291,
+            G1.Profile.REDISCOVER_291_LOOPS,
             G1.Profile.DEFAULT.with(G1.Gate.LOOP_BREAK_SHAPES));
 
     private static List<Integer> random(Random random, int maxLength) {

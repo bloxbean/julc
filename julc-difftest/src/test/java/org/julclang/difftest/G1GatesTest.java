@@ -55,6 +55,8 @@ class G1GatesTest {
                 G1.Profile.REDISCOVER_280, G1.Feature.ZERO_ARG_HELPER,
                 G1.Profile.REDISCOVER_146, G1.Feature.TRACE_IN_COMPARISON,
                 G1.Profile.REDISCOVER_162, G1.Feature.ASSIGN_PATTERN_BINDING,
+                G1.Profile.REDISCOVER_291, G1.Feature.DEFAULT_BLOCK_SHADOW,
+                G1.Profile.REDISCOVER_291_LOOPS, G1.Feature.DEFAULT_BLOCK_LOOPS,
                 G1.Profile.DEFAULT.with(G1.Gate.LOOP_BREAK_SHAPES), G1.Feature.LOOP_BREAK_SHAPE);
         cases.forEach((profile, marker) -> {
             var random = new Random(20261031);
@@ -108,7 +110,7 @@ class G1GatesTest {
         double[] plain = shares(G1.Profile.DEFAULT);
         String[] names = {"break", "loop", "zero-parameter helper", "mirrored records"};
         for (G1.Gate gate : List.of(G1.Gate.SHADOW_IN_LOOP_BRANCH, G1.Gate.ZERO_ARG_HELPERS, G1.Gate.TRACE_IN_COMPARISON,
-                G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.ASSIGN_PATTERN_BINDING)) {
+                G1.Gate.LOOP_BREAK_SHAPES, G1.Gate.ASSIGN_PATTERN_BINDING, G1.Gate.DEFAULT_BLOCK_SCOPE)) {
             double[] gated = shares(G1.Profile.DEFAULT.with(gate));
             for (int k = 0; k < names.length; k++) {
                 // A zero-parameter helper is the ZERO_ARG_HELPERS construct itself.
@@ -147,23 +149,30 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
-                + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON", G1.Profile.DEFAULT.text());
+        assertEquals("G1 r6 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+                + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON -DEFAULT_BLOCK_SCOPE",
+                G1.Profile.DEFAULT.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280, G1.Profile.REDISCOVER_162,
+                G1.Profile.REDISCOVER_291, G1.Profile.REDISCOVER_291_LOOPS,
                 G1.Profile.REDISCOVER_146, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
             assertEquals(profile, G1.Profile.parse(profile.text()));
         }
         String text = G1.Profile.DEFAULT.text();
-        assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209"),
+        assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON "
+                        + "-DEFAULT_BLOCK_SCOPE steer=209"),
                 G1.Profile.REDISCOVER_209.text());
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_209));
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r5", "G1 r4"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r6", "G1 r5"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }
     }
 
-    /** The gated constructs as read from a printed program, independently of the generator's markers. */
+    /**
+     * The gated constructs as read from a printed program, independently of the generator's markers. The reading is
+     * line-based: it assumes that a condition is on one line, which holds because no test contains a {@code switch}
+     * ({@code G1SwitchShapesTest} checks that with javac's parser, and reads the switch constructs that way too).
+     */
     static final class GatedShapes {
 
         private static final Pattern ZERO_ARG = Pattern.compile("(?m)^    static \\w+ \\w+\\(\\) \\{$");
@@ -171,6 +180,8 @@ class G1GatesTest {
         private static final Pattern HELPER = Pattern.compile("(?m)^    static \\w+ (\\w+)\\(([^)]*)\\) \\{\\n        return (.*);$");
         private static final Pattern LOOP = Pattern.compile("^( *)(while \\(|for \\(var ).*\\{$");
         private static final Pattern BLOCK_ARM = Pattern.compile("^( *)case \\w+ (\\w+) -> \\{$");
+        private static final Pattern DEFAULT_BLOCK = Pattern.compile("^( *)default -> \\{$");
+        private static final Pattern DECLARATION = Pattern.compile("^\\w+ (\\w+) = ");
 
         static Set<G1.Feature> in(String source) {
             var found = EnumSet.noneOf(G1.Feature.class);
@@ -180,6 +191,11 @@ class G1GatesTest {
             Matcher field = FIELD.matcher(source);
             while (field.find()) fields.add(field.group(1));
             var lines = source.split("\n");
+            if (shadowsInDefaultBlock(lines, fields)) found.add(G1.Feature.DEFAULT_BLOCK_SHADOW);
+            // Whether a default block's switch is inside a call argument needs the syntax tree, not lines.
+            if (source.contains("default -> {") && G1Source.read(source).features().contains(G1.Feature.DEFAULT_BLOCK_LOOPS)) {
+                found.add(G1.Feature.DEFAULT_BLOCK_LOOPS);
+            }
             for (int i = 0; i < lines.length; i++) {
                 Matcher loop = LOOP.matcher(lines[i]);
                 if (!loop.matches()) continue;
@@ -220,6 +236,21 @@ class G1GatesTest {
                 String inside = arm.group(1) + "    ";
                 for (int j = i + 1; j < lines.length && lines[j].startsWith(inside); j++) {
                     if (lines[j].trim().startsWith(arm.group(2) + " = ")) return true;
+                }
+            }
+            return false;
+        }
+
+        /** Whether a statement directly in a {@code default} arm block declares a local named like a field (#291). */
+        static boolean shadowsInDefaultBlock(String[] lines, Set<String> fields) {
+            for (int i = 0; i < lines.length; i++) {
+                Matcher arm = DEFAULT_BLOCK.matcher(lines[i]);
+                if (!arm.matches()) continue;
+                String inside = arm.group(1) + "    ";
+                for (int j = i + 1; j < lines.length && lines[j].startsWith(inside); j++) {
+                    if (lines[j].charAt(inside.length()) == ' ') continue;
+                    Matcher declaration = DECLARATION.matcher(lines[j].substring(inside.length()));
+                    if (declaration.find() && fields.contains(declaration.group(1))) return true;
                 }
             }
             return false;

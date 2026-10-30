@@ -66,7 +66,7 @@ tasks.register('rediscoveryDiffTest', Test) {
     def profile = providers.gradleProperty('difftest.profile')
     if (profile.isPresent()) systemProperty 'difftest.profile', profile.get()
     // -Pdifftest.form=runtime passes over cases whose only disagreement is a rejection; =value (=failure) over all but
-    // value-against-value (value-against-failure) disagreements.
+    // value-against-value (value-against-failure) disagreements; =rejection over cases that no configuration rejects.
     def form = providers.gradleProperty('difftest.form')
     if (form.isPresent()) systemProperty 'difftest.form', form.get()
     outputs.upToDateWhen { false }

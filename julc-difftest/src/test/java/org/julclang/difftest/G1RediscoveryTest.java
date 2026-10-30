@@ -2,6 +2,8 @@ package org.julclang.difftest;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,31 +31,73 @@ class G1RediscoveryTest {
     }
 
     private void pinned(String name, Verdict.Kind defect) {
-        counterfactualAgrees(saved("diverge-g1-" + name), saved("agree-g1-" + name + "-counterfactual"), defect);
+        pinned("diverge-g1-" + name, "agree-g1-" + name + "-counterfactual", defect);
     }
 
-    /** #280: the helper gets an unused parameter. */
+    private void pinned(String reproducer, String counterfactual, Verdict.Kind defect) {
+        counterfactualAgrees(saved(reproducer), saved(counterfactual), defect);
+    }
+
+    /**
+     * #280: the helper gets an unused parameter. The cases found by earlier G1 revisions stay (ADR-063 D8): G1 r1's,
+     * then one per revision that found another program.
+     */
     @Test
     void zeroArgumentHelper() {
-        pinned("280-uncalled-zero-arg-helper", Verdict.Kind.MISMATCH);
+        pinned("diverge-g1-280-uncalled-zero-arg-helper", "agree-g1-280-counterfactual", Verdict.Kind.MISMATCH);
+        pinned("diverge-g1-280-uncalled-zero-arg-helper-r2", "agree-g1-280-uncalled-zero-arg-helper-counterfactual",
+                Verdict.Kind.MISMATCH);
+        for (String revision : List.of("-r3", "-r5")) pinned("280-uncalled-zero-arg-helper" + revision, Verdict.Kind.MISMATCH);
     }
 
     /** #146: the traced operand is bound to a local before the comparison. */
     @Test
     void tracedComparisonOperand() {
-        pinned("146-traced-compare-operand", Verdict.Kind.MISMATCH);
+        pinned("diverge-g1-146-traced-compare-operand", "agree-g1-146-counterfactual", Verdict.Kind.MISMATCH);
+        pinned("diverge-g1-146-traced-compare-operand-r2", "agree-g1-146-traced-compare-operand-counterfactual",
+                Verdict.Kind.MISMATCH);
+        for (String revision : List.of("-r3", "-r4", "-r5")) pinned("146-traced-compare-operand" + revision, Verdict.Kind.MISMATCH);
     }
 
     /** #209, runtime form: the branch local is renamed apart; UPLC fails reading the field through the wrong layout. */
     @Test
     void localShadowingAFieldMakesAReadFail() {
-        pinned("209-runtime-misread", Verdict.Kind.MISMATCH);
+        for (String revision : List.of("", "-r3", "-r4", "-r5")) pinned("209-runtime-misread" + revision, Verdict.Kind.MISMATCH);
     }
 
     /** #209, silent form (the issue's own shape): the read returns another component of the same type. */
     @Test
     void localShadowingAFieldMakesAReadReturnAnotherComponent() {
-        pinned("209-silent-misread", Verdict.Kind.MISMATCH);
+        for (String revision : List.of("", "-r3", "-r4", "-r5")) pinned("209-silent-misread" + revision, Verdict.Kind.MISMATCH);
+    }
+
+    /** #291, silent and runtime forms: the default arm block's local is renamed apart. */
+    @Test
+    void defaultBlockLocalMakesAReadMisread() {
+        pinned("291-silent-misread", Verdict.Kind.MISMATCH);
+        pinned("291-runtime-misread", Verdict.Kind.MISMATCH);
+    }
+
+    /**
+     * #291, second symptom: two loops in a default arm block of a switch passed to a method are rejected with a
+     * diagnostic that has no code; the counterfactual assigns the switch to a local first.
+     */
+    @Test
+    void defaultBlockLoopsInAnArgumentAreRejected() {
+        pinned("reject-g1-291-default-block-loops", "agree-g1-291-default-block-loops-counterfactual", Verdict.Kind.REJECTED);
+        RUNNER.run(saved("reject-g1-291-default-block-loops")).results().values().forEach(result -> {
+            var rejected = (Observation.Rejected) result.uplc();
+            assertEquals(null, rejected.code());
+            assertTrue(rejected.message().startsWith("Unbound variable"), rejected.message());
+        });
+    }
+
+    /** #291, rejection form: JuLC rejects the read of the field the default arm block's local named (JULC0055). */
+    @Test
+    void defaultBlockLocalMakesAReadUnresolvable() {
+        pinned("reject-g1-291-unresolved-read", "agree-g1-291-unresolved-read-counterfactual", Verdict.Kind.REJECTED);
+        RUNNER.run(saved("reject-g1-291-unresolved-read")).results().values().forEach(result ->
+                assertEquals("JULC0055", ((Observation.Rejected) result.uplc()).code()));
     }
 
     /**

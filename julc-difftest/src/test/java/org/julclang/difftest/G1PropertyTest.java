@@ -98,7 +98,7 @@ class G1PropertyTest {
     @Tag("rediscovery")
     void generatedProgramsAgreeUnderProfile(@ForAll("plans") List<Integer> plan, @ForAll("inputs") List<Integer> inputs) {
         var profile = profile(System.getProperty("difftest.profile", "DEFAULT"));
-        // -Pdifftest.form=runtime, =value or =failure looks past other forms of the defect (review of M2, F61).
+        // -Pdifftest.form=runtime, =value, =failure or =rejection looks past other forms of the defect (review of M2, F61).
         String form = System.getProperty("difftest.form", "any");
         if (!form.equals("any") && otherForm(plan, inputs, profile, form)) return;
         check("G1PropertyTest rediscovery", plan, inputs, profile);
@@ -107,7 +107,8 @@ class G1PropertyTest {
     /**
      * Whether a case that disagrees does so in another form than {@code form}: {@code runtime}, where some
      * configuration runs and disagrees (not only rejections); {@code value}, where the JVM and some configuration
-     * both return a value; or {@code failure}, where the JVM returns a value and some configuration fails.
+     * both return a value; {@code failure}, where the JVM returns a value and some configuration fails; or
+     * {@code rejection}, where some configuration rejects the program.
      */
     private static boolean otherForm(List<Integer> plan, List<Integer> inputs, G1.Profile profile, String form) {
         var program = G1.decode(plan, profile);
@@ -121,11 +122,12 @@ class G1PropertyTest {
                     && r.uplc() instanceof Observation.Value);
             case "failure" -> disagreeing.stream().noneMatch(r -> r.jvm() instanceof Observation.Value
                     && r.uplc() instanceof Observation.Failure);
-            default -> throw new IllegalArgumentException("difftest.form is any, runtime, value or failure: " + form);
+            case "rejection" -> disagreeing.stream().noneMatch(r -> r.verdict().kind() == Verdict.Kind.REJECTED);
+            default -> throw new IllegalArgumentException("difftest.form is any, runtime, value, failure or rejection: " + form);
         };
     }
 
-    /** A named profile ({@code DEFAULT}, {@code REDISCOVER_209}, {@code _280}, {@code _146}) or a profile's text. */
+    /** A named profile ({@code DEFAULT}, {@code REDISCOVER_209}, {@code _280}, {@code _146}, {@code _162}, {@code _291}, {@code _291_LOOPS}) or a profile's text. */
     static G1.Profile profile(String name) {
         return switch (name) {
             case "DEFAULT" -> G1.Profile.DEFAULT;
@@ -133,6 +135,8 @@ class G1PropertyTest {
             case "REDISCOVER_280" -> G1.Profile.REDISCOVER_280;
             case "REDISCOVER_146" -> G1.Profile.REDISCOVER_146;
             case "REDISCOVER_162" -> G1.Profile.REDISCOVER_162;
+            case "REDISCOVER_291" -> G1.Profile.REDISCOVER_291;
+            case "REDISCOVER_291_LOOPS" -> G1.Profile.REDISCOVER_291_LOOPS;
             default -> G1.Profile.parse(name);
         };
     }

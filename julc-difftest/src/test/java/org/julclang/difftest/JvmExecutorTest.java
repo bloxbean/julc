@@ -4,6 +4,7 @@ import org.julclang.core.PlutusData;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -145,6 +146,63 @@ class JvmExecutorTest {
                 "m", List.of(new PlutusData.ConstrData(0, List.of())), tags, null)));
         assertTrue(e.getMessage().contains("the JVM rejects javac's class") && e.getMessage().contains("VerifyError"),
                 e.getMessage());
+        // Raised while linking, before any initializer or the method runs.
+        assertTrue(Arrays.stream(e.getCause().getStackTrace()).anyMatch(frame -> frame.getMethodName().equals("link")
+                && frame.getClassName().equals(JvmExecutor.class.getName())), "raised while linking");
+    }
+
+    private static final String INITIALIZERS = """
+            import java.math.BigInteger;
+            import org.julclang.stdlib.Builtins;
+
+            public class Probe {
+                static final BigInteger T = Builtins.unIData(Builtins.trace("init", Builtins.iData(BigInteger.ONE)));
+                static final BigInteger F = %s;
+
+                public static BigInteger m(BigInteger a) {
+                    return a.add(F);
+                }
+            }
+            """;
+
+    /**
+     * Initialization is part of the run: a static initializer that throws is the program's failure, with the traces
+     * before it, not a class the JVM rejects (review of M3 part 1, F74, F95).
+     */
+    @Test
+    void aFailingStaticInitializerIsAFailure() {
+        for (String init : List.of("Builtins.unIData(Builtins.error())", "BigInteger.ONE.divide(BigInteger.ZERO)")) {
+            var diffCase = new DiffCase("initializer", INITIALIZERS.formatted(init), "Probe", "m", List.of(integer(1)));
+            var failure = assertInstanceOf(Observation.Failure.class, new JvmExecutor(5_000).run(diffCase), init);
+            assertEquals(List.of("init"), failure.traces(), init);
+            assertTrue(!init.contains("divide") || failure.detail().contains("ArithmeticException"), failure.detail());
+            var report = DiffRunner.standard().run(diffCase);
+            assertTrue(report.all(Verdict.Kind.AGREE), report.describe());
+        }
+    }
+
+    /** So is a member class's failing initializer, met when the method runs, and a later use of that class. */
+    @Test
+    void aMemberClassWhoseInitializerFailsIsAFailure() {
+        var diffCase = new DiffCase("member initializer", """
+                import java.math.BigInteger;
+
+                public class Probe {
+                    record R(BigInteger v) {
+                        static final BigInteger Z = BigInteger.ONE.divide(BigInteger.ZERO);
+                    }
+
+                    public static BigInteger m(BigInteger a) {
+                        try {
+                            return R.Z;
+                        } catch (ExceptionInInitializerError e) {
+                            return R.Z.add(a);
+                        }
+                    }
+                }
+                """, "Probe", "m", List.of(integer(1)));
+        var failure = assertInstanceOf(Observation.Failure.class, new JvmExecutor(5_000).run(diffCase));
+        assertTrue(failure.detail().contains("ArithmeticException"), failure.detail());
     }
 
     @Test

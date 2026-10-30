@@ -2,34 +2,32 @@ format: 3
 name: a branch local shadowing a field in a loop makes a later field read fail (#209)
 class: Probe
 method: m
-profile: G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
-arg: 01
-arg: 20
-arg: 9f22252525ff
-arg: d8799f25d87980ff
+profile: G1 r2 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON
+arg: 02
+arg: 05
+arg: 9f0100ff
 expect: DIVERGE #209 Value/Failure
-jvm: Value d8799f24d87980ff []
+jvm: Value d8799fd8798024ff []
 uplc: Failure []
-note: Rediscovered by the G1 r5 campaign under REDISCOVER_209 with -Pdifftest.form=failure (ADR-066 D10.1), the
-note: shrunk reproducer as found. The branch local R1 w keeps its type after the if, so w.w() reads the field R0 w
-note: through R1's layout: index 0, an integer, where R0 has its Bool at index 1. UPLC fails with UnConstrData at
-note: every level. Provisional until #209 is fixed.
+note: Rediscovered by the G1 r2 campaign under REDISCOVER_209 (ADR-066 D10.1, M2), the shrunk reproducer as found.
+note: The branch local R1 v keeps its type after the if, so v.w() reads the field R0 v through R1's layout: index 0,
+note: a Bool, where R0 has its integer at index 1. UPLC fails with UnIData at every level. Provisional until #209 is fixed.
 found.by: G1PropertyTest rediscovery
-found.generator: G1 r5
-found.plan: 0,0,0,0,0,0,0,1,0,0,2,0,0,0,0,0,0,1,2,2,1,0,0,2,0,0,0,0,199,164,987,167,6,102,30,4,306,94,146,94,11,116,180,28,999,94,4,0,116,532,259,36,2,262,109,38,70,534,802,6,936,0,134,569,6,9
-found.inputs: 7,109,289,29
+found.generator: G1 r2
+found.plan: 0,0,0,0,3,0,0,0,0,0,0,0,0,1,0,2,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,1,0,0,0,0,0,0,0,1
+found.inputs: 8,37,27,20,32,80,90,13,326,715,36,285,723,887,47,89,215,493,375,28,2,11,32,35,199,280,169,34,9,82,7,970,74,8,30,0,859,744,874,13
 found.seed: 20261030
-found.compiler: 0.1.0-pre20 v0.1.0-pre20-43-gd954df360526-dirty
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-37-gf555b5e7cee9-dirty
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;
 import org.julclang.stdlib.Builtins;
 
 public class Probe {
-    record R1(boolean w, BigInteger v) {}
-    record R0(BigInteger v, boolean w) {}
+    record R1(BigInteger w, boolean v) {}
+    record R0(boolean v, BigInteger w) {}
 
-    static final R0 w = new R0(BigInteger.valueOf(-4), true);
+    static final R0 v = new R0(false, BigInteger.valueOf(-5));
 
     static BigInteger t(String k, BigInteger v) {
         return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
@@ -39,19 +37,17 @@ public class Probe {
         return Builtins.unIData(Builtins.error());
     }
 
-    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, R0 v) {
-        boolean v1 = v.equals(new R0(a, a.compareTo(BigInteger.valueOf(-2)) == 0));
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger w = BigInteger.valueOf(-5);
         long i0 = 0;
-        while (i0 < 2) {
+        while (i0 < 1) {
             if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
-                R1 w = new R1(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0, BigInteger.valueOf(-5));
-                v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+                R1 v = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+                w = BigInteger.valueOf(-5);
             }
-            v1 = w.w();
-            v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
-            v1 = BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+            w = v.w();
             i0 = i0 + 1;
         }
-        return new R0(BigInteger.valueOf(-5), v1);
+        return new R0(w.compareTo(w) < 0, w);
     }
 }
