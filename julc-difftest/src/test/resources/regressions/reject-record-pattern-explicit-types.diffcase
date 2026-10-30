@@ -3,9 +3,10 @@ name: record patterns with explicit component types and a guard (R7)
 class: Probe
 method: m
 arg: 04
-expect: REJECT JULC0005
+expect: REJECT JULC0076
 note: ADR-067 R7: legal Java (4).
 note: ADR-067 M1 (interim): the not-exhaustive rejection is now coded, JULC0005; record patterns are still dropped until M2a/M2b, which set the final verdict. REJECT none at the base.
+note: ADR-067 M1 review (F35, interim): record-pattern labels are rejected with JULC0076 until M2a lowers them, so no label is dropped silently; M2a/M2b set the final verdict. Expectation before: REJECT JULC0005.
 ---
 import java.math.BigInteger;
 

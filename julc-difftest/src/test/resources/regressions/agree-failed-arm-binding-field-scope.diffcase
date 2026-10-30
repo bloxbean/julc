@@ -3,8 +3,9 @@ name: a failed arm's binding does not shadow a field a later arm reads (F9)
 class: Probe
 method: m
 arg: 20
-expect: AGREE
+expect: REJECT JULC0076
 note: ADR-067 F9: Java returns the field (99). At the base the record pattern is dropped, so JuLC agrees by accident.
+note: ADR-067 M1 review (F35, interim): record-pattern labels are rejected with JULC0076 until M2a lowers them, so no label is dropped silently; M2a/M2b set the final verdict. Expectation before: AGREE.
 ---
 import java.math.BigInteger;
 

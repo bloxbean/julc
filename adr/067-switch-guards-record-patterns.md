@@ -477,7 +477,14 @@ is a parity-corpus dimension (Verification 3):
   `Boolean` (`when 3`, accepted today; Evidence F13a; `Boolean` accepted per r4, F33), or a constant expression with value `false` (a literal, a constant variable such as a
   `static final boolean` or a `final` local initialized with a constant, a compound constant), is rejected with
   `JULC0072`. A constant `true` guard, in any of those forms, makes the label unguarded for exhaustiveness and
-  dominance.
+  dominance. *(M1 decision, review F28 and F52, agreed by both reviewers.)* The type is the guard's **Java type,
+  established from the source** before casts are erased and constants folded: literals, operators (a conditional by
+  both branches, so `true ? true : 0` is not `boolean`), casts, the declared types of locals, parameters and fields,
+  and the declared return types of the unit's methods; names and calls those rules leave open are typed from the symbol
+  table (generic returns such as `JulcList<Boolean>.head()` included). A guard whose type cannot be established as
+  `boolean`/`Boolean` is rejected with `JULC0072` (fail closed), and the message suggests a typed local or helper.
+  Constant expressions follow §15.29 exactly (casts, shifts, `String ==`, numeric promotion); a constant JuLC does not
+  model (floating point, division by zero) is rejected rather than classified.
 - **Effectively final guard variables** (§14.11.1, §4.12.4; revised in r3, F7): each name used but not declared in a
   guard is resolved to its declaration (by identity and scope, not by name). If that declaration is a local or
   parameter that occurs as the target of an assignment anywhere in its scope (in JuLC, only loops may reassign), the
@@ -901,6 +908,18 @@ Evidence must not come from the code under test: the oracle is javac and the JVM
    | Nested nominal `equals` (F16b, F16d) | `DIVERGE` T29 | `DIVERGE` T29 (retained) | — | D |
    | Erased nominal `equals` (E8, E11, E12) | `DIVERGE` T29 | `DIVERGE` (retained; open question 2) | — | D |
    | Out of scope, unchanged: generic record (K1), `switch` statement (G9), unnamed pattern (R5), nested sealed interfaces (M3, M4) | `REJECT none` | `REJECT none` (retained) | — | D (R5: the harness's javac 25 accepts `_`; javac 21.0.3 rejects it, P) |
+   | *M1 review rows.* A guard whose `signum` receiver is a traced call (F36; the receiver is evaluated twice, #146) | `DIVERGE` T12 (traces) | `DIVERGE` T12 (retained until #146) | — | D |
+   | A guard `Probe.ON` whose qualifier is a local named like the class (F50) | runs the first arm (M1 folded the field) | `REJECT JULC0072` (not folded; the component read cannot be typed, fail closed) | M1 | D |
+   | Guard `(Object) x instanceof C`, `C` in another family (F51) | runs the first arm (tags compared across families) | `REJECT JULC0072` | M1 | D |
+   | Guard `x instanceof C` across families, uncast (F51; javac rejects) | JuLC accepts | `REJECT JULC0072` | M1 | P |
+   | `default` declaring a local named like a field a guard reads (F53) | `REJECT JULC0072` (the local leaked) | `AGREE` | M1 | D |
+   | A colon group ending in `if` without `else` (F34) | `REJECT JULC0075` (unpinned) | `REJECT JULC0075` | M1 | D |
+   | Guards typed `PlutusData`, `Builtins.iData(...)`, `(Object) true`, `true ? true : 0`, `c ? true : 0` (F28, F52; javac rejects) | JuLC accepts | `REJECT JULC0072` | M1 | P |
+   | Constant guards `(boolean) false`, `"a" == "b"` (javac rejects) and `((true ? 2147483647 : 0L) + 1) > 0` (javac accepts, true) (F54) | accepted / `JULC0072` | `REJECT JULC0072` / accepted, unguarded | M1 | P and the parity corpus |
+   | Colon-group locals in nested switches: a pattern-variable conflict, a reassigned local in a guard (F55; javac rejects) | JuLC accepts | `REJECT JULC0083` / `JULC0073` | M1 | P |
+   | `case Other.A x` naming another declaration called `A` (F56; javac rejects) | JuLC accepts | `REJECT JULC0076` | M1 | P |
+   | Arrow rules and colon groups mixed, both orders (F57; javac rejects) | JuLC accepts | `REJECT JULC0075` | M1 | P |
+   | *Interim (F35):* every record-pattern row above (R1, H2, R2, R7, R4, F9, F30 ×2, `X(W(B(var v)))`, the parameterized component, `Pair`) | as listed | `REJECT JULC0076` ("not yet supported") between M1 and M2a, which sets the final verdicts listed | M1 → M2a | D |
 
    Every new reproducer from review is added as a row with its baseline, final expectation and checker.
 3. **Compile-time parity property (I9; revised in r3, F2, F5b, F13).** A generated corpus of small switches over a
@@ -1376,14 +1395,59 @@ utilities), and none declares a record implementing two interfaces; `julc-ledger
   skips). Byte stability and mutations as above (harness and mutants in a scratch directory, not committed).
 - **Related findings (new, out of scope).** `x.signum()` evaluates its receiver twice when the receiver is a call
   (`said(m, ONE).signum()` traces twice on-chain, once on the JVM); `compareTo` lowers the same way. A divergence in
-  traces and cost (T12-like), not in values; to be filed. JavaParser's JAVA_21 grammar rejects `case A x, B y` before
+  traces and cost (T12-like), not in values; tracked on #146, pinned in the review round below. JavaParser's JAVA_21 grammar rejects `case A x, B y` before
   JuLC's checks, as an uncoded parse error.
-- **Open points.** (1) A guard whose type JuLC cannot infer (PIR `DataType`, for example a generic call) is accepted
-  and fails at run time if it is not a Bool; javac would reject a non-boolean one. (2) The P suite and the parity
+- **Open points.** (1) *Superseded in the review round below:* a guard whose type cannot be established is now
+  rejected (M1 decision, D4). (2) The P suite and the parity
   corpus skip when javac 21.0.3 is not installed (CI); `-Pjulc.javac21.required=true` makes that a failure. (3) Truffle
   is not in the oracle tests (the existing switch suites run it only in `pairCaseTest`). (4) The F9 test uses a static
   field; an `@Param` field is the same name-resolution path but is not exercised (`compileMethod` has no `@Param`).
   (5) Docs, troubleshooting entries and release notes are M5.
+
+### M1 review round 1 (2026-10-30; Codex F50–F59, review F28, F29, F34–F36)
+
+Both reviews of `0e42ee9e` requested changes. Every finding is fixed; none needed a change to the accepted design
+beyond the deviation-4 decision, which both reviewers and the coordinator agreed (fail closed; recorded in D4).
+
+| Finding | Change |
+|---|---|
+| F28 (P2), F52 (P1): guards typed by the lowered PIR value | Guard type is now the **Java type from the source** (`SwitchPatternChecker.sourceType`): literals, operators (a conditional by both branches), casts before erasure, declared types of locals, parameters and fields, declared returns of the unit's methods; open names and calls typed from the symbol table. Not established ⇒ `JULC0072` with a "typed local or helper" suggestion. Checked before constants are folded, so `true ? true : 0` no longer folds to `true`. Accepted neighbours: `JulcList<Boolean>` `head()`/`get(i)`, a `Boolean` local, `boolean` parameter, `Boolean` helper, a conditional of booleans. |
+| F50 (P1): `Probe.ON` folded with a local named `Probe` | `JavaConstants` folds `T.F` only when `T` is a type in scope and no variable of that name obscures it (JLS 6.4.2), resolved by declaration. The probe is no longer folded; since JuLC cannot type a record component read as a field, it now fails closed (`JULC0072`). Pinned. |
+| F51 (P1): guard `instanceof` across sealed families | The operand's static type (a cast's target, else its resolved type) must be the target's sealed interface or one of its variants; another family is "incompatible types", an unknown or erased type (`Object`, `PlutusData`) is "not established". Both `JULC0072`. The target is resolved by declaration. Pinned (`(Object) x instanceof C`); the uncast form is a P row. |
+| F53 (P1): `default` locals leaked into later arms | `default` is compiled in its own scope on the guard-aware path. Oracle tests with a boolean field and with a default local of another type than the field the arms use. |
+| F54 (P1), F29 (P3): constant guards | New `JavaConstants` (JLS §15.29): primitive and `String` casts, shifts, `String ==` (interned constants), binary numeric promotion in arithmetic and conditionals, typed int/long overflow, `final` locals and fields (simple or type-qualified). Floating point and division by zero are rejected as unclassifiable (`JULC0072`), never guessed. `JULC0074` now applies only to pattern variables a guard introduces **when true** (JLS 6.3.1) or reads; `!(o instanceof A a2)` is accepted and its type test is a total dispatch. |
+| F55 (P1): colon-group locals | `resolveLocal` gives a colon group's locals Java's scope: the rest of its group, nested switches inside it, and later groups of the same switch. Conflicts, reassignment and `final` constants follow. |
+| F56 (P1): applicability by simple name | A qualified pattern type is resolved to its declaration and must be a permitted variant of exactly the selector's sealed interface (`JULC0076` otherwise), on both lowerings. An unqualified name keeps the base rule (I8). |
+| F57 (P2): mixed arrow and colon entries | `JULC0075` ("different case kinds"), both orders. |
+| F58 (P2): outer fields decoded again under an inner same-named field | On the guard-aware path, `x.f()` reuses the hygienic binding of the pattern scope that owns `x`, whatever inner scopes bind a field `f` (an inner `x` is `JULC0083`). The base path's lookup is unchanged (I8). Test: the PIR has as many `unIData` with a same-named inner field as with a differently named one. |
+| F59 (P2): two tests that did not exercise their hazard | The trace test traces inside the selector (`switch (pick(a))`). The size test now forces one `#case_next` join per `A limit` arm and asserts the join count from the PIR (1 to 12). |
+| F34 (P3): `if` without `else` in a colon group | Pinned (`REJECT JULC0075`), a diagnostics test, a corpus shape and a mutation. |
+| F35 (P3): record patterns still dropped | Interim: every record-pattern label is rejected with `JULC0076` ("not yet supported", M2a). Eleven pins moved to `REJECT JULC0076` with their earlier expectation kept as history; the `Pair` P row too; the two M2b U tests now assert the rejection. M2a replaces this. |
+| F36 (P3): receiver evaluated twice | Tracked on #146. A retained `DIVERGE` T12 pin: a guard `said(x.v()).signum() > 0` traces once on the JVM and twice on-chain. |
+
+**Evidence.**
+- **Tests** (`./gradlew :julc-compiler:test :julc-difftest:test --rerun -Pjulc.javac21.required=true`): julc-compiler 2,055,
+  0 failures (`SwitchGuardTest` 20, `SwitchDiagnosticsTest` 38, `SwitchMalformedDataTest` 11); julc-difftest 227, 0
+  failures (`RegressionCasesTest` 121 pins, five new; `Javac21ParityTest` 26 rows, fourteen new; `SwitchParityCorpusTest`).
+  `./gradlew build -PskipSigning=true`: success; 12,189 tests in all modules, 0 failures, 530 skipped (pre-existing).
+- **Parity corpus:** 1,044 programs (thirteen new guard kinds, an `if`-without-`else` group, both mixed orders): 126
+  accepted by javac 21.0.3 and JuLC (47 also run both ways at all four levels on four inputs, all agreeing), 909 rejected
+  by both, 9 rejected by JuLC on purpose: colon fall-through, grouped labels, the parameterized selector, the
+  `if`-without-`else` group, a guard binding introduced when true (`JULC0074`, D1), and the floating-point constant
+  `1.5 > 1.0` (`JULC0072`; **known over-rejection**: javac accepts it as the constant `true`). javac 21.0.3 and javac 25
+  `--release 21` agree on all of them.
+- **Known over-rejections (fail closed):** floating-point constant guards; `(Boolean)` or `(boolean)` casts of an
+  operand that is not boolean (a downcast from `Object`); guards whose leaf JuLC cannot type (a record component read
+  as a field, a nested switch whose arms read their own bindings); `instanceof` on an operand of unknown type.
+- **Byte stability** re-run against `fd605e77` exactly as before: 3,764 rows, 784 programs byte-identical, 0 changed,
+  0 newly rejected or accepted.
+- **Mutations:** all 17 detected — the eleven M1 mutations again, and six new ones: F50 fold a qualified constant
+  without resolving its qualifier (`qualifiedConstantNeedsATypeQualifier`); F51 drop the family check
+  (`guardInstanceofAcrossFamiliesOrOnAnUnknownType`); F52 type the guard by its lowered value (3 tests); F53 compile
+  `default` in the switch's scope (`defaultLocalsDoNotLeakIntoArms`, after its type-differing case was added: the
+  fail-closed typing masks the review's exact shape); F34 treat an `if` without `else` as unable to complete normally
+  (`colonGroupEndingInIfWithoutElse`); F58 re-extract the outer field (`nestedSwitchReusesTheOuterDecodedField`, after
+  its count was corrected to the PIR's `unIData` spelling).
 
 ## Revision history
 

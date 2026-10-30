@@ -175,12 +175,112 @@ class SwitchDiagnosticsTest {
                             case A x when 3 -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0072", "constant of type int");
+                """), "JULC0072", "is numeric");
         rejected(switchOver("""
                             case A x when x.v() -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
                 """), "JULC0072", "must have type boolean or Boolean");
+    }
+
+    // ---- JULC0072: the guard's Java type, established from the source (F28, F52; M1 decision: fail closed)
+
+    @Test
+    void guardsWhoseJavaTypeIsNotBoolean() {
+        rejected(probe(S + """
+                    static BigInteger m(BigInteger a, PlutusData d) {
+                        S s = new A(a);
+                        return switch (s) { case A x when d -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;"),
+                "JULC0072", "not boolean");
+        rejected(switchOver("""
+                            case A x when Builtins.iData(x.v()) -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "boolean");
+        rejected(switchOver("""
+                            case A x when (Object) true -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "not boolean");
+        rejected(switchOver("""
+                            case A x when (true ? true : 0) -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "not boolean");
+        rejected(switchOver("""
+                            case A x when (x.v().signum() > 0 ? true : 0) -> BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0072", "not boolean");
+    }
+
+    @Test
+    void booleanGuardsTypedByDeclarationOrReturnType() {
+        accepted(probe(S + """
+                    static Boolean big(BigInteger v) { return v.compareTo(BigInteger.TEN) > 0; }
+                    static BigInteger m(BigInteger a, boolean flag, JulcList<Boolean> fs) {
+                        S s = new A(a);
+                        Boolean boxed = flag;
+                        return switch (s) {
+                            case A x when flag -> BigInteger.ONE;
+                            case A x when boxed -> BigInteger.TWO;
+                            case A x when big(x.v()) && !flag -> BigInteger.TEN;
+                            case A x when fs.head() -> BigInteger.valueOf(3);
+                            case A x when fs.get(0) -> BigInteger.valueOf(4);
+                            case A x when (flag ? big(x.v()) : true) -> BigInteger.valueOf(5);
+                            default -> BigInteger.ZERO;
+                        };
+                    }
+                """));
+    }
+
+    // ---- JULC0072: constant guards by JLS 15.29 (F54, F29)
+
+    @Test
+    void constantGuardsFollowJls1529() {
+        // Constant true: the label is unguarded, so it covers A.
+        for (String guard : new String[]{"(boolean) true", "(1 << 1) == 2", "\"a\" == \"a\"",
+                "((true ? 2147483647 : 0L) + 1) > 0", "(int) 3L == 3", "'a' < 'b'", "(byte) 200 == -56"}) {
+            accepted(switchOver("""
+                                case A x when %s -> BigInteger.ONE;
+                                case B y -> BigInteger.ZERO;
+                    """.formatted(guard)));
+        }
+        // Constant false: rejected.
+        for (String guard : new String[]{"(boolean) false", "\"a\" == \"b\"", "((true ? 2147483647 : 0) + 1) > 0"}) {
+            rejected(switchOver("""
+                                case A x when %s -> BigInteger.ONE;
+                                case A x -> BigInteger.TWO;
+                                case B y -> BigInteger.ZERO;
+                    """.formatted(guard)), "JULC0072", "value false");
+        }
+        // A constant JuLC does not model exactly is rejected, never classified (known over-rejection: javac accepts).
+        rejected(switchOver("""
+                            case A x when 1.5 > 1.0 -> BigInteger.ONE;
+                            case B y -> BigInteger.ZERO;
+                """), "JULC0072", "cannot evaluate exactly");
+    }
+
+    @Test
+    void qualifiedConstantNeedsATypeQualifier() {
+        // F50: 'Probe' is a local here, which obscures the class, so Probe.ON is the record component (false in Java),
+        // never the constant field. It used to fold to true and run the first arm; now it is not folded, and since
+        // JuLC cannot type a component read as a field, the guard fails closed.
+        rejected(probe(S + """
+                    record Flags(boolean ON) {}
+                    static final boolean ON = true;
+                    static BigInteger m(BigInteger a) {
+                        Flags Probe = new Flags(false);
+                        S s = new A(a);
+                        return switch (s) { case A x when Probe.ON -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
+                    }
+                """), "JULC0072", "Probe.ON");
+        // With the class as the qualifier, Probe.ON is the constant true: the label is unguarded and covers A.
+        accepted(probe(S + """
+                    static final boolean ON = true;
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when Probe.ON -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
+                    }
+                """));
     }
 
     // ---- JULC0073: effectively final, by declaration
@@ -250,6 +350,55 @@ class SwitchDiagnosticsTest {
     // ---- JULC0074: pattern variable introduced by a guard
 
     @Test
+    void patternVariableIntroducedOnlyWhenFalseIsAccepted() {
+        // F29: !(o instanceof A a2) introduces a2 when false, so it is not in scope in the arm (JLS 6.3.1).
+        accepted(probe(S + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        S o = new B(a);
+                        return switch (s) { case A x when !(o instanceof A a2) -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
+                    }
+                """));
+        rejected(probe(S + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        S o = new B(a);
+                        return switch (s) { case A x when !(o instanceof A a2) || a2.v().signum() > 0 -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
+                    }
+                """), "JULC0074", "'a2'");
+    }
+
+    // ---- guard instanceof: the operand's family (F51)
+
+    @Test
+    void guardInstanceofAcrossFamiliesOrOnAnUnknownType() {
+        String t = """
+                    sealed interface T permits C, D {}
+                    record C(BigInteger w) implements T {}
+                    record D(BigInteger w) implements T {}
+                """;
+        rejected(probe(S + t + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when (Object) x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "not established as T");
+        rejected(probe(S + t + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case A x when x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0072", "incompatible types");
+        rejected(probe(S + t + """
+                    static BigInteger m(BigInteger a, PlutusData d) {
+                        S s = new A(a);
+                        return switch (s) { case A x when d instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;"),
+                "JULC0072", "not established as T");
+    }
+
+    @Test
     void guardIntroducesPatternVariable() {
         rejected(probe(S + """
                     static BigInteger m(BigInteger a) {
@@ -301,6 +450,104 @@ class SwitchDiagnosticsTest {
                             case A x, B y -> BigInteger.ONE;
                 """), "m"));
         assertTrue(error.getMessage().contains("Parse error"), error.getMessage());
+    }
+
+    @Test
+    void colonGroupEndingInIfWithoutElse() {
+        // F34: legal Java that falls through when the condition is false.
+        rejected(switchOver("""
+                            case A x: if (x.v().signum() > 0) { yield BigInteger.ONE; }
+                            default: yield BigInteger.TWO;
+                """), "JULC0075", "fall through");
+    }
+
+    @Test
+    void mixedCaseKinds() {
+        // F57, both orderings (javac: different case kinds used in the switch).
+        rejected(switchOver("""
+                            case A x when x.v().signum() > 0 -> BigInteger.ONE;
+                            default: yield BigInteger.TWO;
+                """), "JULC0075", "mixes colon groups and arrow rules");
+        rejected(switchOver("""
+                            case A x: yield BigInteger.ONE;
+                            default -> BigInteger.TWO;
+                """), "JULC0075", "mixes colon groups and arrow rules");
+    }
+
+    @Test
+    void colonGroupLocalsHaveJavaScope() {
+        // F55: a colon group's local is in scope in a nested switch and in the later groups.
+        rejected(switchOver("""
+                            case A x:
+                                BigInteger y = x.v();
+                                S t = new B(y);
+                                yield switch (t) { case A p -> BigInteger.ONE; case B y -> BigInteger.TWO; };
+                            default: yield BigInteger.ZERO;
+                """), "JULC0083", "as a local variable");
+        rejected(switchOver("""
+                            case A x:
+                                BigInteger k = x.v();
+                                yield BigInteger.ONE;
+                            case B k: yield BigInteger.TWO;
+                """), "JULC0083", "'k'");
+        rejected(switchOver("""
+                            case A x:
+                                BigInteger lim = BigInteger.ZERO;
+                                while (lim.compareTo(BigInteger.TEN) < 0) { lim = lim.add(BigInteger.ONE); }
+                                S t = new A(lim);
+                                yield switch (t) { case A p when p.v().compareTo(lim) > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                            default: yield BigInteger.ZERO;
+                """), "JULC0073", "'lim'");
+        rejected(switchOver("""
+                            case A x:
+                                final boolean off = false;
+                                S t = new A(x.v());
+                                yield switch (t) { case A p when off -> BigInteger.ONE; case A p -> BigInteger.TWO; case B q -> BigInteger.ZERO; };
+                            default: yield BigInteger.ZERO;
+                """), "JULC0072", "value false");
+    }
+
+    @Test
+    void qualifiedPatternTypeOfAnotherDeclaration() {
+        // F56: Other.A is another record named A, on the guarded and the unguarded lowering.
+        String other = """
+                    static final class Other {
+                        sealed interface U permits A {}
+                        record A(BigInteger v) implements U {}
+                    }
+                """;
+        rejected(probe(S + other + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case Other.A x -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0076", "not applicable: Other.A");
+        rejected(probe(S + other + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case Other.A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """), "JULC0076", "not applicable: Other.A");
+        accepted(probe(S + other + """
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        return switch (s) { case Probe.A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
+                    }
+                """));
+    }
+
+    @Test
+    void recordPatternsAreRejectedUntilM2a() {
+        // F35: interim, so no record-pattern label is ever dropped silently.
+        rejected(switchOver("""
+                            case A(var v) -> v;
+                            default -> BigInteger.ZERO;
+                """), "JULC0076", "not yet supported");
+        rejected(switchOver("""
+                            case A(var v) when v.signum() > 0 -> v;
+                            case A x -> BigInteger.ONE;
+                            case B y -> BigInteger.ZERO;
+                """), "JULC0076", "not yet supported");
     }
 
     @Test

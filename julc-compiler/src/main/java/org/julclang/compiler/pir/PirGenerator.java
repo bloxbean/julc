@@ -88,7 +88,7 @@ public class PirGenerator {
      * {@code bindings.get(i)} holds the decoded field {@code i}: {@code #__pfield-<var>-<i>} on the base
      * lowering, a per-constructor name on the guard-aware one (ADR-067 D2), shared by that constructor's arms.
      */
-    private record PatternScope(String patternVar, Set<String> fieldNames, List<String> bindings) {}
+    private record PatternScope(String patternVar, Set<String> fieldNames, List<String> bindings, boolean hygienic) {}
 
     /** Above zero while a {@code switch} guard is lowered: instanceof is then a total dispatch (ADR-067 D1, F3). */
     private int guardDepth;
@@ -1609,6 +1609,12 @@ public class PirGenerator {
      * {@code case D d}'s {@code amount}). {@code patternScopes} is iterated innermost-first.
      */
     private PatternScope destructuredFieldOwner(String varName, String fieldName) {
+        // The guard-aware lowering binds fields under hygienic names that no inner binder can shadow, so its
+        // pattern variable reuses them even under an inner pattern with a same-named field (ADR-067 D2, I4, F58).
+        // An inner pattern variable of the same name is rejected (JULC0083), so the owner is unambiguous.
+        for (var ps : patternScopes) {
+            if (ps.hygienic() && ps.patternVar().equals(varName) && ps.fieldNames().contains(fieldName)) return ps;
+        }
         for (var ps : patternScopes) { // innermost first
             if (ps.fieldNames().contains(fieldName)) {
                 return ps.patternVar().equals(varName) ? ps : null;
@@ -2404,7 +2410,7 @@ public class PirGenerator {
                             + "cannot decide which variants apply or whether the switch is exhaustive");
         }
         // ADR-067 D4: every compile-time rule JuLC owns, on the source, before anything is lowered.
-        var model = SwitchPatternChecker.check(se, sumType);
+        var model = SwitchPatternChecker.check(se, sumType, typeResolver);
         if (model.guarded()) {
             return generateGuardedSwitch(selector, sumType, model);
         }
@@ -2449,7 +2455,7 @@ public class PirGenerator {
                     // var.field() reuse is restricted to this variable (see resolveRecordFieldAccess).
                     patternScopes.push(new PatternScope(varName, fieldNames,
                             java.util.stream.IntStream.range(0, ctorFields.size())
-                                    .mapToObj(fi -> destructuredFieldBinding(varName, fi)).toList()));
+                                    .mapToObj(fi -> destructuredFieldBinding(varName, fi)).toList(), false));
 
                     // Generate body from the entry's statements
                     PirTerm bodyTerm = generateSwitchEntryBody(entry);
@@ -2515,7 +2521,16 @@ public class PirGenerator {
         }
 
         // default and every arm are compiled in the switch's scope; an arm adds only its own bindings (F9).
-        PirTerm defaultBody = model.defaultEntry() == null ? null : generateSwitchEntryBody(model.defaultEntry());
+        PirTerm defaultBody = null;
+        if (model.defaultEntry() != null) {
+            // Its own scope: locals that default declares are not visible to the arms compiled after it (F53).
+            symbolTable.pushScope();
+            try {
+                defaultBody = generateSwitchEntryBody(model.defaultEntry());
+            } finally {
+                symbolTable.popScope();
+            }
+        }
         record CompiledArm(SwitchPatternChecker.Arm arm, PirTerm guard, PirTerm body) {
         }
         var compiled = new ArrayList<CompiledArm>();
@@ -2529,7 +2544,7 @@ public class PirGenerator {
                 fieldNames.add(ctor.fields().get(i).name());
             }
             symbolTable.define(arm.patternVar(), new PirType.RecordType(arm.variant(), ctor.fields()));
-            patternScopes.push(new PatternScope(arm.patternVar(), fieldNames, bindings));
+            patternScopes.push(new PatternScope(arm.patternVar(), fieldNames, bindings, true));
             try {
                 PirTerm guard = arm.guard() == null ? null : generateGuard(arm);
                 compiled.add(new CompiledArm(arm, guard, generateSwitchEntryBody(arm.entry())));
@@ -2616,11 +2631,14 @@ public class PirGenerator {
     }
 
     /**
-     * A guard's PIR (ADR-067 D1). Inside it, {@code instanceof} on a sealed type is a total dispatch. The guard
-     * must be {@code boolean} or {@code Boolean} (JULC0072); a guard whose type JuLC cannot infer is accepted and,
-     * if it is not a Bool at run time, fails there.
+     * A guard's PIR (ADR-067 D1). Inside it, {@code instanceof} on a sealed type is a total dispatch. The guard must
+     * be {@code boolean} or {@code Boolean} by its Java type, established from the source before casts are erased
+     * (JULC0072, F28, F52); a guard whose type cannot be established is rejected (fail closed, M1 decision). Names
+     * and calls the source rules leave open are typed from the symbol table and the declared return types; a guard
+     * that is itself such a leaf may also be typed by its lowered term.
      */
     private PirTerm generateGuard(SwitchPatternChecker.Arm arm) {
+        var type = SwitchPatternChecker.sourceType(arm.guard(), this::guardLeafType);
         PirTerm guard;
         guardDepth++;
         try {
@@ -2628,17 +2646,38 @@ public class PirGenerator {
         } finally {
             guardDepth--;
         }
-        var type = typeResolver.resolveNamed(inferPirType(guard));
-        if (type instanceof PirType.DataType) {
-            type = typeResolver.resolveNamed(resolveExpressionType(arm.guard()));
+        if (type == SwitchPatternChecker.JType.UNKNOWN && isGuardLeaf(arm.guard())
+                && typeResolver.resolveNamed(inferPirType(guard)) instanceof PirType.BoolType) {
+            type = SwitchPatternChecker.JType.BOOLEAN;
         }
-        if (!(type instanceof PirType.BoolType) && !(type instanceof PirType.DataType)) {
+        if (type != SwitchPatternChecker.JType.BOOLEAN) {
             throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(arm.guard()),
-                    "case " + arm.pattern() + " when " + arm.guard(),
-                    "a guard must have type boolean or Boolean, but '" + arm.guard() + "' has type "
-                            + LibraryMethodRegistry.pirTypeName(type));
+                    SwitchPatternChecker.labelText(arm.entry()), SwitchPatternChecker.notBoolean(arm.guard(), type));
         }
         return guard;
+    }
+
+    /** The Java type of a guard leaf (a name or call the source rules leave open), from the symbol table. */
+    private SwitchPatternChecker.JType guardLeafType(Expression leaf) {
+        PirType type;
+        try {
+            type = typeResolver.resolveNamed(resolveExpressionType(leaf));
+        } catch (CompilerException | IllegalArgumentException e) {
+            return SwitchPatternChecker.JType.UNKNOWN;
+        }
+        return switch (type) {
+            case PirType.BoolType ignored -> SwitchPatternChecker.JType.BOOLEAN;
+            case PirType.IntegerType ignored -> SwitchPatternChecker.JType.NUMERIC;
+            case PirType.StringType ignored -> SwitchPatternChecker.JType.STRING;
+            case PirType.DataType ignored -> SwitchPatternChecker.JType.UNKNOWN;
+            default -> SwitchPatternChecker.JType.OTHER;
+        };
+    }
+
+    private static boolean isGuardLeaf(Expression guard) {
+        var inner = guard;
+        while (inner instanceof EnclosedExpr enclosed) inner = enclosed.getInner();
+        return inner instanceof MethodCallExpr || inner instanceof NameExpr || inner instanceof FieldAccessExpr;
     }
 
     private PirTerm generateSwitchEntryBody(com.github.javaparser.ast.stmt.SwitchEntry entry) {
@@ -2671,7 +2710,7 @@ public class PirGenerator {
     }
 
     private PirTerm generateInstanceOf(InstanceOfExpr ioe) {
-        if (guardDepth > 0 && ioe.getPattern().isEmpty()) {
+        if (guardDepth > 0) {
             return generateGuardInstanceOf(ioe);
         }
         // For pattern matching: expr instanceof TypeName varName
@@ -2709,13 +2748,38 @@ public class PirGenerator {
      * instead of selecting a later arm (I5). Outside guards, instanceof keeps its tag comparison.
      */
     private PirTerm generateGuardInstanceOf(InstanceOfExpr ioe) {
-        var type = ioe.getType();
-        var typeName = type.isClassOrInterfaceType() ? type.asClassOrInterfaceType().getNameAsString() : type.asString();
-        var sumType = typeResolver.lookupSumTypeForVariant(typeName);
+        // A pattern here introduces nothing the arm can see (the checker rejected those, JULC0074): only its type tests.
+        var type = ioe.getPattern().map(p -> p instanceof TypePatternExpr tpe ? (com.github.javaparser.ast.type.Type) tpe.getType() : null)
+                .orElse(ioe.getType());
+        if (type == null || !type.isClassOrInterfaceType()) {
+            throw guardInstanceOfError(ioe, "only a type test or type pattern naming a sealed-interface variant is supported");
+        }
+        var target = type.asClassOrInterfaceType();
+        var typeName = target.getNameAsString();
+        Optional<PirType.SumType> sumType;
+        try {
+            sumType = typeResolver.lookupSumTypeForVariant(typeResolver.resolveTypeWithScope(target));
+        } catch (CompilerException | IllegalArgumentException e) {
+            sumType = Optional.empty();
+        }
         if (sumType.isEmpty()) {
-            throw enrichedError("Unsupported instanceof pattern: " + ioe,
-                    "instanceof is supported only with sealed interface variants: if (x instanceof Variant v) { ... }",
-                    ioe);
+            throw guardInstanceOfError(ioe, target + " is not a variant of a sealed interface");
+        }
+        // Constructor tags are positions within one sealed interface, so the operand must be known to belong to
+        // the target's family; an operand of another family, or of an unknown or erased type, cannot be dispatched
+        // (F51). javac rejects the first; the second would read another family's tag.
+        var operandType = guardOperandType(ioe.getExpression());
+        var family = sumType.get();
+        boolean compatible = operandType instanceof PirType.SumType operandFamily && operandFamily.equals(family)
+                || operandType instanceof PirType.RecordType record && family.constructors().stream()
+                .anyMatch(c -> c.name().equals(record.name()) && c.fields().equals(record.fields()));
+        if (!compatible) {
+            throw guardInstanceOfError(ioe, operandType instanceof PirType.SumType || operandType instanceof PirType.RecordType
+                    ? "incompatible types: the operand is a " + LibraryMethodRegistry.pirTypeName(operandType)
+                    + ", which can never be a " + typeName
+                    : "the operand's type is not established as " + family.name()
+                    + " (constructor tags are only meaningful within one sealed interface); give it the type "
+                    + family.name() + " or one of its variants");
         }
         var scrutinee = generateExpression(ioe.getExpression());
         var constructors = sumType.get().constructors();
@@ -2728,6 +2792,24 @@ public class PirGenerator {
         PirTerm result = new PirTerm.DataMatch(selected, branches);
         typeInference.recordTermType(result, new PirType.BoolType());
         return result;
+    }
+
+    /** The static type of an instanceof operand in a guard: a cast's target, else the operand's resolved type. */
+    private PirType guardOperandType(Expression operand) {
+        var inner = operand;
+        while (inner instanceof EnclosedExpr enclosed) inner = enclosed.getInner();
+        try {
+            if (inner instanceof CastExpr cast) return typeResolver.resolveNamed(typeResolver.resolve(cast.getType()));
+            return typeResolver.resolveNamed(resolveExpressionType(inner));
+        } catch (CompilerException | IllegalArgumentException e) {
+            return new PirType.DataType();
+        }
+    }
+
+    private CompilerException guardInstanceOfError(InstanceOfExpr ioe, String reason) {
+        var entry = ioe.findAncestor(com.github.javaparser.ast.stmt.SwitchEntry.class);
+        return SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(ioe),
+                entry.map(SwitchPatternChecker::labelText).orElse(ioe.toString()), "'" + ioe + "': " + reason);
     }
 
     private PirTerm generateLambda(LambdaExpr le) {

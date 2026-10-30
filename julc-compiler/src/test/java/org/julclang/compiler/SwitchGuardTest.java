@@ -95,11 +95,21 @@ class SwitchGuardTest {
     }
 
     private static Object javaValue(Object arg) {
+        if (arg instanceof boolean[] flags) {
+            var values = new Boolean[flags.length];
+            for (int i = 0; i < flags.length; i++) values[i] = flags[i];
+            return JulcList.of(values);
+        }
         if (arg instanceof long[] list) return JulcList.of(Arrays.stream(list).mapToObj(BigInteger::valueOf).toArray(BigInteger[]::new));
         return BigInteger.valueOf((Long) arg);
     }
 
     private static PlutusData dataValue(Object arg) {
+        if (arg instanceof boolean[] flags) {
+            var values = new PlutusData[flags.length];
+            for (int i = 0; i < flags.length; i++) values[i] = PlutusData.constr(flags[i] ? 1 : 0);
+            return PlutusData.list(values);
+        }
         if (arg instanceof long[] list) return PlutusData.list(Arrays.stream(list).mapToObj(PlutusData::integer).toArray(PlutusData[]::new));
         return PlutusData.integer((Long) arg);
     }
@@ -244,10 +254,13 @@ class SwitchGuardTest {
                         // equals, not signum: signum evaluates its receiver twice (a pre-existing issue).
                         return said(message, BigInteger.ONE).equals(BigInteger.ONE) && value;
                     }
-                    static BigInteger m(BigInteger a) {
+                    static S pick(BigInteger a) {
                         BigInteger b = said("selector", a);
-                        S s = b.signum() >= 0 ? new A(b) : new B(b);
-                        return switch (s) {
+                        return b.signum() >= 0 ? new A(b) : new B(b);
+                    }
+                    static BigInteger m(BigInteger a) {
+                        // The selector itself traces: it must run once, before every guard and body (I1).
+                        return switch (pick(a)) {
                             case A x when check("guard 1", x.v().compareTo(BigInteger.TEN) > 0) -> said("body 1", BigInteger.ONE);
                             case A x when check("guard 2", x.v().signum() > 0) -> said("body 2", BigInteger.TWO);
                             case B y when check("guard 3", y.v().compareTo(BigInteger.valueOf(-10)) < 0) -> said("body 3", BigInteger.TEN);
@@ -255,6 +268,112 @@ class SwitchGuardTest {
                         };
                     }
                 """, in(20), in(5), in(0), in(-20), in(-5));
+    }
+
+    @Test
+    void defaultLocalsDoNotLeakIntoArms() throws Exception {
+        // F53: default is compiled first on the guard-aware path; its locals must not be visible to the arms.
+        matchesJava(S + """
+                    static BigInteger flag = BigInteger.valueOf(7);
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        return switch (s) {
+                            case A x when x.v().compareTo(flag) > 0 -> flag;
+                            default -> {
+                                BigInteger flag = BigInteger.TEN;
+                                yield flag;
+                            }
+                        };
+                    }
+                """, in(9), in(3), in(-3));
+        matchesJava(S + """
+                    static BigInteger flag = BigInteger.valueOf(7);
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        return switch (s) {
+                            case A x when x.v().compareTo(flag) > 0:
+                                yield flag;
+                            default:
+                                BigInteger other = BigInteger.TEN;
+                                yield other.add(flag);
+                        };
+                    }
+                """, in(9), in(3), in(-3));
+        // The review's shape: a boolean field read by a guard, and a default that declares a local of that name.
+        matchesJava(S + """
+                    static boolean flag = true;
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        return switch (s) {
+                            case A x when flag -> BigInteger.ONE;
+                            default -> {
+                                BigInteger flag = BigInteger.TEN;
+                                yield flag;
+                            }
+                        };
+                    }
+                """, in(9), in(-3));
+        // A default local of another type than the field the arms use: a leak would change how the arms compile.
+        matchesJava(S + """
+                    static BigInteger flag = BigInteger.valueOf(7);
+                    static BigInteger m(BigInteger a) {
+                        S s = a.signum() > 0 ? new A(a) : new B(a);
+                        return switch (s) {
+                            case A x when x.v().compareTo(flag) > 0 -> flag.add(BigInteger.ONE);
+                            default -> {
+                                boolean flag = a.signum() < 0;
+                                yield flag ? BigInteger.ONE : BigInteger.TWO;
+                            }
+                        };
+                    }
+                """, in(9), in(3), in(-3));
+    }
+
+    @Test
+    void booleanListElementsAsGuards() throws Exception {
+        // Accepted neighbours of the fail-closed guard typing (F28): generic returns typed Boolean.
+        matchesJava(S + """
+                    static BigInteger m(JulcList<Boolean> fs) {
+                        S s = new A(BigInteger.ONE);
+                        BigInteger first = switch (s) { case A x when fs.head() -> BigInteger.ONE; default -> BigInteger.TWO; };
+                        BigInteger second = switch (s) { case A x when fs.get(1) -> BigInteger.TEN; default -> BigInteger.ZERO; };
+                        return first.add(second);
+                    }
+                """, in((Object) new boolean[]{true, false}), in((Object) new boolean[]{false, true}));
+    }
+
+    @Test
+    void nestedSwitchReusesTheOuterDecodedField() {
+        // F58: an inner guarded pattern with a same-named field must not make x.v() decode the outer field again.
+        String template = """
+                    sealed interface S2 permits E, F {}
+                    record E(BigInteger %s) implements S2 {}
+                    record F(BigInteger z) implements S2 {}
+                    static BigInteger m(BigInteger a) {
+                        S s = new A(a);
+                        S2 t = new E(a);
+                        return switch (s) {
+                            case A x when x.v().signum() > 0 -> switch (t) {
+                                case E e when e.%s().signum() > 0 -> x.v().add(x.v());
+                                default -> x.v();
+                            };
+                            default -> BigInteger.ZERO;
+                        };
+                    }
+                """;
+        int sameName = count(pir(probe(S + template.formatted("v", "v"))), "(builtin unIData)");
+        int otherName = count(pir(probe(S + template.formatted("w", "w"))), "(builtin unIData)");
+        assertEquals(otherName, sameName, "x.v() under an inner pattern with a field v must reuse the outer binding");
+    }
+
+    private static String pir(String source) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m").pirFormatted();
+    }
+
+    private static int count(String text, String needle) {
+        int n = 0;
+        for (int i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + needle.length())) n++;
+        return n;
     }
 
     // ---- constant guards (JLS 15.29)
@@ -473,19 +592,21 @@ class SwitchGuardTest {
         var sizes = new ArrayList<Integer>();
         for (int n = 1; n <= 12; n++) {
             var arms = new StringBuilder();
-            for (int i = 0; i < n; i++) {
-                // Every arm reads the field 'limit' that the arm's own binding shadows, so each
-                // continuation is a join, not inlined: the worst case for size.
+            for (int i = 1; i <= n; i++) {
+                // The arm after each 'A limit' arm reads the field 'limit' that the binding shadows, so its
+                // continuation is a #case_next join, never inlined under the binder: the worst case for size.
                 arms.append("            case A limit when limit.v().compareTo(BigInteger.valueOf(").append(i)
-                        .append(")) == 0 -> limit.v().add(BigInteger.valueOf(").append(i).append("));\n");
-                arms.append("            case B q when q.v().compareTo(BigInteger.valueOf(").append(i)
+                        .append(")) == 0 -> limit.v();\n");
+                arms.append("            case A q when q.v().compareTo(BigInteger.valueOf(-").append(i)
                         .append(")) == 0 -> limit;\n");
             }
             var source = probe(S + "    static BigInteger limit = BigInteger.valueOf(99);\n"
                     + "    static BigInteger m(BigInteger a) {\n        S s = new A(a);\n        return switch (s) {\n"
                     + arms + "            default -> limit;\n        };\n    }\n");
-            var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m").program();
-            sizes.add(UplcFlatEncoder.encodeProgram(program).length);
+            var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m");
+            int joins = count(result.pirFormatted(), "(let #case_next");
+            assertEquals(n, joins, "one #case_next join per 'A limit' arm\n" + result.pirFormatted());
+            sizes.add(UplcFlatEncoder.encodeProgram(result.program()).length);
         }
         // Linear: every added pair of arms costs about the same; exponential growth would at least double it.
         var steps = new ArrayList<Integer>();

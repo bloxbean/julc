@@ -3,10 +3,11 @@ name: a record pattern followed by the same type pattern (H2, T28)
 class: Probe
 method: m
 arg: 03
-expect: DIVERGE T28 Value/Value
-jvm: Value 03 []
-uplc: Value 0a []
+expect: REJECT JULC0076
+recorded.jvm: Value 03 []
+recorded.base: Value 0a []
 note: ADR-067 H2: legal Java; the second arm is dead in Java.
+note: ADR-067 M1 review (F35, interim): record-pattern labels are rejected with JULC0076 until M2a lowers them, so no label is dropped silently; M2a/M2b set the final verdict. Expectation before: DIVERGE T28 Value/Value.
 ---
 import java.math.BigInteger;
 

@@ -143,14 +143,30 @@ class SwitchParityCorpusTest {
         guards.put("reassigned local", new String[]{"        BigInteger lim = BigInteger.ZERO;\n"
                 + "        while (lim.compareTo(n) < 0) { lim = lim.add(BigInteger.ONE); }\n", "lim.signum() > 0"});
         guards.put("Boolean method", new String[]{"", "big(x0.v())"});
+        // Review F54 and F29: JLS 15.29 constants, and guard types established from the source (F52).
+        guards.put("(boolean) true", new String[]{"", "(boolean) true"});
+        guards.put("(boolean) false", new String[]{"", "(boolean) false"});
+        guards.put("(1 << 1) == 2", new String[]{"", "(1 << 1) == 2"});
+        guards.put("\"a\" == \"a\"", new String[]{"", "\"a\" == \"a\""});
+        guards.put("\"a\" == \"b\"", new String[]{"", "\"a\" == \"b\""});
+        guards.put("promoted conditional", new String[]{"", "((true ? 2147483647 : 0L) + 1) > 0"});
+        guards.put("int conditional overflow", new String[]{"", "((true ? 2147483647 : 0) + 1) > 0"});
+        guards.put("(byte) cast", new String[]{"", "(byte) 200 == -56"});
+        guards.put("(Object) true", new String[]{"", "(Object) true"});
+        guards.put("true ? true : 0", new String[]{"", "(true ? true : 0)"});
+        guards.put("binding when false", new String[]{"", "!(s instanceof A a2)"});
+        guards.put("binding when true", new String[]{"", "s instanceof A a2", "JULC0074"});
+        guards.put("floating constant", new String[]{"", "1.5 > 1.0", "JULC0072"});
         var shapes = Map.of(
                 "A?,B", List.of("A?", "B"),
                 "A?,A,B", List.of("A?", "A", "B"),
                 "A?,D", List.of("A?", "D"));
         for (var guard : guards.entrySet()) {
             for (var shape : shapes.entrySet()) {
+                // A third element is the code JuLC rejects the guard with on purpose where javac accepts it.
+                String intended = guard.getValue().length > 2 ? guard.getValue()[2] : null;
                 programs.add(new Program("guard[" + guard.getKey() + "][" + shape.getKey() + "]",
-                        method(guard.getValue()[0], switchOf(shape.getValue(), false, guard.getValue()[1])), null, true));
+                        method(guard.getValue()[0], switchOf(shape.getValue(), false, guard.getValue()[1])), intended, true));
             }
         }
         // A for-each variable read by a guard (effectively final), and a loop-updated one (not).
@@ -198,6 +214,21 @@ class SwitchParityCorpusTest {
                 switch (s) {
                             case A x0: yield BigInteger.ONE;
                             case B x1: x1.v();
+                        }"""), null, false));
+        programs.add(new Program("colon[if without else falls through]", method("", """
+                switch (s) {
+                            case A x0: if (x0.v().signum() > 0) { yield BigInteger.ONE; }
+                            default: yield BigInteger.TWO;
+                        }"""), "JULC0075", false));
+        programs.add(new Program("mixed[arrow then colon]", method("", """
+                switch (s) {
+                            case A x0 when n.signum() > 0 -> BigInteger.ONE;
+                            default: yield BigInteger.TWO;
+                        }"""), null, false));
+        programs.add(new Program("mixed[colon then arrow]", method("", """
+                switch (s) {
+                            case A x0: yield BigInteger.ONE;
+                            default -> BigInteger.TWO;
                         }"""), null, false));
         programs.add(new Program("arrow[two patterns in one label]", method("", """
                 switch (s) {
@@ -301,9 +332,8 @@ class SwitchParityCorpusTest {
             if (code != null && !D4_CODES.contains(code) && !code.equals(PARSE_ERROR)) {
                 problems.add(program.name() + ": JuLC rejects with " + code + ", not a D4 code");
             }
-            if (program.intended() != null) {
+            if (program.intended() != null && verdict.accepted()) {
                 intended++;
-                if (!verdict.accepted()) problems.add(program.name() + ": javac 21.0.3 should accept it, " + verdict);
                 if (!program.intended().equals(code)) problems.add(program.name() + ": expected " + program.intended() + ", got " + code);
                 continue;
             }

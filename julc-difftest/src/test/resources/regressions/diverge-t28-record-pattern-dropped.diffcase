@@ -4,10 +4,11 @@ class: Probe
 method: m
 arg: 22
 arg: 00
-expect: DIVERGE T28 Value/Value
-jvm: Value 22 []
-uplc: Value 3862 []
+expect: REJECT JULC0076
+recorded.jvm: Value 22 []
+recorded.base: Value 3862 []
 note: ADR-067 R1.
+note: ADR-067 M1 review (F35, interim): record-pattern labels are rejected with JULC0076 until M2a lowers them, so no label is dropped silently; M2a/M2b set the final verdict. Expectation before: DIVERGE T28 Value/Value.
 ---
 import java.math.BigInteger;
 

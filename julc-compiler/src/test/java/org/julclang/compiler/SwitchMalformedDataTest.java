@@ -81,6 +81,12 @@ class SwitchMalformedDataTest {
         }
     }
 
+    private static void assertRecordPatternRejected(String source) {
+        var error = assertThrows(CompilerException.class,
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m"));
+        assertEquals("JULC0076", error.diagnostics().getFirst().code(), error.getMessage());
+    }
+
     // ---- M1 rows (F5a, F11, F3)
 
     /**
@@ -141,7 +147,10 @@ class SwitchMalformedDataTest {
 
     // ---- M2b rows (malformed nested tags; lenient field contents)
 
-    /** A nested component with an out-of-range tag. Base: the record pattern is dropped, so a later arm runs (2). */
+    /**
+     * A nested component with an out-of-range tag. Base: the record pattern is dropped, so a later arm runs (2).
+     * M1 (interim, F35): record patterns are rejected with JULC0076 until M2a; M2b makes this fail at run time.
+     */
     @Test
     void nestedComponentWithOutOfRangeTag() {
         var source = source(TU, """
@@ -153,12 +162,12 @@ class SwitchMalformedDataTest {
                         };
                     }
                 """);
-        assertValue(2, run(source, PlutusData.constr(0, PlutusData.constr(9, PlutusData.integer(1)))));
+        assertRecordPatternRejected(source);
     }
 
     /**
      * A variant-typed component carrying another variant's tag (F20): {@code W(B b)} holding tag 0. Base: the
-     * record pattern is dropped, so {@code default} runs (0).
+     * record pattern is dropped, so {@code default} runs (0). M1 (interim, F35): rejected with JULC0076 until M2a.
      */
     @Test
     void variantTypedComponentWithAnotherTag() {
@@ -175,8 +184,7 @@ class SwitchMalformedDataTest {
                         };
                     }
                 """);
-        var w = PlutusData.constr(0, PlutusData.constr(0, PlutusData.integer(1)));
-        assertValue(0, run(source, PlutusData.constr(0, w)));
+        assertRecordPatternRejected(source);
     }
 
     private static final String FLAG = """

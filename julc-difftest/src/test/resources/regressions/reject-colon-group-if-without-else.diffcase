@@ -1,0 +1,23 @@
+format: 2
+name: a colon group ending in if without else (F34)
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0075
+note: ADR-067 review F34: legal Java that falls through when the condition is false (JVM 2); JuLC rejects colon-form fall-through (D4, I16).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a.negate());
+        return switch (s) {
+            case A x: if (x.v().signum() > 0) { yield BigInteger.ONE; }
+            default: yield BigInteger.TWO;
+        };
+    }
+}
