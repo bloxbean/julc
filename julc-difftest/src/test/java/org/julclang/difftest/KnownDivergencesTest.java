@@ -67,7 +67,7 @@ class KnownDivergencesTest {
     @Test
     void theCampaignRegistryHasNoT21OrT23EntryOnceTheyAreFixed() {
         assertEquals(List.of("T13"), KnownDivergences.RULES.stream().map(KnownDivergences.Rule::id).toList());
-        assertEquals(List.of(), G0PropertyTest.KNOWN.pins().stream()
+        assertEquals(List.of(), CampaignVerifier.KNOWN.pins().stream()
                 .filter(p -> Set.of("T21", "T23").contains(p.expectation().detail())).toList());
     }
 
