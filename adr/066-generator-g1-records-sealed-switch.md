@@ -1,6 +1,6 @@
 # ADR-066: Generator G1 — records, sealed interfaces, switch and fields
 
-**Status:** Proposed (2026-10-30), revision r4
+**Status:** Accepted (2026-10-30), revision r4; approved at `4da7964b` by the review comment and by Codex
 **Date:** 2026-10-30
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md), as a generator stage of
@@ -116,7 +116,7 @@ review at `5c358dfa` (same code). The probe sources are not committed; their pro
   `instanceof` without a binding in an expression, and `instanceof` with a binding inside `&&` ("Undefined
   variable", #204); `switch` statements ("Unsupported statement: SwitchStmt"; when every arm returns, the message
   is "Method 'm' may not return a value on all execution paths");
-  a record member called directly on a constructor expression (`new P(a).v()`, JULC0055), record instance and
+  a component accessor called directly on a constructor expression (`new P(a).v()`, JULC0055), record instance and
   static methods (JULC0055, "Undefined variable: P"), and explicit canonical constructors ("'this' is not
   supported on-chain"); a sealed interface without `permits` whose variants are top-level siblings ("Unknown type"); nested sealed
   hierarchies (a sealed interface that extends another: "class inheritance is not supported on-chain").
@@ -127,8 +127,9 @@ review at `5c358dfa` (same code). The probe sources are not committed; their pro
   an `if` branch inside a loop body: UPLC fails with `HeadList: empty list` or returns a wrong value), and #282
   (record members are ignored: an explicit accessor that negates, called on a local, a parameter or a `switch`
   binding, gives JVM −5 and UPLC 5; a compact constructor `P { v = v.negate(); }` gives the same; an explicit
-  `equals` is replaced by structural equality; a secondary constructor fails on-chain). Only a member called
-  directly on a constructor expression is rejected, as above.
+  `equals` is replaced by structural equality; a secondary constructor fails on-chain). An explicit accessor is rejected only when called directly on a constructor expression;
+  non-accessor instance methods, static methods and explicit canonical constructors are rejected on any receiver,
+  and `equals` lowers structurally, as above.
 
 **Representation the mapping must match.** A standalone record is `ConstrData 0 [components]`; a variant of a
 sealed interface is `ConstrData i [components]`, where `i` is its position in the `permits` clause, also when
@@ -290,12 +291,14 @@ than components (#282; ADR-067 D9 rejects them), and every construct listed as r
 
 **The tag table.** G1 knows each variant's position in the `permits` clause it printed. The `DiffCase` carries
 that table as a field `tags`, keyed by (record binary name, sealed parent binary name), saved in `.diffcase`
-format 3 as `tag: Probe$A Probe$S 0` lines sorted by record then parent, and it is part of the case's identity: `verify`, replay, D8 records and exact-pin matching all
-carry and compare it. The table has one entry per (record, sealed parent) pair. Two validations, at different
-points:
-Lookups are parent-aware: mapping a value at a use site typed by sealed interface `S` uses the entry for `S`;
-mapping a variant typed as itself uses its only entry, and is a boundary error if it has two with different tags.
-A format round-trip test and a case-identity test cover a record with unequal tags under two parents.
+format 3 as `tag: Probe$A Probe$S 0` lines sorted by record then parent, and it is part of the case's
+identity: `verify`, replay, D8 records and exact-pin matching all carry and compare it. The table has one entry
+per (record, sealed parent) pair. Lookups are parent-aware: mapping a value at a use site typed by sealed
+interface `S` uses the entry for `S`; mapping a variant typed as itself uses its only entry, and is a boundary
+error if it has two with different tags. A format round-trip test and a case-identity test cover a record with
+unequal tags under two parents.
+
+Two validations, at different points:
 - *Source validation, before any run:* every record that implements a sealed interface has an entry for each
   parent; tags within a family are distinct and cover `0..n-1`; arities match the source.
 - *Boundary validation, when a value is mapped:* a value whose record has two sealed parents with different tags
@@ -708,3 +711,6 @@ answered by D11: Scalus joins the nightly run in M6.)
     lookup, deterministic order, and round-trip and identity tests for unequal tags.
   - F41 → for defects not yet fixed, a constrained counterfactual (alpha-renaming for #209, an unused parameter
     for #280) with equal JVM observations; discoveries stay provisional until the fix-based check.
+- **r4, editorial** (after approval at `4da7964b`): F42 and F45 (P3) — D3's tag-table paragraph reordered and
+  wrapped; the record-member call-site sentence narrowed to component accessors on constructor expressions.
+  Status set to Accepted.
