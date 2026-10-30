@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +55,7 @@ public final class JvmExecutor {
     private static final String TRACE_CLASS = "org.julclang.stdlib.Builtins";
 
     private final long timeoutMillis;
+    private final Path workDir;
     private final Map<String, Compiled> compiled = new ConcurrentHashMap<>();
 
     /**
@@ -65,7 +67,13 @@ public final class JvmExecutor {
     }
 
     public JvmExecutor(long timeoutMillis) {
+        this(timeoutMillis, null);
+    }
+
+    /** An executor that compiles into fresh directories under {@code workDir}, or the system's if it is null. */
+    JvmExecutor(long timeoutMillis, Path workDir) {
         this.timeoutMillis = timeoutMillis;
+        this.workDir = workDir;
     }
 
     /**
@@ -239,43 +247,83 @@ public final class JvmExecutor {
         compiled.putAll(compile(List.copyOf(pending.values()), "cases " + pending.size()));
     }
 
-    private static Compiled compile(DiffCase diffCase) {
+    private Compiled compile(DiffCase diffCase) {
         return compile(List.of(diffCase), diffCase.name()).get(diffCase.source());
+    }
+
+    /** The source written to the file javac names, compared as files, not by the spelling of their paths. */
+    private static String sourceOf(Path unit, Map<Path, String> files) throws IOException {
+        for (var file : files.entrySet()) {
+            if (Files.isSameFile(unit, file.getKey())) return file.getValue();
+        }
+        throw new HarnessException("javac compiles " + unit + ", which is not a source of the batch");
+    }
+
+    /**
+     * The class files javac writes in one compilation, by the source each was compiled from: the sibling javac
+     * passes with the output. A class file without a sibling, or with one that is not a source of the batch, is
+     * recorded as unowned, and {@link #check} fails then.
+     */
+    static final class Outputs {
+        private final Map<URI, List<String>> owned = new LinkedHashMap<>();
+        private final List<String> unowned = new ArrayList<>();
+
+        Outputs(Collection<URI> sources) {
+            for (URI source : sources) owned.put(source, new ArrayList<>());
+        }
+
+        synchronized void record(String className, FileObject sibling) {
+            var classes = sibling == null ? null : owned.get(sibling.toUri());
+            if (classes == null) unowned.add(className + " (" + (sibling == null ? "no source" : sibling.toUri()) + ")");
+            else classes.add(className);
+        }
+
+        synchronized void check(String label) {
+            if (!unowned.isEmpty()) throw new HarnessException(label + ": javac wrote class files for no source of the batch: " + unowned);
+        }
+
+        synchronized List<String> of(URI source) {
+            return List.copyOf(owned.getOrDefault(source, List.of()));
+        }
     }
 
     /**
      * javac must accept every case; a rejection is a harness or generator bug (ADR-063 H6). Returns each source's
-     * classes; a listener records which top-level classes javac analyzed in which source file.
+     * classes: a listener records which top-level classes javac analyzed in which source file, and the file manager
+     * which class files it wrote for which source. Both are keyed by the compilation units' own URIs, as javac
+     * reports them. Ownership fails closed: a class file for no source of the batch, or a source whose top-level
+     * classes are not all among its class files, is a harness error, so the preflight never verifies less than the
+     * case's classes.
      */
-    private static Map<String, Compiled> compile(List<DiffCase> cases, String label) {
+    private Map<String, Compiled> compile(List<DiffCase> cases, String label) {
         try {
-            Path dir = Files.createTempDirectory("julc-difftest-");
+            Path dir = workDir == null ? Files.createTempDirectory("julc-difftest-") : Files.createTempDirectory(workDir, "julc-difftest-");
             var options = List.of("-proc:none", "-classpath", System.getProperty("java.class.path"), "-d", dir.toString());
-            var sources = new LinkedHashMap<URI, String>();
+            var files = new LinkedHashMap<Path, String>();
             for (DiffCase diffCase : cases) {
                 Path file = dir.resolve(diffCase.className() + ".java");
                 if (Files.exists(file)) throw new HarnessException(label + ": two sources declare " + diffCase.className());
                 Files.writeString(file, diffCase.source());
-                sources.put(file.toUri(), diffCase.source());
+                files.put(file, diffCase.source());
             }
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             var errors = new StringWriter();
             var emitted = new LinkedHashMap<URI, List<String>>();
-            var outputs = new LinkedHashMap<URI, List<String>>();
             try (var standard = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
-                var units = standard.getJavaFileObjectsFromPaths(sources.keySet().stream().map(Path::of).toList());
-                // Each class file javac writes, recorded against the source it was compiled from (its sibling).
-                var files = new ForwardingJavaFileManager<>(standard) {
+                var units = new ArrayList<JavaFileObject>();
+                standard.getJavaFileObjectsFromPaths(files.keySet()).forEach(units::add);
+                var sources = new LinkedHashMap<URI, String>();
+                for (JavaFileObject unit : units) sources.put(unit.toUri(), sourceOf(Path.of(unit.toUri()), files));
+                var outputs = new Outputs(sources.keySet());
+                var manager = new ForwardingJavaFileManager<>(standard) {
                     @Override
                     public JavaFileObject getJavaFileForOutput(Location location, String className, JavaFileObject.Kind kind,
                                                                FileObject sibling) throws IOException {
-                        if (kind == JavaFileObject.Kind.CLASS && sibling != null) {
-                            outputs.computeIfAbsent(sibling.toUri(), uri -> new ArrayList<>()).add(className);
-                        }
+                        if (kind == JavaFileObject.Kind.CLASS) outputs.record(className, sibling);
                         return super.getJavaFileForOutput(location, className, kind, sibling);
                     }
                 };
-                var task = (JavacTask) compiler.getTask(errors, files, null, options, null, units);
+                var task = (JavacTask) compiler.getTask(errors, manager, null, options, null, units);
                 task.addTaskListener(new TaskListener() {
                     @Override
                     public void finished(TaskEvent event) {
@@ -289,11 +337,19 @@ public final class JvmExecutor {
                     throw new HarnessException(label + ": javac rejected the source\n" + errors
                             + (cases.size() == 1 ? "\n" + cases.getFirst().source() : ""));
                 }
+                outputs.check(label);
+                var result = new LinkedHashMap<String, Compiled>();
+                sources.forEach((uri, source) -> {
+                    var classes = List.copyOf(emitted.getOrDefault(uri, List.of()));
+                    var written = outputs.of(uri);
+                    if (classes.isEmpty() || !written.containsAll(classes)) {
+                        throw new HarnessException(label + ": javac's classes " + classes + " for " + uri
+                                + " are not all among the class files written for it, " + written);
+                    }
+                    result.put(source, new Compiled(dir, classes, written));
+                });
+                return result;
             }
-            var result = new LinkedHashMap<String, Compiled>();
-            sources.forEach((uri, source) -> result.put(source, new Compiled(dir, List.copyOf(emitted.getOrDefault(uri, List.of())),
-                    List.copyOf(outputs.getOrDefault(uri, List.of())))));
-            return result;
         } catch (IOException e) {
             throw new HarnessException(label + ": cannot write the source", e);
         }

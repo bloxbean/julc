@@ -2,8 +2,15 @@ package org.julclang.difftest;
 
 import org.julclang.core.PlutusData;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import java.io.IOException;
 import java.math.BigInteger;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
@@ -247,9 +254,7 @@ class JvmExecutorTest {
      * Every class javac emitted for the case is verified before the run, so a local class with javac's unverifiable
      * bytecode, which would load lazily, is an oracle fault found while linking.
      */
-    @Test
-    void aLocalClassTheJvmRejectsIsAHarnessError() {
-        String source = """
+    private static final String LOCAL_UNVERIFIABLE = """
                 import java.math.BigInteger;
 
                 public class Probe {
@@ -270,10 +275,16 @@ class JvmExecutorTest {
                     }
                 }
                 """;
+
+    private static DiffCase localUnverifiable() {
         var tags = TagTable.of(new TagTable.Entry("Probe$C0", "Probe$S0", 0), new TagTable.Entry("Probe$B0", "Probe$S0", 1),
                 new TagTable.Entry("Probe$A0", "Probe$S0", 2));
-        var e = assertThrows(HarnessException.class, () -> new JvmExecutor(5_000).run(new DiffCase("lazy", source, "Probe",
-                "m", List.of(new PlutusData.ConstrData(0, List.of())), tags, null)));
+        return new DiffCase("lazy", LOCAL_UNVERIFIABLE, "Probe", "m", List.of(new PlutusData.ConstrData(0, List.of())), tags, null);
+    }
+
+    @Test
+    void aLocalClassTheJvmRejectsIsAHarnessError() {
+        var e = assertThrows(HarnessException.class, () -> new JvmExecutor(5_000).run(localUnverifiable()));
         assertTrue(e.getMessage().contains("the JVM rejects javac's class") && e.getMessage().contains("VerifyError")
                 && e.getMessage().contains("Probe$1Local"), e.getMessage());
         assertTrue(Arrays.stream(e.getCause().getStackTrace()).anyMatch(frame -> frame.getMethodName().equals("linked")
@@ -315,6 +326,38 @@ class JvmExecutorTest {
             var e = assertThrows(HarnessException.class, () -> executor.run(rejected), names.toString());
             assertTrue(e.getMessage().contains("VerifyError"), e.getMessage());
         }
+    }
+
+    /**
+     * The class files are owned by the compilation units javac reports, not by how their paths are spelled, so a
+     * compile directory under a path with {@code ..} still verifies every class (review of M3 part 1 round 4, F115).
+     */
+    @Test
+    void aWorkDirectoryWithDotSegmentsStillVerifiesEveryClass(@TempDir Path temp) throws IOException {
+        Files.createDirectories(temp.resolve("a"));
+        Files.createDirectories(temp.resolve("b"));
+        var executor = new JvmExecutor(5_000, temp.resolve("a").resolve("..").resolve("b"));
+        var local = assertThrows(HarnessException.class, () -> executor.run(localUnverifiable()));
+        assertTrue(local.getMessage().contains("VerifyError") && local.getMessage().contains("Probe$1Local"), local.getMessage());
+        var entry = new DiffCase("entry", unverifiable("Entry"), "Entry", "m", List.of(new PlutusData.ConstrData(1, List.of())));
+        assertTrue(assertThrows(HarnessException.class, () -> executor.run(entry)).getMessage().contains("VerifyError"));
+        assertEquals(new Observation.Value(integer(2), List.of()),
+                executor.run(probe("public static long m(long n) { return n + 1; }", integer(1))));
+    }
+
+    /** A class file javac writes for no source of the batch, or without a source, fails the compilation closed. */
+    @Test
+    void anUnownedClassFileIsAHarnessError() {
+        var source = URI.create("file:///cases/Probe.java");
+        var outputs = new JvmExecutor.Outputs(List.of(source));
+        outputs.record("Probe", new SimpleJavaFileObject(source, JavaFileObject.Kind.SOURCE) { });
+        outputs.check("owned");
+        assertEquals(List.of("Probe"), outputs.of(source));
+        outputs.record("Stray", new SimpleJavaFileObject(URI.create("file:///elsewhere/Stray.java"), JavaFileObject.Kind.SOURCE) { });
+        assertTrue(assertThrows(HarnessException.class, () -> outputs.check("foreign")).getMessage().contains("Stray"));
+        var orphan = new JvmExecutor.Outputs(List.of(source));
+        orphan.record("Orphan", null);
+        assertTrue(assertThrows(HarnessException.class, () -> orphan.check("orphan")).getMessage().contains("Orphan"));
     }
 
     @Test
