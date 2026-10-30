@@ -25,7 +25,7 @@ import static org.julclang.difftest.gen.G1Ast.BOOL;
 import static org.julclang.difftest.gen.G1Ast.UNREADABLE;
 
 /**
- * The second program grammar (ADR-066 D2, G1 r3): user records and sealed interfaces with record variants,
+ * The second program grammar (ADR-066 D2, G1 r4): user records and sealed interfaces with record variants,
  * {@code static final} fields, helpers, method-level {@code if} and {@code instanceof} patterns, G0's loops
  * with accumulators of any generated type, record and sealed arguments and results, traces and failures. The
  * {@code switch} productions are M3's. The productions build a typed AST ({@link G1Ast}), which {@link G1Printer}
@@ -59,7 +59,7 @@ public final class G1 {
      * The decoding's version, saved with every case (ADR-066 G1-I5). Change it whenever a plan, an input sequence or
      * a profile would decode to something different.
      */
-    public static final String VERSION = "G1 r3";
+    public static final String VERSION = "G1 r4";
 
     /** The switches of a generation profile (ADR-066 D6), each gating a construct whose defect is open. */
     public enum Gate {
@@ -85,7 +85,7 @@ public final class G1 {
          */
         TRACE_IN_COMPARISON;
 
-        /** The switches G1 r3 defines but does not implement yet: they change no program until M3. */
+        /** The switches G1 r4 defines but does not implement yet: they change no program until M3. */
         public static final Set<Gate> INERT =
                 Collections.unmodifiableSet(EnumSet.of(GUARDS, RECORD_PATTERNS, CROSS_TYPE_EQUALS, SHARED_VARIANT,
                         ASSIGN_PATTERN_BINDING));
@@ -118,7 +118,7 @@ public final class G1 {
 
     /**
      * A generation profile: {@link #VERSION}, the value of every {@link Gate} (ADR-066 D6) and its {@link Steer}s. Its
-     * text, such as {@code G1 r3 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
+     * text, such as {@code G1 r4 -GUARDS … +ZERO_ARG_HELPERS … steer=280}, is printed in every record and replayed.
      */
     public record Profile(Set<Gate> on, Set<Steer> steering) {
 
@@ -512,13 +512,14 @@ public final class G1 {
             var candidates = new ArrayList<>(List.of(BIG, BIG, BOOL));
             if (i == 0 && nest) candidates = new ArrayList<>(inner);
             for (Type type : i == 0 && nest ? List.<Type>of() : types) {
+                // Each variant by its own depth: a shallow variant of a family with a deep sibling fits (F85).
+                if (type.kind == Kind.SEALED) {
+                    for (Type variant : type.variants) if (variant.depth < 2) candidates.add(variant);
+                }
                 if (type.depth >= 2) continue;
                 candidates.addAll(List.of(type, type));
                 // A standalone record inside a record gives chained reads (CHAINED_ACCESS).
                 if (type.kind == Kind.RECORD) candidates.addAll(List.of(type, type));
-                if (type.kind == Kind.SEALED) {
-                    for (Type variant : type.variants) if (variant.depth < 2) candidates.add(variant);
-                }
             }
             Type type = candidates.get(choices.below(candidates.size()));
             if (!(i == 0 && nest) && !tagged.isEmpty() && choices.oneIn(4)) type = tagged.get(choices.below(tagged.size()));

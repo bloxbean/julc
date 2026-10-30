@@ -1,8 +1,10 @@
 package org.julclang.difftest;
 
+import org.julclang.core.PlutusData;
 import org.julclang.difftest.gen.G1;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -116,6 +118,120 @@ class G1ShapesTest {
             }
         }
         return false;
+    }
+
+    private static final Pattern RECORD_DECLARATION = Pattern.compile("(?m)^    record (\\w+)\\((.*)\\)( implements (\\w+))? \\{}$");
+
+    /** The program's record declarations: each record's components (type, name) and its family, if any. */
+    private record Declared(Map<String, List<String[]>> components, Map<String, String> families) {
+        static Declared of(String source) {
+            var components = new HashMap<String, List<String[]>>();
+            var families = new HashMap<String, String>();
+            Matcher record = RECORD_DECLARATION.matcher(source);
+            while (record.find()) {
+                var list = new ArrayList<String[]>();
+                if (!record.group(2).isEmpty()) for (String c : record.group(2).split(", ")) list.add(c.split(" "));
+                components.put(record.group(1), list);
+                if (record.group(4) != null) families.put(record.group(1), record.group(4));
+            }
+            return new Declared(components, families);
+        }
+
+        /** A type's nesting depth: 0 for {@code BigInteger} and {@code boolean}, a family's deepest variant's. */
+        int depth(String type) {
+            if (components.containsKey(type)) {
+                int depth = 1;
+                for (String[] c : components.get(type)) depth = Math.max(depth, c[0].equals("BigInteger") || c[0].equals("boolean") ? 1 : depth(c[0]) + 1);
+                return depth;
+            }
+            int depth = 0;
+            for (var e : families.entrySet()) if (e.getValue().equals(type)) depth = Math.max(depth, depth(e.getKey()));
+            return depth;
+        }
+    }
+
+    /**
+     * F85: a variant is a component candidate by its own depth, so a shallow variant of a family whose other variant
+     * is deep can be a component, whatever its tag.
+     */
+    @Test
+    void shallowVariantsOfDeepFamiliesAreComponents() {
+        var random = new Random(20261041);
+        int tagZero = 0, tagNonzero = 0;
+        for (int i = 0; i < PLANS; i++) {
+            var program = G1.decode(plan(random), G1.Profile.DEFAULT);
+            var declared = Declared.of(program.source());
+            var tags = tags(program);
+            for (var record : declared.components().values()) {
+                for (String[] component : record) {
+                    String family = declared.families().get(component[0]);
+                    if (family == null || declared.depth(family) < 2) continue;
+                    if (tags.get(component[0]) == 0) tagZero++;
+                    else tagNonzero++;
+                }
+            }
+        }
+        assertTrue(tagZero > 0 && tagNonzero > 0, "shallow variants of deep families as components: tag 0 " + tagZero
+                + ", nonzero " + tagNonzero);
+    }
+
+    /**
+     * F80's semantic witness: a record argument whose component is a nonzero-tag variant, read through a chain
+     * ({@code p.c().d()}). Changing only that variant's integer component changes the JVM result, and JuLC agrees
+     * with the JVM on both arguments at every level, so the mapping and the chained read carry the value.
+     */
+    @Test
+    void aNonzeroTagVariantComponentIsReadThroughAChain() {
+        var random = new Random(20261042);
+        var runner = DiffRunner.standard();
+        Pattern parameter = Pattern.compile("JulcList<BigInteger> xs((?:, \\w+ \\w+)*)\\)");
+        int witnesses = 0;
+        for (int i = 0; i < 6000 && witnesses < 3; i++) {
+            var program = G1.decode(plan(random), G1.Profile.DEFAULT);
+            String source = program.source();
+            var declared = Declared.of(source);
+            var tags = tags(program);
+            Matcher signature = parameter.matcher(source);
+            if (!signature.find() || signature.group(1).isEmpty()) continue;
+            var parameters = signature.group(1).substring(2).split(", ");
+            var inputs = new ArrayList<Integer>();
+            for (int j = 0; j < 40; j++) inputs.add(random.nextInt(1001));
+            var args = program.arguments(inputs);
+            for (int k = 0; k < parameters.length && witnesses < 3; k++) {
+                String[] typed = parameters[k].split(" ");
+                var record = declared.components().get(typed[0]);
+                if (record == null) continue;
+                for (int c = 0; c < record.size(); c++) {
+                    String variant = record.get(c)[0];
+                    if (tags.getOrDefault(variant, 0) == 0 || !declared.components().containsKey(variant)) continue;
+                    var inner = declared.components().get(variant);
+                    for (int d = 0; d < inner.size(); d++) {
+                        if (!inner.get(d)[0].equals("BigInteger")) continue;
+                        String read = typed[1] + "." + record.get(c)[1] + "()." + inner.get(d)[1] + "()";
+                        if (!source.contains(read)) continue;
+                        var changed = new ArrayList<>(args);
+                        changed.set(3 + k, replace(args.get(3 + k), c, d));
+                        var before = runner.run(new DiffCase("w", source, "Probe", "m", args, program.tags(), null));
+                        var after = runner.run(new DiffCase("w", source, "Probe", "m", changed, program.tags(), null));
+                        assertTrue(before.all(Verdict.Kind.AGREE), before.describe());
+                        assertTrue(after.all(Verdict.Kind.AGREE), after.describe());
+                        if (!before.jvm().equals(after.jvm())) witnesses++;
+                    }
+                }
+            }
+        }
+        assertTrue(witnesses >= 3, "chained reads of a nonzero-tag variant component that decide the result: " + witnesses);
+    }
+
+    /** The record's Data with field {@code c}'s field {@code d} (an integer) increased by 7. */
+    private static PlutusData replace(PlutusData record, int c, int d) {
+        var outer = (PlutusData.ConstrData) record;
+        var variant = (PlutusData.ConstrData) outer.fields().get(c);
+        var fields = new ArrayList<>(variant.fields());
+        fields.set(d, new PlutusData.IntData(((PlutusData.IntData) fields.get(d)).value().add(BigInteger.valueOf(7))));
+        var outerFields = new ArrayList<>(outer.fields());
+        outerFields.set(c, new PlutusData.ConstrData(variant.tag(), fields));
+        return new PlutusData.ConstrData(outer.tag(), outerFields);
     }
 
     private static final Pattern BOOLEAN_HELPER = Pattern.compile("(?m)^(    static boolean \\w+\\([^)]*\\) \\{\\n        return )(.*);$");

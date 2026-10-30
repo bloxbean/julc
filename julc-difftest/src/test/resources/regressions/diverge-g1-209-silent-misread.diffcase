@@ -2,23 +2,23 @@ format: 3
 name: a branch local shadowing a field in a loop makes a later field read return another component (#209)
 class: Probe
 method: m
-profile: G1 r3 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
+profile: G1 r4 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
 arg: 04
 arg: 04
 arg: 9f24202101ff
 expect: DIVERGE #209 Value/Value
 jvm: Value d8799f2424ff []
 uplc: Value d8799f2323ff []
-note: Rediscovered by the G1 r3 campaign under REDISCOVER_209 (ADR-066 D10.1, M2), the shrunk reproducer as found:
+note: Rediscovered by the G1 r4 campaign under REDISCOVER_209 (ADR-066 D10.1, M2), the shrunk reproducer as found:
 note: #209's own shape. R0(v, w) and R1(w, v) have the same components in other orders; the branch local R1 w keeps
 note: its type after the if, so w.v() on the field R0 w = R0(-5, -4) reads index 1, which is R0's w: UPLC returns
 note: R0(-4, -4) where Java returns R0(-5, -5), silently, at every level. Provisional until #209 is fixed.
 found.by: G1PropertyTest rediscovery
-found.generator: G1 r3
-found.plan: 0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,0,0,0,0,0,57,333,6,222,17,3,5,2,35,303,1,857,36,16,50,60,547
+found.generator: G1 r4
+found.plan: 0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,222,17,3,5,2,35,303,1,857,36,16,50,60,547
 found.inputs: 23,153,509,14,31,4,215,739,43,822,9,119,559
 found.seed: 20261030
-found.compiler: 0.1.0-pre20 v0.1.0-pre20-39-gb9f8ba9eba06-dirty
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-41-g86496b664c61-dirty
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;
@@ -40,14 +40,14 @@ public class Probe {
 
     public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
         R0 v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
-        BigInteger v1 = b;
-        for (var v2 : xs) {
+        BigInteger x = BigInteger.valueOf(1);
+        for (var v1 : xs) {
             if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
                 R1 w = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
                 v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
             }
-            v1 = w.v();
+            x = w.v();
         }
-        return new R0(v1, v1);
+        return new R0(x, x);
     }
 }

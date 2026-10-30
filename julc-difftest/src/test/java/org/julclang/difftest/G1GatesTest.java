@@ -123,7 +123,7 @@ class G1GatesTest {
         assertNotEquals(G1.Profile.REDISCOVER_209, G1.Profile.DEFAULT.with(G1.Gate.SHADOW_IN_LOOP_BRANCH));
     }
 
-    /** The switches of M3 are defined, printed and parsed, and change no program in G1 r3. */
+    /** The switches of M3 are defined, printed and parsed, and change no program until M3. */
     @Test
     void inertGatesChangeNothing() {
         var random = new Random(20261032);
@@ -146,7 +146,7 @@ class G1GatesTest {
 
     @Test
     void profilesRoundTripAsText() {
-        assertEquals("G1 r3 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
+        assertEquals("G1 r4 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING "
                 + "-ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON", G1.Profile.DEFAULT.text());
         for (var profile : List.of(G1.Profile.DEFAULT, G1.Profile.REDISCOVER_209, G1.Profile.REDISCOVER_280,
                 G1.Profile.REDISCOVER_146, new G1.Profile(EnumSet.allOf(G1.Gate.class)))) {
@@ -156,7 +156,7 @@ class G1GatesTest {
         assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209"),
                 G1.Profile.REDISCOVER_209.text());
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_209));
-        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r3", "G1 r2"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
+        for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r4", "G1 r3"), text + " steer=999", text + " steer=209", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {
             assertThrows(HarnessException.class, () -> G1.Profile.parse(bad), bad);
         }

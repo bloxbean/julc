@@ -2,7 +2,7 @@ format: 3
 name: the #209 reproducer 209-silent-misread with its trigger removed agrees (counterfactual)
 class: Probe
 method: m
-profile: G1 r3 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
+profile: G1 r4 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS +SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON steer=209
 arg: 04
 arg: 04
 arg: 9f24202101ff
@@ -30,14 +30,14 @@ public class Probe {
 
     public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
         R0 v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
-        BigInteger v1 = b;
-        for (var v2 : xs) {
+        BigInteger x = BigInteger.valueOf(1);
+        for (var v1 : xs) {
             if (BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) {
                 R1 w1 = new R1(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
                 v = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5));
             }
-            v1 = w.v();
+            x = w.v();
         }
-        return new R0(v1, v1);
+        return new R0(x, x);
     }
 }
