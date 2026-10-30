@@ -1,12 +1,12 @@
 # ADR-066: Generator G1 — records, sealed interfaces, switch and fields
 
-**Status:** Proposed (2026-10-30), revision r2
+**Status:** Proposed (2026-10-30), revision r3
 **Date:** 2026-10-30
 **Label:** `semantic-consistency`
 **Programme:** step S1 of [ADR-062](062-jvm-uplc-semantic-consistency-programme.md), as a generator stage of
 [ADR-063](063-differential-jvm-uplc-test-harness.md) (D5's G1, and M2b's record mapping and field shadowing)
-**Relates to:** ADR-067 (switch guards, record patterns, cross-type record `equals` and records with two sealed
-parents; its own PR, stacked on #253), which G1 depends on for those constructs
+**Relates to:** ADR-067 (#281: switch guards, record patterns, cross-type record `equals`, records with two
+sealed parents and record members), which G1 depends on for those constructs
 **Stacked on:** #253 (ADR-063 D13); restacked on the ADR-067 PR before M3 (open question 1)
 
 ## Context
@@ -28,8 +28,10 @@ generates the constructs they need:
 | #162 (fixed) | Reassigning a switch case-pattern variable in a loop left stale field reads | Review of PR #157 |
 | #47, #50 (fixed) | Switch case bindings collided with method parameters | Users |
 
-(#201, a `break` naming a label, was found the same way; it is now rejected (#272), so it belongs to a negative
-grammar, not to G1.)
+(#201, a `break` naming a label, was found the same way. Its fix, open PR #272, rejects the construct, so it
+belongs to a negative grammar, not to G1. #282, record members such as explicit accessors and `equals` that JuLC
+silently ignores, was found while writing ADR-067; ADR-067 D9 rejects them, so G1 never generates record
+members, and its must-reject list (D6) takes them once that lands.)
 
 Records, sealed interfaces, `switch` and fields are how validators model datums, redeemers and their checks, so
 this is where a silent miscompile is most likely to change what a validator accepts. ADR-063 already plans this
@@ -112,7 +114,8 @@ review at `5c358dfa` (same code). The probe sources are not committed; their pro
 - *Rejected, so outside the positive grammar:* reassigning a variable outside a loop ("Unsupported expression:
   AssignExpr", ADR-062 T20), so method-level `if`/`else` cannot assign; a declaration without an initializer;
   `instanceof` without a binding in an expression, and `instanceof` with a binding inside `&&` ("Undefined
-  variable", #204); `switch` statements ("Unsupported statement: SwitchStmt"), also when every arm returns;
+  variable", #204); `switch` statements ("Unsupported statement: SwitchStmt"; when every arm returns, the message
+  is "Method 'm' may not return a value on all execution paths");
   compact and explicit canonical constructors, overridden accessors, record instance and static methods, and
   secondary constructors (JULC0055, JULC0016, "'this' is not supported on-chain" or "Undefined variable"); a
   sealed interface without `permits` whose variants are top-level siblings ("Unknown type"); nested sealed
@@ -284,11 +287,18 @@ listed as rejected in "Current behavior".
 **The tag table.** G1 knows each variant's position in the `permits` clause it printed. The `DiffCase` carries
 that table as a field `tags` (binary class name to tag), saved in `.diffcase` format 3 as `tag: Probe$A 0` lines
 in a fixed order, and it is part of the case's identity: `verify`, replay, D8 records and exact-pin matching all
-carry and compare it. Validation before any run: every record that implements a sealed interface has exactly one
-entry; tags within a family are distinct and cover `0..n-1`; the record's arity matches the source; and a record
-with two sealed parents (only under `SHARED_VARIANT`) must have the same tag in both, otherwise the mapping
-refuses the case (such a value has no single Data encoding, #279). Every hand-written case that maps sealed
-values must carry `tag:` lines too; there is no reflection fallback (G1-I4).
+carry and compare it. The table has one entry per (record, sealed parent) pair. Two validations, at different
+points:
+- *Source validation, before any run:* every record that implements a sealed interface has an entry for each
+  parent; tags within a family are distinct and cover `0..n-1`; arities match the source.
+- *Boundary validation, when a value is mapped:* a value whose record has two sealed parents with different tags
+  has no single Data encoding (#279), so mapping one, as an argument, a result or a component of either, is a
+  `HarnessException`. A program in which such a record only lives inside `m`, with a scalar result, runs
+  normally: that is the shape that shows #279 on a compiler that has it, and that ADR-067's rejection turns into
+  a must-reject case (D6).
+
+Every hand-written case that maps sealed values must carry `tag:` lines too; there is no reflection fallback
+(G1-I4).
 
 *Alternatives:* `getPermittedSubclasses()` order matches on JDK 25 but is unspecified (javadoc), and a mapping
 that shares reflection order with a compiler that uses declaration order could agree with it while both are
@@ -348,16 +358,21 @@ random plans under the default profile and fails if any program contains a gated
 | `GUARDS` | `when` guards | #275 | ADR-067 is implemented below this PR |
 | `RECORD_PATTERNS` | Record patterns | #276 | ADR-067 is implemented below this PR |
 | `CROSS_TYPE_EQUALS` | `equals` between distinct record types | #277 | ADR-067 is implemented below this PR |
-| `SHARED_VARIANT` | A record implementing two sealed interfaces | #279 | ADR-067's rule is known: generated as a must-reject case if ADR-067 rejects it, as positive if it accepts coinciding tags |
+| `SHARED_VARIANT` | A record implementing two sealed interfaces, with different positions, kept inside `m` | #279 | Never in the default profile: ADR-067 D6 rejects every second sealed parent, so after it the construct is must-reject only |
+| `ASSIGN_PATTERN_BINDING` | Reassigning a `switch` case-pattern binding inside a loop | #162 | Never: a historical profile only; the fix rejects it |
 | `ZERO_ARG_HELPERS` | Zero-parameter helpers | #280 | #280 is fixed on the base |
 | `SHADOW_IN_LOOP_BRANCH` | A local in an `if` branch inside a loop body shadowing a field of another type | #209 | #209 is fixed on the base |
 | `LOOP_BREAK_SHAPES` | G0's T21 and T23 shapes inside G1 programs | #254, #255 | Both are fixed on the base |
 
-**Must-reject checks.** A defect fixed by rejecting a construct cannot be rediscovered by a positive grammar.
-For each such construct G1 has a small fixed list of programs that must be rejected with the expected code on
-every level (`G1MustRejectTest`): #162's case-pattern reassignment in a loop (rejected since its fix,
-`LoopBodyGenerator.java:130-137`), and, when ADR-067 decides it, #279's shared variant. The positive analogue of
-each is generated by the grammar.
+**Must-reject checks.** A defect fixed by rejecting a construct cannot be found by the positive grammar. For
+each such construct, G1 has a small fixed list of programs that must be rejected with the expected code at every
+level (`G1MustRejectTest`):
+- #162's case-pattern reassignment in a loop, rejected since its fix (`LoopBodyGenerator.java:130-137`);
+- once ADR-067 lands: #279's shared variant (ADR-067 D6) and each record member kind (#282, ADR-067 D9).
+
+In addition, the historical profiles of `ASSIGN_PATTERN_BINDING` and `SHARED_VARIANT` generate these constructs
+for rediscovery (D10.1); a run under such a profile on a fixed compiler must end in the expected rejection. The
+positive analogue of each construct is generated by the default grammar.
 
 Turning a switch on is a one-line change to the default profile plus a `G1.VERSION` bump, and D10.1 records
 that the campaign found the defect while it was present. G0 keeps generating the T21 and T23 shapes; its registry
@@ -370,9 +385,12 @@ A bounded enumeration over the shapes where the defects above live, versioned `G
 
 - **Switch shapes.** Sealed type `S` with variants `A(BigInteger v)` and `B(BigInteger v, boolean f)`;
   selector: a sealed parameter. Arms per variant: one or two, each from {type pattern, record pattern} ×
-  {no guard, guard `v.compareTo(c) > 0` on the binding, guard `a.compareTo(c) > 0` on a parameter}, with `c` in
-  {0, 2}; with or without `default`; every arm order javac accepts; arm bodies `t("armK", e)` where `e` reads
-  the binding, or `fail(e)` in at most one arm; placed at method level or as a value inside a for-each.
+  {no guard, guard `v.compareTo(c) > 0` on the binding, guard `a.compareTo(c) > 0` on a parameter, guard `f` on
+  `B`'s boolean binding}, with `c` in {0, 2}; with or without `default`; every arm order javac accepts, minus
+  combinations in which an arm is unreachable (a later arm for the same variant whose guard implies an earlier
+  arm's guard, decided over the finite threshold set); arm bodies `t("armK", e)` where `e` reads the binding
+  (for `B`, `f ? e1 : e2`), or `fail(e)` in at most one arm; placed at method level or as a value inside a
+  for-each.
 - **Field shapes.** A `static final P p` field read after a local `Q p` (another record type) is declared in: a
   method-level early-return branch, a `switch` arm block, a loop body, and (gated) a loop `if` branch.
 - **Equality shapes.** Same type, same sealed family, variant against its sealed type, and (gated) distinct types
@@ -380,17 +398,23 @@ A bounded enumeration over the shapes where the defects above live, versioned `G
 - **Shared-variant and zero-parameter shapes,** gated.
 - **Boundary shapes.** Each sealed argument variant, a nested record argument, and record and sealed results.
 
-**Inputs:** each variant of the selector, with `v` in {−1, 1, 3} and `a` in {−1, 3}, so each guard is true and
-false for some input.
+**Inputs:** each variant of the selector, with `v` in {−1, 1, 3}, `f` in {false, true} and `a` in {−1, 3}.
+**Reachability witnesses:** the twin (D8) must show, on these inputs, every arm entered and every guard both
+true and false; a combination where it does not is a corpus error, not an equivalence.
 
 **Observability edits** run on the JVM only. Each edit has a precondition, and is applied only where the edited
 program is type- and scope-correct and javac accepts it:
 - *drop a guard*, only where no later arm for the same variant would become dominated;
 - *negate a guard*;
-- *replace a binding's use by a constant of its type*;
+- *replace a binding's use by a constant of its type* (for `f`, its negation);
 - *replace an arm body by the body of another arm for the same variant*, only where every binding it uses exists;
-- *replace a field read by a read of the shadowing local*, only inside that local's scope;
-- *swap the operands of `equals` with a different-type value*, only under the gate.
+- *replace a field read by a constant of its type*, for each field read, including the read after a shadowing
+  local's scope (the read #209 corrupts);
+- *replace an `equals` argument by a value of the same type with one component changed* and, under the gate, *by
+  a value of a different type with identical components*.
+
+Every targeted site (arm, guard, binding, field read, `equals`) must have at least one applicable edit with a
+witness.
 
 Each applicable edit must change some observation (value, trace or failure) on the corpus inputs; the input
 that does so is recorded as its witness. An edit whose precondition fails is counted "not applicable"; an edit
@@ -410,14 +434,22 @@ tries, at least 3% on the PR campaign): `RECORD`, `SEALED`, `TWO_FAMILIES`, `ZER
 once their switches are on, `RECORD_PATTERN`, `NESTED_RECORD_PATTERN`, `GUARD`, `CROSS_TYPE_EQUALS`.
 
 **Exercised coverage** (ADR-063 M2b's open item, for G1), from a JVM-only twin printed from the same AST:
-- **Instrumentation contract.** Each site gets a stable ID from its AST position. A guard `g` is printed as
-  `Cov.guard(id, g)`, a method that records the value and returns it; an arm is entered through
-  `Cov.arm(id, expr)`, which records entry and returns `expr`'s value; loops record their iteration count per
-  loop invocation and whether they exited by `break` or normally. Each wrapper evaluates its argument exactly
-  once, in the same order and scope, and passes exceptions through unchanged, so evaluation count, order, scope
-  and abrupt completion are those of the untouched program.
+- **Instrumentation contract.** Each site gets a stable ID from its AST position. Entry is recorded *before*
+  anything else runs, because a method's arguments are evaluated before the call (JLS §15.12.4.2):
+  - an arm `case P -> e` is printed as `case P -> { Cov.enterArm(id); yield e; }`, and an arm that is already a
+    block gets `Cov.enterArm(id);` as its first statement;
+  - a guard `g` is printed as `(Cov.guardStart(id) && Cov.guard(id, g))`, where `guardStart` records the start
+    and returns true, and `guard` records the value and returns it; a guard that started but recorded no value
+    threw;
+  - loops record their iteration count per loop invocation and whether they exited by `break` or normally.
+
+  Each wrapper evaluates the original expression exactly once, in the same order and scope, and passes exceptions
+  through unchanged, so evaluation count, order, scope and abrupt completion are those of the untouched program.
+  `G1TwinTest` asserts the counters directly on hand-written programs with a throwing arm, a throwing guard,
+  nested arms and loops, since observation parity alone cannot validate counters.
 - **Counters** live in a static field of the twin class, so a fresh class loader per invocation (H3) resets
-  them. A guard site distinguishes "not evaluated", true and false.
+  them. A guard site distinguishes "not evaluated", "threw", true and false. Inconclusive runs contribute no
+  coverage (H5).
 - **Check.** For each input, the twin's observation (value, traces, failure) must equal the untouched program's
   JVM observation; otherwise the twin's counts for that input are discarded and the case is reported as a twin
   defect (G1-I8). The twin is never compiled by JuLC.
@@ -438,16 +470,22 @@ ADR-063 D11 asks for rediscovery and mutation before a harness counts as evidenc
 
 1. **Rediscovery.** On a compiler that still has the defect, with the named profile that enables its construct,
    the campaign must report a mismatch whose shrunk reproducer contains the defect's construct and whose cause is
-   that defect (checked by applying the defect's fix and seeing the case agree); an earlier unrelated mismatch
-   does not count.
+   that defect; an earlier unrelated mismatch does not count. The cause check depends on the defect's state:
+   - *fixed by a code change* (#275, #276, #277, #166, #47, #50): with the fix applied, the reproducer agrees;
+   - *fixed by a rejection* (#162, #279, #282): with the fix applied, the reproducer is rejected with the
+     expected code;
+   - *not yet fixed* (#209, #280): the reproducer contains the gated construct, and the same program with that
+     construct removed (the nearest default-profile program, by the shrinker) agrees; the fix-based check is
+     then done in the fix's PR.
 
    | Defect | Compiler | Found by |
    |---|---|---|
    | #275, #276, #277, #279 | the ADR-067 base, before its fix | PR campaign (M3), `G1E` (M4) |
    | #209 | the current base | PR campaign (M2), `G1E` (M4) |
    | #280 | the current base | PR campaign (M2) |
-   | #166, #162 | a scratch revert of their fixes (`git revert` of the fix commits, recorded) | PR campaign and `G1E` (M5) |
-   | #47, #50 | a scratch revert of their fixes, if they still apply; otherwise covered by the binding operators in D10.2 | M5 |
+   | #166 | a scratch revert of its fix (`git revert` of the fix commits, recorded) | PR campaign and `G1E` (M5) |
+   | #162 | a scratch revert of its fix, under the `ASSIGN_PATTERN_BINDING` profile | PR campaign (M5) |
+   | #47, #50 | a scratch revert of their fixes, if they still apply; otherwise only the `VAR_SWAP` operator in D10.2 covers their class, which is weaker evidence than a rediscovery and is recorded as such | M5 |
 
    The command, commits, profile, seed, time to first failure and the shrunk reproducer are recorded in this ADR.
    A defect that the campaign does not find within the PR budget is a generator gap and blocks the milestone.
@@ -460,17 +498,27 @@ ADR-063 D11 asks for rediscovery and mutation before a harness counts as evidenc
    - `DISPATCH`: swap two branches of an integer `case` (PV11 levels) or of an `ifThenElse` over
      `equalsInteger tag k` (`NONE`, `BASELINE`);
    - `BRANCH`: swap the branches of an `ifThenElse` or bool `case` (covers guard inversion);
-   - `GUARD_BYPASS`: replace the condition of an `ifThenElse` by `True` or `False`;
+   - `GUARD_BYPASS`: replace the condition of an `ifThenElse`, or the scrutinee of a bool `case` (PV11 levels),
+     by `True` or `False`;
    - `BOOL_DECODE`: replace the decode of a Bool component by `False`;
    - `EQUALS_DATA`: replace an `equalsData` application by `True`;
-   - `EAGER`: remove a `delay`/`force` pair around a branch, making it strict;
+   - `EAGER`: make an unselected branch run. For `force (ifThenElse c (delay t) (delay e))`, replace each branch
+     by one that first evaluates the other branch and discards it: `delay [(\_ -> t') e]` and
+     `delay [(\_ -> e') t]` (primes: de Bruijn indices shifted for the new binder), so the selected result is
+     kept when the extra evaluation succeeds, `c` is evaluated once, and scopes are preserved; for a bool `case`
+     at the PV11 levels, the same rewrite of its two branches. Removing a `delay`/`force` pair is not used: the
+     emitted conditional shares one `force`, and cancelling an adjacent pair is already an optimizer step
+     (`UplcOptimizer.java:119-128`). `G1SelfCheckTest` validates the operator first: it must kill a program whose
+     unselected branch traces or fails, and must not change a pure control program;
    - `VAR_SWAP`: replace a variable reference by another variable bound at the same point (covers wrong binding
      ownership and stale accumulators).
 
    For each operator and level the test reports eligible sites, mutants applied, killed (some input's
    observation differs from the JVM's), surviving, crashing (`Crash`) and exhausted (`Inconclusive`); crashes
-   and exhaustion are not counted as kills. The unmutated program must agree first. An operator with no eligible
-   site at a level where its form is emitted fails the test. M5 measures the scores and records a floor per
+   and exhaustion are not counted as kills. The unmutated program must agree first. Applicability is a fixed
+   table, not inferred from the corpus: each operator × level cell is *applicable* or *not applicable*
+   (`DISPATCH`'s `case` form at `NONE`, for example). The test fails if an applicable cell has no eligible site
+   on the corpus, or a not-applicable cell has one; the table is recorded in this ADR in M5. M5 measures the scores and records a floor per
    operator and level, below which the test fails; every surviving mutant from the corpus is listed and
    classified (equivalent, with the reason, or a gap fixed by a corpus or input change).
 3. **Compiler-level fault injection** (ADR-063 open question 2) stays open; D10.1 and D10.2 do not need it.
