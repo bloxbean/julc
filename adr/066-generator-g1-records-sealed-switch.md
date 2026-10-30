@@ -24,6 +24,7 @@ generates the constructs they need:
 | #277 | `equals` between two different record types with equal fields is true on-chain | Probe while writing this ADR |
 | #279 | A record implementing two sealed interfaces gets one tag; a `switch` over the other takes the wrong arm | Review of this ADR (r1) |
 | #280 | A zero-parameter helper runs once at script start, even if never called | Probe while revising this ADR |
+| #291 | A `switch` `default` arm block has no scope of its own: its locals keep their types after the switch, and two loops in it, in a switch inside a method-call argument, are rejected | G1 r5's default campaign (review of M3 part 1) |
 | #166 (fixed) | A `boolean` record component bound by a switch case pattern was not decoded | Review of PR #165 |
 | #162 (fixed) | Reassigning a switch case-pattern variable in a loop left stale field reads | Review of PR #157 |
 | #47, #50 (fixed) | Switch case bindings collided with method parameters | Users |
@@ -133,6 +134,13 @@ review at `5c358dfa` (same code). The probe sources are not committed; their pro
   `equals` is replaced by structural equality; a secondary constructor fails on-chain). An explicit accessor is rejected only when called directly on a constructor expression;
   non-accessor instance methods, static methods and explicit canonical constructors are rejected on any receiver,
   and `equals` lowers structurally, as above.
+- *(M3) #291, at every level, whether the `default` arm runs or not:* a local declared directly in a `default ->`
+  block keeps its type after the switch, so a later read of a field with that name uses the local's layout: a
+  wrong value silently (`R1 p` shadowing `R0 p`: JVM 1, UPLC −2), a failure, or a rejection (JULC0055). And two
+  loops directly in a `default` block, in a switch inside an argument of a method call (`a.add(switch …)`,
+  `x.equals(switch …)`), are rejected with "Unbound variable: i1" (no code), where javac accepts. A type-pattern
+  arm block, a single loop, and the same switch assigned to a local first all agree; loop-body locals inside the
+  block are scoped.
 
 **Representation the mapping must match.** A standalone record is `ConstrData 0 [components]`; a variant of a
 sealed interface is `ConstrData i [components]`, where `i` is its position in the `permits` clause, also when
@@ -383,6 +391,7 @@ random plans under the default profile and fails if any program contains a gated
 | `SHADOW_IN_LOOP_BRANCH` | A local in an `if` branch inside a loop body shadowing a field of another type | #209 | #209 is fixed on the base |
 | `LOOP_BREAK_SHAPES` | Loop bodies with `break` and conditional updates (M2: broadened from G0's T21 and T23 shapes) | #254, #255 | Both are fixed on the base |
 | `TRACE_IN_COMPARISON` | A trace in an operand of `compareTo`, or in a receiver of `signum`, directly or through a helper whose body traces (added in M2) | #146 | #146 is fixed on the base |
+| `DEFAULT_BLOCK_SCOPE` | A local declared directly in a `default` arm block with a field's name; two or more loops directly in a `default` arm block of a switch inside a method-call argument (added in M3) | #291 | #291 is fixed on the base (ADR-067 scopes `default`) |
 
 `TRACE_IN_COMPARISON` (M2): #146's lowering evaluates a `compareTo` operand, and a `signum` receiver, more than
 once, so a traced operand traces more often on UPLC than on the JVM. G1 emits no `signum`; the other operations it
@@ -1313,8 +1322,9 @@ Findings and decisions:
 4. **The #209 steer** is integers-only a third of the time, so that both its silent and its failure forms are found
    within the PR budget.
 
-No other mismatch was found by the default-profile campaigns. Every case of every run was conclusive at every
-level:
+No other mismatch was found by these default-profile campaigns. Every case of every run was conclusive at every
+level (but see #291 under round 1 below: a fresh 1,000-case run found it at about 1 in 1,000 programs, which these
+runs happened to miss):
 - the PR run;
 - three nightly runs of 3,000 tries during development (the first two stopped on the two findings above);
 - a final nightly run of 3,000 tries.
@@ -1374,7 +1384,7 @@ re-recorded:
 | #209 | `REDISCOVER_209`, `form=failure` | 62 | 5.2 s | `Value R0(-5, false)` | `Failure UnConstrData: not ConstrData` |
 | #280 | `REDISCOVER_280` | 2 | 1.1 s | `Value -5 []` | `Value -5 [k0]` |
 | #146 | `REDISCOVER_146` | 35 | 2.9 s | `Value A0() [k0]` | `Value A0() [k0, k0]` |
-| #162 | `REDISCOVER_162` | 2 | 0.8 s | `Value` | `Rejected` (#162's diagnostic, expected) |
+| #162, must-reject evidence on the fixed compiler (D6), not a rediscovery; the revert-based rediscovery stays in M5 | `REDISCOVER_162` | 2 | 0.8 s | `Value` | `Rejected` (#162's diagnostic, expected) |
 
 Commands and counts (G1 r5):
 - `./gradlew :julc-difftest:test --rerun`: 197 tests, 0 failures, 0 skipped, in 70 s (the G1 classes 14.4 s);
@@ -1395,6 +1405,131 @@ Open for M3 part 2, once ADR-067 is below this PR:
 - shared variants;
 - `G1MustRejectTest` for #279 and #282;
 - rediscovery of #275, #276, #277 and #279 on the pre-fix base.
+
+### M3 part 1 review round 1 (2026-10-30, G1 r6)
+
+The review comment (F69, F74–F77) and Codex (F95–F97) asked for changes at `8cdd831f`.
+
+| Finding | Change |
+|---|---|
+| F69 (P1), a new silent miscompile, #291 | Gated per D6 (below), with pins, counterfactuals and steered profiles. |
+| F74 = F95 (P1/P2), a failing initializer read as invalid javac output | `JvmExecutor` first loads, links and verifies every top-level and member class without initializing it (reflecting on a class's methods links it). A `LinkageError` there, such as a `VerifyError`, is the oracle fault. Argument mapping and the call run inside the trace capture. An `ExceptionInInitializerError`, or a `NoClassDefFoundError` caused by one, is a `Failure` with its cause and the traces before it; any other `LinkageError` while running is a harness error. `JvmExecutorTest` checks a static initializer that calls `Builtins.error()` and one that divides by zero (both `Failure` with trace `[init]`, and both agree at every level through `DiffRunner`), a member record whose initializer fails and is used again after the error is caught, and that the javac `VerifyError` is raised while linking. |
+| F96 = F76 (P2/P3), re-recording replaced saved cases | Each original file name again holds the first program recorded under it: G1 r1's for #146 and #280 (with `agree-g1-146-counterfactual` and `agree-g1-280-counterfactual`), G1 r2's for #209. Every later re-recording that found another program is kept under a `-r2` to `-r5` name. #280's r4 program was r2's, so it is not added twice. `G1RediscoveryTest` checks every reproducer with its counterfactual. |
+| F97 = F75 (P2/P3), switch features read only from markers | `G1Source` reads a printed program with javac's parser. `G1SwitchShapesTest` requires, over 4,000 default plans and 1,000 under each of `REDISCOVER_162`, `REDISCOVER_291` and `REDISCOVER_291_LOOPS`: the switch features the source shows are exactly the marked ones; no switch is in a method receiver (#290) or in any `if`, ternary or `while` condition, multi-line safe; no arm assigns a variable it does not declare (ADR-048); and more than 1 in 20 switches lists its variants in neither their `permits` order nor their declaration order. A hand-written test shows each reading is not vacuous. `BINDING_ACCUMULATOR` and `ASSIGN_PATTERN_BINDING` are marked per arm, which the reading required. `GatedShapes` notes that its line-based reading assumes single-line conditions. |
+| F77 (P3) | The #162 row above is labelled as must-reject evidence; the revert-based rediscovery stays in M5. |
+
+Mutants, applied one at a time to `G1`, are all killed:
+
+| Mutant | Killed by |
+|---|---|
+| Switches allowed in method receivers (S2) | `G1SwitchShapesTest` |
+| Switches allowed in tests (S3) | `G1SwitchShapesTest`, `G1GatesTest` |
+| Arms in `permits` order (S5) | `G1SwitchShapesTest` (permuted share) |
+| Arms keep enclosing variables assignable (S1) | `G1SwitchShapesTest` |
+| `default` expanded into variant arms, still marked | `G1SwitchShapesTest`, `G1GatesTest` |
+| `BINDING_ACCUMULATOR` marked without the binding copy | `G1SwitchShapesTest` |
+| The #291 gate ignored | `G1SwitchShapesTest`, `G1GatesTest` |
+
+**#291.** `DEFAULT_BLOCK_SCOPE` gates both symptoms of the `default` arm block's missing scope; it is off in the
+default profile.
+- `DEFAULT_BLOCK_SHADOW`: without the gate, a local declared directly in a `default` block (a final or an
+  arm-owned accumulator) never takes a field's name. Loop-body locals and for-each elements in the block are
+  scoped (probed), so they keep field names.
+- `DEFAULT_BLOCK_LOOPS`: found by the first r6 nightly run (try 1,653 of 3,000), with the coordinator's analysis
+  (ADR-067's scope fix accepts it). Without the gate, a `default` block of a switch anywhere inside an argument of
+  `add`, `subtract`, `compareTo` or `equals` has at most one loop directly in it. Probed: a `while` after another
+  loop is rejected, also through a ternary, a helper call, a constructor or a nested switch inside the argument; a
+  `while` first and a for-each second, nested loops, a static helper argument, a constructor argument, and a
+  switch assigned to a local first all agree.
+- Both keep the choices the plan decodes, so the gate alone keeps the default distribution
+  (`aGateAloneKeepsTheDefaultDistribution`).
+- Markers and source readings: `G1GatesTest` reads the shadow from lines and the loops from javac's tree, and the
+  default profile shows neither in 20,000 plans.
+- `REDISCOVER_291` (steer `291`): #209's mirrored records and fields, a family, a `default` arm in every switch over
+  more than one variant whose block first declares a local named like a field, and a result reading that field.
+  `REDISCOVER_291_LOOPS` (steer `291_LOOPS`): a `default` arm in every switch, half of the method-call arguments a
+  switch, and there a `default` block of two loops, the second a `while`.
+- `-Pdifftest.form=rejection` passes over cases that no configuration rejects.
+- Pins, each with an `agree-…-counterfactual`:
+  - `diverge-g1-291-silent-misread` (JVM 1, UPLC −2) and `diverge-g1-291-runtime-misread` (UPLC fails), the local
+    renamed apart;
+  - `reject-g1-291-unresolved-read` (`REJECT JULC0055`), the local renamed apart;
+  - `reject-g1-291-default-block-loops` (`REJECT none`, "Unbound variable: i2"), the switch assigned to a local
+    first.
+
+  A rejection is pinned as `REJECT`, since `DIVERGE` pins only values and failures; each becomes `AGREE` when #291
+  is fixed. ADR-067 fixes the scope on its ordinary path; the gate is turned on once that fix is below this PR.
+
+G1 r6 decodes differently from r5 (the new gate's text, and the `default` block restrictions), so the version is
+bumped. The r5 pins stay as saved; the #291 cases are from r6 runs. Rediscovery, seed `20261030`, 150 tries:
+
+| Defect | Profile, form | First failing try | Time to first failure | JVM | UPLC, every level |
+|---|---|---|---|---|---|
+| #209 | `REDISCOVER_209` (and `form=value`) | 12 | 1.9 s (1.7 s) | `Value R0(5, 5, 5)` | `Value R0(-2, -2, -2)` (silent) |
+| #209 | `REDISCOVER_209`, `form=failure` | 62 | 4.0 s | `Value R0(-5, false)` | `Failure UnConstrData: not ConstrData` |
+| #280 | `REDISCOVER_280` | 2 | 0.9 s | `Value -5 []` | `Value -5 [k0]` |
+| #146 | `REDISCOVER_146` | 35 | 2.7 s | `Value A0() [k0]` | `Value A0() [k0, k0]` |
+| #162, must-reject evidence on the fixed compiler | `REDISCOVER_162` | 2 | 0.8 s | `Value` | `Rejected` (#162's diagnostic, expected) |
+| #291 | `REDISCOVER_291` (shrinks to the failure form) | 20 | 2.2 s | `Value -5` | `Failure UnIData: not IntData` |
+| #291 | `REDISCOVER_291`, `form=value` | 20 | 2.5 s | `Value 1` | `Value -2` (silent) |
+| #291 | `REDISCOVER_291`, `form=failure` | 81 | 5.2 s | `Value -5` | `Failure UnIData: not IntData` |
+| #291 | `REDISCOVER_291`, `form=rejection` | 67 | 4.4 s | `Value -5` | `Rejected JULC0055` |
+| #291, loops | `REDISCOVER_291_LOOPS` | 49 | 3.9 s | `Value R0(-5, -5, -5)` | `Rejected` (no code), "Unbound variable: i2" |
+
+Quotas (G1 r6). The PR minimum is 7 (`NESTED_SWITCH`, `SWITCH_IN_LOOP`, `PERMITS_PERMUTED`):
+
+| Feature | PR, 150 tries | Nightly, 3,000 tries |
+|---|---|---|
+| `SWITCH` | 21 (14.0%) | 640 (21.3%) |
+| `NESTED_SWITCH` | 7 (4.7%) | 266 (8.9%) |
+| `YIELD_BLOCK` | 21 (14.0%) | 565 (18.8%) |
+| `LOOP_IN_ARM` | 18 (12.0%) | 508 (16.9%) |
+| `SWITCH_IN_LOOP` | 7 (4.7%) | 191 (6.4%) |
+| `TYPE_PATTERN` | 21 (14.0%) | 640 (21.3%) |
+| `DEFAULT_ARM` | 15 (10.0%) | 332 (11.1%) |
+| `BINDING_ACCUMULATOR` | 14 (9.3%) | 395 (13.2%) |
+| `RECORD` | 82 (54.7%) | 1877 (62.6%) |
+| `SEALED` | 79 (52.7%) | 1670 (55.7%) |
+| `TWO_FAMILIES` | 39 (26.0%) | 816 (27.2%) |
+| `ZERO_COMPONENTS` | 65 (43.3%) | 1262 (42.1%) |
+| `NESTED_RECORD` | 43 (28.7%) | 1160 (38.7%) |
+| `SEALED_COMPONENT` | 14 (9.3%) | 358 (11.9%) |
+| `RECORD_ARG` | 30 (20.0%) | 641 (21.4%) |
+| `SEALED_ARG` | 8 (5.3%) | 336 (11.2%) |
+| `RECORD_RESULT` | 39 (26.0%) | 827 (27.6%) |
+| `SEALED_RESULT` | 36 (24.0%) | 471 (15.7%) |
+| `COMPONENT_ACCESS` | 41 (27.3%) | 938 (31.3%) |
+| `CHAINED_ACCESS` | 11 (7.3%) | 395 (13.2%) |
+| `STATIC_FIELD` | 60 (40.0%) | 1466 (48.9%) |
+| `FIELD_FROM_FIELD` | 13 (8.7%) | 346 (11.5%) |
+| `FIELD_SHADOWED` | 23 (15.3%) | 715 (23.8%) |
+| `RECORD_EQUALS` | 32 (21.3%) | 675 (22.5%) |
+| `RECORD_ACCUMULATOR` | 36 (24.0%) | 899 (30.0%) |
+| `INSTANCEOF_PATTERN` | 10 (6.7%) | 256 (8.5%) |
+| `METHOD_LEVEL_IF` | 44 (29.3%) | 853 (28.4%) |
+| `HELPER_CALL` | 14 (9.3%) | 305 (10.2%) |
+| `TRACE` | 9 (6.0%) | 313 (10.4%) |
+| `FAILURE` | 9 (6.0%) | 288 (9.6%) |
+| `VARIANT_ARG` | 14 (9.3%) | 412 (13.7%) |
+| `VARIANT_RESULT` | 13 (8.7%) | 409 (13.6%) |
+| `VARIANT_ACCUMULATOR` | 25 (16.7%) | 613 (20.4%) |
+| `VARIANT_COMPONENT` | 14 (9.3%) | 337 (11.2%) |
+| `BOOLEAN_HELPER_CALL` | 9 (6.0%) | 252 (8.4%) |
+| `PERMITS_PERMUTED` | 7 (4.7%) | 269 (9.0%) |
+| `FAMILY_EQUALS` | 15 (10.0%) | 361 (12.0%) |
+| `LOOP_LOCAL_SHADOWS_FIELD` (decode-checked; saved case) | 2 (1.3%) | 77 (2.6%) |
+| `LOOP` (statistics, no quota) | 49 (32.7%) | 1312 (43.7%) |
+| `BREAK` (statistics, no quota) | 3 (2.0%) | 70 (2.3%) |
+
+Commands and counts (G1 r6):
+- `./gradlew :julc-difftest:test --rerun`: 238 tests, 0 failures, 0 skipped, in 111 s (the G1 classes 53.9 s, of
+  which `G1GatesTest` 23.9 s and `G1SwitchShapesTest` 17.0 s); `RegressionCasesTest` runs 82 cases.
+- `./gradlew :julc-difftest:nightlyDiffTest --tests '*G1PropertyTest' --rerun`: 3,000 tries, all conclusive at
+  every level, 134 s.
+
+The default campaigns found no mismatch other than #291's two symptoms, now gated. #291's first symptom showed in
+about 1 in 1,000 default r5 programs, and its second in 1 in 3,000 r6 programs before it was gated: rarer shapes
+may remain, which is what the steered profiles and the nightly runs are for.
 
 ## Revision history
 
