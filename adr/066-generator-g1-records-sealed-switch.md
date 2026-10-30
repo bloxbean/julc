@@ -650,6 +650,98 @@ are read as before; the registry rules keep their behaviour with feature names.
 (r1's open question on the tag source is answered by D3: tags are always carried. r1's open question on VMs is
 answered by D11: Scalus joins the nightly run in M6.)
 
+## M1 results (2026-10-30)
+
+Implemented, in `julc-difftest` only (no compiler, stdlib, VM or published module changes; `gen/G0`,
+`gen/G0Enumeration` and `gen/Choices` are untouched):
+
+- **D3, tag table.** `TagTable` holds the `(record binary name, parent binary name, tag)` entries, sorted by
+  record, then parent. On construction it rejects duplicate entries and, per parent, duplicate tags and tags that
+  do not cover `0..n-1`. `TagTable.validate(top)` is the source validation: every entry names a record that
+  directly implements its sealed parent; every record nested in the program that implements a sealed interface has
+  an entry for each such parent; and each parent's entries are exactly its permitted subclasses. `JvmExecutor` runs
+  it before every JVM run, and `DiffRunner.run` before any run.
+- **D3, value mapping.** `ValueMapping` maps user records and sealed interfaces both ways by D3's rule, with the
+  case's table (`toData(value, declaredType, tags)`, `fromData(data, type, tags)`). `TagTable.tagFor` is the
+  parent-aware lookup and the boundary validation: a record whose parents give it different tags is a
+  `HarnessException` whenever it is mapped (argument, result or component, under either parent); equal tags under
+  two parents map. `fromData` for a sealed type picks the permitted subclass whose table tag is the `Constr`'s,
+  then checks the arity. A case whose program has sealed variants and no table fails (G1-I4).
+- **D4, representation check.** `ValueMapping.Representation` (`INTEGER` for `BigInteger`, `BOOL` for
+  `boolean`, `CONSTR_DATA` for a user record or sealed interface, `ANY` otherwise) and
+  `fromTerm(term, representation)`; a violation is `Crash("result: representation: …")`.
+- **D5.** `KnownDivergences.Rule.requires` and `explain` take feature names (`KnownDivergences.names` converts
+  G0's enum); pins also compare the tag table. The shared helper is `CampaignVerifier.verify(finder, source,
+  className, method, args, tags, features, generator, profile, plan)` (test sources), which now owns the runner,
+  the registry, the failure record and the seed hook; `G0PropertyTest.verify` is G0's adapter (no tags, no profile,
+  `G0.VERSION`). `DiffCase` carries `tags` and `profile`. `.diffcase` format 3 adds `tag:` and `profile:` lines;
+  `nightlyDiffTest` runs the `junit-jupiter` and `jqwik` engines, filtered by tag `nightly`.
+
+Decisions made in M1:
+
+1. **Where the declared return type comes from.** From the JVM side: `JvmExecutor.resultRepresentation`
+   reflects on the entry method of the class javac compiled, and `DiffRunner` passes the result to
+   `UplcExecutor.run` for `run` and for confirmation reruns. javac is the oracle (ADR-063), so this reads the
+   source the way the comparison does, never JuLC's output; it needs no new persisted field that could disagree
+   with the source; and it applies to format-2 cases unchanged. `UplcExecutor.run` without a representation stays
+   unchecked (`ANY`); only `UplcExecutorCacheTest` calls it that way. Carrying the type in `DiffCase` was the
+   alternative: one more field to persist, generate and keep consistent with the source.
+2. **Which types are checked.** Exactly D4's list. `int`, `long`, boxed `Boolean`, `byte[]`, `String`,
+   `PlutusData` and collections are `ANY`, so ADR-063's saved cases are checked only where D4 asks. All of them
+   still agree.
+3. **What source validation's arity means.** Each sealed parent's entries are exactly its permitted subclasses
+   (as a set, never in reflection order), so a family has as many tags as the source has variants. The arity of a
+   record value (components against `Constr` fields) is checked when it is mapped.
+4. **What reflection is used for:** a record's direct sealed interfaces, the set of permitted subclasses, record
+   components in declaration order (`Class.getRecordComponents` specifies that order) and the canonical
+   constructor. No tag ever comes from reflection.
+5. **Library types.** Records and sealed interfaces in `org.julclang.core.`, `org.julclang.ledger.` and
+   `org.julclang.stdlib.`, and `PlutusData` subtypes, are not user types and stay unmapped, as before: ledger types
+   map through their own encoders (ADR-063 D4, M4).
+6. **Format 2 is still written** for a case without tags and without a profile, so G0's D8 records are
+   byte-identical to before (`RegressionStoreTest.aCaseWithoutTagsIsWrittenAsFormat2`); any other case is written
+   as format 3. The reader accepts both; `tag:` or `profile:` in a format-2 file is an error.
+7. **The profile** is one trimmed line, or null for none; G0's "default profile" is none. It is part of the
+   `DiffCase` and of its record, but not of pin matching: a pin matches the program (class name aside), method,
+   arguments and tag table, since the profile decides how a program was generated, not what it does.
+8. **The case name** of a generated case is the generator version's first word in lower case plus the plan
+   (`g0 [...]`, as before), so `verify` takes the generator version rather than a name; it also takes `finder` for
+   the provenance, as G0's did.
+
+Tests (all new tests are JUnit, written from `advanced-guide.md`'s encoding, not from JuLC output):
+- `RecordMappingTest` (11): standalone and zero-component records, `boolean` components, variants typed as
+  themselves and as the sealed type with nonzero tags, a table in neither declaration nor `permits` order,
+  nested records and sealed components to depth 2, records in lists, round trips under two tables, missing tags
+  with and without a table, malformed Data (wrong arity, unknown tags, wrong component kinds), unequal and equal
+  tags under two parents, library records.
+- `TagTableTest` (4): sorting and the `tag:` text; duplicate, gapped and negative tags; source validation of valid
+  tables (including unequal tags under two parents) and of missing variants, a missing second parent, extra
+  entries, a parent that is not sealed, and unknown names.
+- `ResultRepresentationTest` (5): `Representation.of`, accepted and rejected terms (an integer as Data, a bool as
+  a `Constr`, a record as a native `Constr` or as non-`Constr` Data), the executor's
+  `Crash("result: representation …")`, and `BigInteger`, `boolean` and `long` results still agreeing through
+  `DiffRunner`.
+- `RecordDiffTest` (5): `DiffRunner` end to end with a record argument holding a sealed component and a record
+  result, for six families whose declaration, `permits` and switch-arm orders are pairwise different, on every
+  variant, at every level; the JVM results against hand-written Data; a sealed result and a variant result typed as
+  itself; a table in declaration order instead of `permits` order shows as a mismatch; an incomplete or absent table
+  fails before any run.
+- `RegressionStoreTest` (+3): format 3 round trip with unequal tags under two parents and a profile, the exact
+  header text, case identity under swapped tags; format 2 still written for untagged cases; invalid `tag:` and
+  `profile:` lines.
+- `KnownDivergencesTest` (+1): a pin matches only its tag table, whatever the profile.
+
+Commands and counts:
+- `./gradlew :julc-difftest:test --rerun`: 146 tests, 0 failures, 0 skipped (117 before M1, all unchanged in
+  meaning; +29). `G0BoundTest`'s 20,000-plan identity check passes.
+- `./gradlew :julc-difftest:nightlyDiffTest --rerun`, with a temporary probe class holding one JUnit test tagged
+  `nightly` and one untagged (removed afterwards): 2 tests ran, 0 failures, in 1 min 52 s. They were the
+  3,000-try `G0PropertyTest.generatedProgramsAgreeNightly` (jqwik, 111 s) and the tagged JUnit probe. Neither
+  the untagged probe nor any other test ran.
+
+Findings: JuLC tags each variant by its `permits` position for all six permutations at every level, and returns a
+record or sealed result as a Data constant holding a `Constr` (the check passes). No deviation from the ADR.
+
 ## Revision history
 
 - **r1** (2026-10-30): initial proposal.
