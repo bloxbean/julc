@@ -86,8 +86,6 @@ class M3bStatics {
     static Interval between(BigInteger a, BigInteger b) { return Interval.between(a, b); }
 
     static Credential credentialFromData(PlutusData d) { return Credential.fromPlutusData(d); }
-    static PubKeyHash hashFromData(PlutusData d) { return PubKeyHash.fromPlutusData(d); }
-    static byte[] hashFromDataHash(PlutusData d) { return PubKeyHash.fromPlutusData(d).hash(); }
     static BigInteger castInteger(PlutusData d) { return PlutusData.cast(d, BigInteger.class); }
     static JulcMap<byte[], BigInteger> castMap(PlutusData d) { return PlutusData.cast(d, JulcMap.class); }
     static byte[] castHash(PlutusData d) { return PlutusData.cast(d, PubKeyHash.class).hash(); }

@@ -38,6 +38,7 @@ class Adr068CallsHarnessTest {
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcList;
                 import org.julclang.core.types.JulcMap;
+                import org.julclang.ledger.Value;
                 import org.julclang.stdlib.Builtins;
 
                 public class Case {
@@ -265,6 +266,23 @@ class Adr068CallsHarnessTest {
         assertBothDivergeAlike("public static int m(BigInteger a) { return said(\"T\", a).signum(); }", integer(3));
     }
 
+    /**
+     * The JVM and the reference disagree on these inputs, and the frontends agree with each other. Only a value at run time
+     * shows it, so they are ported, not stopped; a fix goes in the shared handler. Each is reported in the M3b evidence.
+     */
+    @Test
+    void handlersThatDisagreeWithTheJvmOnSomeInputs() {
+        String method = "public static BigInteger m(BigInteger a, BigInteger b) { return a.mod(b); }";
+        assertBothDivergeAlike(method, integer(7), integer(-3));
+        assertBothDivergeAlike("public static long m(JulcList<BigInteger> a) { return a.take(-1).size(); }", list(integer(1), integer(2)));
+        assertBothDivergeAlike("public static long m(JulcList<BigInteger> a) { return a.drop(-1).size(); }", list(integer(1), integer(2)));
+        String lovelace = "public static BigInteger m(PlutusData a) { return Value.fromPlutusData(a).lovelaceOf(); }";
+        var noAda = new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(1),
+                new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(2), integer(7)))))));
+        assertBothDivergeAlike(lovelace, noAda);
+        assertBothDivergeAlike(lovelace, new PlutusData.MapData(List.of()));
+    }
+
     // --- Short-circuiting ---
 
     @Test
@@ -438,6 +456,17 @@ class Adr068CallsHarnessTest {
         assertAgree("static long k() { return 3; } public static long m() { return k() + k(); }");
         assertAgree("static long second(long a, long b) { return b; } public static long m(long a, long b) { return second(saidL(\"L\", a), saidL(\"R\", b)); }",
                 integer(1), integer(2));
+    }
+
+    /**
+     * A helper with no parameter is a {@code let}, bound in the assembly both frontends share, so its body runs once and
+     * first: traced twice in Java it traces once, and it runs whether the branch that calls it does or not.
+     */
+    @Test
+    void aHelperWithNoParameterRunsOnceAndFirst() {
+        assertBothDivergeAlike("static long k() { return saidL(\"K\", 1); } public static long m() { return k() + k(); }");
+        assertBothDivergeAlike("static long k() { return saidL(\"K\", 1); } public static long m(boolean c) { return c ? k() : 2; }", bool(false));
+        assertBothDivergeAlike("static long k() { return fail(BigInteger.ONE).longValue(); } public static long m(boolean c) { return c ? k() : 2; }", bool(false));
     }
 
     /** Overloads share a binder and must be interchangeable; javac's choice among them cannot change the result. */

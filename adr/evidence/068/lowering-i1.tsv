@@ -2279,7 +2279,6 @@
 2216849b2a26c9b1ef916db99504e7e4a1a12ac5a167c42bce343e8d391682f9	not-ported	1/2	SWITCH_EXPRESSION	-	
 221eb40896901878afaff089145e73e58ae399d6e50d8fa3f89455106c81463b	reference-rejects-not-ported	0/0	SYNCHRONIZED	-	null@4:47 synchronized is not supported on-chain
 22227e58d0f37d559387a16d58a4eaf3b3f501ddabe0c369f4a0ca51b7ada860	unreplayable	0/0	-	-	custom stdlib lookup custom:org.julclang.compiler.StdlibIntegrationTest$1
-22241a6b55d3f715d1a186cfba0dfb735c1605374a23b565bb1ac5412518f0e3	i1a-identical	84/84	-	fragment	
 2225455dc3ef854c72febf63f38de2503c6c96f854daed9a201075bcd331c2a7	not-ported	0/1	VARIABLE	-	
 2225a431115f82626b58aeef49d11baef757127f2d7dde7cac140f8db380eb97	not-ported	0/1	VARIABLE	-	
 2227e4a5f07bfcdb5c79d32a4cea836d7a3fa48616285e7606c68cc8bdf53d37	both-reject-javac-first	0/1	-	-	JULC0085
@@ -2971,6 +2970,7 @@
 2ccf735c2810ca2df70a2cba2be60c718ae41a8eeb821c237265b2bd894b094e	javac-rejects	0/3	-	-	JULC0085
 2cd2d90d380bcd72c0935901b01a0c1c2f31122706af95ad3883441669ccabef	not-ported	0/1	VARIABLE	-	
 2cd69c0757c4be86ae0b78899cc85ab1c314bb19acdcf7e22d34d2ecc03c9fae	javac-rejects	0/4	-	-	JULC0085
+2cd8c8334406d215af531f8f51c4327e0c00698ea6b195fe97f8fea928f924e2	i1a-identical	60/60	-	fragment	
 2cdb7612dde39314251f425f7414acfa85fdc40580fd48ad4285cd8ba1d4b741	javac-rejects	0/18	-	-	JULC0085
 2cdd278bd06a291720ee1b2500ac285cc7574b6c3ecc2f2f166e306119c9a971	not-ported	0/18	VARIABLE	-	
 2cdee6c7745d083866cd45db027879b1a2fb6003cd5ac25b8c9c323b867d3581	javac-rejects	0/3	-	-	JULC0085
@@ -3010,7 +3010,6 @@
 2d6f559bbdbbd94e0d8b212216ce27d01c988f3883d4ac7af40b67b1b788bf96	both-reject-javac-first	0/1	-	-	JULC0085
 2d7b7b44a2b596c3a84edbef29012038d7eca02ffd7a6b16804ecd55ae34a610	not-ported	0/18	VARIABLE	-	
 2d7e745489948842f78bafd3fc7cf19b31892f256dca2dcc11424729d04828f3	javac-rejects	0/18	-	-	JULC0085
-2d7ff595f9a1da3de31ae283dca9e3d4e21af0ced72d8a059a3dfa55e9aeecd7	i1a-identical	62/62	-	fragment	
 2d81fac377be9ad653a19a126058b81dce41f6b1bf0df923044ff870e5440207	javac-rejects	0/18	-	-	JULC0085
 2d853d856972f2a4694acbce0a9b8dad1bd6ab17979d96cd219035a136938c37	javac-rejects	0/3	-	-	JULC0085
 2d8664611668dc7fa16df4934a26708cc2eb9d020c1712195781ad3738c91eaa	javac-rejects	0/1	-	-	JULC0085
@@ -3050,6 +3049,7 @@
 2e17aa3352e3f98aa07f03df737ae014046c37ac7d10e72874c40e71f2389da5	not-ported	0/1	VARIABLE	-	
 2e17e0e053f1b08b3068627b41dc7a052d08ad68a050c7028cb50c23a042d65d	javac-rejects	0/3	-	-	JULC0085
 2e1d23e55013b16b06451bae11dff635511077f36efc8df746c3913070b5968e	not-ported	0/29	VARIABLE	-	
+2e1ee0fc0f702b94aa2aeb576d073ac815c3d4c505071c447e652c820678e0cd	i1a-identical	81/81	-	fragment	
 2e2307da3d68fb555c61a4dba3772cccbb89eb8fcbdac7e4dc6696f09abf0e88	javac-rejects	0/3	-	-	JULC0085
 2e284ef99cf80bfb75e513f6f0846707353129c5daffd843c64c9b29db3e4502	javac-rejects	0/3	-	-	JULC0085
 2e2d05ac487eed7b0793ea4fd276e9a1a14e9ea896c7fccb92f0b6a1a96db789	not-ported	1/3	VARIABLE	-	
@@ -16529,6 +16529,7 @@ f87873dedbe7c119626298628c7449d4a4d0db9573ccc7b7ab203d2bcaa9b300	javac-rejects	0
 f87f189cf7358b368d6a6fe385922199a24840bd2eef0740c877471fc497a158	javac-rejects	0/18	-	-	JULC0085
 f880d2e9a433d4cae393c04367bf6799876056de344c51a52cffbf2fbca17331	unreplayable	0/0	-	-	custom stdlib lookup custom:org.julclang.stdlib.StdlibRegistry
 f887ccb78cd9830cebd2df8316cf6a65421e6474ab58a4c87c7b9e39b29f89f7	javac-rejects	0/18	-	-	JULC0085
+f88c868d37a96ee12762cce87b648b8e350b7d3260b3a4c36b4c8699a7635941	not-ported	1/6	a wrapper's component read as Data	-	
 f892b05d20a37763dbf2464dfe446bb6a4f3831c981a39d12c492a83511d585a	not-ported	1/2	VARIABLE	-	
 f895d9972b03d063548a5de7ccd88ed2610ad66815b1038fee69f77b2e0d68dc	not-ported	2/30	a library unit	-	
 f897d45cf4579d59858b80257a3dc26a95e82404cb23ad2b7b263a122d4149f6	both-reject-javac-first	0/1	-	-	JULC0085

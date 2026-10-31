@@ -98,9 +98,13 @@ final class CallTargets {
         if (identity.equals(JavacNames.BIG_INTEGER) && name.equals("valueOf") && arguments == 1) {
             return CallTarget.Intrinsic.IDENTITY;
         }
-        if (name.equals("fromPlutusData") && arguments == 1 && inLedger(identity)
-                && facts.registry().lookupNominal(facts.identity(owner)).isPresent()) {
-            return CallTarget.Intrinsic.IDENTITY;
+        if (name.equals("fromPlutusData") && arguments == 1 && inLedger(identity)) {
+            var type = facts.registry().lookupNominal(facts.identity(owner));
+            // A ledger record is Data, and stays Data. A hash is bytes, which the reference's identity leaves undecoded.
+            if (type.isPresent()) {
+                return type.get() instanceof PirType.ByteStringType
+                        ? new CallTarget.NotLowered("fromPlutusData on a ledger hash") : CallTarget.Intrinsic.IDENTITY;
+            }
         }
         if (identity.equals(JavacNames.PLUTUS_DATA) && name.equals("cast") && arguments == 2) {
             return CallTarget.Intrinsic.CAST;
@@ -183,7 +187,7 @@ final class CallTargets {
         // JuLC compiles a record as its components, so the reference ignores a declared accessor: T31, JULC0080 to come.
         if (facts.declaredInSource(method)) return new CallTarget.NotLowered("a declared accessor");
         var type = typing.of(receiver);
-        if (!(type instanceof PirType.RecordType)) return wrapper(name, type);
+        if (!(type instanceof PirType.RecordType)) return wrapper(name, type, receiver);
         boolean visible = receiver instanceof IdentifierTree || receiver instanceof MethodInvocationTree call && typedCall(call);
         return visible ? new CallTarget.Accessor(name) : new CallTarget.Unresolved(name);
     }
@@ -193,11 +197,26 @@ final class CallTargets {
      * {@code abs} lowers to an absolute value where Java reads the component. {@code value} and {@code hash} are the
      * names that mean the component.
      */
-    private CallTarget wrapper(String name, PirType type) {
+    private CallTarget wrapper(String name, PirType type, ExpressionTree receiver) {
         boolean component = name.equals("value") || name.equals("hash");
-        return typeMethods.contains(TypeKeys.of(type), name) && !component
-                ? new CallTarget.NotLowered("a wrapper's component named like a method of its value")
-                : new CallTarget.Wrapper(name);
+        if (typeMethods.contains(TypeKeys.of(type), name) && !component) {
+            return new CallTarget.NotLowered("a wrapper's component named like a method of its value");
+        }
+        if (type instanceof PirType.ByteStringType && decodesAgain(name, receiver)) {
+            return new CallTarget.NotLowered("a wrapper's component read as Data");
+        }
+        return new CallTarget.Wrapper(name);
+    }
+
+    /**
+     * Whether the reference applies {@code UnBData} to this read: it takes a hash in a variable to be Data still, as a
+     * loop's variable is, and only a read from a call to be decoded. Every variable that reaches this slice holds bytes,
+     * so that term fails on-chain where Java returns them, and it does not lower.
+     */
+    private boolean decodesAgain(String name, ExpressionTree receiver) {
+        if (name.equals("value")) return false;
+        var call = receiver instanceof MethodInvocationTree tree ? tree : null;
+        return name.equals("hash") ? call == null || !typedCall(call) : call == null;
     }
 
     /**

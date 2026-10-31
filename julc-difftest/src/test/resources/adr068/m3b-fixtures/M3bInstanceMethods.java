@@ -30,6 +30,7 @@ class M3bInstanceMethods {
     @NewType record Amount(BigInteger value) { }
     @NewType record Tag(byte[] bytes) { }
     record Wrapped(Amount amount, Tag tag) { }
+    record Holder(TokenName token) { }
 
     static BigInteger add(BigInteger a, BigInteger b) { return a.add(b); }
     static BigInteger sub(BigInteger a, BigInteger b) { return a.subtract(b); }
@@ -99,12 +100,9 @@ class M3bInstanceMethods {
     static String stringAccessor(Datum d) { return d.inner().next().text(); }
     static BigInteger accessorThenMethod(Datum d) { return d.values().head().add(d.amount()); }
     static byte[] hashOfComponent(Datum d) { return d.signer().hash(); }
-    static byte[] hashOfVariable(PubKeyHash p) { return p.hash(); }
-    static byte[] hashParenthesized(Datum d) { return (d.signer()).hash(); }
-    static byte[] nameOfToken(TokenName t) { return t.name(); }
+    static byte[] nameOfToken(Holder h) { return h.token().name(); }
     static BigInteger newTypeValue(Wrapped w) { return w.amount().value(); }
     static byte[] newTypeBytes(Wrapped w) { return w.tag().bytes(); }
-    static byte[] newTypeBytesOfVariable(Tag t) { return t.bytes(); }
     static BigInteger tupleFirst(Tuple2<BigInteger, byte[]> t) { return t.first(); }
     static byte[] tupleSecond(Tuple2<BigInteger, byte[]> t) { return t.second(); }
     static BigInteger tupleThird(Tuple3<byte[], byte[], BigInteger> t) { return t.third(); }

@@ -31,6 +31,8 @@ class JavacCallsTest {
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
             import org.julclang.core.types.JulcList;
+            import org.julclang.ledger.PubKeyHash;
+            import org.julclang.ledger.TokenName;
             import org.julclang.stdlib.annotation.NewType;
             """;
 
@@ -193,6 +195,30 @@ class JavacCallsTest {
         assertSame("@NewType record H(byte[] v) { } record R(H h) { } static byte[] m(R r) { return r.h().v(); }");
         assertEquals("JULC0055", rejected("@NewType record A(BigInteger amount) { } record R(A a) { }\n"
                 + "static BigInteger m(R r) { return r.a().amount(); }").code());
+    }
+
+    /** A hash in a variable is bytes here, and the reference reads it as Data: it fails on-chain where Java does not. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static byte[] m(PubKeyHash p) { return p.hash(); }",
+            "record R(PubKeyHash p) { } static byte[] m(R r) { return (r.p()).hash(); }",
+            "static PubKeyHash h(PubKeyHash p) { return p; } static byte[] m(PubKeyHash p) { return h(p).hash(); }",
+            "static byte[] m(TokenName t) { return t.name(); }",
+            "@NewType record H(byte[] v) { } static byte[] m(H h) { return h.v(); }"})
+    void aWrapperReadAsDataDoesNotLower(String members) {
+        assertEquals("a wrapper's component read as Data", notPorted(members));
+    }
+
+    @Test
+    void fromPlutusDataOnAHashLeavesDataWhereBytesAreExpected() {
+        assertEquals("fromPlutusData on a ledger hash", notPorted("static PubKeyHash m(PlutusData d) { return PubKeyHash.fromPlutusData(d); }"));
+    }
+
+    @Test
+    void aHashReadFromATypedCallIsDecoded() {
+        assertSame("record R(PubKeyHash p) { } static byte[] m(R r) { return r.p().hash(); }");
+        assertSame("record R(JulcList<PubKeyHash> l) { } static byte[] m(R r) { return r.l().head().hash(); }");
+        assertSame("record R(TokenName t) { } static byte[] m(R r) { return r.t().name(); }");
     }
 
     // --- Static calls ---

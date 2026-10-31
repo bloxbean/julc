@@ -3,7 +3,9 @@ package org.julclang.testkit;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.core.PlutusData;
 import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.vm.TermExtractor;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -54,6 +56,39 @@ class FrontendOptionTest {
         var eval = JulcEval.forSource(NOT_PORTED).frontend(CompilerFrontend.JAVAC);
         var failure = assertThrows(CompilerException.class, () -> eval.call("twice", BigInteger.ONE));
         assertTrue(isNotPorted(failure), failure::getMessage);
+    }
+
+    /**
+     * The reference reads a hash in a parameter as Data, and it is bytes by then: Java returns them and the script fails.
+     * javac stops the program instead. If this first assertion fails the reference has changed, and the stop can go.
+     */
+    @Test
+    void aHashReadFromAParameterFailsOnTheReferenceAndStopsOnJavac() {
+        String source = """
+                import org.julclang.ledger.PubKeyHash;
+                class C { static byte[] m(PubKeyHash p) { return p.hash(); } }
+                """;
+        var bytes = new PlutusData.BytesData(new byte[]{1, 2});
+        var reference = assertThrows(TermExtractor.ExtractionException.class, () -> JulcEval.forSource(source).call("m", bytes).asData());
+        assertTrue(reference.getMessage().contains("UnBData: expected data"), reference::getMessage);
+        var javac = assertThrows(CompilerException.class, () -> JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC).call("m", bytes).asData());
+        assertTrue(isNotPorted(javac), javac::getMessage);
+    }
+
+    /** {@code fromPlutusData} on a hash is an identity there, so what follows meets Data; javac stops it. */
+    @Test
+    void aHashFromDataFailsOnTheReferenceAndStopsOnJavac() {
+        String source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.PubKeyHash;
+                import org.julclang.stdlib.Builtins;
+                class C { static long m(PlutusData d) { return Builtins.lengthOfByteString(PubKeyHash.fromPlutusData(d).hash()); } }
+                """;
+        var bytes = new PlutusData.BytesData(new byte[]{1, 2});
+        var reference = assertThrows(TermExtractor.ExtractionException.class, () -> JulcEval.forSource(source).call("m", bytes).asInteger());
+        assertTrue(reference.getMessage().contains("expected bytestring"), reference::getMessage);
+        var javac = assertThrows(CompilerException.class, () -> JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC).call("m", bytes).asInteger());
+        assertTrue(isNotPorted(javac), javac::getMessage);
     }
 
     @Test

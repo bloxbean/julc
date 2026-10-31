@@ -192,28 +192,19 @@ final class Calls {
     }
 
     /**
-     * The value of a ledger hash or {@code @NewType} is its component, with the reference's lowering, which depends on where
-     * the value came from: a hash read from a call has been decoded, and a variable may hold it as Data ({@code hash}'s
-     * handler). Of the {@code @NewType}s, the registry has only what the underlying type does; the rest is the reference's
-     * {@code JULC0055}, or for bytes its read of an accessor.
+     * The value of a ledger hash or {@code @NewType} is its component. A byte string here was read from a call, and so is
+     * decoded ({@link CallTargets} stops the rest). Of the {@code @NewType}s, the registry has only what the underlying
+     * type does, which is {@code value}; the rest is the reference's {@code JULC0055}.
      */
     private PirTerm wrapper(CallTarget.Wrapper target, MethodInvocationTree tree, Frame frame) {
         var receiver = receiver(tree);
         var scope = lowering.expr(receiver, frame);
         var type = typing.of(receiver, scope);
         String member = target.component();
-        boolean fromCall = receiver instanceof MethodInvocationTree;
-        if (type instanceof PirType.ByteStringType && member.equals("hash") && fromCall
-                && targets.typedCall((MethodInvocationTree) receiver)) {
-            return scope;
+        if (member.equals("value") && typeMethods.contains(TypeKeys.of(type), member)) {
+            return dispatch(TypeKeys.of(type), member, scope, type, new Arguments(List.of(), List.of()), tree);
         }
-        String key = TypeKeys.of(type);
-        if (typeMethods.contains(key, member)) {
-            return dispatch(key, member, scope, type, new Arguments(List.of(), List.of()), tree);
-        }
-        if (type instanceof PirType.ByteStringType) {
-            return fromCall ? scope : new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), scope);
-        }
+        if (type instanceof PirType.ByteStringType) return scope;
         throw CompilerTypeDiagnostics.unresolvedMember(member, facts.location(tree));
     }
 
