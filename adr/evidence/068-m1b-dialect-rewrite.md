@@ -9,9 +9,9 @@ is listed below with the reason it is not, and the javac gate's default is `enfo
 | Item | Value |
 |---|---|
 | Base | `42e7bd51` (M0's head), then M1a, M0 rounds 2–4 and M1c merged in |
-| Evidence measured at | `e0b3922e` (code); later commits add evidence only |
+| Evidence measured at | `e0b3922e` for the corpus comparisons; `7bd998cb` for the gate-off identity with B1, after the review fixes; `d7329478` for the suite and the hosts |
 | Gate default | `enforce`; `off` and `report` stay available (`CompilerOptions.setJavacGate`, `-Djulc.javacGate`) |
-| Full suite | 12,711 tests, 0 failures, 0 errors, 530 skipped; outer `BUILD SUCCESSFUL in 14m 19s` |
+| Full suite | 12,745 tests, 0 failures, 0 errors, 530 skipped; outer `BUILD SUCCESSFUL in 10m 10s` |
 | Frozen corpus, gate off | 11,410 of 11,417 cases byte-identical to B1; the other 7 are the Blaster fixtures M1b rewrote; semantic, budget, specialization and rejection-inventory files have no differing row |
 | Frozen corpus, gate on | every case javac accepts is byte-identical to the gate-off row; nothing else changes |
 | In-repo cases javac rejects that B1 accepts | 5,241: 5,135 rewritten and byte-identical, 27 rewritten and different, 76 with no Java form (table U), 3 expected (2 reference fixtures, 1 parity probe) |
@@ -234,19 +234,29 @@ arguments, no value, trace or failure differs (153 further evaluations could not
 
 M0's review added a `throw` fixture after M1a derived the blob, so `IllegalStateException` was missing, the gate's only
 difference from `java.base` on the corpus. Derived again on the head's recording: **70 classes**, 136,450 bytes, sha256
-`c45dd2df24a5f1bd71cded55ab36bc425d13e4edc284b2f983c88acd5075cf0e`; 0 differences on the M0 and M1b recordings. `JavacGateProbeTest` and `JavacGateReviewTest` pin the new digest. The Web Image probe and
-the native CLI were not rebuilt with it.
+`c45dd2df24a5f1bd71cded55ab36bc425d13e4edc284b2f983c88acd5075cf0e`; 0 differences on the M0 and M1b recordings.
+`JavacGateProbeTest` and `JavacGateReviewTest` pin the new digest.
+
+## Hosts
+
+Rebuilt at `d7329478`, with the new blob and `enforce` the default:
+
+| Host | Result |
+|---|---|
+| Native CLI (`:julc-cli:nativeCompile`) | 107,713,976 bytes. `julc build` accepts a project with a stdlib-using, `@RequiresSigner` validator and a project library. The dialect `fee() > minimum()` fails the build with `JULC0085 … (compiler.err.operator.cant.be.applied.1)`. The REPL evaluates `true ? BigInteger.ONE : BigInteger.TWO` to 1 |
+| `julc-wasm` full image (`wasmSmokeFull`) | Passes. Its embedded source-debug validator relied on implicit imports, which `enforce` rejected: `test` does not run this task, so the suite could not see it. The source now has its imports |
+| Web Image gate probe (`wasmGateProbe`) | Passes. `supported=true`, platform `c45dd2df…`; `FeeGate` accepted, 204 bytes (249 at M1a, before the `compareTo` rule); `OwnerGate` accepted, 269 bytes, FLAT `46a2c36b…`, as at M1a; the dialect rejected `JULC0085` |
 
 ## Tests
 
-`./gradlew test --offline --continue --rerun` at `e0b3922e`, default gate: **12,711 tests, 0 failures, 0 errors, 530
-skipped** (XML totals of the `test` tasks), outer `BUILD SUCCESSFUL in 14m 19s`. `pairCaseTest` 71/0/0/0 and
-`onChainHarnessTest` 16/0/0/0, also under the default gate, `BUILD SUCCESSFUL in 1m 18s`. M1a's head had 12,500. The
-javac gate's report mode is not a green run any more: tests that pin `enforce` fail there, by design.
+`./gradlew test --offline --continue --rerun` at `d7329478`, default gate: **12,745 tests, 0 failures, 0 errors, 530
+skipped** (XML totals of the `test` tasks, 922 files), outer `BUILD SUCCESSFUL in 10m 10s`. `pairCaseTest` 71/0/0/0, and
+`onChainHarnessTest` 16/0/0/0 at `7bd998cb`, also under the default gate. M1a's head had 12,500. The javac gate's report mode is not a green run any more: tests that pin `enforce` fail there, by design.
 
-`Adr068NegativeOriginalsTest` adds 83, `JulcMapTest` 2. The one class that shrank is `ExpressionWrapperTest` (21 → 19): D9
-removed the name heuristics and the `PlutusData` cast fallback those tests described, and `ReplEngineTest` gained the
-evaluation, `:type` and `:pir` coverage. M1b's weakened assertion in `FailureReportIntegrationTest` is back to its original
+`Adr068NegativeOriginalsTest` adds 83, `JulcMapTest` 2, `DialectRemovalAlternativesTest` 17, `CompileResultProvenanceTest`
+6. `ExpressionWrapperTest` first fell from 21 to 19, as D9 removed the name heuristics and the `PlutusData` cast fallback
+those tests described, and is now 29, with the review's conditional, block and wrapper-closing cases; `ReplEngineTest` gained
+the evaluation, `:type` and `:pir` coverage. M1b's weakened assertion in `FailureReportIntegrationTest` is back to its original
 with M1c's rule, and M1b's two golden regenerations are reverted: `hof-filter` and `nested-while` match B0's goldens
 again. M1c's new tests needed two changes under `enforce`: the dialect
 comparison test compiles with the gate off (it tests the JavaParser frontend's rule, D6), and a `@Param` array is
@@ -260,5 +270,5 @@ comparison test compiles with the gate off (it tests the JavaParser frontend's r
 | 2 | 13 rows that grow | Decided: 10 listed cost changes, 3 equality rewrites classified apart (F741, F751) |
 | 3 | 2 external `julc-examples` cases javac rejects (`ByteStringLibEvalTest`), and Elci | External: not rewritten here; check before release |
 | 4 | `julc-e2e-tests` and `julc-plugin-test` integration runs need a DevKit | Not run; their sources are Java and `onChainHarnessTest` runs |
-| 5 | Native CLI and Web Image with the new blob | Not rebuilt; M1a's digests are superseded |
+| 5 | Native CLI and Web Image with the new blob | Done (Hosts) |
 | 6 | The cold-compile threshold | An M1 exit item, not M1b's. F401 is done: `JavacProvenance` on `CompileResult` |
