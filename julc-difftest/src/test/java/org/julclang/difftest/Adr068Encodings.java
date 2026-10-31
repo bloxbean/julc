@@ -3,7 +3,7 @@ package org.julclang.difftest;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.PlutusData;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
 import org.julclang.core.corpus.CorpusFiles;
@@ -64,12 +64,12 @@ final class Adr068Encodings {
         private static final int DEPTH = 6;
         private static final String TYPES = "org.julclang.core.types.";
         private final JavacFacts facts;
-        private final TypeResolver.Registry registry;
+        private final TypeRegistry.Snapshot registry;
         private int next = 1;
 
         Sampler(JavacFacts facts) {
             this.facts = facts;
-            this.registry = facts.registry().registry();
+            this.registry = facts.registry().snapshot();
         }
 
         private int leaf() {
@@ -133,7 +133,7 @@ final class Adr068Encodings {
                 case LedgerLayouts.PACKAGE + ".Value" -> new ValueSample(BigInteger.valueOf(n),
                         "Value.lovelace(BigInteger.valueOf(" + n + "))");
                 default -> {
-                    if (TypeResolver.ledgerHashFqcns().contains(identity)) {
+                    if (TypeRegistry.ledgerHashFqcns().contains(identity)) {
                         var bytes = (BytesSample) of(arrayOfBytes(), depth + 1);
                         yield new BytesSample(bytes.value(), "new " + identity + "(" + bytes.java() + ")");
                     }
@@ -193,7 +193,7 @@ final class Adr068Encodings {
     record NewTypeSample(Sample value, String java) implements Sample { }
 
     /** The Data of {@code sample} at {@code type}, reading tags, order and field types from {@code registry} alone. */
-    static PlutusData encode(Sample sample, PirType type, TypeResolver.Registry registry) {
+    static PlutusData encode(Sample sample, PirType type, TypeRegistry.Snapshot registry) {
         PirType resolved = type instanceof PirType.NamedTypeRef ref ? named(ref, registry) : type;
         return switch (sample) {
             case IntegerSample s -> {
@@ -239,11 +239,11 @@ final class Adr068Encodings {
         if (!kind.isInstance(type)) throw new IllegalStateException("a " + sample + " at type " + type);
     }
 
-    private static PirType named(PirType.NamedTypeRef ref, TypeResolver.Registry registry) {
+    private static PirType named(PirType.NamedTypeRef ref, TypeRegistry.Snapshot registry) {
         return ref.kind() == PirType.NamedKind.RECORD ? registry.records().get(ref.stableId()) : registry.sums().get(ref.stableId());
     }
 
-    private static PlutusData record(RecordSample sample, TypeResolver.Registry registry) {
+    private static PlutusData record(RecordSample sample, TypeRegistry.Snapshot registry) {
         var parents = registry.variants().get(sample.identity());
         int tag = 0;
         List<PirType.Field> fields;

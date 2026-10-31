@@ -4,7 +4,6 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.pir.PirGenerator;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.util.StringUtils;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
@@ -15,7 +14,6 @@ import com.github.javaparser.ast.type.VarType;
 import com.github.javaparser.ast.type.VoidType;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Resolves Java types to PIR types.
@@ -24,26 +22,7 @@ import java.util.stream.Collectors;
  * A simpleNameIndex provides fallback resolution for packageless inline code
  * and ambiguity detection when multiple types share the same simple name.
  */
-public class TypeResolver {
-
-    private static final String LEDGER_PKG = "org.julclang.ledger";
-
-    // Map of known record types (FQCN -> PirType.RecordType)
-    private final Map<String, PirType.RecordType> recordTypes = new LinkedHashMap<>();
-    // Map of known sum types (sealed interface FQCN -> PirType.SumType)
-    private final Map<String, PirType.SumType> sumTypes = new LinkedHashMap<>();
-    // Map of variant FQCN -> its enclosing SumType (for constructor tag lookup)
-    private final Map<String, PirType.SumType> variantToSumType = new LinkedHashMap<>();
-    // Sealed interfaces that declare type parameters; type arguments are dropped, so a switch over
-    // one cannot be checked (ADR-067 D4, JULC0007)
-    private final Set<String> parameterizedSumTypes = new LinkedHashSet<>();
-    // Every sealed interface a variant FQCN was registered under, in order; variantToSumType keeps only the last
-    // (a record with two sealed parents, #279, rejected by ADR-067 D6). Used to resolve case patterns (F64).
-    private final Map<String, List<PirType.SumType>> variantFamilies = new LinkedHashMap<>();
-    // Map of @NewType FQCNs -> their underlying PIR type
-    private final Map<String, PirType> newTypes = new LinkedHashMap<>();
-    // Forward identities visible only while one recursive declaration SCC is registered.
-    private final Map<String, PirType.NamedTypeRef> forwardTypes = new LinkedHashMap<>();
+public class TypeResolver extends TypeRegistry {
 
     // Simple name -> set of FQCNs (for ambiguity detection + fallback)
     private final Map<String, Set<String>> simpleNameIndex = new LinkedHashMap<>();
@@ -54,23 +33,6 @@ public class TypeResolver {
     // Method type variables bound to concrete types while one generic library method is
     // specialized (ADR-059). Empty during ordinary compilation.
     private Map<String, PirType> typeVariables = Map.of();
-
-    private static final Set<String> LEDGER_HASH_NAMES = Set.of(
-            "PubKeyHash", "ScriptHash", "ValidatorHash", "PolicyId", "TokenName", "DatumHash", "TxId");
-
-    private static final Set<String> LEDGER_HASH_FQCNS = LEDGER_HASH_NAMES.stream()
-            .map(n -> LEDGER_PKG + "." + n).collect(Collectors.toUnmodifiableSet());
-
-    /** Return the set of ledger hash FQCNs (needed for ImportResolver knownFqcns). */
-    public static Set<String> ledgerHashFqcns() {
-        return LEDGER_HASH_FQCNS;
-    }
-
-    /** Return the set of ledger hash simple names. */
-    public static Set<String> ledgerHashNames() {
-        return LEDGER_HASH_NAMES;
-    }
-
 
     public void setCurrentImportResolver(ImportResolver resolver) {
         this.currentImportResolver = resolver;
@@ -94,30 +56,6 @@ public class TypeResolver {
         simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
     }
 
-    /** Make a recursive declaration name resolvable before its fields are completed. */
-    public void predeclareNamedType(
-            String fqcn, String name, PirType.NamedKind kind) {
-        if (recordTypes.containsKey(fqcn) || sumTypes.containsKey(fqcn)
-                || newTypes.containsKey(fqcn) || forwardTypes.containsKey(fqcn)) {
-            throw new CompilerException("Duplicate named type: '" + fqcn + "'");
-        }
-        forwardTypes.put(fqcn, new PirType.NamedTypeRef(fqcn, name, kind));
-        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
-    }
-
-    /** Remove unfinished forward identities after a failed SCC registration. */
-    public void discardForwardTypes(Collection<String> fqcns) {
-        for (String fqcn : fqcns) {
-            var removed = forwardTypes.remove(fqcn);
-            if (removed == null) continue;
-            var indexed = simpleNameIndex.get(removed.name());
-            if (indexed != null) {
-                indexed.remove(fqcn);
-                if (indexed.isEmpty()) simpleNameIndex.remove(removed.name());
-            }
-        }
-    }
-
     /** Check if a type name is already registered (as record, sealed interface, or newtype). */
     public boolean isRegistered(String fqcnOrSimpleName) {
         // Direct FQCN check
@@ -130,15 +68,6 @@ public class TypeResolver {
         // Simple name check via index
         return simpleNameIndex.containsKey(fqcnOrSimpleName)
                 || LEDGER_HASH_NAMES.contains(fqcnOrSimpleName);
-    }
-
-    /**
-     * Register a @NewType record. On-chain, it resolves to the underlying type
-     * and its constructor/of() are identity operations.
-     */
-    public void registerNewType(String name, String fqcn, PirType underlyingType) {
-        newTypes.put(fqcn, underlyingType);
-        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
     }
 
     /** Check if a type name is a registered @NewType. */
@@ -260,103 +189,6 @@ public class TypeResolver {
         }
     }
 
-    /** One variant of a sealed interface read from javac's model (ADR-068 I11), in tag order. */
-    public record SealedVariant(String name, String fqcn) {}
-
-    /**
-     * Register a record read from javac's model (ADR-068 D7): its components are already resolved, nominally.
-     *
-     * @param name   the record's simple name
-     * @param fqcn   its identity
-     * @param fields its components, in declaration order
-     */
-    public void registerRecord(String name, String fqcn, List<PirType.Field> fields) {
-        if (recordTypes.containsKey(fqcn)) {
-            throw new CompilerException("Duplicate record type: '" + fqcn + "'. "
-                    + "A record with this name is already registered.");
-        }
-        recordTypes.put(fqcn, new PirType.RecordType(name, fields));
-        forwardTypes.remove(fqcn);
-        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
-    }
-
-    /**
-     * Register a sealed interface read from javac's model (ADR-068 D7, I11). A variant's tag is its position in
-     * {@code variants}; a variant that is not a registered record has no fields, as in the source path.
-     *
-     * @param parameterized whether the interface declares type parameters
-     */
-    public void registerSealed(String name, String fqcn, List<SealedVariant> variants, boolean parameterized) {
-        if (sumTypes.containsKey(fqcn)) {
-            throw new CompilerException("Duplicate sealed interface: '" + fqcn + "'. "
-                    + "A sealed interface with this name is already registered.");
-        }
-        var constructors = new ArrayList<PirType.Constructor>();
-        for (var variant : variants) {
-            var record = recordTypes.get(variant.fqcn());
-            constructors.add(new PirType.Constructor(variant.name(), constructors.size(),
-                    record != null ? record.fields() : List.of()));
-        }
-        var sumType = new PirType.SumType(name, constructors);
-        sumTypes.put(fqcn, sumType);
-        forwardTypes.remove(fqcn);
-        if (parameterized) parameterizedSumTypes.add(fqcn);
-        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
-        for (var variant : variants) {
-            variantToSumType.put(variant.fqcn(), sumType);
-            variantFamilies.computeIfAbsent(variant.fqcn(), k -> new ArrayList<>()).add(sumType);
-            simpleNameIndex.computeIfAbsent(variant.name(), k -> new LinkedHashSet<>()).add(variant.fqcn());
-        }
-    }
-
-    /**
-     * The registered definition of exactly {@code fqcn} (ADR-068 I12): no import, no simple name, no alias. A ledger
-     * hash type is its underlying bytes (I11); a permitted type that is not a record is its constructor's shape.
-     */
-    public Optional<PirType> lookupNominal(String fqcn) {
-        if (LEDGER_HASH_FQCNS.contains(fqcn)) return Optional.of(new PirType.ByteStringType());
-        if (newTypes.containsKey(fqcn)) return Optional.of(newTypes.get(fqcn));
-        if (recordTypes.containsKey(fqcn)) return Optional.of(recordTypes.get(fqcn));
-        if (sumTypes.containsKey(fqcn)) return Optional.of(sumTypes.get(fqcn));
-        if (forwardTypes.containsKey(fqcn)) return Optional.of(forwardTypes.get(fqcn));
-        var parent = variantToSumType.get(fqcn);
-        if (parent == null) return Optional.empty();
-        var variantName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-        return parent.constructors().stream().filter(constructor -> constructor.name().equals(variantName)).findFirst()
-                .map(constructor -> new PirType.RecordType(constructor.name(), constructor.fields()));
-    }
-
-    /** The "Unknown type" rejection for a name no registry holds, with this resolver's suggestion. */
-    public CompilerException unknownType(String name, String fqcn) {
-        var suggestion = findSimilarType(name);
-        return new CompilerException("Unknown type: " + name
-                + (fqcn.equals(name) ? "" : " (resolved to " + fqcn + ")")
-                + (suggestion != null ? ". Did you mean: " + suggestion + "?" : ""));
-    }
-
-    /**
-     * What a resolver holds, by identity (ADR-068 I11): the frontends' registries are compared on this. The source
-     * path's flat ledger aliases ({@link #addFlatVariantAliases}) are lookups, not declarations, so they are not in it.
-     *
-     * @param records   record identity -> its type
-     * @param sums      sealed interface identity -> its type
-     * @param variants  variant identity -> the sealed interfaces it was registered under, in order
-     * @param newTypes  {@code @NewType} identity -> its underlying type
-     * @param parameterized the sealed interfaces that declare type parameters
-     */
-    public record Registry(Map<String, PirType.RecordType> records, Map<String, PirType.SumType> sums,
-                           Map<String, List<PirType.SumType>> variants, Map<String, PirType> newTypes,
-                           Set<String> parameterized) {}
-
-    /** A snapshot of this resolver's registries. */
-    public Registry registry() {
-        var variants = new LinkedHashMap<String, List<PirType.SumType>>();
-        variantFamilies.forEach((fqcn, sums) -> variants.put(fqcn, List.copyOf(sums)));
-        return new Registry(Collections.unmodifiableMap(new LinkedHashMap<>(recordTypes)),
-                Collections.unmodifiableMap(new LinkedHashMap<>(sumTypes)), Collections.unmodifiableMap(variants),
-                Collections.unmodifiableMap(new LinkedHashMap<>(newTypes)), Set.copyOf(parameterizedSumTypes));
-    }
-
     /**
      * Add flat-FQCN aliases for inner variant types under a given package.
      * For example, maps "pkg.Credential.PubKeyCredential" also under "pkg.PubKeyCredential".
@@ -411,66 +243,6 @@ public class TypeResolver {
         if (result != null) return Optional.of(result);
         String resolved = resolveName(fqcnOrSimpleName);
         return Optional.ofNullable(variantToSumType.get(resolved));
-    }
-
-    /**
-     * Find a concrete sealed-interface variant used as an independent value in
-     * a typed boundary graph. Constructor lowering encodes such a record with
-     * its parent sum tag, while an ordinary record has tag zero. Until the type
-     * model carries that nominal tag explicitly, accepting the concrete record
-     * here would make construction, schema generation, and boundary checking
-     * disagree. The sealed-interface type itself remains fully supported.
-     */
-    public Optional<String> findStandaloneVariantRecord(PirType type) {
-        return findStandaloneVariantRecord(type,
-                Collections.newSetFromMap(new IdentityHashMap<>()));
-    }
-
-    private Optional<String> findStandaloneVariantRecord(
-            PirType unresolved, Set<PirType> active) {
-        if (unresolved instanceof PirType.NamedTypeRef ref) {
-            var parent = variantToSumType.get(ref.stableId());
-            if (parent != null) return Optional.of(variantDescription(ref.name(), parent));
-            unresolved = resolveNamed(unresolved);
-        }
-        if (!active.add(unresolved)) return Optional.empty();
-        try {
-            if (unresolved instanceof PirType.RecordType record) {
-                for (var entry : variantToSumType.entrySet()) {
-                    if (recordTypes.get(entry.getKey()) == record) {
-                        return Optional.of(variantDescription(record.name(), entry.getValue()));
-                    }
-                }
-                for (var field : record.fields()) {
-                    var found = findStandaloneVariantRecord(field.type(), active);
-                    if (found.isPresent()) return found;
-                }
-            } else if (unresolved instanceof PirType.SumType sum) {
-                for (var constructor : sum.constructors()) {
-                    for (var field : constructor.fields()) {
-                        var found = findStandaloneVariantRecord(field.type(), active);
-                        if (found.isPresent()) return found;
-                    }
-                }
-            } else if (unresolved instanceof PirType.ListType list) {
-                return findStandaloneVariantRecord(list.elemType(), active);
-            } else if (unresolved instanceof PirType.MapType map) {
-                var key = findStandaloneVariantRecord(map.keyType(), active);
-                return key.isPresent()
-                        ? key
-                        : findStandaloneVariantRecord(map.valueType(), active);
-            } else if (unresolved instanceof PirType.OptionalType optional) {
-                return findStandaloneVariantRecord(optional.elemType(), active);
-            }
-            return Optional.empty();
-        } finally {
-            active.remove(unresolved);
-        }
-    }
-
-    private static String variantDescription(String variantName, PirType.SumType parent) {
-        return "variant record '" + variantName + "' of sealed interface '"
-                + parent.name() + "'";
     }
 
     public PirType resolve(Type type) {
@@ -756,20 +528,6 @@ public class TypeResolver {
         return Optional.empty();
     }
 
-    /** Resolve a nominal recursive reference to its completed compiler definition. */
-    public PirType resolveNamed(PirType type) {
-        if (!(type instanceof PirType.NamedTypeRef ref)) return type;
-        PirType resolved = switch (ref.kind()) {
-            case RECORD -> recordTypes.get(ref.stableId());
-            case SUM -> sumTypes.get(ref.stableId());
-        };
-        if (resolved == null) {
-            throw new CompilerException(
-                    "Recursive type definition is incomplete: '" + ref.stableId() + "'");
-        }
-        return resolved;
-    }
-
     /** A type argument of a Data-encoded container ({@code JulcList}, {@code Optional}, …): JULC0091 if it is a native array. */
     private PirType dataArgument(Type argument, String container) {
         var type = resolve(argument);
@@ -791,110 +549,24 @@ public class TypeResolver {
         }
     }
 
-    /** Return whether a type graph contains a PV11 native Value. */
-    public boolean containsNativeOpaque(PirType type) {
-        return containsNativeOpaque(type, new HashSet<>(),
-                Collections.newSetFromMap(new IdentityHashMap<>()));
-    }
-
-    private boolean containsNativeOpaque(
-            PirType type, Set<String> activeNames, Set<PirType> activeTypes) {
-        if (PirType.isNativeOpaque(type)) return true;
-        if (type instanceof PirType.NamedTypeRef ref) {
-            if (!activeNames.add(ref.stableId())) return false;
-            try {
-                return containsNativeOpaque(resolveNamed(ref), activeNames, activeTypes);
-            } finally {
-                activeNames.remove(ref.stableId());
-            }
-        }
-        if (!activeTypes.add(type)) return false;
-        try {
-            if (type instanceof PirType.ListType list) {
-                return containsNativeOpaque(list.elemType(), activeNames, activeTypes);
-            }
-            if (type instanceof PirType.PairType pair) {
-                return containsNativeOpaque(pair.first(), activeNames, activeTypes)
-                        || containsNativeOpaque(pair.second(), activeNames, activeTypes);
-            }
-            if (type instanceof PirType.MapType map) {
-                return containsNativeOpaque(map.keyType(), activeNames, activeTypes)
-                        || containsNativeOpaque(map.valueType(), activeNames, activeTypes);
-            }
-            if (type instanceof PirType.OptionalType optional) {
-                return containsNativeOpaque(optional.elemType(), activeNames, activeTypes);
-            }
-            if (type instanceof PirType.ArrayType array) {
-                return containsNativeOpaque(array.elemType(), activeNames, activeTypes);
-            }
-            if (type instanceof PirType.FunType function) {
-                return containsNativeOpaque(function.paramType(), activeNames, activeTypes)
-                        || containsNativeOpaque(function.returnType(), activeNames, activeTypes);
-            }
-            if (type instanceof PirType.RecordType record) {
-                for (var field : record.fields()) {
-                    if (containsNativeOpaque(field.type(), activeNames, activeTypes)) return true;
-                }
-            }
-            if (type instanceof PirType.SumType sum) {
-                for (var constructor : sum.constructors()) {
-                    for (var field : constructor.fields()) {
-                        if (containsNativeOpaque(field.type(), activeNames, activeTypes)) return true;
-                    }
-                }
-            }
-            return false;
-        } finally {
-            activeTypes.remove(type);
-        }
-    }
-
-    /** Snapshot of completed named definitions, keyed by stable compiler identity. */
-    public Map<String, PirType> namedDefinitions() {
-        var result = new LinkedHashMap<String, PirType>();
-        result.putAll(recordTypes);
-        result.putAll(sumTypes);
-        return Collections.unmodifiableMap(result);
-    }
-
-    /** Return all registered FQCNs (for building knownFqcns sets). */
-    public Set<String> allRegisteredFqcns() {
-        var all = new LinkedHashSet<String>();
-        all.addAll(recordTypes.keySet());
-        all.addAll(sumTypes.keySet());
-        all.addAll(variantToSumType.keySet());
-        all.addAll(newTypes.keySet());
-        all.addAll(forwardTypes.keySet());
-        return all;
-    }
-
-    private static final List<String> BUILTIN_TYPE_NAMES = List.of(
-            "BigInteger", "String", "Boolean", "PlutusData",
-            "List", "Map", "Optional", "Tuple2", "Tuple3");
-
     /**
      * Find a registered type with a similar name (for "did you mean?" suggestions).
-     * Uses case-insensitive Levenshtein distance.
      */
     private String findSimilarType(String name) {
-        String best = null;
-        int bestDist = Integer.MAX_VALUE;
-        String lowerName = name.toLowerCase();
+        return similarName(name, simpleNameIndex.keySet());
+    }
 
-        for (String registered : simpleNameIndex.keySet()) {
-            int dist = StringUtils.levenshtein(lowerName, registered.toLowerCase());
-            if (dist < bestDist && dist <= 3) {
-                bestDist = dist;
-                best = registered;
-            }
+    @Override
+    void declared(String name, String fqcn) {
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
+    }
+
+    @Override
+    void undeclared(String name, String fqcn) {
+        var indexed = simpleNameIndex.get(name);
+        if (indexed != null) {
+            indexed.remove(fqcn);
+            if (indexed.isEmpty()) simpleNameIndex.remove(name);
         }
-        for (String builtin : BUILTIN_TYPE_NAMES) {
-            int dist = StringUtils.levenshtein(lowerName, builtin.toLowerCase());
-            if (dist < bestDist && dist <= 3) {
-                bestDist = dist;
-                best = builtin;
-            }
-        }
-        return best;
     }
 }

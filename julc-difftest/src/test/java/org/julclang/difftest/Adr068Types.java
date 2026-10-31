@@ -15,6 +15,7 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
 import org.julclang.compiler.resolve.TypeRegistrar;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.compiler.resolve.TypeResolver;
 
 import java.io.IOException;
@@ -38,7 +39,7 @@ import java.util.regex.Pattern;
 final class Adr068Types {
 
     /** A frontend's reading of a case: its registry, or the rejection in its place. */
-    record Reading(TypeResolver.Registry registry, String rejection) {
+    record Reading(TypeRegistry.Snapshot registry, String rejection) {
 
         boolean accepted() {
             return registry != null;
@@ -61,7 +62,7 @@ final class Adr068Types {
             new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(Adr068Types.class.getClassLoader()), resolver);
             resolver.addFlatVariantAliases("org.julclang.ledger");
             new TypeRegistrar().registerAll(units, resolver);
-            return new Reading(resolver.registry(), null);
+            return new Reading(resolver.snapshot(), null);
         } catch (RuntimeException e) {
             return new Reading(null, message(e));
         }
@@ -70,7 +71,7 @@ final class Adr068Types {
     /** The javac path's reading: {@code null} program text means rejected by javac itself. */
     static Reading javac(List<String> roots, List<String> pool) {
         try {
-            return new Reading(program(roots, pool).types().registry(), null);
+            return new Reading(program(roots, pool).registry().snapshot(), null);
         } catch (RuntimeException e) {
             return new Reading(null, message(e));
         }
@@ -82,7 +83,7 @@ final class Adr068Types {
     }
 
     /** The first difference between two registries, or null when they are equal. */
-    static String difference(TypeResolver.Registry reference, TypeResolver.Registry javac) {
+    static String difference(TypeRegistry.Snapshot reference, TypeRegistry.Snapshot javac) {
         String difference = difference("record", reference.records(), javac.records());
         if (difference == null) difference = difference("sum", reference.sums(), javac.sums());
         if (difference == null) difference = difference("variant", reference.variants(), javac.variants());

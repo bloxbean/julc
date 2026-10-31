@@ -8,7 +8,7 @@ import com.sun.source.util.Trees;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
@@ -38,9 +38,9 @@ public final class JavacFacts {
     private final Trees trees;
     private final Elements elements;
     private final Types types;
-    private final TypeResolver registry;
+    private final TypeRegistry registry;
 
-    private JavacFacts(Trees trees, Elements elements, Types types, TypeResolver registry) {
+    private JavacFacts(Trees trees, Elements elements, Types types, TypeRegistry registry) {
         this.trees = trees;
         this.elements = elements;
         this.types = types;
@@ -48,12 +48,12 @@ public final class JavacFacts {
     }
 
     /** Facts over an attributed task. */
-    static JavacFacts of(JavacFrontend.Attribution attribution, TypeResolver registry) {
+    static JavacFacts of(JavacFrontend.Attribution attribution, TypeRegistry registry) {
         return new JavacFacts(attribution.trees(), attribution.elements(), attribution.types(), registry);
     }
 
     /** Facts over a task with no compilation units: its stubs have no trees. */
-    static JavacFacts of(Elements elements, Types types, TypeResolver registry) {
+    static JavacFacts of(Elements elements, Types types, TypeRegistry registry) {
         return new JavacFacts(null, elements, types, registry);
     }
 
@@ -71,7 +71,7 @@ public final class JavacFacts {
     }
 
     /** The registries types resolve against. */
-    public TypeResolver registry() {
+    public TypeRegistry registry() {
         return registry;
     }
 
@@ -113,7 +113,7 @@ public final class JavacFacts {
 
     /**
      * The PIR type of {@code type} (ADR-068 D7): built-in types by identity, then the registries by identity, and
-     * nothing by simple name. A rejection has {@link TypeResolver#resolve}'s text.
+     * nothing by simple name. A rejection has the JavaParser frontend's text, with its names as javac prints them.
      *
      * @param where where {@code type} is written, for {@code JULC0091}, or null
      */
@@ -126,7 +126,7 @@ public final class JavacFacts {
                     + ". Supported types: boolean, int, long");
             case ARRAY -> array((ArrayType) type);
             case DECLARED -> declared((DeclaredType) type, where);
-            case TYPEVAR -> throw registry.unknownType(type.toString(), type.toString());
+            case TYPEVAR -> throw new CompilerException(registry.unknownTypeMessage(type.toString(), type.toString()));
             case ERROR -> throw new IllegalStateException("an error type reached JuLC: " + type);
             default -> throw new CompilerException("Cannot resolve type: " + type + ". Supported types: BigInteger,"
                     + " String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces");
@@ -172,7 +172,8 @@ public final class JavacFacts {
                     new PirType.Field("tokenName", new PirType.ByteStringType()),
                     new PirType.Field("amount", new PirType.IntegerType())));
             case "java.util.Optional" -> new PirType.OptionalType(argument(arguments, 0, simple, where));
-            default -> registry.lookupNominal(identity).orElseThrow(() -> registry.unknownType(simple, identity));
+            default -> registry.lookupNominal(identity).orElseThrow(
+                    () -> new CompilerException(registry.unknownTypeMessage(simple, identity)));
         };
     }
 

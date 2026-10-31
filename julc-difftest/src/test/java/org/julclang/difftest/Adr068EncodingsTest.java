@@ -9,7 +9,7 @@ import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.stdlib.StdlibRegistry;
@@ -185,7 +185,7 @@ class Adr068EncodingsTest {
             }
             return;
         }
-        var registry = program.types().registry();
+        var registry = program.registry().snapshot();
         for (var probe : probes(program, registry, encodings, conflicts, skips)) {
             if (FREEZE && !references.containsKey(probe.key())) {
                 references.put(probe.key(), reference(c.main.text(), program, probe, libraries));
@@ -196,7 +196,7 @@ class Adr068EncodingsTest {
     }
 
     /** Every user type's samples: one per record and {@code @NewType}, one per variant of a sealed interface. */
-    private static List<Probe> probes(JavacProgram program, TypeResolver.Registry registry, Map<String, String> encodings,
+    private static List<Probe> probes(JavacProgram program, TypeRegistry.Snapshot registry, Map<String, String> encodings,
                                       Map<String, String> conflicts, Map<String, Integer> skips) {
         var probes = new ArrayList<Probe>();
         registry.records().forEach((identity, record) -> {
@@ -218,7 +218,7 @@ class Adr068EncodingsTest {
         return probes;
     }
 
-    private static String variantIdentity(TypeResolver.Registry registry, String sum, PirType.SumType type, String name) {
+    private static String variantIdentity(TypeRegistry.Snapshot registry, String sum, PirType.SumType type, String name) {
         for (var entry : registry.variants().entrySet()) {
             if (entry.getValue().contains(type) && entry.getKey().endsWith("." + name) || entry.getValue().contains(type) && entry.getKey().equals(name)) {
                 return entry.getKey();
@@ -227,7 +227,7 @@ class Adr068EncodingsTest {
         return null;
     }
 
-    private static void add(JavacProgram program, TypeResolver.Registry registry, String type, String sampled,
+    private static void add(JavacProgram program, TypeRegistry.Snapshot registry, String type, String sampled,
                             PirType definition, PirType at, List<Probe> probes, Map<String, String> encodings,
                             Map<String, String> conflicts, Map<String, Integer> skips) {
         TypeElement element = JavacEvidence.type(program, sampled);
@@ -314,7 +314,7 @@ class Adr068EncodingsTest {
         }
         var parameters = schema.parameters().stream().map(p -> new ContractSchema.Argument(p.name(),
                 facts.pirType(JavacEvidence.fieldType(program, p.name()), null), p.sourceLocation())).toList();
-        var javac = new ContractSchema(interfaces, parameters, program.types().namedDefinitions(), schema.purposeIndexed());
+        var javac = new ContractSchema(interfaces, parameters, program.registry().namedDefinitions(), schema.purposeIndexed());
         for (int i = 0; i < schema.interfaces().size(); i++) {
             String key = c.key + "\t" + schema.interfaces().get(i).purpose();
             referenceBlueprints.put(key, digest(SchemaGenerator.from(schema, schema.interfaces().get(i), null, true)));

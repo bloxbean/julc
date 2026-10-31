@@ -17,6 +17,7 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
 import org.julclang.compiler.resolve.TypeRegistrar;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -56,8 +57,8 @@ class JavacTypesTest {
         return JavacProgram.analyze(List.of(JavacFrontend.Unit.of(source)), List.of());
     }
 
-    private static TypeResolver.Registry registry(String declarations) {
-        return read(HEADER + declarations).types().registry();
+    private static TypeRegistry.Snapshot registry(String declarations) {
+        return read(HEADER + declarations).registry().snapshot();
     }
 
     private static CompilerException rejected(String declarations) {
@@ -75,10 +76,10 @@ class JavacTypesTest {
     class Ledger {
         @Test
         void registryEqualsTheJavaParserPath() {
-            var javac = read("class P { static boolean m() { return true; } }").types().registry();
+            var javac = read("class P { static boolean m() { return true; } }").registry().snapshot();
             var source = new TypeResolver();
             new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), source);
-            var reference = source.registry();
+            var reference = source.snapshot();
             assertEquals(new TreeMap<>(reference.records()), new TreeMap<>(javac.records()));
             assertEquals(new TreeMap<>(reference.sums()), new TreeMap<>(javac.sums()));
             assertEquals(new TreeMap<>(reference.variants()), new TreeMap<>(javac.variants()));
@@ -101,7 +102,7 @@ class JavacTypesTest {
 
         @Test
         void credentialTagsAreTheLedgers() {
-            var credential = read("class P {}").types().registry().sums().get("org.julclang.ledger.Credential");
+            var credential = read("class P {}").registry().snapshot().sums().get("org.julclang.ledger.Credential");
             assertEquals(List.of("PubKeyCredential", "ScriptCredential"),
                     credential.constructors().stream().map(PirType.Constructor::name).toList());
             assertEquals(0, credential.constructors().get(0).tag());
@@ -110,7 +111,7 @@ class JavacTypesTest {
 
         @Test
         void aHashTypeIsItsBytesAndAValueKeepsItsDeclaredShape() {
-            var types = read("class P {}").types();
+            var types = read("class P {}").registry();
             assertEquals(BYTES, types.lookupNominal("org.julclang.ledger.PubKeyHash").orElseThrow());
             var value = (PirType.RecordType) types.lookupNominal("org.julclang.ledger.Value").orElseThrow();
             assertEquals(List.of("inner"), value.fields().stream().map(PirType.Field::name).toList());
@@ -132,10 +133,10 @@ class JavacTypesTest {
                     record Holder(Rational r) {}
                     class P {}
                     """);
-            var rational = program.types().registry().records().get("Rational");
+            var rational = program.registry().snapshot().records().get("Rational");
             assertEquals(List.of("denominator", "numerator"), rational.fields().stream().map(PirType.Field::name).toList());
-            assertEquals(rational, program.types().registry().records().get("Holder").fields().getFirst().type());
-            var ledger = program.types().registry().records().get("org.julclang.ledger.Rational");
+            assertEquals(rational, program.registry().snapshot().records().get("Holder").fields().getFirst().type());
+            var ledger = program.registry().snapshot().records().get("org.julclang.ledger.Rational");
             assertEquals(List.of("numerator", "denominator"), ledger.fields().stream().map(PirType.Field::name).toList());
         }
 
@@ -146,8 +147,8 @@ class JavacTypesTest {
                     record Holder(Rational r) {}
                     class P {}
                     """);
-            var ledger = program.types().registry().records().get("org.julclang.ledger.Rational");
-            assertEquals(ledger, program.types().registry().records().get("Holder").fields().getFirst().type());
+            var ledger = program.registry().snapshot().records().get("org.julclang.ledger.Rational");
+            assertEquals(ledger, program.registry().snapshot().records().get("Holder").fields().getFirst().type());
         }
 
         @Test
@@ -170,7 +171,7 @@ class JavacTypesTest {
                     record %s(BigInteger v) {}
                     record Holder(%s h) {}
                     class P {}
-                    """.formatted(name, name)).types().registry();
+                    """.formatted(name, name)).registry().snapshot();
             var user = new PirType.RecordType(name, List.of(field("v", INTEGER)));
             assertEquals(user, registry.records().get("Holder").fields().getFirst().type());
         }
@@ -195,7 +196,7 @@ class JavacTypesTest {
                         record Item(BigInteger inner) {}
                         record Holder(Item i) {}
                     }
-                    """).types().registry();
+                    """).registry().snapshot();
             assertEquals(new PirType.RecordType("Item", List.of(field("inner", INTEGER))),
                     registry.records().get("P.Holder").fields().getFirst().type());
         }
@@ -241,7 +242,7 @@ class JavacTypesTest {
     /** I11's source rules. */
     @Nested
     class Tags {
-        private List<String> variants(TypeResolver.Registry registry, String sum) {
+        private List<String> variants(TypeRegistry.Snapshot registry, String sum) {
             var constructors = registry.sums().get(sum).constructors();
             for (int i = 0; i < constructors.size(); i++) assertEquals(i, constructors.get(i).tag());
             return constructors.stream().map(PirType.Constructor::name).toList();
@@ -348,7 +349,7 @@ class JavacTypesTest {
                     @interface NewType {}
                     @NewType record N(BigInteger a, BigInteger b) {}
                     class P {}
-                    """).types().registry();
+                    """).registry().snapshot();
             assertFalse(registry.newTypes().containsKey("N"));
             assertTrue(registry.records().containsKey("N"));
         }
@@ -420,7 +421,7 @@ class JavacTypesTest {
             var reference = new TypeResolver();
             new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), reference);
             new TypeRegistrar().registerAll(List.of(JavaSourceParser.parseCompilationUnit(source)), reference);
-            assertEquals(List.of(field("v", INTEGER)), reference.registry().records().get("R").fields());
+            assertEquals(List.of(field("v", INTEGER)), reference.snapshot().records().get("R").fields());
         }
 
         @Test
@@ -466,10 +467,10 @@ class JavacTypesTest {
             var reference = new TypeResolver();
             new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), reference);
             new TypeRegistrar().registerAll(List.of(cu), reference);
-            var javac = read(source).types().registry();
-            assertEquals(reference.registry().sums().get("Tree"), javac.sums().get("Tree"));
-            assertEquals(reference.registry().records().get("A"), javac.records().get("A"));
-            assertEquals(reference.registry().records().get("B"), javac.records().get("B"));
+            var javac = read(source).registry().snapshot();
+            assertEquals(reference.snapshot().sums().get("Tree"), javac.sums().get("Tree"));
+            assertEquals(reference.snapshot().records().get("A"), javac.records().get("A"));
+            assertEquals(reference.snapshot().records().get("B"), javac.records().get("B"));
         }
 
         @Test
@@ -584,7 +585,7 @@ class JavacTypesTest {
                     record Holder(L.Point p) {}
                     class P {}
                     """)), List.of(JavacFrontend.Unit.of(library), JavacFrontend.Unit.of(unused)));
-            var registry = program.types().registry();
+            var registry = program.registry().snapshot();
             assertEquals(registry.records().get("lib.L.Point"), registry.records().get("Holder").fields().getFirst().type());
             assertFalse(registry.records().containsKey("other.Unused"), "javac reads the pool units a root references (D8)");
             assertEquals(1, program.libraries().size());

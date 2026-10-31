@@ -7,7 +7,7 @@ import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticCodes;
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +46,7 @@ public final class JavacProgram {
     static JavacProgram analyze(JavacFrontend frontend, List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
         var attribution = frontend.attribute(roots, pool);
         if (!attribution.result().isAccepted()) throw new CompilerException(attribution.result().compilerDiagnostics());
-        var facts = JavacFacts.of(attribution, new TypeResolver());
+        var facts = JavacFacts.of(attribution, new TypeRegistry());
         var registrar = new JavacTypeRegistrar(facts);
         registrar.registerLedger(frontend.platform());
         var units = new ArrayList<>(attribution.libraries());
@@ -66,8 +66,8 @@ public final class JavacProgram {
         return facts;
     }
 
-    /** The registries, filled from javac's model. */
-    public TypeResolver types() {
+    /** The registry, filled from javac's model. */
+    public TypeRegistry registry() {
         return facts.registry();
     }
 

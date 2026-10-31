@@ -1,6 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,16 +16,16 @@ public final class TolerantJavacTypes {
     }
 
     /** The registry javac's model gives, whatever javac's verdict; an unresolved declaration throws. */
-    public static TypeResolver.Registry read(List<String> roots) {
+    public static TypeRegistry.Snapshot read(List<String> roots) {
         var frontend = JavacFrontend.shared();
         var attribution = frontend.attribute(roots.stream().map(JavacFrontend.Unit::of).toList(), List.of());
         if (attribution.trees() == null) throw new IllegalStateException("rejected before javac");
-        var facts = JavacFacts.of(attribution, new TypeResolver());
+        var facts = JavacFacts.of(attribution, new TypeRegistry());
         var registrar = new JavacTypeRegistrar(facts);
         registrar.registerLedger(frontend.platform());
         var units = new ArrayList<>(attribution.libraries());
         units.addAll(attribution.roots());
         registrar.registerSources(units);
-        return facts.registry().registry();
+        return facts.registry().snapshot();
     }
 }

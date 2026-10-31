@@ -47,10 +47,10 @@ class Adr068NameCasesTest {
         String source = saved(pin).diffCase().source();
         var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(source)), List.of());
 
-        var registered = program.types().registry().records().get(identity);
+        var registered = program.registry().snapshot().records().get(identity);
         assertNotNull(registered, identity + " is registered as the user's record");
         assertEquals(List.of(components.split(",")), registered.fields().stream().map(PirType.Field::name).toList());
-        assertEquals(registered, program.types().lookupNominal(identity).orElseThrow());
+        assertEquals(registered, program.registry().lookupNominal(identity).orElseThrow());
 
         var bindings = JavacEvidence.bindings(program);
         assertTrue(bindings.contains("new " + identity), bindings.toString());

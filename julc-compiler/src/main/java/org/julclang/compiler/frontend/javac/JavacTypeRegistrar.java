@@ -11,8 +11,8 @@ import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.resolve.TypeRegistrar;
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeGroups;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.AnnotationMirror;
@@ -35,7 +35,7 @@ import java.util.Set;
 /**
  * Registers records, sealed interfaces, {@code @NewType} and ledger types from javac's model (ADR-068 D7, I11). The
  * ledger comes from the signature stubs, so no ledger source is parsed; everything else from the units javac
- * attributed. Types are registered by identity into the same {@link TypeResolver} registries the JavaParser frontend
+ * attributed. Types are registered by identity into the same {@link TypeRegistry} registries the JavaParser frontend
  * fills, and in the same order (dependencies first, by {@link TypeRegistrar#dependencyGroups}), so a recursive group's
  * references come out alike.
  * <p>
@@ -52,7 +52,7 @@ final class JavacTypeRegistrar {
     }
 
     private final JavacFacts facts;
-    private final TypeResolver registry;
+    private final TypeRegistry registry;
     private final List<Declared> records = new ArrayList<>();
     private final List<Declared> interfaces = new ArrayList<>();
 
@@ -66,7 +66,7 @@ final class JavacTypeRegistrar {
         var records = new LinkedHashMap<String, Declared>();
         var sealed = new LinkedHashMap<String, Declared>();
         for (String name : platform.stubTopLevelNames()) {
-            if (!name.startsWith(LedgerLayouts.PACKAGE + ".") || TypeResolver.ledgerHashFqcns().contains(name)) continue;
+            if (!name.startsWith(LedgerLayouts.PACKAGE + ".") || TypeRegistry.ledgerHashFqcns().contains(name)) continue;
             collect(facts.elements().getTypeElement(name), records, sealed);
         }
         register(records, sealed);
@@ -142,7 +142,7 @@ final class JavacTypeRegistrar {
             deps.put(identity, found);
         });
 
-        for (var group : TypeRegistrar.dependencyGroups(deps)) {
+        for (var group : TypeGroups.dependencyGroups(deps)) {
             String first = group.getFirst();
             if (group.size() == 1 && !deps.getOrDefault(first, Set.of()).contains(first)) {
                 register(first, records, sealed, variants);
@@ -166,7 +166,7 @@ final class JavacTypeRegistrar {
             }
             for (String identity : group) if (records.containsKey(identity)) register(identity, records, sealed, variants);
             for (String identity : group) if (sealed.containsKey(identity)) register(identity, records, sealed, variants);
-            var unproductive = TypeRegistrar.unproductive(group, registry);
+            var unproductive = TypeGroups.unproductive(group, registry);
             if (!unproductive.isEmpty()) {
                 String first = unproductive.getFirst();
                 throw errorAt(records.containsKey(first) ? records.get(first) : sealed.get(first),
@@ -186,7 +186,7 @@ final class JavacTypeRegistrar {
         }
         var declared = sealed.get(identity);
         var element = declared.element();
-        var ordered = variants.get(identity).stream().map(v -> new TypeResolver.SealedVariant(
+        var ordered = variants.get(identity).stream().map(v -> new TypeRegistry.SealedVariant(
                 v.getSimpleName().toString(), JavacFacts.identity(v))).toList();
         registry.registerSealed(element.getSimpleName().toString(), identity, ordered,
                 !element.getTypeParameters().isEmpty());

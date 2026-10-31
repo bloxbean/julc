@@ -1,6 +1,6 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -160,14 +160,14 @@ class Adr068TypesTest {
     }
 
     /** Registration order, which the frontends share (I4): the first map whose keys are in another order, or null. */
-    private static String order(TypeResolver.Registry reference, TypeResolver.Registry javac) {
+    private static String order(TypeRegistry.Snapshot reference, TypeRegistry.Snapshot javac) {
         if (!List.copyOf(reference.records().keySet()).equals(List.copyOf(javac.records().keySet()))) return "records";
         if (!List.copyOf(reference.sums().keySet()).equals(List.copyOf(javac.sums().keySet()))) return "sums";
         return null;
     }
 
     /** Every declaration of {@code read} is in {@code all}, equal: what javac read is what the reference registers. */
-    private static String subset(TypeResolver.Registry read, TypeResolver.Registry all) {
+    private static String subset(TypeRegistry.Snapshot read, TypeRegistry.Snapshot all) {
         for (var entry : read.records().entrySet()) {
             if (!entry.getValue().equals(all.records().get(entry.getKey()))) return "record " + entry.getKey();
         }

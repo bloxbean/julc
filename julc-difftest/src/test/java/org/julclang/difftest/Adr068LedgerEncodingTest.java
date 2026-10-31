@@ -2,7 +2,7 @@ package org.julclang.difftest;
 
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.PlutusData;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
 import org.julclang.core.types.JulcList;
@@ -67,7 +67,7 @@ class Adr068LedgerEncodingTest {
             var value = build(argument(type, 1));
             return new Built(JulcMap.of(key.value(), value.value()), new Adr068Encodings.MapSample(key.sample(), value.sample(), ""));
         }
-        if (TypeResolver.ledgerHashFqcns().contains(raw.getName())) {
+        if (TypeRegistry.ledgerHashFqcns().contains(raw.getName())) {
             return new Built(raw.getConstructor(byte[].class).newInstance((Object) bytes(n)), new Adr068Encodings.BytesSample(bytes(n), ""));
         }
         if (raw.isRecord()) return record(raw);
@@ -131,7 +131,7 @@ class Adr068LedgerEncodingTest {
 
     @Test
     void everyLedgerTypesDataEqualsTheLedgersOwnEncoder() throws Exception {
-        var javac = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).types().registry();
+        var javac = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).registry().snapshot();
         var reference = Adr068Types.reference(List.of(TRIVIAL)).registry();
         var identities = new TreeMap<>(javac.records()).keySet();
         assertFalse(identities.isEmpty());
@@ -150,11 +150,11 @@ class Adr068LedgerEncodingTest {
             }
             actual.put(identity, hex(expected));
         }
-        for (String identity : new TreeSet<>(TypeResolver.ledgerHashFqcns())) {
+        for (String identity : new TreeSet<>(TypeRegistry.ledgerHashFqcns())) {
             leaf = 1;
             var built = build(ledgerClass(identity));
             var expected = ((PlutusDataConvertible) built.value()).toPlutusData();
-            var type = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).types()
+            var type = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).registry()
                     .lookupNominal(identity).orElseThrow();
             assertEquals(hex(expected), hex(Adr068Encodings.encode(built.sample(), type, javac)), identity);
             actual.put(identity, hex(expected));
@@ -172,7 +172,7 @@ class Adr068LedgerEncodingTest {
     /** {@code Value} is a map, by {@code LedgerLayouts}, whatever its record declares (I11). */
     @Test
     void aValueIsAMap() {
-        var javac = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).types().registry();
+        var javac = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(TRIVIAL)), List.of()).registry().snapshot();
         var amount = BigInteger.valueOf(5);
         assertEquals(hex(Value.lovelace(amount).toPlutusData()), hex(Adr068Encodings.encode(
                 new Adr068Encodings.ValueSample(amount, ""), javac.records().get("org.julclang.ledger.Value"), javac)));

@@ -6,10 +6,10 @@ import com.sun.source.tree.Tree;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
 import org.julclang.compiler.CompilerOptions;
-import org.julclang.compiler.LibraryTypeDescriptions;
+import org.julclang.compiler.backend.LibraryOperations;
 import org.julclang.compiler.backend.LibraryType;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.compiler.resolve.TypeRegistry;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
@@ -52,7 +52,7 @@ public final class JavacLibraryTypes {
         if (sources.isEmpty()) {
             var metadata = JavacGate.metadata(new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE));
             return metadata.read((elements, types) -> {
-                var facts = JavacFacts.of(elements, types, new TypeResolver());
+                var facts = JavacFacts.of(elements, types, new TypeRegistry());
                 var registrar = new JavacTypeRegistrar(facts);
                 registrar.registerLedger(JavacFrontend.shared().platform());
                 return new JavacLibraryTypes(facts).describe(registrar);
@@ -80,7 +80,7 @@ public final class JavacLibraryTypes {
 
     private Described describe(JavacTypeRegistrar declared) {
         var registry = facts.registry();
-        var registered = registry.registry();
+        var registered = registry.snapshot();
         var records = new LinkedHashMap<String, JavacTypeRegistrar.Declared>();
         for (var record : declared.records()) records.put(JavacFacts.identity(record.element()), record);
         var types = new LinkedHashMap<String, LibraryType>();
@@ -124,12 +124,12 @@ public final class JavacLibraryTypes {
             }
             types.put(identity, new LibraryType(identity, representation, false, List.of(), constructors));
         }
-        for (String identity : TypeResolver.ledgerHashFqcns()) {
+        for (String identity : TypeRegistry.ledgerHashFqcns()) {
             types.put(identity, new LibraryType(identity, new PirType.ByteStringType(), true,
                     List.of(new LibraryType.Field("hash", ref("Bytes")))));
         }
-        LibraryTypeDescriptions.deriveOperations(types, special, registry.namedDefinitions());
-        return new Described(Collections.unmodifiableMap(types), Map.copyOf(registry.namedDefinitions()));
+        return new Described(Collections.unmodifiableMap(LibraryOperations.derive(types, special, registry.namedDefinitions())),
+                Map.copyOf(registry.namedDefinitions()));
     }
 
     /**
