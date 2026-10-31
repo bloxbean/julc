@@ -1,0 +1,90 @@
+# ADR-068 D4 accepted-divergence list, frozen at M0: ADR-062 rows open at B0, the open DIVERGE pins with their IDs, and D4's named issues. Generated; do not edit.
+# Open ADR-062 rows: status not Resolved, Fixed, Refuted, Contained or Verified (history). registry-fixture: a KnownDivergencesTest input, not a pin.
+id	kind	source	status	detail
+#146	diverge-pin	regressions/diverge-g1-146-traced-compare-operand-r2.diffcase	all levels	Value/Value
+#146	diverge-pin	regressions/diverge-g1-146-traced-compare-operand-r3.diffcase	all levels	Value/Value
+#146	diverge-pin	regressions/diverge-g1-146-traced-compare-operand-r4.diffcase	all levels	Value/Value
+#146	diverge-pin	regressions/diverge-g1-146-traced-compare-operand-r5.diffcase	all levels	Value/Value
+#146	diverge-pin	regressions/diverge-g1-146-traced-compare-operand.diffcase	all levels	Value/Value
+#280	diverge-pin	regressions/diverge-g1-280-uncalled-zero-arg-helper-r2.diffcase	all levels	Value/Value
+#280	diverge-pin	regressions/diverge-g1-280-uncalled-zero-arg-helper-r3.diffcase	all levels	Value/Value
+#280	diverge-pin	regressions/diverge-g1-280-uncalled-zero-arg-helper-r4.diffcase	all levels	Value/Value
+#280	diverge-pin	regressions/diverge-g1-280-uncalled-zero-arg-helper-r5.diffcase	all levels	Value/Value
+#280	diverge-pin	regressions/diverge-g1-280-uncalled-zero-arg-helper.diffcase	all levels	Value/Value
+#288	d4-issue	ADR-068 D4	open	named in ADR-068 D4
+#289	d4-issue	ADR-068 D4	open	named in ADR-068 D4 (T3, T4)
+#295	d4-issue	ADR-068 D4	open	comparison operand order (D6)
+#296	d4-issue	ADR-068 D4	open	"a" + 1 (D6, JULC0090)
+#297	d4-issue	ADR-068 D4	open	nested JuLC collection contains (ADR-068 r6 D6)
+T10	adr062-row	ADR-062	Reproduced	Off-chain map key equality
+T10	diverge-pin	regressions/diverge-t10-map-byte-array-key.diffcase	all levels	Value/Value
+T11	adr062-row	ADR-062	Reproduced	`BigInteger.mod` with a negative modulus
+T11	diverge-pin	regressions/diverge-t11-mod-negative-modulus.diffcase	all levels	Failure/Value
+T12	adr062-row	ADR-062	Reproduced (`ContextsLib.trace`); to confirm (failure categories)	Failure and trace model
+T12	diverge-pin	regressions/diverge-t12-guard-receiver-evaluated-twice.diffcase	all levels	Value/Value
+T12	diverge-pin	regressions/diverge-t12-trace-off-chain.diffcase	all levels	Value/Value
+T13	adr062-row	ADR-062	Verified (by design)	Budget and size limits
+T13	diverge-pin	regressions/diverge-t13-nested-compare-to-exhausts-budget.diffcase	all levels	Value/Inconclusive
+T13	diverge-pin	regressions/diverge-t13-nested-loops-needs-second-rung.diffcase	all levels	Value/Inconclusive
+T14	adr062-row	ADR-062	To confirm (which tests pass off-chain for unavailable builtins)	Target profiles
+T16	adr062-row	ADR-062	To confirm (that both decode identically for every supported boundary type)	Boundary conversion
+T17	adr062-row	ADR-062	To confirm (behaviour of invalid UTF-8 and of string methods)	Strings
+T18	adr062-row	ADR-062	To confirm (edge cases: malformed keys or signatures, where the chain fails and the JVM may return `…	Off-chain crypto
+T19	adr062-row	ADR-062	Verified (ADR-061)	Callbacks capturing mutable state
+T23	registry-fixture	known-divergences/diverge-t23-corpus-input-1.diffcase	all levels	Value/Value
+T23	registry-fixture	known-divergences/diverge-t23-corpus-input-3.diffcase	all levels	Value/Value
+T23	registry-fixture	known-divergences/diverge-t23-for-each-split-if-else-break-never-taken.diffcase	all levels	Value/Value
+T23	registry-fixture	known-divergences/diverge-t23-for-each-split-if-else-break-taken.diffcase	all levels	Value/Value
+T27	adr062-row	ADR-062	Reproduced (ADR-067 M0: eight saved cases); #275	`switch` case guards (`case A x when g ->`)
+T28	adr062-row	ADR-062	Reproduced (ADR-067 M0: two saved cases); #276	Record patterns in `switch` (`case A(var v) ->`)
+T29	adr062-row	ADR-062	Reproduced (ADR-067 M0: eleven saved cases); #277	`equals` across record types
+T29	diverge-pin	regressions/diverge-t29-equals-hash-and-bytes.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-hash-types.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-nested-optional.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-nested-tuple.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-newtypes.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-r1-r2.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-record-plutusdata.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-record-variant-tag-0.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-sealed-record.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-two-sealed-families.diffcase	all levels	Value/Value
+T29	diverge-pin	regressions/diverge-t29-equals-unknown-operand.diffcase	all levels	Value/Value
+T3	adr062-row	ADR-062	Reproduced	`==` on `BigInteger`
+T3	diverge-pin	regressions/diverge-t3-biginteger-reference-equality.diffcase	all levels	Value/Value
+T30	adr062-row	ADR-062	Reproduced (ADR-067 M0: two saved cases); #279	A record with two sealed parents
+T30	diverge-pin	regressions/diverge-t30-two-sealed-parents-equals.diffcase	all levels	Value/Value
+T30	diverge-pin	regressions/diverge-t30-two-sealed-parents.diffcase	all levels	Value/Value
+T31	adr062-row	ADR-062	Reproduced (ADR-067 M0: seven saved cases); #282	Record members (explicit accessor, `equals`, compact or secondary constructor)
+T31	diverge-pin	regressions/diverge-t31-compact-constructor.diffcase	all levels	Value/Value
+T31	diverge-pin	regressions/diverge-t31-explicit-accessor-local.diffcase	all levels	Value/Value
+T31	diverge-pin	regressions/diverge-t31-explicit-accessor-parameter.diffcase	all levels	Value/Value
+T31	diverge-pin	regressions/diverge-t31-explicit-accessor-switch-binding.diffcase	all levels	Value/Value
+T31	diverge-pin	regressions/diverge-t31-explicit-equals-always-true.diffcase	all levels	Value/Value
+T31	diverge-pin	regressions/diverge-t31-explicit-equals-by-sign.diffcase	all levels	Value/Value
+T31	diverge-pin	regressions/diverge-t31-secondary-constructor.diffcase	all levels	Value/Failure
+T32	adr062-row	ADR-062	Reproduced (ADR-067 M0); #283	Colon-form `switch` groups that fall through
+T33	adr062-row	ADR-062	Reproduced (ADR-067 M0: six saved cases); #284	Type names in packageless sources, and user records reaching ledger handlers by simple name
+T33	diverge-pin	regressions/diverge-t33-packageless-pubkeyhash-record.diffcase	all levels	Value/Failure
+T33	diverge-pin	regressions/diverge-t33-packageless-rational-wildcard.diffcase	all levels	Value/Value
+T33	diverge-pin	regressions/diverge-t33-packageless-rational.diffcase	all levels	Value/Value
+T33	diverge-pin	regressions/diverge-t33-top-level-user-value-on-constructor.diffcase	all levels	Value/Failure
+T33	diverge-pin	regressions/diverge-t33-top-level-user-value-on-local.diffcase	all levels	Value/Failure
+T33	diverge-pin	regressions/diverge-t33-user-value-accessor-on-constructor.diffcase	all levels	Value/Failure
+T34	adr062-row	ADR-062	Reproduced (ADR-067 M1 round 3: one saved case); #292. Rejected inside `switch` guards by ADR-067	`String.equals` with an argument that is not a `String`
+T34	diverge-pin	regressions/diverge-t34-string-equals-other-type.diffcase	all levels	Value/Failure
+T4	adr062-row	ADR-062	Verified	`==` on records, sealed types and Data
+T5	adr062-row	ADR-062	Reproduced (both forms)	`==` on `byte[]`, and `equals` of user records with `byte[]` components
+T5	diverge-pin	regressions/diverge-t5-byte-array-reference-equality.diffcase	all levels	Value/Value
+T5	diverge-pin	regressions/diverge-t5-record-with-byte-array-equals.diffcase	all levels	Value/Value
+T6	adr062-row	ADR-062	Reproduced	`int` and `long`
+T6	diverge-pin	regressions/diverge-t6-int-overflow-in-if.diffcase	all levels	Value/Value
+T6	diverge-pin	regressions/diverge-t6-intvalue-in-if-above-max-int.diffcase	all levels	Value/Value
+T6	diverge-pin	regressions/diverge-t6-intvalue-in-if-below-min-int.diffcase	all levels	Value/Value
+T6	diverge-pin	regressions/diverge-t6-long-overflow.diffcase	all levels	Value/Value
+T6	diverge-pin	regressions/diverge-t6-longvalue-in-if-above-max-long.diffcase	all levels	Value/Value
+T6	diverge-pin	regressions/diverge-t6-narrowing-cast-in-if.diffcase	all levels	Value/Value
+T7	adr062-row	ADR-062	Reproduced (JVM true, UPLC fails)	`any` and `all` short-circuiting
+T7	diverge-pin	regressions/diverge-t7-any-short-circuit.diffcase	all levels	Value/Failure
+T8	adr062-row	ADR-062	Verified	Builtins missing off-chain
+T9	adr062-row	ADR-062	Reproduced (AddressLib); to confirm (others)	On-chain-only casts
+T9	diverge-pin	regressions/diverge-t9-on-chain-only-cast.diffcase	all levels	Failure/Value

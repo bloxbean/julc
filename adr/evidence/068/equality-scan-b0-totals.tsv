@@ -1,0 +1,10 @@
+# Generated; do not edit.
+units.in-repo	accepted 4050	accepted+imports 4	partial 5939
+units.external	accepted 54	accepted+imports 0	partial 3
+hits.external.accepted.ARRAY_IDENTITY	125
+hits.in-repo.accepted.ARRAY_IDENTITY	2
+hits.in-repo.accepted.UNRESOLVED	8
+hits.in-repo.partial.ARRAY_IDENTITY	1
+type-variable-sites	5
+nested-collection-sites	0
+operations	*.equals(Object) [receiver]; java.util.Objects.equals [first argument]; org.julclang.core.types.JulcList.contains [receiver element]; org.julclang.core.types.JulcMap.containsKey [receiver key]; org.julclang.core.types.JulcMap.delete [receiver key]; org.julclang.core.types.JulcMap.get [receiver key]; org.julclang.core.types.JulcMap.getOrDefault [receiver key]; org.julclang.core.types.JulcMap.lookup [receiver key]; org.julclang.stdlib.lib.TypedMapLib.insert [first argument's key]; org.julclang.stdlib.lib.TypedMapLib.lookup [first argument's key]; org.julclang.stdlib.lib.TypedMapLib.member [first argument's key]; org.julclang.stdlib.lib.TypedMapLib.remove [first argument's key]; org.julclang.stdlib.lib.MapLib.delete [first argument's key]; org.julclang.stdlib.lib.MapLib.lookup [first argument's key]; org.julclang.stdlib.lib.MapLib.member [first argument's key]; org.julclang.stdlib.lib.ListsLib.contains [first argument's element]; java.util.Collection.contains [receiver element]; java.util.Collection.containsAll [receiver element]; java.util.Collection.indexOf [receiver element]; java.util.Collection.lastIndexOf [receiver element]; java.util.Collection.remove [receiver element]; java.util.Collection.removeAll [receiver element]; java.util.Collection.retainAll [receiver element]; java.util.Map.containsKey [receiver key]; java.util.Map.get [receiver key]; java.util.Map.getOrDefault [receiver key]; java.util.Map.remove [receiver key]; java.util.Map.containsValue [receiver value]

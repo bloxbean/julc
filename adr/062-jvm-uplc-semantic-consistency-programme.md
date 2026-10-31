@@ -103,7 +103,7 @@ are never renumbered.
 
 ## Decision
 
-Adopt a five-step programme. Every step has its own ADR, its own acceptance gate, and the
+Adopt a six-step programme. Every step has its own ADR, its own acceptance gate, and the
 `semantic-consistency` label.
 
 | Step | What | Sub-ADR | Depends on |
@@ -113,6 +113,7 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
 | **S3** | Testkit dual-run. `ValidatorTest`, `ContractTest` and `JulcEval` take their verdict from UPLC. Where a JVM run is possible they run it too, and report any disagreement as a JuLC defect rather than as a failure of the user's test. Opt-in for JuLC's own suites first, then for users, then the default. Budget and size are reported with every verdict (T13) | to be written | S1, S2 |
 | **S4** | Control flow, as designed by ADR-061: one typed representation with explicit joins, migrated construct by construct behind a compiler option, with S1 as the evidence gate for each migration | ADR-061 | S1 |
 | **S5** | Close the remaining catalogue entries at their source, one decision per entry: make the executions agree (for example short-circuiting `any`, `all` and `find` on-chain for T7), reject the construct (for example `==` on reference types, T3–T5), or document it as an allowed divergence. Add the functional APIs that make loops optional: short-circuiting `any`/`all`/`find` and list functions that javac code can call | one ADR per decision group | S1 |
+| **S6** | One Java reader: javac parses and attributes every source JuLC compiles, so names, types and literal values are javac's, and JuLC's replicas of Java's rules go. The JavaParser frontend is frozen as the reference until the javac frontend is the default, then removed; every behaviour difference is recorded in a ledger with evidence. Added by ADR-068, after the ADR-065 spike (its open question 5) | [ADR-068](068-javac-frontend-migration.md) (proposed) | S1 |
 
 ### Principles
 
@@ -217,3 +218,7 @@ Adopt a five-step programme. Every step has its own ADR, its own acceptance gate
 - **ADR-067 M0** (2026-10-30): new T27–T33 for #275, #276, #277, #279, #282, #283 and #284, owned by S5 through
   ADR-067, which proposed them as T26–T32. T24 and T25 are claimed by #269 and #271, and T26 by #272, so they take the
   next free IDs. Each has saved `julc-difftest` cases with the base behaviour.
+- **ADR-068 M0** (2026-10-31): new step S6, the javac frontend migration of
+  [ADR-068](068-javac-frontend-migration.md) (proposed), which follows the ADR-065 spike (its open question 5).
+  ADR-068 D4 freezes the divergences open at its base as accepted until its M5, listed in
+  `adr/evidence/068/accepted-divergences.tsv`.
