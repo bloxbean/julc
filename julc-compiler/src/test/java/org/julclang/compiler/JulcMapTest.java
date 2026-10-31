@@ -424,6 +424,74 @@ class JulcMapTest {
     }
 
     // =========================================================================
+    // Java's forms of a map loop: keys() and values(), under the enforcing javac gate
+    // =========================================================================
+
+    @Nested
+    class ForEachOverKeysAndValues {
+
+        static final String SOURCE = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.core.types.JulcMap;
+                import java.math.BigInteger;
+
+                class KeysAndValuesOps {
+                    @SuppressWarnings("unchecked")
+                    static long sumValues(PlutusData m) {
+                        JulcMap<BigInteger, BigInteger> map = (JulcMap<BigInteger, BigInteger>)(Object) m;
+                        BigInteger total = BigInteger.ZERO;
+                        for (BigInteger value : map.values()) {
+                            total = total.add(value);
+                        }
+                        return total.longValue();
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    static long sumKeys(PlutusData m) {
+                        JulcMap<BigInteger, BigInteger> map = (JulcMap<BigInteger, BigInteger>)(Object) m;
+                        BigInteger total = BigInteger.ZERO;
+                        for (BigInteger key : map.keys()) {
+                            total = total.add(key);
+                        }
+                        return total.longValue();
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    static long sumThroughKeys(PlutusData m) {
+                        JulcMap<BigInteger, BigInteger> map = (JulcMap<BigInteger, BigInteger>)(Object) m;
+                        BigInteger total = BigInteger.ZERO;
+                        for (BigInteger key : map.keys()) {
+                            total = total.add(map.get(key));
+                        }
+                        return total.longValue();
+                    }
+                }
+                """;
+
+        interface KeysAndValuesProxy {
+            long sumValues(PlutusData m);
+            long sumKeys(PlutusData m);
+            long sumThroughKeys(PlutusData m);
+        }
+
+        final KeysAndValuesProxy proxy = JulcEval.forSource(SOURCE).create(KeysAndValuesProxy.class);
+
+        @Test
+        void valuesAndKeysIterate() {
+            assertEquals(142, proxy.sumValues(intMap(1, 42, 2, 100)));
+            assertEquals(3, proxy.sumKeys(intMap(1, 42, 2, 100)));
+            assertEquals(142, proxy.sumThroughKeys(intMap(1, 42, 2, 100)));
+        }
+
+        @Test
+        void anEmptyMapIteratesNothing() {
+            assertEquals(0, proxy.sumValues(emptyMap()));
+            assertEquals(0, proxy.sumKeys(emptyMap()));
+            assertEquals(0, proxy.sumThroughKeys(emptyMap()));
+        }
+    }
+
+    // =========================================================================
     // While-loop using instance methods (head/tail/isEmpty)
     // =========================================================================
 

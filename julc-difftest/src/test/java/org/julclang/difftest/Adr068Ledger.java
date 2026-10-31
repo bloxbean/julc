@@ -38,6 +38,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -232,10 +233,14 @@ final class Adr068Ledger {
         return !entry.equals("JavaLibraryProvider") && !entry.equals("ledger-source");
     }
 
+    private static final JavacGateMode GATE = JavacGateMode.valueOf(
+            System.getProperty("adr068.gate", "off").toUpperCase(Locale.ROOT));
+
     private static CompilerOptions options(Adr068Corpus.Case c, OptimizationLevel level, boolean sourceMap) {
-        // The reference rows are the JavaParser frontend's: the javac gate, enforcing by default since M1b, stays off.
+        // The reference rows are the JavaParser frontend's: the javac gate, enforcing by default since M1b, stays off
+        // (-Padr068.gate=enforce gives M1b's byte-identity check the same cases with the gate on).
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap)
-                .setJavacGate(JavacGateMode.OFF).setLogger(message -> { });
+                .setJavacGate(GATE).setLogger(message -> { });
         c.disabledRules.forEach(options::disableOptimizationRule);
         if (c.costProfile != null) options.setOptimizationCostProfile(OptimizationCostProfiles.forId(c.costProfile.split(" ")[0]));
         return options;
