@@ -331,3 +331,13 @@ place, which completes the classes, so the mutation changed nothing. The row abo
 - The option on the Gradle plugin, CLI and testkit (D4): at M2 each would only report `JULC0084`.
 - M3's first work: the seam between discovery and assembly (F846), and the javac model's lifetime for specialization (F847).
 - New known issues are in [`068-followups.md`](068-followups.md).
+
+## Senior review
+
+Codex read M2 after the three reviews and found two identity holes they missed. Neither was executable, as no program
+compiles through `JAVAC` yet, but M3 would have inherited both.
+
+| Finding | Problem | Fix | Checks |
+|---|---|---|---|
+| F860 | `lookupNominal` found a non-record variant's constructor by simple name, so in `permits X.A, Y.A` the class `Y.A` took the record `X.A`'s field | `registerSealed` keeps each variant's constructor by identity. That was the only simple-name path left in `TypeRegistry` | `aNonRecordVariantDoesNotTakeTheShapeOfASameNamedRecord`, in both `permits` orders. Restoring the lookup fails it |
+| F861 | The nested ownership check knew only stub names, so `class org { ... class MathLib { abs(...) } }` took a bundled library's qualified name and signature | The check also covers bundled types, and is `JULC0081` | `aNestedTypeCannotTakeABundledLibrarysName`, and `theGenuineBundledLibraryIsNotItsOwnForgery` as the positive control. Removing the check, or applying it to top-level types, fails exactly one of them |

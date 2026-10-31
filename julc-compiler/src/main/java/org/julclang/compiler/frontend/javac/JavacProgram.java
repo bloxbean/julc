@@ -52,7 +52,7 @@ public final class JavacProgram {
     /** The ledger's and the attributed units' types: library units first, in qualified-name order, then the roots. */
     static JavacProgram read(JavacFrontend frontend, JavacFrontend.Attribution attribution) {
         var facts = JavacFacts.of(attribution, new TypeRegistry());
-        var registrar = new JavacTypeRegistrar(facts, frontend.platform());
+        var registrar = new JavacTypeRegistrar(facts, frontend);
         registrar.registerLedger();
         var units = new ArrayList<>(attribution.libraries());
         units.addAll(attribution.roots());

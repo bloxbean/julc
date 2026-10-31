@@ -52,13 +52,15 @@ final class JavacTypeRegistrar {
 
     private final JavacFacts facts;
     private final JavacPlatform platform;
+    private final Set<String> bundledTypes;
     private final TypeRegistry registry;
     private final List<Declared> records = new ArrayList<>();
     private final List<Declared> interfaces = new ArrayList<>();
 
-    JavacTypeRegistrar(JavacFacts facts, JavacPlatform platform) {
+    JavacTypeRegistrar(JavacFacts facts, JavacFrontend frontend) {
         this.facts = facts;
-        this.platform = platform;
+        this.platform = frontend.platform();
+        this.bundledTypes = frontend.bundled().digests().keySet();
         this.registry = facts.registry();
     }
 
@@ -119,14 +121,19 @@ final class JavacTypeRegistrar {
 
     /**
      * {@code JULC0081} at any depth: {@code Ownership} checks top-level names before javac runs, but a nested class of
-     * a user's {@code class java} can take the qualified name of an API type too. No source replaces one (D3).
+     * a user's {@code class java} can take the qualified name of an API type or a bundled library too. No source
+     * replaces one (D3), and M3 dispatches calls on these names. A genuine bundled source declares its library at top
+     * level, so it never reaches this check.
      */
     private void requireNoApiIdentity(TypeElement type, ClassTree tree) {
-        if (type.getNestingKind() == NestingKind.TOP_LEVEL || !platform.declares(facts.identity(type))) return;
+        if (type.getNestingKind() == NestingKind.TOP_LEVEL) return;
+        boolean bundled = bundledTypes.contains(facts.identity(type));
+        if (!bundled && !platform.declares(facts.identity(type))) return;
         var info = DiagnosticCodes.LEDGER_TYPE_REDECLARED;
         var at = facts.location(tree);
         throw new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
-                info.format(at.fileName(), facts.identity(type), "API"), at.fileName(), at.line(), at.column(),
+                info.format(at.fileName(), facts.identity(type), bundled ? "bundled libraries" : "API"), at.fileName(),
+                at.line(), at.column(),
                 "Rename the type or the class around it: a name of JuLC's API or of the platform means that type (ADR-068 D3)",
                 info.code())));
     }

@@ -53,7 +53,7 @@ public final class JavacLibraryTypes {
             var metadata = JavacGate.metadata(new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE));
             return metadata.read((elements, types) -> {
                 var facts = JavacFacts.of(elements, types, new TypeRegistry());
-                var registrar = new JavacTypeRegistrar(facts, JavacFrontend.shared().platform());
+                var registrar = new JavacTypeRegistrar(facts, JavacFrontend.shared());
                 registrar.registerLedger();
                 return new JavacLibraryTypes(facts).describe(registrar);
             });

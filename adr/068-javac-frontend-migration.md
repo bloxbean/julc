@@ -1195,6 +1195,7 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - F824 → M2's #284 and #286 criterion is binding; their values agree in M3, when they can run.
   - F803, F806, F828 → D7 names the three spellings that differ from the JavaParser frontend.
   - D13 gains "Schema name change". I11 names `JULC0092`. The hosts expose `frontend` from M3.
-  - F804 → a declaration at any depth taking the name of a type in JuLC's API is `JULC0081` (D3), which extends D3's
-    ownership check beyond top-level types. It is a new rejection the JavaParser frontend does not make; no corpus case
-    is affected.
+  - F804, F861 → a declaration at any depth taking the name of a type in JuLC's API or of a bundled library is
+    `JULC0081` (D3), which extends D3's ownership check beyond top-level types: calls dispatch on these names in M3. It
+    is a new rejection the JavaParser frontend does not make; no corpus case is affected.
+  - F860 → a variant's constructor is held by identity, not found by simple name.

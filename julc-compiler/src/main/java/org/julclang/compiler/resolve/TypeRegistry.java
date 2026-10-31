@@ -34,6 +34,9 @@ public class TypeRegistry {
     final Map<String, PirType.SumType> sumTypes = new LinkedHashMap<>();
     // Map of variant FQCN -> its enclosing SumType (for constructor tag lookup)
     final Map<String, PirType.SumType> variantToSumType = new LinkedHashMap<>();
+    // Map of variant FQCN -> its constructor. Two variants of a sum can share a simple name, so a constructor is never
+    // found by name. It holds what registerSealed registered; the JavaParser frontend reads variantToSumType.
+    private final Map<String, PirType.Constructor> variantConstructors = new LinkedHashMap<>();
     // Sealed interfaces that declare type parameters; type arguments are dropped, so a switch over
     // one cannot be checked (ADR-067 D4, JULC0007)
     final Set<String> parameterizedSumTypes = new LinkedHashSet<>();
@@ -112,8 +115,10 @@ public class TypeRegistry {
         var constructors = new ArrayList<PirType.Constructor>();
         for (var variant : variants) {
             var record = recordTypes.get(variant.fqcn());
-            constructors.add(new PirType.Constructor(variant.name(), constructors.size(),
-                    record != null ? record.fields() : List.of()));
+            var constructor = new PirType.Constructor(variant.name(), constructors.size(),
+                    record != null ? record.fields() : List.of());
+            constructors.add(constructor);
+            variantConstructors.put(variant.fqcn(), constructor);
         }
         var sumType = new PirType.SumType(name, constructors);
         sumTypes.put(fqcn, sumType);
@@ -165,10 +170,7 @@ public class TypeRegistry {
         if (recordTypes.containsKey(fqcn)) return Optional.of(recordTypes.get(fqcn));
         if (sumTypes.containsKey(fqcn)) return Optional.of(sumTypes.get(fqcn));
         if (forwardTypes.containsKey(fqcn)) return Optional.of(forwardTypes.get(fqcn));
-        var parent = variantToSumType.get(fqcn);
-        if (parent == null) return Optional.empty();
-        var variantName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-        return parent.constructors().stream().filter(constructor -> constructor.name().equals(variantName)).findFirst()
+        return Optional.ofNullable(variantConstructors.get(fqcn))
                 .map(constructor -> new PirType.RecordType(constructor.name(), constructor.fields()));
     }
 
