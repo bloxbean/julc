@@ -301,7 +301,8 @@ today. All access to javac's attribution goes through one JuLC class, `JavacFact
 - positions (I7).
 
 `JavacFacts` is a service over javac's own tree, not a representation: no tree is copied or rewritten. It is
-stateless, and its registry has no simple-name lookup, so the type system enforces I12. What depends on the point in
+stateless, and its registry has no simple-name lookup, so a lookup needs a qualified identity, which the lowering takes
+from the attributed `Element` (I12): a lint keeps name-based lookups out of the lowering. What depends on the point in
 the PIR being built belongs to the lowering: a binder name (I13) is chosen by the lowering's scope, guard constants by
 the lowering, and a bound type-variable environment is passed as an argument. Statement
 lowering keeps today's continuation style; hygiene comes from I13, not from AST renaming. The safeguards a
@@ -1001,6 +1002,28 @@ Decisions recorded from the M1a reviews:
 - **Secondary top-level types** of pool units are indexed under every top-level name (javac's own source path
   finds only the primary one).
 
+### M2: closed (2026-11-01)
+
+[`068-m2-types.md`](evidence/068-m2-types.md) holds the evidence. Types come from javac behind `frontend=JAVAC`; a
+compilation on that frontend stops at `JULC0084`, because no lowering is ported. `JAVAPARSER` stays the default, and
+its output is unchanged: the semantic, budget and specialization files are identical to B1, and 11,410 ledger cases
+are, with the other 7 M1b's re-keyed Blaster fixtures. At `905c366f`: 12,923 tests, 0 failures, 530 skipped;
+`pairCaseTest` and `onChainHarnessTest` pass; `wasmSmokeFull` passes.
+
+| Exit criterion | Result |
+|---|---|
+| Registry equality, on the whole corpus | Holds, apart from the T33 pins and 3 fixtures added to catch mutants. The gate compares every row with a committed table, so a frontend that stops accepting fails it |
+| Independent encoding tests | Ledger 74 of 74, `Value` included. Corpus 894 of 902: 3 T33, 5 with no reference |
+| Blueprint schemas | 4,251 of 4,253: 1 T33, 1 D8 |
+| #284 and #286 | The saved cases bind to the user's type. Their values agree in M3, when they can run |
+| `LedgerTypeProvider` | Equal: 34 types, 79 named definitions, in order |
+
+Three Claude reviewers and a Codex senior review found 10 P1s, none of them executable: a tag shift no corpus case
+showed, a local record erasing a sealed type, a gate that passed a frontend rejecting everything, and two identity holes
+the senior review alone found. All are fixed, with mutation evidence. **What M2 does not establish:** javac-side Data
+comes from a test encoder, so lowering is still unproven, and the corpus has no case that shadows a built-in name, hits
+`JULC0092`, or has a local record. Those rest on unit tests.
+
 ### M1: closed (2026-10-31)
 
 M1a ([`068-m1a-javac-gate.md`](evidence/068-m1a-javac-gate.md)), M1b
@@ -1191,7 +1214,8 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - F842 → `JavacFacts` is stateless: binder names, guard constants and type-variable environments are the lowering's,
     since they depend on the point in the PIR being built. The structure is in
     [`068-m3-lowering-structure.md`](evidence/068-m3-lowering-structure.md).
-  - F840 → its registry has no simple-name lookup, so the type system enforces I12.
+  - F840, F870 → its registry has no simple-name lookup. That removes the simple-name paths but does not by itself
+    prove a caller's string came from an `Element`, so a lint keeps `getTypeElement` and invented names out of `lower/`.
   - F824 → M2's #284 and #286 criterion is binding; their values agree in M3, when they can run.
   - F803, F806, F828 → D7 names the three spellings that differ from the JavaParser frontend.
   - D13 gains "Schema name change". I11 names `JULC0092`. The hosts expose `frontend` from M3.

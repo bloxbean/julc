@@ -69,7 +69,7 @@ PirTerm expr(ExpressionTree tree, Frame f) {
 - Not shared: `SymbolTable`, `TypeInferenceHelper`, `AccumulatorTypeAnalyzer`.
 - Ported: `JavaConstants`, the rule parts of `SwitchPatternChecker`, `SubsetValidator`, and the scan side of `DebugMetadataCollector` (split it; `Terms` is its hook).
 
-**Order of work:** a preparation step (assembly, lints; M2's review fixes are done), then a walking skeleton (`return true`) through the I1 tools, then the ADR's construct order. Add two lints in the style of `GeneratedBinderNameLintTest`: no `Trees` or `JavacTask` import in `lower/`, and no source-binder `new PirTerm.Var/Let/Lam` outside `Terms`.
+**Order of work:** a preparation step (assembly, lints; M2's review fixes are done), then a walking skeleton (`return true`) through the I1 tools, then the ADR's construct order. Add three lints in the style of `GeneratedBinderNameLintTest`: no `Trees` or `JavacTask` import in `lower/`; no source-binder `new PirTerm.Var/Let/Lam` outside `Terms`; and no `getTypeElement`, or lookup by an invented name, in `lower/` (F870).
 
 **What could go wrong:**
 - **Byte parity.** Cleaner structure tempts "improvements". Port the shape first, including the `#_` and `#_if` lets; every deviation is a D13 row.
