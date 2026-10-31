@@ -112,6 +112,8 @@ final class Adr068Types {
 
     /** A rejection: its code, if any, and its message. */
     static String message(Throwable t) {
+        // A hot JVM drops a NullPointerException's helpful message, so its text is not stable.
+        if (t instanceof NullPointerException) return "NullPointerException";
         String message = t instanceof CompilerException e && !e.diagnostics().isEmpty()
                 ? e.diagnostics().stream().filter(d -> d.isError()).findFirst()
                         .map(d -> (d.code() == null ? "" : d.code() + ": ") + d.message()).orElse(String.valueOf(t.getMessage()))

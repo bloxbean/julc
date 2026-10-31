@@ -27,6 +27,8 @@ Each entry gives:
 | for-each over an inline list | M1b review | `for (var x : JulcList.of(a, b))` loses the element type: `x` stays Data, so `acc.subtract(x)` fails on-chain (`SubtractInteger: expected integer`) though javac types `x` as `BigInteger`. A declared local (`JulcList<BigInteger> xs = ...`) works. Fails closed | M3 lowers from javac's types |
 | `.equals` between unrelated types | M1b review (F751) | `PubKeyHash.equals(BigInteger)` is `false` on the JVM and fails on-chain (`UnBData: expected data`). Fails closed. Same family as T34 (`String.equals`, #292) | M3 lowers `equals` from javac's types; a comparison javac can prove false could be diagnosed |
 | chained read on a new object | M1c review | `new Tuple2<>(x, y).second()` is rejected with `JULC0055` (also in the explicit form, as at B0) | M3 lowers from javac types; revisit then |
+| #284, #286 (T33) on the default frontend | M2 | The saved pins still diverge on `JAVAPARSER`, as frozen. On `JAVAC` the names bind to the user's records, but no value can be observed before M3 | Keep both issues open until M3 shows the values agree and M5 makes that frontend the default |
+| A varargs record component | M2 | The JavaParser frontend ignores `...`: `record R(BigInteger... xs)` registers one integer, while Java's type is an array. `byte...` is rejected as an unsupported primitive | The javac frontend rejects both; a D13 row when M3 reaches the case |
 
 ## Deferred review findings (P2/P3)
 
@@ -52,6 +54,11 @@ Each entry gives:
 | F210 scope | M0 | The class-file rule for implicit `equals` without code is sound only for API stubs (guarded by `ApiRecordEqualsTest`) | Keep the guard; do not reuse the rule for user class files |
 | ADR-067 revision | ADR-068 D11 | ADR-067's I9 oracle (javac 25), outcome matrix, M2b gate and the retirement of `Javac21ParityTest` are still to be written | With the M3 switch port |
 | ADR-066 G1 | ADR-066 | M3 part 2 onward (guard and record-pattern generation) waits for the javac frontend's switch port | After M3 |
+| Types of an unreferenced library | M2 | The reference registers every library it is given; javac reads the pool units a root references (D8). One corpus case differs: a blueprint names `com.myapp.Token` by its stable id because an unreferenced library declares a second `Token`; on javac it stays `Token`. Listed in `068/m2-accepted-differences.tsv` | M3's I1 rows meet the same difference in `namedDefinitions`; classify it there, or say in D13 which class a blueprint name belongs to |
+| The frontend option on hosts | M2 | D4 says the Gradle plugin, CLI and testkit expose `frontend`. Only `CompilerOptions` does: at M2 every host would get `JULC0084` | Add it with the first lowered construct (M3) |
+| Ledger registered per compilation | M2 | Each `JavacProgram` reads the ledger stubs through its own task, about 1 ms warm (`068-m2-types.md`); the JavaParser path parses the ledger sources per compilation too, about 5.4 ms | Measure against E6 when M3 compiles whole programs; a process-wide snapshot of the PIR types is possible, since they hold no javac objects |
+| Diagnostic parity of type rejections | M2 | The corpus tool compares a rejection's message, not its anchor. Registration rejections share the source path's text and, for `errorAt` ones, its declaration start | I2a's inventory gate in M3 compares code and position |
+| Local types' identity | M2 | Java gives a local type no qualified name; the registries key it as the source path does, enclosing type plus simple name. Two local records of one name are rejected, as there. No corpus case has a local record | Decide with M3's subset port whether local records stay |
 | Illustrative doc blocks | M1b | 16 whole-unit doc blocks stay invalid alone on purpose (WRONG/CORRECT pairs, compact source files, cross-file examples, sketches); 408 fragments were scanned only by the BigInteger-operator heuristic | Compile docs' examples in a test (as `ValueOrientedExamplesTest` does) when the docs are next reworked |
 
 ## Closed here

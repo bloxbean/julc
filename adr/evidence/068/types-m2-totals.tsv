@@ -1,0 +1,44 @@
+cases	17034
+DIFFERENT	5
+both-reject	12
+both-reject-javac-first	38
+both-reject-tolerant	3
+equal	10281
+equal-reference-rejects-lowering	6
+equal-tolerant	6632
+javac-rejects-unreadable	4
+ledger-source	38
+reference-rejects	15
+part	blaster	equal	7
+part	c7	equal	6
+part	diffcase	DIFFERENT	5
+part	diffcase	both-reject	2
+part	diffcase	both-reject-javac-first	1
+part	diffcase	equal	189
+part	elci	equal	4
+part	external	equal	100
+part	external	equal-tolerant	2
+part	g0	equal	376
+part	g1	equal	123
+part	head	DIFFERENT	5
+part	head	both-reject	12
+part	head	both-reject-javac-first	38
+part	head	both-reject-tolerant	3
+part	head	equal	10115
+part	head	equal-reference-rejects-lowering	2
+part	head	equal-tolerant	1389
+part	head	javac-rejects-unreadable	2
+part	head	reference-rejects	15
+part	ledger	equal	1
+part	ledger	ledger-source	38
+part	recorded	DIFFERENT	5
+part	recorded	both-reject	3
+part	recorded	both-reject-javac-first	28
+part	recorded	both-reject-tolerant	3
+part	recorded	equal	4684
+part	recorded	equal-reference-rejects-lowering	1
+part	recorded	equal-tolerant	6491
+part	recorded	javac-rejects-unreadable	4
+part	recorded	reference-rejects	15
+part	stdlib	equal	13
+part	stdlib	equal-reference-rejects-lowering	4
