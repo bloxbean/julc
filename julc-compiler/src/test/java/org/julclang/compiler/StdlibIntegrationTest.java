@@ -1,6 +1,5 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.frontend.javac.JavacGateMode;
 
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.StdlibLookup;
@@ -486,10 +485,7 @@ class StdlibIntegrationTest {
     class JavaApiDelegation {
 
         private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
-        // ADR-068 M1b: java.lang.Math on BigInteger is not Java (javac: no suitable method); the delegation is
-        // tested on the JavaParser frontend with the gate off.
-        private final JulcCompiler stdlibCompiler = new JulcCompiler(STDLIB,
-                new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        private final JulcCompiler stdlibCompiler = new JulcCompiler(STDLIB);
 
         private PlutusData mockCtx(PlutusData redeemer) {
             return PlutusData.constr(0,
@@ -512,8 +508,8 @@ class StdlibIntegrationTest {
 
                         @Entrypoint
                         static boolean validate(Datum datum, PlutusData ctx) {
-                            BigInteger v = datum.value();
-                            BigInteger result = Math.abs(v);
+                            long v = datum.value().longValue();
+                            BigInteger result = BigInteger.valueOf(Math.abs(v));
                             return result.equals(BigInteger.valueOf(5));
                         }
                     }
@@ -538,8 +534,8 @@ class StdlibIntegrationTest {
 
                         @Entrypoint
                         static boolean validate(Datum datum, PlutusData ctx) {
-                            BigInteger v = datum.value();
-                            BigInteger result = Math.abs(v);
+                            long v = datum.value().longValue();
+                            BigInteger result = BigInteger.valueOf(Math.abs(v));
                             return result.equals(BigInteger.valueOf(7));
                         }
                     }
@@ -564,9 +560,9 @@ class StdlibIntegrationTest {
 
                         @Entrypoint
                         static boolean validate(Datum datum, PlutusData ctx) {
-                            BigInteger a = datum.a();
-                            BigInteger b = datum.b();
-                            BigInteger result = Math.max(a, b);
+                            long a = datum.a().longValue();
+                            long b = datum.b().longValue();
+                            BigInteger result = BigInteger.valueOf(Math.max(a, b));
                             return result.equals(BigInteger.TEN);
                         }
                     }
@@ -591,9 +587,9 @@ class StdlibIntegrationTest {
 
                         @Entrypoint
                         static boolean validate(Datum datum, PlutusData ctx) {
-                            BigInteger a = datum.a();
-                            BigInteger b = datum.b();
-                            BigInteger result = Math.min(a, b);
+                            long a = datum.a().longValue();
+                            long b = datum.b().longValue();
+                            BigInteger result = BigInteger.valueOf(Math.min(a, b));
                             return result.equals(BigInteger.valueOf(3));
                         }
                     }
