@@ -885,7 +885,8 @@ is [`evidence/068-javac-frontend-baseline.md`](evidence/068-javac-frontend-basel
   cases, `agree-equals-unknown-switch`/`-ternary` at static type `java.lang.Record`, and
   `BigIntegerCompatTest#equalsOnByteStringField`). 5 type-variable sites, all in templates (`TypedMapLib`,
   `PlutusDataHelper`); no nested-collection sites.
-- **Tests and stability.** The base `448505e5`: 12,395 tests, 0 failures. Byte stability: 1,056 compilations
+- **Tests and stability.** The base `448505e5`: 12,395 tests, 0 failures; the M0 head `a8963b85`: 12,411 tests, 0
+  failures, 530 skipped, BUILD SUCCESSFUL (`./gradlew test --offline --continue --rerun`). Byte stability: 1,056 compilations
   (fixtures, examples, 196 saved cases, 54 G0 programs, four levels) identical before and after. Two recordings
   and two baseline runs (13 threads and 1) give byte-identical evidence files.
 
