@@ -109,6 +109,9 @@ tasks.register('adr068Baseline', Test) {
         includeTags 'adr068-baseline'
     }
     systemProperty 'adr068.repo', rootDir.absolutePath
+    // The reference rows are the JavaParser frontend's: every compilation the baseline makes (ledger, harness runs and
+    // evaluation replays) has the javac gate off, unless -Padr068.gate=enforce asks for M1b's gate-on check.
+    systemProperty 'julc.javacGate', providers.gradleProperty('adr068.gate').orElse('off').get()
     ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.external', 'adr068.out', 'adr068.threads', 'adr068.gate'].each { key ->
         def value = providers.gradleProperty(key)
         if (value.isPresent()) {
