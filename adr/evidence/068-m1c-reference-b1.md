@@ -32,6 +32,10 @@ Machine and toolchain as in M0's evidence.
 # ledger-b0-budget.tsv -> 068/ledger-b1-budget.tsv, ledger-b0-instantiations.tsv -> 068/ledger-b1-instantiations.tsv,
 # totals-b0.tsv -> 068/totals-b1.tsv, rejection-inventory-b0.tsv -> 068/rejection-inventory-b1.tsv,
 # corpus-b0.tsv -> 068/corpus-b1.tsv
+# What the tests observed, against a new recording of the same tests at this code (M0's command 2):
+python3 adr/evidence/068/compare-evaluations.py <M0 recording> <new recording> \
+    --exclude julc-difftest/src/test/resources/adr068/nondeterministic-evaluations.txt \
+    --exclude adr/evidence/068/nondeterministic-origins.txt > adr/evidence/068/evaluations-b0-b1-diff.tsv
 # with the single-change variant ledgers (below), renamed to <variant>.tsv, -semantic.tsv, -budget.tsv, -instantiations.tsv:
 python3 adr/evidence/068/compare-ledgers.py adr/evidence/068/ledger-b0 adr/evidence/068/ledger-b1 \
     --variant "reference change (compareTo rule)"=<v146> --variant "reference change (#295 operand order)"=<v295> \
@@ -46,9 +50,10 @@ ADR-062 row has a reviewed decision, so the two rows M1c adds, T35 (#295) and T3
 `accepted-divergences-review.tsv`, recorded as they stood at B0 (`open`, silent there) with the M1c fix in the reason.
 Two runs of B1 (14 compile threads over the first recordings, and one thread over the second) give identical files.
 
-The evaluation ledgers are not compared: they replay the evaluations M0's tests recorded against B0's scripts, so a
-script whose bytes changed no longer matches its recording (B1: 1,202 replayed evaluations agree, 15,657 unmatched,
-none disagree; B0: 2,017 agree, 6,735 unmatched). The harness runs below are B1's semantic check.
+The evaluation ledgers replay recorded evaluations by script digest, so a script whose bytes changed loses its
+evaluations (B1: 1,202 replayed evaluations agree, 15,657 unmatched; B0: 2,017 and 6,735). That removes coverage exactly
+where the reference changed (review F730), so they are not B1's check on changed scripts: see
+[What the tests observed](#what-the-tests-observed-b0-against-b1).
 
 ## Totals
 
@@ -77,7 +82,7 @@ variant whose switch reverts it, then its D13 class). 7,598 of the 11,402 frozen
 |---|---|---|---|
 | 6 | bytes, semantic observations | the five `diverge-g1-146-traced-compare-operand*` pins (four programs) and the two T13 pins now agree with the JVM | Reference change (D4 exception 1); semantic fix, #146 |
 | 463 | bytes, budgets (322 G0, 99 G1, 42 saved cases) | the `compareTo` rule | Reference change; cost change, every budget smaller |
-| 7,127 | bytes (7,041 recorded in-repo, 81 external julc-examples, 2 Blaster fixtures, 3 stdlib providers) | the `compareTo` rule | Reference change; semantics not observed, equivalent modulo evaluation count (D4 exception 1); every FLAT size smaller |
+| 7,127 | bytes (7,041 recorded in-repo, 81 external julc-examples, 2 Blaster fixtures, 3 stdlib providers) | the `compareTo` rule | Reference change (D4 exception 1); no harness run observes them, so what is known about them is under [What the tests observed](#what-the-tests-observed-b0-against-b1); every FLAT size smaller |
 | 1 | diagnostic: uncoded strict-boundary error → `JULC0091` | `List<JulcArray<BigInteger>>` redeemer (`StrictDataBoundaryTest`) | Reference change (D4 exception 2); diagnostic change, an uncoded rejection gaining a code |
 | 1 | the JVM observation and verdict of `diverge-t10-map-byte-array-key` | `JulcAssocMap` finds an equal `byte[]` key | julc-core off-chain change (D6); semantic fix, JVM side |
 
@@ -90,6 +95,45 @@ stay in it at `NONE`, and the stdlib compares with `compareTo(…) OP 0`), 9 at 
 memory and script-size budget (1,431–1,445 runs per level). No specialization changes. Over the
 changed runs, `PV11_SAFE` CPU falls from 32.7·10⁹ to 24.3·10⁹ and script bytes from 1,638,329 to 391,522 (the two
 T13 programs were most of that size).
+
+### What the tests observed: B0 against B1
+
+The ledger's runs observe 469 of the 7,596 byte-changed cases, so the question of what changed in the others needs another
+source. [`068/compare-evaluations.py`](068/compare-evaluations.py) compares two recordings of the same tests, M0's and
+one made at `510a5f1a`, by what does not depend on the script: an evaluation is identified by its test, VM, budget limit
+and arguments, and compared on outcome, value, traces and failure. Every identity that differs, or that only one
+recording has, is a row in [`068/evaluations-b0-b1-diff.tsv`](068/evaluations-b0-b1-diff.tsv). As a control, M0's two
+recordings of the same code compare equal: 29,503 evaluations, no row.
+
+| Result | Count |
+|---|---|
+| Same script, same observation | 15,786 evaluations |
+| Changed script, same observation, an exact old and new pair | 379 |
+| Changed scripts, same observations, matched only as a group within one test | 12,826 evaluations, in 1,045 groups |
+| Same observations, different count: two scripts of one test now compile alike | 161 identities |
+| **An observation differs** | **5 identities** |
+| Only in M0's recording | 4 |
+| Only in the new recording | 30, in tests M1c adds or renames |
+
+No test's observation changed except these, each explained by the fix itself:
+
+- The five differ as #146 and T13 intend: traces fall from two to one where an operand no longer runs twice
+  (`RegressionCasesTest`, four rows), or `BudgetExhausted` becomes `Success` (`G0FuzzTest`, one, and in those rows too).
+- Two of the four rows only in M0's recording are `G1RediscoveryTest#tracedComparisonOperand`, renamed
+  `tracedComparisonOperandTracesOnce`. The other two are `G0FuzzTest` at the budget limits 10¹² and 10¹³: at B0 the program
+  exhausted the first limit and was retried higher; at B1 it succeeds at the first.
+- 149 exact pairs consume less. One row consumes more, and it is a different program, not growth:
+  `theNestedLoopsReproducerNeedsTheSecondRungAtNone` now reads the `== -1` pin (`T13_SECOND_RUNG_REPRODUCER`).
+
+**What this does not establish.** Groups match as multisets, so two scripts of one test swapping results would not show
+(the tests' own assertions, all green, are the check there). External `julc-examples` is not in this comparison, and it
+holds 81 byte-changed cases; its run is an M1 exit item. And coverage per case is partial. Of the 7,596 byte-changed
+cases, 1,504 have a recorded evaluation traced to them, and 466 more have harness runs; the other **5,626 have neither**
+(5,540 recorded, 81 external, 2 Blaster, 3 stdlib; 331 of them change only at `NONE`). A test may evaluate such a case in a form
+the recording cannot trace to it, such as with applied parameters, so this does not say they were never evaluated, but no
+observation is attached to them. For those cases the evidence is indirect: V146 shows the `compareTo` rule is the only
+byte change, so they are correct if the rule is, and the rule has its own tests and the independent probes of review
+F730 (52 programs at four levels, no unexpected difference).
 
 ### Attribution
 

@@ -62,8 +62,15 @@ def short(cell):
     return cell.split("@")[0]
 
 
+def agreements(verdicts):
+    """How many of a run's levels agree with the JVM."""
+    return verdicts.count("AGREE")
+
+
 def run_changes(key, sa, sb, ba, bb):
-    changes = []
+    """What changed in a case's runs; a run only the reference has is reported, never skipped (review F731)."""
+    changes = [run + ":removed" for (k, run) in sorted(sa) if k == key and (k, run) not in sb]
+    changes += [run + ":budget-removed" for (k, run) in sorted(ba) if k == key and (k, run) not in bb and (k, run) in sb]
     for (k, run), rb in sorted(sb.items()):
         if k != key:
             continue
@@ -78,31 +85,52 @@ def run_changes(key, sa, sb, ba, bb):
             what.append("uplc")
         if ra["verdicts"] != rb["verdicts"]:
             what.append("verdict " + ra["verdicts"] + ">" + rb["verdicts"])
-        if (k, run) in ba and any(ba[(k, run)][level] != bb[(k, run)][level] for level in LEVELS):
+        if (k, run) in ba and (k, run) in bb and any(ba[(k, run)][level] != bb[(k, run)][level] for level in LEVELS):
             what.append("budget")
         if what:
             changes.append(run + ":" + "+".join(what))
     return changes
 
 
-def d13_class(kinds, changes):
-    """The D13 class a difference falls in, from what differs (ADR-068 D13)."""
-    observed = [c.rsplit(":", 1)[1] for c in changes if ":" in c]
-    if any(k.startswith("newly rejected") for k in kinds):
-        return "policy rejection"
-    if any(k.startswith("newly accepted") for k in kinds):
-        return "accepted by decision"
-    if any(k.startswith("diagnostic ") for k in kinds):
-        return "diagnostic change"
-    if any("uplc" in o or "jvm" in o or "verdict" in o for o in observed):
+def semantic_class(ra_rb_changes):
+    """The semantic part of a difference. A change is a fix only if more levels agree with the JVM (review F732)."""
+    observed = [c.rsplit(":", 1)[1] for c in ra_rb_changes if ":" in c]
+    if any(o in ("removed", "budget-removed") for o in observed):
+        return "lost observation"
+    transitions = [o[o.index("verdict ") + 8:].split(">") for o in observed if "verdict " in o]
+    if any(agreements(new) < agreements(old) for old, new in transitions):
+        return "semantic regression"
+    if any(agreements(new) > agreements(old) for old, new in transitions):
         return "semantic fix"
-    if any("budget" in o for o in observed):
-        return "cost change"
-    if "bytes" in kinds:
-        return "semantics not observed"
-    if "diagnostics-digest" in kinds:
-        return "diagnostic change"
-    return "provenance change"
+    if any("uplc" in o or "jvm" in o or "verdict" in o for o in observed):
+        return "semantic change, unresolved"
+    return None
+
+
+def d13_class(kinds, changes):
+    """The D13 class of a difference, from what differs. Each part is kept: a diagnostic change does not hide a
+    semantic one (review F732)."""
+    observed = [c.rsplit(":", 1)[1] for c in changes if ":" in c]
+    parts = []
+    if any(k.startswith("newly rejected") for k in kinds):
+        parts.append("policy rejection")
+    elif any(k.startswith("newly accepted") for k in kinds):
+        parts.append("accepted by decision")
+    elif any(k.startswith("diagnostic ") for k in kinds):
+        parts.append("diagnostic change")
+    semantic = semantic_class(changes)
+    if semantic:
+        parts.append(semantic)
+    elif not parts:
+        if any("budget" in o for o in observed):
+            parts.append("cost change")
+        elif "bytes" in kinds:
+            parts.append("semantics not observed")
+        elif "diagnostics-digest" in kinds:
+            parts.append("diagnostic change")
+        else:
+            parts.append("provenance change")
+    return ", ".join(parts)
 
 
 def main(args):
