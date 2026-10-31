@@ -21,6 +21,13 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
 | ledger and stdlib types used without an import | explicit imports (`import org.julclang.ledger.TxInfo;`) |
 | `MyHash.of(bytes)` for a `@NewType` | `new MyHash(bytes)` |
 | a `@Param` field read from a `static` method | declare the field `static` |
+| a for-each over a `JulcMap`, or `head()` entries | loop over `keys()` or `values()` |
+| `ListsLib.any`, `all`, `filter`, `map`, `find` | the `JulcList` instance method |
+| `ListsLib.foldl`, `zip` | a loop with an accumulator; for `zip`, stop at the shorter list |
+| `var f = x -> ...` | pass the lambda at the call, or write a named method |
+| implicit `Data`/`byte[]` coercion at a call | `Builtins.unBData`, `Builtins.bData` and their kin |
+| `.hash()` or `.length()` on `byte[]` | `Builtins.sha2_256`, `Builtins.lengthOfByteString` |
+| `MyRecord.fromPlutusData(d)` | `PlutusData.cast(d, MyRecord.class)` on-chain |
 
 - **Script bytes do not change** for a source javac accepts: the gate only reads the source.
   A source rewritten from the dialect can compile to different bytes where its meaning needs
@@ -35,6 +42,13 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   or `report` (javac runs and rejects nothing), or call `CompilerOptions.setJavacGate(...)`.
   With `report`, `-Djulc.javacGate.report=<dir>` records each source javac would reject. The
   default is `enforce`.
+- **`PlutusData.cast`** views Data as a type on-chain. It is an unchecked cast, not a decoder: on
+  the JVM it throws `ClassCastException` for a `ConstrData`.
+- **`CompileResult`** has a new component, `javacProvenance()`: the javac version, the platform
+  and stub digests, and what the gate did in that compilation. Its constructors keep working, but
+  a record pattern on `CompileResult` needs the new arity. Generated artifacts are unchanged, so
+  `plutus.json` is the same across JDK patch releases.
+
 ## Upcoming preview: comparisons evaluate each operand once, left to right (#146, #295)
 
 `a.compareTo(b) OP 0` lowered to the three-way `compareTo` result compared with zero, which

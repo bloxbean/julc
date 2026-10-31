@@ -341,7 +341,7 @@ Alternatives (ADR-065 OQ9 answered as (a)):
   be `RELEASE_25`) and fails with `JULC0089` (`JAVAC_UNSUPPORTED`) otherwise; the full compiler version
   (`Runtime.version()` of the host) and the blob digest are recorded in the compile result's metadata.
   - **Supported builds.** The JDK 25 patch releases in CI's matrix are supported; any other 25 patch runs, with
-    its version recorded. A difference in output between two patch releases on the corpus is **release-blocking**:
+    its version recorded. A difference in acceptance, rejection or generated script bytes between two patch releases on the corpus is **release-blocking**:
     it is resolved by narrowing the supported builds, or by a versioned decision recorded in this ADR's revision
     history (which output is right, from the JVM agreement of the affected cases), never left to the host.
   - Widening the range to another feature release needs a corpus run and the same comparison (I4). The oracle
@@ -431,6 +431,21 @@ exceptions D11 lists.
   stdlib packages, and synthesized `@NewType` `of(...)` factories are not Java: javac rejects them (D5). Every
   in-repo source that uses them (tests, docs, examples, AI starter packs) is rewritten to Java in M1: `add`,
   `compareTo`, `BigInteger.valueOf`, explicit imports, `new MyHash(bytes)`.
+- **Dialect with no Java form (amended after M1b).** These were accepted by the JavaParser frontend, are not Java, and are
+  removed with the forms above. Under the gate each is `JULC0085`. No API is added for them in this migration; one can be
+  added later without breaking anything.
+  - **Map entries.** A for-each over a `JulcMap`, and entries through `head()`. Use `keys()` and `values()`; a rewrite that
+    depends on entries keeps their order and duplicates.
+  - **List higher-order functions.** The undeclared `ListsLib.any`, `all`, `filter`, `map`, `find`, `foldl` and `zip`. Use
+    the `JulcList` instance methods, or a loop, keeping evaluation order, short-circuiting and `zip`'s stop at the shorter
+    list.
+  - **Local functions.** A lambda bound to `var`. Functional-interface locals are not added. Pass the lambda at a supported
+    call, or write a named method with explicit arguments.
+  - **Conversions.** Implicit `Data`/typed coercion at a call. Use the declared encoding and decoding operations.
+  - **Synthetic methods.** Undeclared methods on `byte[]` and wrappers, such as `.hash()` and `.length()`. Use the declared
+    builtins and accessors.
+  - **User factories.** `fromPlutusData` on a user record or sealed interface. `PlutusData.cast` views Data as that type
+    on-chain; it is an unchecked representation cast, not a JVM decoder, and throws `ClassCastException` there.
 - **Comparisons through `compareTo` (closes #146 for this form).** Where the javac frontend sees
   `a.compareTo(b) OP 0` or `0 OP a.compareTo(b)`, with the call resolved to
   `java.math.BigInteger.compareTo(java.math.BigInteger)`, `OP` one of `<`, `<=`, `>`, `>=`, `==`, `!=`, and `0`
@@ -843,7 +858,7 @@ milestone's evidence; a skipped check fails the gate.
 | ID | Scope | Entry gate | Exit criteria | Invariants / tests |
 |---|---|---|---|---|
 | **M0** | Freeze B0 and the corpus: in-repo `julc-examples` validators, the 16 stdlib libraries, ledger sources, `verification/blaster/fixtures`, `verification/c7/fixtures`, every compiler/stdlib/testkit test source, the `.diffcase` set, G0, the G1 fixed-seed corpus, the external `julc-examples`, Elci's smoke and `custom-library`. Build the D13 ledger's reference rows, the I2a rejection inventory, and D6's scan of `.equals` call sites that `JULC0087` would reject. Freeze D4's accepted-divergence list with each pin's ID. Add this ADR as a step of ADR-062, and D4's preview-tracking sentence to `SECURITY.md` | This ADR accepted; the integration's full run green | `adr/evidence/068-javac-frontend-baseline.md` with B0's SHA, the pinned commands, and the generated ledger and inventory | I1, I2a, I7, I11 baselines |
-| **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's comparison rules in both frontends (D4 exception 1, re-freezing the reference as B1); the JuLC collections' `byte[]` value equality on the JVM (D6). D6's dialect rewrite of every in-repo migration source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every migration case accepted by both is byte-identical to B1 (I1a); every migration case javac rejects is a "javac rejection" row whose rewrite is accepted and costs no more, in size and budget, than the order-correct lowering of its dialect original (D4); negative fixtures stay rejected; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I1, I2b, I2c, I4, I6, I10 |
+| **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's comparison rules in both frontends (D4 exception 1, re-freezing the reference as B1); the JuLC collections' `byte[]` value equality on the JVM (D6). D6's dialect rewrite of every in-repo migration source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every migration case accepted by both is byte-identical to B1 (I1a); every migration case javac rejects is a "javac rejection" row whose rewrite is accepted and costs no more, in size and budget, than the order-correct lowering of its dialect original (D4), except where the rewrite writes out a conversion or library call the dialect made implicitly, each listed with its measured cost; a case D6 removes keeps its original rejection row and needs no accepted replacement; negative fixtures stay rejected; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I1, I2b, I2c, I4, I6, I10 |
 | **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases agree; `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
 | **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14); calls (stdlib, library, instance dispatch, D6's comparison rules); records, fields, object creation; locals, `if`/`else`, `return`; `instanceof`; `switch` with ADR-067 M1 guards and the ported `JavaConstants`; lambdas; whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix) | M3 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
@@ -955,9 +970,15 @@ default until M1b switches it to `enforce`). FLAT bytes are identical over the M
 Decisions recorded from the M1a reviews:
 
 - **Supported javac** is "highest source version is `RELEASE_25`" (D3's wording).
-- **Compile metadata.** `JavacEnvironment.current()` exposes the javac version and the blob and stub digests;
-  per-compilation metadata (CLI artifact metadata, the blueprint's `preamble.compiler`) is an M1 exit item, added
-  without breaking I5.
+- **Compile metadata.** `JavacEnvironment.current()` exposes the javac version and the blob and stub digests. Each
+  `CompileResult` carries `JavacProvenance`, captured from that compilation: the javac version, the blob and stub
+  digests, the gate's mode and its outcome. A gate that did not run, and a result built outside a compilation, say so
+  rather than take this process's environment. M1 writes it to no generated artifact, so `plutus.json` stays the same
+  across JDK patch releases. CIP-57 closes `preamble` and `preamble.compiler` (`additionalProperties: false`), and the
+  version string's boundary marker must stay last (`DataBoundarySemantics`), so neither carries it. If a tool needs it
+  after the process exits, it is emitted separately and bound to the compiled artifacts. I5 does not cover
+  `CompileResult`'s components; the new one is additive, as ADR-031 allows, and its constructors keep working, though
+  a record pattern on `CompileResult` needs the new arity.
 - **Pool during M1 (simplification).** The gate's pool for an entry point is the library list that entry point
   already resolves today, plus the bundled stdlib sources; that equals what the JavaParser frontend reads, so the
   gate sees the same program. M3, which lowers from javac, replaces it with D8's "each entry point's pool equals
@@ -1121,3 +1142,10 @@ Decisions recorded from the M1a reviews:
     reachable only through exempt producer requests; Codex's round-8 note on boundaries is folded in (datum and
     redeemer arrays are already rejected by strict boundary validation; `@Param` and `compileMethod` inputs are
     covered by `JULC0091`).
+- **r9** (2026-10-31, after the M1b and M1c reviews, on repository evidence and Codex's reviews):
+  - Table U of the M1b evidence → D6 names the removal of six constructs javac rejects and D6 did not list; M1's exit
+    says a case D6 removes keeps its rejection row. No API is added: `julc-examples` uses none of the four largest.
+  - M1's exit → a rewrite may write out a conversion or library call the dialect made implicitly, listed with its cost.
+  - F401 → D3's "compile result's metadata" is `JavacProvenance` on `CompileResult`. The implementation note's
+    `preamble.compiler` is withdrawn: CIP-57 closes that object. D3's release-blocking rule names acceptance, rejection
+    and script bytes, since recorded provenance differs by patch release by design.

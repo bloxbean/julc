@@ -15,7 +15,7 @@ is listed below with the reason it is not, and the javac gate's default is `enfo
 | Frozen corpus, gate off | 11,410 of 11,417 cases byte-identical to B1; the other 7 are the Blaster fixtures M1b rewrote; semantic, budget, specialization and rejection-inventory files have no differing row |
 | Frozen corpus, gate on | every case javac accepts is byte-identical to the gate-off row; nothing else changes |
 | In-repo cases javac rejects that B1 accepts | 5,241: 5,135 rewritten and byte-identical, 27 rewritten and different, 76 with no Java form (table U), 3 expected (2 reference fixtures, 1 parity probe) |
-| Open for review | Table U (95 recorded cases have no Java form); 13 rewrites grow (11 cases, 2 Blaster fixtures) |
+| Decided in review | Table U's removals are named in D6 (95 recorded cases); of the 13 rows that grow, 10 are listed cost changes and 3 are equality rewrites classified apart |
 
 ## Commands
 
@@ -118,16 +118,16 @@ are recorded cases at the head; 76 frozen-corpus cases are among them.
 |---|---|---:|---|---|
 | U1 | A for-each over a `JulcMap`, or `head()` entries (`JulcMap` is not `Iterable`, `head()` returns `Object`) | 24 | `foreach.not.applicable.to.type`, `cant.resolve.location.args` | `keys()` and `values()` (tested); no entry type |
 | U2 | `ListsLib.any/all/filter/map/find/foldl/zip`, registry intrinsics with no declaration | 42 | `cant.resolve.location.args` | Instance methods, except `foldl` and `zip`: an accumulator loop |
-| U3 | A lambda bound to `var` | 6 | `cant.infer.local.var.type` | None |
+| U3 | A lambda bound to `var` | 6 | `cant.infer.local.var.type` | A lambda at a supported call, or a named method. A `Function` local passes javac but JuLC rejects it (`Unknown type: Function`): this is a removed facility, not only a spelling |
 | U4 | Implicit `Data`/bytes coercion at a call | 6 | `prob.found.req` | `Builtins.unBData` and friends, at some cost (below) |
 | U5 | Dialect methods on `byte[]` and wrappers (`.hash()` and `.length()` on bytes, `.value()` on a hash) | 8 | `cant.resolve.location.args` | The test's subject is the dialect |
-| U6 | `fromPlutusData` on a user record or sealed interface, a JuLC-registered factory | 4 | `cant.resolve.location.args` | None |
+| U6 | `fromPlutusData` on a user record or sealed interface, a JuLC-registered factory | 4 | `cant.resolve.location.args` | `PlutusData.cast(d, T.class)` on-chain. It is an unchecked cast, not a JVM decoder: on the JVM it throws `ClassCastException` for a `ConstrData` |
 | — | Names only a custom registry defines (`LibraryDiscoveryCleanupTest`) | 5 | `cant.resolve.location` | A Java declaration |
 
-Rejecting these is what enforcing means, but D6 and the Compatibility section name four dialect forms, not these. Under
-`enforce` a user gets `JULC0085` for each. **Decision needed:** per construct, an API (for example a `JulcMap.entries()`
-with a Java entry type) or a D6 amendment naming the removal. Listed in
-[`068-followups.md`](068-followups.md).
+D6 and the Compatibility section named four dialect forms, not these. **Decided in review:** D6 now names their removal,
+and M1's exit says a removed case keeps its rejection row and needs no accepted replacement. No API is added: the external
+`julc-examples` (164 Java files) use none of U1, U2, U3 or U6, and an API can be added later without breaking anything.
+`DialectRemovalAlternativesTest` runs each alternative under `enforce` on the VM, and pins each removal as `JULC0085`.
 
 ## Codemods (test-side only)
 
@@ -149,11 +149,16 @@ JavaParser frontend's FLAT bytes before and after a rewrite.
 
 ## The REPL decision (D9)
 
-**The wrappers emit valid Java; there is no carve-out.** `ReplExpressionWrapper` (julc-compiler) attributes the input
-in a probe method returning `Object`, then generates the method with the returned type, wrapping an `int` or `long`
-result in `BigInteger.valueOf`. A javac rejection is the REPL's error, its line and column counted from the input.
-`ExpressionEvaluator` and the CLI's `ExpressionWrapper`/`ReplEngine` share it, and no main source sets the gate. D9's
-probe is `var v = (expr);`; this one returns the expression as `Object`, which also types a statement block.
+**The wrappers emit valid Java; there is no carve-out.** `ReplExpressionWrapper` (julc-compiler) attributes an expression
+as D9's `var v = (expr);`, then generates the method with that type, wrapping an `int` or `long` result in
+`BigInteger.valueOf`. A javac rejection is the REPL's error, its line and column counted from the input.
+`ExpressionEvaluator` and the CLI's `ExpressionWrapper`/`ReplEngine` share it, and no main source sets the gate.
+
+The first version probed by returning the expression as `Object`. That is not D9's probe: a conditional takes `Object` as
+its target type, so `true ? BigInteger.ONE : BigInteger.TWO` failed with `Unknown type: Object` (review F740). A statement
+block, which D9 does not define, still returns into `Object`; a returned expression that then has no type of its own is
+rejected with its remedy, so it cannot reach the compiler as `Object`. Input that closes the wrapper and adds declarations
+is rejected too.
 
 ## Docs and examples
 
@@ -198,16 +203,24 @@ evaluations of both programs on the same arguments:
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Generated loops, `xs.size()` as the `long` it is | 16 | 42,416 → 41,087 | 6,264 → 4,974 | 5,376 → 4,278 | 288 | 1,499,314,304 → 1,188,040,880 | 6,584,248 → 5,277,128 |
 | Explicit decode at a typed call | 7 | 2,682 → 2,712 | 1,093 → 1,147 | 985 → 1,039 | 22 | 122,438,679 → 126,453,129 | 341,286 → 362,950 |
-| `equals` for `==` on `Data` | 3 | 871 → 876 | 713 → 719 | 641 → 646 | 0 | not comparable | not comparable |
+| `equals` for `==` (see below) | 3 | 871 → 876 | 713 → 719 | 641 → 646 | 0 | not comparable | not comparable |
 | `ContextsLib.trace` for `Builtins.trace` | 1 | 130 → 2,319 | 117 → 119 | 75 → 77 | 4 | 3,740,054 → 5,084,054 | 16,664 → 25,064 |
 
 The Blaster fixtures: `typed-multisig` 432 → 437 bytes at `BASELINE`, `typed-multisig-broken` 360 → 363, with the same
 kind of explicit decode; their artifacts are refreshed and the suite reports `SMT-VALID: all-properties-established`.
 
-**The 11 rewrites that grow, plus those two fixtures, are D13 cost changes and need the review's decision.** M1's exit
-says a rewrite costs no more than the order-correct lowering of its original. Each one spells out in Java a conversion
-the dialect made implicitly, so there is no zero-cost spelling. Every `compareTo(..) OP 0` rewrite is byte-identical,
-as M1c promised. Over 13,063 evaluations whose program changed between M0's recording and the head's, on the same
+**The growth, as decided in review.** M1's exit now allows a rewrite that writes out a conversion or library call the
+dialect made implicitly, listed with its cost: the seven decodes, the two Blaster fixtures and the one `ContextsLib.trace`.
+The trace's `NONE` growth is the library staying in the script at `NONE`; at every other level it is two bytes. Whether the
+decodes could lower more cheaply was not shown, and is in the follow-ups.
+
+**The three equality rewrites are not cost changes** (review F741). No corpus evaluation runs them, so
+`DialectRemovalAlternativesTest` compares the expressions directly. `PubKeyHash == byte[]` and `.equals` agree on every
+input tried, including a failing one, which covers `twoAccumulatorsNoBreak` and `twoAccumulatorsWithBreak`. In
+`breakInForEachWithInputs`, `Value == byte[]` always failed at run time (`EqualsData: expected data`), and the rewrite
+compares: an expected difference, in a fixture testing the loop, since javac rejects the original.
+
+Every `compareTo(..) OP 0` rewrite is byte-identical, as M1c promised. Over 13,063 evaluations whose program changed between M0's recording and the head's, on the same
 arguments, no value, trace or failure differs (153 further evaluations could not be paired).
 
 ## Blob
@@ -236,8 +249,8 @@ comparison test compiles with the gate off (it tests the JavaParser frontend's r
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Table U is outside D6's list; 76 frozen cases have no accepted rewrite, which M1's exit asks for | Needs a decision; recorded in the follow-ups |
-| 2 | 13 cost changes (11 rewrites, 2 fixtures) | Needs a review decision |
+| 1 | Table U is outside D6's original list | Decided: D6 and M1's exit amended |
+| 2 | 13 rows that grow | Decided: 10 listed cost changes, 3 equality rewrites classified apart (F741) |
 | 3 | 2 external `julc-examples` cases javac rejects (`ByteStringLibEvalTest`), and Elci | External: not rewritten here; check before release |
 | 4 | `julc-e2e-tests` and `julc-plugin-test` integration runs need a DevKit | Not run; their sources are Java and `onChainHarnessTest` runs |
 | 5 | Native CLI and Web Image with the new blob | Not rebuilt; M1a's digests are superseded |
