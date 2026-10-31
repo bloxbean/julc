@@ -1,0 +1,22 @@
+format: 2
+name: a lambda that maps elements to JulcArrays is rejected (#298, F700)
+class: Probe
+method: m
+arg: 9f0102ff
+expect: REJECT JULC0091
+note: ADR-068 D6 (#298), review F700: map Data-encodes the lambda's result. recorded.base is the reference frontend
+note: at B0.
+recorded.jvm: Value 02 []
+recorded.base: Failure [] "MkCons: element type Apply[f=ProtoArray[], arg=Data[]] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcArray;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+
+    public static long m(JulcList<BigInteger> xs) {
+        var ys = xs.map(x -> JulcArray.of(x));
+        return ys.size();
+    }
+}

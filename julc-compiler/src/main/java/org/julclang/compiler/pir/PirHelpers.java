@@ -177,9 +177,22 @@ public final class PirHelpers {
     }
 
     /**
+     * JULC0091 (ADR-068 D6, #298): a value of {@code type} is about to be Data-encoded, and a native
+     * array has no Data encoding. The diagnostic has no position; {@link PirGenerator} attaches the
+     * expression whose value is encoded.
+     */
+    public static void requireDataEncodable(PirType type) {
+        var array = PirType.nativeArrayIn(type);
+        if (array != null) {
+            throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable("The value encoded here", array, null);
+        }
+    }
+
+    /**
      * Wrap a value with the appropriate encode builtin for the target type (inverse of wrapDecode).
      */
     public static PirTerm wrapEncode(PirTerm value, PirType type) {
+        requireDataEncodable(type);
         if (PirType.containsNativeOpaque(type)) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(
                     "Data encoding", type, new PirType.DataType(), null);

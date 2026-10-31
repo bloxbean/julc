@@ -114,6 +114,7 @@ public final class StdlibRegistry implements StdlibLookup {
         if (isOptionalClass(className) && methodName.equals("of") && args.size() == 1) {
             var elemType = (argTypes != null && !argTypes.isEmpty()) ? argTypes.get(0) : new PirType.DataType();
             rejectNativeDataArgument("Optional.of argument 1", elemType);
+            PirHelpers.requireDataEncodable(elemType);
             var recordType = new PirType.RecordType("Optional",
                     List.of(new PirType.Field("value", elemType)));
             return Optional.of(new PirTerm.DataConstr(0, recordType, List.of(args.get(0))));

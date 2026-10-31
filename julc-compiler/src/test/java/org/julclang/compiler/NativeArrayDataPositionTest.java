@@ -89,7 +89,7 @@ class NativeArrayDataPositionTest {
         rejected("A type argument of Tuple3", 11, 56, helper("Tuple3<BigInteger, BigInteger, JulcArray<BigInteger>>"), SIG, ONE);
         // In a local's declared type, too.
         rejected("A type argument of JulcList", 13, 18, "", SIG,
-                "JulcList<JulcArray<BigInteger>> o = JulcList.of(xs.toArray()); return BigInteger.ONE;");
+                "JulcList<JulcArray<BigInteger>> o = JulcList.empty(); return BigInteger.ONE;");
     }
 
     @Test
@@ -98,6 +98,51 @@ class NativeArrayDataPositionTest {
         rejected("A type argument of Optional", 11, 43, helper("JulcList<Optional<JulcArray<BigInteger>>>"), SIG, ONE);
         rejected("A type argument of JulcList", 11, 32, "    record R(Optional<JulcList<JulcArray<BigInteger>>> o) {}", SIG, ONE);
         rejected("A type argument of JulcArray", 11, 35, helper("JulcArray<JulcArray<BigInteger>>"), SIG, ONE);
+    }
+
+    /**
+     * JULC0091 where lowering Data-encodes a value whose type is inferred (F601, F700): reported at the
+     * argument whose value would be encoded, on line 13 at the column where {@code argument} starts in
+     * {@code body}. Each of these compiled before and failed on-chain (MkCons or MkPairData) where the JVM
+     * returns normally.
+     */
+    private static void encodedAt(String position, String signature, String body, String argument) {
+        rejected(position, 13, 9 + body.indexOf(argument), "", signature, body);
+    }
+
+    private static final String LONG_SIG = "long m(JulcList<BigInteger> xs)";
+
+    @Test
+    void inferredValuesAreCheckedWhereTheyAreEncoded() {
+        encodedAt("The value of 'xs.toArray()'", LONG_SIG, "return JulcList.of(xs.toArray()).size();", "xs.toArray()");
+        encodedAt("The value of 'a'", LONG_SIG,
+                "var a = JulcArray.of(BigInteger.ONE); var ys = JulcList.<JulcArray<BigInteger>>of(a); return ys.size();", "a)");
+        encodedAt("The value of 'a'", LONG_SIG, "var a = xs.toArray(); var b = JulcArray.of(a); return b.length();", "a)");
+        encodedAt("The value of 'xs.toArray()'", LONG_SIG, "var o = Optional.of(xs.toArray()); return 1;", "xs.toArray()");
+        encodedAt("The value of 'a'", LONG_SIG,
+                "var a = xs.toArray(); var m2 = JulcMap.<JulcArray<BigInteger>, BigInteger>empty().insert(a, BigInteger.ONE); return m2.size();",
+                "a, BigInteger.ONE)");
+        encodedAt("The value of 'a'", LONG_SIG,
+                "var a = xs.toArray(); var m2 = JulcMap.<BigInteger, JulcArray<BigInteger>>empty().insert(BigInteger.ONE, a); return m2.size();",
+                "a);");
+        encodedAt("Argument 'a' of new Tuple2", LONG_SIG,
+                "var a = xs.toArray(); var t = new Tuple2<>(a, BigInteger.ONE); BigInteger s = t.second(); return s.longValue();",
+                "a, BigInteger.ONE)");
+        encodedAt("The value of 'a'", LONG_SIG,
+                "var a = xs.toArray(); var ys = JulcList.<JulcArray<BigInteger>>empty().prepend(a); return ys.size();", "a);");
+        // A lambda's result is Data-encoded by map: reported at the lambda body.
+        encodedAt("The value encoded here", LONG_SIG, "var ys = xs.map(x -> JulcArray.of(x)); return ys.size();",
+                "JulcArray.of(x)");
+    }
+
+    @Test
+    void inferredArraysOfDataEncodableElementsCompile() {
+        // The positive controls of the encoding check: arrays in locals and of lists, and lists of lists.
+        assertFalse(compile("", "long m(JulcList<JulcList<BigInteger>> xss)",
+                "var arr = xss.toArray(); return arr.length();").hasErrors());
+        assertFalse(compile("", LONG_SIG, "var a = xs.toArray(); return a.length();").hasErrors());
+        assertFalse(compile("", LONG_SIG, "var ys = JulcList.of(xs, xs); return ys.size();").hasErrors());
+        assertFalse(compile("", LONG_SIG, "var a = xs.toArray(); var ys = xs.map(x -> a.get(0)); return ys.size();").hasErrors());
     }
 
     @Test

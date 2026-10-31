@@ -1,0 +1,23 @@
+format: 2
+name: JulcList.of with an explicit JulcArray type argument is rejected (#298, F700)
+class: Probe
+method: m
+expect: REJECT JULC0091
+note: ADR-068 D6 (#298), review F700: an explicit factory type argument is not a written variable or field type, so
+note: the declared-type check missed it; lowering now checks each value it Data-encodes. recorded.base is the
+note: reference frontend at B0.
+recorded.jvm: Value 01 []
+recorded.base: Failure [] "MkCons: element type Apply[f=ProtoArray[], arg=Data[]] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcArray;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+
+    public static long m() {
+        var a = JulcArray.of(BigInteger.ONE);
+        var xs = JulcList.<JulcArray<BigInteger>>of(a);
+        return xs.size();
+    }
+}

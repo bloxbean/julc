@@ -33,8 +33,12 @@ A `JulcArray` is a native UPLC array, which has no Data encoding. A record or se
 component, a type argument of `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `List`, `JulcMap` or
 `JulcArray`, and a `@Param` or `compileMethod` input are Data-encoded, so an array in any of
 them compiled but failed on-chain where the Java code succeeds
-([#298](https://github.com/bloxbean/julc/issues/298)). Such a type is now rejected with
-`JULC0091` where it is written. Store a `JulcList` and build the array where it is used
+([#298](https://github.com/bloxbean/julc/issues/298)). A `JulcArray` is now rejected with
+`JULC0091` wherever a native array would be Data-encoded: where such a type is written, and
+where lowering encodes a value whose type is inferred, such as `JulcList.of(xs.toArray())`,
+`JulcList.<JulcArray<BigInteger>>of(a)`, `Optional.of(array)`, a map key or value, a diamond
+`new Tuple2<>(array, …)` or a lambda result of `map`. The diagnostic points at the value that
+would be encoded. Store a `JulcList` and build the array where it is used
 (`xs.toArray()` in a local). Arrays of Data-encodable elements, such as
 `JulcArray<JulcList<BigInteger>>` in a local, stay supported. A datum or redeemer type that
 holds an array, already rejected by strict boundary validation, now reports `JULC0091`.

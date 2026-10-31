@@ -907,6 +907,55 @@ public class PirGenerator {
     }
 
     public PirTerm generateExpression(Expression expr) {
+        try {
+            return lowerExpression(expr);
+        } catch (CompilerException e) {
+            throw locateDataEncoding(e, expr);
+        }
+    }
+
+    /**
+     * JULC0091 raised where lowering Data-encodes a value ({@link PirHelpers#requireDataEncodable})
+     * has no position. The innermost expression being generated gives it one: the argument of a call
+     * or constructor whose type holds the native array, or else the expression itself.
+     */
+    private CompilerException locateDataEncoding(CompilerException e, Expression expr) {
+        if (e.diagnostics().size() != 1) return e;
+        var diagnostic = e.diagnostics().getFirst();
+        if (!DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code()) || diagnostic.line() > 0) {
+            return e;
+        }
+        List<Expression> arguments = expr instanceof MethodCallExpr call ? call.getArguments()
+                : expr instanceof ObjectCreationExpr creation ? creation.getArguments() : List.of();
+        for (var argument : arguments) {
+            var array = nativeArrayOf(argument);
+            if (array != null) {
+                return CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                        "The value of '" + argument + "'", array, sourceLocation(argument));
+            }
+        }
+        var own = nativeArrayOf(expr);
+        if (own != null) {
+            return CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                    "The value of '" + expr + "'", own, sourceLocation(expr));
+        }
+        var location = sourceLocation(expr);
+        if (location == null) return e;
+        return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(),
+                diagnostic.message(), location.fileName(), location.line(), location.column(),
+                diagnostic.suggestion(), diagnostic.code()));
+    }
+
+    /** The native array an expression's static type holds, if its type is known (JULC0091). */
+    private PirType.ArrayType nativeArrayOf(Expression expr) {
+        try {
+            return PirType.nativeArrayIn(resolveExpressionType(expr));
+        } catch (CompilerException | IllegalArgumentException _) {
+            return null;
+        }
+    }
+
+    private PirTerm lowerExpression(Expression expr) {
         if (guardDepth > 0) {
             var exact = guardFixedWidthConstant(expr);
             if (exact != null) return exact;
@@ -1942,11 +1991,7 @@ public class PirGenerator {
             rejectNativeDataConstruction(typeName, sumType.get(), oce);
             for (var ctor : sumType.get().constructors()) {
                 if (ctor.name().equals(typeName)) {
-                    var fields = new ArrayList<PirTerm>();
-                    for (var arg : oce.getArguments()) {
-                        fields.add(generateExpression(arg));
-                    }
-                    return new PirTerm.DataConstr(ctor.tag(), sumType.get(), fields);
+                    return new PirTerm.DataConstr(ctor.tag(), sumType.get(), constructedFields(typeName, oce));
                 }
             }
         }
@@ -1957,11 +2002,7 @@ public class PirGenerator {
             var resolvedType = typeResolver.resolve(ct);
             if (resolvedType instanceof PirType.RecordType rt) {
                 rejectNativeDataConstruction(typeName, rt, oce);
-                var fields = new ArrayList<PirTerm>();
-                for (var arg : oce.getArguments()) {
-                    fields.add(generateExpression(arg));
-                }
-                return new PirTerm.DataConstr(0, rt, fields);
+                return new PirTerm.DataConstr(0, rt, constructedFields(typeName, oce));
             }
         }
 
@@ -1969,11 +2010,7 @@ public class PirGenerator {
         var recordType = typeResolver.lookupRecord(resolvedTypeName);
         if (recordType.isPresent()) {
             rejectNativeDataConstruction(typeName, recordType.get(), oce);
-            var fields = new ArrayList<PirTerm>();
-            for (var arg : oce.getArguments()) {
-                fields.add(generateExpression(arg));
-            }
-            return new PirTerm.DataConstr(0, recordType.get(), fields);
+            return new PirTerm.DataConstr(0, recordType.get(), constructedFields(typeName, oce));
         }
         throw enrichedError("Cannot construct non-record type: " + typeName,
                 "Only record types can be constructed on-chain. Define " + typeName + " as a record.",
@@ -2010,6 +2047,30 @@ public class PirGenerator {
     /** {@link #checkNativeBoundary} for an assignment to a loop accumulator or a loop-body local. */
     void checkNativeAssignment(String name, Expression valueExpr, PirTerm value, PirType target) {
         checkNativeBoundary("Assignment to '" + LoopBodyGenerator.sourceName(name) + "'", expressionType(valueExpr, value), target, valueExpr);
+    }
+
+    /**
+     * The fields of a constructed record, variant or tuple, which are Data-encoded: an argument whose
+     * type holds a native array is JULC0091 (ADR-068 D6, #298), also where the declared field type is
+     * not written (a diamond {@code new Tuple2<>(a, b)}).
+     */
+    private List<PirTerm> constructedFields(String typeName, ObjectCreationExpr oce) {
+        var fields = new ArrayList<PirTerm>();
+        for (var arg : oce.getArguments()) {
+            var field = generateExpression(arg);
+            PirType.ArrayType array;
+            try {
+                array = PirType.nativeArrayIn(expressionType(arg, field));
+            } catch (CompilerException | IllegalArgumentException _) {
+                array = null;
+            }
+            if (array != null) {
+                throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                        "Argument '" + arg + "' of new " + typeName, array, sourceLocation(arg));
+            }
+            fields.add(field);
+        }
+        return fields;
     }
 
     private void rejectNativeDataConstruction(String typeName, PirType type, Node source) {
@@ -3274,7 +3335,12 @@ public class PirGenerator {
         if (wrapResultToData) {
             var bodyType = inferPirType(bodyTerm);
             if (!(bodyType instanceof PirType.DataType)) {
-                bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);
+                try {
+                    bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);
+                } catch (CompilerException e) {
+                    throw locateDataEncoding(e, lambdaBody instanceof com.github.javaparser.ast.stmt.ExpressionStmt es
+                            ? es.getExpression() : le);
+                }
             }
         }
 

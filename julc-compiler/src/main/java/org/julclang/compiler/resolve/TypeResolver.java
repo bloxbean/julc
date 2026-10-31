@@ -687,43 +687,11 @@ public class TypeResolver {
      * encoding is needed. Arrays of Data-encodable types stay supported.
      */
     public void requireDataEncodable(PirType type, String position, Node where) {
-        var array = nativeArrayInData(type);
+        var array = PirType.nativeArrayIn(type);
         if (array != null) {
             throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable(position, array,
                     PirGenerator.sourceLocation(where));
         }
-    }
-
-    /**
-     * The first native array that a value of {@code type}, itself Data-encoded, would have to encode:
-     * the type itself, or one reached through list, map, pair, {@code Optional} and array elements and
-     * record and variant components. A nominal reference is checked at its own declaration.
-     */
-    static PirType.ArrayType nativeArrayInData(PirType type) {
-        return switch (type) {
-            case PirType.ArrayType array -> array;
-            case PirType.ListType list -> nativeArrayInData(list.elemType());
-            case PirType.OptionalType optional -> nativeArrayInData(optional.elemType());
-            case PirType.PairType pair -> firstNonNull(nativeArrayInData(pair.first()), pair.second());
-            case PirType.MapType map -> firstNonNull(nativeArrayInData(map.keyType()), map.valueType());
-            case PirType.RecordType record -> nativeArrayInFields(record.fields());
-            case PirType.SumType sum -> sum.constructors().stream()
-                    .map(constructor -> nativeArrayInFields(constructor.fields()))
-                    .filter(Objects::nonNull).findFirst().orElse(null);
-            default -> null;
-        };
-    }
-
-    private static PirType.ArrayType firstNonNull(PirType.ArrayType found, PirType next) {
-        return found != null ? found : nativeArrayInData(next);
-    }
-
-    private static PirType.ArrayType nativeArrayInFields(List<PirType.Field> fields) {
-        for (var field : fields) {
-            var array = nativeArrayInData(field.type());
-            if (array != null) return array;
-        }
-        return null;
     }
 
     /** Return whether a type graph contains a PV11 native Value. */

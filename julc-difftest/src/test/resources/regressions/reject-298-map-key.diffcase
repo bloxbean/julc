@@ -1,0 +1,23 @@
+format: 2
+name: a JulcArray inserted as a map key is rejected (#298, F700)
+class: Probe
+method: m
+arg: 9f0102ff
+expect: REJECT JULC0091
+note: ADR-068 D6 (#298), review F700: map keys are Data-encoded; with the map's type inferred the declared-type
+note: check missed it. recorded.base is the reference frontend at B0.
+recorded.jvm: Value 01 []
+recorded.base: Failure [] "MkPairData: expected data, got VCon(Apply[f=ProtoArray[], arg=Data[]])"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.core.types.JulcMap;
+
+public class Probe {
+
+    public static long m(JulcList<BigInteger> xs) {
+        var a = xs.toArray();
+        var map = JulcMap.<org.julclang.core.types.JulcArray<BigInteger>, BigInteger>empty().insert(a, BigInteger.ONE);
+        return map.size();
+    }
+}
