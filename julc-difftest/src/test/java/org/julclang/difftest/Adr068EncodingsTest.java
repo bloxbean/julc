@@ -342,7 +342,7 @@ class Adr068EncodingsTest {
 
     private static ContractSchema.Argument argument(JavacProgram program, String method, ContractSchema.Argument argument,
                                                     boolean datum) {
-        var type = program.facts().pirType(JavacEvidence.parameterType(program, method, argument.name()), null);
+        var type = JavacEvidence.facts(program).pirType(JavacEvidence.parameterType(program, method, argument.name()), null);
         if (datum && type instanceof PirType.OptionalType optional) type = optional.elemType();
         return new ContractSchema.Argument(argument.name(), type, argument.sourceLocation());
     }

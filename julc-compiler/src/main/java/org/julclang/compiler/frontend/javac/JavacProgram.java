@@ -79,7 +79,7 @@ public final class JavacProgram {
 
     /** Registers the ledger's and the units' types; a rejected type is a {@link CompilerException}. */
     void registerTypes() {
-        var registrar = new JavacTypeRegistrar(facts, frontend.platform());
+        var registrar = new JavacTypeRegistrar(facts, frontend);
         registrar.registerLedger();
         var units = new ArrayList<>(libraries);
         units.addAll(roots);

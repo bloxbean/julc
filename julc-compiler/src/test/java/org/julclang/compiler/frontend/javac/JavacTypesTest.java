@@ -333,6 +333,62 @@ class JavacTypesTest {
             assertTrue(diagnostic.line() > 0);
         }
 
+        @Test
+        void aNonRecordVariantDoesNotTakeTheShapeOfASameNamedRecord() {
+            for (String permits : List.of("X.A, Y.A", "Y.A, X.A")) {
+                var registry = read(HEADER + """
+                        sealed interface S permits %s {}
+                        class X { record A(BigInteger x) implements S {} }
+                        class Y { static final class A implements S {} }
+                        """.formatted(permits)).registry();
+                assertEquals(List.of(field("x", INTEGER)),
+                        ((PirType.RecordType) registry.lookupNominal("X.A").orElseThrow()).fields(), permits);
+                assertEquals(List.of(), ((PirType.RecordType) registry.lookupNominal("Y.A").orElseThrow()).fields(), permits);
+            }
+        }
+
+        @Test
+        void aNestedTypeCannotTakeABundledLibrarysName() {
+            var error = assertThrows(CompilerException.class, () -> read("""
+                    class org {
+                        static class julclang {
+                            static class stdlib {
+                                static class lib {
+                                    static class MathLib {
+                                        public static java.math.BigInteger abs(java.math.BigInteger n) {
+                                            return java.math.BigInteger.valueOf(123);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    class P {
+                        static java.math.BigInteger m() {
+                            return org.julclang.stdlib.lib.MathLib.abs(java.math.BigInteger.ONE);
+                        }
+                    }
+                    """));
+            var diagnostic = error.diagnostics().getFirst();
+            assertEquals(DiagnosticCodes.LEDGER_TYPE_REDECLARED.code(), diagnostic.code(), diagnostic.message());
+            assertTrue(diagnostic.message().contains("org.julclang.stdlib.lib.MathLib"), diagnostic.message());
+            assertTrue(diagnostic.message().contains("bundled libraries"), diagnostic.message());
+        }
+
+        @Test
+        void theGenuineBundledLibraryIsNotItsOwnForgery() {
+            assertNotNull(read("""
+                    import java.math.BigInteger;
+                    import org.julclang.stdlib.lib.MathLib;
+
+                    class P {
+                        static BigInteger m() {
+                            return MathLib.abs(BigInteger.ONE);
+                        }
+                    }
+                    """));
+        }
+
         /**
          * F804: a user type named like a package obscures it for a lookup by name, and that once ended in a raw
          * NullPointerException. The ledger is read from its package, so these are valid Java with a registry.
