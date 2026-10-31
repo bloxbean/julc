@@ -449,7 +449,7 @@ var result = switch (action) {
 ```java
 // WRONG: missing return on else path
 static boolean check(BigInteger x) {
-    if (x > 0) {
+    if (x.compareTo(BigInteger.ZERO) > 0) {
         return true;
     }
     // no return here
@@ -457,7 +457,7 @@ static boolean check(BigInteger x) {
 
 // CORRECT
 static boolean check(BigInteger x) {
-    if (x > 0) {
+    if (x.compareTo(BigInteger.ZERO) > 0) {
         return true;
     } else {
         return false;

@@ -252,6 +252,9 @@ The most common operation: verify that a specific public key hash signed the tra
 import org.julclang.ledger.*;
 import org.julclang.stdlib.lib.ContextsLib;
 import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class AuthorizedSpend {
@@ -270,6 +273,20 @@ class AuthorizedSpend {
 You can use either the typed field access on `TxInfo` directly or the ContextsLib accessor methods:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.Interval;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxId;
+import org.julclang.ledger.TxInInfo;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class FieldAccessExample {
     @Entrypoint
@@ -299,6 +316,13 @@ class FieldAccessExample {
 For spending validators that need to identify their own UTxO and find outputs returning to the same script address:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class StatefulValidator {
     record State(BigInteger counter) {}
@@ -327,6 +351,12 @@ class StatefulValidator {
 Emit debug trace messages that appear in transaction evaluation logs:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class TracingValidator {
     @Entrypoint
@@ -385,6 +415,14 @@ ListsLib provides list construction, traversal, searching, and higher-order func
 ### Basic List Operations
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ListExample {
     @Entrypoint
@@ -425,6 +463,14 @@ PlutusData publicInputs = JulcList.of(pub0, pub1, pub2, pub3, pub4).toPlutusData
 ### Search Operations
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ListSearchExample {
     @Entrypoint
@@ -453,6 +499,15 @@ The HOF methods (`any`, `all`, `find`, `foldl`, `map`, `filter`, `zip`) accept l
 > [Value-Oriented Contract Code](/best-practices/value-oriented-code/#use-list-operations-where-they-read-better).
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class HofExample {
     @Entrypoint
@@ -462,7 +517,7 @@ class HofExample {
 
         // any: true if any output has more than 5 ADA
         boolean hasLargeOutput = ListsLib.any(outputs,
-            out -> ValuesLib.lovelaceOf(out.value()) > 5_000_000);
+            out -> ValuesLib.lovelaceOf(out.value()).compareTo(BigInteger.valueOf(5_000_000)) > 0);
 
         // all: true if all outputs go to pub key addresses
         boolean allPubKey = ListsLib.all(outputs,
@@ -470,11 +525,11 @@ class HofExample {
 
         // filter: keep only outputs above 2 ADA
         JulcList<TxOut> largeOutputs = ListsLib.filter(outputs,
-            out -> ValuesLib.lovelaceOf(out.value()) > 2_000_000);
+            out -> ValuesLib.lovelaceOf(out.value()).compareTo(BigInteger.valueOf(2_000_000)) > 0);
 
         // foldl: sum all output lovelace
         BigInteger totalLovelace = ListsLib.foldl(
-            (acc, out) -> acc + ValuesLib.lovelaceOf(out.value()),
+            (acc, out) -> acc.add(ValuesLib.lovelaceOf(out.value())),
             BigInteger.ZERO,
             outputs);
 
@@ -489,10 +544,10 @@ parameter types are auto-inferred from the list element type:
 ```java
 // Instance method equivalents
 boolean hasLargeOutput = outputs.any(
-    out -> ValuesLib.lovelaceOf(out.value()) > 5_000_000);
+    out -> ValuesLib.lovelaceOf(out.value()).compareTo(BigInteger.valueOf(5_000_000)) > 0);
 
 JulcList<TxOut> largeOutputs = outputs.filter(
-    out -> ValuesLib.lovelaceOf(out.value()) > 2_000_000);
+    out -> ValuesLib.lovelaceOf(out.value()).compareTo(BigInteger.valueOf(2_000_000)) > 0);
 
 // Chaining is supported
 var result = outputs.filter(out -> isLarge(out)).map(out -> transform(out));
@@ -506,6 +561,14 @@ two lambda parameters plus an initial value.
 JuLC supports for-each iteration over lists directly, which is often more readable than HOFs:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ForEachExample {
     @Entrypoint
@@ -533,6 +596,15 @@ ValuesLib operates on Plutus `Value` types, which are nested maps: `Map<PolicyId
 ### Extracting Amounts
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ValueExample {
     @Entrypoint
@@ -560,6 +632,14 @@ class ValueExample {
 ### Value Comparisons
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ValueComparisonExample {
     @Entrypoint
@@ -588,6 +668,14 @@ class ValueComparisonExample {
 ### Value Arithmetic
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ValueArithmeticExample {
     @Entrypoint
@@ -621,6 +709,15 @@ class ValueArithmeticExample {
 `ValuesLib.flattenTyped()` returns a `JulcList<AssetEntry>` for type-safe iteration over all assets in a Value. Each `AssetEntry` provides `.policyId()`, `.tokenName()`, and `.amount()` field access without manual destructuring.
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.AssetEntry;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class TokenLeakCheck {
     @Entrypoint
@@ -650,6 +747,12 @@ a `TxOutRef`. Hashing the reference produces a collision-resistant, deterministi
 the minting policy to enforce that the seed reference is consumed:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxOutRef;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
+
 @MintingValidator
 class OneShotMint {
     @Entrypoint
@@ -681,6 +784,15 @@ In Plutus, maps are association lists (`List<Pair<Data, Data>>`), not hash maps.
 ### Basic Map Operations
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcMap;
+import org.julclang.ledger.Credential;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MapExample {
     @Entrypoint
@@ -692,7 +804,7 @@ class MapExample {
 
         // Check membership and lookup
         PlutusData key = /* some key */;
-        boolean exists = withdrawals.containsKey(key);
+        boolean exists = withdrawals.containsKey(PlutusData.cast(key, Credential.class));
 
         // Size
         long mapSize = withdrawals.size();
@@ -705,6 +817,13 @@ class MapExample {
 ### Map Modification
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MapModifyExample {
     @Entrypoint
@@ -741,6 +860,15 @@ class MapModifyExample {
 Use for-each with `JulcMap` or iterate over the pair list:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcMap;
+import org.julclang.ledger.Credential;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MapIterateExample {
     @Entrypoint
@@ -771,6 +899,15 @@ OutputLib provides high-level operations for filtering and inspecting transactio
 ### Filtering Outputs
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.Address;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class OutputFilterExample {
     record Datum(Address recipient) {}
@@ -797,6 +934,14 @@ class OutputFilterExample {
 ### Token Filtering
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class TokenFilterExample {
     record Datum(byte[] policyId, byte[] tokenName) {}
@@ -823,6 +968,16 @@ class TokenFilterExample {
 ### Lovelace Payment Checks
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.Address;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class PaymentCheckExample {
     record Datum(Address recipient, BigInteger minPayment) {}
@@ -847,6 +1002,14 @@ class PaymentCheckExample {
 ### Datum Extraction
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class DatumExample {
     record MyDatum(BigInteger value) {}
@@ -880,6 +1043,12 @@ MathLib provides common mathematical functions operating on `BigInteger`. All co
 ### Basic Math
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MathExample {
     @Entrypoint
@@ -909,6 +1078,11 @@ Compatibility note: `MathLib.divMod` is floor-based. Code that needs Java-style 
 
 ```java
 import org.julclang.core.types.Tuple2;
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class DivModExample {
@@ -947,6 +1121,10 @@ IntervalLib operates on Plutus `Interval` (POSIXTimeRange) types. Use these for 
 import org.julclang.ledger.*;
 import org.julclang.stdlib.lib.IntervalLib;
 import org.julclang.stdlib.lib.ContextsLib;
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class TimeLockValidator {
@@ -972,6 +1150,14 @@ class TimeLockValidator {
 ### Interval Construction and Checks
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.Interval;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class IntervalExample {
     @Entrypoint
@@ -1015,6 +1201,12 @@ CryptoLib wraps Plutus cryptographic builtins for hashing and signature verifica
 ### Hash Functions
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class HashExample {
     @Entrypoint
@@ -1036,6 +1228,10 @@ class HashExample {
 ### Signature Verification
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class SigVerifyExample {
     record Datum(byte[] pubKey, byte[] message) {}
@@ -1054,6 +1250,10 @@ class SigVerifyExample {
 ### ECDSA and Schnorr (secp256k1)
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class Secp256k1Example {
     record Datum(byte[] key, byte[] msgHash) {}
@@ -1084,6 +1284,12 @@ ByteStringLib provides operations on `byte[]` (ByteString in Plutus). Includes s
 ### Slicing and Manipulation
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ByteStringExample {
     @Entrypoint
@@ -1117,6 +1323,13 @@ class ByteStringExample {
 ### Comparison and Conversion
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ByteStringCompareExample {
     @Entrypoint
@@ -1166,6 +1379,11 @@ BitwiseLib provides bit-level operations on `byte[]`. The `padding` parameter in
 ### Bitwise Logical Operations
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class BitwiseExample {
     @Entrypoint
@@ -1187,6 +1405,11 @@ class BitwiseExample {
 ### Bit Manipulation and Counting
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class BitManipExample {
     @Entrypoint
@@ -1222,6 +1445,15 @@ AddressLib inspects Plutus `Address` types: extracting credential hashes and che
 ### Address Inspection
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.Address;
+import org.julclang.ledger.Credential;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class AddressExample {
     @Entrypoint
@@ -1248,6 +1480,15 @@ class AddressExample {
 ### Enforcing Output Destination
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.Address;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class DestinationCheckExample {
     record Datum(byte[] allowedRecipient) {}
@@ -1555,6 +1796,13 @@ BigInteger amount = ValuesLib.assetOf(value, policyId, tokenName);
 When checking if a minting policy's own token exists in a value (common in minting validators), use the `(byte[])(Object)` cast on `ContextsLib.ownHash()`:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
+
 @MintingValidator
 class MyTokenPolicy {
     @Entrypoint

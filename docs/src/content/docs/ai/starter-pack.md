@@ -177,6 +177,10 @@ public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptCont
 **✅ GOOD: type-class style**
 
 ```java
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+
 record VestingDatum(byte[] beneficiary) {}
 record VestingRedeemer(BigInteger amount) {}
 
@@ -485,6 +489,13 @@ public class VestingValidator {
 ### 10.2 Sealed-interface redeemer with switch (auction)
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class AuctionValidator {
 
@@ -515,6 +526,11 @@ public class AuctionValidator {
 import org.julclang.stdlib.annotation.MintingValidator;
 import org.julclang.stdlib.annotation.Param;
 import org.julclang.stdlib.Builtins;
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
 
 @MintingValidator
 public class OneShotMintPolicy {
@@ -543,6 +559,16 @@ public class OneShotMintPolicy {
 ### 10.4 Output checking with OutputLib (escrow)
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.Address;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class OutputCheckValidator {
     record PaymentDatum(Address recipientAddress, BigInteger minAmount) {}
@@ -591,6 +617,12 @@ static BigInteger totalPaidTo(JulcList<TxOut> outputs, byte[] targetPkh) {
 ### 10.6 Reusable on-chain library
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class ValidationUtils {
     public static boolean isAfterDeadline(TxInfo txInfo, BigInteger deadline) {

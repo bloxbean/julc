@@ -1873,6 +1873,10 @@ If the new type needs special DataConstr encoding or DataMatch decoding, add cas
 **Step 1: Write the on-chain Java source** (`julc-stdlib/src/main/java/.../onchain/SortLib.java`):
 
 ```java
+import java.util.List;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class SortLib {
     public static List<PlutusData> sort(List<PlutusData> items) {
@@ -1885,6 +1889,10 @@ public class SortLib {
 **Step 2: Write the off-chain stub** (`julc-onchain-api/src/main/java/.../SortLib.java`):
 
 ```java
+import java.util.List;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class SortLib {
     public static List<PlutusData> sort(List<PlutusData> items) {
@@ -2014,6 +2022,10 @@ void testMyNewOptimization() {
 ### Source
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class SimpleValidator {
     @Entrypoint

@@ -327,6 +327,12 @@ runtime.
 #### Auto-dispatch example
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+
 @MultiValidator
 public class TokenManager {
 
@@ -351,6 +357,13 @@ Error at runtime.
 #### Auto-dispatch with datum (3-param SPEND)
 
 ```java
+import java.util.Optional;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+
 @MultiValidator
 public class TokenManagerWithDatum {
 
@@ -370,6 +383,11 @@ public class TokenManagerWithDatum {
 #### Manual dispatch example
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+
 @MultiValidator
 public class ManualRouter {
 
@@ -459,8 +477,9 @@ if (shape instanceof Shape.Circle c) {
 ### 5.3 @NewType
 
 The `@NewType` annotation creates a zero-cost type alias for a single-field record.
-On-chain, the constructor and `.of()` factory method compile to identity (no
-`ConstrData` wrapping).
+On-chain, the constructor compiles to identity (no `ConstrData` wrapping). Construct
+it with `new`: JuLC no longer accepts a synthesized `AssetId.of(...)` factory, which is
+not Java (ADR-068 D6).
 
 ```java
 import org.julclang.stdlib.annotation.NewType;
@@ -468,8 +487,8 @@ import org.julclang.stdlib.annotation.NewType;
 @NewType
 record AssetId(byte[] hash) {}
 
-// AssetId.of(bytes) compiles to identity -- no ConstrData overhead
-AssetId id = AssetId.of(someBytes);
+// new AssetId(bytes) compiles to identity -- no ConstrData overhead
+AssetId id = new AssetId(someBytes);
 ```
 
 `@NewType` is `@Retention(RUNTIME)`, `@Target(TYPE)`. The single field must be one
@@ -946,6 +965,12 @@ public class MyLib {
 ### Using a library from a validator
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class MyValidator {
     @Entrypoint
@@ -962,6 +987,9 @@ Static fields with initializers in `@OnchainLibrary` classes compile as `Let`
 bindings:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class Constants {
     static BigInteger THRESHOLD = BigInteger.valueOf(1000000);
@@ -996,16 +1024,18 @@ import org.julclang.stdlib.annotation.Param;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.core.PlutusData;
 import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.stdlib.Builtins;
 
 @SpendingValidator
 public class ParameterizedVesting {
 
-    @Param PlutusData beneficiary;
+    @Param static PlutusData beneficiary;
     @Param PlutusData deadline;
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        return ctx.txInfo().signatories().contains(beneficiary);
+        return ctx.txInfo().signatories().contains(PubKeyHash.of(Builtins.unBData(beneficiary)));
     }
 }
 ```
@@ -1324,6 +1354,11 @@ to the documented DSL construction surface and schema-1 meanings, not a
 production-safety certification for the compiler or contract.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.verification.annotation.RequiresSigner;
+
 @RequiresSigner("datum.owner")
 @SpendingValidator
 class AuthorizedStateValidator {

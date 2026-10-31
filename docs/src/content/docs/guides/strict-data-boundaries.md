@@ -8,6 +8,11 @@ The declared Java type is the complete accepted on-chain representation, not
 only a convenient view over the first few fields.
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class StateMachine {
     record Datum(byte[] owner, BigInteger state) {}

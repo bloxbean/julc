@@ -47,6 +47,11 @@ JuLC does not compile JVM bytecode. It parses `.java` source with JavaParser. Th
 A validator class is discovered by annotation:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class AlwaysSucceeds {
     @Entrypoint
@@ -1343,6 +1348,14 @@ If PIR is wrong, fix Java-to-PIR. If PIR is right but UPLC is wrong, fix lowerin
 Java:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.Param;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ThresholdValidator {
     @Param

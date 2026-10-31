@@ -135,6 +135,7 @@ dependencies {
 
 ```java
 import org.julclang.verification.annotation.RequiresSigner;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @RequiresSigner("datum.owner")
 @SpendingValidator
@@ -215,6 +216,10 @@ Declare fixed property literals rather than choosing authority from an
 untrusted redeemer:
 
 ```java
+import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.verification.annotation.ControlledMint;
+import org.julclang.verification.annotation.MintAction;
+
 @ControlledMint(
     authority="4a554c435f5645524946595f415554484f524954595f303030303031",
     tokenName="4a554c43", quantity=1, action=MintAction.MINT)

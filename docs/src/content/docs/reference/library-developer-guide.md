@@ -174,6 +174,10 @@ Builtins.trace(msg, val)        // trace message, return val
 Here is a real example from `CryptoLib` -- the simplest pattern, where library methods are thin wrappers around builtins:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class CryptoLib {
 
@@ -239,7 +243,7 @@ public class TokenUtils {
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             if (Builtins.equalsData(Builtins.fstPair(pair), tokenName)) {
-                result = Builtins.unIData(Builtins.sndPair(pair));
+                result = Builtins.unIData(Builtins.sndPair(pair)).longValue();
                 current = Builtins.mkNilPairData(); // break
             } else {
                 current = Builtins.tailList(current);
@@ -266,6 +270,9 @@ package com.example.myproject;
 
 import java.math.BigInteger;
 import org.julclang.stdlib.Builtins;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class TokenGateValidator {
@@ -295,8 +302,10 @@ The JuLC compiler supports a restricted subset of Java. Within `@OnchainLibrary`
 - No uninitialized variables
 
 **Expressions:**
-- Arithmetic: `+`, `-`, `*`, `/`, `%`
-- Comparison: `<`, `<=`, `>`, `>=`, `==`, `!=`
+- Arithmetic: `+`, `-`, `*`, `/`, `%` on `long` and `int`; `BigInteger` uses its methods (`add`, `subtract`,
+  `multiply`, `divide`, `remainder`), as in Java
+- Comparison: `<`, `<=`, `>`, `>=`, `==`, `!=` on `long` and `int`; `BigInteger` uses `a.compareTo(b) < 0` and
+  `a.equals(b)`
 - Boolean: `&&`, `||`, `!`
 - Static method calls: `Builtins.headList(x)`, `MyLib.method(a, b)`
 - Chained calls: `Builtins.unIData(Builtins.sndPair(pair))`

@@ -78,11 +78,13 @@ Raw `Tuple2` (no type args) defaults to `DataType` for backward compatibility. T
 Zero-cost type aliases for single-field records with a supported underlying type (`byte[]`, `BigInteger`, `String`, `boolean`).
 
 ```java
+import org.julclang.stdlib.annotation.NewType;
+
 @NewType
 public record AssetClass(byte[] policyId) {}
 
-// On-chain: identity (no ConstrData wrap)
-// AssetClass.of(bytes) is auto-registered
+// On-chain: new AssetClass(bytes) is identity (no ConstrData wrap)
+// There is no synthesized AssetClass.of(bytes): it is not Java (ADR-068 D6)
 ```
 
 ### Type.of() Factory Methods
@@ -184,8 +186,8 @@ record Withdraw(BigInteger amount) implements Action {}
 
 // In validator:
 return switch (action) {
-    case Deposit d -> d.amount() > 0;
-    case Withdraw w -> w.amount() > 0 && hasSigner;
+    case Deposit d -> d.amount().compareTo(BigInteger.ZERO) > 0;
+    case Withdraw w -> w.amount().compareTo(BigInteger.ZERO) > 0 && hasSigner;
 };
 ```
 
@@ -194,7 +196,7 @@ Switch expressions check exhaustiveness at compile time. All variants of the sea
 ### instanceof Pattern Matching
 ```java
 if (action instanceof Deposit d) {
-    return d.amount() > 0;
+    return d.amount().compareTo(BigInteger.ZERO) > 0;
 }
 ```
 
@@ -215,11 +217,11 @@ Desugared to a recursive fold. Supports single/multi-accumulator, break, and nes
 
 ### While Loop
 ```java
-BigInteger sum = 0;
-BigInteger i = 0;
-while (i < 10) {
-    sum = sum + i;
-    i = i + 1;
+BigInteger sum = BigInteger.ZERO;
+BigInteger i = BigInteger.ZERO;
+while (i.compareTo(BigInteger.TEN) < 0) {
+    sum = sum.add(i);
+    i = i.add(BigInteger.ONE);
 }
 ```
 Desugared to tail-recursive call via Z-combinator.
@@ -234,11 +236,11 @@ All variables are **immutable** (functional semantics). Reassignment is only sup
 
 ```java
 // OK
-BigInteger x = 42;
-var y = x + 1;
+BigInteger x = BigInteger.valueOf(42);
+var y = x.add(BigInteger.ONE);
 
 // NOT OK - assignment not supported
-x = x + 1;
+x = x.add(BigInteger.ONE);
 ```
 
 The `var` keyword is supported and types are inferred from the initializer.
@@ -251,7 +253,7 @@ Records compile to Constr-encoded Data with fields in declaration order.
 record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 
 // Construction
-var datum = new VestingDatum(pkh, 1000);
+var datum = new VestingDatum(pkh, BigInteger.valueOf(1000));
 
 // Field access
 byte[] b = datum.beneficiary();
@@ -263,10 +265,15 @@ BigInteger d = datum.deadline();
 Static methods in the validator class (without `@Entrypoint`) are compiled as helper functions. Recursive helper methods use Z-combinator transformation.
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MyValidator {
     static boolean isPositive(BigInteger x) {
-        return x > 0;
+        return x.compareTo(BigInteger.ZERO) > 0;
     }
 
     @Entrypoint
@@ -279,9 +286,9 @@ class MyValidator {
 ## Lambda Expressions
 
 ```java
-ListsLib.any(list, x -> x > 0)
-ListsLib.filter(list, x -> Builtins.unIData(x) > 100)
-ListsLib.foldl((acc, x) -> acc + Builtins.unIData(x), BigInteger.ZERO, list)
+ListsLib.any(list, x -> x.compareTo(BigInteger.ZERO) > 0)
+ListsLib.filter(list, x -> Builtins.unIData(x).compareTo(BigInteger.valueOf(100)) > 0)
+ListsLib.foldl((acc, x) -> acc.add(Builtins.unIData(x)), BigInteger.ZERO, list)
 ```
 
 Lambda bodies can be a single expression or a block:
@@ -289,7 +296,7 @@ Lambda bodies can be a single expression or a block:
 ```java
 ListsLib.filter(items, item -> {
     var threshold = new BigInteger("100");
-    return Builtins.unIData(item) > threshold;
+    return Builtins.unIData(item).compareTo(threshold) > 0;
 });
 ```
 
@@ -789,10 +796,12 @@ var result = JulcEval.forClass(MyHelper.class).call("methodName", arg1, arg2);
 ## Complete Example
 
 ```java
-import org.julclang.onchain.annotation.*;
-import org.julclang.onchain.ledger.*;
 import org.julclang.core.PlutusData;
 import java.math.BigInteger;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class VestingValidator {
@@ -802,7 +811,7 @@ class VestingValidator {
     static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
         boolean hasSigner = txInfo.signatories().contains(datum.beneficiary());
-        boolean pastDeadline = datum.deadline() > 0;
+        boolean pastDeadline = datum.deadline().compareTo(BigInteger.ZERO) > 0;
         return hasSigner && pastDeadline;
     }
 }

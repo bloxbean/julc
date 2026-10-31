@@ -149,6 +149,13 @@ None    -> Constr(1, [])     // tag 1 = Nothing
 Example -- extracting an Optional datum:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class OptionalExample {
     @Entrypoint
@@ -258,8 +265,8 @@ var datum = PlutusData.cast(datumData, AuctionDatum.class);
 // Cast to sealed interface (use in switch)
 var action = PlutusData.cast(redeemer, Action.class);
 return switch (action) {
-    case Mint m -> m.amount() > 0;
-    case Burn b -> b.amount() > 0;
+    case Mint m -> m.amount().compareTo(BigInteger.ZERO) > 0;
+    case Burn b -> b.amount().compareTo(BigInteger.ZERO) > 0;
 };
 
 // Cast to ledger type
@@ -270,7 +277,7 @@ byte[] policyBytes = PlutusData.cast(mintInfo.policyId(), byte[].class);
 ScriptHash sh = PlutusData.cast(policyBytes, ScriptHash.class);
 
 // Chained field access
-boolean ok = PlutusData.cast(redeemer, MyDatum.class).amount() == 42;
+boolean ok = PlutusData.cast(redeemer, MyDatum.class).amount().equals(BigInteger.valueOf(42));
 ```
 
 On-chain: zero cost (compiles to identity, same as the double-cast).
@@ -309,6 +316,14 @@ The `.hash()` accessor on hash types generates UPLC code that does
 `DeserializationError` because `ByteString` is not `BytesData`.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class HashExample {
     @Entrypoint
@@ -340,6 +355,13 @@ traverse lists using raw `Builtins`.
 Lists are built from the end by prepending elements onto an empty list:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ListBuilder {
     @Entrypoint
@@ -363,6 +385,13 @@ The standard pattern for traversing a list uses `nullList`, `headList`, and
 `tailList`:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ListTraversal {
     // Sum all integers in a list
@@ -416,6 +445,13 @@ Maps on-chain are association lists of pairs: `List[Pair[Data, Data]]`.
 ### Building Maps from Pairs
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MapBuilder {
     @Entrypoint
@@ -467,6 +503,13 @@ To traverse a map, first unwrap it with `unMapData` to get the pair list, then
 iterate using `fstPair`/`sndPair` on each element:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MapTraversal {
     // Count entries in a map
@@ -511,6 +554,13 @@ The `for (var entry : map)` syntax on a `MapType` variable automatically
 prepends `UnMapData` and yields `PairType` elements:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MapForEach {
     @Entrypoint
@@ -552,6 +602,15 @@ Lovelace (ADA) is stored under the **empty bytestring** policy ID and the
 This is what `ValuesLib.lovelaceOf()` does under the hood:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class LovelaceExtraction {
     static BigInteger extractLovelace(PlutusData value) {
@@ -588,6 +647,14 @@ Looking up a specific native token amount requires traversing both the outer
 map (by policy ID) and the inner map (by token name):
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class AssetLookup {
     static BigInteger findAssetAmount(PlutusData value,
@@ -793,6 +860,12 @@ PlutusData buildMinimalTxInfo(byte[] signerPkh) {
 When you cannot use the typed API, you can extract fields by position:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class RawFieldAccess {
     @Entrypoint
@@ -830,6 +903,14 @@ The `Builtins.trace` method emits a trace message and returns the second
 argument unchanged. This is compiled to the UPLC `Trace` builtin:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class TracingValidator {
     @Entrypoint
@@ -856,6 +937,11 @@ class TracingValidator {
 A shorter form that does not require a return value argument:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ShortTrace {
     @Entrypoint
@@ -921,6 +1007,14 @@ Exit immediately when a validation check fails, saving budget on the
 remaining operations:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class FailFast {
     @Entrypoint
@@ -948,6 +1042,13 @@ Each field access generates `HeadList(TailList(...))` chains. Extract fields
 once and reuse the local variable:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class CachedAccess {
     @Entrypoint
@@ -975,6 +1076,13 @@ class CachedAccess {
 Order your validation checks from cheapest to most expensive:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ShortCircuit {
     @Entrypoint
@@ -1026,6 +1134,12 @@ matching types and **skips the conversion**. But the compiled library expects
 raw `Data` at the UPLC boundary, not already-unwrapped `ByteString`.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class CrossLibraryBug {
     @Entrypoint
@@ -1050,6 +1164,14 @@ When calling stdlib methods that take typed params (`BytesData`, `MapData`, etc.
 declare your variables as `PlutusData` instead:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class SafeCrossLibrary {
     @Entrypoint
@@ -1079,11 +1201,19 @@ time. `@Param` values are **always raw Data at runtime**, regardless of their
 declared type.
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.Param;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class ParameterizedValidator {
     // CORRECT: always use PlutusData for @Param
     @Param PlutusData ownerPkh;
-    @Param PlutusData minAmount;
+    @Param static PlutusData minAmount;
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1103,6 +1233,14 @@ If you need to call a stdlib method with typed params frequently, create a
 local wrapper in your validator:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class WrapperPattern {
     // Local wrapper avoids cross-library type boundary issues
@@ -1146,6 +1284,14 @@ Sealed interfaces can be nested. For example, `ScriptInfo` has six variants,
 and `Credential` has two variants:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class NestedSwitch {
     @Entrypoint
@@ -1252,6 +1398,13 @@ compiler wraps recursive helper methods with the Z-combinator at the UPLC level,
 so you can write natural recursive code:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class RecursiveValidator {
     // Recursive factorial -- compiled with Z-combinator
@@ -1277,6 +1430,13 @@ class RecursiveValidator {
 Recursive list operations are a natural fit:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class RecursiveList {
     // Count elements in a list recursively
@@ -1321,6 +1481,12 @@ class RecursiveList {
 Recursive functions with multiple parameters work naturally:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class GcdValidator {
     static BigInteger gcd(BigInteger a, BigInteger b) {
@@ -1347,6 +1513,13 @@ JuLC supports mutual recursion between **two** methods via Bekic's theorem.
 This enables patterns like `isEven`/`isOdd`:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class MutualRecursion {
     // These two methods are mutually recursive
@@ -1413,6 +1586,13 @@ accumulator pattern avoids building up a deep chain of deferred multiplications
 or additions:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 class TailRecursive {
     // Tail-recursive factorial with accumulator
@@ -1460,11 +1640,13 @@ recursion for simple traversals.
 The `@NewType` annotation creates zero-cost type aliases for single-field records. On-chain, the constructor compiles to identity — no `ConstrData` wrapping is generated.
 
 ```java
+import org.julclang.stdlib.annotation.NewType;
+
 @NewType
 public record AssetClass(byte[] policyId) {}
 
 // Usage in validator:
-AssetClass ac = AssetClass.of(myBytes);  // .of() auto-registered
+AssetClass ac = new AssetClass(myBytes);
 ```
 
 **Constraints:**
@@ -1472,7 +1654,7 @@ AssetClass ac = AssetClass.of(myBytes);  // .of() auto-registered
 - Underlying type must be `byte[]`, `BigInteger`, `String`, or `boolean`
 - Multi-field or unsupported-type records produce a compiler error
 
-**On-chain behavior:** `AssetClass.of(bytes)` compiles to identity — the bytes are passed through as-is. Field access `ac.policyId()` is also identity.
+**On-chain behavior:** `new AssetClass(bytes)` compiles to identity — the bytes are passed through as-is. Field access `ac.policyId()` is also identity. A synthesized `AssetClass.of(bytes)` factory is not Java, so JuLC no longer accepts it (ADR-068 D6); the ledger hash types keep their real `of(byte[])` methods.
 
 ---
 
@@ -1525,10 +1707,10 @@ Raw `Tuple2` (no type args) defaults to `DataType` for backward compatibility.
 Nested loops are fully supported: while-in-while, for-each-in-for-each, and mixed nesting. The `LoopDesugarer` assigns unique names to each loop function (`loop__forEach__0`, `loop__while__1`, etc.) to prevent name collisions.
 
 ```java
-BigInteger total = 0;
+BigInteger total = BigInteger.ZERO;
 for (var group : groups) {
     for (var item : group.items()) {
-        total = total + item.amount();
+        total = total.add(item.amount());
     }
 }
 ```
@@ -1543,13 +1725,13 @@ Higher-order functions are available as both instance methods and static calls. 
 
 ```java
 // Instance method syntax (preferred)
-boolean hasLargeAmount = outputs.any(o -> o.value().lovelaceOf() > 1000000);
-var filtered = list.filter(x -> x > 0);
-var mapped = list.map(x -> x + 1);  // returns JulcList<PlutusData>
+boolean hasLargeAmount = outputs.any(o -> o.value().lovelaceOf().compareTo(BigInteger.valueOf(1_000_000)) > 0);
+var filtered = list.filter(x -> x.compareTo(BigInteger.ZERO) > 0);
+var mapped = list.map(x -> x.add(BigInteger.ONE));  // returns JulcList<PlutusData>
 
 // Static syntax
-boolean found = ListsLib.any(list, x -> x > threshold);
-var sum = ListsLib.foldl((acc, x) -> acc + Builtins.unIData(x), BigInteger.ZERO, list);
+boolean found = ListsLib.any(list, x -> x.compareTo(threshold) > 0);
+var sum = ListsLib.foldl((acc, x) -> acc.add(Builtins.unIData(x)), BigInteger.ZERO, list);
 ```
 
 **Available HOFs:** `map`, `filter`, `any`, `all`, `find` (instance + static), `foldl`, `zip` (static only).
@@ -1588,6 +1770,13 @@ Compiles to a `ByteString` constant. Each element must be an integer literal, op
 ### Usage in Validators
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
+
 @MintingValidator
 class FactoryPolicy {
     static final byte[] FACTORY_MARKER = "FACTORY_MARKER".getBytes();

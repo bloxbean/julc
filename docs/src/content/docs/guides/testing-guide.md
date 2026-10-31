@@ -114,6 +114,12 @@ Given a validator like this:
 ```java
 // src/main/java/com/example/VestingValidator.java
 package com.example;
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class VestingValidator {
@@ -123,7 +129,7 @@ class VestingValidator {
     static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
         var sigs = txInfo.signatories();
-        return sigs.contains(datum.beneficiary()) && datum.deadline() > 0;
+        return sigs.contains(datum.beneficiary()) && datum.deadline().compareTo(BigInteger.ZERO) > 0;
     }
 }
 ```
@@ -390,8 +396,8 @@ import org.julclang.testkit.JulcEval;
 
 // Given an on-chain class:
 //   class MathHelper {
-//       static BigInteger doubleIt(BigInteger x) { return x * 2; }
-//       static boolean isPositive(BigInteger x) { return x > 0; }
+//       static BigInteger doubleIt(BigInteger x) { return x.multiply(BigInteger.TWO); }
+//       static boolean isPositive(BigInteger x) { return x.compareTo(BigInteger.ZERO) > 0; }
 //   }
 
 interface MathProxy {
@@ -657,6 +663,10 @@ testImplementation 'net.jqwik:jqwik:1.9.2'
 Assume `VestingValidator.java` is your validator class in `src/main/java`:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 // src/main/java/com/example/VestingValidator.java
 @SpendingValidator
 class VestingValidator {
@@ -777,6 +787,10 @@ Key points:
 Assume `SignedMintPolicy.java` is your minting policy in `src/main/java`:
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
+
 // src/main/java/com/example/SignedMintPolicy.java
 @MintingValidator
 class SignedMintPolicy {
