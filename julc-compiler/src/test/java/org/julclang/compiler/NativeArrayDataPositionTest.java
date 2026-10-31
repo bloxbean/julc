@@ -135,6 +135,18 @@ class NativeArrayDataPositionTest {
                 "JulcArray.of(x)");
     }
 
+    /** Review F710: a switch expression keeps the type its arms agree on, so its array is checked where encoded. */
+    @Test
+    void switchResultsAreCheckedWhereTheyAreEncoded() {
+        String sealed = "    sealed interface S permits A, B {} record A(BigInteger n) implements S {} record B(BigInteger n) implements S {}";
+        String body = "S s = new A(BigInteger.ONE); var arr = switch (s) { case A a -> JulcArray.of(a.n()); case B b -> JulcArray.of(b.n()); };"
+                + " return JulcList.of(arr).size();";
+        rejected("The value of 'arr'", 13, 9 + body.indexOf("arr).size()"), sealed, LONG_SIG, body);
+        String lambda = "S s = new A(BigInteger.ONE); var ys = xs.map(v -> switch (s) { case A a -> JulcArray.of(v); case B b -> JulcArray.of(v); });"
+                + " return ys.size();";
+        rejected("The value encoded here", 13, 9 + lambda.indexOf("switch"), sealed, LONG_SIG, lambda);
+    }
+
     @Test
     void inferredArraysOfDataEncodableElementsCompile() {
         // The positive controls of the encoding check: arrays in locals and of lists, and lists of lists.

@@ -51,6 +51,20 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), message, location);
     }
 
+    /** The message of {@link #unknownTypeEncoded}, by which PirGenerator places it. */
+    public static final String UNKNOWN_TYPE_ENCODED = "the type of this value, a switch expression whose arms have different types";
+
+    /**
+     * JULC0012 (review F710): a value whose type the lowering does not know would be Data-encoded or
+     * be a diamond tuple's component, and encoding it as Data could be wrong.
+     */
+    public static CompilerException unknownTypeEncoded(SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format(UNKNOWN_TYPE_ENCODED + ", which it would Data-encode. Give the arms one type, or "
+                + "assign the switch to a typed local first");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
     /**
      * JULC0012 (#299): a diamond {@code new Tuple2<>(...)} whose component types neither a declared
      * target nor the arguments give. Its components could not be Data-encoded by type.

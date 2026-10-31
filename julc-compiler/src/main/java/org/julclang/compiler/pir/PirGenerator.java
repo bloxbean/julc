@@ -922,9 +922,12 @@ public class PirGenerator {
     private CompilerException locateDataEncoding(CompilerException e, Expression expr) {
         if (e.diagnostics().size() != 1) return e;
         var diagnostic = e.diagnostics().getFirst();
-        if (!DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code()) || diagnostic.line() > 0) {
-            return e;
+        if (diagnostic.line() > 0) return e;
+        if (diagnostic.message() != null && diagnostic.message().contains(CompilerTypeDiagnostics.UNKNOWN_TYPE_ENCODED)) {
+            var location = sourceLocation(expr);
+            return location == null ? e : CompilerTypeDiagnostics.unknownTypeEncoded(location);
         }
+        if (!DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
         List<Expression> arguments = expr instanceof MethodCallExpr call ? call.getArguments()
                 : expr instanceof ObjectCreationExpr creation ? creation.getArguments() : List.of();
         for (var argument : arguments) {
@@ -1027,6 +1030,10 @@ public class PirGenerator {
         if (expr instanceof SwitchExpr se) {
             var result = generateSwitchExpr(se);
             recordPosition(result, se);
+            // Keep the type the arms agree on, which the outer match alone does not give (review F710).
+            var type = typeInference.switchResultType(result);
+            if (type == null) typeInference.recordTermType(result, PirHelpers.UNKNOWN);
+            else if (!(type instanceof PirType.DataType)) typeInference.recordTermType(result, type);
             return result;
         }
         if (expr instanceof InstanceOfExpr ioe) {
@@ -2003,10 +2010,10 @@ public class PirGenerator {
             if (resolvedType instanceof PirType.RecordType rt) {
                 rejectNativeDataConstruction(typeName, rt, oce);
                 var fields = constructedFields(typeName, oce);
-                if (ct.getTypeArguments().isEmpty() || rawTupleTarget(oce)) {
-                    // A raw tuple: javac types its components Object, and its reads are untyped. Only Data
-                    // components (`new Tuple2(Builtins.iData(a), …)`) keep their meaning (#299).
-                    requireDataComponents(typeName, oce, fields);
+                if (ct.getTypeArguments().isEmpty()) {
+                    // A raw construction: javac types its components Object, so only Data components
+                    // (`new Tuple2(Builtins.iData(a), …)`, as MathLib uses it) keep their meaning (#299).
+                    for (int i = 0; i < fields.size(); i++) requireDataComponent(typeName, oce.getArgument(i), fields.get(i));
                     return new PirTerm.DataConstr(0, rt, fields);
                 }
                 if (ct.getTypeArguments().get().isEmpty()) {
@@ -2066,79 +2073,96 @@ public class PirGenerator {
     }
 
     /**
-     * The component types of {@code new Tuple2<>(a, b)} or {@code new Tuple3<>(a, b, c)}, inferred as
-     * javac infers them (ADR-068 D4 exception 2, #299): from the declared target type where there is
-     * one (a typed local, a return, an assignment), component by component, else from the type of
-     * each argument. Each component is then encoded by its type, as the explicit form does; with
-     * {@code Data} components the values were left unencoded and the script failed on-chain.
+     * The component types of {@code new Tuple2<>(a, b)} or {@code new Tuple3<>(a, b, c)} (ADR-068 D4
+     * exception 2, #299): from its destination where that is written (a declared local, an
+     * assignment, a {@code return}, or a parameter of a method of this class), component by
+     * component, else from each argument's type. Each component is then encoded by its type, as the
+     * explicit form does. A destination component of type Data (a raw {@code Tuple2}, or
+     * {@code PlutusData}) is read back as Data, so its argument must already be Data (review F711).
      */
     private PirType.RecordType inferredTupleType(String typeName, PirType.RecordType declared,
                                                  ObjectCreationExpr oce, List<PirTerm> fields) {
-        var target = tupleTargetType(oce);
+        var target = tupleDestinationType(oce);
         var arguments = oce.getArguments();
         var components = new ArrayList<PirType.Field>();
         for (int i = 0; i < declared.fields().size(); i++) {
-            PirType type = null;
-            if (target != null && target.fields().size() == declared.fields().size()
-                    && !(target.fields().get(i).type() instanceof PirType.DataType)) {
+            PirType type;
+            if (target != null && target.fields().size() == declared.fields().size()) {
                 type = target.fields().get(i).type();
-            } else if (i < arguments.size()) {
-                try {
-                    type = expressionType(arguments.get(i), fields.get(i));
-                } catch (CompilerException | IllegalArgumentException _) {
-                    type = null;
-                }
-            }
-            if (type == null) {
-                throw CompilerTypeDiagnostics.diamondTypeArgumentsUnknown(typeName, sourceLocation(oce));
+                if (type instanceof PirType.DataType) requireDataComponent(typeName, arguments.get(i), fields.get(i));
+            } else {
+                type = componentType(typeName, oce, arguments.get(i), fields.get(i));
             }
             components.add(new PirType.Field(declared.fields().get(i).name(), type));
         }
         return new PirType.RecordType(declared.name(), components);
     }
 
-    /** Whether a diamond's value is assigned to a local declared with the raw tuple type ({@code Tuple2 t = …}). */
-    private static boolean rawTupleTarget(ObjectCreationExpr oce) {
-        return oce.getParentNode().orElse(null) instanceof VariableDeclarator vd
-                && vd.getInitializer().orElse(null) == oce
-                && vd.getType() instanceof com.github.javaparser.ast.type.ClassOrInterfaceType declared
-                && declared.getTypeArguments().isEmpty();
+    /** The type of a diamond tuple's argument, which its component takes; JULC0012 where it is unknown. */
+    private PirType componentType(String typeName, ObjectCreationExpr oce, Expression argument, PirTerm field) {
+        PirType type;
+        try {
+            type = expressionType(argument, field);
+        } catch (CompilerException | IllegalArgumentException _) {
+            throw CompilerTypeDiagnostics.diamondTypeArgumentsUnknown(typeName, sourceLocation(oce));
+        }
+        if (type == PirHelpers.UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(argument));
+        return type;
     }
 
     /**
-     * JULC0012 for a raw tuple unless every component is already Data (a {@code PlutusData}, record,
-     * sealed value or {@code Optional}), which needs no encoding (#299).
+     * JULC0012 unless a tuple component that is read back as Data is already Data (a {@code PlutusData},
+     * record, sealed value or {@code Optional}), which needs no encoding (#299).
      */
-    private void requireDataComponents(String typeName, ObjectCreationExpr oce, List<PirTerm> fields) {
-        var arguments = oce.getArguments();
-        for (int i = 0; i < arguments.size(); i++) {
-            PirType type;
-            try {
-                type = expressionType(arguments.get(i), fields.get(i));
-            } catch (CompilerException | IllegalArgumentException _) {
-                type = new PirType.DataType();
-            }
-            boolean data = type instanceof PirType.DataType || type instanceof PirType.RecordType
-                    || type instanceof PirType.SumType || type instanceof PirType.OptionalType
-                    || type instanceof PirType.NamedTypeRef;
-            if (!data) {
-                throw CompilerTypeDiagnostics.rawTupleUnsupported(typeName, sourceLocation(arguments.get(i)));
-            }
+    private void requireDataComponent(String typeName, Expression argument, PirTerm field) {
+        PirType type;
+        try {
+            type = expressionType(argument, field);
+        } catch (CompilerException | IllegalArgumentException _) {
+            type = new PirType.DataType();
+        }
+        if (type == PirHelpers.UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(argument));
+        if (!TypeInferenceHelper.isDataShaped(type)) {
+            throw CompilerTypeDiagnostics.rawTupleUnsupported(typeName, sourceLocation(argument));
         }
     }
 
-    /** The tuple type an object creation's value is assigned to, where it is written; null otherwise. */
-    private PirType.RecordType tupleTargetType(ObjectCreationExpr oce) {
+    /** The position of {@code argument} among the call's arguments, by identity; -1 when it is not one. */
+    private static int argumentIndex(MethodCallExpr call, Node argument) {
+        for (int i = 0; i < call.getArguments().size(); i++) {
+            if (call.getArgument(i) == argument) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * The written tuple type an expression's value goes to, through parentheses and conditionals: a
+     * declared local, an assignment to a local, a {@code return}, or an argument of a method of this
+     * class; null when there is none (a {@code var} local, a library call).
+     */
+    private PirType.RecordType tupleDestinationType(Expression expr) {
+        Node child = expr;
+        Node parent = expr.getParentNode().orElse(null);
+        while (parent instanceof EnclosedExpr || (parent instanceof ConditionalExpr ce && ce.getCondition() != child)) {
+            child = parent;
+            parent = parent.getParentNode().orElse(null);
+        }
         PirType target = null;
         try {
-            var parent = oce.getParentNode().orElse(null);
-            if (parent instanceof VariableDeclarator vd && vd.getInitializer().orElse(null) == oce
+            if (parent instanceof VariableDeclarator vd && vd.getInitializer().orElse(null) == child
                     && !(vd.getType() instanceof com.github.javaparser.ast.type.VarType)) {
                 target = typeResolver.resolve(vd.getType());
             } else if (parent instanceof ReturnStmt) {
                 target = currentReturnType;
-            } else if (parent instanceof AssignExpr ae && ae.getValue() == oce && ae.getTarget() instanceof NameExpr ne) {
+            } else if (parent instanceof AssignExpr ae && ae.getValue() == child && ae.getTarget() instanceof NameExpr ne) {
                 target = symbolTable.lookup(ne.getNameAsString()).orElse(null);
+            } else if (parent instanceof MethodCallExpr call && call.getScope().isEmpty()
+                    && argumentIndex(call, child) >= 0) {
+                int index = argumentIndex(call, child);
+                var signature = symbolTable.lookupMethodSignature(call.getNameAsString());
+                PirType fn = signature.map(SymbolTable.MethodSignature::type).orElse(null);
+                for (int i = 0; fn instanceof PirType.FunType ft && i < index; i++) fn = ft.returnType();
+                if (fn instanceof PirType.FunType ft) target = ft.paramType();
             }
         } catch (IllegalArgumentException _) {
             return null;
@@ -3432,6 +3456,10 @@ public class PirGenerator {
         // Auto-wrap result for map (MkCons expects Data elements)
         if (wrapResultToData) {
             var bodyType = inferPirType(bodyTerm);
+            if (bodyType == PirHelpers.UNKNOWN) {
+                throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(
+                        lambdaBody instanceof com.github.javaparser.ast.stmt.ExpressionStmt es ? es.getExpression() : le));
+            }
             if (!(bodyType instanceof PirType.DataType)) {
                 try {
                     bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);

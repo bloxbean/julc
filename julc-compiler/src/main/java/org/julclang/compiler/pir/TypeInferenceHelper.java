@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Read-only type inference utilities for PIR generation.
@@ -311,6 +312,48 @@ final class TypeInferenceHelper {
             }
         }
         return types;
+    }
+
+    /**
+     * The type of a lowered {@code switch} expression (ADR-068 D6, review F710): the type its arms
+     * agree on, read through the matches, conditionals and bindings the lowering wraps them in.
+     * Arms that are all Data-shaped (Data, records, sealed values, {@code Optional}) but differ give
+     * {@code DataType}, which is their encoding; arms that otherwise disagree give null, an unknown
+     * type. {@code inferPirType} alone reads no further than the outer match.
+     */
+    PirType switchResultType(PirTerm term) {
+        var leaves = new LinkedHashSet<PirType>();
+        collectArmTypes(term, leaves);
+        if (leaves.isEmpty()) return new PirType.DataType();
+        if (leaves.size() == 1) return leaves.iterator().next();
+        return leaves.stream().allMatch(TypeInferenceHelper::isDataShaped) ? new PirType.DataType() : null;
+    }
+
+    private void collectArmTypes(PirTerm term, Set<PirType> leaves) {
+        switch (term) {
+            case PirTerm.Error _ -> { }
+            case PirTerm.DataMatch m -> m.branches().forEach(b -> collectArmTypes(b.body(), leaves));
+            case PirTerm.IntegerCase c -> c.branches().forEach(b -> collectArmTypes(b, leaves));
+            case PirTerm.IfThenElse ite -> {
+                collectArmTypes(ite.thenBranch(), leaves);
+                collectArmTypes(ite.elseBranch(), leaves);
+            }
+            case PirTerm.Let let -> collectArmTypes(let.body(), leaves);
+            case PirTerm.LetRec letRec -> collectArmTypes(letRec.body(), leaves);
+            case PirTerm.PairMatch m -> collectArmTypes(m.body(), leaves);
+            case PirTerm.ListMatch m -> {
+                collectArmTypes(m.nilBranch(), leaves);
+                collectArmTypes(m.consBranch(), leaves);
+            }
+            default -> leaves.add(typeResolver.resolveNamed(inferPirType(term)));
+        }
+    }
+
+    /** A type whose values are already Data, so that encoding leaves them as they are. */
+    static boolean isDataShaped(PirType type) {
+        return type instanceof PirType.DataType || type instanceof PirType.RecordType
+                || type instanceof PirType.SumType || type instanceof PirType.OptionalType
+                || type instanceof PirType.NamedTypeRef;
     }
 
     /**

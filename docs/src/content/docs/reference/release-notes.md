@@ -52,13 +52,19 @@ the Java code returns ([#299](https://github.com/bloxbean/julc/issues/299)). Thi
 without a declared target type (`Tuple2<BigInteger, BigInteger> t = new Tuple2<>(x, y)`, `var t = …`,
 a return, an argument).
 
-- A diamond's component types are now inferred as javac infers them, from the declared target type
-  where there is one, else from the arguments, and each component is encoded by its type, exactly as
-  the explicit `new Tuple2<BigInteger, BigInteger>(x, y)` does. `var t = new Tuple2<>(x, y)` reads its
-  components with those types.
-- A raw tuple (`new Tuple2(a, b)`, or a diamond assigned to `Tuple2 t`) keeps working when its
-  components are already Data (`Builtins.iData(...)`, a record, a sealed value, an `Optional`), as
-  `MathLib.divMod` uses it; any other component is rejected with `JULC0012`: write the type arguments.
+- A diamond's component types are now taken from a declared local, `return`, assignment or
+  method-parameter target, else from the arguments, and each component is encoded by its type,
+  exactly as the explicit `new Tuple2<BigInteger, BigInteger>(x, y)` does. `var t = new Tuple2<>(x, y)`
+  reads its components with those types. A `switch` expression used as a component keeps the type its
+  arms agree on.
+- A raw tuple (`new Tuple2(a, b)`) or a diamond whose destination is raw (`Tuple2 t = (new Tuple2<>(…))`,
+  a raw loop variable, a raw parameter or return type) keeps working when its components are already
+  Data (`Builtins.iData(...)`, a record, a sealed value, an `Optional`), as `MathLib.divMod` uses it;
+  any other component is rejected with `JULC0012`: write the type arguments. An explicit
+  `new Tuple2<BigInteger, BigInteger>(…)` keeps its types wherever it is assigned.
+- A value whose type JuLC cannot determine (a `switch` whose arms have different types) is rejected
+  with `JULC0012` where it would be Data-encoded or be a diamond's component, rather than encoded as
+  Data.
 - **Script bytes change** only for programs with such a diamond, which failed on-chain before.
 
 ## Upcoming preview: JuLC collections compare `byte[]` by content on the JVM
