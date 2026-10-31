@@ -249,24 +249,7 @@ public class PirGenerator {
     private void validateLoweringRequirements(
             LoweringRequirements requirements,
             Node sourceNode) {
-        var profile = context.resolvedTarget().featureProfile();
-        var location = sourceLocation(sourceNode);
-        requirements.builtins().stream()
-                .sorted(Comparator.comparingInt(DefaultFun::flatCode))
-                .filter(builtin -> !profile.isBuiltinAvailable(builtin))
-                .findFirst()
-                .ifPresent(builtin -> {
-                    throw CompilerTargetDiagnostics.unavailableBuiltin(
-                            context, builtin, location);
-                });
-        requirements.capabilities().stream()
-                .sorted()
-                .filter(capability -> !context.supports(capability))
-                .findFirst()
-                .ifPresent(capability -> {
-                    throw CompilerTargetDiagnostics.unavailableCapability(
-                            context, capability, location);
-                });
+        CompilerTargetDiagnostics.requireAvailable(context, requirements, sourceLocation(sourceNode));
     }
 
     public static SourceLocation sourceLocation(Node node) {
@@ -1196,23 +1179,12 @@ public class PirGenerator {
         return switch (operator) {
             case LESS -> builtinApp2(DefaultFun.LessThanInteger, x, y);
             case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, x, y);
-            case GREATER -> swappedInOrder(DefaultFun.LessThanInteger, x, y);
-            case GREATER_EQUALS -> swappedInOrder(DefaultFun.LessThanEqualsInteger, x, y);
+            case GREATER -> PirHelpers.swappedInOrder(DefaultFun.LessThanInteger, x, y);
+            case GREATER_EQUALS -> PirHelpers.swappedInOrder(DefaultFun.LessThanEqualsInteger, x, y);
             case EQUALS -> generateEquality(x, y, new PirType.IntegerType(), false);
             case NOT_EQUALS -> generateEquality(x, y, new PirType.IntegerType(), true);
             default -> throw new IllegalArgumentException("Not a comparison: " + operator);
         };
-    }
-
-    /** {@code fun y x}, with {@code x} evaluated first. */
-    private static PirTerm swappedInOrder(DefaultFun fun, PirTerm x, PirTerm y) {
-        if (isTrivialOperand(x) || isTrivialOperand(y)) return builtinApp2(fun, y, x);
-        var name = PirHelpers.hygienicName("#lhs", PirHelpers.freeVariables(y));
-        return new PirTerm.Let(name, x, builtinApp2(fun, y, new PirTerm.Var(name, new PirType.IntegerType())));
-    }
-
-    private static boolean isTrivialOperand(PirTerm term) {
-        return term instanceof PirTerm.Var || term instanceof PirTerm.Const;
     }
 
     /**
@@ -1392,38 +1364,9 @@ public class PirGenerator {
         }
     }
 
-    /**
-     * Generate type-aware equality comparison.
-     * Dispatches to the correct builtin based on operand type.
-     */
+    /** Generate type-aware equality comparison: {@link PirHelpers#equality}. */
     private PirTerm generateEquality(PirTerm left, PirTerm right, PirType leftType, boolean negate) {
-        DefaultFun eqFun;
-        if (leftType instanceof PirType.ByteStringType) {
-            eqFun = DefaultFun.EqualsByteString;
-        } else if (leftType instanceof PirType.StringType) {
-            eqFun = DefaultFun.EqualsString;
-        } else if (leftType instanceof PirType.BoolType) {
-            // Bool equality: IfThenElse(a, b, !b)
-            var eq = new PirTerm.IfThenElse(left, right,
-                    new PirTerm.IfThenElse(right,
-                            new PirTerm.Const(Constant.bool(false)),
-                            new PirTerm.Const(Constant.bool(true))));
-            if (negate) return new PirTerm.IfThenElse(eq,
-                    new PirTerm.Const(Constant.bool(false)),
-                    new PirTerm.Const(Constant.bool(true)));
-            return eq;
-        } else if (leftType instanceof PirType.DataType
-                || leftType instanceof PirType.RecordType
-                || leftType instanceof PirType.SumType) {
-            eqFun = DefaultFun.EqualsData;
-        } else {
-            eqFun = DefaultFun.EqualsInteger; // default: integer
-        }
-        var result = builtinApp2(eqFun, left, right);
-        if (negate) return new PirTerm.IfThenElse(result,
-                new PirTerm.Const(Constant.bool(false)),
-                new PirTerm.Const(Constant.bool(true)));
-        return result;
+        return PirHelpers.equality(left, right, leftType, negate);
     }
 
     private PirTerm generateUnaryExpr(UnaryExpr ue) {
@@ -1841,25 +1784,9 @@ public class PirGenerator {
         return "#__pfield-" + patternVar + "-" + fieldIndex;
     }
 
-    /**
-     * Generate PIR for extracting a field from a Constr-encoded Data value.
-     * UnConstrData(data) → SndPair → TailList^n → HeadList → decode
-     */
+    /** Generate PIR for extracting a field from a Constr-encoded Data value: {@link PirHelpers#fieldExtraction}. */
     private PirTerm generateFieldExtraction(PirTerm data, int fieldIndex, PirType fieldType) {
-        // SndPair(UnConstrData(data)) to get fields list
-        var fields = new PirTerm.App(
-                new PirTerm.Builtin(DefaultFun.SndPair),
-                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), data));
-
-        // TailList^fieldIndex then HeadList
-        PirTerm current = fields;
-        for (int i = 0; i < fieldIndex; i++) {
-            current = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), current);
-        }
-        PirTerm rawField = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), current);
-
-        // Decode based on field type
-        return wrapDecode(rawField, fieldType);
+        return PirHelpers.fieldExtraction(data, fieldIndex, fieldType);
     }
 
     private PirTerm wrapDecode(PirTerm data, PirType targetType) {

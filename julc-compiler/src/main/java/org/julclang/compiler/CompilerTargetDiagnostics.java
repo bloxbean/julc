@@ -11,6 +11,7 @@ import org.julclang.vm.ProtocolCapability;
 import org.julclang.vm.UplcVersion;
 
 import java.util.Collection;
+import java.util.Comparator;
 
 /** Catalog-backed diagnostics shared by target-aware compiler stages. */
 public final class CompilerTargetDiagnostics {
@@ -39,6 +40,28 @@ public final class CompilerTargetDiagnostics {
         var info = DiagnosticCodes.COMPILER_FEATURE_UNAVAILABLE;
         var message = info.format(capability, context.target().profileId());
         return exception(info, message, location);
+    }
+
+    /** Rejects a lowering that needs a builtin or capability the compilation's target does not have. */
+    public static void requireAvailable(
+            CompilationContext context,
+            LoweringRequirements requirements,
+            SourceLocation location) {
+        var profile = context.resolvedTarget().featureProfile();
+        requirements.builtins().stream()
+                .sorted(Comparator.comparingInt(DefaultFun::flatCode))
+                .filter(builtin -> !profile.isBuiltinAvailable(builtin))
+                .findFirst()
+                .ifPresent(builtin -> {
+                    throw unavailableBuiltin(context, builtin, location);
+                });
+        requirements.capabilities().stream()
+                .sorted()
+                .filter(capability -> !context.supports(capability))
+                .findFirst()
+                .ifPresent(capability -> {
+                    throw unavailableCapability(context, capability, location);
+                });
     }
 
     public static CompilerException programVersionMismatch(

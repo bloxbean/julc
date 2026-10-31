@@ -133,10 +133,79 @@ public final class PirHelpers {
                 new PirTerm.App(new PirTerm.App(recursiveListGetVar(goName), list), index));
     }
 
-    static PirTerm builtinApp2(DefaultFun fun, PirTerm a, PirTerm b) {
+    public static PirTerm builtinApp2(DefaultFun fun, PirTerm a, PirTerm b) {
         return new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(fun), a),
                 b);
+    }
+
+    /**
+     * {@code fun y x}, with {@code x} evaluated first (ADR-068 D6, #295): {@code x} is bound by one {@code let} when both
+     * operands are non-trivial; evaluating a variable or a constant has no effect, so its place does not matter.
+     */
+    public static PirTerm swappedInOrder(DefaultFun fun, PirTerm x, PirTerm y) {
+        if (isTrivialOperand(x) || isTrivialOperand(y)) return builtinApp2(fun, y, x);
+        var name = hygienicName("#lhs", freeVariables(y));
+        return new PirTerm.Let(name, x, builtinApp2(fun, y, new PirTerm.Var(name, new PirType.IntegerType())));
+    }
+
+    private static boolean isTrivialOperand(PirTerm term) {
+        return term instanceof PirTerm.Var || term instanceof PirTerm.Const;
+    }
+
+    /**
+     * Generate type-aware equality comparison.
+     * Dispatches to the correct builtin based on operand type.
+     */
+    public static PirTerm equality(PirTerm left, PirTerm right, PirType leftType, boolean negate) {
+        DefaultFun eqFun;
+        if (leftType instanceof PirType.ByteStringType) {
+            eqFun = DefaultFun.EqualsByteString;
+        } else if (leftType instanceof PirType.StringType) {
+            eqFun = DefaultFun.EqualsString;
+        } else if (leftType instanceof PirType.BoolType) {
+            // Bool equality: IfThenElse(a, b, !b)
+            var eq = new PirTerm.IfThenElse(left, right,
+                    new PirTerm.IfThenElse(right,
+                            new PirTerm.Const(Constant.bool(false)),
+                            new PirTerm.Const(Constant.bool(true))));
+            if (negate) return new PirTerm.IfThenElse(eq,
+                    new PirTerm.Const(Constant.bool(false)),
+                    new PirTerm.Const(Constant.bool(true)));
+            return eq;
+        } else if (leftType instanceof PirType.DataType
+                || leftType instanceof PirType.RecordType
+                || leftType instanceof PirType.SumType) {
+            eqFun = DefaultFun.EqualsData;
+        } else {
+            eqFun = DefaultFun.EqualsInteger; // default: integer
+        }
+        var result = builtinApp2(eqFun, left, right);
+        if (negate) return new PirTerm.IfThenElse(result,
+                new PirTerm.Const(Constant.bool(false)),
+                new PirTerm.Const(Constant.bool(true)));
+        return result;
+    }
+
+    /**
+     * Generate PIR for extracting a field from a Constr-encoded Data value.
+     * UnConstrData(data) → SndPair → TailList^n → HeadList → decode
+     */
+    public static PirTerm fieldExtraction(PirTerm data, int fieldIndex, PirType fieldType) {
+        // SndPair(UnConstrData(data)) to get fields list
+        var fields = new PirTerm.App(
+                new PirTerm.Builtin(DefaultFun.SndPair),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), data));
+
+        // TailList^fieldIndex then HeadList
+        PirTerm current = fields;
+        for (int i = 0; i < fieldIndex; i++) {
+            current = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), current);
+        }
+        PirTerm rawField = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), current);
+
+        // Decode based on field type
+        return wrapDecode(rawField, fieldType);
     }
 
     /**

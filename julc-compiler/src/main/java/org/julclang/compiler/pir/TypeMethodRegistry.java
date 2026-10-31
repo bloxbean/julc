@@ -151,6 +151,33 @@ public final class TypeMethodRegistry {
     }
 
     /**
+     * Dispatch under one exact key (ADR-068 I12). The javac frontend names the key from the identity of the method javac
+     * bound, so no record is taken for a ledger type because of its name, as {@link #dispatch} does with {@code rt.name()}.
+     *
+     * @return the lowering, or empty if the key has none
+     */
+    public Optional<PirTerm> dispatchExact(CompilationContext context, String typeKey, String method, PirTerm scope,
+                                           List<PirTerm> args, PirType scopeType, List<PirType> argTypes) {
+        Objects.requireNonNull(context, "context");
+        var registration = registry.get(typeKey + "." + method);
+        if (registration == null) return Optional.empty();
+        return Optional.of(registration.handler().handle(context, scope, args, scopeType, argTypes));
+    }
+
+    /** The return type an exact key declares for {@code scopeType}, if the key has a lowering. */
+    public Optional<PirType> returnTypeExact(String typeKey, String method, PirType scopeType) {
+        var registration = registry.get(typeKey + "." + method);
+        return registration == null ? Optional.empty() : Optional.of(registration.returnType().resolve(scopeType));
+    }
+
+    /** Protocol requirements of the lowering under one exact key. */
+    public LoweringRequirements requirementsExact(CompilationContext context, String typeKey, String method) {
+        Objects.requireNonNull(context, "context");
+        var registration = registry.get(typeKey + "." + method);
+        return registration != null ? registration.requirements().resolve(context) : LoweringRequirements.NONE;
+    }
+
+    /**
      * Create a registry with all standard instance methods registered.
      */
     public static TypeMethodRegistry defaultRegistry() {
