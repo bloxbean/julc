@@ -1,6 +1,7 @@
 # ADR-068: Replace JavaParser with javac as JuLC's only Java frontend
 
-**Status:** Proposed (r8)
+**Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
+the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
 **Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r8)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
