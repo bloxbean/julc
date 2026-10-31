@@ -178,6 +178,24 @@ public final class JavacPlatform {
         return index.values().stream().mapToInt(Map::size).sum();
     }
 
+    /**
+     * The identity of a text: SHA-256 of its length and UTF-16 code units. Unlike an encoding to bytes, it is
+     * injective on every string, unpaired surrogates included (ADR-068 M1a F512).
+     */
+    public static String identity(String text) {
+        var bytes = new byte[4 + 2 * text.length()];
+        int n = text.length();
+        bytes[0] = (byte) (n >>> 24);
+        bytes[1] = (byte) (n >>> 16);
+        bytes[2] = (byte) (n >>> 8);
+        bytes[3] = (byte) n;
+        for (int i = 0; i < n; i++) {
+            bytes[4 + 2 * i] = (byte) (text.charAt(i) >>> 8);
+            bytes[5 + 2 * i] = (byte) text.charAt(i);
+        }
+        return sha256(bytes);
+    }
+
     public static String sha256(byte[] bytes) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));

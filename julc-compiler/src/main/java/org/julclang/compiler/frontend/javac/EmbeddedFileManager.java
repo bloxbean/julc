@@ -92,14 +92,9 @@ final class EmbeddedFileManager implements JavaFileManager {
     EmbeddedFileManager(JavacPlatform platform, List<JavacSourceFile> pool, Consumer<String> opened) {
         this.platform = platform;
         this.opened = opened;
+        // Each entry is a unit listed under one of its names (Precedence decides which names are listed).
         for (var source : pool) {
-            var files = sourcePath.computeIfAbsent(source.packageName(), p -> new TreeMap<>());
-            files.put(source.simpleName(), source);
-            // Every top-level declaration is found on the source path, not only the primary one (D8).
-            for (String name : source.topLevelNames()) {
-                String simple = name.substring(name.lastIndexOf('.') + 1);
-                if (!simple.equals(source.simpleName())) files.putIfAbsent(simple, source.listedAs(simple));
-            }
+            sourcePath.computeIfAbsent(source.packageName(), p -> new TreeMap<>()).put(source.simpleName(), source);
         }
     }
 

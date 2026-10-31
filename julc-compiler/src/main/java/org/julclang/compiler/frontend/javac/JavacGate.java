@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.error.DiagnosticCodes;
@@ -8,7 +7,6 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
@@ -29,21 +27,13 @@ import java.util.Map;
  * lands). {@code report} never fails a compilation: a would-be rejection is written under the directory the system
  * property {@value #REPORT_PROPERTY} names, if it names one ({@link JavacGateReport}).
  * <p>
- * Results are cached per process by the digest of the inputs: javac's environment is fixed for a process, so the same
- * sources (one test compiled at four optimization levels) give the same result.
+ * Results are cached by the digest of the inputs within the frontend's immutable environment (see {@link #cached}),
+ * so the same sources in the same environment (one test compiled at four optimization levels) give the same result.
  */
 public final class JavacGate {
 
     public static final String MODE_PROPERTY = "julc.javacGate";
     public static final String REPORT_PROPERTY = "julc.javacGate.report";
-
-    private static final int CACHE_LIMIT = 512;
-    private static final Map<String, JavacResult> CACHE = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, JavacResult> eldest) {
-            return size() > CACHE_LIMIT;
-        }
-    };
 
     private JavacGate() {
     }
@@ -111,10 +101,11 @@ public final class JavacGate {
     }
 
     private static JavacResult noCompiler(LinkageError e) {
+        // No reference to JavacFrontend here: it cannot link without the compiler API.
+        String version = Runtime.version().toString();
         return new JavacResult(List.of(JavacDiagnostic.of(DiagnosticCodes.JAVAC_UNSUPPORTED, null,
-                DiagnosticCodes.JAVAC_UNSUPPORTED.format(JavacFrontend.javacVersion(),
-                        "this runtime has no Java compiler (" + e + ")"), null, 0, 0, -1, -1, null)),
-                JavacFrontend.javacVersion(), null, null);
+                DiagnosticCodes.JAVAC_UNSUPPORTED.format(version, "this runtime has no Java compiler (" + e + ")"),
+                null, 0, 0, -1, -1, null)), version, null, null);
     }
 
     private static volatile JavacMetadata metadata;
@@ -122,8 +113,7 @@ public final class JavacGate {
     /**
      * The empty {@code JavaLibraryProvider}'s metadata-only task (D8): built over the shipped stubs, which must define
      * the ledger's {@code ScriptContext}, once per process. Null when the gate is off; in {@code report} mode a
-     * failure is recorded and the result is null. A javac task's {@code Elements} is not thread-safe: a caller that
-     * queries it must synchronize on the returned object.
+     * failure is recorded and the result is null. The instance synchronizes its own queries ({@link JavacMetadata#read}).
      */
     public static JavacMetadata metadata(CompilerOptions options) {
         JavacGateMode mode = mode(options);
@@ -140,7 +130,7 @@ public final class JavacGate {
             synchronized (JavacGate.class) {
                 if (metadata == null) {
                     var built = JavacFrontend.shared().metadata();
-                    if (built.elements().getTypeElement(SCRIPT_CONTEXT) == null) {
+                    if (built.read((elements, types) -> elements.getTypeElement(SCRIPT_CONTEXT) == null)) {
                         throw new BrokenJulcBuildException("the javac stubs do not define " + SCRIPT_CONTEXT);
                     }
                     metadata = built;
@@ -164,23 +154,20 @@ public final class JavacGate {
 
     private static final String SCRIPT_CONTEXT = "org.julclang.ledger.ScriptContext";
 
+    /**
+     * The result for these inputs in the current environment. The frontend is selected first and holds its own
+     * cache, so a result is only ever reused within the immutable environment (platform, stubs, bundled set) that
+     * produced it; an analysis still running in a replaced environment fills only that environment's cache (F510).
+     */
     private static JavacResult cached(List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
-        String key = key(roots, pool);
-        synchronized (CACHE) {
-            JavacResult hit = CACHE.get(key);
-            if (hit != null) return hit;
-        }
-        JavacResult result = JavacFrontend.shared().analyze(roots, pool);
-        synchronized (CACHE) {
-            CACHE.put(key, result);
-        }
-        return result;
+        var frontend = JavacFrontend.shared();
+        return frontend.cached(key(roots, pool), () -> frontend.analyze(roots, pool));
     }
 
     /**
      * The digest of an unambiguous encoding of the inputs: the number of groups, then per group its number of units,
-     * then per unit a tag for whether it has a path, the length-prefixed path bytes, and the length-prefixed text
-     * bytes. No two different inputs share an encoding, so a cached result is always the result of these inputs.
+     * then per unit a tag for whether it has a path, the length-prefixed UTF-16 code units of the path, and those of
+     * the text. No two different inputs share an encoding, so a cached result is always the result of these inputs.
      */
     static String key(List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
         try {
@@ -193,8 +180,8 @@ public final class JavacGate {
                 for (var unit : group) {
                     Path path = unit.path();
                     out.writeBoolean(path != null);
-                    if (path != null) writeBytes(out, path.toString().getBytes(StandardCharsets.UTF_8));
-                    writeBytes(out, CorpusRecorder.bytes(unit.text()));
+                    if (path != null) writeChars(out, path.toString());
+                    writeChars(out, unit.text());
                 }
             }
             out.flush();
@@ -204,8 +191,9 @@ public final class JavacGate {
         }
     }
 
-    private static void writeBytes(DataOutputStream out, byte[] bytes) throws IOException {
-        out.writeInt(bytes.length);
-        out.write(bytes);
+    /** The string's length and UTF-16 code units: injective on every string, unpaired surrogates included. */
+    private static void writeChars(DataOutputStream out, String text) throws IOException {
+        out.writeInt(text.length());
+        out.writeChars(text);
     }
 }

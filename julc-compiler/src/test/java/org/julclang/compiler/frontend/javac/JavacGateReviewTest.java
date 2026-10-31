@@ -4,15 +4,21 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.InputStream;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -127,13 +133,52 @@ class JavacGateReviewTest {
                 class M { static int f(Second s) { return s.x(); } }
                 """, SECONDARIES);
         assertTrue(result.isAccepted(), result::toString);
-        // The pool unit is left out whole, so its other type is not visible: the root's declaration wins.
+        // First stays visible (F511), but javac reads its unit whole, which declares the root's Second too: the
+        // compilation fails closed, naming the contested name.
         var first = analyze("""
                 package app;
                 record Second(int x) {}
                 class M { static int f(First s) { return s.x(); } }
                 """, SECONDARIES);
-        assertEquals("compiler.err.cant.resolve.location", first.diagnostics().getFirst().key(), first.toString());
+        assertEquals("compiler.err.duplicate.class", first.diagnostics().getFirst().key(), first.toString());
+        assertTrue(first.diagnostics().getFirst().message().startsWith("duplicate class: app.Second"),
+                first.toString());
+    }
+
+    // --- F511: precedence per qualified name; no non-conflicting type is hidden; pool order does not matter ---
+
+    static final String FOO = """
+            package app;
+            class Foo {} class Shared {}
+            """;
+    static final String BAR = """
+            package app;
+            class Bar {} class Shared {}
+            """;
+
+    @Test
+    void aContestedNameFailsClosedInEitherPoolOrderAndHidesNothing() {
+        for (var pool : List.of(new String[]{FOO, BAR}, new String[]{BAR, FOO})) {
+            for (String used : List.of("Bar", "Foo", "Shared")) {
+                var result = analyze("package app;\nclass Main { " + used + " b; }\n", pool);
+                assertEquals(1, result.diagnostics().size(), used + " " + result);
+                var d = result.diagnostics().getFirst();
+                assertEquals("JULC0085", d.code());
+                assertEquals("compiler.err.duplicate.class", d.key());
+                assertTrue(d.message().startsWith("duplicate class: app.Shared (declared by "), d.message());
+                assertFalse(d.message().contains("cant.resolve"), d.message());
+            }
+            // A root that uses neither unit is accepted, in both orders.
+            assertTrue(analyze("package app;\nclass Main { int x; }\n", pool).isAccepted());
+        }
+        // Without the contest every declaration of both units is visible.
+        assertTrue(analyze("package app;\nclass Main { Foo f; Bar b; }\n", """
+                package app;
+                class Foo {} class OnlyFoo {}
+                """, """
+                package app;
+                class Bar {} class OnlyBar {}
+                """).isAccepted());
     }
 
     @Test
@@ -178,11 +223,9 @@ class JavacGateReviewTest {
                 class A { TreeSet<String> x; LinkedList<String> y; }
                 """).diagnostics();
         assertEquals(2, wildcard.size(), wildcard.toString());
-        assertTrue(wildcard.get(0).hint().startsWith("TreeSet is not available on-chain: JuLC compiles against"),
+        assertTrue(wildcard.get(0).hint().startsWith("If TreeSet is a JDK type (from import java.util.*)"),
                 wildcard.get(0).hint());
-        assertTrue(wildcard.get(0).hint().endsWith("so import java.util.* does not provide it"), wildcard.get(0).hint());
-        assertTrue(wildcard.get(1).hint().startsWith("LinkedList is not available on-chain; use JulcList"),
-                wildcard.get(1).hint());
+        assertEquals("java.util.LinkedList is not available on-chain; use JulcList", wildcard.get(1).hint());
         var annotation = analyze("""
                 @/*comment*/Missing
                 class A {}
@@ -201,11 +244,23 @@ class JavacGateReviewTest {
     // --- F402: the metadata-only task is built once per process ---
 
     @Test
-    void metadataTaskIsCachedPerProcess() {
+    void metadataTaskIsCachedPerProcessAndLocksItself() throws Exception {
         var first = JavacGate.metadata(REPORT);
         assertNotNull(first);
         assertSame(first, JavacGate.metadata(ENFORCE));
         assertSame(first, JavacGate.metadata(REPORT));
+        // F406: concurrent queries need no caller lock.
+        var pool = Executors.newFixedThreadPool(8);
+        try {
+            var futures = new ArrayList<Future<Integer>>();
+            for (int i = 0; i < 64; i++) {
+                futures.add(pool.submit(() -> first.read((elements, types) ->
+                        elements.getTypeElement("org.julclang.ledger.TxInfo").getRecordComponents().size())));
+            }
+            for (var f : futures) assertEquals(16, f.get());
+        } finally {
+            pool.shutdown();
+        }
     }
 
     // --- F403: a broken JuLC build is not JULC0089, and a missing manifest is loud ---
@@ -251,5 +306,42 @@ class JavacGateReviewTest {
         assertEquals(JavacPlatform.shared().platformDigest(), env.platformDigest());
         assertEquals("8e5e498ecf0f9aeefd36284cf89629ee0ac9ec39ab9cc80ff26226866d9dc53f", env.platformDigest());
         assertEquals(JavacPlatform.shared().stubsDigest(), env.stubsDigest());
+    }
+
+    // --- F512: identities are injective on strings, unpaired surrogates included ---
+
+    @Test
+    void aSurrogateTextAndItsStoredFormNeverShareAKey() {
+        String s = "class Probe500 { static int f() { return 1; } }//" + (char) 0xD880;
+        String t = new String(CorpusRecorder.bytes(s), StandardCharsets.UTF_8);
+        assertNotEquals(s, t);
+        assertNotEquals(JavacGate.key(List.of(JavacFrontend.Unit.of(s)), List.of()),
+                JavacGate.key(List.of(JavacFrontend.Unit.of(t)), List.of()));
+        assertNotEquals(JavacPlatform.identity(s), JavacPlatform.identity(t));
+        assertFalse(Arrays.equals(CorpusRecorder.bytes(s),
+                CorpusRecorder.bytes(t)));
+        assertEquals(t, CorpusRecorder.text(CorpusRecorder.bytes(t)));
+        // Priming with s cannot decide t's outcome.
+        var direct = analyze(t);
+        assertTrue(JavacGate.check("probe", List.of(JavacFrontend.Unit.of(s)), List.of(), REPORT).isAccepted());
+        if (direct.isAccepted()) {
+            assertTrue(JavacGate.check("probe", List.of(JavacFrontend.Unit.of(t)), List.of(), ENFORCE).isAccepted());
+        } else {
+            assertThrows(CompilerException.class,
+                    () -> JavacGate.check("probe", List.of(JavacFrontend.Unit.of(t)), List.of(), ENFORCE));
+        }
+    }
+
+    // --- F513: a wildcard import does not make every unresolved class a JDK type ---
+
+    @Test
+    void anUnknownNameUnderAJdkWildcardImportGetsConditionalWording() {
+        var d = analyze("""
+                import java.util.*;
+                class M { ProjectThing x; }
+                """).diagnostics().getFirst();
+        assertTrue(d.hint().startsWith("If ProjectThing is a JDK type (from import java.util.*), it is not available"
+                + " on-chain"), d.hint());
+        assertTrue(d.hint().endsWith("otherwise check the import or the source that declares it"), d.hint());
     }
 }

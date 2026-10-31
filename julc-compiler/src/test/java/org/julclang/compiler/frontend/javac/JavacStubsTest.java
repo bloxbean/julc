@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.util.Elements;
 import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
@@ -64,7 +65,13 @@ class JavacStubsTest {
     /** D8: the empty provider's ledger metadata, read through the real file manager and stubs. */
     @Test
     void ledgerTypesThroughTheMetadataTaskMatchLedgerTypeProvider() {
-        var elements = JavacFrontend.shared().metadata().elements();
+        JavacFrontend.shared().metadata().read((elements, types) -> {
+            check(elements);
+            return null;
+        });
+    }
+
+    private static void check(Elements elements) {
         assertEquals(34, LEDGER.size());
         assertEquals(79, new LedgerTypeProvider().namedDefinitions().size());
         LEDGER.forEach((name, type) -> {

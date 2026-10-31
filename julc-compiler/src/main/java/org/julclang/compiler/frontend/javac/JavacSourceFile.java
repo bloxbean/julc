@@ -37,12 +37,15 @@ public final class JavacSourceFile extends SimpleJavaFileObject {
     }
 
     /** A unit with no file: named {@code <Primary>.java}, as JuLC names string sources in its diagnostics. */
-    static JavacSourceFile ofText(String text, JavacUnits.UnitInfo info) {
+    static JavacSourceFile ofText(String text, JavacUnits.UnitInfo info, int copy) {
         String path = "/" + (info.packageName().isEmpty() ? "" : info.packageName().replace('.', '/') + "/")
                 + info.primary() + ".java";
         try {
-            // The multi-argument constructor quotes what a URI cannot hold (an identifier-ignorable character).
-            return new JavacSourceFile(new URI("string", null, path, null), text, info, info.primary() + ".java");
+            // The multi-argument constructor quotes what a URI cannot hold (an identifier-ignorable character). A
+            // second unit of the same name gets an authority, so every unit has a URI of its own; the path, and so
+            // javac's file-name rule, is the same.
+            return new JavacSourceFile(new URI("string", copy == 0 ? null : "copy" + copy, path, null, null), text,
+                    info, info.primary() + ".java");
         } catch (URISyntaxException e) {
             throw new IllegalStateException(e);
         }
