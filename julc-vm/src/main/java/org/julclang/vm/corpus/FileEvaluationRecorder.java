@@ -18,9 +18,12 @@ import java.util.List;
  * The {@link EvaluationRecorder} that writes under a corpus directory:
  * <ul>
  *   <li>{@code data/<digest>.cbor}: one argument's CBOR, named by its digest;</li>
- *   <li>{@code evaluations/<key>/evaluation.txt}: the evaluation, named by the digest of this text (program FLAT
- *       digest and size, provider, target, budget limit, argument digests, outcome, result FLAT digest, trace count
- *       and digest, failure-message digest, consumed budget);</li>
+ *   <li>{@code data/<digest>.costs}: one cost-model parameter list, a value per line, named by its digest;</li>
+ *   <li>{@code evaluations/<key>/evaluation.txt}: the evaluation, named by the digest of this text (format 2:
+ *       program FLAT digest and size, provider, target, the effective cost configuration ({@code config: unknown},
+ *       {@code config: default}, or a {@code config: <language> <major>.<minor> <costs digest>} line per configured
+ *       language), budget limit, argument digests, outcome, result FLAT digest, trace count and digest,
+ *       failure-message digest, consumed budget);</li>
  *   <li>{@code evaluations/<key>/origin-<digest>}: a test that evaluated it.</li>
  * </ul>
  * Loaded by name only; never referred to from an evaluation path.
@@ -34,14 +37,28 @@ public final class FileEvaluationRecorder implements EvaluationRecorder {
     }
 
     @Override
-    public void record(String provider, String target, Program program, List<PlutusData> args, ExBudget budget,
-                       EvalResult result) {
+    public void record(String provider, String target, List<CostConfiguration> configuration, Program program,
+                       List<PlutusData> args, ExBudget budget, EvalResult result) {
         try {
             var text = new StringBuilder();
-            text.append("format: 1\n");
+            text.append("format: 2\n");
             text.append("program: ").append(programDigest(program)).append('\n');
             text.append("provider: ").append(provider).append('\n');
             text.append("target: ").append(target).append('\n');
+            if (configuration == null) {
+                text.append("config: unknown\n");
+            } else if (configuration.isEmpty()) {
+                text.append("config: default\n");
+            } else {
+                for (var c : configuration) {
+                    var values = new StringBuilder();
+                    for (long value : c.values()) values.append(value).append('\n');
+                    String digest = CorpusFiles.sha256(values.toString());
+                    CorpusFiles.writeOnce(root.resolve("data").resolve(digest + ".costs"), values.toString());
+                    text.append("config: ").append(c.language()).append(' ').append(c.protocolMajor()).append('.')
+                            .append(c.protocolMinor()).append(' ').append(digest).append('\n');
+                }
+            }
             text.append("budget: ").append(budget == null ? "none" : budget.cpuSteps() + " " + budget.memoryUnits()).append('\n');
             for (PlutusData arg : args) {
                 byte[] cbor = PlutusDataCborEncoder.encode(arg);
@@ -54,7 +71,7 @@ public final class FileEvaluationRecorder implements EvaluationRecorder {
                 text.append("value: ").append(termDigest(program, success.resultTerm())).append('\n');
             }
             if (result instanceof EvalResult.Failure failure) {
-                text.append("error: ").append(CorpusFiles.sha256(String.valueOf(failure.error())).substring(0, 16)).append('\n');
+                text.append("error: ").append(failureDigest(failure)).append('\n');
             }
             List<String> traces = result.traces();
             text.append("traces: ").append(traces.size()).append(' ')
@@ -69,6 +86,14 @@ public final class FileEvaluationRecorder implements EvaluationRecorder {
         } catch (IOException e) {
             throw new UncheckedIOException("evaluation recorder: " + root, e);
         }
+    }
+
+    /**
+     * The digest of a failure's message, as recorded ({@code error:}); a replay compares its own failure with this
+     * same function (F312).
+     */
+    public static String failureDigest(EvalResult.Failure failure) {
+        return CorpusFiles.sha256(String.valueOf(failure.error())).substring(0, 16);
     }
 
     /** The program's FLAT digest and size, or {@code unencodable} (a constant FLAT cannot carry, such as a BLS point). */

@@ -5,7 +5,9 @@ import org.julclang.core.Program;
 import org.julclang.vm.corpus.EvaluationRecorder;
 
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceLoader;
 
@@ -38,10 +40,18 @@ public final class JulcVm {
 
     private final JulcVmProvider provider;
     private final PlutusLanguage language;
+    /**
+     * For the ADR-068 M0 evaluation recorder only (F315): whether this facade created its provider (so its
+     * configuration is the built-in default plus what this facade set), and the cost configurations set through
+     * it, the last per language. Kept only while the recorder is active; never read by an evaluation.
+     */
+    private final boolean providerCreatedHere;
+    private final Map<PlutusLanguage, EvaluationRecorder.CostConfiguration> recordedCosts = new EnumMap<>(PlutusLanguage.class);
 
-    private JulcVm(JulcVmProvider provider, PlutusLanguage language) {
+    private JulcVm(JulcVmProvider provider, PlutusLanguage language, boolean providerCreatedHere) {
         this.provider = Objects.requireNonNull(provider);
         this.language = Objects.requireNonNull(language);
+        this.providerCreatedHere = providerCreatedHere;
     }
 
     /**
@@ -68,7 +78,7 @@ public final class JulcVm {
                 .max(Comparator.comparingInt(JulcVmProvider::priority))
                 .orElseThrow(() -> new IllegalStateException(
                         "No JulcVmProvider found. Add plutus-vm-scalus or plutus-vm-java to your classpath."));
-        return new JulcVm(provider, language);
+        return new JulcVm(provider, language, true);
     }
 
     /**
@@ -97,7 +107,7 @@ public final class JulcVm {
                 .orElseThrow(() -> new IllegalStateException(
                         "No JulcVmProvider with name '" + providerName + "' found. " +
                         "Available: " + availableProviders()));
-        return new JulcVm(provider, language);
+        return new JulcVm(provider, language, true);
     }
 
     /**
@@ -119,14 +129,14 @@ public final class JulcVm {
      * Create a JulcVm with an explicit provider and Plutus V3.
      */
     public static JulcVm withProvider(JulcVmProvider provider) {
-        return new JulcVm(provider, PlutusLanguage.PLUTUS_V3);
+        return new JulcVm(provider, PlutusLanguage.PLUTUS_V3, false);
     }
 
     /**
      * Create a JulcVm with an explicit provider and language version.
      */
     public static JulcVm withProvider(JulcVmProvider provider, PlutusLanguage language) {
-        return new JulcVm(provider, language);
+        return new JulcVm(provider, language, false);
     }
 
     // --- Evaluate with default options ---
@@ -209,10 +219,29 @@ public final class JulcVm {
     private EvalResult observed(Object target, Program program, List<PlutusData> args, ExBudget budget,
                                 EvalResult result) {
         if (EvaluationRecorder.ACTIVE != null) {
-            EvaluationRecorder.ACTIVE.record(provider.name(), String.valueOf(target), program,
+            EvaluationRecorder.ACTIVE.record(provider.name(), String.valueOf(target), recordedConfiguration(), program,
                     args == null ? List.of() : args, budget, result);
         }
         return result;
+    }
+
+    /**
+     * The provider's effective cost configuration for the recorder: the configurations set through this facade, in
+     * language order, or null when the provider was handed in and its state is unknown.
+     */
+    private List<EvaluationRecorder.CostConfiguration> recordedConfiguration() {
+        if (!providerCreatedHere) return null;
+        synchronized (recordedCosts) {
+            return List.copyOf(recordedCosts.values());
+        }
+    }
+
+    /** Remembers a configuration the provider accepted, while the recorder is active (test-only). */
+    private void recordCosts(long[] costModelValues, PlutusLanguage language, int major, int minor) {
+        if (EvaluationRecorder.ACTIVE == null) return;
+        synchronized (recordedCosts) {
+            recordedCosts.put(language, new EvaluationRecorder.CostConfiguration(language, major, minor, costModelValues));
+        }
     }
 
     // --- Configuration ---
@@ -226,11 +255,14 @@ public final class JulcVm {
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                    int protocolMajorVersion, int protocolMinorVersion) {
         provider.setCostModelParams(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
+        recordCosts(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
     }
 
     /** Set cost parameters for an explicit ledger target. */
     public void setCostModelParams(long[] costModelValues, LedgerEvaluationTarget target) {
         provider.setCostModelParams(costModelValues, target);
+        recordCosts(costModelValues, target.ledgerLanguage(), target.protocolVersion().major(),
+                target.protocolVersion().minor());
     }
 
     /** The name of the active VM provider. */
