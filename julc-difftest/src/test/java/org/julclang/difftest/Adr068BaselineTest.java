@@ -87,8 +87,11 @@ class Adr068BaselineTest {
             evaluationDigests.put(evaluationsFile, write(evaluationsFile,
                     "# ADR-068 D13 UPLC-only semantic observations: every JulcVm evaluation the " + entry.getKey()
                             + " tests made (F303). Generated; do not edit.\n# program/value: FLAT sha256/16[:size];"
-                            + " cases: <count>:<first case (sha256/16)>/<level> compiling to that program; replay: the Java VM on the"
-                            + " recorded arguments (agree | DISAGREE, +budget-differs)\n", part.lines(programIndex)));
+                            + " config: the VM's cost configuration (default | <language>:PV<major.minor>:<costs sha256/16>"
+                            + " | unknown: a provider the JulcVm was handed); cases: <count>:<first case (sha256/16)>/<level>"
+                            + " compiling to that program; replay: the Java VM, configured as recorded, on the recorded"
+                            + " arguments (agree | DISAGREE, +budget-differs: outcome, value, traces and failure digest)\n",
+                    part.lines(programIndex)));
         }
 
         Files.createDirectories(OUT);
@@ -141,7 +144,7 @@ class Adr068BaselineTest {
         totals.add("inventory.cases\t" + cases);
         totals.add("coverage\tsites " + coverage.sites() + "\tcovered " + coverage.covered() + "\tnot-source "
                 + coverage.notSource() + "\tuncovered " + coverage.uncovered().size() + "\tuncatalogued "
-                + coverage.uncatalogued().size());
+                + coverage.uncatalogued().size() + "\tcontradicted " + coverage.contradicted().size());
         totals.add("runs\t" + runs.size());
         var verdicts = new TreeMap<String, Integer>();
         runs.forEach(r -> r.verdicts().values().forEach(v -> verdicts.merge(v, 1, Integer::sum)));
@@ -158,6 +161,8 @@ class Adr068BaselineTest {
         write("totals-b0.tsv", "# ADR-068 M0 totals. Generated; do not edit.\n", totals);
         assertTrue(coverage.uncovered().isEmpty(), "rejection sites with no inventory row: " + coverage.uncovered());
         assertTrue(coverage.uncatalogued().isEmpty(), "inventory rejections no site explains: " + coverage.uncatalogued());
+        assertTrue(coverage.contradicted().isEmpty(),
+                "inventory rejections at sites catalogued as unreachable from source: " + coverage.contradicted());
     }
 
     @Test

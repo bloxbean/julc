@@ -107,7 +107,7 @@ U-duplicate-named-type	uncoded	Duplicate named type: '	TypeResolver:97	shadowed:
 U-duplicate-sealed	uncoded	Duplicate sealed interface: '	TypeResolver:162,231	shadowed: TypeRegistrar rejects a sealed interface declared twice across compilation units first (U-duplicate-sealed-units)
 U-primitive-type	uncoded	Unsupported primitive type: 	TypeResolver:379	source
 U-array-type	uncoded	Arrays are not supported except byte\[\]	TypeResolver:399	source
-U-cannot-resolve-type	uncoded	^Cannot resolve type: 	TypeResolver:404	defensive: a type a source writes reaches a class, primitive, array or var case first (an intersection cast compiles without resolving its type: probe in the evidence)
+U-cannot-resolve-type	uncoded	^Cannot resolve type: 	TypeResolver:404 (a wildcard type argument: List<?>, List<? extends String>, Optional<?>, Map<String,?>; F311)	source
 U-type-variable-arguments	uncoded	cannot take type arguments	TypeResolver:428	shadowed: a template parameter written T<...> is rejected first by its description (JULC0051, Unsupported on-chain source type); outside templates T is an unknown type
 U-unknown-type	uncoded	^Unknown type: 	TypeResolver:537,582	source
 U-ambiguous-type	uncoded	^Ambiguous type '	TypeResolver:576,615, ImportResolver:148	source

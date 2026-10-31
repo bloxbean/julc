@@ -16,7 +16,8 @@ import java.util.regex.Pattern;
  * {@code diagnostics.json} marks {@code emitted} and every uncoded rejection (a message pattern), each either
  * reachable from source (it must have inventory rows, from the recorded tests or the rejection fixtures) or
  * explained as not a source rejection (configuration, the producer-side backend contract, internal invariants).
- * Conversely, every inventory row must be explained by some entry.
+ * Conversely, every inventory row must be explained by some entry, and no row may match an entry explained as not
+ * a source rejection: such a row shows that a source does reach it (F311).
  */
 final class Adr068RejectionSites {
 
@@ -33,8 +34,13 @@ final class Adr068RejectionSites {
         }
     }
 
-    /** The coverage of each site, and what nothing explains. */
-    record Coverage(Map<Site, Integer> rows, List<String> uncovered, List<String> uncatalogued) {
+    /**
+     * The coverage of each site, and the gaps: source sites without rows, rows no site explains, and sites the
+     * catalogue says no source reaches that rows do match (each with the first matching row), which contradicts it
+     * (F311).
+     */
+    record Coverage(Map<Site, Integer> rows, List<String> uncovered, List<String> uncatalogued,
+                    List<String> contradicted) {
         int sites() {
             return rows.size();
         }
@@ -84,12 +90,17 @@ final class Adr068RejectionSites {
         var rows = new LinkedHashMap<Site, Integer>();
         sites.forEach(s -> rows.put(s, 0));
         var uncatalogued = new TreeSet<String>();
+        var contradicted = new LinkedHashMap<String, String>();
         for (var row : inventory) {
             boolean explained = false;
             for (var s : sites) {
                 if (s.matches(row)) {
                     rows.merge(s, 1, Integer::sum);
                     explained = true;
+                    if (!s.source()) {
+                        contradicted.putIfAbsent(s.id(), s.id() + " (" + s.reachability() + "): "
+                                + Adr068Ledger.oneLine(row.diagnostic().message(), 120));
+                    }
                 }
             }
             if (!explained) {
@@ -102,6 +113,6 @@ final class Adr068RejectionSites {
         rows.forEach((s, n) -> {
             if (s.source() && n == 0) uncovered.add(s.id());
         });
-        return new Coverage(rows, uncovered, List.copyOf(uncatalogued));
+        return new Coverage(rows, uncovered, List.copyOf(uncatalogued), List.copyOf(contradicted.values()));
     }
 }
