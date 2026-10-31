@@ -8,6 +8,7 @@ import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.LibrarySources;
 import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 import com.sun.source.util.TaskEvent;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.jar.JarEntry;
@@ -248,38 +251,92 @@ class JavacGateReviewTest {
                 + " Other.java;") && outcomes.get(0).get(1).contains("needs its app.Other)"), outcomes.toString());
     }
 
-    // --- F531: same-project wins over JAR over every declared name ---
+    // --- F531: same-project wins over JAR over every declared name; JuLC keeps B0's pool unless enforced ---
+
+    static final String CURRENT = """
+            package com.example;
+            import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
+            @OnchainLibrary
+            public class Current { public static BigInteger one() { return BigInteger.ONE; } }
+            class Shared { static BigInteger three() { return BigInteger.valueOf(3); } }
+            """;
+    static final String JAR_SHARED = """
+            package com.example;
+            import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
+            @OnchainLibrary
+            public class Shared { public static BigInteger two() { return BigInteger.TWO; } }
+            """;
+    static final String USES_BOTH = """
+            package com.example;
+            import java.math.BigInteger;
+            class M { static BigInteger f() { return Current.one().add(Shared.two()); } }
+            """;
+
+    /** A host's merge: the JAR pool, then the project's sources over it by primary name (B0). */
+    static Map<String, LibrarySource>[] hostPools() {
+        var jar = new LinkedHashMap<String, LibrarySource>();
+        jar.put("com.example.Shared", LibrarySourceResolver.librarySource(JAR_SHARED));
+        var pool = new LinkedHashMap<>(jar);
+        pool.put("com.example.Current", LibrarySourceResolver.librarySource(CURRENT));
+        @SuppressWarnings("unchecked")
+        Map<String, LibrarySource>[] pools = new Map[]{pool, jar};
+        return pools;
+    }
+
+    static String outcome(JavacGateMode mode, List<String> libraries) {
+        try {
+            var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setJavacGate(mode))
+                    .compileMethod(USES_BOTH, "f", libraries);
+            return result.hasErrors() ? "errors " + result.diagnostics()
+                    : HexFormat.of().formatHex(UplcFlatEncoder.encodeProgram(result.program()));
+        } catch (RuntimeException e) {
+            return e.getClass().getSimpleName() + " " + e.getMessage();
+        }
+    }
 
     @Test
-    void aProjectUnitWinsOverAJarUnitDeclaringItsSecondaryName() {
-        String current = """
-                package com.example;
-                public class Current { public static int one() { return Shared.TWO - 1; } }
-                class Shared { static final int TWO = 2; }
-                """;
-        String jarShared = """
-                package com.example;
-                public class Shared { public static final int TWO = 3; }
-                """;
-        var jar = new LinkedHashMap<String, LibrarySource>();
-        jar.put("com.example.Shared", LibrarySourceResolver.librarySource(jarShared));
-        var pool = new LinkedHashMap<>(jar);
-        pool.put("com.example.Current", LibrarySourceResolver.librarySource(current));
-        String root = """
-                package com.example;
-                class Main { int f() { return Current.one() + Shared.TWO; } }
-                """;
-        var both = analyze(root, pool.values().stream().map(LibrarySource::source).toArray(String[]::new));
-        assertTrue(both.diagnostics().getFirst().message().contains("two library sources of equal standing"),
-                both.toString());
-        var merged = LibrarySourceResolver.withProjectPrecedence(pool, jar);
-        assertEquals(List.of("com.example.Current"), List.copyOf(merged.keySet()));
-        var result = analyze(root, merged.values().stream().map(LibrarySource::source).toArray(String[]::new));
-        assertTrue(result.isAccepted(), result::toString);
-        // With the gate off, B0's merge by primary name.
-        assertEquals(pool, withProperty(JavacGate.MODE_PROPERTY, "off",
-                () -> LibrarySourceResolver.withProjectPrecedence(pool, jar)));
+    void reportModeKeepsB0sPoolForJulcWhileTheGateUsesTheMergedPool() {
+        var pools = hostPools();
+        var b0 = LibrarySourceResolver.resolve(USES_BOTH, pools[0]);
+        assertEquals(2, b0.size(), b0.toString());
+        // Report: JuLC gets B0's pool, unchanged, and compiles exactly as with the gate off.
+        var reportPool = withProperty(JavacGate.MODE_PROPERTY, "report",
+                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1]));
+        assertEquals(pools[0], reportPool);
+        assertEquals(outcome(JavacGateMode.OFF, b0), outcome(JavacGateMode.REPORT, b0));
+        // ... while the gate decides on the merged pool: the JAR Shared is shadowed by the project's.
+        var enforcePool = withProperty(JavacGate.MODE_PROPERTY, "enforce",
+                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1]));
+        assertEquals(List.of("com.example.Current"), List.copyOf(enforcePool.keySet()));
+        var merged = LibrarySourceResolver.resolve(USES_BOTH, enforcePool);
+        var gate = JavacGate.check("compileMethod", List.of(JavacFrontend.Unit.of(USES_BOTH)),
+                b0.stream().map(JavacFrontend.Unit::of).toList(), REPORT);
+        var direct = JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(USES_BOTH)),
+                merged.stream().map(JavacFrontend.Unit::of).toList());
+        assertEquals(direct.diagnostics(), gate.diagnostics());
+        assertFalse(gate.diagnostics().stream().anyMatch(d -> d.message().contains("equal standing")), gate.toString());
+        // The project's Shared has no two(): javac rejects what the merged pool means.
+        assertEquals("compiler.err.cant.resolve.location.args", gate.diagnostics().getFirst().key(), gate.toString());
     }
+
+    @Test
+    void enforceModeHandsBothFrontendsTheMergedPool() {
+        var pools = hostPools();
+        var enforcePool = withProperty(JavacGate.MODE_PROPERTY, "enforce",
+                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1]));
+        var merged = LibrarySourceResolver.resolve(USES_BOTH, enforcePool);
+        assertEquals(List.of(CURRENT), merged);
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), ENFORCE)
+                .compileMethod(USES_BOTH, "f", merged));
+        assertEquals("compiler.err.cant.resolve.location.args", e.diagnostics().getFirst().message()
+                .substring(e.diagnostics().getFirst().message().lastIndexOf("(compiler.err.") + 1).replace(")", ""));
+        // With the gate off, B0's merge.
+        assertEquals(pools[0], withProperty(JavacGate.MODE_PROPERTY, "off",
+                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1])));
+    }
+
 
     // --- F521 (D8): pool units of equal standing declaring one name are an error, referenced or not ---
 

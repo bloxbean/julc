@@ -4,6 +4,7 @@ import org.julclang.compiler.error.DiagnosticCollector;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
+import org.julclang.compiler.frontend.javac.LibraryOrigins;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
@@ -195,19 +196,26 @@ public final class LibrarySourceResolver {
     /**
      * ADR-068 D8: same-project sources win over JAR sources over every top-level name a unit declares, not only its
      * primary name. {@code pool} is a host's merged pool (JAR sources, then same-project sources put over them by
-     * primary name); every entry still holding {@code jarSources}' unit is dropped when it declares a name a
-     * same-project entry declares, so the project's unit wins whole and the JAR unit is never offered. The order of
-     * the remaining entries is kept. With the javac gate off (where JuLC reads no declarations with javac), or
-     * without a supported javac or its resources, the pool is returned as it is: primary names only, B0's rule (the
-     * gate then reports the missing javac).
+     * primary name). The JAR texts still in it are registered ({@link LibraryOrigins}) for the javac gate, which
+     * applies the merge to the pool it hands javac in every mode. What JuLC itself compiles depends on the mode:
+     * <ul>
+     *   <li>{@code off} and {@code report}: the pool as it is, B0's merge by primary name, so JuLC's output is B0's
+     *       in every case;</li>
+     *   <li>{@code enforce}: every JAR entry that declares a name a same-project entry declares is dropped, so what
+     *       javac accepted is what JuLC compiles (a reference change of D4/I1 for a duplicate-declaration edge case;
+     *       the order of the remaining entries is kept). Without a supported javac the pool is returned as it is,
+     *       and the gate reports the missing javac.</li>
+     * </ul>
      */
     public static Map<String, LibrarySource> withProjectPrecedence(Map<String, LibrarySource> pool,
                                                                    Map<String, LibrarySource> jarSources) {
-        if (JavacGate.mode(null) == JavacGateMode.OFF) return pool;
+        JavacGateMode mode = JavacGate.mode(null);
+        if (mode == JavacGateMode.OFF) return pool;
         var jarKeys = new ArrayList<String>();
         var projectKeys = new ArrayList<String>();
         pool.forEach((key, source) -> (jarSources.get(key) == source ? jarKeys : projectKeys).add(key));
-        if (jarKeys.isEmpty() || projectKeys.isEmpty()) return pool;
+        LibraryOrigins.jar(jarKeys.stream().map(k -> pool.get(k).source()).toList());
+        if (mode != JavacGateMode.ENFORCE || jarKeys.isEmpty() || projectKeys.isEmpty()) return pool;
         var keys = new ArrayList<>(projectKeys);
         keys.addAll(jarKeys);
         Optional<List<List<String>>> names;

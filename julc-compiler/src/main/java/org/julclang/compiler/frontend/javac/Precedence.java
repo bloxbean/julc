@@ -18,11 +18,11 @@ import java.util.regex.Matcher;
  *       off javac's source path entirely, so javac never parses or enters it. Its declarations are kept in an index:
  *       where javac then cannot resolve a name that only a shadowed unit declares, that diagnostic becomes D8's
  *       named conflict, citing both declarations and their sources.</li>
+ *   <li><b>Same-project sources over JAR sources.</b> A JAR unit ({@link LibraryOrigins}) that declares a name a
+ *       same-project pool unit declares is shadowed the same way, by every declared name.</li>
  *   <li><b>Pool units of equal standing.</b> Among the pool units that are not shadowed, two that declare one
- *       qualified name are an error before javac runs, whether or not the name is referenced. Each host resolves
- *       same-project over JAR sources over every declared name when it builds its pool
- *       ({@code LibrarySourceResolver.overlay}), so the units a host passes are of equal standing; the bundled
- *       stdlib sources come last, and a host unit declaring a bundled name is {@code JULC0081} already.</li>
+ *       qualified name are an error before javac runs, whether or not the name is referenced. The bundled stdlib
+ *       sources come last, and a host unit declaring a bundled name is {@code JULC0081} already.</li>
  * </ul>
  * No declaration is silently hidden, and no outcome depends on the pool's order.
  */
@@ -30,8 +30,11 @@ final class Precedence {
 
     static final String KEY = "compiler.err.duplicate.class";
 
-    /** A declaration of a shadowed unit: the unit, and the root declaration that shadows the unit. */
-    private record Shadowed(JavacSourceFile unit, String rootName, JavacSourceFile root) {
+    /**
+     * A declaration of a shadowed unit: the unit, the name by which it is shadowed, and the unit that declares that
+     * name with precedence (a root, or a same-project source over a JAR source).
+     */
+    private record Shadowed(JavacSourceFile unit, String rootName, JavacSourceFile root, boolean byRoot) {
     }
 
     private final List<JavacSourceFile> listed;
@@ -48,12 +51,33 @@ final class Precedence {
     static Precedence of(List<JavacSourceFile> roots, List<JavacSourceFile> pool) {
         var rootDeclarers = new LinkedHashMap<String, JavacSourceFile>();
         for (var unit : roots) for (String name : unit.topLevelNames()) rootDeclarers.putIfAbsent(name, unit);
-        var shadowedUnits = new LinkedHashMap<JavacSourceFile, String>();   // unit -> the root name it declares
-        var kept = new ArrayList<JavacSourceFile>();
+        var shadowedUnits = new LinkedHashMap<JavacSourceFile, String>();   // unit -> the name it is shadowed by
+        var shadowers = new LinkedHashMap<JavacSourceFile, JavacSourceFile>();
+        var afterRoots = new ArrayList<JavacSourceFile>();
         for (var unit : pool) {
             String rootName = unit.topLevelNames().stream().filter(rootDeclarers::containsKey).findFirst().orElse(null);
-            if (rootName != null) shadowedUnits.put(unit, rootName);
-            else kept.add(unit);
+            if (rootName != null) {
+                shadowedUnits.put(unit, rootName);
+                shadowers.put(unit, rootDeclarers.get(rootName));
+            } else {
+                afterRoots.add(unit);
+            }
+        }
+        // Same-project sources over JAR sources (LibraryOrigins), by every declared name.
+        var projectDeclarers = new LinkedHashMap<String, JavacSourceFile>();
+        for (var unit : afterRoots) {
+            if (!LibraryOrigins.isJar(unit)) for (String name : unit.topLevelNames()) projectDeclarers.putIfAbsent(name, unit);
+        }
+        var kept = new ArrayList<JavacSourceFile>();
+        for (var unit : afterRoots) {
+            String projectName = !LibraryOrigins.isJar(unit) ? null
+                    : unit.topLevelNames().stream().filter(projectDeclarers::containsKey).findFirst().orElse(null);
+            if (projectName != null) {
+                shadowedUnits.put(unit, projectName);
+                shadowers.put(unit, projectDeclarers.get(projectName));
+            } else {
+                kept.add(unit);
+            }
         }
         var poolDeclarers = new LinkedHashMap<String, List<JavacSourceFile>>();
         for (var unit : kept) {
@@ -80,9 +104,12 @@ final class Precedence {
             }
         }
         var shadowed = new LinkedHashMap<String, Shadowed>();
-        shadowedUnits.forEach((unit, rootName) -> {
+        var rootSet = new HashSet<>(roots);
+        shadowedUnits.forEach((unit, by) -> {
+            JavacSourceFile shadower = shadowers.get(unit);
             for (String name : unit.topLevelNames()) {
-                if (!taken.contains(name)) shadowed.putIfAbsent(name, new Shadowed(unit, rootName, rootDeclarers.get(rootName)));
+                if (!taken.contains(name)) shadowed.putIfAbsent(name, new Shadowed(unit, by, shadower,
+                        rootSet.contains(shadower)));
             }
         });
         return new Precedence(List.copyOf(listed), shadowed, List.copyOf(duplicates));
@@ -132,8 +159,9 @@ final class Precedence {
         if (declaration == null) return d;
         return conflict(declaration.rootName(), List.of(declaration.root().displayName(),
                         declaration.unit().displayName()), d.fileName(), d.line(), d.column(), d.start(), d.end(),
-                "the root's declaration shadows " + declaration.unit().displayName() + ", which javac therefore"
-                        + " does not read, and the program needs its " + name);
+                (declaration.byRoot() ? "the root's" : "the project source's") + " declaration shadows "
+                        + declaration.unit().displayName() + ", which javac therefore does not read, and the program"
+                        + " needs its " + name);
     }
 
     private String resolve(String simple, String qualifier, JavacHints.UnitContext context) {
