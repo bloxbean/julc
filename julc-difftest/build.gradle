@@ -106,7 +106,7 @@ tasks.register('adr068Baseline', Test) {
         includeTags 'adr068-baseline'
     }
     systemProperty 'adr068.repo', rootDir.absolutePath
-    ['adr068.corpus', 'adr068.external', 'adr068.out', 'adr068.threads'].each { key ->
+    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.external', 'adr068.out', 'adr068.threads'].each { key ->
         def value = providers.gradleProperty(key)
         if (value.isPresent()) {
             systemProperty key, key in ['adr068.threads'] ? value.get() : rootProject.file(value.get()).absolutePath
