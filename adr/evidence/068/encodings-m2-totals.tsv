@@ -1,10 +1,12 @@
-blueprint.DIFFERENT	1
-blueprint.equal	4249
-encoding.DIFFERENT	1
-encoding.equal	887
+blueprint.DIFFERENT	2
+blueprint.distinct-schemas	1016
+blueprint.equal	4251
+encoding.DIFFERENT	3
+encoding.distinct-data	223
+encoding.equal	894
 encoding.no-reference: -failure	1
 encoding.no-reference: -rejected: class inheritance is not supported on-chain	4
-layouts only in sources javac rejects	120
+layouts only in sources javac rejects	25
 skip: javac rejects the case	6651
 skip: no sample of Bad.Box: no sample of org.julclang.core.types.JulcG1	1
 skip: no sample of NativeBox: no sample of org.julclang.core.types.JulcValue	1

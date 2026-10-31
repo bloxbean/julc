@@ -2,9 +2,9 @@ package org.julclang.compiler.frontend.javac;
 
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
+import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
@@ -24,12 +24,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.util.ElementFilter;
+import javax.tools.ToolProvider;
+import java.lang.classfile.Attributes;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassTransform;
+import java.lang.classfile.attribute.PermittedSubclassesAttribute;
+import java.lang.constant.ClassDesc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,8 +46,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 /** ADR-068 D7: types from javac. Expected values here are written out, or come from the JavaParser frontend. */
 class JavacTypesTest {
@@ -58,11 +69,51 @@ class JavacTypesTest {
     }
 
     private static TypeRegistry.Snapshot registry(String declarations) {
-        return read(HEADER + declarations).registry().snapshot();
+        return registryOf(HEADER + declarations);
+    }
+
+    private static TypeRegistry.Snapshot registryOf(String source) {
+        return read(source).registry().snapshot();
     }
 
     private static CompilerException rejected(String declarations) {
         return assertThrows(CompilerException.class, () -> read(HEADER + declarations));
+    }
+
+    static Stream<Arguments> builtIns() {
+        var data = new PirType.DataType();
+        var string = new PirType.StringType();
+        var bool = new PirType.BoolType();
+        return Stream.of(
+                arguments("boolean", bool), arguments("Boolean", bool), arguments("int", INTEGER), arguments("long", INTEGER),
+                arguments("BigInteger", INTEGER), arguments("byte[]", BYTES), arguments("String", string),
+                arguments("PlutusData", data), arguments("PlutusData.ConstrData", data), arguments("PlutusData.MapData", data),
+                arguments("PlutusData.ListData", data), arguments("PlutusData.IntData", data), arguments("PlutusData.BytesData", data),
+                arguments("JulcValue", new PirType.NativeValueType()), arguments("JulcG1", new PirType.NativeG1Type()),
+                arguments("JulcG2", new PirType.NativeG2Type()), arguments("JulcMlResult", new PirType.NativeMlResultType()),
+                arguments("JulcScalars", new PirType.NativeListType(INTEGER)),
+                arguments("JulcG1Points", new PirType.NativeListType(new PirType.NativeG1Type())),
+                arguments("JulcG2Points", new PirType.NativeListType(new PirType.NativeG2Type())),
+                arguments("JulcList<BigInteger>", new PirType.ListType(INTEGER)), arguments("java.util.List<byte[]>", new PirType.ListType(BYTES)),
+                arguments("JulcArray<BigInteger>", new PirType.ArrayType(INTEGER)), arguments("JulcArray", new PirType.ArrayType(data)),
+                arguments("JulcMap<byte[], BigInteger>", new PirType.MapType(BYTES, INTEGER)),
+                arguments("java.util.Map<BigInteger, byte[]>", new PirType.MapType(INTEGER, BYTES)),
+                arguments("Optional<String>", new PirType.OptionalType(string)),
+                arguments("Tuple2<BigInteger, byte[]>", new PirType.RecordType("Tuple2", List.of(field("first", INTEGER), field("second", BYTES)))),
+                arguments("Tuple2", new PirType.RecordType("Tuple2", List.of(field("first", data), field("second", data)))),
+                arguments("Tuple3<BigInteger, byte[], String>", new PirType.RecordType("Tuple3",
+                        List.of(field("first", INTEGER), field("second", BYTES), field("third", string)))),
+                arguments("AssetEntry", new PirType.RecordType("AssetEntry",
+                        List.of(field("policyId", BYTES), field("tokenName", BYTES), field("amount", INTEGER)))),
+                arguments("org.julclang.ledger.PubKeyHash", BYTES), arguments("org.julclang.ledger.TxId", BYTES));
+    }
+
+    /** The JavaParser path's reading of one source, as JulcCompiler runs it. */
+    private static TypeResolver reference(String source) {
+        var resolver = new TypeResolver();
+        new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), resolver);
+        new TypeRegistrar().registerAll(List.of(JavaSourceParser.parseCompilationUnit(source)), resolver);
+        return resolver;
     }
 
     private static PirType.Field field(String name, PirType type) {
@@ -107,6 +158,34 @@ class JavacTypesTest {
                     credential.constructors().stream().map(PirType.Constructor::name).toList());
             assertEquals(0, credential.constructors().get(0).tag());
             assertEquals(1, credential.constructors().get(1).tag());
+        }
+
+        /** I11: a stub cannot move a tag the ledger fixes, whatever else it says. */
+        @Test
+        void aStubThatMovesAFixedTagIsABrokenBuild() {
+            String credential = "org.julclang.ledger.Credential";
+            assertDoesNotThrow(() -> JavacTypeRegistrar.requireFixedTags(credential, List.of("PubKeyCredential", "ScriptCredential")));
+            assertDoesNotThrow(() -> JavacTypeRegistrar.requireFixedTags("org.julclang.ledger.Vote", List.of("anything")));
+            var e = assertThrows(BrokenJulcBuildException.class,
+                    () -> JavacTypeRegistrar.requireFixedTags(credential, List.of("ScriptCredential", "PubKeyCredential")));
+            assertTrue(e.getMessage().contains("permits [ScriptCredential, PubKeyCredential]"), e.getMessage());
+        }
+
+        /** The same rule, through a real read: blobs whose Credential stub lists its variants the other way round. */
+        @Test
+        void aReadOverAMovedCredentialStubFails() {
+            String path = "org/julclang/ledger/Credential.class";
+            var stubs = new TreeMap<>(JavacPlatform.read(JavacPlatform.resource(JavacPlatform.STUBS_RESOURCE)));
+            var model = ClassFile.of().parse(stubs.get(path));
+            var reversed = model.findAttribute(Attributes.permittedSubclasses()).orElseThrow().permittedSubclasses().reversed()
+                    .stream().map(c -> ClassDesc.ofInternalName(c.asInternalName())).toList();
+            stubs.put(path, ClassFile.of().transformClass(model, ClassTransform.dropping(e -> e instanceof PermittedSubclassesAttribute)
+                    .andThen(ClassTransform.endHandler(b -> b.with(PermittedSubclassesAttribute.ofSymbols(reversed))))));
+            var platform = JavacPlatform.of(JavacPlatform.resource(JavacPlatform.PLATFORM_RESOURCE), JavacPlatform.write(stubs));
+            var frontend = new JavacFrontend(platform, ToolProvider::getSystemJavaCompiler, JavacFrontend.BundledSources.none());
+            var e = assertThrows(BrokenJulcBuildException.class,
+                    () -> JavacProgram.analyze(frontend, List.of(JavacFrontend.Unit.of("class P {}")), List.of()));
+            assertTrue(e.getMessage().contains("org.julclang.ledger.Credential"), e.getMessage());
         }
 
         @Test
@@ -163,28 +242,18 @@ class JavacTypesTest {
             assertEquals(List.of(field("owner", user), field("ledger", BYTES)), registry.records().get("Holder").fields());
         }
 
+        /** Every simple name the reference binds to a built-in: on javac, the user's declaration wins, as in Java. */
         @ParameterizedTest
-        @ValueSource(strings = {"Optional", "List", "Map", "Tuple2", "Tuple3", "AssetEntry", "JulcList", "JulcValue"})
+        @ValueSource(strings = {"BigInteger", "String", "Boolean", "PlutusData", "ConstrData", "MapData", "ListData",
+                "IntData", "BytesData", "JulcValue", "JulcG1", "JulcG2", "JulcMlResult", "JulcScalars", "JulcG1Points",
+                "JulcG2Points", "List", "JulcList", "JulcArray", "Map", "JulcMap", "Tuple2", "Tuple3", "AssetEntry",
+                "Optional"})
         void aUserTypeNamedLikeABuiltInIsTheUsersType(String name) {
-            var registry = read("""
-                    import java.math.BigInteger;
-                    record %s(BigInteger v) {}
-                    record Holder(%s h) {}
-                    class P {}
-                    """.formatted(name, name)).registry().snapshot();
-            var user = new PirType.RecordType(name, List.of(field("v", INTEGER)));
-            assertEquals(user, registry.records().get("Holder").fields().getFirst().type());
-        }
-
-        @Test
-        void twoLocalRecordsOfOneNameAreRejectedAsTheSourcePathRejectsThem() {
-            var e = assertThrows(CompilerException.class, () -> read("""
-                    class P {
-                        static boolean a() { record R(boolean v) {} return new R(true).v(); }
-                        static byte[] b() { record R(byte[] v) {} return new R(new byte[0]).v(); }
-                    }
-                    """));
-            assertTrue(e.diagnostics().getFirst().message().contains("Duplicate record type 'P.R'"), e.getMessage());
+            var user = new PirType.RecordType(name, List.of(field("v", BYTES)));
+            var topLevel = read("record " + name + "(byte[] v) {}\nrecord Holder(" + name + " h) {}\nclass P {}\n");
+            assertEquals(user, topLevel.registry().snapshot().records().get("Holder").fields().getFirst().type());
+            var nested = read("class P { record " + name + "(byte[] v) {} record Holder(" + name + " h) {} }");
+            assertEquals(user, nested.registry().snapshot().records().get("P.Holder").fields().getFirst().type());
         }
 
         @Test
@@ -217,10 +286,10 @@ class JavacTypesTest {
             var facts = program.facts();
             var found = new ArrayList<ExecutableElement>();
             var locals = new ArrayList<PirType>();
-            new TreePathScanner<Void, Void>() {
+            new TreeScanner<Void, Void>() {
                 @Override
                 public Void visitVariable(VariableTree tree, Void unused) {
-                    if (tree.getName().contentEquals("r")) locals.add(facts.pirType(facts.type(getCurrentPath()), null));
+                    if (tree.getName().contentEquals("r")) locals.add(facts.pirType(facts.type(tree), null));
                     return super.visitVariable(tree, null);
                 }
 
@@ -228,14 +297,145 @@ class JavacTypesTest {
                 public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
                     if (tree.getMethodSelect() instanceof MemberSelectTree select
                             && select.getIdentifier().contentEquals("numerator")) {
-                        found.add((ExecutableElement) facts.element(new TreePath(getCurrentPath(), select)));
+                        found.add((ExecutableElement) facts.element(select));
                     }
                     return super.visitMethodInvocation(tree, null);
                 }
             }.scan(program.roots().getFirst(), null);
             assertEquals(new PirType.RecordType("Rational", List.of(field("denominator", INTEGER), field("numerator", INTEGER))),
                     locals.getFirst());
-            assertEquals("Rational", JavacFacts.identity((TypeElement) found.getFirst().getEnclosingElement()));
+            assertEquals("Rational", facts.identity((TypeElement) found.getFirst().getEnclosingElement()));
+        }
+
+        /** #286, at every placement the simple-name check could take for the ledger's: packaged and nested too. */
+        @ParameterizedTest
+        @ValueSource(strings = {"PubKeyHash", "ScriptHash", "ValidatorHash", "PolicyId", "TokenName", "DatumHash", "TxId"})
+        void aHashNameIsARecordWhereverItIsDeclared(String name) {
+            var user = new PirType.RecordType(name, List.of(field("h", BYTES)));
+            var packaged = read("package a.b;\nrecord " + name + "(byte[] h) {}\nrecord H(" + name + " v) {}\nclass P {}\n");
+            assertEquals(user, packaged.registry().snapshot().records().get("a.b.H").fields().getFirst().type());
+            var nested = read("class P { record " + name + "(byte[] h) {} record H(" + name + " v) {} }");
+            assertEquals(user, nested.registry().snapshot().records().get("P.H").fields().getFirst().type());
+            var topLevel = read("record " + name + "(byte[] h) {}\nrecord H(" + name + " v) {}\nclass P {}\n");
+            assertEquals(user, topLevel.registry().snapshot().records().get("H").fields().getFirst().type());
+        }
+
+        /** D3: no source takes an API type's name, at any depth; Ownership sees only top-level names (F804). */
+        @ParameterizedTest
+        @CsvSource(delimiter = '|', value = {
+                "class java { static class math { record BigInteger(byte[] b) {} } } record H(java.math.BigInteger x) {} class P {}|java.math.BigInteger",
+                "class org { static class julclang { static class ledger { record Address(byte[] b) {} } } } class P {}|org.julclang.ledger.Address",
+                "class org { static class julclang { static class ledger { record PubKeyHash(byte[] b) {} } } } class P {}|org.julclang.ledger.PubKeyHash"})
+        void aNestedTypeCannotTakeAnApiName(String source, String name) {
+            var diagnostic = assertThrows(CompilerException.class, () -> read(source)).diagnostics().getFirst();
+            assertEquals(DiagnosticCodes.LEDGER_TYPE_REDECLARED.code(), diagnostic.code(), diagnostic.message());
+            assertTrue(diagnostic.message().contains(name), diagnostic.message());
+            assertTrue(diagnostic.line() > 0);
+        }
+
+        /**
+         * F804: a user type named like a package obscures it for a lookup by name, and that once ended in a raw
+         * NullPointerException. The ledger is read from its package, so these are valid Java with a registry.
+         */
+        @ParameterizedTest
+        @ValueSource(strings = {"class org {}", "package org;\nclass julclang {}", "package org.julclang;\nclass ledger {}"})
+        void aTypeNamedLikeAPackageDoesNotLoseTheLedger(String source) {
+            var registry = read(source).registry().snapshot();
+            assertEquals(67, registry.records().keySet().stream().filter(n -> n.startsWith("org.julclang.ledger.")).count());
+            assertTrue(registry.sums().containsKey("org.julclang.ledger.Credential"));
+        }
+    }
+
+    /** Local types: Java gives them no qualified name, and the JavaParser frontend keys them by their simple name. */
+    @Nested
+    class LocalTypes {
+        /** F801: on the reference a generic method's body is never lowered, so its local record is not rejected. */
+        @Test
+        void aLocalRecordDoesNotReplaceTheSealedInterfaceOfItsName() {
+            var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of("""
+                    import java.math.BigInteger;
+                    import lib.L;
+                    class P { static L.S m() { return new L.B(BigInteger.TWO); } }
+                    """)), List.of(JavacFrontend.Unit.of("""
+                    package lib;
+                    import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.OnchainLibrary;
+                    @OnchainLibrary
+                    public class L {
+                        public sealed interface S permits A, B {}
+                        public record A() implements S {}
+                        public record B(BigInteger v) implements S {}
+                        public static <T> boolean unused(T x) { record S(byte[] b) {} return true; }
+                    }
+                    """)));
+            var sum = assertInstanceOf(PirType.SumType.class, program.registry().lookupNominal("lib.L.S").orElseThrow());
+            assertEquals(List.of("A", "B"), sum.constructors().stream().map(PirType.Constructor::name).toList());
+            assertEquals(1, sum.constructors().get(1).tag());
+            assertEquals(new PirType.RecordType("S", List.of(field("b", BYTES))),
+                    program.registry().lookupNominal("lib.L$1S").orElseThrow());
+        }
+
+        @Test
+        void aMethodReturningTheInterfaceBindsTheInterfaceNotTheLocalRecord() {
+            var program = read("""
+                    class P {
+                        sealed interface S permits A, B {}
+                        record A() implements S {}
+                        record B() implements S {}
+                        static <T> boolean unused(T x) { record S(byte[] b) {} return true; }
+                        static S m() { return new B(); }
+                    }
+                    """);
+            var returned = new ArrayList<PirType>();
+            new TreeScanner<Void, Void>() {
+                @Override
+                public Void visitMethod(MethodTree tree, Void unused) {
+                    if (tree.getName().contentEquals("m")) returned.add(program.facts().pirType(program.facts().type(tree.getReturnType()), null));
+                    return super.visitMethod(tree, null);
+                }
+            }.scan(program.roots().getFirst(), null);
+            assertInstanceOf(PirType.SumType.class, returned.getFirst());
+        }
+
+        /** The reference keys both {@code R} and rejects them as duplicates; here each has an identity of its own. */
+        @Test
+        void twoLocalRecordsOfOneNameHaveIdentitiesOfTheirOwn() {
+            String source = """
+                    class P {
+                        static boolean a() { record R(boolean v) {} return new R(true).v(); }
+                        static byte[] b() { record R(byte[] v) {} return new R(new byte[0]).v(); }
+                    }
+                    """;
+            var records = read(source).registry().snapshot().records();
+            assertEquals(List.of(field("v", new PirType.BoolType())), records.get("P$1R").fields());
+            assertEquals(List.of(field("v", BYTES)), records.get("P$2R").fields());
+            assertTrue(assertThrows(RuntimeException.class, () -> reference(source)).getMessage().contains("Duplicate record type 'R'"));
+        }
+
+        @Test
+        void aMemberTypeOfALocalRecordKeepsItsOwnIdentity() {
+            var registry = read("""
+                    class P {
+                        record Inner(boolean top) {}
+                        static boolean a() {
+                            record R(boolean v) { record Inner(byte[] nested) {} }
+                            return new R(true).v();
+                        }
+                    }
+                    """).registry().snapshot();
+            assertEquals(List.of(field("top", new PirType.BoolType())), registry.records().get("P.Inner").fields());
+            assertEquals(List.of(field("nested", BYTES)), registry.records().get("P$1R$Inner").fields());
+        }
+
+        /** The invariant the registries need; a key that collides would otherwise erase a sum silently (F801). */
+        @Test
+        void aSharedIdentityIsRejected() {
+            var sum = assertThrows(CompilerException.class,
+                    () -> JavacTypeRegistrar.requireDistinctIdentities(Set.of("a.S"), Set.of("a.S"), Set.of()));
+            assertTrue(sum.getMessage().contains("Type identity 'a.S'"), sum.getMessage());
+            assertThrows(CompilerException.class,
+                    () -> JavacTypeRegistrar.requireDistinctIdentities(Set.of("a.T"), Set.of(), Set.of("a.T")));
+            assertDoesNotThrow(() -> JavacTypeRegistrar.requireDistinctIdentities(Set.of("a.R"), Set.of("a.S"), Set.of("a.T")));
         }
     }
 
@@ -303,6 +503,32 @@ class JavacTypesTest {
             assertTrue(diagnostic.suggestion().contains("permits"), diagnostic.suggestion());
         }
 
+        /** F800: on the reference A has a tag, by the name in its implements clause, so it must not vanish here. */
+        @Test
+        void aNestedRecordImplementingAnotherTypeOfTheNameIsJulc0092NotATagShift() {
+            var e = assertThrows(CompilerException.class, () -> read("""
+                    class Other { interface S {} }
+                    sealed interface S { record A() implements Other.S {} record B() implements S {} }
+                    class P {}
+                    """));
+            assertEquals(DiagnosticCodes.SEALED_PERMITS_REQUIRED.code(), e.diagnostics().getFirst().code());
+        }
+
+        @Test
+        void aNestedRecordThatImplementsNothingIsNotAVariant() {
+            var registry = registry("""
+                    sealed interface S {
+                        record Helper(BigInteger v) {}
+                        record A(Helper h) implements S {}
+                        record B() implements S {}
+                    }
+                    class P {}
+                    """);
+            assertEquals(List.of("A", "B"), variants(registry, "S"));
+            assertFalse(registry.variants().containsKey("S.Helper"));
+            assertTrue(registry.records().containsKey("S.Helper"));
+        }
+
         @Test
         void aGenericSealedInterfaceIsMarked() {
             var registry = registry("""
@@ -342,16 +568,45 @@ class JavacTypesTest {
                     .contains("@NewType cannot be recursive: 'N'"));
         }
 
+        /** The annotation is JuLC's by identity. The reference goes by the spelling, so the encoding differs (F803). */
         @Test
         void aUsersAnnotationNamedNewTypeIsNotJulcs() {
-            var registry = read("""
+            String source = """
                     import java.math.BigInteger;
                     @interface NewType {}
-                    @NewType record N(BigInteger a, BigInteger b) {}
+                    @NewType record N(BigInteger v) {}
                     class P {}
-                    """).registry().snapshot();
+                    """;
+            var registry = read(source).registry().snapshot();
             assertFalse(registry.newTypes().containsKey("N"));
-            assertTrue(registry.records().containsKey("N"));
+            assertEquals(new PirType.RecordType("N", List.of(field("v", INTEGER))), registry.records().get("N"));
+            assertEquals(INTEGER, reference(source).snapshot().newTypes().get("N"), "the reference reads a @NewType");
+        }
+
+        /** Every spelling of JuLC's annotation is the annotation; the reference matches one marker form (F803, F828). */
+        @ParameterizedTest
+        @ValueSource(strings = {"@org.julclang.stdlib.annotation.NewType", "@NewType()", "@org.julclang.stdlib.annotation.NewType()"})
+        void anyWayOfWritingTheAnnotationIsTheAnnotation(String annotation) {
+            String source = HEADER + annotation + " record N(BigInteger v) {}\nclass P {}\n";
+            assertEquals(INTEGER, registryOf(source).newTypes().get("N"));
+            assertEquals(new PirType.RecordType("N", List.of(field("v", INTEGER))), reference(source).snapshot().records().get("N"),
+                    "the reference reads a record, so its Data is a Constr where javac's is the integer");
+        }
+
+        /** F806: the same type, written out. The reference compares strings and rejects it; identity cannot tell. */
+        @ParameterizedTest
+        @CsvSource(delimiter = '|', value = {"java.math.BigInteger|IntegerType", "java.lang.String|StringType"})
+        void aQualifiedSpellingOfASupportedTypeIsThatType(String component, String kind) {
+            String source = HEADER + "@NewType record N(" + component + " v) {}\nclass P {}\n";
+            assertEquals(kind, registryOf(source).newTypes().get("N").getClass().getSimpleName());
+            assertTrue(assertThrows(RuntimeException.class, () -> reference(source)).getMessage().contains("is not supported"));
+        }
+
+        /** F802: the reference rejects it, so the door through @NewType stays shut. */
+        @Test
+        void aNewTypeOverByteVarargsIsRejected() {
+            assertTrue(rejected("@NewType record N(byte... v) {} class P {}").diagnostics().getFirst().message()
+                    .contains("field type 'byte' is not supported"));
         }
     }
 
@@ -387,8 +642,23 @@ class JavacTypesTest {
                 "Integer|Unknown type: Integer"
         })
         void anUnsupportedComponentIsRejectedAsTheSourcePathRejectsIt(String component, String message) {
-            assertTrue(rejected("record R(" + component + " v) {} class P {}").getMessage().contains(message)
-                    || rejected("record R(" + component + " v) {} class P {}").diagnostics().getFirst().message().contains(message));
+            var diagnostic = rejected("record R(" + component + " v) {} class P {}").diagnostics().getFirst();
+            assertTrue(diagnostic.message().contains(message), diagnostic.message());
+            assertEquals(HEADER.lines().count() + 1, diagnostic.line(), "the rejection keeps its position (F843)");
+            assertEquals(10, diagnostic.column());
+            assertTrue(diagnostic.fileName().endsWith(".java"), diagnostic.fileName());
+        }
+
+        /** F830: each built-in by its identity, written out, in a position the Data-encoded rules do not touch. */
+        @ParameterizedTest
+        @MethodSource("org.julclang.compiler.frontend.javac.JavacTypesTest#builtIns")
+        void aBuiltInReadsAsItsPirType(String written, PirType expected) {
+            var program = read(HEADER + """
+                    import org.julclang.core.types.*;
+                    class P { static %s x; }
+                    """.formatted(written));
+            var field = ElementFilter.fieldsIn(program.facts().elements().getTypeElement("P").getEnclosedElements()).getFirst();
+            assertEquals(expected, program.facts().pirType(field.asType(), null));
         }
 
         /** I7: a column is a character offset, whatever the tabs before it. */
@@ -410,6 +680,17 @@ class JavacTypesTest {
         void byteVarargsAreRejectedAsTheSourcePathRejectsThem() {
             assertTrue(rejected("record R(byte... v) {} class P {}").diagnostics().getFirst().message()
                     .contains("Unsupported primitive type: byte"));
+        }
+
+        /** F802: only the canonical constructor says what a component is; this one says nothing, and the reference compiles it. */
+        @Test
+        void aVarargsConstructorThatIsNotCanonicalChangesNothing() {
+            var registry = registry("""
+                    class P {
+                        record R(BigInteger x, byte[] a) { R(byte[] y, byte... z) { this(BigInteger.ONE, z); } }
+                    }
+                    """);
+            assertEquals(List.of(field("x", INTEGER), field("a", BYTES)), registry.records().get("P.R").fields());
         }
 
         /** Java's type is an array, which the source path misreads as one integer: rejected, not misread. */
@@ -471,6 +752,13 @@ class JavacTypesTest {
             assertEquals(reference.snapshot().sums().get("Tree"), javac.sums().get("Tree"));
             assertEquals(reference.snapshot().records().get("A"), javac.records().get("A"));
             assertEquals(reference.snapshot().records().get("B"), javac.records().get("B"));
+        }
+
+        @Test
+        void aRecursiveGroupRejectionIsAtTheDeclaration() {
+            var diagnostic = rejected("record A(B b) {}\nrecord B(A a) {}\nclass P {}").diagnostics().getFirst();
+            assertEquals(HEADER.lines().count() + 1, diagnostic.line());
+            assertEquals(1, diagnostic.column());
         }
 
         @Test

@@ -17,6 +17,7 @@ import org.julclang.compiler.resolve.LedgerSourceLoader;
 import org.julclang.compiler.resolve.TypeRegistrar;
 import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.compiler.resolve.TypeResolver;
+import org.julclang.core.corpus.CorpusFiles;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -192,5 +193,19 @@ final class Adr068Types {
         if (source.contains("package org.julclang.stdlib")) return source;
         return matcher.find() ? source.substring(0, matcher.end()) + IMPLICIT + source.substring(matcher.end())
                 : IMPLICIT + source;
+    }
+
+    /** javac's verdict on a source it rejects: the code, javac's key if any, and the digest of the whole message. */
+    static String verdict(String rejection) {
+        var key = JAVAC_KEY.matcher(rejection);
+        String code = rejection.contains(":") ? rejection.substring(0, rejection.indexOf(':')) : "uncoded";
+        return code + " " + (key.find() ? key.group(1) : "-") + " " + CorpusFiles.sha256(rejection).substring(0, 16);
+    }
+
+    private static final Pattern JAVAC_KEY = Pattern.compile("\\((compiler\\.err\\.[\\w.]+)\\)");
+
+    /** Whether a rejection is javac's own, or JuLC's check before javac runs (D3, D5). */
+    static boolean byJavac(String rejection) {
+        return rejection.startsWith("JULC0085") || rejection.startsWith("JULC0081");
     }
 }

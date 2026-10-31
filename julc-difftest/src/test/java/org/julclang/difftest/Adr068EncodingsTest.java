@@ -7,6 +7,7 @@ import org.julclang.compiler.frontend.javac.JavacEvidence;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.frontend.javac.JavacProgram;
+import org.julclang.compiler.frontend.javac.LedgerLayouts;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.compiler.resolve.TypeRegistry;
@@ -106,28 +107,38 @@ class Adr068EncodingsTest {
         var differences = new ArrayList<String>();
         compare("encoding", encodings, frozenEncodings, totals, differences);
         compare("blueprint", blueprints, frozenBlueprints, totals, differences);
+        totals.put("encoding.distinct-data", new TreeSet<>(encodings.values()).size());
+        totals.put("blueprint.distinct-schemas", new TreeSet<>(blueprints.values()).size());
         skips.forEach((reason, n) -> totals.put("skip: " + reason, n));
         encodings.keySet().forEach(key -> rejectedOnly.remove(key.substring(0, key.indexOf('\t', key.indexOf('\t') + 1))));
+        references.keySet().forEach(key -> rejectedOnly.remove(key.substring(0, key.indexOf('\t', key.indexOf('\t') + 1))));
         totals.put("layouts only in sources javac rejects", rejectedOnly.size());
         conflicts.forEach((key, detail) -> differences.add("conflict\t" + key + "\t" + detail));
         var accepted = new TreeMap<>(Adr068Types.acceptedDifferences(REPO, "encoding"));
         accepted.putAll(Adr068Types.acceptedDifferences(REPO, "blueprint"));
+        Files.write(OUT.resolve("encodings-m2-differences.tsv"), differences);
         var summary = new ArrayList<String>();
         totals.forEach((kind, n) -> summary.add(kind + "\t" + n));
         Files.write(OUT.resolve("encodings-m2-totals.tsv"), summary);
-        Files.write(OUT.resolve("encodings-m2-differences.tsv"), differences);
         summary.forEach(System.out::println);
         differences.stream().limit(40).forEach(System.out::println);
         assertTrue(totals.getOrDefault("encoding.equal", 0) > 0, "no encoding was compared");
         assertTrue(totals.getOrDefault("blueprint.equal", 0) > 0, "no blueprint was compared");
         var found = new TreeSet<String>();
-        differences.forEach(line -> found.add(line.split("\t", 2)[1].replaceFirst("\t[0-9a-f]{32}\t[0-9a-f]{32}$", "")
+        differences.forEach(line -> found.add(line.split("\t", 2)[1].replaceFirst("\t[^\t]+\t[0-9a-f]{32}$", "")
                 .replace('\t', '|')));
         assertEquals(accepted.keySet(), found, "an unclassified difference (D13), or a stale entry");
     }
 
     private static void compare(String kind, Map<String, String> actual, Map<String, String> frozen,
                                 Map<String, Integer> totals, List<String> differences) {
+        // A frozen row must be seen again: a source the frontend stops accepting takes its rows out of `actual`.
+        frozen.forEach((key, digest) -> {
+            if (!actual.containsKey(key)) {
+                totals.merge(kind + ".DIFFERENT (not observed)", 1, Integer::sum);
+                differences.add(kind + "\t" + key + "\tfrozen, not observed\t" + digest);
+            }
+        });
         actual.forEach((key, digest) -> {
             String expected = frozen.get(key);
             if (expected == null) {
@@ -176,10 +187,16 @@ class Adr068EncodingsTest {
             // accepted source has. Their registries are compared by Adr068TypesTest.
             var read = Adr068Types.tolerant(Adr068Types.units(c));
             if (read.accepted()) {
+                // A variant is keyed under its sum, so it counts there, not as a record of its own.
                 read.registry().records().forEach((identity, definition) -> {
-                    if (!Adr068Encodings.ledger(identity)) rejectedOnly.add(Adr068Encodings.layout(identity, definition));
+                    if (!Adr068Encodings.ledger(identity) && !read.registry().variants().containsKey(identity)) {
+                        rejectedOnly.add(Adr068Encodings.layout(identity, definition));
+                    }
                 });
                 read.registry().sums().forEach((identity, definition) -> {
+                    if (!Adr068Encodings.ledger(identity)) rejectedOnly.add(Adr068Encodings.layout(identity, definition));
+                });
+                read.registry().newTypes().forEach((identity, definition) -> {
                     if (!Adr068Encodings.ledger(identity)) rejectedOnly.add(Adr068Encodings.layout(identity, definition));
                 });
             }
@@ -248,7 +265,8 @@ class Adr068EncodingsTest {
         var family = registry.variants().getOrDefault(sampled, List.of());
         String key = Adr068Encodings.layout(type, family.size() > 1 ? new PirType.FunType(definition, family.getLast()) : definition)
                 + "\t" + sampled + "\t" + CorpusFiles.sha256(sample.java()).substring(0, 16);
-        String digest = Adr068Encodings.digest(Adr068Encodings.encode(sample, at, registry));
+        var layout = new Adr068Encodings.Layout(registry, LedgerLayouts.NOT_CONSTRUCTOR_DATA);
+        String digest = Adr068Encodings.digest(Adr068Encodings.encode(sample, at, layout));
         var previous = encodings.putIfAbsent(key, digest);
         if (previous != null && !previous.equals(digest)) conflicts.put(key, previous + " / " + digest);
         probes.add(new Probe(key, type, sample.java()));

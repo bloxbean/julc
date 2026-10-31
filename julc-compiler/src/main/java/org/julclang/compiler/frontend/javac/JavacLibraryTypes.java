@@ -3,8 +3,7 @@ package org.julclang.compiler.frontend.javac;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.Tree;
-import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
+import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.backend.LibraryOperations;
 import org.julclang.compiler.backend.LibraryType;
@@ -12,6 +11,7 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeRegistry;
 
 import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
@@ -53,8 +53,8 @@ public final class JavacLibraryTypes {
             var metadata = JavacGate.metadata(new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE));
             return metadata.read((elements, types) -> {
                 var facts = JavacFacts.of(elements, types, new TypeRegistry());
-                var registrar = new JavacTypeRegistrar(facts);
-                registrar.registerLedger(JavacFrontend.shared().platform());
+                var registrar = new JavacTypeRegistrar(facts, JavacFrontend.shared().platform());
+                registrar.registerLedger();
                 return new JavacLibraryTypes(facts).describe(registrar);
             });
         }
@@ -65,13 +65,14 @@ public final class JavacLibraryTypes {
 
     /** Only {@code @OnchainLibrary} classes can be exported, as in the source path. */
     private static void requireLibraries(JavacFacts facts, CompilationUnitTree unit) {
-        new TreePathScanner<Void, Void>() {
+        new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
-                var element = (TypeElement) facts.element(new TreePath(getCurrentPath(), tree));
-                if (tree.getKind() == Tree.Kind.CLASS && !JavacTypeRegistrar.hasAnnotation(element, ONCHAIN_LIBRARY)) {
+                var element = (TypeElement) facts.element(tree);
+                if (tree.getKind() == Tree.Kind.CLASS && element.getNestingKind() != NestingKind.ANONYMOUS
+                        && !facts.hasAnnotation(element, ONCHAIN_LIBRARY)) {
                     throw new IllegalArgumentException("Only @OnchainLibrary sources can be exported: "
-                            + JavacFacts.identity(element));
+                            + facts.identity(element));
                 }
                 return super.visitClass(tree, null);
             }
@@ -82,7 +83,7 @@ public final class JavacLibraryTypes {
         var registry = facts.registry();
         var registered = registry.snapshot();
         var records = new LinkedHashMap<String, JavacTypeRegistrar.Declared>();
-        for (var record : declared.records()) records.put(JavacFacts.identity(record.element()), record);
+        for (var record : declared.records()) records.put(facts.identity(record.element()), record);
         var types = new LinkedHashMap<String, LibraryType>();
         var special = new LinkedHashSet<String>();
         records.forEach((identity, record) -> {
@@ -104,7 +105,7 @@ public final class JavacLibraryTypes {
                     !variant && (regular || newType) ? fields : List.of()));
         });
         for (var sum : declared.sealedInterfaces()) {
-            String identity = JavacFacts.identity(sum.element());
+            String identity = facts.identity(sum.element());
             if (!(registry.lookupNominal(identity).orElse(null) instanceof PirType.SumType representation)) continue;
             var constructors = new ArrayList<LibraryType.Constructor>();
             for (var constructor : representation.constructors()) {
@@ -136,16 +137,16 @@ public final class JavacLibraryTypes {
      * Whether a record's Data is a constructor. A ledger record's layout is keyed by FQCN, never inferred from stub
      * metadata (I11); a source record says so by the {@code toPlutusData} it declares.
      */
-    private static boolean constructorData(JavacTypeRegistrar.Declared record, String identity) {
+    private boolean constructorData(JavacTypeRegistrar.Declared record, String identity) {
         if (record.tree() == null) return !LedgerLayouts.NOT_CONSTRUCTOR_DATA.contains(identity);
         return ElementFilter.methodsIn(record.element().getEnclosedElements()).stream()
                 .filter(method -> method.getSimpleName().contentEquals("toPlutusData"))
                 .allMatch(method -> method.getReturnType() instanceof DeclaredType declared
-                        && JavacFacts.identity((TypeElement) declared.asElement()).equals(CONSTR_DATA));
+                        && facts.identity((TypeElement) declared.asElement()).equals(CONSTR_DATA));
     }
 
     private List<LibraryType.Field> fields(TypeElement record) {
-        return record.getRecordComponents().stream().map(component ->
+        return facts.components(record).stream().map(component ->
                 new LibraryType.Field(component.getSimpleName().toString(), reference(component.asType()))).toList();
     }
 
@@ -165,7 +166,7 @@ public final class JavacLibraryTypes {
 
     private LibraryType.Reference declared(DeclaredType type) {
         var arguments = type.getTypeArguments().stream().map(this::reference).toList();
-        String identity = JavacFacts.identity((TypeElement) type.asElement());
+        String identity = facts.identity((TypeElement) type.asElement());
         // Nominal identities before primitive aliases; identity is never inferred from erased PIR.
         if (facts.registry().lookupNominal(identity).isPresent()) {
             if (!arguments.isEmpty()) throw unsupported(type);

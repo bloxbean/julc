@@ -12,7 +12,9 @@ import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -46,6 +48,7 @@ public final class JavacPlatform {
     private final String stubsDigest;
     private final int platformCount;
     private final int stubsCount;
+    private final Set<String> identities;
 
     private JavacPlatform(byte[] platformBlob, byte[] stubsBlob) {
         system = index(read(platformBlob), JAVA_BASE + "/");
@@ -54,6 +57,12 @@ public final class JavacPlatform {
         stubsDigest = sha256(stubsBlob);
         platformCount = count(system);
         stubsCount = count(classPath);
+        var names = new HashSet<String>();
+        for (var index : List.of(system, classPath)) {
+            index.forEach((pkg, files) -> files.keySet().forEach(
+                    file -> names.add((pkg.isEmpty() ? "" : pkg + ".") + file.replace('$', '.'))));
+        }
+        identities = Set.copyOf(names);
     }
 
     private static volatile JavacPlatform shared;
@@ -117,6 +126,11 @@ public final class JavacPlatform {
     /** The packages the stubs define. */
     public Set<String> stubPackages() {
         return classPath.keySet();
+    }
+
+    /** Whether {@code identity} names a class of the platform or the stubs, at any depth. */
+    public boolean declares(String identity) {
+        return identities.contains(identity);
     }
 
     /** The qualified names of the stubs' top-level classes. */

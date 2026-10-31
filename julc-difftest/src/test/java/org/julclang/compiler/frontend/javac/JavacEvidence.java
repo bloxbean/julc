@@ -7,8 +7,6 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.TreeScanner;
 
 import javax.lang.model.element.ExecutableElement;
@@ -28,7 +26,6 @@ public final class JavacEvidence {
 
     /** The position of the closing brace of the unit's first class (the JavaParser frontend's method target), or -1. */
     public static int firstClassEnd(JavacProgram program) {
-        var unit = program.roots().getFirst();
         var first = new ClassTree[1];
         new TreeScanner<Void, Void>() {
             @Override
@@ -36,9 +33,8 @@ public final class JavacEvidence {
                 if (first[0] == null && tree.getKind() == Tree.Kind.CLASS) first[0] = tree;
                 return first[0] != null ? null : super.visitClass(tree, null);
             }
-        }.scan(unit, null);
-        if (first[0] == null) return -1;
-        return (int) program.facts().trees().getSourcePositions().getEndPosition(unit, first[0]) - 1;
+        }.scan(program.roots().getFirst(), null);
+        return first[0] == null ? -1 : (int) program.facts().end(first[0]) - 1;
     }
 
     /**
@@ -47,7 +43,7 @@ public final class JavacEvidence {
      * {@code at}, a position of the original text; -1 inserts nothing.
      */
     public static String declarationsOnly(JavacProgram program, CompilationUnitTree unit, int at, String insert) throws IOException {
-        var positions = program.facts().trees().getSourcePositions();
+        var facts = program.facts();
         var text = new StringBuilder(unit.getSourceFile().getCharContent(true));
         new TreeScanner<Void, Void>() {
             @Override
@@ -56,7 +52,7 @@ public final class JavacEvidence {
                     boolean component = tree.getKind() == Tree.Kind.RECORD && member instanceof VariableTree variable
                             && !variable.getModifiers().getFlags().contains(Modifier.STATIC);
                     if (member instanceof ClassTree || component) continue;
-                    long start = positions.getStartPosition(unit, member), end = positions.getEndPosition(unit, member);
+                    long start = facts.start(member), end = facts.end(member);
                     if (start < 0 || end < 0) continue;
                     for (int i = (int) start; i < end; i++) {
                         if (text.charAt(i) != '\n') text.setCharAt(i, ' ');
@@ -80,28 +76,41 @@ public final class JavacEvidence {
 
     /** The declared type of a field {@code field} of a class of the root, or null. */
     public static TypeMirror fieldType(JavacProgram program, String field) {
-        var unit = program.roots().getFirst();
+        var facts = program.facts();
         var found = new TypeMirror[1];
-        scan(unit, (tree, path) -> {
-            if (tree instanceof VariableTree variable && variable.getName().contentEquals(field) && found[0] == null
-                    && path.getParentPath().getLeaf() instanceof ClassTree) {
-                found[0] = program.facts().element(path).asType();
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitVariable(VariableTree tree, Void unused) {
+                if (found[0] == null && tree.getName().contentEquals(field) && facts.parent(tree) instanceof ClassTree) {
+                    found[0] = facts.element(tree).asType();
+                }
+                return super.visitVariable(tree, null);
             }
-        });
+        }.scan(program.roots().getFirst(), null);
         return found[0];
     }
 
     private static List<ExecutableElement> methods(JavacProgram program, String name) {
         var result = new ArrayList<ExecutableElement>();
-        scan(program.roots().getFirst(), (tree, path) -> {
-            if (tree instanceof MethodTree method && method.getName().contentEquals(name)) {
-                result.add((ExecutableElement) program.facts().element(path));
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitMethod(MethodTree tree, Void unused) {
+                if (tree.getName().contentEquals(name)) result.add((ExecutableElement) program.facts().element(tree));
+                return super.visitMethod(tree, null);
             }
-        });
+        }.scan(program.roots().getFirst(), null);
         return result;
     }
 
-    /** The registered type elements a sample needs: a top-level or nested type by identity, or null. */
+    /** The texts of the units javac read: the library units, then the root. */
+    public static List<String> readUnits(JavacProgram program) throws IOException {
+        var texts = new ArrayList<String>();
+        for (var unit : program.libraries()) texts.add(unit.getSourceFile().getCharContent(true).toString());
+        for (var unit : program.roots()) texts.add(unit.getSourceFile().getCharContent(true).toString());
+        return texts;
+    }
+
+    /** A registered type's element by identity, or null for a local type, which has no name to look up. */
     public static TypeElement type(JavacProgram program, String identity) {
         return program.facts().elements().getTypeElement(identity);
     }
@@ -110,30 +119,21 @@ public final class JavacEvidence {
     public static List<String> bindings(JavacProgram program) {
         var result = new ArrayList<String>();
         var facts = program.facts();
-        scan(program.roots().getFirst(), (tree, path) -> {
-            if (tree instanceof NewClassTree) {
-                var constructor = (ExecutableElement) facts.element(path);
-                result.add("new " + JavacFacts.identity((TypeElement) constructor.getEnclosingElement()));
-            }
-            if (tree instanceof MethodInvocationTree call) {
-                var method = (ExecutableElement) facts.element(new TreePath(path, call.getMethodSelect()));
-                result.add(JavacFacts.identity((TypeElement) method.getEnclosingElement()) + "." + method.getSimpleName());
-            }
-        });
-        return result;
-    }
-
-    private interface Visitor {
-        void visit(Tree tree, TreePath path);
-    }
-
-    private static void scan(CompilationUnitTree unit, Visitor visitor) {
-        new TreePathScanner<Void, Void>() {
+        new TreeScanner<Void, Void>() {
             @Override
-            public Void scan(Tree tree, Void unused) {
-                if (tree != null) visitor.visit(tree, new TreePath(getCurrentPath(), tree));
-                return super.scan(tree, null);
+            public Void visitNewClass(NewClassTree tree, Void unused) {
+                var constructor = (ExecutableElement) facts.element(tree);
+                result.add("new " + facts.identity((TypeElement) constructor.getEnclosingElement()));
+                return super.visitNewClass(tree, null);
             }
-        }.scan(unit, null);
+
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
+                var method = (ExecutableElement) facts.element(tree.getMethodSelect());
+                result.add(facts.identity((TypeElement) method.getEnclosingElement()) + "." + method.getSimpleName());
+                return super.visitMethodInvocation(tree, null);
+            }
+        }.scan(program.roots().getFirst(), null);
+        return result;
     }
 }

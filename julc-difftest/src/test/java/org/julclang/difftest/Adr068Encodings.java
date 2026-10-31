@@ -17,13 +17,15 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * ADR-068 M2 (I11): one sample value of a type, and its Data computed from a registry alone.
  * <p>
  * A {@link Sample} is built from javac's model, for a type's names; every leaf has a value of its own, so a field out
- * of place changes the Data. {@link #encode} is hand-written against JuLC's Data rules and reads tags, field order and
- * field types only from the registry under test. Its result is compared with the frozen reference, which comes from
+ * of place changes the Data. {@link #encode} is hand-written against JuLC's Data rules. It reads tags, field order and
+ * field types only from the {@link Layout} under test, and checks at each position that the sample fits the type the
+ * registry gives there, so a retyped field fails. Its result is compared with the frozen reference, which comes from
  * elsewhere: a program the JavaParser frontend compiled, evaluated on the VM ({@code Adr068EncodingsTest}), or the
  * ledger's own {@code toPlutusData}. So a wrong tag, order or field type in the registry fails.
  */
@@ -41,15 +43,22 @@ final class Adr068Encodings {
     record BoolSample(boolean value, String java) implements Sample { }
     /** A {@code PlutusData} value: an {@code IntData}. */
     record DataSample(BigInteger value, String java) implements Sample { }
-    /** A map-encoded ledger {@code Value}: one lovelace entry. */
-    record ValueSample(BigInteger lovelace, String java) implements Sample { }
     record ListSample(List<Sample> items, String java) implements Sample { }
     record MapSample(Sample key, Sample value, String java) implements Sample { }
     record OptionalSample(Sample value, String java) implements Sample { }
     /** A record or variant, by identity: its components by name. */
     record RecordSample(String identity, List<String> names, List<Sample> fields, String java) implements Sample { }
+    /** A {@code @NewType} value, which is its underlying value. */
+    record NewTypeSample(Sample value, String java) implements Sample { }
 
-    /** A sample cannot be built: {@link #reason} says why. */
+    /**
+     * What decides a value's Data: the registry, and the records whose Data is not a constructor. A frontend's reading
+     * of both is what is under test, so each caller passes the one it read.
+     */
+    record Layout(TypeRegistry.Snapshot registry, Set<String> notConstructorData) {
+    }
+
+    /** A sample cannot be built: the message says why. */
     static final class NoSample extends RuntimeException {
         NoSample(String reason) {
             super(reason, null, false, false);
@@ -80,7 +89,7 @@ final class Adr068Encodings {
         Sample of(TypeMirror type, int depth) {
             if (depth >= DEPTH - 1) {
                 // A recursive type bottoms out in an empty container.
-                String identity = type instanceof DeclaredType declared ? JavacFacts.identity((TypeElement) declared.asElement()) : "";
+                String identity = type instanceof DeclaredType declared ? facts.identity((TypeElement) declared.asElement()) : "";
                 if (identity.equals(TYPES + "JulcList") || identity.equals("java.util.List")) {
                     return new ListSample(List.of(), "JulcList.empty()");
                 }
@@ -104,7 +113,7 @@ final class Adr068Encodings {
 
         private Sample declared(DeclaredType type, int n, int depth) {
             var element = (TypeElement) type.asElement();
-            String identity = JavacFacts.identity(element);
+            String identity = facts.identity(element);
             var arguments = type.getTypeArguments();
             return switch (identity) {
                 case "java.math.BigInteger" -> new IntegerSample(BigInteger.valueOf(n), "BigInteger.valueOf(" + n + ")");
@@ -129,9 +138,21 @@ final class Adr068Encodings {
                     var value = of(arguments.getFirst(), depth + 1);
                     yield new OptionalSample(value, "Optional.of(" + value.java() + ")");
                 }
-                case TYPES + "Tuple2", TYPES + "Tuple3" -> throw new NoSample("tuple " + identity);
-                case LedgerLayouts.PACKAGE + ".Value" -> new ValueSample(BigInteger.valueOf(n),
-                        "Value.lovelace(BigInteger.valueOf(" + n + "))");
+                case TYPES + "Tuple2", TYPES + "Tuple3" -> {
+                    if (arguments.isEmpty()) throw new NoSample("raw " + identity);
+                    var names = List.of("first", "second", "third").subList(0, arguments.size());
+                    var fields = new ArrayList<Sample>();
+                    for (TypeMirror argument : arguments) fields.add(of(argument, depth + 1));
+                    yield new RecordSample(identity, names, fields, "new " + type + "("
+                            + String.join(", ", fields.stream().map(Sample::java).toList()) + ")");
+                }
+                case TYPES + "AssetEntry" -> record(element, depth + 1);
+                case LedgerLayouts.PACKAGE + ".Value" -> {
+                    var none = new BytesSample(new byte[0], "");
+                    var tokens = new MapSample(none, new IntegerSample(BigInteger.valueOf(n), ""), "");
+                    yield new RecordSample(identity, List.of("inner"), List.of(new MapSample(none, tokens, "")),
+                            "Value.lovelace(BigInteger.valueOf(" + n + "))");
+                }
                 default -> {
                     if (TypeRegistry.ledgerHashFqcns().contains(identity)) {
                         var bytes = (BytesSample) of(arrayOfBytes(), depth + 1);
@@ -148,53 +169,46 @@ final class Adr068Encodings {
 
         private Sample named(TypeElement element, String identity, int depth) {
             if (registry.newTypes().containsKey(identity)) {
-                var value = of(element.getRecordComponents().getFirst().asType(), depth + 1);
+                var value = of(facts.components(element).getFirst().asType(), depth + 1);
                 return new NewTypeSample(value, "new " + identity + "(" + value.java() + ")");
             }
             if (registry.sums().containsKey(identity)) {
                 NoSample failure = null;
-                for (var variant : element.getPermittedSubclasses()) {
+                for (var variant : facts.permitted(element)) {
                     try {
-                        return record(complete(facts.typeElement(variant)), depth + 1);
+                        return record(variant, depth + 1);
                     } catch (NoSample e) {
                         failure = e;
                     }
                 }
                 throw failure != null ? failure : new NoSample("sealed interface with no variant " + identity);
             }
-            if (registry.records().containsKey(identity)) return record(complete(element), depth + 1);
+            if (registry.records().containsKey(identity)) return record(element, depth + 1);
             throw new NoSample("no sample of " + identity);
-        }
-
-        private TypeElement complete(TypeElement type) {
-            return facts.elements().getTypeElement(type.getQualifiedName());
         }
 
         /** A sample of a record, or of a sealed interface's variant. */
         RecordSample record(TypeElement record, int depth) {
             var names = new ArrayList<String>();
             var fields = new ArrayList<Sample>();
-            for (var component : record.getRecordComponents()) {
+            for (var component : facts.components(record)) {
                 names.add(component.getSimpleName().toString());
                 fields.add(of(component.asType(), depth));
             }
-            String identity = JavacFacts.identity(record);
+            String identity = facts.identity(record);
             var arguments = String.join(", ", fields.stream().map(Sample::java).toList());
             return new RecordSample(identity, names, fields, "new " + identity + "(" + arguments + ")");
         }
 
         /** The value of a {@code @NewType}: {@code new X(v)} is {@code v}. */
         Sample newType(TypeElement element) {
-            return named(element, JavacFacts.identity(element), 0);
+            return named(element, facts.identity(element), 0);
         }
     }
 
-    /** A {@code @NewType} value, which is its underlying value. */
-    record NewTypeSample(Sample value, String java) implements Sample { }
-
-    /** The Data of {@code sample} at {@code type}, reading tags, order and field types from {@code registry} alone. */
-    static PlutusData encode(Sample sample, PirType type, TypeRegistry.Snapshot registry) {
-        PirType resolved = type instanceof PirType.NamedTypeRef ref ? named(ref, registry) : type;
+    /** The Data of {@code sample} at {@code type}, reading tags, order and field types from {@code layout} alone. */
+    static PlutusData encode(Sample sample, PirType type, Layout layout) {
+        PirType resolved = type instanceof PirType.NamedTypeRef ref ? named(ref, layout.registry()) : type;
         return switch (sample) {
             case IntegerSample s -> {
                 expect(resolved, PirType.IntegerType.class, sample);
@@ -216,22 +230,24 @@ final class Adr068Encodings {
                 expect(resolved, PirType.DataType.class, sample);
                 yield new PlutusData.IntData(s.value());
             }
-            case NewTypeSample s -> encode(s.value(), resolved, registry);
-            case ValueSample s -> {
-                var inner = new PlutusData.MapData(List.of(new PlutusData.Pair(new PlutusData.BytesData(new byte[0]),
-                        new PlutusData.IntData(s.lovelace()))));
-                yield new PlutusData.MapData(List.of(new PlutusData.Pair(new PlutusData.BytesData(new byte[0]), inner)));
+            case NewTypeSample s -> encode(s.value(), resolved, layout);
+            case ListSample s -> {
+                expect(resolved, PirType.ListType.class, sample);
+                yield new PlutusData.ListData(s.items().stream()
+                        .map(item -> encode(item, ((PirType.ListType) resolved).elemType(), layout)).toList());
             }
-            case ListSample s -> new PlutusData.ListData(s.items().stream()
-                    .map(item -> encode(item, ((PirType.ListType) resolved).elemType(), registry)).toList());
             case MapSample s -> {
+                expect(resolved, PirType.MapType.class, sample);
                 var map = (PirType.MapType) resolved;
-                yield new PlutusData.MapData(List.of(new PlutusData.Pair(encode(s.key(), map.keyType(), registry),
-                        encode(s.value(), map.valueType(), registry))));
+                yield new PlutusData.MapData(List.of(new PlutusData.Pair(encode(s.key(), map.keyType(), layout),
+                        encode(s.value(), map.valueType(), layout))));
             }
-            case OptionalSample s -> s.value() == null ? new PlutusData.ConstrData(1, List.of())
-                    : new PlutusData.ConstrData(0, List.of(encode(s.value(), ((PirType.OptionalType) resolved).elemType(), registry)));
-            case RecordSample s -> record(s, registry);
+            case OptionalSample s -> {
+                expect(resolved, PirType.OptionalType.class, sample);
+                yield s.value() == null ? new PlutusData.ConstrData(1, List.of())
+                        : new PlutusData.ConstrData(0, List.of(encode(s.value(), ((PirType.OptionalType) resolved).elemType(), layout)));
+            }
+            case RecordSample s -> record(s, resolved, layout);
         };
     }
 
@@ -243,19 +259,29 @@ final class Adr068Encodings {
         return ref.kind() == PirType.NamedKind.RECORD ? registry.records().get(ref.stableId()) : registry.sums().get(ref.stableId());
     }
 
-    private static PlutusData record(RecordSample sample, TypeRegistry.Snapshot registry) {
+    private static PlutusData record(RecordSample sample, PirType at, Layout layout) {
+        var registry = layout.registry();
+        String simple = sample.identity().substring(sample.identity().lastIndexOf('.') + 1);
+        boolean fits = switch (at) {
+            case PirType.RecordType record -> record.name().equals(simple);
+            case PirType.SumType sum -> sum.constructors().stream().anyMatch(c -> c.name().equals(simple));
+            default -> false;
+        };
+        if (!fits) throw new IllegalStateException("a " + sample.identity() + " at type " + at);
+
         var parents = registry.variants().get(sample.identity());
         int tag = 0;
         List<PirType.Field> fields;
-        String simple = sample.identity().substring(sample.identity().lastIndexOf('.') + 1);
         if (parents != null) {
             // Two sealed parents (#279, rejected by ADR-067 D6): the last registered one gives the tag, as in lowering.
             var constructor = parents.getLast().constructors().stream().filter(c -> c.name().equals(simple)).findFirst()
                     .orElseThrow(() -> new IllegalStateException("no constructor " + simple + " in " + parents.getLast()));
             tag = constructor.tag();
             fields = constructor.fields();
-        } else {
+        } else if (registry.records().containsKey(sample.identity())) {
             fields = registry.records().get(sample.identity()).fields();
+        } else {
+            fields = ((PirType.RecordType) at).fields();     // Tuple2, Tuple3, AssetEntry: built-in, not registered
         }
         if (fields.size() != sample.fields().size()) {
             throw new IllegalStateException(sample.identity() + " has " + fields.size() + " fields, its sample "
@@ -265,7 +291,12 @@ final class Adr068Encodings {
         for (var field : fields) {
             int index = sample.names().indexOf(field.name());
             if (index < 0) throw new IllegalStateException("no component " + field.name() + " in " + sample.identity());
-            data.add(encode(sample.fields().get(index), field.type(), registry));
+            data.add(encode(sample.fields().get(index), field.type(), layout));
+        }
+        // A record whose Data is not a constructor is its one field's Data: Value is its map.
+        if (layout.notConstructorData().contains(sample.identity())) {
+            if (data.size() != 1) throw new IllegalStateException(sample.identity() + " is not one field");
+            return data.getFirst();
         }
         return new PlutusData.ConstrData(tag, data);
     }

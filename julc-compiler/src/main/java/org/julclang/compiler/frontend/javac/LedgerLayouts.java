@@ -6,7 +6,7 @@ import java.util.Set;
 
 /**
  * The ledger's Data layouts that are JuLC's policy, keyed by FQCN (ADR-068 I11): they are never inferred from stub
- * metadata. Ledger hash types, which are their bytes, are {@code TypeResolver.ledgerHashFqcns()}.
+ * metadata. Ledger hash types, which are their bytes, are {@code TypeRegistry.ledgerHashFqcns()}.
  */
 public final class LedgerLayouts {
 

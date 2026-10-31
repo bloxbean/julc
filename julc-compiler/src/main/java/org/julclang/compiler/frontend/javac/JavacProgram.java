@@ -46,19 +46,17 @@ public final class JavacProgram {
     static JavacProgram analyze(JavacFrontend frontend, List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
         var attribution = frontend.attribute(roots, pool);
         if (!attribution.result().isAccepted()) throw new CompilerException(attribution.result().compilerDiagnostics());
+        return read(frontend, attribution);
+    }
+
+    /** The ledger's and the attributed units' types: library units first, in qualified-name order, then the roots. */
+    static JavacProgram read(JavacFrontend frontend, JavacFrontend.Attribution attribution) {
         var facts = JavacFacts.of(attribution, new TypeRegistry());
-        var registrar = new JavacTypeRegistrar(facts);
-        registrar.registerLedger(frontend.platform());
+        var registrar = new JavacTypeRegistrar(facts, frontend.platform());
+        registrar.registerLedger();
         var units = new ArrayList<>(attribution.libraries());
         units.addAll(attribution.roots());
-        try {
-            registrar.registerSources(units);
-        } catch (CompilerException e) {
-            if (!e.diagnostics().isEmpty()) throw e;
-            // As the source path reports a type it cannot resolve.
-            throw new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, e.getMessage(),
-                    "<source>", 0, 0)));
-        }
+        registrar.registerSources(units);
         return new JavacProgram(facts, registrar, attribution.roots(), attribution.libraries());
     }
 
@@ -92,13 +90,12 @@ public final class JavacProgram {
                 if (declaration instanceof ClassTree type) {
                     var method = firstMethod(type);
                     if (method != null) {
-                        return notPorted("the method '" + method.getName() + "' of " + type.getSimpleName(), unit, method);
+                        return notPorted("the method '" + method.getName() + "' of " + type.getSimpleName(), method);
                     }
                 }
             }
         }
-        var unit = roots.getFirst();
-        return notPorted("this compilation unit", unit, unit);
+        return notPorted("this compilation unit", roots.getFirst());
     }
 
     private static MethodTree firstMethod(ClassTree type) {
@@ -113,9 +110,9 @@ public final class JavacProgram {
         return null;
     }
 
-    private CompilerException notPorted(String construct, CompilationUnitTree unit, Tree tree) {
+    private CompilerException notPorted(String construct, Tree tree) {
         var info = DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED;
-        var location = facts.location(unit, tree);
+        var location = facts.location(tree);
         return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(construct),
                 location.fileName(), location.line(), location.column(), info.fix(), info.code())));
     }

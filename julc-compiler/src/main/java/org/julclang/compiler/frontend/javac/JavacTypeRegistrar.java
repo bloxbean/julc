@@ -4,8 +4,7 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
+import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.error.CompilerDiagnostic;
@@ -13,11 +12,10 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeGroups;
 import org.julclang.compiler.resolve.TypeRegistry;
-import org.julclang.core.source.SourceLocation;
 
-import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.RecordComponentElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
@@ -31,44 +29,55 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Registers records, sealed interfaces, {@code @NewType} and ledger types from javac's model (ADR-068 D7, I11). The
  * ledger comes from the signature stubs, so no ledger source is parsed; everything else from the units javac
- * attributed. Types are registered by identity into the same {@link TypeRegistry} registries the JavaParser frontend
- * fills, and in the same order (dependencies first, by {@link TypeRegistrar#dependencyGroups}), so a recursive group's
- * references come out alike.
+ * attributed. Types are registered by identity into a {@link TypeRegistry}, in the JavaParser frontend's order
+ * (dependencies first, by {@link TypeGroups#dependencyGroups}), so a recursive group's references come out alike.
  * <p>
  * Tags (I11): a source interface's follow its {@code permits} clause; without one, the records nested in it in
- * {@code ClassTree.getMembers()} order, and javac's permitted subclasses must be exactly those. A class-file
- * interface's follow its {@code PermittedSubclasses} attribute.
+ * {@code ClassTree.getMembers()} order, counting every nested record whose {@code implements} clause names a type of
+ * the interface's simple name, as the JavaParser frontend counts them; and javac's permitted subclasses must be exactly
+ * that list, or {@code JULC0092}. A class-file interface's follow its {@code PermittedSubclasses} attribute.
  */
 final class JavacTypeRegistrar {
 
     private static final String NEW_TYPE = "org.julclang.stdlib.annotation.NewType";
 
     /** A record or sealed interface, with its tree when it comes from source. */
-    record Declared(TypeElement element, ClassTree tree, CompilationUnitTree unit) {
+    record Declared(TypeElement element, ClassTree tree) {
     }
 
     private final JavacFacts facts;
+    private final JavacPlatform platform;
     private final TypeRegistry registry;
     private final List<Declared> records = new ArrayList<>();
     private final List<Declared> interfaces = new ArrayList<>();
 
-    JavacTypeRegistrar(JavacFacts facts) {
+    JavacTypeRegistrar(JavacFacts facts, JavacPlatform platform) {
         this.facts = facts;
+        this.platform = platform;
         this.registry = facts.registry();
     }
 
-    /** Registers every ledger type of the stubs, in the order of the ledger's sources. */
-    void registerLedger(JavacPlatform platform) {
+    /**
+     * Registers every ledger type of the stubs, in the order of the ledger's sources. The package's members are listed,
+     * not looked up by name: a name goes through {@code Elements.getTypeElement}, where a user's {@code class org}
+     * obscures the package.
+     */
+    void registerLedger() {
+        var ledger = facts.elements().getPackageElement(LedgerLayouts.PACKAGE);
+        if (ledger == null) throw new BrokenJulcBuildException("the javac stubs do not define " + LedgerLayouts.PACKAGE);
+        var topLevel = new TreeMap<String, TypeElement>();
+        for (TypeElement type : ElementFilter.typesIn(ledger.getEnclosedElements())) {
+            String identity = facts.identity(type);
+            if (!TypeRegistry.ledgerHashFqcns().contains(identity)) topLevel.put(identity, type);
+        }
         var records = new LinkedHashMap<String, Declared>();
         var sealed = new LinkedHashMap<String, Declared>();
-        for (String name : platform.stubTopLevelNames()) {
-            if (!name.startsWith(LedgerLayouts.PACKAGE + ".") || TypeRegistry.ledgerHashFqcns().contains(name)) continue;
-            collect(facts.elements().getTypeElement(name), records, sealed);
-        }
+        topLevel.values().forEach(type -> collect(type, records, sealed));
         register(records, sealed);
     }
 
@@ -83,11 +92,9 @@ final class JavacTypeRegistrar {
     }
 
     private void collect(TypeElement type, Map<String, Declared> records, Map<String, Declared> sealed) {
-        // getRecordComponents() does not complete a class reached through another; getTypeElement does.
-        TypeElement complete = facts.elements().getTypeElement(type.getQualifiedName());
-        if (complete.getKind() == ElementKind.RECORD) records.put(JavacFacts.identity(complete), new Declared(complete, null, null));
-        if (isSealedInterface(complete)) sealed.put(JavacFacts.identity(complete), new Declared(complete, null, null));
-        for (TypeElement nested : ElementFilter.typesIn(complete.getEnclosedElements())) collect(nested, records, sealed);
+        if (type.getKind() == ElementKind.RECORD) records.put(facts.identity(type), new Declared(type, null));
+        if (isSealedInterface(type)) sealed.put(facts.identity(type), new Declared(type, null));
+        for (TypeElement nested : ElementFilter.typesIn(type.getEnclosedElements())) collect(nested, records, sealed);
     }
 
     /** Registers the records and sealed interfaces of {@code units}, at any depth, in source order. */
@@ -95,22 +102,33 @@ final class JavacTypeRegistrar {
         var records = new LinkedHashMap<String, Declared>();
         var sealed = new LinkedHashMap<String, Declared>();
         for (CompilationUnitTree unit : units) {
-            new TreePathScanner<Void, Void>() {
+            new TreeScanner<Void, Void>() {
                 @Override
                 public Void visitClass(ClassTree tree, Void unused) {
-                    var element = (TypeElement) facts.element(new TreePath(getCurrentPath(), tree));
-                    var declared = new Declared(element, tree, unit);
-                    // Only local types can share an identity: javac rejects every other duplicate.
-                    if (element.getKind() == ElementKind.RECORD && records.putIfAbsent(JavacFacts.identity(element), declared) != null) {
-                        throw errorAt(declared, "Duplicate record type '" + JavacFacts.identity(element)
-                                + "' found across compilation units");
-                    }
-                    if (isSealedInterface(element)) sealed.put(JavacFacts.identity(element), declared);
+                    var element = (TypeElement) facts.element(tree);
+                    requireNoApiIdentity(element, tree);
+                    var declared = new Declared(element, tree);
+                    if (element.getKind() == ElementKind.RECORD) records.put(facts.identity(element), declared);
+                    if (isSealedInterface(element)) sealed.put(facts.identity(element), declared);
                     return super.visitClass(tree, null);
                 }
             }.scan(unit, null);
         }
         register(records, sealed);
+    }
+
+    /**
+     * {@code JULC0081} at any depth: {@code Ownership} checks top-level names before javac runs, but a nested class of
+     * a user's {@code class java} can take the qualified name of an API type too. No source replaces one (D3).
+     */
+    private void requireNoApiIdentity(TypeElement type, ClassTree tree) {
+        if (type.getNestingKind() == NestingKind.TOP_LEVEL || !platform.declares(facts.identity(type))) return;
+        var info = DiagnosticCodes.LEDGER_TYPE_REDECLARED;
+        var at = facts.location(tree);
+        throw new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
+                info.format(at.fileName(), facts.identity(type), "API"), at.fileName(), at.line(), at.column(),
+                "Rename the type or the class around it: a name of JuLC's API or of the platform means that type (ADR-068 D3)",
+                info.code())));
     }
 
     private static boolean isSealedInterface(TypeElement type) {
@@ -122,13 +140,18 @@ final class JavacTypeRegistrar {
         this.interfaces.addAll(sealed.values());
         var variants = new LinkedHashMap<String, List<TypeElement>>();
         sealed.forEach((identity, declared) -> variants.put(identity, variants(declared)));
+        var nonRecordVariants = new LinkedHashSet<String>();
+        variants.values().forEach(list -> list.forEach(variant -> {
+            if (variant.getKind() != ElementKind.RECORD) nonRecordVariants.add(facts.identity(variant));
+        }));
+        requireDistinctIdentities(records.keySet(), sealed.keySet(), nonRecordVariants);
 
         var names = new LinkedHashSet<>(records.keySet());
         names.addAll(sealed.keySet());
         var deps = new LinkedHashMap<String, Set<String>>();
         records.forEach((identity, declared) -> {
             var found = new LinkedHashSet<String>();
-            for (RecordComponentElement component : declared.element().getRecordComponents()) {
+            for (RecordComponentElement component : facts.components(declared.element())) {
                 dependencies(component.asType(), names, found);
             }
             deps.put(identity, found);
@@ -136,7 +159,7 @@ final class JavacTypeRegistrar {
         sealed.forEach((identity, declared) -> {
             var found = new LinkedHashSet<String>();
             for (TypeElement variant : variants.get(identity)) {
-                String name = JavacFacts.identity(variant);
+                String name = facts.identity(variant);
                 if (names.contains(name)) found.add(name);
             }
             deps.put(identity, found);
@@ -149,6 +172,19 @@ final class JavacTypeRegistrar {
                 continue;
             }
             registerRecursive(group, records, sealed, variants);
+        }
+    }
+
+    /**
+     * The registries hold one definition per identity, and a record found first would silently take the place of what
+     * else has its identity (F801). {@link JavacFacts#identity} keeps identities apart, so this is the invariant's
+     * check: the source must not decide whether it holds.
+     */
+    static void requireDistinctIdentities(Set<String> records, Set<String> sealed, Set<String> nonRecordVariants) {
+        for (String identity : records) {
+            if (sealed.contains(identity) || nonRecordVariants.contains(identity)) {
+                throw new CompilerException("Type identity '" + identity + "' names a record and another declaration");
+            }
         }
     }
 
@@ -187,7 +223,7 @@ final class JavacTypeRegistrar {
         var declared = sealed.get(identity);
         var element = declared.element();
         var ordered = variants.get(identity).stream().map(v -> new TypeRegistry.SealedVariant(
-                v.getSimpleName().toString(), JavacFacts.identity(v))).toList();
+                v.getSimpleName().toString(), facts.identity(v))).toList();
         registry.registerSealed(element.getSimpleName().toString(), identity, ordered,
                 !element.getTypeParameters().isEmpty());
     }
@@ -195,29 +231,34 @@ final class JavacTypeRegistrar {
     private void registerRecord(String identity, Declared declared) {
         var element = declared.element();
         String name = element.getSimpleName().toString();
-        var components = element.getRecordComponents();
+        var components = facts.components(element);
+        boolean byteVarargs = hasByteVarargs(element, components);
         if (isNewType(element)) {
             if (components.size() != 1) {
                 throw errorAt(declared, "@NewType record '" + name + "' must have exactly 1 field, got " + components.size());
             }
-            PirType underlying = underlying(components.getFirst().asType());
+            PirType underlying = byteVarargs ? null : underlying(components.getFirst().asType());
             if (underlying == null) {
-                throw errorAt(declared, "@NewType record '" + name + "' field type '" + written(declared, 0) + "' is not"
-                        + " supported. Supported types: byte[], BigInteger, String, boolean");
+                throw errorAt(declared, "@NewType record '" + name + "' field type '"
+                        + (byteVarargs ? "byte" : written(declared, 0)) + "' is not supported."
+                        + " Supported types: byte[], BigInteger, String, boolean");
             }
             registry.registerNewType(name, identity, underlying);
             return;
         }
-        requireNoByteVarargs(element, components);
+        if (byteVarargs) {
+            throw facts.rejection("Unsupported primitive type: byte. Supported types: boolean, int, long",
+                    componentType(declared, components.size() - 1));
+        }
         var fields = new ArrayList<PirType.Field>();
         for (int i = 0; i < components.size(); i++) {
             String component = components.get(i).getSimpleName().toString();
-            SourceLocation where = declared.tree() == null ? null : facts.location(declared.unit(), componentType(declared, i));
+            Tree where = declared.tree() == null ? null : componentType(declared, i);
             PirType type = facts.pirType(components.get(i).asType(), where);
             var array = PirType.nativeArrayIn(type);
             if (array != null) {
-                throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
-                        "Component '" + component + "' of record " + name, array, where);
+                throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable("Component '" + component + "' of record " + name,
+                        array, where == null ? null : facts.location(where));
             }
             fields.add(new PirType.Field(component, type));
         }
@@ -225,27 +266,26 @@ final class JavacTypeRegistrar {
     }
 
     /**
-     * {@code byte...}: javac's type is {@code byte[]}, but a varargs constructor is not a {@code byte[]} component, and
-     * the source path rejects it as a {@code byte}. The subset does not widen (I2). Any other varargs component is an
-     * array, which is rejected as one.
+     * {@code byte...} as the canonical constructor's last parameter. javac's type is {@code byte[]}, but a call passes
+     * its arguments one by one, and the JavaParser frontend rejects it as a {@code byte}, so the subset does not widen
+     * (I2). Any other varargs component is an array, and rejected as one. A varargs constructor that is not the
+     * canonical one says nothing about the components.
      */
-    private static void requireNoByteVarargs(TypeElement record, List<? extends RecordComponentElement> components) {
-        boolean varargs = ElementFilter.constructorsIn(record.getEnclosedElements()).stream()
-                .anyMatch(constructor -> constructor.isVarArgs() && constructor.getParameters().size() == components.size());
-        if (varargs && components.getLast().asType() instanceof ArrayType array
-                && array.getComponentType().getKind() == TypeKind.BYTE) {
-            throw new CompilerException("Unsupported primitive type: byte. Supported types: boolean, int, long");
-        }
+    private boolean hasByteVarargs(TypeElement record, List<? extends RecordComponentElement> components) {
+        return !components.isEmpty() && ElementFilter.constructorsIn(record.getEnclosedElements()).stream()
+                .anyMatch(constructor -> facts.elements().isCanonicalConstructor(constructor) && constructor.isVarArgs())
+                && components.getLast().asType() instanceof ArrayType array
+                && array.getComponentType().getKind() == TypeKind.BYTE;
     }
 
     /** {@code byte[]}, {@code BigInteger}, {@code String} or {@code boolean}, by identity; otherwise null. */
-    private static PirType underlying(TypeMirror type) {
+    private PirType underlying(TypeMirror type) {
         if (type.getKind() == TypeKind.BOOLEAN) return new PirType.BoolType();
         if (type instanceof ArrayType array) {
             return array.getComponentType().getKind() == TypeKind.BYTE ? new PirType.ByteStringType() : null;
         }
         if (type instanceof DeclaredType declared) {
-            return switch (JavacFacts.identity((TypeElement) declared.asElement())) {
+            return switch (facts.identity((TypeElement) declared.asElement())) {
                 case "java.math.BigInteger" -> new PirType.IntegerType();
                 case "java.lang.String" -> new PirType.StringType();
                 default -> null;
@@ -254,21 +294,14 @@ final class JavacTypeRegistrar {
         return null;
     }
 
-    private static boolean isNewType(TypeElement record) {
-        return hasAnnotation(record, NEW_TYPE);
-    }
-
-    static boolean hasAnnotation(TypeElement type, String annotation) {
-        for (AnnotationMirror mirror : type.getAnnotationMirrors()) {
-            if (JavacFacts.identity((TypeElement) mirror.getAnnotationType().asElement()).equals(annotation)) return true;
-        }
-        return false;
+    private boolean isNewType(TypeElement record) {
+        return facts.hasAnnotation(record, NEW_TYPE);
     }
 
     /** The types a record component names: the base type and its type arguments, at any depth. */
     private void dependencies(TypeMirror type, Set<String> names, Set<String> found) {
         if (!(type instanceof DeclaredType declared)) return;
-        String name = JavacFacts.identity((TypeElement) declared.asElement());
+        String name = facts.identity((TypeElement) declared.asElement());
         if (names.contains(name)) found.add(name);
         for (TypeMirror argument : declared.getTypeArguments()) dependencies(argument, names, found);
     }
@@ -276,53 +309,51 @@ final class JavacTypeRegistrar {
     /** {@code declared}'s variants, in tag order (I11). */
     private List<TypeElement> variants(Declared declared) {
         var element = declared.element();
-        var permitted = element.getPermittedSubclasses().stream().map(facts::typeElement).map(this::complete).toList();
+        var permitted = facts.permitted(element);
         if (declared.tree() == null) {
-            requireFixedTags(element, permitted);
+            requireFixedTags(facts.identity(element), permitted.stream().map(v -> v.getSimpleName().toString()).toList());
             return permitted;
         }
         if (!declared.tree().getPermitsClause().isEmpty()) return permitted;
         var nested = new ArrayList<TypeElement>();
         for (Tree member : declared.tree().getMembers()) {
             if (member instanceof ClassTree tree && tree.getKind() == Tree.Kind.RECORD) {
-                var record = (TypeElement) facts.element(TreePath.getPath(declared.unit(), tree));
-                if (directlyImplements(record, element)) nested.add(record);
+                var record = (TypeElement) facts.element(tree);
+                if (namesParent(record, element)) nested.add(record);
             }
         }
-        if (!nested.equals(permitted)) {
-            throw permitsRequired(declared, permitted);
-        }
+        if (!nested.equals(permitted)) throw permitsRequired(declared, permitted);
         return nested;
     }
 
-    private TypeElement complete(TypeElement type) {
-        return type.getQualifiedName().isEmpty() ? type : facts.elements().getTypeElement(type.getQualifiedName());
+    /**
+     * Whether {@code record} implements a type of {@code parent}'s simple name. Not {@code parent} itself: a nested
+     * record implementing another {@code S} has a tag on the JavaParser frontend, so it must not drop out here and shift
+     * the others silently. It makes the list differ from javac's, which is {@code JULC0092} (F800).
+     */
+    private boolean namesParent(TypeElement record, TypeElement parent) {
+        return record.getInterfaces().stream()
+                .anyMatch(i -> facts.typeElement(i).getSimpleName().contentEquals(parent.getSimpleName()));
     }
 
-    private boolean directlyImplements(TypeElement record, TypeElement parent) {
-        return record.getInterfaces().stream().anyMatch(i -> facts.typeElement(i).equals(parent));
-    }
-
-    /** A ledger tag the ledger fixes is JuLC's (I11): a stub that disagrees is a broken build, not a new encoding. */
-    private void requireFixedTags(TypeElement element, List<TypeElement> permitted) {
-        var fixed = LedgerLayouts.FIXED_TAGS.get(JavacFacts.identity(element));
-        if (fixed == null) return;
-        var names = permitted.stream().map(v -> v.getSimpleName().toString()).toList();
-        if (!fixed.equals(names)) {
-            throw new BrokenJulcBuildException("the javac stub of " + element + " permits " + names + ", not " + fixed);
+    /** A tag the ledger fixes is JuLC's (I11): a stub that disagrees is a broken build, not a new encoding. */
+    static void requireFixedTags(String identity, List<String> permitted) {
+        var fixed = LedgerLayouts.FIXED_TAGS.get(identity);
+        if (fixed != null && !fixed.equals(permitted)) {
+            throw new BrokenJulcBuildException("the javac stub of " + identity + " permits " + permitted + ", not " + fixed);
         }
     }
 
     private CompilerException permitsRequired(Declared declared, List<TypeElement> permitted) {
         var info = DiagnosticCodes.SEALED_PERMITS_REQUIRED;
-        var location = facts.location(declared.unit(), declared.tree());
+        var location = facts.location(declared.tree());
         var names = permitted.stream().map(v -> v.getSimpleName().toString()).toList();
         return new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
                 info.format(declared.element().getSimpleName(), String.join(", ", names)), location.fileName(),
                 location.line(), location.column(), info.fix(), info.code())));
     }
 
-    /** The {@code index}-th component of a source record, as javac's tree holds it. */
+    /** The {@code index}-th component's type tree in a source record, or the record if javac's tree has none. */
     private Tree componentType(Declared declared, int index) {
         int seen = 0;
         for (Tree member : declared.tree().getMembers()) {
@@ -334,15 +365,13 @@ final class JavacTypeRegistrar {
     }
 
     private String written(Declared declared, int component) {
-        return declared.tree() == null ? declared.element().getRecordComponents().get(component).asType().toString()
-                : componentType(declared, component).toString();
+        if (declared.tree() == null) return facts.components(declared.element()).get(component).asType().toString();
+        return facts.location(componentType(declared, component)).fragment();
     }
 
-    /** A rejection at {@code declared}, as the source path anchors one: its declaration's start. */
+    /** A rejection at {@code declared}, as the JavaParser frontend anchors one: its declaration's start. */
     private CompilerException errorAt(Declared declared, String message) {
         if (declared.tree() == null) throw new BrokenJulcBuildException("the ledger stubs break a type rule: " + message);
-        var location = facts.location(declared.unit(), declared.tree());
-        return new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message,
-                location.fileName(), location.line(), location.column())));
+        return facts.rejection(message, declared.tree());
     }
 }
