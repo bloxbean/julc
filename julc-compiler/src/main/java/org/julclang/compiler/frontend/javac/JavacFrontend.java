@@ -133,7 +133,12 @@ public final class JavacFrontend {
      * are rejected before javac runs.
      */
     public JavacResult analyze(List<Unit> roots, List<Unit> pool) {
-        return analyze(roots, pool, null, true);
+        return analyze(roots, pool, null, true, null);
+    }
+
+    /** {@link #analyze(List, List)}, also reporting javac's task events to {@code events} (tests). */
+    JavacResult analyze(List<Unit> roots, List<Unit> pool, Consumer<TaskEvent> events) {
+        return analyze(roots, pool, null, true, events);
     }
 
     /**
@@ -141,10 +146,11 @@ public final class JavacFrontend {
      * attributes JuLC's own ledger sources), reporting each class file javac opens to {@code opened}.
      */
     public JavacResult observe(List<Unit> roots, List<Unit> pool, Consumer<String> opened) {
-        return analyze(roots, pool, opened, false);
+        return analyze(roots, pool, opened, false, null);
     }
 
-    private JavacResult analyze(List<Unit> roots, List<Unit> pool, Consumer<String> opened, boolean checkOwnership) {
+    private JavacResult analyze(List<Unit> roots, List<Unit> pool, Consumer<String> opened, boolean checkOwnership,
+                                Consumer<TaskEvent> events) {
         JavaCompiler javac = compiler();
         if (javac == null) return supported();
         if (roots.isEmpty()) return JavacResult.accepted(platform);
@@ -177,6 +183,7 @@ public final class JavacFrontend {
         task.addTaskListener(new TaskListener() {
             @Override
             public void finished(TaskEvent e) {
+                if (events != null) events.accept(e);
                 if (e.getKind() == TaskEvent.Kind.PARSE && e.getSourceFile() != null) {
                     parsed.putIfAbsent(e.getSourceFile().toUri(), e.getCompilationUnit());
                 }
@@ -198,9 +205,9 @@ public final class JavacFrontend {
             var context = uri == null || !parsed.containsKey(uri) ? JavacHints.UnitContext.NONE
                     : contexts.computeIfAbsent(uri, u -> JavacHints.UnitContext.of(parsed.get(u),
                             Trees.instance(task).getSourcePositions()));
-            diagnostics.add(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context));
+            diagnostics.add(precedence.explain(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context),
+                    context));
         }
-        diagnostics = new ArrayList<>(precedence.withShadowing(parsed.keySet(), diagnostics));
         return diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
     }
 

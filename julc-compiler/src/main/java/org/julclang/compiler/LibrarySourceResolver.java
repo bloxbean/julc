@@ -1,6 +1,9 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacGate;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
@@ -187,6 +190,42 @@ public final class LibrarySourceResolver {
             librarySource = librarySourceFromSimpleName(simpleName, source);
         }
         target.put(librarySource.fqcn(), librarySource);
+    }
+
+    /**
+     * ADR-068 D8: same-project sources win over JAR sources over every top-level name a unit declares, not only its
+     * primary name. {@code pool} is a host's merged pool (JAR sources, then same-project sources put over them by
+     * primary name); every entry still holding {@code jarSources}' unit is dropped when it declares a name a
+     * same-project entry declares, so the project's unit wins whole and the JAR unit is never offered. The order of
+     * the remaining entries is kept. With the javac gate off (where JuLC reads no declarations with javac), or
+     * without a supported javac or its resources, the pool is returned as it is: primary names only, B0's rule (the
+     * gate then reports the missing javac).
+     */
+    public static Map<String, LibrarySource> withProjectPrecedence(Map<String, LibrarySource> pool,
+                                                                   Map<String, LibrarySource> jarSources) {
+        if (JavacGate.mode(null) == JavacGateMode.OFF) return pool;
+        var jarKeys = new ArrayList<String>();
+        var projectKeys = new ArrayList<String>();
+        pool.forEach((key, source) -> (jarSources.get(key) == source ? jarKeys : projectKeys).add(key));
+        if (jarKeys.isEmpty() || projectKeys.isEmpty()) return pool;
+        var keys = new ArrayList<>(projectKeys);
+        keys.addAll(jarKeys);
+        Optional<List<List<String>>> names;
+        try {
+            names = JavacFrontend.shared().declaredNames(keys.stream().map(k -> pool.get(k).source()).toList());
+        } catch (LinkageError | RuntimeException e) {
+            return pool;
+        }
+        if (names.isEmpty()) return pool;
+        var projectNames = new HashSet<String>();
+        for (int i = 0; i < projectKeys.size(); i++) projectNames.addAll(names.get().get(i));
+        var result = new LinkedHashMap<>(pool);
+        for (int i = 0; i < jarKeys.size(); i++) {
+            if (names.get().get(projectKeys.size() + i).stream().anyMatch(projectNames::contains)) {
+                result.remove(jarKeys.get(i));
+            }
+        }
+        return result;
     }
 
     /**

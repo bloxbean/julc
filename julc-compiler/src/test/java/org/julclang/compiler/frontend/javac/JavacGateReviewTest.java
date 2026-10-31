@@ -4,9 +4,12 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.LibrarySource;
+import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.LibrarySources;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.stdlib.StdlibRegistry;
+import com.sun.source.util.TaskEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -138,34 +142,143 @@ class JavacGateReviewTest {
         assertTrue(result.isAccepted(), result::toString);
     }
 
-    // --- F520 (D8 "Whole units"): a shadowed unit is not read; needing another of its declarations is rejected ---
+    // --- F520/F533 (D8 "Whole units"): a shadowed unit is not read; needing another of its declarations is rejected ---
 
+    /** {@code Helper} and the root's {@code Shared}; the body is invalid, so reading the unit would show. */
     static final String HELPER_AND_SHARED = """
             package app;
-            public class Helper { static int one() { return 1; } }
+            public class Helper { static int one() { return; } }
             class Shared {}
             """;
 
+    static JavacResult analyzeRecording(List<String> roots, List<String> pool, List<TaskEvent> events) {
+        return JavacFrontend.shared().analyze(roots.stream().map(JavacFrontend.Unit::of).toList(),
+                pool.stream().map(JavacFrontend.Unit::of).toList(), events::add);
+    }
+
+    static boolean read(List<TaskEvent> events, String fileName) {
+        return events.stream().anyMatch(e -> e.getSourceFile() != null
+                && e.getSourceFile().toUri().getPath().endsWith("/" + fileName)
+                && (e.getKind() == TaskEvent.Kind.PARSE || e.getKind() == TaskEvent.Kind.ENTER));
+    }
+
     @Test
-    void needingAnotherDeclarationOfAShadowedUnitIsRejectedNamingBoth() {
-        var accepted = analyze("""
+    void aShadowedUnitIsNeverReadAndNeedingItIsRejectedNamingBoth() {
+        var events = new ArrayList<TaskEvent>();
+        var accepted = analyzeRecording(List.of("""
                 package app;
                 class Shared {}
                 class Main { Shared s; }
-                """, HELPER_AND_SHARED);
+                """), List.of(HELPER_AND_SHARED), events);
         assertTrue(accepted.isAccepted(), accepted::toString);
-        var rejected = analyze("""
+        assertFalse(read(events, "Helper.java"), "a shadowed unit is not parsed or entered");
+
+        events.clear();
+        var rejected = analyzeRecording(List.of("""
                 package app;
                 class Shared {}
                 public class Main { int f() { return Helper.one(); } }
-                """, HELPER_AND_SHARED);
+                """), List.of(HELPER_AND_SHARED), events);
+        assertFalse(read(events, "Helper.java"), "a shadowed unit is not parsed or entered");
         assertEquals(1, rejected.diagnostics().size(), rejected.toString());
         var d = rejected.diagnostics().getFirst();
         assertEquals("JULC0085", d.code());
         assertEquals("compiler.err.duplicate.class", d.key());
-        assertTrue(d.message().startsWith("duplicate class: app.Shared (declared by Main.java and Helper.java; the"
-                + " root's declaration shadows the library source's"), d.message());
-        assertEquals("Helper.java", d.fileName());
+        assertEquals("duplicate class: app.Shared (declared by Main.java and Helper.java; the root's declaration"
+                + " shadows Helper.java, which javac therefore does not read, and the program needs its app.Helper)"
+                + " (compiler.err.duplicate.class)", d.message());
+        assertEquals("Main.java", d.fileName());
+        assertEquals(3, d.line());
+
+    }
+
+    @Test
+    void aShadowedUnitReachedByImportIsNamedExactly() {
+        var shadowed = JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of("""
+                package app;
+                import lib.Helper;
+                class Main { int f() { return Helper.one(); } }
+                """), JavacFrontend.Unit.of("""
+                package lib;
+                public class Clash {}
+                """)), List.of(JavacFrontend.Unit.of("""
+                package lib;
+                public class Helper { public static int one() { return 1; } }
+                class Clash {}
+                """)));
+        assertFalse(shadowed.diagnostics().isEmpty(), shadowed::toString);
+        assertTrue(shadowed.diagnostics().stream().allMatch(x -> x.message().startsWith(
+                "duplicate class: lib.Clash (declared by Clash.java and Helper.java;")), shadowed.toString());
+    }
+
+    // --- F532: conflicts are attached to exact qualified names, once each ---
+
+    @Test
+    void conflictsInTwoPackagesAreNamedExactlyInEitherPoolOrder() {
+        String defaultRoot = """
+                class Shared {}
+                class UseHelper { int f() { return Helper.one(); } }
+                """;
+        String appRoot = """
+                package app;
+                class Shared {}
+                class UseOther { int f() { return Other.two(); } }
+                """;
+        String defaultPool = """
+                public class Helper { static int one() { return 1; } }
+                class Shared {}
+                """;
+        String appPool = """
+                package app;
+                public class Other { static int two() { return 2; } }
+                class Shared {}
+                """;
+        var outcomes = new ArrayList<List<String>>();
+        for (var pool : List.of(List.of(defaultPool, appPool), List.of(appPool, defaultPool))) {
+            var result = JavacFrontend.shared().analyze(
+                    List.of(JavacFrontend.Unit.of(defaultRoot), JavacFrontend.Unit.of(appRoot)),
+                    pool.stream().map(JavacFrontend.Unit::of).toList());
+            outcomes.add(result.diagnostics().stream().map(JavacDiagnostic::message).sorted().toList());
+        }
+        assertEquals(outcomes.get(0), outcomes.get(1));
+        assertEquals(2, outcomes.get(0).size(), outcomes.toString());
+        assertTrue(outcomes.get(0).get(0).startsWith("duplicate class: Shared (declared by Shared.java and Helper.java;")
+                && outcomes.get(0).get(0).contains("needs its Helper)"), outcomes.toString());
+        assertTrue(outcomes.get(0).get(1).startsWith("duplicate class: app.Shared (declared by Shared.java and"
+                + " Other.java;") && outcomes.get(0).get(1).contains("needs its app.Other)"), outcomes.toString());
+    }
+
+    // --- F531: same-project wins over JAR over every declared name ---
+
+    @Test
+    void aProjectUnitWinsOverAJarUnitDeclaringItsSecondaryName() {
+        String current = """
+                package com.example;
+                public class Current { public static int one() { return Shared.TWO - 1; } }
+                class Shared { static final int TWO = 2; }
+                """;
+        String jarShared = """
+                package com.example;
+                public class Shared { public static final int TWO = 3; }
+                """;
+        var jar = new LinkedHashMap<String, LibrarySource>();
+        jar.put("com.example.Shared", LibrarySourceResolver.librarySource(jarShared));
+        var pool = new LinkedHashMap<>(jar);
+        pool.put("com.example.Current", LibrarySourceResolver.librarySource(current));
+        String root = """
+                package com.example;
+                class Main { int f() { return Current.one() + Shared.TWO; } }
+                """;
+        var both = analyze(root, pool.values().stream().map(LibrarySource::source).toArray(String[]::new));
+        assertTrue(both.diagnostics().getFirst().message().contains("two library sources of equal standing"),
+                both.toString());
+        var merged = LibrarySourceResolver.withProjectPrecedence(pool, jar);
+        assertEquals(List.of("com.example.Current"), List.copyOf(merged.keySet()));
+        var result = analyze(root, merged.values().stream().map(LibrarySource::source).toArray(String[]::new));
+        assertTrue(result.isAccepted(), result::toString);
+        // With the gate off, B0's merge by primary name.
+        assertEquals(pool, withProperty(JavacGate.MODE_PROPERTY, "off",
+                () -> LibrarySourceResolver.withProjectPrecedence(pool, jar)));
     }
 
     // --- F521 (D8): pool units of equal standing declaring one name are an error, referenced or not ---

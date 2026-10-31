@@ -334,7 +334,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         var pool = new LinkedHashMap<>(classpathLibraries);
         pool.putAll(sameProjectLibraries);
 
-        return LibrarySourceResolver.resolve(validatorSource, pool);
+        // Same-project wins over JAR over every declared name, not only primary names (ADR-068 D8).
+        return LibrarySourceResolver.resolve(validatorSource,
+                LibrarySourceResolver.withProjectPrecedence(pool, classpathLibraries));
     }
 
     /**

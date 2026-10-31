@@ -93,14 +93,15 @@ public final class JavacGate {
     }
 
     /** Whether {@code e} says that the runtime has no Java compiler API (I6), as opposed to another linkage fault. */
-    static boolean isMissingCompiler(LinkageError e) {
+    public static boolean isMissingCompiler(LinkageError e) {
         if (!(e instanceof NoClassDefFoundError)) return false;
         String message = String.valueOf(e.getMessage()).replace('.', '/');
         return message.startsWith("javax/tools/") || message.startsWith("com/sun/source/")
                 || message.startsWith("javax/lang/model/");
     }
 
-    private static JavacResult noCompiler(LinkageError e) {
+    /** {@code JULC0089} for a runtime whose compiler API cannot link; it references no compiler-API class. */
+    public static JavacResult noCompiler(LinkageError e) {
         // No reference to JavacFrontend here: it cannot link without the compiler API.
         String version = Runtime.version().toString();
         return new JavacResult(List.of(JavacDiagnostic.of(DiagnosticCodes.JAVAC_UNSUPPORTED, null,

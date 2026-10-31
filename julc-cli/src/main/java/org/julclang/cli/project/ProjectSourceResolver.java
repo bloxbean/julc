@@ -22,14 +22,13 @@ public final class ProjectSourceResolver {
      */
     public static Map<String, LibrarySource> buildPool(Map<String, String> userLibraries) {
         // 1. Classpath stdlib (META-INF/plutus-sources/ from julc-stdlib JAR)
-        var pool = new LinkedHashMap<>(
-                LibrarySourceResolver.scanClasspathSources(
-                        ProjectSourceResolver.class.getClassLoader()));
+        var classpath = LibrarySourceResolver.scanClasspathSources(ProjectSourceResolver.class.getClassLoader());
+        var pool = new LinkedHashMap<>(classpath);
 
-        // 2. User sources override classpath sources
+        // 2. User sources override classpath sources, over every declared name (ADR-068 D8)
         LibrarySourceResolver.librarySourcesFrom(userLibraries).forEach(pool::put);
 
-        return pool;
+        return LibrarySourceResolver.withProjectPrecedence(pool, classpath);
     }
 
     /**

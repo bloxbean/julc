@@ -156,8 +156,8 @@ public final class SourceDiscovery {
         var pool = new LinkedHashMap<String, LibrarySource>();
 
         // Tier 2: Classpath sources (added first, lower precedence)
-        pool.putAll(LibrarySourceResolver.scanClasspathSources(
-                Thread.currentThread().getContextClassLoader()));
+        var classpath = LibrarySourceResolver.scanClasspathSources(Thread.currentThread().getContextClassLoader());
+        pool.putAll(classpath);
 
         // Tier 1: Same-project sources from import paths (higher precedence)
         Map<String, String> importPaths = LibrarySourceResolver.extractImportPaths(validatorSource);
@@ -194,7 +194,8 @@ public final class SourceDiscovery {
         //  same-project sources for transitive deps too)
         addTransitiveSameProjectSources(pool, sourceRoot);
 
-        return pool;
+        // Same-project wins over JAR over every declared name, not only primary names (ADR-068 D8).
+        return LibrarySourceResolver.withProjectPrecedence(pool, classpath);
     }
 
     // --- Method compilation ---
