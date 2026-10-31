@@ -634,8 +634,17 @@ longer parsed on every compile. This closes #284 and #286 by construction.
     frontend's.
 - **Precedence and duplicates.** A qualified name in the roots wins over the pool. Within the pool, same-project
   sources win over JAR sources (today's processor rule, `JulcAnnotationProcessor.java:333-335`). Two JAR sources
-  with one name are an error (`LibrarySources.readJars`, today). Every choice is made before javac, so javac
-  never sees a name twice.
+  with one name are an error (`LibrarySources.readJars`, today), detected over every top-level declaration of every
+  pool unit before the task is created, whether or not the name is referenced. Every choice is made before javac,
+  so javac never sees a name twice.
+  - **Whole units (amended after the M1a review, F520).** javac reads a compilation unit whole, so precedence
+    selects or drops **units**, by every name each declares: a pool unit that declares a name the roots (or a
+    higher-precedence pool unit) already declare is shadowed. A shadowed unit is not read. If the program needs
+    another declaration of that shadowed unit (a root uses `Helper` from a unit that also declares the root's
+    `Shared`), the compilation is rejected, naming both declarations, as javac rejects the same pair of files in the
+    user's own build (`duplicate class`); with separately compiled JARs the JVM would pick by class-path order,
+    which JuLC must not guess. A declaration is never silently hidden, and the outcome never depends on pool
+    order.
 - **Lowering.** `LibraryCompiler` lowers every included non-generic static method, as today.
 - **Generic library methods (Elci).** `JavaLibraryProvider` keeps its schemes and `Instantiate` specialization.
   Specialization stays an explicit PIR-type environment: `JavacFacts` maps a method's type variables to that
