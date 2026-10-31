@@ -14,7 +14,7 @@ JULC0017	code	JULC0017	NULL_UNSUPPORTED	source
 JULC0018	code	JULC0018	C_STYLE_FOR_UNSUPPORTED	source
 JULC0019	code	JULC0019	DO_WHILE_UNSUPPORTED	source
 JULC0031	code	JULC0031	UNSUPPORTED_COMPILER_TARGET	configuration: an unsupported target fails in beginCompilation, before any source is read or recorded
-JULC0032	code	JULC0032	COMPILER_BUILTIN_UNAVAILABLE	target: a builtin unavailable for the target; JuLC supports only the PV11 target, which has every builtin it lowers to
+JULC0032	code	JULC0032	COMPILER_BUILTIN_UNAVAILABLE	source
 JULC0033	code	JULC0033	COMPILER_FEATURE_UNAVAILABLE	target: a term or constant unavailable for the target; only the PV11 target exists
 JULC0034	code	JULC0034	COMPILER_PROGRAM_VERSION_MISMATCH	internal: the generated program version disagrees with the target (an invariant of UPLC generation)
 JULC0035	code	JULC0035	COMPILER_TARGET_INVARIANT_VIOLATION	internal: a compiler stage emitted a target-illegal feature (an invariant of UPLC generation)

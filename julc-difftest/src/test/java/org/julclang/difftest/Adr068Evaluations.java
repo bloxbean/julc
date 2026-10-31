@@ -67,6 +67,7 @@ final class Adr068Evaluations {
     final List<Evaluation> evaluations = new ArrayList<>();
     final Map<String, Integer> counts = new TreeMap<>();
     private final Map<String, String> replays = new TreeMap<>();
+    private final Set<String> excludedTests = new TreeSet<>();
 
     /** Loads the evaluations recorded under {@code dir}, in key order. */
     void load(Path dir) throws IOException {
@@ -93,7 +94,8 @@ final class Adr068Evaluations {
                 deterministic.removeAll(Adr068Corpus.NONDETERMINISTIC_ORIGINS);
                 deterministic.removeAll(NONDETERMINISTIC_EVALUATIONS);
                 if (deterministic.isEmpty()) {
-                    counts.merge("excluded.nondeterministic", 1, Integer::sum);
+                    // How many evaluations such a test makes varies from run to run: only the tests are counted.
+                    excludedTests.addAll(origins);
                     continue;
                 }
                 if (deterministic.stream().allMatch(o -> o.startsWith("org.julclang.difftest."))) {
@@ -104,6 +106,7 @@ final class Adr068Evaluations {
                 evaluations.add(new Evaluation(evaluationDir.getFileName().toString(), fields, args, deterministic));
             }
         }
+        if (!excludedTests.isEmpty()) counts.put("excluded.nondeterministic-tests", excludedTests.size());
     }
 
     /**

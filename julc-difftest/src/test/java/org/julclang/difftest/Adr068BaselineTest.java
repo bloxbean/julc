@@ -1,6 +1,7 @@
 package org.julclang.difftest;
 
 import org.julclang.compiler.frontend.javac.EqualityOperations;
+import org.julclang.core.corpus.CorpusFiles;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -71,6 +72,8 @@ class Adr068BaselineTest {
         var runs = ledger.runAll();
         var programIndex = ledger.programIndex();
         var evaluations = new Adr068Evaluations();
+        // The evaluations ledgers can be stored compressed (adr/evidence/068/*.tsv.gz): their digests go in the totals.
+        var evaluationDigests = new TreeMap<String, String>();
         for (var entry : corpora.entrySet()) {
             // Elci's evaluations are of Elci programs, which reach JuLC through its PIR backend, not a Java case,
             // and its smoke runs property tests with fresh seeds: its corpus contributes its library cases only.
@@ -80,11 +83,12 @@ class Adr068BaselineTest {
             part.replay(corpus, programIndex, entry.getValue());
             evaluations.evaluations.addAll(part.evaluations);
             part.counts.forEach((k, n) -> evaluations.counts.merge(entry.getKey() + "." + k, n, Integer::sum));
-            write("ledger-b0-evaluations" + (entry.getKey().equals("recorded") ? "" : "-" + entry.getKey()) + ".tsv",
+            String evaluationsFile = "ledger-b0-evaluations" + (entry.getKey().equals("recorded") ? "" : "-" + entry.getKey()) + ".tsv";
+            evaluationDigests.put(evaluationsFile, write(evaluationsFile,
                     "# ADR-068 D13 UPLC-only semantic observations: every JulcVm evaluation the " + entry.getKey()
                             + " tests made (F303). Generated; do not edit.\n# program/value: FLAT sha256/16[:size];"
                             + " cases: <count>:<first case (sha256/16)>/<level> compiling to that program; replay: the Java VM on the"
-                            + " recorded arguments (agree | DISAGREE, +budget-differs)\n", part.lines(programIndex));
+                            + " recorded arguments (agree | DISAGREE, +budget-differs)\n", part.lines(programIndex)));
         }
 
         Files.createDirectories(OUT);
@@ -144,6 +148,7 @@ class Adr068BaselineTest {
         verdicts.forEach((v, n) -> totals.add("runs.verdicts." + v + "\t" + n));
         totals.add("evaluations\t" + evaluations.evaluations.size());
         evaluations.counts.forEach((k, n) -> totals.add("evaluations." + k + "\t" + n));
+        evaluationDigests.forEach((file, digest) -> totals.add("sha256\t" + file + "\t" + digest));
         var unreplayable = new TreeMap<String, Integer>();
         corpus.cases.values().forEach(c -> {
             var o = ledger.result(c.key).outcomes().values().iterator().next();
@@ -275,10 +280,13 @@ class Adr068BaselineTest {
                 + " a KnownDivergencesTest input, not a pin.\n", rows);
     }
 
-    private static void write(String name, String header, List<String> lines) throws IOException {
+    /** Writes {@code name} under the output directory and returns the SHA-256 of what it wrote. */
+    private static String write(String name, String header, List<String> lines) throws IOException {
         var text = new StringBuilder(header);
         for (String line : lines) text.append(line).append('\n');
+        Files.createDirectories(OUT);
         Files.writeString(OUT.resolve(name), text.toString(), StandardCharsets.UTF_8);
+        return CorpusFiles.sha256(text.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static List<Path> javaFiles(Path root) throws IOException {

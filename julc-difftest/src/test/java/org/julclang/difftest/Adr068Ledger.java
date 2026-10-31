@@ -466,15 +466,26 @@ final class Adr068Ledger {
         return runs;
     }
 
+    /**
+     * A JVM exception message names a class loader with its identity hash ({@code ClassCastException}: "... in unnamed
+     * module of loader java.net.URLClassLoader @5e9f23b4"), and each case runs in a fresh loader.
+     */
+    private static final Pattern LOADER_IDENTITY = Pattern.compile("(loader [^ ;)]+) @[0-9a-f]+");
+
+    /** A failure detail without the loaders' identity hashes, which change from run to run. */
+    static String stableDetail(String detail) {
+        return detail == null ? "" : LOADER_IDENTITY.matcher(detail).replaceAll("$1");
+    }
+
     /** {@code kind:value:traces:detail}, each a short digest ({@code -} when absent). */
     static String observation(Observation o) {
         return switch (o) {
             case Observation.Value v -> "Value:" + short16(HexFormat.of().formatHex(PlutusDataCborEncoder.encode(v.data())))
                     + ":" + v.traces().size() + "/" + short16(String.join("\n", v.traces())) + ":-";
             case Observation.Failure f -> "Failure:-:" + f.traces().size() + "/" + short16(String.join("\n", f.traces()))
-                    + ":" + short16(f.detail() == null ? "" : f.detail());
+                    + ":" + short16(stableDetail(f.detail()));
             case Observation.Rejected r -> "Rejected:" + (r.code() == null ? "none" : r.code()) + ":-:" + short16(r.message());
-            case Observation.Crash c -> "Crash:-:-:" + short16(c.detail());
+            case Observation.Crash c -> "Crash:-:-:" + short16(stableDetail(c.detail()));
             case Observation.Inconclusive i -> "Inconclusive:-:-:" + short16(i.reason());
         };
     }
