@@ -434,7 +434,10 @@ exceptions D11 lists.
 - **Comparisons through `compareTo` (closes #146 for this form).** Where the javac frontend sees
   `a.compareTo(b) OP 0` or `0 OP a.compareTo(b)`, with the call resolved to
   `java.math.BigInteger.compareTo(java.math.BigInteger)`, `OP` one of `<`, `<=`, `>`, `>=`, `==`, `!=`, and `0`
-  the `int` literal zero (`OP 0L` and other zero constants fall outside the rule and keep today's lowering):
+  the `int` literal zero (`OP 0L` and other zero constants fall outside the rule and keep today's lowering). The
+  match is syntactic and identical in both frontends: parentheses are **not** unwrapped, so
+  `(a.compareTo(b)) > 0` and `a.compareTo(b) > (0)` keep today's lowering in both (otherwise I1 would record
+  differences between the frontends that are not attributable):
   - it evaluates `a`, then `b`, each exactly once, with the **minimal binding** that keeps that order: none for
     `<`, `<=`, `==` and `!=`, whose builtin already evaluates its first argument first; for `>` and `>=`, whose
     builtin takes `b` first, one `#`-named `let` binding `a`, and only when both `a` and `b` are non-trivial
@@ -631,8 +634,17 @@ longer parsed on every compile. This closes #284 and #286 by construction.
     frontend's.
 - **Precedence and duplicates.** A qualified name in the roots wins over the pool. Within the pool, same-project
   sources win over JAR sources (today's processor rule, `JulcAnnotationProcessor.java:333-335`). Two JAR sources
-  with one name are an error (`LibrarySources.readJars`, today). Every choice is made before javac, so javac
-  never sees a name twice.
+  with one name are an error (`LibrarySources.readJars`, today), detected over every top-level declaration of every
+  pool unit before the task is created, whether or not the name is referenced. Every choice is made before javac,
+  so javac never sees a name twice.
+  - **Whole units (amended after the M1a review, F520).** javac reads a compilation unit whole, so precedence
+    selects or drops **units**, by every name each declares: a pool unit that declares a name the roots (or a
+    higher-precedence pool unit) already declare is shadowed. A shadowed unit is not read. If the program needs
+    another declaration of that shadowed unit (a root uses `Helper` from a unit that also declares the root's
+    `Shared`), the compilation is rejected, naming both declarations, as javac rejects the same pair of files in the
+    user's own build (`duplicate class`); with separately compiled JARs the JVM would pick by class-path order,
+    which JuLC must not guess. A declaration is never silently hidden, and the outcome never depends on pool
+    order.
 - **Lowering.** `LibraryCompiler` lowers every included non-generic static method, as today.
 - **Generic library methods (Elci).** `JavaLibraryProvider` keeps its schemes and `Instantiate` specialization.
   Specialization stays an explicit PIR-type environment: `JavacFacts` maps a method's type variables to that
@@ -731,7 +743,11 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   frontend limitation a decision lifts, such as `reject-javac-21-25-pair-shape` under D11 or ADR-067 M2a/M2b's
   record patterns: its source and historical rows stay, and it gains an "Accepted by decision" row with that
   class's evidence). Only migration cases (sources meant to compile) are rewritten for javac.
-- A case may move between classes only by a new row; rows are never edited. The ledger is a checked-in,
+- A case may move between classes only by a new row; rows are never edited. The one exception is a **tool
+  correction**: when a frozen value is shown to be an artifact of the ledger tool itself (not of the compiler,
+  for example a class-loader identity hash in a JVM failure message), the frozen file may be regenerated at its
+  own commit with only the tool fix, and the evidence records the old and new values, the reason and that
+  commit. The ledger is a checked-in,
   generated file per milestone, and its totals (accepted, rejected, each class) appear in the milestone's
   evidence.
 
@@ -861,38 +877,49 @@ milestone's evidence; a skipped check fails the gate.
 
 ## Implementation results
 
+**Known issues and deferred findings** are tracked in [`evidence/068-followups.md`](evidence/068-followups.md).
+Since 2026-10-31 a milestone review closes at "no new regression, no open P0/P1"; P2/P3 findings go to that list
+(maintainer decision).
+
 ### M0: baseline (2026-10-31)
 
-Commits on `wip/068-m0`, merged into this PR: `6d8ed6aa` (corpus recorder), `b0c7f579` (the `JULC0087`
-predicate), `6a9fd536` (baseline tools), `a8963b85` (evidence, ADR-062 step S6, `SECURITY.md`). The evidence file
-is [`evidence/068-javac-frontend-baseline.md`](evidence/068-javac-frontend-baseline.md); the generated files are in
+Commits on `wip/068-m0`, merged into this PR. Round 1: `6d8ed6aa` (corpus recorder), `b0c7f579` (the `JULC0087`
+predicate), `6a9fd536` (baseline tools), `a8963b85` (evidence, ADR-062 step S6, `SECURITY.md`). Review round:
+`a18248be`, `cebf2501`, `83fb43d3`, `b53052a4`, `d3f257aa`. The evidence file is
+[`evidence/068-javac-frontend-baseline.md`](evidence/068-javac-frontend-baseline.md); generated files are in
 `adr/evidence/068/`.
 
-- **Corpus (10,960 cases).** 10,896 recorded during the test runs of julc-compiler (8,508), julc-difftest (2,039),
-  julc-stdlib (239), julc-testkit (60) and julc-examples (51); the 16 stdlib libraries (17 cases); the ledger (39);
-  the blaster (7) and C7 (6) fixtures; 182 distinct `.diffcase` programs (200 files); G0's 376 exhaustive programs;
-  G1's 123 distinct fixed-seed programs (seed 20261030, 150 tries). The external `julc-examples` and Elci are
-  recorded as commands.
-- **The recorder** (`CorpusRecorder`) hooks every `JulcCompiler` entry point and `JavaLibraryProvider`. It is
-  inactive unless `-Djulc.corpus.record` is set (one `static final` check per hook); `CorpusRecorderTest` shows,
-  in child JVMs with and without recording, equal FLAT bytes and rejections.
-- **Ledger reference rows.** Identical at all four levels: 9,319 accepted, 1,634 rejected, 7 unreplayable (compiled
-  with a test's own stdlib lookup). 1,854 harness runs; every G0 and G1 run agrees at every level.
-- **Rejection inventory.** 1,613 permanent (1,314 coded, 299 uncoded) and 21 scheduled for acceptance (12 `JULC0076`
-  record patterns, `reject-javac-21-25-pair-shape`, 8 ADR-065 I2c escape shapes).
-- **Equality scan.** External `julc-examples`: 125 sites, all `.equals` on `byte[]`, in 24 files (including
-  `CfPaymentSplitterValidator.java:51,83,94`). In-repo: 6 sources (T5's `Holder`, the two T31 explicit-`equals`
-  cases, `agree-equals-unknown-switch`/`-ternary` at static type `java.lang.Record`, and
-  `BigIntegerCompatTest#equalsOnByteStringField`). 5 type-variable sites, all in templates (`TypedMapLib`,
-  `PlutusDataHelper`); no nested-collection sites.
-- **Tests and stability.** The base `448505e5`: 12,395 tests, 0 failures; the M0 head `a8963b85`: 12,411 tests, 0
-  failures, 530 skipped, BUILD SUCCESSFUL (`./gradlew test --offline --continue --rerun`). Byte stability: 1,056 compilations
-  (fixtures, examples, 196 saved cases, 54 G0 programs, four levels) identical before and after. Two recordings
-  and two baseline runs (13 threads and 1) give byte-identical evidence files.
+- **Corpus (11,393 cases).** 11,225 recorded during the test runs of julc-compiler (8,837, including the
+  `pair-case-backends` suite), julc-difftest (2,039), julc-stdlib (239), julc-testkit (60) and julc-examples (51),
+  less 300 nondeterministic `IntegerLiteralTest` cases; the external `julc-examples` (102, recorded from a clone of
+  `julc-examples-cmp` at `22b4e00f`); Elci's `JavaLibraryProvider` cases (4, from a clone at `a3ec190a`); the 16
+  stdlib libraries (17 cases); the ledger (39); blaster (7) and C7 (6) fixtures; 182 `.diffcase` programs; G0's
+  376 exhaustive programs; G1's 123 fixed-seed programs.
+- **Recorder.** Hooks on every `JulcCompiler` entry point and `JavaLibraryProvider`, isolated behind a service so
+  the native and Web images never reach it; the stdlib lookup's identity (default, or a fingerprint of a custom
+  registry) and the target and cost profile are recorded, and a non-default one is replayed only through an
+  adapter or marked unreplayable. Generic instantiations (`LibraryRequest.Instantiate`) and UPLC-only evaluations
+  are recorded too.
+- **Ledger.** Identical at all four levels: 9,662 accepted, 1,721 rejected, 10 unreplayable (9 custom lookups, 1
+  PV10 target). 47 instantiation requests (33 accepted, 14 `JULC0051`). 22,993 frozen evaluations; the 2,016
+  replayed on the Java VM all agree. Every diagnostic of a compilation is kept with its anchor and a full-message
+  digest.
+- **Rejection inventory.** 1,816 rows over 1,731 cases: 1,795 permanent (1,386 coded, 409 uncoded) and 21 scheduled
+  for acceptance (12 `JULC0076` record patterns, the Pair shape, 8 ADR-065 I2c escape shapes). A coverage gate over
+  a hand-kept catalogue of 142 rejection sites passes: 115 reachable sites, all covered by fixtures or recorded
+  cases; 27 not reachable from source, each explained.
+- **Equality scan.** External: 125 sites, all `.equals` on `byte[]`. In-repo: 11 sites in 6 sources; 5 type-variable
+  sites (templates); no nested-collection sites; 16 sites skipped because their type does not attribute.
+- **Accepted divergences.** Hand-reviewed per ADR-062 row: 23 open rows, 54 `DIVERGE` pins, 4 registry fixtures,
+  7 named issues.
+- **Determinism and tests.** A 14-thread run over one recording and a 1-thread run over a second recording give
+  byte-identical evidence files; the evaluations ledger is stored as deterministic gzip with its digest in the
+  totals. The new ledger equals round 1's on all 9,158 cases both contain. Full suite: 12,453 tests, 0 failures, 530
+  skipped.
 
 **Clarifications from M0** (they refine, not change, the decisions above):
 
-- **The frozen corpus** is the recording made at the M0 commit (`a8963b85`), which has the recorder and none of M1's
+- **The frozen corpus** is the recording made at the M0 commit (`d3f257aa`), which has the recorder and none of M1's
   rewrites. The corpus itself is not checked in (about 10,000 sources); `corpus-b0.tsv` lists every case with its
   digest, and the corpus is regenerated from that commit by the evidence file's command and verified against the
   digests. Later milestones read it from the regeneration, never from a re-recording after M1.
@@ -912,8 +939,36 @@ is [`evidence/068-javac-frontend-baseline.md`](evidence/068-javac-frontend-basel
 - **ADR-062 rows.** T27's status is stale (ADR-067 M1 resolved it); M1 updates ADR-062's statuses, and D4's accepted
   list is re-frozen from the updated table.
 - **I1's "target" axis** has one value today (PV11's target); the ledger records it per row.
-- **Hosts.** `CorpusRecorder` is reachable from `JulcCompiler` (it uses `StackWalker`, `Files`, `MessageDigest`), so
-  M1's native and Web image smokes confirm the images still build.
+- **Hosts.** The recorders are behind a service loaded only when recording is on, so the native and Web images
+  never reach them; M1's image smokes confirm it.
+
+### M1a: the javac gate (2026-10-31)
+
+Branch `wip/068-m1a`; evidence in [`evidence/068-m1a-javac-gate.md`](evidence/068-m1a-javac-gate.md) and
+`adr/evidence/068/m1a-gate-corpus-summary.txt`. `JavacFrontend`, `EmbeddedFileManager` (blob, stubs, in-memory pool;
+nothing else), the derived 69-class `java.base` blob (136 KB) and 251 API stubs (257 KB), `Ownership` (`JULC0081`
+by provenance), D5's `JULC0085` diagnostics and hints, and the gate on every entry point in `report` mode (the
+default until M1b switches it to `enforce`). FLAT bytes are identical over the M0 corpus; native CLI +16.98 MB;
+`julc-wasm` +2.63 MB brotli, with javac in the Web Image matching the JVM (`wasmGateProbe`); warm 1.24–1.26×, cold
++150–300 ms. In report mode, javac rejects 6,385 of the 11,196 corpus cases: M1b's worklist.
+
+Decisions recorded from the M1a reviews:
+
+- **Supported javac** is "highest source version is `RELEASE_25`" (D3's wording).
+- **Compile metadata.** `JavacEnvironment.current()` exposes the javac version and the blob and stub digests;
+  per-compilation metadata (CLI artifact metadata, the blueprint's `preamble.compiler`) is an M1 exit item, added
+  without breaking I5.
+- **Pool during M1 (simplification).** The gate's pool for an entry point is the library list that entry point
+  already resolves today, plus the bundled stdlib sources; that equals what the JavaParser frontend reads, so the
+  gate sees the same program. M3, which lowers from javac, replaces it with D8's "each entry point's pool equals
+  today's scan". Precedence is per qualified name (D8): a non-conflicting declaration of a pool unit is never
+  hidden.
+- **The blob's `module-info` is synthetic** (`java.base` exporting exactly the blob's packages), because the JDK's
+  own differs between builds (I4).
+- **javac completion.** `getRecordComponents()` on a class reached only through `getPermittedSubclasses()` needs
+  `Elements.getTypeElement` first; M2's I11 tests go through that path.
+- **Secondary top-level types** of pool units are indexed under every top-level name (javac's own source path
+  finds only the primary one).
 
 ## Revision history
 

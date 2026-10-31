@@ -1,8 +1,5 @@
 package org.julclang.difftest;
 
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.HashSet;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.util.JavacTask;
@@ -10,17 +7,22 @@ import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
-import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.compiler.backend.BackendException;
+import org.julclang.compiler.backend.LibraryRequest;
+import org.julclang.compiler.corpus.RequestText;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.pir.PirFormatter;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.PlutusData;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
+import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.OptimizationCostProfiles;
 
 import javax.tools.JavaFileObject;
 import javax.tools.SimpleJavaFileObject;
@@ -31,11 +33,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.regex.Pattern;
@@ -45,34 +50,74 @@ import java.util.stream.Stream;
  * ADR-068 M0: the D13 ledger's reference rows, compiled with the JavaParser frontend (the reference, B0), and the
  * I2a rejection inventory derived from them. Every file it writes is sorted and holds digests, not programs, so two
  * runs over the same corpus write the same bytes.
+ * <p>
+ * A case is replayed only with the inputs it was recorded with: the default stdlib registry or none (a custom
+ * lookup is never replayed as the default, F201), the default target, and its cost profile, resolved by id and
+ * checked by parameter hash (F202). Anything else is unreplayable, a {@code U:} cell, counted apart.
  */
 final class Adr068Ledger {
 
     static final List<OptimizationLevel> LEVELS = List.of(OptimizationLevel.values());
 
-    /** What one compilation produced at one level. */
-    record Outcome(boolean accepted, String digest, int size, String code, String message, int line, int column,
-                   String exception) {
+    /** One diagnostic: level, code (null when uncoded), message without run-to-run noise, and its anchor. */
+    record Diagnostic(String level, String code, String message, String file, int line, int column) {
 
-        /** A recorded case the ledger cannot compile again (a test's own stdlib lookup). */
-        boolean unreplayable() {
-            return "UnreplayableException".equals(exception);
+        /** {@code <code>} or {@code uncoded/<exception>}. */
+        String what(String exception) {
+            return code != null ? code : "uncoded/" + exception;
         }
 
-        /**
-         * The ledger cell: {@code A:<flat>:<size>}, {@code R:<code>@<line>:<column>}, {@code R:uncoded/<message>@…},
-         * or {@code U:<reason>} for a case that cannot be compiled again.
-         */
-        String cell() {
-            if (accepted) return "A:" + digest + ":" + (size < 0 ? "-" : size);
-            if (unreplayable()) return "U:" + message.replace(' ', '-');
-            String what = code != null ? code : "uncoded/" + exception + "/" + short16(message);
-            return "R:" + what + "@" + line + ":" + column;
+        String text() {
+            return level + "|" + code + "|" + message + "|" + file + "|" + line + "|" + column;
         }
     }
 
-    /** The result of one case: an outcome per level and the source-map digest. */
-    record CaseResult(Map<OptimizationLevel, Outcome> outcomes, String sourceMap) {
+    /** What one compilation produced at one level. */
+    record Outcome(boolean accepted, String digest, int size, List<Diagnostic> diagnostics, String exception,
+                   String unreplayableReason) {
+
+        boolean unreplayable() {
+            return unreplayableReason != null;
+        }
+
+        /** The first error, which decides the cell. */
+        Diagnostic error() {
+            return diagnostics.stream().filter(d -> d.level().equals("ERROR")).findFirst()
+                    .orElse(diagnostics.isEmpty() ? null : diagnostics.getFirst());
+        }
+
+        /**
+         * The ledger cell: {@code A:<FLAT sha256/32>:<size>}, {@code R:<code or uncoded/<exception>>/<message
+         * sha256/16>@<line>:<column>}, or {@code U:<reason>}.
+         */
+        String cell() {
+            if (unreplayable()) return "U:" + unreplayableReason.replace(' ', '-');
+            if (accepted) return "A:" + digest + ":" + (size < 0 ? "-" : size);
+            var e = error();
+            if (e == null) return "R:uncoded/" + exception + "/" + short16("") + "@0:0";
+            return "R:" + e.what(exception) + "/" + short16(e.message()) + "@" + e.line() + ":" + e.column();
+        }
+
+        /** {@code <count>:<sha256/16>} over every diagnostic, in order (errors and warnings, each with its anchor). */
+        String diagnosticsCell() {
+            if (diagnostics.isEmpty()) return "0";
+            var text = new StringBuilder();
+            diagnostics.forEach(d -> text.append(d.text()).append('\n'));
+            return diagnostics.size() + ":" + short16(text.toString());
+        }
+
+        static Outcome accepted(String digest, int size, List<Diagnostic> diagnostics) {
+            return new Outcome(true, digest, size, diagnostics, null, null);
+        }
+
+        static Outcome unreplayable(String reason) {
+            return new Outcome(false, null, 0, List.of(), null, reason);
+        }
+    }
+
+    /** The result of one case: an outcome per level, the source-map digest, and each instantiation's outcomes. */
+    record CaseResult(Map<OptimizationLevel, Outcome> outcomes, String sourceMap,
+                      Map<String, Map<OptimizationLevel, Outcome>> instantiations) {
     }
 
     private final Adr068Corpus corpus;
@@ -97,34 +142,84 @@ final class Adr068Ledger {
 
     private CaseResult compile(Adr068Corpus.Case c) {
         var outcomes = new LinkedHashMap<OptimizationLevel, Outcome>();
-        for (var level : LEVELS) outcomes.put(level, compileAt(c, level, c.sourceMap));
+        String reason = unreplayableReason(c);
+        for (var level : LEVELS) outcomes.put(level, reason != null ? Outcome.unreplayable(reason) : compileAt(c, level, c.sourceMap));
         String sourceMap = "-";
-        if (isProgramEntry(c.entry) && outcomes.values().stream().noneMatch(Outcome::unreplayable)) {
+        if (reason == null && isProgramEntry(c.entry)) {
             try {
                 sourceMap = sourceMapDigest(invoke(c, options(c, OptimizationLevel.DEFAULT, true)));
             } catch (Throwable t) {
                 sourceMap = "R";
             }
         }
-        return new CaseResult(outcomes, sourceMap);
+        var instantiations = new TreeMap<String, Map<OptimizationLevel, Outcome>>();
+        c.instantiations.forEach((digest, text) -> {
+            var perLevel = new LinkedHashMap<OptimizationLevel, Outcome>();
+            String why = reason != null ? reason : c.unreplayableInstantiations.get(digest);
+            for (var level : LEVELS) perLevel.put(level, why != null ? Outcome.unreplayable(why) : instantiate(c, level, text));
+            instantiations.put(digest, perLevel);
+        });
+        return new CaseResult(outcomes, sourceMap, instantiations);
+    }
+
+    /** Why a case cannot be compiled again with its recorded inputs, or null. */
+    static String unreplayableReason(Adr068Corpus.Case c) {
+        if (!c.lookup.equals("none") && !c.lookup.equals(Adr068Corpus.STDLIB_LOOKUP)) {
+            return "custom stdlib lookup " + c.lookup.replaceFirst(":[0-9a-f]{16}$", "");
+        }
+        if (c.target != null && !c.target.equals(CompilerTarget.PLUTUS_V3_PV11.profileId())) {
+            return "non-default target " + c.target;
+        }
+        if (c.costProfile != null) {
+            String[] parts = c.costProfile.split(" ");
+            try {
+                var profile = OptimizationCostProfiles.forId(parts[0]);
+                if (parts.length < 2 || !profile.parameterHash().equals(parts[1])) return "cost profile hash " + c.costProfile;
+            } catch (IllegalArgumentException e) {
+                return "unknown cost profile " + parts[0];
+            }
+        }
+        return null;
     }
 
     private Outcome compileAt(Adr068Corpus.Case c, OptimizationLevel level, boolean sourceMap) {
         try {
             return switch (c.entry) {
                 case "JavaLibraryProvider" -> {
-                    var provider = new JavaLibraryProvider(texts(c.libraries), lookup(c.lookup),
-                            options(c, level, false));
-                    yield new Outcome(true, short32(describe(provider, c.libraries)), -1, null, null, 0, 0, null);
+                    var provider = new JavaLibraryProvider(texts(c.libraries), lookup(c.lookup), options(c, level, false));
+                    var failures = new ArrayList<Diagnostic>();
+                    String description = describe(provider, c.libraries, failures);
+                    yield Outcome.accepted(short32(description), -1, failures);
                 }
-                case "ledger-source" -> new Outcome(true, ledgerTypeDigests.getOrDefault(c.main.digest(), "none"),
-                        -1, null, null, 0, 0, null);
+                case "ledger-source" -> Outcome.accepted(ledgerTypeDigests.getOrDefault(c.main.digest(), "none"), -1, List.of());
                 default -> {
                     var result = invoke(c, options(c, level, sourceMap));
                     byte[] flat = UplcFlatEncoder.encodeProgram(result.program());
-                    yield new Outcome(true, short32(HexFormat.of().formatHex(flat)), flat.length, null, null, 0, 0, null);
+                    yield Outcome.accepted(CorpusFiles.sha256(flat).substring(0, 32), flat.length,
+                            diagnostics(result.diagnostics()));
                 }
             };
+        } catch (AssertionError e) {
+            throw e;
+        } catch (Throwable t) {
+            return rejection(t);
+        }
+    }
+
+    /** Replays one specialization request on a provider built from the case, as the producer made it (F302). */
+    private Outcome instantiate(Adr068Corpus.Case c, OptimizationLevel level, String text) {
+        try {
+            var request = RequestText.decode(text);
+            var provider = new JavaLibraryProvider(texts(c.libraries), lookup(c.lookup), options(c, level, false));
+            var imports = provider.materialize(List.<LibraryRequest>of(request));
+            var binding = imports.binding(request);
+            var description = new StringBuilder(binding.name()).append(' ').append(binding.type()).append('\n');
+            imports.definitions().forEach((name, term) -> description.append(name).append(' ')
+                    .append(PirFormatter.format(term)).append('\n'));
+            if (IDENTITY_HASH.matcher(description).find()) {
+                throw new AssertionError("an identity hash in a specialization: the ledger would not be deterministic");
+            }
+            return Outcome.accepted(short32(description.toString()), -1, List.of());
         } catch (AssertionError e) {
             throw e;
         } catch (Throwable t) {
@@ -140,22 +235,16 @@ final class Adr068Ledger {
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap)
                 .setLogger(message -> { });
         c.disabledRules.forEach(options::disableOptimizationRule);
+        if (c.costProfile != null) options.setOptimizationCostProfile(OptimizationCostProfiles.forId(c.costProfile.split(" ")[0]));
         return options;
     }
 
-    private static StdlibLookup lookup(String name) {
-        return switch (name) {
+    private static StdlibLookup lookup(String identity) {
+        return switch (identity) {
             case "none" -> null;
             case Adr068Corpus.STDLIB_LOOKUP -> StdlibRegistry.defaultRegistry();
-            default -> throw new UnreplayableException("custom stdlib lookup " + name);
+            default -> throw new IllegalStateException("custom lookup " + identity + " reached replay");
         };
-    }
-
-    /** A recorded case the ledger cannot compile again, such as one built with a test's own stdlib lookup. */
-    static final class UnreplayableException extends RuntimeException {
-        UnreplayableException(String message) {
-            super(message);
-        }
     }
 
     private CompileResult invoke(Adr068Corpus.Case c, CompilerOptions options) throws IOException {
@@ -195,8 +284,7 @@ final class Adr068Ledger {
         }
     }
 
-    private static Path place(Path dir, Adr068Corpus.Source source, Set<String> used, int index)
-            throws IOException {
+    private static Path place(Path dir, Adr068Corpus.Source source, Set<String> used, int index) throws IOException {
         String name = source.fileName() == null ? "Source" + index + ".java" : source.fileName();
         Path target = used.add(name) ? dir.resolve(name) : dir.resolve("d" + index).resolve(name);
         Files.createDirectories(target.getParent());
@@ -221,18 +309,22 @@ final class Adr068Ledger {
         return (trace < 0 ? message : message.substring(0, trace)).strip();
     }
 
+    private static List<Diagnostic> diagnostics(List<CompilerDiagnostic> diagnostics) {
+        return diagnostics.stream().map(d -> new Diagnostic(d.level().name(), d.code(), stableMessage(d.message()),
+                d.fileName() == null ? "" : Path.of(d.fileName()).getFileName().toString(), d.line(), d.column())).toList();
+    }
+
+    /** A rejection with every diagnostic it carries (F301). */
     static Outcome rejection(Throwable t) {
         if (t instanceof CompilerException e) {
-            var error = e.diagnostics().stream().filter(d -> d.level() == CompilerDiagnostic.Level.ERROR).findFirst();
-            if (error.isPresent()) {
-                var d = error.get();
-                return new Outcome(false, null, 0, d.code(), stableMessage(d.message()), d.line(), d.column(),
-                        "CompilerException");
-            }
-            return new Outcome(false, null, 0, null, stableMessage(e.getMessage()), 0, 0, "CompilerException");
+            var all = diagnostics(e.diagnostics());
+            if (!all.isEmpty()) return new Outcome(false, null, 0, all, "CompilerException", null);
+            return new Outcome(false, null, 0, List.of(new Diagnostic("ERROR", null, stableMessage(e.getMessage()), "", 0, 0)),
+                    "CompilerException", null);
         }
-        String message = stableMessage(t.getMessage());
-        return new Outcome(false, null, 0, null, message, 0, 0, t.getClass().getSimpleName());
+        String code = t instanceof BackendException b ? b.code() : null;
+        return new Outcome(false, null, 0, List.of(new Diagnostic("ERROR", code, stableMessage(t.getMessage()), "", 0, 0)),
+                t.getClass().getSimpleName(), null);
     }
 
     /** The digest of the source map's located terms, by index: file name, line, column and fragment. */
@@ -252,7 +344,8 @@ final class Adr068Ledger {
      * Everything a library provider exposes, as text: for each type it declares (in FQCN order), its exports with
      * their materialized PIR, its schemes; then its unsupported exports, types and named definitions.
      */
-    private static String describe(JavaLibraryProvider provider, List<Adr068Corpus.Source> sources) {
+    private static String describe(JavaLibraryProvider provider, List<Adr068Corpus.Source> sources,
+                                   List<Diagnostic> failures) {
         var text = new StringBuilder();
         for (String module : declaredTypes(sources)) {
             text.append("module ").append(module).append('\n');
@@ -268,13 +361,25 @@ final class Adr068Ledger {
                 text.append("  schemes ").append(provider.schemes(module)).append('\n');
             } catch (RuntimeException e) {
                 text.append("  failed ").append(e.getClass().getSimpleName()).append(' ').append(e.getMessage()).append('\n');
+                // A module the provider cannot describe is a rejection of its exports (I2a).
+                failures.add(new Diagnostic("ERROR", e instanceof BackendException b ? b.code() : null,
+                        stableMessage(e.getMessage()), "", 0, 0));
             }
         }
         text.append("unsupported ").append(new TreeMap<>(provider.unsupportedExports())).append('\n');
+        // An export the provider reports as unsupported is a rejection of that export (I2a).
+        // A polymorphic export is not unsupported: it is described by its scheme and instantiated on request.
+        new TreeMap<>(provider.unsupportedExports()).forEach((symbol, reason) -> {
+            if (!reason.startsWith("Polymorphic Java method")) {
+                failures.add(new Diagnostic("ERROR", null, stableMessage(reason), symbol, 0, 0));
+            }
+        });
         new TreeMap<>(provider.types()).forEach((k, v) -> text.append("type ").append(k).append(' ').append(v).append('\n'));
         new TreeMap<>(provider.namedDefinitions()).forEach((k, v) -> text.append("definition ").append(k).append(' ')
                 .append(v).append('\n'));
-        if (IDENTITY_HASH.matcher(text).find()) throw new AssertionError("an identity hash in a library description: the ledger would not be deterministic");
+        if (IDENTITY_HASH.matcher(text).find()) {
+            throw new AssertionError("an identity hash in a library description: the ledger would not be deterministic");
+        }
         return text.toString();
     }
 
@@ -362,15 +467,26 @@ final class Adr068Ledger {
         return runs;
     }
 
+    /**
+     * A JVM exception message names a class loader with its identity hash ({@code ClassCastException}: "... in unnamed
+     * module of loader java.net.URLClassLoader @5e9f23b4"), and each case runs in a fresh loader.
+     */
+    private static final Pattern LOADER_IDENTITY = Pattern.compile("(loader [^ ;)]+) @[0-9a-f]+");
+
+    /** A failure detail without the loaders' identity hashes, which change from run to run. */
+    static String stableDetail(String detail) {
+        return detail == null ? "" : LOADER_IDENTITY.matcher(detail).replaceAll("$1");
+    }
+
     /** {@code kind:value:traces:detail}, each a short digest ({@code -} when absent). */
     static String observation(Observation o) {
         return switch (o) {
             case Observation.Value v -> "Value:" + short16(HexFormat.of().formatHex(PlutusDataCborEncoder.encode(v.data())))
                     + ":" + v.traces().size() + "/" + short16(String.join("\n", v.traces())) + ":-";
             case Observation.Failure f -> "Failure:-:" + f.traces().size() + "/" + short16(String.join("\n", f.traces()))
-                    + ":" + short16(f.detail() == null ? "" : f.detail());
+                    + ":" + short16(stableDetail(f.detail()));
             case Observation.Rejected r -> "Rejected:" + (r.code() == null ? "none" : r.code()) + ":-:" + short16(r.message());
-            case Observation.Crash c -> "Crash:-:-:" + short16(c.detail());
+            case Observation.Crash c -> "Crash:-:-:" + short16(stableDetail(c.detail()));
             case Observation.Inconclusive i -> "Inconclusive:-:-:" + short16(i.reason());
         };
     }
@@ -384,13 +500,15 @@ final class Adr068Ledger {
     // --- Output ---
 
     static final String LEDGER_HEADER = "# ADR-068 D13 ledger, reference rows (JavaParser frontend). Generated by Adr068BaselineTest;"
-            + " do not edit.\n# cell: A:<flat sha256/32>:<size> | A:<provider sha256/32>:- | R:<code>@<line>:<col>"
-            + " | R:uncoded/<exception>/<message sha256/16>@<line>:<col>\n# srcmap: <located terms>:<sha256/16>, R (rejected),"
+            + " do not edit.\n# cell: A:<FLAT sha256/32>:<size> | A:<provider sha256/32>:- | R:<code or uncoded/<exception>>/"
+            + "<message sha256/16>@<line>:<col> | U:<why not replayable>\n# diagnostics: <count>:<sha256/16 of every"
+            + " diagnostic with its anchor> at PV11_SAFE (0: none)\n# srcmap: <located terms>:<sha256/16>, R (rejected),"
             + " - (no program)\n";
 
     List<String> ledgerLines() {
         var lines = new ArrayList<String>();
-        lines.add("case\tsource\tlibraries\tentry\tmethod\tlookup\tparts\tNONE\tBASELINE\tPV11_SAFE\tPV11_COSTED\tsrcmap");
+        lines.add("case\tsource\tlibraries\tentry\tmethod\tlookup\ttarget\tparts\tNONE\tBASELINE\tPV11_SAFE\tPV11_COSTED"
+                + "\tdiagnostics\tsrcmap");
         for (var c : corpus.sorted()) {
             var r = results.get(c.key);
             var row = new StringBuilder();
@@ -398,11 +516,37 @@ final class Adr068Ledger {
                     .append(c.libraries.isEmpty() ? "0" : c.libraries.size() + ":" + short16(String.join(",",
                             c.libraries.stream().map(Adr068Corpus.Source::digest).toList())))
                     .append('\t').append(c.entry).append('\t').append(c.method == null ? "-" : c.method)
-                    .append('\t').append(c.lookup.equals(Adr068Corpus.STDLIB_LOOKUP) ? "stdlib" : c.lookup)
+                    .append('\t').append(lookupColumn(c.lookup))
+                    .append('\t').append((c.target == null ? "-" : c.target) + (c.costProfile == null ? "" : "+" + c.costProfile.split(" ")[0]))
                     .append('\t').append(String.join(",", c.parts()));
             for (var level : LEVELS) row.append('\t').append(r.outcomes().get(level).cell());
+            row.append('\t').append(r.outcomes().get(OptimizationLevel.DEFAULT).diagnosticsCell());
             row.append('\t').append(r.sourceMap());
             lines.add(row.toString());
+        }
+        return lines;
+    }
+
+    private static String lookupColumn(String lookup) {
+        if (lookup.equals(Adr068Corpus.STDLIB_LOOKUP)) return "stdlib";
+        return lookup.startsWith("custom:") ? "custom:" + lookup.substring(lookup.lastIndexOf(':') + 1) : lookup;
+    }
+
+    /** One row per recorded specialization request (F302): its symbol and type arguments, and a cell per level. */
+    List<String> instantiationLines() {
+        var lines = new ArrayList<String>();
+        lines.add("case\trequest\tsymbol\ttype-arguments\tproducer-types\tNONE\tBASELINE\tPV11_SAFE\tPV11_COSTED");
+        for (var c : corpus.sorted()) {
+            var r = results.get(c.key);
+            r.instantiations().forEach((digest, perLevel) -> {
+                var request = RequestText.decode(c.instantiations.get(digest));
+                var row = new StringBuilder(c.key + "\t" + digest + "\t" + request.symbol() + "\t"
+                        + String.join(",", request.typeArguments().stream().map(a -> a.canonical()).toList()) + "\t"
+                        + (request.producerTypes().isEmpty() ? "-" : request.producerTypes().size() + ":"
+                        + short16(RequestText.encode(request))));
+                for (var level : LEVELS) row.append('\t').append(perLevel.get(level).cell());
+                lines.add(row.toString());
+            });
         }
         return lines;
     }
@@ -449,8 +593,30 @@ final class Adr068Ledger {
         return totals;
     }
 
+    /** Instantiations per level: accepted, rejected, unreplayable. */
+    Map<OptimizationLevel, int[]> instantiationTotals() {
+        var totals = new LinkedHashMap<OptimizationLevel, int[]>();
+        for (var level : LEVELS) totals.put(level, new int[3]);
+        for (var r : results.values()) {
+            r.instantiations().values().forEach(perLevel -> perLevel.forEach((level, o) ->
+                    totals.get(level)[o.accepted() ? 0 : o.unreplayable() ? 2 : 1]++));
+        }
+        return totals;
+    }
+
     CaseResult result(String key) {
         return results.get(key);
+    }
+
+    /** The case and level whose FLAT digest is {@code flat32}, for the evaluation ledger. */
+    Map<String, List<String>> programIndex() {
+        var index = new TreeMap<String, List<String>>();
+        for (var c : corpus.sorted()) {
+            results.get(c.key).outcomes().forEach((level, o) -> {
+                if (o.accepted() && o.size() >= 0) index.computeIfAbsent(o.digest(), k -> new ArrayList<>()).add(c.key + "/" + level);
+            });
+        }
+        return index;
     }
 
     // --- The I2a rejection inventory ---
@@ -461,12 +627,12 @@ final class Adr068Ledger {
     record Classification(boolean scheduled, String basis) {
     }
 
-    static Classification classify(Adr068Corpus.Case c, Outcome o) {
+    static Classification classify(Adr068Corpus.Case c, Diagnostic d) {
         if (c.tags.contains("diffcase:regressions/reject-javac-21-25-pair-shape.diffcase")) {
             return new Classification(true, "D11: javac 25's switch shape (ADR-067 M2b)");
         }
-        String message = o.message() == null ? "" : o.message();
-        if ("JULC0076".equals(o.code()) && message.contains("not yet supported: record patterns")) {
+        String message = d.message() == null ? "" : d.message();
+        if ("JULC0076".equals(d.code()) && message.contains("not yet supported: record patterns")) {
             for (String permanent : List.of("reject-record-pattern-on-value.diffcase",
                     "reject-record-pattern-on-boolean-newtype.diffcase",
                     "reject-parameterized-sealed-component-pattern.diffcase")) {
@@ -501,26 +667,61 @@ final class Adr068Ledger {
         return false;
     }
 
-    List<String> inventoryLines(int[] counts) {
-        var lines = new ArrayList<String>();
-        lines.add("case\tclass\tcode\tposition\tlevels\tmessage\tbasis\ttest-sources");
+    /** One inventory entry: a case's error diagnostic, with the levels that report it. */
+    record InventoryRow(String caseKey, String subject, Diagnostic diagnostic, String exception, String levels,
+                        Classification classification, String sources) {
+    }
+
+    /**
+     * Every error diagnostic of every rejected compilation and specialization, one row each, with its anchor and a
+     * digest of its full message (F301).
+     */
+    List<InventoryRow> inventory() {
+        var rows = new ArrayList<InventoryRow>();
         for (var c : corpus.sorted()) {
             var r = results.get(c.key);
-            var rejected = r.outcomes().entrySet().stream().filter(e -> !e.getValue().accepted()).toList();
-            if (rejected.isEmpty()) continue;
-            var first = rejected.getFirst().getValue();
-            if (first.unreplayable()) continue;
-            var classification = classify(c, first);
-            counts[classification.scheduled() ? 1 : 0]++;
-            String levels = rejected.size() == LEVELS.size() ? "all"
-                    : String.join(",", rejected.stream().map(e -> e.getKey().name()).toList());
             var sources = new TreeSet<String>();
             c.tags.stream().filter(t -> !t.equals("recorded")).forEach(sources::add);
             sources.addAll(c.origins);
-            lines.add(c.key + "\t" + (classification.scheduled() ? "scheduled" : "permanent") + "\t"
-                    + (first.code() == null ? "uncoded:" + first.exception() : first.code()) + "\t"
-                    + first.line() + ":" + first.column() + "\t" + levels + "\t" + oneLine(first.message(), 160) + "\t"
-                    + classification.basis() + "\t" + String.join(";", sources));
+            String sourceText = String.join(";", sources);
+            addRows(rows, c, "compile", r.outcomes(), sourceText);
+            r.instantiations().forEach((digest, perLevel) -> addRows(rows, c, "instantiate:" + digest, perLevel, sourceText));
+        }
+        return rows;
+    }
+
+    private static void addRows(List<InventoryRow> rows, Adr068Corpus.Case c, String subject,
+                                Map<OptimizationLevel, Outcome> outcomes, String sources) {
+        var byDiagnostic = new LinkedHashMap<String, List<OptimizationLevel>>();
+        var first = new LinkedHashMap<String, Diagnostic>();
+        var exceptions = new LinkedHashMap<String, String>();
+        outcomes.forEach((level, o) -> {
+            if (o.unreplayable()) return;
+            for (var d : o.diagnostics()) {
+                if (!d.level().equals("ERROR")) continue;
+                String key = d.text();
+                byDiagnostic.computeIfAbsent(key, k -> new ArrayList<>()).add(level);
+                first.putIfAbsent(key, d);
+                exceptions.putIfAbsent(key, o.exception() != null ? o.exception() : "UnsupportedExport");
+            }
+        });
+        byDiagnostic.forEach((key, levels) -> {
+            var d = first.get(key);
+            String levelText = levels.size() == LEVELS.size() ? "all" : String.join(",", levels.stream().map(Enum::name).toList());
+            rows.add(new InventoryRow(c.key, subject, d, exceptions.get(key), levelText, classify(c, d), sources));
+        });
+    }
+
+    static List<String> inventoryLines(List<InventoryRow> rows) {
+        var lines = new ArrayList<String>();
+        lines.add("case\tsubject\tclass\tcode\tanchor\tlevels\tmessage-sha256\tmessage\tbasis\ttest-sources");
+        for (var row : rows) {
+            var d = row.diagnostic();
+            lines.add(row.caseKey() + "\t" + row.subject() + "\t" + (row.classification().scheduled() ? "scheduled" : "permanent")
+                    + "\t" + (d.code() == null ? "uncoded:" + row.exception() : d.code()) + "\t"
+                    + (d.file().isEmpty() ? "" : d.file() + ":") + d.line() + ":" + d.column() + "\t" + row.levels() + "\t"
+                    + short16(d.message()) + "\t" + oneLine(d.message(), 160) + "\t" + row.classification().basis()
+                    + "\t" + row.sources());
         }
         return lines;
     }
@@ -532,10 +733,10 @@ final class Adr068Ledger {
     }
 
     static String short16(String text) {
-        return CorpusRecorder.sha256(text == null ? "" : text).substring(0, 16);
+        return CorpusFiles.sha256(text == null ? "" : text).substring(0, 16);
     }
 
     static String short32(String text) {
-        return CorpusRecorder.sha256(text).substring(0, 32);
+        return CorpusFiles.sha256(text).substring(0, 32);
     }
 }

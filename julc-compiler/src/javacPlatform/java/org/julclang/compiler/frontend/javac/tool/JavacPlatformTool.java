@@ -1,6 +1,6 @@
 package org.julclang.compiler.frontend.javac.tool;
 
-import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacPlatform;
 
@@ -340,7 +340,7 @@ public final class JavacPlatformTool {
                     }
                     var keys = new TreeMap<String, Integer>();
                     for (var d : result.diagnostics()) keys.merge(d.key() == null ? d.code() : d.key(), 1, Integer::sum);
-                    String rootDigest = CorpusRecorder.sha256(c.roots().getFirst().text());
+                    String rootDigest = CorpusFiles.sha256(c.roots().getFirst().text());
                     if (!result.isAccepted()) {
                         rejected.incrementAndGet();
                         rejectedRoots.add(rootDigest);
@@ -389,7 +389,7 @@ public final class JavacPlatformTool {
 
     private static JavacFrontend.Unit corpusUnit(Path corpus, String ref) throws IOException {
         String digest = ref.split(" ", 2)[0];
-        return JavacFrontend.Unit.of(CorpusRecorder.text(Files.readAllBytes(corpus.resolve("sources")
+        return JavacFrontend.Unit.of(CorpusFiles.text(Files.readAllBytes(corpus.resolve("sources")
                 .resolve(digest + ".java"))));
     }
 

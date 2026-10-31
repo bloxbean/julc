@@ -143,6 +143,11 @@ public final class CompilationContext {
         return optimizationCostProfile;
     }
 
+    /** The optimization rules this compilation disabled (an immutable snapshot). */
+    public Set<String> disabledOptimizationRules() {
+        return disabledOptimizationRules;
+    }
+
     /** Record one stable rule identity in first-application order. */
     public void recordOptimizationRule(String ruleId) {
         if (ruleId == null || ruleId.isBlank()) {

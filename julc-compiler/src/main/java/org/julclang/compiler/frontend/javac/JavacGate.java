@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.core.corpus.CorpusFiles;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -167,8 +168,8 @@ public final class JavacGate {
 
     /**
      * The digest of an unambiguous encoding of the inputs: the number of groups, then per group its number of units,
-     * then per unit a tag for whether it has a path, the length-prefixed UTF-16 code units of the path, those of
-     * the text, and its origin. No two different inputs share an encoding, so a cached result is always the result of these inputs.
+     * then per unit a tag for whether it has a path, the length-prefixed injective stored form of the path
+     * ({@link CorpusFiles#bytes}), that of the text, and its origin. No two different inputs share an encoding, so a cached result is always the result of these inputs.
      */
     static String key(List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
         try {
@@ -193,9 +194,10 @@ public final class JavacGate {
         }
     }
 
-    /** The string's length and UTF-16 code units: injective on every string, unpaired surrogates included. */
+    /** The string's injective stored form ({@link CorpusFiles#bytes}), length-prefixed. */
     private static void writeChars(DataOutputStream out, String text) throws IOException {
-        out.writeInt(text.length());
-        out.writeChars(text);
+        byte[] bytes = CorpusFiles.bytes(text);
+        out.writeInt(bytes.length);
+        out.write(bytes);
     }
 }

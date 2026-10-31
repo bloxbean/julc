@@ -7,7 +7,7 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.LibrarySources;
-import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 import com.sun.source.util.TaskEvent;
@@ -527,14 +527,14 @@ class JavacGateReviewTest {
     @Test
     void aSurrogateTextAndItsStoredFormNeverShareAKey() {
         String s = "class Probe500 { static int f() { return 1; } }//" + (char) 0xD880;
-        String t = new String(CorpusRecorder.bytes(s), StandardCharsets.UTF_8);
+        String t = new String(CorpusFiles.bytes(s), StandardCharsets.UTF_8);
         assertNotEquals(s, t);
         assertNotEquals(JavacGate.key(List.of(JavacFrontend.Unit.of(s)), List.of()),
                 JavacGate.key(List.of(JavacFrontend.Unit.of(t)), List.of()));
         assertNotEquals(JavacPlatform.identity(s), JavacPlatform.identity(t));
-        assertFalse(Arrays.equals(CorpusRecorder.bytes(s),
-                CorpusRecorder.bytes(t)));
-        assertEquals(t, CorpusRecorder.text(CorpusRecorder.bytes(t)));
+        assertFalse(Arrays.equals(CorpusFiles.bytes(s),
+                CorpusFiles.bytes(t)));
+        assertEquals(t, CorpusFiles.text(CorpusFiles.bytes(t)));
         // Priming with s cannot decide t's outcome.
         var direct = analyze(t);
         assertTrue(JavacGate.check("probe", List.of(JavacFrontend.Unit.of(s)), List.of(), REPORT).isAccepted());

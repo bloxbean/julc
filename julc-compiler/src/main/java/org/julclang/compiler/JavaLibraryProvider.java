@@ -41,18 +41,21 @@ public final class JavaLibraryProvider implements LibraryProvider {
     private final Set<String> overloaded = new LinkedHashSet<>();
     private final Map<String, LibraryType> types;
     private final Map<String, PirType> definitions;
+    /**
+     * This provider's case in the ADR-068 corpus, recorded at construction from the options it resolved (never from
+     * the caller's {@code CompilerOptions}, which may change afterwards, F313); null unless the recorder is active.
+     */
+    private final String corpusCase;
 
     public JavaLibraryProvider(List<String> sources, StdlibLookup lookup, CompilerOptions options) {
-        if (CorpusRecorder.ACTIVE != null) {
-            CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null, null,
-                    sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(), lookup,
-                    options != null ? options : new CompilerOptions());
-        }
+        context = CompilationContext.resolve(options);
+        corpusCase = CorpusRecorder.ACTIVE == null ? null : CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null,
+                null, sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(), lookup,
+                CorpusRecorder.Options.of(context));
         // ADR-068 M1's javac gate (D8): the supplied units are roots; with none, a metadata-only task over the stubs.
         if (sources.isEmpty()) JavacGate.metadata(options);
         else JavacGate.check("JavaLibraryProvider", sources.stream().map(JavacFrontend.Unit::of).toList(), List.of(),
                 options);
-        context = CompilationContext.resolve(options);
         this.lookup = lookup;
         contentHash = contentHash(sources);
         var units = new ArrayList<CompilationUnit>();
@@ -260,6 +263,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
                 }
                 case LibraryRequest.Instantiate instantiate -> {
+                    if (corpusCase != null) CorpusRecorder.ACTIVE.recordInstantiate(corpusCase, lookup, instantiate);
                     var specialized = specialize(instantiate);
                     for (String dependency : PirClosure.freeVariables(specialized.body()))
                         if (!dependency.equals(specialized.name())) gather(dependency, reachable);
