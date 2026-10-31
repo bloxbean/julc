@@ -105,6 +105,8 @@ public class PirGenerator {
     private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
     /** The declared PIR return type of the method being generated (null in a lambda or a void method); ADR-047. */
     private PirType currentReturnType;
+    /** The {@code compareTo} call of the {@code OP 0} comparison being generated, if any (ADR-068 D6). */
+    private CompareToZero pendingCompareTo;
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null,
                 CompilationContext.pv11Defaults());
@@ -267,7 +269,7 @@ public class PirGenerator {
                 });
     }
 
-    static SourceLocation sourceLocation(Node node) {
+    public static SourceLocation sourceLocation(Node node) {
         if (node == null || node.getRange().isEmpty()) {
             return null;
         }
@@ -905,6 +907,58 @@ public class PirGenerator {
     }
 
     public PirTerm generateExpression(Expression expr) {
+        try {
+            return lowerExpression(expr);
+        } catch (CompilerException e) {
+            throw locateDataEncoding(e, expr);
+        }
+    }
+
+    /**
+     * JULC0091 raised where lowering Data-encodes a value ({@link PirHelpers#requireDataEncodable})
+     * has no position. The innermost expression being generated gives it one: the argument of a call
+     * or constructor whose type holds the native array, or else the expression itself.
+     */
+    private CompilerException locateDataEncoding(CompilerException e, Expression expr) {
+        if (e.diagnostics().size() != 1) return e;
+        var diagnostic = e.diagnostics().getFirst();
+        if (diagnostic.line() > 0) return e;
+        if (diagnostic.message() != null && diagnostic.message().contains(CompilerTypeDiagnostics.UNKNOWN_TYPE_ENCODED)) {
+            var location = sourceLocation(expr);
+            return location == null ? e : CompilerTypeDiagnostics.unknownTypeEncoded(location);
+        }
+        if (!DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
+        List<Expression> arguments = expr instanceof MethodCallExpr call ? call.getArguments()
+                : expr instanceof ObjectCreationExpr creation ? creation.getArguments() : List.of();
+        for (var argument : arguments) {
+            var array = nativeArrayOf(argument);
+            if (array != null) {
+                return CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                        "The value of '" + argument + "'", array, sourceLocation(argument));
+            }
+        }
+        var own = nativeArrayOf(expr);
+        if (own != null) {
+            return CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                    "The value of '" + expr + "'", own, sourceLocation(expr));
+        }
+        var location = sourceLocation(expr);
+        if (location == null) return e;
+        return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(),
+                diagnostic.message(), location.fileName(), location.line(), location.column(),
+                diagnostic.suggestion(), diagnostic.code()));
+    }
+
+    /** The native array an expression's static type holds, if its type is known (JULC0091). */
+    private PirType.ArrayType nativeArrayOf(Expression expr) {
+        try {
+            return PirType.nativeArrayIn(resolveExpressionType(expr));
+        } catch (CompilerException | IllegalArgumentException _) {
+            return null;
+        }
+    }
+
+    private PirTerm lowerExpression(Expression expr) {
         if (guardDepth > 0) {
             var exact = guardFixedWidthConstant(expr);
             if (exact != null) return exact;
@@ -976,6 +1030,10 @@ public class PirGenerator {
         if (expr instanceof SwitchExpr se) {
             var result = generateSwitchExpr(se);
             recordPosition(result, se);
+            // Keep the type the arms agree on, which the outer match alone does not give (review F710).
+            var type = typeInference.switchResultType(result);
+            if (type == null) typeInference.recordTermType(result, PirHelpers.UNKNOWN);
+            else if (!(type instanceof PirType.DataType)) typeInference.recordTermType(result, type);
             return result;
         }
         if (expr instanceof InstanceOfExpr ioe) {
@@ -1050,9 +1108,111 @@ public class PirGenerator {
     }
 
     private PirTerm generateBinaryExpr(BinaryExpr be) {
+        var compareTo = CompareToZero.match(be);
+        if (compareTo != null) {
+            var saved = pendingCompareTo;
+            pendingCompareTo = compareTo;
+            PirTerm call;
+            try {
+                call = generateExpression(compareTo.call);
+            } finally {
+                pendingCompareTo = saved;
+            }
+            if (compareTo.applied) return call;
+            // Another lowering than the integer compareTo handler: today's comparison.
+            boolean callLeft = be.getLeft() == compareTo.call;
+            var zero = generateExpression(callLeft ? be.getRight() : be.getLeft());
+            return callLeft
+                    ? binaryOperation(be.getOperator(), be.getLeft(), call, be.getRight(), zero, be)
+                    : binaryOperation(be.getOperator(), be.getLeft(), zero, be.getRight(), call, be);
+        }
         var left = generateExpression(be.getLeft());
         var right = generateExpression(be.getRight());
         return binaryOperation(be.getOperator(), be.getLeft(), left, be.getRight(), right, be);
+    }
+
+    /**
+     * {@code a.compareTo(b) OP 0} or {@code 0 OP a.compareTo(b)}, with {@code 0} the {@code int}
+     * literal zero and {@code OP} a comparison (ADR-068 D6, D4 exception 1). {@link #operator} is
+     * normalized to the call-left form ({@code 0 < c} is {@code c > 0}). The match is syntactic
+     * only: the rule applies when {@link #resolveInstanceMethodCall} then selects the integer
+     * {@code compareTo} handler for {@link #call}, which sets {@link #applied}. Every earlier
+     * dispatch (static-library calls in particular) is unchanged.
+     */
+    private static final class CompareToZero {
+        final MethodCallExpr call;
+        final BinaryExpr.Operator operator;
+        boolean applied;
+
+        private CompareToZero(MethodCallExpr call, BinaryExpr.Operator operator) {
+            this.call = call;
+            this.operator = operator;
+        }
+
+        static CompareToZero match(BinaryExpr be) {
+            var op = be.getOperator();
+            boolean comparison = switch (op) {
+                case LESS, LESS_EQUALS, GREATER, GREATER_EQUALS, EQUALS, NOT_EQUALS -> true;
+                default -> false;
+            };
+            if (!comparison) return null;
+            if (isCompareToCall(be.getLeft()) && isIntZero(be.getRight())) {
+                return new CompareToZero(be.getLeft().asMethodCallExpr(), op);
+            }
+            if (isIntZero(be.getLeft()) && isCompareToCall(be.getRight())) {
+                var reversed = switch (op) {
+                    case LESS -> BinaryExpr.Operator.GREATER;
+                    case LESS_EQUALS -> BinaryExpr.Operator.GREATER_EQUALS;
+                    case GREATER -> BinaryExpr.Operator.LESS;
+                    case GREATER_EQUALS -> BinaryExpr.Operator.LESS_EQUALS;
+                    default -> op;
+                };
+                return new CompareToZero(be.getRight().asMethodCallExpr(), reversed);
+            }
+            return null;
+        }
+
+        private static boolean isCompareToCall(Expression e) {
+            return e instanceof MethodCallExpr mce && mce.getScope().isPresent()
+                    && mce.getNameAsString().equals("compareTo") && mce.getArguments().size() == 1;
+        }
+
+        /** The {@code int} literal zero ({@code 0}, {@code 0x0}, {@code 0_0}); not {@code 0L}, {@code -0} or {@code (0)}. */
+        private static boolean isIntZero(Expression e) {
+            if (!(e instanceof IntegerLiteralExpr)) return false;
+            var reading = IntegerLiterals.read(e);
+            return reading.isValid() && reading.value().signum() == 0;
+        }
+    }
+
+    /**
+     * {@code x OP y} on integers, evaluating {@code x} before {@code y} as Java does (ADR-068 D6,
+     * #295). {@code <}, {@code <=}, {@code ==} and {@code !=} apply their builtin to {@code x}
+     * first, which evaluates it first. {@code >} and {@code >=} apply theirs to {@code y} first, so
+     * {@code x} is bound by one {@code let} when both operands are non-trivial; evaluating a
+     * variable or a constant has no effect, so its place does not matter.
+     */
+    private PirTerm integerComparison(BinaryExpr.Operator operator, PirTerm x, PirTerm y) {
+        return switch (operator) {
+            case LESS -> builtinApp2(DefaultFun.LessThanInteger, x, y);
+            case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, x, y);
+            case GREATER -> swappedInOrder(DefaultFun.LessThanInteger, x, y);
+            case GREATER_EQUALS -> swappedInOrder(DefaultFun.LessThanEqualsInteger, x, y);
+            case EQUALS -> generateEquality(x, y, new PirType.IntegerType(), false);
+            case NOT_EQUALS -> generateEquality(x, y, new PirType.IntegerType(), true);
+            default -> throw new IllegalArgumentException("Not a comparison: " + operator);
+        };
+    }
+
+    /** {@code fun y x}, with {@code x} evaluated first. */
+    private static PirTerm swappedInOrder(DefaultFun fun, PirTerm x, PirTerm y) {
+        if (isTrivialOperand(x) || isTrivialOperand(y)) return builtinApp2(fun, y, x);
+        var name = PirHelpers.hygienicName("#lhs", PirHelpers.freeVariables(y));
+        return new PirTerm.Let(name, x, builtinApp2(fun, y, new PirTerm.Var(name, new PirType.IntegerType())));
+    }
+
+    private static boolean isTrivialOperand(PirTerm term) {
+        return term instanceof PirTerm.Var || term instanceof PirTerm.Const;
     }
 
     /**
@@ -1099,8 +1259,7 @@ public class PirGenerator {
             case NOT_EQUALS -> generateEquality(left, right, leftType, true);
             case LESS -> builtinApp2(DefaultFun.LessThanInteger, left, right);
             case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, left, right);
-            case GREATER -> builtinApp2(DefaultFun.LessThanInteger, right, left); // swap
-            case GREATER_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, right, left); // swap
+            case GREATER, GREATER_EQUALS -> integerComparison(operator, left, right);
             case AND -> new PirTerm.IfThenElse(left, right, new PirTerm.Const(Constant.bool(false)));
             case OR -> new PirTerm.IfThenElse(left, new PirTerm.Const(Constant.bool(true)), right);
             default -> collectError("Unsupported operator: " + operator,
@@ -1516,6 +1675,14 @@ public class PirGenerator {
 
             validateLoweringRequirements(
                     typeMethodRegistry.requirements(context, scopeType, methodName), mce);
+            // ADR-068 D6 (D4 exception 1): the integer compareTo handler, in an `OP 0` comparison,
+            // lowers the whole comparison to one builtin over the receiver and argument, each
+            // evaluated once and in order. The term returned is the comparison, not the call.
+            if (pendingCompareTo != null && pendingCompareTo.call == mce
+                    && typeMethodRegistry.selectsIntegerCompareTo(scopeType, methodName)) {
+                pendingCompareTo.applied = true;
+                return integerComparison(pendingCompareTo.operator, scope, compiledArgs.getFirst());
+            }
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
             if (registryResult.isPresent()) {
@@ -1831,11 +1998,7 @@ public class PirGenerator {
             rejectNativeDataConstruction(typeName, sumType.get(), oce);
             for (var ctor : sumType.get().constructors()) {
                 if (ctor.name().equals(typeName)) {
-                    var fields = new ArrayList<PirTerm>();
-                    for (var arg : oce.getArguments()) {
-                        fields.add(generateExpression(arg));
-                    }
-                    return new PirTerm.DataConstr(ctor.tag(), sumType.get(), fields);
+                    return new PirTerm.DataConstr(ctor.tag(), sumType.get(), constructedFields(typeName, oce));
                 }
             }
         }
@@ -1846,9 +2009,21 @@ public class PirGenerator {
             var resolvedType = typeResolver.resolve(ct);
             if (resolvedType instanceof PirType.RecordType rt) {
                 rejectNativeDataConstruction(typeName, rt, oce);
-                var fields = new ArrayList<PirTerm>();
-                for (var arg : oce.getArguments()) {
-                    fields.add(generateExpression(arg));
+                var fields = constructedFields(typeName, oce);
+                if (ct.getTypeArguments().isEmpty()) {
+                    // A raw construction: javac types its components Object, so only Data components
+                    // (`new Tuple2(Builtins.iData(a), …)`, as MathLib uses it) keep their meaning (#299).
+                    for (int i = 0; i < fields.size(); i++) requireDataComponent(typeName, oce.getArgument(i), fields.get(i));
+                    return new PirTerm.DataConstr(0, rt, fields);
+                }
+                if (ct.getTypeArguments().get().isEmpty()) {
+                    // A diamond: no component type is written (#299). The term carries the inferred
+                    // type, which a `var` local and chained reads take.
+                    var inferred = inferredTupleType(typeName, rt, oce, fields);
+                    rejectNativeDataConstruction(typeName, inferred, oce);
+                    var tuple = new PirTerm.DataConstr(0, inferred, fields);
+                    typeInference.recordTermType(tuple, inferred);
+                    return tuple;
                 }
                 return new PirTerm.DataConstr(0, rt, fields);
             }
@@ -1858,11 +2033,7 @@ public class PirGenerator {
         var recordType = typeResolver.lookupRecord(resolvedTypeName);
         if (recordType.isPresent()) {
             rejectNativeDataConstruction(typeName, recordType.get(), oce);
-            var fields = new ArrayList<PirTerm>();
-            for (var arg : oce.getArguments()) {
-                fields.add(generateExpression(arg));
-            }
-            return new PirTerm.DataConstr(0, recordType.get(), fields);
+            return new PirTerm.DataConstr(0, recordType.get(), constructedFields(typeName, oce));
         }
         throw enrichedError("Cannot construct non-record type: " + typeName,
                 "Only record types can be constructed on-chain. Define " + typeName + " as a record.",
@@ -1899,6 +2070,129 @@ public class PirGenerator {
     /** {@link #checkNativeBoundary} for an assignment to a loop accumulator or a loop-body local. */
     void checkNativeAssignment(String name, Expression valueExpr, PirTerm value, PirType target) {
         checkNativeBoundary("Assignment to '" + LoopBodyGenerator.sourceName(name) + "'", expressionType(valueExpr, value), target, valueExpr);
+    }
+
+    /**
+     * The component types of {@code new Tuple2<>(a, b)} or {@code new Tuple3<>(a, b, c)} (ADR-068 D4
+     * exception 2, #299): from its destination where that is written (a declared local, an
+     * assignment, a {@code return}, or a parameter of a method of this class), component by
+     * component, else from each argument's type. Each component is then encoded by its type, as the
+     * explicit form does. A destination component of type Data (a raw {@code Tuple2}, or
+     * {@code PlutusData}) is read back as Data, so its argument must already be Data (review F711).
+     */
+    private PirType.RecordType inferredTupleType(String typeName, PirType.RecordType declared,
+                                                 ObjectCreationExpr oce, List<PirTerm> fields) {
+        var target = tupleDestinationType(oce);
+        var arguments = oce.getArguments();
+        var components = new ArrayList<PirType.Field>();
+        for (int i = 0; i < declared.fields().size(); i++) {
+            PirType type;
+            if (target != null && target.fields().size() == declared.fields().size()) {
+                type = target.fields().get(i).type();
+                if (type instanceof PirType.DataType) requireDataComponent(typeName, arguments.get(i), fields.get(i));
+            } else {
+                type = componentType(typeName, oce, arguments.get(i), fields.get(i));
+            }
+            components.add(new PirType.Field(declared.fields().get(i).name(), type));
+        }
+        return new PirType.RecordType(declared.name(), components);
+    }
+
+    /** The type of a diamond tuple's argument, which its component takes; JULC0012 where it is unknown. */
+    private PirType componentType(String typeName, ObjectCreationExpr oce, Expression argument, PirTerm field) {
+        PirType type;
+        try {
+            type = expressionType(argument, field);
+        } catch (CompilerException | IllegalArgumentException _) {
+            throw CompilerTypeDiagnostics.diamondTypeArgumentsUnknown(typeName, sourceLocation(oce));
+        }
+        if (type == PirHelpers.UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(argument));
+        return type;
+    }
+
+    /**
+     * JULC0012 unless a tuple component that is read back as Data is already Data (a {@code PlutusData},
+     * record, sealed value or {@code Optional}), which needs no encoding (#299).
+     */
+    private void requireDataComponent(String typeName, Expression argument, PirTerm field) {
+        PirType type;
+        try {
+            type = expressionType(argument, field);
+        } catch (CompilerException | IllegalArgumentException _) {
+            type = new PirType.DataType();
+        }
+        if (type == PirHelpers.UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(argument));
+        if (!TypeInferenceHelper.isDataShaped(type)) {
+            throw CompilerTypeDiagnostics.rawTupleUnsupported(typeName, sourceLocation(argument));
+        }
+    }
+
+    /** The position of {@code argument} among the call's arguments, by identity; -1 when it is not one. */
+    private static int argumentIndex(MethodCallExpr call, Node argument) {
+        for (int i = 0; i < call.getArguments().size(); i++) {
+            if (call.getArgument(i) == argument) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * The written tuple type an expression's value goes to, through parentheses and conditionals: a
+     * declared local, an assignment to a local, a {@code return}, or an argument of a method of this
+     * class; null when there is none (a {@code var} local, a library call).
+     */
+    private PirType.RecordType tupleDestinationType(Expression expr) {
+        Node child = expr;
+        Node parent = expr.getParentNode().orElse(null);
+        while (parent instanceof EnclosedExpr || (parent instanceof ConditionalExpr ce && ce.getCondition() != child)) {
+            child = parent;
+            parent = parent.getParentNode().orElse(null);
+        }
+        PirType target = null;
+        try {
+            if (parent instanceof VariableDeclarator vd && vd.getInitializer().orElse(null) == child
+                    && !(vd.getType() instanceof com.github.javaparser.ast.type.VarType)) {
+                target = typeResolver.resolve(vd.getType());
+            } else if (parent instanceof ReturnStmt) {
+                target = currentReturnType;
+            } else if (parent instanceof AssignExpr ae && ae.getValue() == child && ae.getTarget() instanceof NameExpr ne) {
+                target = symbolTable.lookup(ne.getNameAsString()).orElse(null);
+            } else if (parent instanceof MethodCallExpr call && call.getScope().isEmpty()
+                    && argumentIndex(call, child) >= 0) {
+                int index = argumentIndex(call, child);
+                var signature = symbolTable.lookupMethodSignature(call.getNameAsString());
+                PirType fn = signature.map(SymbolTable.MethodSignature::type).orElse(null);
+                for (int i = 0; fn instanceof PirType.FunType ft && i < index; i++) fn = ft.returnType();
+                if (fn instanceof PirType.FunType ft) target = ft.paramType();
+            }
+        } catch (IllegalArgumentException _) {
+            return null;
+        }
+        if (target != null) target = typeResolver.resolveNamed(target);
+        return target instanceof PirType.RecordType rt ? rt : null;
+    }
+
+    /**
+     * The fields of a constructed record, variant or tuple, which are Data-encoded: an argument whose
+     * type holds a native array is JULC0091 (ADR-068 D6, #298), also where the declared field type is
+     * not written (a diamond {@code new Tuple2<>(a, b)}).
+     */
+    private List<PirTerm> constructedFields(String typeName, ObjectCreationExpr oce) {
+        var fields = new ArrayList<PirTerm>();
+        for (var arg : oce.getArguments()) {
+            var field = generateExpression(arg);
+            PirType.ArrayType array;
+            try {
+                array = PirType.nativeArrayIn(expressionType(arg, field));
+            } catch (CompilerException | IllegalArgumentException _) {
+                array = null;
+            }
+            if (array != null) {
+                throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                        "Argument '" + arg + "' of new " + typeName, array, sourceLocation(arg));
+            }
+            fields.add(field);
+        }
+        return fields;
     }
 
     private void rejectNativeDataConstruction(String typeName, PirType type, Node source) {
@@ -3162,8 +3456,17 @@ public class PirGenerator {
         // Auto-wrap result for map (MkCons expects Data elements)
         if (wrapResultToData) {
             var bodyType = inferPirType(bodyTerm);
+            if (bodyType == PirHelpers.UNKNOWN) {
+                throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(
+                        lambdaBody instanceof com.github.javaparser.ast.stmt.ExpressionStmt es ? es.getExpression() : le));
+            }
             if (!(bodyType instanceof PirType.DataType)) {
-                bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);
+                try {
+                    bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);
+                } catch (CompilerException e) {
+                    throw locateDataEncoding(e, lambdaBody instanceof com.github.javaparser.ast.stmt.ExpressionStmt es
+                            ? es.getExpression() : le);
+                }
             }
         }
 

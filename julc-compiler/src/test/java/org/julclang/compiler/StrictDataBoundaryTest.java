@@ -431,9 +431,11 @@ class StrictDataBoundaryTest {
                         import java.util.List;""")
                 .replace("JulcArray<BigInteger> redeemer",
                         "List<JulcArray<BigInteger>> redeemer");
+        // A list's elements are Data-encoded, so the nested array is rejected where its type is written, before
+        // the boundary check (JULC0091, ADR-068 D6, #298).
         var nestedError = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(STDLIB).compile(nested));
-        assertTrue(nestedError.getMessage().contains("Unsupported strict boundary type ArrayType"));
+        assertEquals("JULC0091", nestedError.diagnostics().getFirst().code(), nestedError.getMessage());
         assertTrue(nestedError.diagnostics().getFirst().line() > 0);
     }
 

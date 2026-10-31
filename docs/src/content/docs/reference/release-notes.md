@@ -23,9 +23,9 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
 | a `@Param` field read from a `static` method | declare the field `static` |
 
 - **Script bytes do not change** for a source javac accepts: the gate only reads the source.
-  A source rewritten from the dialect can compile to different bytes. In particular,
-  `compareTo(..) > 0` and `compareTo(..) >= 0` cost more than the dialect operator did until
-  the `compareTo` lowering of ADR-068 D6 lands.
+  A source rewritten from the dialect can compile to different bytes where its meaning needs
+  another call, such as a decode that moves. `a.compareTo(b) > 0` compiles to the same script as
+  the dialect's `a > b`.
 - **Diagnostics change** for invalid Java that JuLC used to reject with its own code. For
   example, a non-exhaustive or dominated `switch`, a missing `return`, or an undefined name
   or label is now reported as `JULC0085` with javac's key.
@@ -35,6 +35,89 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   or `report` (javac runs and rejects nothing), or call `CompilerOptions.setJavacGate(...)`.
   With `report`, `-Djulc.javacGate.report=<dir>` records each source javac would reject. The
   default is `enforce`.
+## Upcoming preview: comparisons evaluate each operand once, left to right (#146, #295)
+
+`a.compareTo(b) OP 0` lowered to the three-way `compareTo` result compared with zero, which
+evaluated a non-trivial receiver or argument more than once: a traced operand traced twice,
+and nested comparisons grew the script exponentially
+([#146](https://github.com/bloxbean/julc/issues/146)). And `a > b` and `a >= b` evaluated the
+right operand first, so traces came in the wrong order and, when both operands could fail,
+the script reported a different failure than the Java code
+([#295](https://github.com/bloxbean/julc/issues/295)).
+
+- `a.compareTo(b) OP 0` and `0 OP a.compareTo(b)`, where `0` is the `int` literal zero and `OP`
+  is `<`, `<=`, `>`, `>=`, `==` or `!=`, now compile to one integer comparison that evaluates
+  `a`, then `b`, once each. Other uses of `compareTo` (`> 0L`, `== -1`, a parenthesized call,
+  or the result stored in a variable) keep the previous lowering.
+- `>` and `>=` on `int`, `long` and `BigInteger` evaluate the left operand first, as Java does.
+  When both operands are more than a variable or a literal, the left one is bound once first.
+- **Script bytes change** for validators and libraries that compare with `compareTo(...) OP 0`
+  (the stdlib does, so programs that keep unused stdlib methods change at `NONE` too) and for
+  `>` or `>=` between two computed operands. Scripts that use the `compareTo` form get smaller
+  and cheaper; the `>`/`>=` change can add a few bytes. A new hash means a new script address
+  or policy ID. The two Blaster state-thread verification fixtures use the `compareTo` form;
+  their locked artifacts and counterexample binding are refreshed with the same property
+  outcomes.
+
+## Upcoming preview: `JulcArray` in a Data-encoded position is rejected (JULC0091, #298)
+
+A `JulcArray` is a native UPLC array, which has no Data encoding. A record or sealed-variant
+component, a type argument of `Optional`, `Tuple2`, `Tuple3`, `JulcList`, `List`, `JulcMap` or
+`JulcArray`, and a `@Param` or `compileMethod` input are Data-encoded, so an array in any of
+them compiled but failed on-chain where the Java code succeeds
+([#298](https://github.com/bloxbean/julc/issues/298)). A `JulcArray` is now rejected with
+`JULC0091` wherever a native array would be Data-encoded: where such a type is written, and
+where lowering encodes a value whose type is inferred, such as `JulcList.of(xs.toArray())`,
+`JulcList.<JulcArray<BigInteger>>of(a)`, `Optional.of(array)`, a map key or value, a diamond
+`new Tuple2<>(array, …)` or a lambda result of `map`. The diagnostic points at the value that
+would be encoded. Store a `JulcList` and build the array where it is used
+(`xs.toArray()` in a local). Arrays of Data-encodable elements, such as
+`JulcArray<JulcList<BigInteger>>` in a local, stay supported. A datum or redeemer type that
+holds an array, already rejected by strict boundary validation, now reports `JULC0091`.
+
+## Upcoming preview: diamond tuples encode their components (#299)
+
+`new Tuple2<>(a, b)` and `new Tuple3<>(a, b, c)` resolved to tuples with Data components, so a
+`BigInteger`, `byte[]`, boolean or `String` component was put into the constructor unencoded and
+the script failed on-chain (`MkCons: element type … does not match list element type Data`) where
+the Java code returns ([#299](https://github.com/bloxbean/julc/issues/299)). This happened with and
+without a declared target type (`Tuple2<BigInteger, BigInteger> t = new Tuple2<>(x, y)`, `var t = …`,
+a return, an argument).
+
+- A diamond's component types are now taken from a declared local, `return`, assignment or
+  method-parameter target, else from the arguments, and each component is encoded by its type,
+  exactly as the explicit `new Tuple2<BigInteger, BigInteger>(x, y)` does. `var t = new Tuple2<>(x, y)`
+  reads its components with those types. A `switch` expression used as a component keeps the type its
+  arms agree on.
+- A raw tuple (`new Tuple2(a, b)`) or a diamond whose destination is raw (`Tuple2 t = (new Tuple2<>(…))`,
+  a raw loop variable, a raw parameter or return type) keeps working when its components are already
+  Data (`Builtins.iData(...)`, a record, a sealed value, an `Optional`), as `MathLib.divMod` uses it;
+  any other component is rejected with `JULC0012`: write the type arguments. An explicit
+  `new Tuple2<BigInteger, BigInteger>(…)` keeps its types wherever it is assigned.
+- A value whose type JuLC cannot determine (a `switch` whose arms have different types) is rejected
+  with `JULC0012` where it would be Data-encoded or be a diamond's component, rather than encoded as
+  Data.
+- **Script bytes change** for programs with such a diamond, which failed on-chain before, and for
+  programs that call a method on a `switch` expression whose arms all have one type, such as
+  `(switch (s) { case A a -> a.n(); case B b -> b.n(); }).equals(x)`: the result now has the arms'
+  type, so the call is the integer one and the comparison evaluates correctly, where it used the Data
+  representation before.
+
+## Upcoming preview: JuLC collections compare `byte[]` by content on the JVM
+
+On-chain, `JulcList`, `JulcMap` and `JulcArray` compare elements and keys by Data equality, so
+an equal `byte[]` is found. Off-chain, `JulcArrayList`, `JulcAssocMap` and `JulcArrayImpl`
+compared `byte[]` by identity, so `JulcList<byte[]>.contains(p)` or `JulcMap<byte[], V>.get(k)`
+was `false`/`null` for a distinct but equal array, and the JVM tests did not test the
+validator. They now compare `byte[]` elements, keys and values by content in `contains`,
+`get`, `lookup`, `getOrDefault`, `containsKey`, `delete`, `equals` and `hashCode`; nested JuLC
+collections compare deeply.
+
+- **Off-chain behaviour change:** a JVM test that relied on identity matching now gets the
+  on-chain result. With duplicate equal keys the most recently inserted entry wins, as on-chain.
+- Arrays are not copied: mutating a `byte[]` after adding it changes the collection's lookups,
+  equality and hash.
+- Scripts are unchanged.
 
 ## Upcoming preview: integer literals have Java's value (#270)
 

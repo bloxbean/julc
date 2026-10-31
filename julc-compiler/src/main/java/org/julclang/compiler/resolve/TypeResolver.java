@@ -1,8 +1,11 @@
 package org.julclang.compiler.resolve;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.pir.PirGenerator;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.util.StringUtils;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
@@ -81,7 +84,9 @@ public class TypeResolver {
         }
         var fields = new ArrayList<PirType.Field>();
         for (var param : rd.getParameters()) {
-            fields.add(new PirType.Field(param.getNameAsString(), resolve(param.getType())));
+            var type = resolve(param.getType());
+            requireDataEncodable(type, "Component '" + param.getNameAsString() + "' of record " + name, param.getType());
+            fields.add(new PirType.Field(param.getNameAsString(), type));
         }
         var recordType = new PirType.RecordType(name, fields);
         recordTypes.put(fqcn, recordType);
@@ -446,7 +451,7 @@ public class TypeResolver {
                 PirType elemType = new PirType.DataType();
                 var listArgs = ct.getTypeArguments();
                 if (listArgs.isPresent() && !listArgs.get().isEmpty()) {
-                    elemType = resolve(listArgs.get().get(0));
+                    elemType = dataArgument(listArgs.get().get(0), name);
                 }
                 yield new PirType.ListType(elemType);
             }
@@ -454,7 +459,7 @@ public class TypeResolver {
                 PirType elemType = new PirType.DataType();
                 var arrayArgs = ct.getTypeArguments();
                 if (arrayArgs.isPresent() && !arrayArgs.get().isEmpty()) {
-                    elemType = resolve(arrayArgs.get().get(0));
+                    elemType = dataArgument(arrayArgs.get().get(0), name);
                 }
                 yield new PirType.ArrayType(elemType);
             }
@@ -464,8 +469,8 @@ public class TypeResolver {
                 var mapArgs = ct.getTypeArguments();
                 if (mapArgs.isPresent()) {
                     var args = mapArgs.get();
-                    if (args.size() >= 1) keyType = resolve(args.get(0));
-                    if (args.size() >= 2) valType = resolve(args.get(1));
+                    if (args.size() >= 1) keyType = dataArgument(args.get(0), name);
+                    if (args.size() >= 2) valType = dataArgument(args.get(1), name);
                 }
                 yield new PirType.MapType(keyType, valType);
             }
@@ -474,8 +479,8 @@ public class TypeResolver {
                 PirType secondType = new PirType.DataType();
                 var tupleArgs = ct.getTypeArguments();
                 if (tupleArgs.isPresent() && tupleArgs.get().size() >= 2) {
-                    firstType = resolve(tupleArgs.get().get(0));
-                    secondType = resolve(tupleArgs.get().get(1));
+                    firstType = dataArgument(tupleArgs.get().get(0), name);
+                    secondType = dataArgument(tupleArgs.get().get(1), name);
                 }
                 yield new PirType.RecordType("Tuple2", List.of(
                         new PirType.Field("first", firstType),
@@ -487,9 +492,9 @@ public class TypeResolver {
                 PirType thirdType = new PirType.DataType();
                 var tuple3Args = ct.getTypeArguments();
                 if (tuple3Args.isPresent() && tuple3Args.get().size() >= 3) {
-                    firstType = resolve(tuple3Args.get().get(0));
-                    secondType = resolve(tuple3Args.get().get(1));
-                    thirdType = resolve(tuple3Args.get().get(2));
+                    firstType = dataArgument(tuple3Args.get().get(0), name);
+                    secondType = dataArgument(tuple3Args.get().get(1), name);
+                    thirdType = dataArgument(tuple3Args.get().get(2), name);
                 }
                 yield new PirType.RecordType("Tuple3", List.of(
                         new PirType.Field("first", firstType),
@@ -504,7 +509,7 @@ public class TypeResolver {
                 PirType elemType = new PirType.DataType();
                 var optArgs = ct.getTypeArguments();
                 if (optArgs.isPresent() && !optArgs.get().isEmpty()) {
-                    elemType = resolve(optArgs.get().get(0));
+                    elemType = dataArgument(optArgs.get().get(0), name);
                 }
                 yield new PirType.OptionalType(elemType);
             }
@@ -666,6 +671,27 @@ public class TypeResolver {
                     "Recursive type definition is incomplete: '" + ref.stableId() + "'");
         }
         return resolved;
+    }
+
+    /** A type argument of a Data-encoded container ({@code JulcList}, {@code Optional}, …): JULC0091 if it is a native array. */
+    private PirType dataArgument(Type argument, String container) {
+        var type = resolve(argument);
+        requireDataEncodable(type, "A type argument of " + container, argument);
+        return type;
+    }
+
+    /**
+     * JULC0091 (ADR-068 D6, #298): {@code type}, written at {@code where}, is in a Data-encoded
+     * position (a record component, a container's type argument, a {@code @Param} or
+     * {@code compileMethod} input), so it may not be or contain a native array where a Data
+     * encoding is needed. Arrays of Data-encodable types stay supported.
+     */
+    public void requireDataEncodable(PirType type, String position, Node where) {
+        var array = PirType.nativeArrayIn(type);
+        if (array != null) {
+            throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable(position, array,
+                    PirGenerator.sourceLocation(where));
+        }
     }
 
     /** Return whether a type graph contains a PV11 native Value. */

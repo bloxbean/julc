@@ -173,6 +173,12 @@ class KnownDivergencesTest {
     }
 
     private static final Path REGRESSIONS = Path.of("src/test/resources/regressions");
+    /**
+     * T13's reproducers compare with {@code == -1}: since ADR-068 M1 the {@code OP 0} form evaluates its operands once
+     * (D6), so the original reproducers agree; T13 stays open for every other use of {@code compareTo}.
+     */
+    private static final String T13_REPRODUCER = "diverge-t13-nested-compare-to-equals-minus-one-exhausts-budget.diffcase";
+    private static final String T13_SECOND_RUNG_REPRODUCER = "diverge-t13-nested-loops-equals-minus-one-needs-second-rung.diffcase";
     private static final DiffRunner RUNNER = DiffRunner.standard();
     private static final Set<String> DEEP = Set.of(G0.Feature.DEEP_COMPARISON.name());
     private static final Observation BUDGET = new Observation.Inconclusive("budget exhausted");
@@ -198,7 +204,7 @@ class KnownDivergencesTest {
      */
     @Test
     void theSavedT13ReproducerIsExplainedByItsConfirmationRerun() {
-        var saved = RegressionStore.read(REGRESSIONS.resolve("diverge-t13-nested-compare-to-exhausts-budget.diffcase"));
+        var saved = RegressionStore.read(REGRESSIONS.resolve(T13_REPRODUCER));
         var diffCase = saved.diffCase();
         var report = RUNNER.run(diffCase);
         for (var entry : report.results().entrySet()) {
@@ -301,7 +307,7 @@ class KnownDivergencesTest {
      */
     @Test
     void theNestedLoopsReproducerNeedsTheSecondRungAtNone() {
-        var diffCase = RegressionStore.read(REGRESSIONS.resolve("diverge-t13-nested-loops-needs-second-rung.diffcase")).diffCase();
+        var diffCase = RegressionStore.read(REGRESSIONS.resolve(T13_SECOND_RUNG_REPRODUCER)).diffCase();
         var report = RUNNER.run(diffCase);
         assertEquals(value(-5), report.jvm());
         for (var entry : report.results().entrySet()) {
@@ -346,7 +352,7 @@ class KnownDivergencesTest {
      */
     @Test
     void aProgramWithBothShapesThatFinishesIsT13Only() {
-        var t13 = RegressionStore.read(REGRESSIONS.resolve("diverge-t13-nested-compare-to-exhausts-budget.diffcase")).diffCase();
+        var t13 = RegressionStore.read(REGRESSIONS.resolve(T13_REPRODUCER)).diffCase();
         String expression = t13.source().substring(t13.source().indexOf("return ") + 7, t13.source().lastIndexOf(';'));
         String source = """
                 import java.math.BigInteger;

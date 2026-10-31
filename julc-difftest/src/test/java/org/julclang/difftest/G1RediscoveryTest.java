@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * still shows its defect, and its constrained counterfactual, which changes only the defect's trigger, keeps the JVM
  * observation and agrees. When a fix lands, its reproducer agrees and the check becomes the fix-based one: a
  * regression guard that the reproducer agrees with the JVM at every level, with the counterfactual kept beside it
- * (#291, fixed by ADR-067 M1 round 3; #209, fixed by the loop-break continuation fix).
+ * (#291, fixed by ADR-067 M1 round 3; #209, fixed by the loop-break continuation fix; #146's {@code OP 0} form, fixed
+ * by ADR-068 M1).
  */
 class G1RediscoveryTest {
 
@@ -68,13 +69,18 @@ class G1RediscoveryTest {
         for (String revision : List.of("-r3", "-r4", "-r5")) pinned("280-uncalled-zero-arg-helper" + revision, Verdict.Kind.MISMATCH);
     }
 
-    /** #146: the traced operand is bound to a local before the comparison. */
+    /**
+     * #146, the {@code a.compareTo(b) OP 0} form G1 generates, fixed by ADR-068 M1 (D6, D4 exception 1): each operand
+     * is evaluated once, in order, so a traced operand traces once and the reproducers agree. The counterfactual binds
+     * the traced operand to a local before the comparison. Other uses of {@code compareTo} stay open (T13).
+     */
     @Test
-    void tracedComparisonOperand() {
-        pinned("diverge-g1-146-traced-compare-operand", "agree-g1-146-counterfactual", Verdict.Kind.MISMATCH);
-        pinned("diverge-g1-146-traced-compare-operand-r2", "agree-g1-146-traced-compare-operand-counterfactual",
-                Verdict.Kind.MISMATCH);
-        for (String revision : List.of("-r3", "-r4", "-r5")) pinned("146-traced-compare-operand" + revision, Verdict.Kind.MISMATCH);
+    void tracedComparisonOperandTracesOnce() {
+        fixed("diverge-g1-146-traced-compare-operand", "agree-g1-146-counterfactual");
+        fixed("diverge-g1-146-traced-compare-operand-r2", "agree-g1-146-traced-compare-operand-counterfactual");
+        for (String revision : List.of("-r3", "-r4", "-r5")) {
+            fixed("diverge-g1-146-traced-compare-operand" + revision, "agree-g1-146-traced-compare-operand" + revision + "-counterfactual");
+        }
     }
 
     /**

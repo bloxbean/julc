@@ -1047,6 +1047,8 @@ public class JulcCompiler {
                 throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
                         param.getNameAsString(), paramType, sourceLocation(param));
             }
+            typeResolver.requireDataEncodable(paramType,
+                    "Parameter '" + param.getNameAsString() + "' of the compiled method", param);
             paramTypes.add(paramType);
         }
 
@@ -1704,6 +1706,7 @@ public class JulcCompiler {
                 for (var variable : field.getVariables()) {
                     var name = variable.getNameAsString();
                     var pirType = typeResolver.resolve(field.getCommonType());
+                    typeResolver.requireDataEncodable(pirType, "@Param field '" + name + "'", field.getCommonType());
                     result.add(new ParamField(name, pirType, javaType, sourceLocation(variable), variable));
                 }
             }

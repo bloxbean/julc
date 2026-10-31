@@ -84,8 +84,9 @@ final class O15ProjectionSharingFixtures {
 
     /**
      * 0: the corpus shape (sequential same field): the leading chain is shared with both later
-     * sites. {@code compareTo} lowers to a three-way comparison that evaluates its receiver
-     * twice, so the source's three projections are four chains in PIR; all four become one.
+     * sites. Its three projections are three chains in PIR, and all three become one. (Before
+     * ADR-068 M1, {@code compareTo}'s three-way lowering evaluated its receiver twice, so they were
+     * four, #146.)
      */
     static final String REPEATED = IMPORTS + """
             class Repeated {
@@ -432,10 +433,13 @@ final class O15ProjectionSharingFixtures {
             Input.fails("bad-amount", BAD_AMOUNT));
 
     static final List<Fixture> FIXTURES = List.of(
-            new Fixture("REPEATED", REPEATED, "repeated", true, 1, 0, 4, 1, BOX_LIMIT),
+            // Three source projections of b.amount(): four chains before ADR-068 M1, when compareTo repeated its
+            // receiver (#146), three since.
+            new Fixture("REPEATED", REPEATED, "repeated", true, 1, 0, 3, 1, BOX_LIMIT),
             new Fixture("MANUAL", MANUAL, "manual", false, 0, 0, 1, 1, BOX_LIMIT),
             new Fixture("TWO_FIELDS", TWO_FIELDS, "twoFields", true, 0, 1, 3, 3, BOX_ONLY),
-            new Fixture("MIXED", MIXED, "mixed", true, 1, 1, 5, 2, BOX_LIMIT),
+            // One chain fewer before sharing since ADR-068 M1 (#146: compareTo evaluates its receiver once).
+            new Fixture("MIXED", MIXED, "mixed", true, 1, 1, 4, 2, BOX_LIMIT),
             new Fixture("BOTH_BRANCHES", BOTH_BRANCHES, "bothBranches", false, 0, 0, 2, 2, List.of(
                     Input.ok("then", BOX_OPEN, TRUE),
                     Input.ok("else", BOX_OPEN, FALSE),
@@ -471,7 +475,8 @@ final class O15ProjectionSharingFixtures {
                     Input.ok("open", BOX_OPEN),
                     Input.fails("not-a-record", NOT_A_RECORD),
                     Input.fails("bad-inner", BAD_INNER))),
-            new Fixture("CAST", CAST, "cast", true, 1, 0, 4, 1, BOX_LIMIT),
+            // One chain fewer before sharing since ADR-068 M1 (#146).
+            new Fixture("CAST", CAST, "cast", true, 1, 0, 3, 1, BOX_LIMIT),
             new Fixture("BOOL_STRING", BOOL_STRING, "boolString", true, 2, 1, 4, 2, List.of(
                     Input.ok("open-expected", BOX_OPEN, OK),
                     Input.ok("open-other", BOX_OPEN, NONE),

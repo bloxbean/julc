@@ -362,8 +362,8 @@ public final class DiagnosticCodes {
             "NATIVE_ARRAY_NOT_DATA_ENCODABLE",
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
-            "{0} is a JulcArray in a Data-encoded position ({1}); native arrays are not Data-encodable",
-            "Use a JulcList in that position, or keep the array local to the computation.");
+            "{0} needs a Data encoding of the native array {1}, which has none",
+            "Store a JulcList in the record, collection or input, and build the array where it is used, for example `xs.toArray()` in a local.");
 
     public static final DiagnosticInfo NATIVE_TYPE_AT_DATA_BOUNDARY = new DiagnosticInfo(
             "JULC0042",

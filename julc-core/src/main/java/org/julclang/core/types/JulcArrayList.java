@@ -3,11 +3,16 @@ package org.julclang.core.types;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Off-chain implementation of {@link JulcList} backed by a {@code java.util.List<T>}.
  * All operations are immutable — mutations return new instances.
+ * <p>
+ * Elements compare as on-chain, where a list compares by Data equality: a {@code byte[]} element by
+ * its content, any other element by its own {@code equals} (so a nested JuLC collection compares
+ * deeply). This applies to {@link #contains}, {@link #equals} and {@link #hashCode}. Arrays are
+ * held, not copied: mutating one after it is added changes the list's equality and hash, as with
+ * any mutable element.
  *
  * @param <T> the element type
  */
@@ -86,7 +91,10 @@ public final class JulcArrayList<T> implements JulcList<T> {
 
     @Override
     public boolean contains(T element) {
-        return delegate.contains(element);
+        for (T elem : delegate) {
+            if (ContentEquality.equal(elem, element)) return true;
+        }
+        return false;
     }
 
     @Override
@@ -139,13 +147,13 @@ public final class JulcArrayList<T> implements JulcList<T> {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o instanceof JulcArrayList<?> that) return delegate.equals(that.delegate);
+        if (o instanceof JulcArrayList<?> that) return ContentEquality.equalLists(delegate, that.delegate);
         return false;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(delegate);
+        return ContentEquality.hashList(delegate);
     }
 
     @Override

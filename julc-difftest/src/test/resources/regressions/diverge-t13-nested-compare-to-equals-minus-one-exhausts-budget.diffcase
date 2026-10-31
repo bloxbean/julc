@@ -1,0 +1,23 @@
+format: 2
+name: thirteen nested compareTo operands compared with == -1, each around a ternary, exhaust the budget (T13, #146)
+class: Probe
+method: m
+arg: 02
+arg: 01
+arg: 80
+expect: DIVERGE T13 Value/Inconclusive
+jvm: Value 02 []
+uplc: Inconclusive "budget exhausted"
+note: diverge-t13-nested-compare-to-exhausts-budget with `a.compareTo(b) == -1` for `a.compareTo(b) < 0`, the same
+note: Java meaning. ADR-068 M1's compareTo rule covers only a comparison with the int literal 0, so this form keeps
+note: the lowering that repeats its operands (#146): the script and its evaluation double per level and every level
+note: exhausts the budget, where the JVM returns 2. It is T13's reproducer for KnownDivergencesTest.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        return ((((((((((((((((((((((((((a.compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b).compareTo(b) == -1 || b.compareTo(a) == -1) ? a : b);
+    }
+}

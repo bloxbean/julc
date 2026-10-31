@@ -177,9 +177,36 @@ public final class PirHelpers {
     }
 
     /**
+     * The type of a value whose type the lowering does not know, as opposed to a value known to be
+     * Data (review F710): a {@code switch} expression whose arms have different, not all Data-shaped,
+     * types. It equals {@code DataType} everywhere, so it changes no other decision; encoding it, or
+     * taking it as a diamond component, is {@code JULC0012}, decided by identity.
+     */
+    public static final PirType UNKNOWN = new PirType.DataType();
+
+    /** JULC0012 for a value of {@link #UNKNOWN} type that would be Data-encoded; located by {@link PirGenerator}. */
+    public static void requireKnownType(PirType type) {
+        if (type == UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(null);
+    }
+
+    /**
+     * JULC0091 (ADR-068 D6, #298): a value of {@code type} is about to be Data-encoded, and a native
+     * array has no Data encoding. The diagnostic has no position; {@link PirGenerator} attaches the
+     * expression whose value is encoded.
+     */
+    public static void requireDataEncodable(PirType type) {
+        var array = PirType.nativeArrayIn(type);
+        if (array != null) {
+            throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable("The value encoded here", array, null);
+        }
+    }
+
+    /**
      * Wrap a value with the appropriate encode builtin for the target type (inverse of wrapDecode).
      */
     public static PirTerm wrapEncode(PirTerm value, PirType type) {
+        requireKnownType(type);
+        requireDataEncodable(type);
         if (PirType.containsNativeOpaque(type)) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(
                     "Data encoding", type, new PirType.DataType(), null);
