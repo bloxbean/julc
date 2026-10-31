@@ -284,6 +284,18 @@ The refreshed suite re-establishes the same property outcomes. The lowering
 change itself is tested by the compiler's `ComparisonLoweringTest` and the
 differential harness's `ComparisonOrderDiffTest`.
 
+## Implementation finding: typed-multisig fixtures in Java (ADR-068 M1b)
+
+The javac gate rejects `signatories.contains(datum.key1())` with a `PlutusData` key:
+JuLC's dialect decoded the key implicitly. Both typed-multisig fixtures now write
+`signatories.contains(PubKeyHash.of(Builtins.unBData(datum.key1())))`, which decodes
+the key once before the search. The success sets are unchanged: a key that is not
+`BData` still cannot pass, and only when the validator rejects can the outcome move
+from `false` to a decode failure, both of which reject the transaction. The artifacts,
+their lock entries and the manifest lock hash are refreshed (lock SHA-256 `e283424b…`
+→ `653cd876…`). The other five locked artifacts are byte-identical, and the refreshed
+suite re-establishes the same property outcomes.
+
 ## Implementation result
 
 The exit criteria are implemented by the property catalogue, paired correct

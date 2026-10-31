@@ -136,6 +136,14 @@ The comparison has the same value, so the artifacts' success sets are unchanged,
 and the suite re-establishes the same outcomes. See ADR-003, "Implementation
 finding: `compareTo` comparison lowering (#146)".
 
+ADR-068 M1b rewrites the fixtures into Java that javac accepts. Five artifacts are
+byte-identical. In typed-multisig and typed-multisig-broken, JuLC decoded the
+`PlutusData` key inside `contains` by an implicit coercion, which is not Java, so
+`PubKeyHash.of(Builtins.unBData(key))` now decodes it once before the loop. Their
+bytes change (438 → 443 and 366 → 369 artifact bytes); their artifacts, lock
+entries and the manifest lock hash are refreshed, and the suite re-establishes the
+same outcomes.
+
 Blaster's current solver-valid results trust Z3 and its SMT translation. They
 must be reported as `SMT-VALID`, not `KERNEL-PROVED`.
 

@@ -315,8 +315,8 @@
     {
       "artifactId": "verification-multi-sig",
       "title": "VerificationMultiSig",
-      "compiledCodeSha256": "66b2825739bb3ecf3727aaf1fe3eca40ff20e9f70dad704669cdb51d3efab4ef",
-      "cardanoScriptHash": "81bf58b49fd9612e6c55d7e2999388369add18e0cc0079c4211900f7",
+      "compiledCodeSha256": "7b44687933f789d30554f2166f911be49575ecbd1110351a04d092db9deb30f4",
+      "cardanoScriptHash": "b93b672b38ef2bb5fdf792e8a45c8eb8bd3b34178af321c0824e4223",
       "uplcVersion": "1.1.0",
       "builtins": [
         {
@@ -370,8 +370,8 @@
     {
       "artifactId": "verification-multi-sig",
       "title": "VerificationMultiSig",
-      "compiledCodeSha256": "13cf32415f111a877ac3fb168ccf0dbbb80f65d56c0735dfe536f4c18babf7e3",
-      "cardanoScriptHash": "6127d6efb0926c1e4f1bec828d616b0f032365b0dfb2a0b7edaa9a94",
+      "compiledCodeSha256": "6192b038a8dd25d77f986c8c88de80f8bc25da8cca77cff0b9fb2734aeb53534",
+      "cardanoScriptHash": "d7a71bea22ce220edb03712f0004cf976e740c8d2869ac841b9587f7",
       "uplcVersion": "1.1.0",
       "builtins": [
         {
