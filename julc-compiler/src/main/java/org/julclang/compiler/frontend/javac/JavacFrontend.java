@@ -132,6 +132,18 @@ public final class JavacFrontend {
      * reads a unit with a contested name fails closed with {@code duplicate class}, naming it.
      */
     public JavacResult analyze(List<Unit> roots, List<Unit> pool) {
+        return analyze(roots, pool, null, true).result();
+    }
+
+    /**
+     * An analysis with its attributed trees: the result, the roots' trees in order (empty when javac did not run) and
+     * the task's {@link Trees}. For JuLC's own tools that read javac's types, such as the REPL wrapper (D9).
+     */
+    record Attribution(JavacResult result, List<CompilationUnitTree> roots, Trees trees) {
+    }
+
+    /** {@link #analyze(List, List)}, keeping the attributed trees. */
+    Attribution attribute(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true);
     }
 
@@ -140,13 +152,13 @@ public final class JavacFrontend {
      * attributes JuLC's own ledger sources), reporting each class file javac opens to {@code opened}.
      */
     public JavacResult observe(List<Unit> roots, List<Unit> pool, Consumer<String> opened) {
-        return analyze(roots, pool, opened, false);
+        return analyze(roots, pool, opened, false).result();
     }
 
-    private JavacResult analyze(List<Unit> roots, List<Unit> pool, Consumer<String> opened, boolean checkOwnership) {
+    private Attribution analyze(List<Unit> roots, List<Unit> pool, Consumer<String> opened, boolean checkOwnership) {
         JavaCompiler javac = compiler();
-        if (javac == null) return supported();
-        if (roots.isEmpty()) return JavacResult.accepted(platform);
+        if (javac == null) return new Attribution(supported(), List.of(), null);
+        if (roots.isEmpty()) return new Attribution(JavacResult.accepted(platform), List.of(), null);
         var offered = new ArrayList<Unit>(roots);
         offered.addAll(pool);
         for (String text : bundled.texts().values()) offered.add(Unit.of(text));
@@ -163,7 +175,7 @@ public final class JavacFrontend {
 
         if (checkOwnership) {
             var owned = Ownership.check(platform, bundled, rootFiles, poolFiles);
-            if (!owned.isEmpty()) return JavacResult.rejected(owned, platform);
+            if (!owned.isEmpty()) return new Attribution(JavacResult.rejected(owned, platform), List.of(), null);
         }
 
         var fileManager = new EmbeddedFileManager(platform, precedence.listed(), opened);
@@ -199,7 +211,9 @@ public final class JavacFrontend {
             diagnostics.add(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context));
         }
         diagnostics.addAll(precedence.conflicts(parsed.keySet(), diagnostics));
-        return diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
+        var result = diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
+        var rootTrees = rootFiles.stream().map(f -> parsed.get(f.toUri())).filter(t -> t != null).toList();
+        return new Attribution(result, rootTrees, Trees.instance(task));
     }
 
     /**
