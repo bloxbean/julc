@@ -16,8 +16,9 @@ listed; a number that is derived says so.
 | M1a, review round 3 (F520 by D8's "Whole units" amendment, F521) | `8172eb41`, `47641400` (this file) |
 | M1a, review round 4 (F530–F533) | `4e07988f`, `cb5a4377` (this file) |
 | M1a, round 4 follow-up (F531 in report mode) | `38533217`, `7cbecfd3` (this file) |
-| M1a, round 5: the precedence simplification (F540–F543) | `c46e6f9e`, `e45b2da0`, and the commit updating this file |
-| Evidence measured at | `e45b2da0` for tests, byte identity, gate totals and the Web Image probe; native CLI and `wasmSmokeFull` at `27161eb8`; timing at `e13eb24c` (rounds 2 and 3 did not change the analysis path's cost) |
+| M1a, round 5: the precedence simplification (F540–F543) | `c46e6f9e`, `e45b2da0`, `d693c318` (this file) |
+| M1a, round 6: host tagging by provenance (F550, F551) | `689c40b4`, and the commit updating this file |
+| Evidence measured at | `689c40b4` for tests, byte identity, gate totals and the Web Image probe; native CLI and `wasmSmokeFull` at `27161eb8`; timing at `e13eb24c` (rounds 2 and 3 did not change the analysis path's cost) |
 
 ## Toolchains
 
@@ -64,10 +65,12 @@ listed; a number that is derived says so.
   synchronizes its own queries (`JavacMetadata.read`).
 - **Pool precedence** (D8, with its "Whole units" amendment), applied in one place, the gate (`Precedence`): roots,
   then project units, then JAR units, over every top-level declaration of every unit, whole units. Each pool unit
-  carries its origin in the compilation's own inputs (`JavacFrontend.Origin`): the hosts that merge a class-path pool
-  with project sources (annotation processor, testkit `SourceDiscovery`, the CLI's `ProjectSourceResolver` users)
-  tag the JAR texts with `CompilerOptions.setJarLibrarySources`; every other unit is a project unit, so untagged
-  units are of equal standing; the bundled sources are JAR units after the host's. The origin is in the cache key. A
+  carries its origin in the compilation's own inputs (`JavacFrontend.Origin`): every host whose libraries include a
+  class-path scan tags the scan's sources by provenance with `CompilerOptions.setJarLibrarySources`, which holds the
+  scan's own `String` objects and compares by identity, so a project or editor source whose text equals a JAR copy
+  stays a project source (annotation processor, testkit `SourceDiscovery`, the CLI's `ProjectSourceResolver` users,
+  and through `ToolsService.compilerFor` the playground server, the Wasm full API, the REPL evaluator and the source
+  debugger); every other unit is a project unit, so untagged units are of equal standing; the bundled sources are JAR units after the host's. The origin is in the cache key. A
   shadowed unit is left off javac's source path entirely and never parsed or entered; if javac then rejects, its
   diagnostics are kept exactly as they are, and one `JULC0085` note per shadowed unit names it, the qualified name it
   shares and the declaration that takes precedence. Two units of equal standing declaring one name are rejected
@@ -104,23 +107,23 @@ GRAALVM_HOME=<GraalVM 25.0.2> ./gradlew :julc-cli:nativeCompile
 
 ## Tests
 
-`./gradlew test --offline --continue --rerun` at `e45b2da0` (with the report property): **12,497 tests, 0 failures,
-0 errors, 530 skipped** (XML totals), `BUILD SUCCESSFUL in 12m 32s`. M0's head had 12,411; the first M1a round
+`./gradlew test --offline --continue --rerun` at `689c40b4` (with the report property): **12,500 tests, 0 failures,
+0 errors, 530 skipped** (XML totals), `BUILD SUCCESSFUL in 17m 8s`. M0's head had 12,411; the first M1a round
 12,469; review round 1, at `e13eb24c`, 12,483; round 2, at `27161eb8`, 12,489; round 3, at `8172eb41`, 12,491; round
-4, at `4e07988f`, 12,495; its follow-up, at `38533217`, 12,496.
+4, at `4e07988f`, 12,495; its follow-up, at `38533217`, 12,496; round 5, at `e45b2da0`, 12,497.
 
-The gate's own suites: `JavacFrontendTest` 24, `JavacGateTest` 9, `JavacGateReviewTest` 22, `JavacGateEnvironmentTest`
+The gate's own suites: `JavacFrontendTest` 24, `JavacGateTest` 9, `JavacGateReviewTest` 23, `JavacGateToolsHostTest` (julc-tools) 2, `JavacGateEnvironmentTest`
 4, `JavacStubsTest` 6, `JavacNativeImageMetadataTest` 3, one adapter test class per host (testkit, Gradle plugin,
 annotation processor, CLI, playground, `julc-wasm` on the JVM; 2 tests each) and `JavacGateProbeTest` 1.
 
 ## Byte identity
 
 `adr068Baseline` over the corpus at the base (gate absent), at `e13eb24c`, `27161eb8`, `8172eb41`, `4e07988f`,
-`38533217` and `e45b2da0` (gate in `report`, the default): the
+`38533217`, `e45b2da0` and `689c40b4` (gate in `report`, the default): the
 ledger (`ledger-b0.tsv`: FLAT digest per case at the four levels, 10,960 cases), budgets, rejection inventory, totals,
 corpus listing and equality scan are **byte-identical**, and equal to the checked-in M0 files. One row of
 `ledger-b0-semantic.tsv` differs, the JVM-side failure digest of `reject-guard-reference-cast`: it took three different
-values in nine runs, including two runs of the unchanged base, so it is a nondeterministic JVM observation of that
+values in ten runs, including two runs of the unchanged base, so it is a nondeterministic JVM observation of that
 case, not a gate effect. The JavaParser frontend's output does not depend on the gate.
 
 ## Gate totals over the corpus
@@ -130,7 +133,7 @@ per-case file were byte-identical at `e13eb24c`, `27161eb8`, `8172eb41`, `4e0798
 negative fixtures (`MultiFileCompilerTest$ErrorHandling#rejectsDuplicateRecordTypes`,
 `FqcnResolutionTest$CollisionDetection#duplicateRecordFqcnThrowsError`, whose root redeclares a library's record) keep
 their javac diagnostics and gain round 5's shadowing note (`JULC0085`, 2 cases); the files below are regenerated
-there. Otherwise: no corpus case declares a name
+there, and are byte-identical again at `689c40b4`. Otherwise: no corpus case declares a name
 in two pool units or shadows a pool unit, so rounds 3 and 4 change no recorded outcome (generated:
 [`068/m1a-gate-corpus-summary.txt`](068/m1a-gate-corpus-summary.txt), and per case, with its entry point, keys, first
 diagnostic and originating tests, [`068/m1a-gate-corpus.tsv`](068/m1a-gate-corpus.tsv)):
@@ -173,7 +176,7 @@ the rejections on purpose; M1b classifies the migration cases.
 
 The test-suite run's own report (every input the suites compile, not only the frozen corpus) at `27161eb8`: 6,003
 rejected inputs, 5,997 distinct roots (one more than round 1: the new tests' inputs), 0 internal gate failures, the
-same key distribution; the same at `8172eb41` and `4e07988f`, and 6,004 / 5,998 at `38533217` and `e45b2da0`. No existing test or fixture relied on a pool holding two units of one
+same key distribution; the same at `8172eb41` and `4e07988f`, 6,004 / 5,998 at `38533217` and `e45b2da0`, and 6,007 / 5,998 at `689c40b4` (the new host tests' inputs). No existing test or fixture relied on a pool holding two units of one
 name: the full suite and the corpus are unchanged by F521.
 
 ## Hosts
@@ -187,7 +190,7 @@ All built without `--add-exports`/`--add-opens`; the one file naming JDK interna
 | JVM library, testkit, Gradle plugin (TestKit), annotation processor (nested javac), CLI, playground, `julc-wasm` API | Adapter tests green: each accepts Java with its own pool under `enforce` and rejects a javac error with `JULC0085` |
 | Native CLI (`:julc-cli:nativeCompile`) | Builds: **107,565,176 bytes** at `27161eb8` (107,548,632 at `e13eb24c`), against 90,570,776 at the base: +16,994,400 (+18.8%). `julc -Djulc.javacGate=enforce build` accepts a project with a stdlib-using, `@RequiresSigner` validator and a project library; the dialect `fee() > minimum()` fails the build with `JULC0085 … (compiler.err.operator.cant.be.applied.1)`; with the default mode it builds as before |
 | `julc-wasm` full image (`wasmSmokeFull`) | Builds: **35,234,313 bytes raw, 12,316,460 gzip-9, 8,746,973 brotli-11** (at `e13eb24c`), against 24,790,854 / 8,659,188 / 6,119,533 at the base: +10.4 MB raw (+42%), +2.63 MB brotli (+43%). The full smoke passes, also at `27161eb8`; at `e13eb24c` one of three runs hit the smoke's request timeout on its last step (VM evaluation, no compilation) while the machine's load average was about 80; the two reruns passed |
-| Web Image gate probe (`wasmGateProbe`) | `JavacGateProbe` (julc-wasm test sources), built as a Web Image (26,603,980 bytes at `27161eb8`; rerun green at `8172eb41`, `4e07988f`, `38533217` and `e45b2da0`) from julc-wasm's class path and run under Node, gives the JVM's lines exactly: environment `supported=true`, the two digests above; `FeeGate` (stdlib) accepted, 249 bytes, FLAT `df968e25…`; `OwnerGate` (`@RequiresSigner`) accepted, 269 bytes, FLAT `46a2c36b…`; the dialect rejected `JULC0085 FeeGate.java:13:35 … (compiler.err.operator.cant.be.applied.1)` |
+| Web Image gate probe (`wasmGateProbe`) | `JavacGateProbe` (julc-wasm test sources), built as a Web Image (26,603,980 bytes at `27161eb8`; rerun green at `8172eb41`, `4e07988f`, `38533217`, `e45b2da0` and `689c40b4`) from julc-wasm's class path and run under Node, gives the JVM's lines exactly: environment `supported=true`, the two digests above; `FeeGate` (stdlib) accepted, 249 bytes, FLAT `df968e25…`; `OwnerGate` (`@RequiresSigner`) accepted, 269 bytes, FLAT `46a2c36b…`; the dialect rejected `JULC0085 FeeGate.java:13:35 … (compiler.err.operator.cant.be.applied.1)` |
 | Elci native shape | Not run (external) |
 
 ## Timing (E6)
@@ -314,4 +317,11 @@ secondary name is dropped from both frontends' pools.*
 | F541 pruning ignored the explicit mode | The gate computes the effective pool; `JulcCompiler` uses it only when `JavacGate.mode(options)` is `enforce` | `#anExplicitReportOptionWinsOverAGlobalEnforceProperty` (global `enforce`, explicit `REPORT`: B0's output) |
 | F542, F543 misattributed conflicts | The name-resolution logic is removed; javac's diagnostics are kept; one note per shadowed unit | `#aShadowedUnitIsNeverReadAndJavacsDiagnosticsAreKeptWithANote` (no PARSE/ENTER for the shadowed file; javac's diagnostics equal those of the program without it; the note names both files); `#notesNameEachShadowedUnitInEitherPoolOrder` |
 | Report-mode B0 regression (kept) | — | `#theGateDecidesOnTheMergedPoolWhileReportModeCompilesB0sPool` (the gate's javac diagnostics equal javac's on the merged pool, the effective pool is `Current` only, report and off give the same JuLC outcome); `#enforceModeCompilesTheMergedPoolInBothFrontends` |
+
+## Review round 6: host tagging by provenance (F550, F551)
+
+| Finding | Change | Evidence |
+|---|---|---|
+| F550 tagging by text | `CompilerOptions.setJarLibrarySources` keeps the class-path scan's own `String` objects in an identity set; `LibrarySourceResolver.jarSourceTexts` selects the pool entries that are still the scan's `LibrarySource` objects; the CLI scans the class path once, so its pool and its tags share the same objects. A project source whose text equals a JAR copy stays a project source | `JavacGateReviewTest#aProjectSourceWithAJarCopysTextStaysAProjectSource` (Codex's regression: a project `p.One` with the JAR copy's text and a project `p.Two` also declaring `p.One` are rejected as equal standing, even when the JAR copy's own text object is tagged) |
+| F551 untagged hosts | `ToolsService.compilerFor(classpathLibraries)` (class-path sources as JAR sources) in the playground server, the Wasm full API and the REPL evaluator; `SourceDebugService` tags its cached sources per request; editor libraries stay project sources | `JavacGateToolsHostTest` (julc-tools, enforce mode): with a class-path `com.example.Fees` and an editor library also declaring `Fees`, the compile, evaluate and source-debug paths shadow the class-path copy instead of rejecting it as equal standing; an untagged compiler rejects it |
 
