@@ -94,21 +94,16 @@ class FailureReportIntegrationTest {
         var builtinTrace = result.builtinTrace();
         assertFalse(builtinTrace.isEmpty(), "BuiltinTrace should capture builtins");
 
-        // ADR-068 M1b: the source compares with compareTo(..) >= 0. Until M1c's compareTo rule lowers that to
-        // LessThanEqualsInteger(threshold, amount), compareTo's own LessThanInteger(amount, threshold) carries the
-        // values and the >= 0 test is the failing comparison; with M1c both are one LessThanEqualsInteger → False.
         var compEntry = builtinTrace.stream()
                 .filter(e -> e.fun() == DefaultFun.LessThanEqualsInteger
                         && "False".equals(e.resultSummary()))
                 .findFirst().orElse(null);
         assertNotNull(compEntry,
                 "Should capture LessThanEqualsInteger → False. Got: " + builtinTrace);
-        var valueEntry = builtinTrace.stream()
-                .filter(e -> (e.fun() == DefaultFun.LessThanEqualsInteger || e.fun() == DefaultFun.LessThanInteger)
-                        && e.argSummary().contains("10") && e.argSummary().contains("5"))
-                .findFirst().orElse(null);
-        assertNotNull(valueEntry,
-                "Should capture the comparison of amount 5 with threshold 10. Got: " + builtinTrace);
+        assertTrue(compEntry.argSummary().contains("10"),
+                "Should contain threshold value 10. Got: " + compEntry.argSummary());
+        assertTrue(compEntry.argSummary().contains("5"),
+                "Should contain amount value 5. Got: " + compEntry.argSummary());
 
         // Build and format FailureReport
         var report = FailureReportBuilder.build(result, compiled.sourceMap());
