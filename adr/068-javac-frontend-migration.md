@@ -877,6 +877,10 @@ milestone's evidence; a skipped check fails the gate.
 
 ## Implementation results
 
+**Known issues and deferred findings** are tracked in [`evidence/068-followups.md`](evidence/068-followups.md).
+Since 2026-10-31 a milestone review closes at "no new regression, no open P0/P1"; P2/P3 findings go to that list
+(maintainer decision).
+
 ### M0: baseline (2026-10-31)
 
 Commits on `wip/068-m0`, merged into this PR. Round 1: `6d8ed6aa` (corpus recorder), `b0c7f579` (the `JULC0087`
