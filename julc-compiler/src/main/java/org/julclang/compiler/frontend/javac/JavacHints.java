@@ -26,10 +26,10 @@ import java.util.regex.Pattern;
  */
 final class JavacHints {
 
-    static final Pattern MISSING_PACKAGE = Pattern.compile("package ([\\w.]+) does not exist");
-    static final Pattern SYMBOL = Pattern.compile("symbol:\\s+(class|interface|variable|method|package)"
+    private static final Pattern MISSING_PACKAGE = Pattern.compile("package ([\\w.]+) does not exist");
+    private static final Pattern SYMBOL = Pattern.compile("symbol:\\s+(class|interface|variable|method|package)"
             + "\\s+([\\w.$]+)");
-    static final Pattern LOCATION_PACKAGE = Pattern.compile("location:\\s+package\\s+([\\w.]+)");
+    private static final Pattern LOCATION_PACKAGE = Pattern.compile("location:\\s+package\\s+([\\w.]+)");
 
     /** JuLC's replacements for the JDK collection types users reach for first: all are in {@code java.util}. */
     private static final Map<String, String> REPLACEMENTS = Map.ofEntries(
@@ -46,9 +46,8 @@ final class JavacHints {
      * packages of its JDK on-demand imports. Read from javac's trees, not from the text, so comments and spacing do
      * not matter.
      */
-    record UnitContext(List<long[]> annotationSpans, List<String> jdkWildcardImports, String packageName,
-                       List<String> singleImports, List<String> wildcardImports) {
-        static final UnitContext NONE = new UnitContext(List.of(), List.of(), "", List.of(), List.of());
+    record UnitContext(List<long[]> annotationSpans, List<String> jdkWildcardImports) {
+        static final UnitContext NONE = new UnitContext(List.of(), List.of());
 
         static UnitContext of(CompilationUnitTree unit, SourcePositions positions) {
             var spans = new ArrayList<long[]>();
@@ -60,22 +59,14 @@ final class JavacHints {
                     return super.visitAnnotation(node, unused);
                 }
             }.scan(unit, null);
-            var jdkWildcards = new ArrayList<String>();
-            var singles = new ArrayList<String>();
             var wildcards = new ArrayList<String>();
             for (ImportTree i : unit.getImports()) {
-                if (i.isStatic() || !(i.getQualifiedIdentifier() instanceof MemberSelectTree select)) continue;
-                if (select.getIdentifier().contentEquals("*")) {
-                    String pkg = select.getExpression().toString();
-                    wildcards.add(pkg);
-                    if (isJdk(pkg)) jdkWildcards.add(pkg);
-                } else {
-                    singles.add(select.toString());
+                if (!i.isStatic() && i.getQualifiedIdentifier() instanceof MemberSelectTree select
+                        && select.getIdentifier().contentEquals("*") && isJdk(select.getExpression().toString())) {
+                    wildcards.add(select.getExpression().toString());
                 }
             }
-            String pkg = unit.getPackageName() == null ? "" : unit.getPackageName().toString();
-            return new UnitContext(List.copyOf(spans), List.copyOf(jdkWildcards), pkg, List.copyOf(singles),
-                    List.copyOf(wildcards));
+            return new UnitContext(List.copyOf(spans), List.copyOf(wildcards));
         }
 
         boolean inAnnotation(long position) {
