@@ -859,6 +859,61 @@ milestone's evidence; a skipped check fails the gate.
 4. **When ADR-061 decides its representation,** is it inserted between javac trees and PIR for statements (D2)?
    Lean: yes, as ADR-061's own migration.
 
+## Implementation results
+
+### M0: baseline (2026-10-31)
+
+Commits on `wip/068-m0`, merged into this PR: `6d8ed6aa` (corpus recorder), `b0c7f579` (the `JULC0087`
+predicate), `6a9fd536` (baseline tools), `a8963b85` (evidence, ADR-062 step S6, `SECURITY.md`). The evidence file
+is [`evidence/068-javac-frontend-baseline.md`](evidence/068-javac-frontend-baseline.md); the generated files are in
+`adr/evidence/068/`.
+
+- **Corpus (10,960 cases).** 10,896 recorded during the test runs of julc-compiler (8,508), julc-difftest (2,039),
+  julc-stdlib (239), julc-testkit (60) and julc-examples (51); the 16 stdlib libraries (17 cases); the ledger (39);
+  the blaster (7) and C7 (6) fixtures; 182 distinct `.diffcase` programs (200 files); G0's 376 exhaustive programs;
+  G1's 123 distinct fixed-seed programs (seed 20261030, 150 tries). The external `julc-examples` and Elci are
+  recorded as commands.
+- **The recorder** (`CorpusRecorder`) hooks every `JulcCompiler` entry point and `JavaLibraryProvider`. It is
+  inactive unless `-Djulc.corpus.record` is set (one `static final` check per hook); `CorpusRecorderTest` shows,
+  in child JVMs with and without recording, equal FLAT bytes and rejections.
+- **Ledger reference rows.** Identical at all four levels: 9,319 accepted, 1,634 rejected, 7 unreplayable (compiled
+  with a test's own stdlib lookup). 1,854 harness runs; every G0 and G1 run agrees at every level.
+- **Rejection inventory.** 1,613 permanent (1,314 coded, 299 uncoded) and 21 scheduled for acceptance (12 `JULC0076`
+  record patterns, `reject-javac-21-25-pair-shape`, 8 ADR-065 I2c escape shapes).
+- **Equality scan.** External `julc-examples`: 125 sites, all `.equals` on `byte[]`, in 24 files (including
+  `CfPaymentSplitterValidator.java:51,83,94`). In-repo: 6 sources (T5's `Holder`, the two T31 explicit-`equals`
+  cases, `agree-equals-unknown-switch`/`-ternary` at static type `java.lang.Record`, and
+  `BigIntegerCompatTest#equalsOnByteStringField`). 5 type-variable sites, all in templates (`TypedMapLib`,
+  `PlutusDataHelper`); no nested-collection sites.
+- **Tests and stability.** The base `448505e5`: 12,395 tests, 0 failures. Byte stability: 1,056 compilations
+  (fixtures, examples, 196 saved cases, 54 G0 programs, four levels) identical before and after. Two recordings
+  and two baseline runs (13 threads and 1) give byte-identical evidence files.
+
+**Clarifications from M0** (they refine, not change, the decisions above):
+
+- **The frozen corpus** is the recording made at the M0 commit (`a8963b85`), which has the recorder and none of M1's
+  rewrites. The corpus itself is not checked in (about 10,000 sources); `corpus-b0.tsv` lists every case with its
+  digest, and the corpus is regenerated from that commit by the evidence file's command and verified against the
+  digests. Later milestones read it from the regeneration, never from a re-recording after M1.
+- **Exclusions.** Recorded cases that are not deterministic across runs (a jqwik property without a fixed seed,
+  `IntegerLiteralTest`'s 300 random literals) are excluded by a documented list in the evidence file; temporary
+  file names are normalized.
+- **D6's table, exactly.** Besides the operations listed, `JulcMap.getOrDefault` (it calls `get`); on
+  `java.util.List`: `contains`, `indexOf`, `lastIndexOf`, `remove(Object)`, `containsAll`, `equals`; on
+  `java.util.Map`: `get`, `getOrDefault`, `containsKey`, `containsValue`, `remove(Object)`, `equals`. The boxed
+  `Integer`, `Long` and `Boolean` are on the value-equality allow-list.
+- **`.equals` at static type `java.lang.Record`** (or `Object`) cannot be shown safe, so it is a D13 **policy
+  rejection** (`JULC0087`, conservative): the pins `agree-equals-unknown-switch` and `-ternary`, which agree today
+  because their runtime records contain no arrays, gain policy-rejection rows in M3; the fix is to compare at the
+  record's own type.
+- **ADR-067's remaining rejections** (two sealed parents `JULC0079`, record members `JULC0080`, cross-type `equals`
+  `JULC0078`) are permanent subset rejections (D11); only record patterns are scheduled for acceptance.
+- **ADR-062 rows.** T27's status is stale (ADR-067 M1 resolved it); M1 updates ADR-062's statuses, and D4's accepted
+  list is re-frozen from the updated table.
+- **I1's "target" axis** has one value today (PV11's target); the ledger records it per row.
+- **Hosts.** `CorpusRecorder` is reachable from `JulcCompiler` (it uses `StackWalker`, `Files`, `MessageDigest`), so
+  M1's native and Web image smokes confirm the images still build.
+
 ## Revision history
 
 - **r1** (2026-10-30): initial proposal, after the ADR-065 spike and consultation on the seam.
