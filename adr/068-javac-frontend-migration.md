@@ -494,9 +494,10 @@ exceptions D11 lists.
   - **Equality that would compare an array by identity** is rejected with `JULC0087`
     (`ARRAY_EQUALS_UNSUPPORTED`; T4, T5). The check applies to **every operation whose JVM implementation compares
     elements or keys**, and M3 derives the table from that rule over the supported signatures. Today that is:
-    `.equals`; `JulcList.contains`; `JulcMap`'s `get`, `lookup`, `containsKey` and `delete`; `TypedMapLib`'s
-    `lookup`, `member`, `remove` (which deletes) and `insert` (which deletes first); and the same operations on `java.util.List` and
-    `java.util.Map`. Plain `JulcMap.insert` only prepends, on the JVM and on-chain (`JulcAssocMap.java:75-78`,
+    `.equals`; `JulcList.contains`; `JulcMap`'s `get`, `lookup`, `containsKey` and `delete`; and the same
+    operations on `java.util.List` and `java.util.Map`. (`TypedMapLib`'s `lookup`, `member`, `remove` and `insert`
+    compare keys too, but they are generic templates that Java code cannot call, so only exempt producer requests
+    reach them; see "Generic library methods" below.) Plain `JulcMap.insert` only prepends, on the JVM and on-chain (`JulcAssocMap.java:75-78`,
     `TypeMethodRegistry.java:807-816`), so it is not checked; a regression keeps comparison-free insertion
     accepted. The check is decided on the static type `T` being compared (the receiver for `.equals`, the element
     or key type for collections), after type substitution, and asks whether the JVM's equality for some value of
@@ -512,8 +513,10 @@ exceptions D11 lists.
       position** (#298): a record or sealed-variant component (`record R(JulcArray<BigInteger> arr)`, which fails
       as soon as `R` is constructed, `UplcGenerator.java:249-267`), an `Optional`, `Tuple2` or `Tuple3` type
       argument, a `JulcList`/`JulcMap` element, key or value, a `JulcArray` element (ADR-046: array elements are
-      Data-encoded, so `JulcArray<JulcArray<BigInteger>>` fails), and a datum, redeemer or `@Param` boundary type,
-      at any depth. `TypeReferences.dataEncodable` cannot decide this (it accepts every record without looking at
+      Data-encoded, so `JulcArray<JulcArray<BigInteger>>` fails), and a `@Param` or `compileMethod` input type, at
+      any depth. (Datum and redeemer types containing an array are already rejected by strict boundary validation,
+      `StrictBoundaryGenerator.java:122`; `@Param` and `compileMethod` inputs are not, and fail at `LengthOfArray`
+      when Data is applied.) `TypeReferences.dataEncodable` cannot decide this (it accepts every record without looking at
       its fields), so the check recurses through record and variant components itself. Arrays of Data-encodable
       types stay supported (`JulcArray<JulcList<BigInteger>>` works today and keeps working). So `JULC0091` (`NATIVE_ARRAY_NOT_DATA_ENCODABLE`) rejects a
       `JulcArray` type in any such position, checked recursively where the type is written, with regressions for
@@ -1002,4 +1005,7 @@ milestone's evidence; a skipped check fails the gate.
     found divergence, fixed in both frontends at M1 (D4 exception 2).
   - F140 → Java calls to generic templates and template-to-template calls stay rejected as ADR-059 specifies, so
     only producer requests instantiate templates, and they are exempt; the comparison-obligation summaries become
-    a requirement on a future ADR that lifts ADR-059's restriction, not part of this one.
+    a requirement on a future ADR that lifts ADR-059's restriction, not part of this one.  - F126 (after approval, P3) → `TypedMapLib`'s templates are removed from the Java operation table and noted as
+    reachable only through exempt producer requests; Codex's round-8 note on boundaries is folded in (datum and
+    redeemer arrays are already rejected by strict boundary validation; `@Param` and `compileMethod` inputs are
+    covered by `JULC0091`).
