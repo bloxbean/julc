@@ -215,7 +215,8 @@ final class Adr068Corpus {
     /** Adds (or tags) a case built the way the entry point would record it. */
     Case add(String tag, String entry, String method, String lookup, Source main, List<Source> libraries) {
         var options = new CompilerOptions();
-        String text = CorpusRecorder.caseText(entry, method, lookup, options, main == null ? null : main.ref(),
+        String text = CorpusRecorder.caseText(entry, method, lookup, CorpusRecorder.Options.of(options),
+                main == null ? null : main.ref(),
                 libraries.stream().map(Source::ref).toList());
         String key = CorpusFiles.sha256(text);
         Case c = cases.computeIfAbsent(key, k -> new Case(k, entry, method, lookup, options.getTarget().profileId(), null,

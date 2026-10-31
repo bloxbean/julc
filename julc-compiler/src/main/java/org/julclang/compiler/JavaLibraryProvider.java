@@ -39,20 +39,17 @@ public final class JavaLibraryProvider implements LibraryProvider {
     private final Set<String> overloaded = new LinkedHashSet<>();
     private final Map<String, LibraryType> types;
     private final Map<String, PirType> definitions;
-    /** The inputs, kept only while the ADR-068 corpus recorder is active (null otherwise). */
-    private final List<CorpusRecorder.Source> corpusSources;
-    private final CompilerOptions corpusOptions;
+    /**
+     * This provider's case in the ADR-068 corpus, recorded at construction from the options it resolved (never from
+     * the caller's {@code CompilerOptions}, which may change afterwards, F313); null unless the recorder is active.
+     */
+    private final String corpusCase;
 
     public JavaLibraryProvider(List<String> sources, StdlibLookup lookup, CompilerOptions options) {
-        if (CorpusRecorder.ACTIVE != null) {
-            corpusSources = sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList();
-            corpusOptions = options != null ? options : new CompilerOptions();
-            CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null, null, corpusSources, lookup, corpusOptions);
-        } else {
-            corpusSources = null;
-            corpusOptions = null;
-        }
         context = CompilationContext.resolve(options);
+        corpusCase = CorpusRecorder.ACTIVE == null ? null : CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null,
+                null, sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(), lookup,
+                CorpusRecorder.Options.of(context));
         this.lookup = lookup;
         contentHash = contentHash(sources);
         var units = new ArrayList<CompilationUnit>();
@@ -260,9 +257,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
                 }
                 case LibraryRequest.Instantiate instantiate -> {
-                    if (CorpusRecorder.ACTIVE != null) {
-                        CorpusRecorder.ACTIVE.recordInstantiate(corpusSources, lookup, corpusOptions, instantiate);
-                    }
+                    if (corpusCase != null) CorpusRecorder.ACTIVE.recordInstantiate(corpusCase, instantiate);
                     var specialized = specialize(instantiate);
                     for (String dependency : PirClosure.freeVariables(specialized.body()))
                         if (!dependency.equals(specialized.name())) gather(dependency, reachable);
