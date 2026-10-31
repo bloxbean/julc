@@ -1,7 +1,9 @@
 package org.julclang.compiler.frontend.javac;
 
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.LineMap;
+import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
@@ -31,10 +33,12 @@ import javax.lang.model.util.Types;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The one door to javac's attribution (ADR-068 D2): a stateless service over javac's own tree, never a copy of it. It
@@ -56,6 +60,8 @@ public final class JavacFacts {
     private final TypeRegistry registry;
     /** Every tree of the units javac read, to its path. Empty over a task with no units. */
     private final Map<Tree, TreePath> paths = new IdentityHashMap<>();
+    /** The pool units javac read (D8). */
+    private final Set<CompilationUnitTree> libraries = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private JavacFacts(Trees trees, Elements elements, Types types, TypeRegistry registry) {
         this.trees = trees;
@@ -69,6 +75,7 @@ public final class JavacFacts {
         var facts = new JavacFacts(attribution.trees(), attribution.elements(), attribution.types(), registry);
         attribution.roots().forEach(facts::index);
         attribution.libraries().forEach(facts::index);
+        facts.libraries.addAll(attribution.libraries());
         return facts;
     }
 
@@ -144,6 +151,36 @@ public final class JavacFacts {
         return null;
     }
 
+    /** Whether {@code element} is declared in a pool unit javac read: a library's, not a root's and not a stub's. */
+    public boolean inLibraryUnit(Element element) {
+        var path = trees == null ? null : trees.getPath(element);
+        return path != null && libraries.contains(path.getCompilationUnit());
+    }
+
+    /**
+     * Whether a source declares {@code method}: an accessor a record writes out. The one javac generates has a tree with
+     * no text, and a stub's has none.
+     */
+    public boolean declaredInSource(ExecutableElement method) {
+        var path = trees == null ? null : trees.getPath(method);
+        return path != null && trees.getSourcePositions().getEndPosition(path.getCompilationUnit(), path.getLeaf()) >= 0;
+    }
+
+    /** The initializer of a variable a source declares, or null: a stub has none. */
+    public ExpressionTree initializer(VariableElement variable) {
+        return trees != null && trees.getTree(variable) instanceof VariableTree declaration ? declaration.getInitializer() : null;
+    }
+
+    /** The {@code JULC0087} predicate, over this task's types and source records (ADR-068 D6). */
+    public ArrayIdentityEquality arrayEquality() {
+        return new ArrayIdentityEquality(types, elements, trees);
+    }
+
+    /** The table of operations that compare elements or keys (ADR-068 D6). */
+    public EqualityOperations equalityOperations() {
+        return new EqualityOperations(types, elements);
+    }
+
     /** The class a declared type names. */
     public TypeElement typeElement(TypeMirror type) {
         return (TypeElement) types.asElement(type);
@@ -203,6 +240,32 @@ public final class JavacFacts {
      * @param where the tree that writes {@code type}, or null for a stub, which has none
      */
     public PirType pirType(TypeMirror type, Tree where) {
+        return pirType(type, where, false);
+    }
+
+    /**
+     * The PIR type of a value javac typed {@code type}, which no source wrote: as {@link #pirType}, but where javac
+     * inferred a type argument from a primitive ({@code T} is {@code Integer} in {@code JulcList.of(1)}) that is the
+     * primitive's type. Written in a declaration the same type is a rejection, as in the reference.
+     */
+    public PirType valueType(TypeMirror type, Tree where) {
+        return pirType(type, where, true);
+    }
+
+    /** The PIR function type of {@code method}, a lambda's worth of arrows per parameter. A stub's has no trees to name. */
+    public PirType methodType(ExecutableElement method) {
+        MethodTree tree = trees == null ? null : trees.getTree(method);
+        var parameters = method.getParameters();
+        var argumentTypes = new ArrayList<PirType>();
+        for (int i = 0; i < parameters.size(); i++) {
+            argumentTypes.add(pirType(parameters.get(i).asType(), tree == null ? null : tree.getParameters().get(i)));
+        }
+        PirType type = pirType(method.getReturnType(), tree == null ? null : tree.getReturnType());
+        for (int i = argumentTypes.size() - 1; i >= 0; i--) type = new PirType.FunType(argumentTypes.get(i), type);
+        return type;
+    }
+
+    private PirType pirType(TypeMirror type, Tree where, boolean inferred) {
         return switch (type.getKind()) {
             case BOOLEAN -> new PirType.BoolType();
             case INT, LONG -> new PirType.IntegerType();
@@ -210,7 +273,7 @@ public final class JavacFacts {
             case BYTE, SHORT, CHAR, FLOAT, DOUBLE -> throw rejection("Unsupported primitive type: " + type
                     + ". Supported types: boolean, int, long", where);
             case ARRAY -> array((ArrayType) type, where);
-            case DECLARED -> declared((DeclaredType) type, where);
+            case DECLARED -> declared((DeclaredType) type, where, inferred);
             case TYPEVAR -> throw rejection(registry.unknownTypeMessage(type.toString(), type.toString()), where);
             case ERROR -> throw new IllegalStateException("an error type reached JuLC: " + type);
             default -> throw rejection("Cannot resolve type: " + type + ". Supported types: BigInteger,"
@@ -231,11 +294,14 @@ public final class JavacFacts {
         throw rejection("Arrays are not supported except byte[]. Use List<T> instead. Got: " + type, where);
     }
 
-    private PirType declared(DeclaredType type, Tree where) {
+    private PirType declared(DeclaredType type, Tree where, boolean inferred) {
         var element = (TypeElement) type.asElement();
         String identity = identity(type);
         var arguments = type.getTypeArguments();
         String simple = element.getSimpleName().toString();
+        if (inferred && (identity.equals(JavacNames.BOXED_INTEGER) || identity.equals(JavacNames.BOXED_LONG))) {
+            return new PirType.IntegerType();
+        }
         return switch (identity) {
             case JavacNames.BIG_INTEGER -> new PirType.IntegerType();
             case "java.lang.String" -> new PirType.StringType();
@@ -249,31 +315,43 @@ public final class JavacFacts {
             case JavacNames.TYPES + "JulcScalars" -> new PirType.NativeListType(new PirType.IntegerType());
             case JavacNames.TYPES + "JulcG1Points" -> new PirType.NativeListType(new PirType.NativeG1Type());
             case JavacNames.TYPES + "JulcG2Points" -> new PirType.NativeListType(new PirType.NativeG2Type());
-            case "java.util.List", JavacNames.TYPES + "JulcList" -> new PirType.ListType(argument(arguments, 0, simple, where));
-            case JavacNames.TYPES + "JulcArray" -> new PirType.ArrayType(argument(arguments, 0, simple, where));
-            case "java.util.Map", JavacNames.TYPES + "JulcMap" -> new PirType.MapType(argument(arguments, 0, simple, where),
-                    argument(arguments, 1, simple, where));
+            case "java.util.List", JavacNames.TYPES + "JulcList" -> new PirType.ListType(argument(arguments, 0, simple, where, inferred));
+            case JavacNames.TYPES + "JulcArray" -> new PirType.ArrayType(argument(arguments, 0, simple, where, inferred));
+            case "java.util.Map", JavacNames.TYPES + "JulcMap" -> new PirType.MapType(argument(arguments, 0, simple, where, inferred),
+                    argument(arguments, 1, simple, where, inferred));
             case JavacNames.TYPES + "Tuple2" -> new PirType.RecordType("Tuple2", List.of(
-                    new PirType.Field("first", argument(arguments, 0, simple, where)),
-                    new PirType.Field("second", argument(arguments, 1, simple, where))));
+                    new PirType.Field("first", argument(arguments, 0, simple, where, inferred)),
+                    new PirType.Field("second", argument(arguments, 1, simple, where, inferred))));
             case JavacNames.TYPES + "Tuple3" -> new PirType.RecordType("Tuple3", List.of(
-                    new PirType.Field("first", argument(arguments, 0, simple, where)),
-                    new PirType.Field("second", argument(arguments, 1, simple, where)),
-                    new PirType.Field("third", argument(arguments, 2, simple, where))));
+                    new PirType.Field("first", argument(arguments, 0, simple, where, inferred)),
+                    new PirType.Field("second", argument(arguments, 1, simple, where, inferred)),
+                    new PirType.Field("third", argument(arguments, 2, simple, where, inferred))));
             case JavacNames.TYPES + "AssetEntry" -> new PirType.RecordType("AssetEntry", List.of(
                     new PirType.Field("policyId", new PirType.ByteStringType()),
                     new PirType.Field("tokenName", new PirType.ByteStringType()),
                     new PirType.Field("amount", new PirType.IntegerType())));
-            case "java.util.Optional" -> new PirType.OptionalType(argument(arguments, 0, simple, where));
+            case "java.util.Optional" -> new PirType.OptionalType(argument(arguments, 0, simple, where, inferred));
             default -> registry.lookupNominal(identity)
                     .orElseThrow(() -> rejection(registry.unknownTypeMessage(simple, identity), where));
         };
     }
 
-    /** A Data-encoded container's type argument, or Data when raw: {@code JULC0091} if it is a native array. */
-    private PirType argument(List<? extends TypeMirror> arguments, int index, String container, Tree where) {
+    /**
+     * A Data-encoded container's type argument, or Data when raw: {@code JULC0091} if it is a native array. An inferred
+     * type was written nowhere, so that rule is for where the value is Data-encoded, which reports it, and a type JuLC has
+     * no representation for ({@code JulcList.of(1, "a")} is a {@code JulcList<Serializable>}) is Data, as a raw container's
+     * is: every element of a list is Data-encoded by its own type.
+     */
+    private PirType argument(List<? extends TypeMirror> arguments, int index, String container, Tree where, boolean inferred) {
         if (arguments.isEmpty()) return new PirType.DataType();
         Tree written = typeArgument(where, index);
+        if (inferred) {
+            try {
+                return pirType(arguments.get(index), written, true);
+            } catch (CompilerException e) {
+                return new PirType.DataType();
+            }
+        }
         PirType type = pirType(arguments.get(index), written);
         var array = PirType.nativeArrayIn(type);
         if (array != null) {

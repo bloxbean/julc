@@ -207,10 +207,10 @@ class JavacNamesTest {
     void anInitializerNotPortedStopsTheProgramEvenUnused() {
         assertMethodNotPorted("""
                 class P {
-                    static final long K = 1 + 1;
+                    static final long K = ~1;
                     static long m() { return 1; }
                 }
-                """, "m", "PLUS", 2);
+                """, "m", "BITWISE_COMPLEMENT", 2);
     }
 
     // --- D14 ---

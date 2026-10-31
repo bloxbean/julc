@@ -4,6 +4,7 @@ import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirType;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
@@ -28,6 +29,15 @@ public final class Terms {
 
     PirTerm.Var var(Binder binder) {
         return recorded(new PirTerm.Var(binder.name(), binder.type()), binder);
+    }
+
+    /**
+     * A static method, by its binder. Unlike a variable's, the binder's name is a function of the method's element, with a
+     * dot no variable can have, so no scope can capture it (ADR-060), and an overload is {@code JULC0054} unless it is
+     * interchangeable.
+     */
+    PirTerm.Var method(String binder, PirType type) {
+        return new PirTerm.Var(binder, type);
     }
 
     PirTerm.Lam lam(Binder binder, PirTerm body) {

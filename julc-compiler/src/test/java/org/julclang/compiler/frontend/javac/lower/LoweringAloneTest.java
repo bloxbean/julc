@@ -108,8 +108,8 @@ class LoweringAloneTest {
     void anArrayOtherThanALiteralByteArrayIsNotPortedHereToo() {
         withMethod("class P { static byte[] m() { return new byte[2]; } }", new CompilerOptions(), (facts, lowered) ->
                 assertEquals("NEW_ARRAY", assertThrows(NotPorted.class, lowered::term).construct()));
-        withMethod("class P { static byte[] m(boolean b) { return b ? null : new byte[]{1}; } }", new CompilerOptions(), (facts, lowered) ->
-                assertEquals("CONDITIONAL_EXPRESSION", assertThrows(NotPorted.class, lowered::term).construct()));
+        withMethod("class P { static byte[] m(boolean b) { return b ? new byte[2] : new byte[]{1}; } }", new CompilerOptions(), (facts, lowered) ->
+                assertEquals("NEW_ARRAY", assertThrows(NotPorted.class, lowered::term).construct()));
     }
 
     /** A field's initializer, where a type the subset rejects has not stopped the lowering first. */

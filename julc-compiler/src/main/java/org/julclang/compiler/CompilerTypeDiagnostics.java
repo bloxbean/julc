@@ -229,6 +229,24 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(String.format("%04X", (int) surrogate)), location);
     }
 
+    /** JULC0086: {@code ==} or {@code !=} between references, which is identity in Java and value equality on-chain. */
+    public static CompilerException referenceEquality(String expression, String type, SourceLocation location) {
+        var info = DiagnosticCodes.REFERENCE_EQUALITY_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(expression, type), location);
+    }
+
+    /** JULC0087: an operation whose JVM equality reaches an array compared by identity, along {@code path}. */
+    public static CompilerException arrayEquals(String operation, String path, SourceLocation location) {
+        var info = DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(operation, path), location);
+    }
+
+    /** JULC0090: string {@code +} with an operand that is not a {@code String} (#296). */
+    public static CompilerException stringConcatNonString(String expression, String type, SourceLocation location) {
+        var info = DiagnosticCodes.STRING_CONCAT_NON_STRING;
+        return exception(info.code(), info.level(), info.fix(), info.format(expression, type), location);
+    }
+
     /** JULC0057: a static field initializer that calls a method of its class. */
     public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
         var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;

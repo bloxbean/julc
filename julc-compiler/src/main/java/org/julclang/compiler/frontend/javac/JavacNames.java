@@ -10,10 +10,20 @@ import java.util.Set;
 public final class JavacNames {
 
     public static final String OBJECT = "java.lang.Object";
+    public static final String STRING = "java.lang.String";
+    public static final String BOXED_INTEGER = "java.lang.Integer";
+    public static final String BOXED_LONG = "java.lang.Long";
+    public static final String MATH = "java.lang.Math";
+    public static final String OPTIONAL = "java.util.Optional";
+    public static final String UTIL_LIST = "java.util.List";
+    public static final String UTIL_MAP = "java.util.Map";
     public static final String BIG_INTEGER = "java.math.BigInteger";
     public static final String PLUTUS_DATA = "org.julclang.core.PlutusData";
     public static final String CONSTR_DATA = PLUTUS_DATA + ".ConstrData";
     public static final String TYPES = "org.julclang.core.types.";
+    public static final String JULC_LIST = TYPES + "JulcList";
+    public static final String JULC_MAP = TYPES + "JulcMap";
+    public static final String JULC_ARRAY = TYPES + "JulcArray";
 
     private static final String ANNOTATIONS = "org.julclang.stdlib.annotation.";
     public static final String ENTRYPOINT = ANNOTATIONS + "Entrypoint";

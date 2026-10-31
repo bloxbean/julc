@@ -1040,23 +1040,23 @@
     {
       "code": "JULC0086",
       "constant": "REFERENCE_EQUALITY_UNSUPPORTED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Reference equality is not supported",
       "category": "TYPE",
       "severity": "error",
       "template": "{0} compares {1} by reference; use equals",
-      "summary": "Reserved by ADR-068 (D6): == and != on BigInteger, byte[], String, boxed values or records is reference equality in Java (JLS 15.21.3), but value equality on-chain. Constant String operands built from literals and string + alone keep their meaning.",
+      "summary": "== and != on BigInteger, byte[], String, boxed values or records is reference equality in Java (JLS 15.21.3), but value equality on-chain (ADR-068 D6). Constant String operands built from literals and string + alone keep their meaning. Emitted by the javac frontend.",
       "fix": "Use a.equals(b), or ByteStringLib.equals(a, b) for bytes."
     },
     {
       "code": "JULC0087",
       "constant": "ARRAY_EQUALS_UNSUPPORTED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Equality would compare an array by identity",
       "category": "TYPE",
       "severity": "error",
       "template": "{0} compares {1}, whose equality on the JVM compares an array by identity",
-      "summary": "Reserved by ADR-068 (D6): an equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM.",
+      "summary": "An equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM (ADR-068 D6). Emitted by the javac frontend.",
       "fix": "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper."
     },
     {
@@ -1084,12 +1084,12 @@
     {
       "code": "JULC0090",
       "constant": "STRING_CONCAT_NON_STRING",
-      "status": "planned",
+      "status": "emitted",
       "title": "String concatenation with a non-String operand",
       "category": "TYPE",
       "severity": "error",
       "template": "String concatenation {0} has a non-String operand of type {1}",
-      "summary": "Reserved by ADR-068 (D6, #296): \"a\" + 1 is valid Java, but JuLC lowers string + to appendString, which fails at run time on an integer. A switch guard that is a constant expression as a whole keeps its meaning.",
+      "summary": "\"a\" + 1 is valid Java, but JuLC lowers string + to appendString, which fails at run time on an integer (ADR-068 D6, #296). A switch guard that is a constant expression as a whole keeps its meaning. Emitted by the javac frontend.",
       "fix": "Concatenate Strings only."
     },
     {

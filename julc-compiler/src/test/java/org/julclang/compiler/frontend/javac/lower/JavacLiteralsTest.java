@@ -51,11 +51,11 @@ class JavacLiteralsTest {
         assertSameMethodAsReference(returning("long", literal), "m");
     }
 
-    /** These stay unary to javac, so they wait for the operators. */
+    /** These stay unary to javac, so they are the operator's. */
     @ParameterizedTest
     @ValueSource(strings = {"-0", "-0x10", "-017", "-0b11", "-0L", "-(5)", "- -5"})
     void aMinusSignJavacKeepsIsAnOperator(String expression) {
-        assertMethodNotPorted(returning("long", expression), "m", "UNARY_MINUS", 4);
+        assertSameMethodAsReference(returning("long", expression), "m");
     }
 
     @ParameterizedTest

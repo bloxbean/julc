@@ -64,6 +64,9 @@ JULC0092	code	JULC0092	SEALED_PERMITS_REQUIRED	javac frontend: emitted with fron
 JULC0088	code	JULC0088	PARAM_CONSTANT_VARIABLE	javac frontend: emitted with frontend=JAVAC (ADR-068 D14, M3a); not a reference-frontend rejection
 JULC0093	code	JULC0093	STRING_LITERAL_UNPAIRED_SURROGATE	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, M3a); the reference rejects the same source with an uncoded rejection in its reader
 JULC0091	code	JULC0091	NATIVE_ARRAY_NOT_DATA_ENCODABLE (ADR-068 M1c, #298)	source
+JULC0086	code	JULC0086	REFERENCE_EQUALITY_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
+JULC0087	code	JULC0087	ARRAY_EQUALS_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
+JULC0090	code	JULC0090	STRING_CONCAT_NON_STRING	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 U-synchronized	uncoded	^synchronized is not supported on-chain	SubsetValidator:184	source
 U-break-outside-loop	uncoded	break is only supported inside for-each or while loops	SubsetValidator:210	source
 U-method-reference	uncoded	Method references \(::\) are not supported	SubsetValidator:242	source

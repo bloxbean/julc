@@ -5,7 +5,6 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ReturnTree;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
@@ -24,11 +23,13 @@ final class Statements {
 
     private final JavacFacts facts;
     private final Terms terms;
+    private final Typing typing;
     private final Lowering lowering;
 
-    Statements(JavacFacts facts, Terms terms, Lowering lowering) {
+    Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering) {
         this.facts = facts;
         this.terms = terms;
+        this.typing = typing;
         this.lowering = lowering;
     }
 
@@ -68,22 +69,12 @@ final class Statements {
             result = new PirTerm.Const(Constant.unit());
         } else {
             result = lowering.expr(expression, frame);
-            if (frame.exit().returnType() != null) requireNativeBoundary(expression, frame.exit().returnType());
+            if (frame.exit().returnType() != null) {
+                typing.requireNativeBoundary("Return value", typing.of(expression, result), frame.exit().returnType(), expression);
+            }
         }
         terms.at(tree, result);
         return guarded(tree, result, frame);
-    }
-
-    /**
-     * ADR-047: a native value cannot leave through a differently typed return, nor a byte string or Data through a
-     * natively typed one. javac admits this only through a raw type.
-     */
-    private void requireNativeBoundary(ExpressionTree expression, PirType expected) {
-        PirType actual = facts.pirType(facts.type(expression), expression);
-        var registry = facts.registry();
-        if ((registry.containsNativeOpaque(expected) || registry.containsNativeOpaque(actual)) && !expected.equals(actual)) {
-            throw CompilerTypeDiagnostics.nativeTypeMismatch("Return value", actual, expected, facts.location(expression));
-        }
     }
 
     /** With a source map, an entrypoint's boolean {@code return} fails here rather than in the wrapper. */

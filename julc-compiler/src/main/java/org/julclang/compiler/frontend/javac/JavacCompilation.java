@@ -19,14 +19,17 @@ import org.julclang.compiler.frontend.javac.lower.Lowering;
 import org.julclang.compiler.frontend.javac.lower.Scope;
 import org.julclang.compiler.frontend.javac.subset.SubsetScan;
 import org.julclang.compiler.pir.PirHelpers;
+import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.Constant;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -53,26 +56,30 @@ public final class JavacCompilation {
     private final JavacDiscovery discovery;
     private final Lowering lowering;
 
-    private JavacCompilation(JavacProgram program, JavacFacts facts, CompilationContext context) {
+    private JavacCompilation(JavacProgram program, JavacFacts facts, CompilationContext context, StdlibLookup stdlib) {
         this.program = program;
         this.facts = facts;
         this.context = context;
         this.discovery = new JavacDiscovery(facts);
-        this.lowering = new Lowering(facts, context);
+        this.lowering = new Lowering(facts, context, stdlib);
     }
 
-    /** Compiles the validator of {@code root}, with {@code pool} on the source path (D8). */
-    public static CompileResult validator(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
+    /**
+     * Compiles the validator of {@code root}, with {@code pool} on the source path (D8).
+     *
+     * @param stdlib the compilation's lookup, or null
+     */
+    public static CompileResult validator(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, StdlibLookup stdlib,
                                           CompilationContext context, boolean captureDetails) {
         var program = attributed(root, pool, context);
-        return program.read(facts -> new JavacCompilation(program, facts, context).validator(captureDetails));
+        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).validator(captureDetails));
     }
 
     /** Compiles the static method {@code methodName} of the first class of {@code root} ({@code compileMethod}). */
     public static CompileResult method(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, String methodName,
-                                       CompilationContext context) {
+                                       StdlibLookup stdlib, CompilationContext context) {
         var program = attributed(root, pool, context);
-        return program.read(facts -> new JavacCompilation(program, facts, context).method(methodName));
+        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).method(methodName));
     }
 
     private static JavacProgram attributed(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
@@ -89,9 +96,9 @@ public final class JavacCompilation {
      * @param methodName the {@code compileMethod} target, or null for the validator of {@code root}
      */
     static List<MethodAttempt> attempt(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, String methodName,
-                                       CompilationContext context) {
+                                       StdlibLookup stdlib, CompilationContext context) {
         var program = attributed(root, pool, context);
-        return program.read(facts -> new JavacCompilation(program, facts, context).attempt(methodName));
+        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).attempt(methodName));
     }
 
     private List<MethodAttempt> attempt(String methodName) {
@@ -112,6 +119,8 @@ public final class JavacCompilation {
                 attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method), term, null));
             } catch (NotPorted e) {
                 attempts.add(new MethodAttempt(parts.binder(method), null, null, e.construct()));
+            } catch (CompilerException e) {
+                attempts.add(new MethodAttempt(parts.binder(method), null, null, "a rejection"));
             }
         }
         return attempts;
@@ -121,6 +130,7 @@ public final class JavacCompilation {
 
     /** Steps 6 to 10: what a class gives every method, and the scope they all see (I13: seeded before any body). */
     private final class ClassParts {
+        final ClassTree type;
         final String owner;
         final List<JavacDiscovery.ParamField> params;
         final List<VariableTree> statics;
@@ -128,6 +138,7 @@ public final class JavacCompilation {
         private final Map<MethodTree, PirType> methodTypes = new LinkedHashMap<>();
 
         ClassParts(ClassTree type) {
+            this.type = type;
             owner = facts.identity((TypeElement) facts.element(type));
             var rejected = new ArrayList<CompilerDiagnostic>();
             params = discovery.paramFields(type, rejected);
@@ -175,9 +186,23 @@ public final class JavacCompilation {
             var lowered = new ArrayList<ValidatorAssembly.StaticField>();
             for (var field : statics) {
                 var name = scope.lookup(facts.element(field)).name();
-                lowered.add(new ValidatorAssembly.StaticField(name, lowering.initializer(field.getInitializer(), scope)));
+                var value = lowering.initializer(field.getInitializer(), scope);
+                requireNoMethodCall(field, value);
+                lowered.add(new ValidatorAssembly.StaticField(name, value));
             }
             return lowered;
+        }
+
+        /** JULC0057: initializers are bound outside the class's methods, so a call of one could not be bound. */
+        private void requireNoMethodCall(VariableTree field, PirTerm value) {
+            var free = PirSubstitution.collectFreeVarNames(value);
+            for (var method : discovery.methods(type)) {
+                boolean isStatic = facts.element(method).getModifiers().contains(Modifier.STATIC);
+                if (isStatic && free.contains(binder(method))) {
+                    throw CompilerTypeDiagnostics.staticInitializerCallsMethod(field.getName().toString(),
+                            method.getName().toString(), facts.location(field.getInitializer()));
+                }
+            }
         }
 
         List<ValidatorAssembly.ParamField> assemblyParams() {
@@ -209,13 +234,7 @@ public final class JavacCompilation {
     }
 
     private PirType computeMethodType(MethodTree method) {
-        var element = (ExecutableElement) facts.element(method);
-        var parameters = method.getParameters();
-        var types = new ArrayList<PirType>();
-        for (var parameter : parameters) types.add(facts.pirType(facts.element(parameter).asType(), parameter));
-        PirType type = facts.pirType(element.getReturnType(), method.getReturnType());
-        for (int i = types.size() - 1; i >= 0; i--) type = new PirType.FunType(types.get(i), type);
-        return type;
+        return facts.methodType((ExecutableElement) facts.element(method));
     }
 
     /** Library lowering is not ported: a pool unit javac read is a method the program may call. */
@@ -258,7 +277,7 @@ public final class JavacCompilation {
     private CompileResult validator(boolean captureDetails) {
         var unit = program.roots().getFirst();
         // 2. Validate subset
-        SubsetScan.check(facts, unit);
+        SubsetScan.check(facts, unit, discovery.lowered(discovery.validatorClassOrNull(unit)));
         verifyBinderNamespace(unit);
         // 4. Find annotated validator class and determine purpose
         var type = discovery.validatorClass(unit);
@@ -347,7 +366,7 @@ public final class JavacCompilation {
     private CompileResult method(String methodName) {
         var unit = program.roots().getFirst();
         // 2. Validate subset
-        SubsetScan.check(facts, unit);
+        SubsetScan.check(facts, unit, discovery.lowered(discovery.firstClassOrNull(unit)));
         verifyBinderNamespace(unit);
         // 3. Find the target class (first non-interface class)
         var type = discovery.firstClass(unit);

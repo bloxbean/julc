@@ -22,9 +22,12 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_WRONG_PARAMETER_COUNT;
@@ -85,17 +88,43 @@ final class JavacDiscovery {
 
     /** The class {@code compileMethod} compiles: the first that is not an interface. */
     ClassTree firstClass(CompilationUnitTree unit) {
-        return types(unit).stream().filter(tree -> tree.getKind() == Tree.Kind.CLASS).findFirst()
-                .orElseThrow(() -> new CompilerException("No class found in source"));
+        var type = firstClassOrNull(unit);
+        if (type == null) throw new CompilerException("No class found in source");
+        return type;
+    }
+
+    ClassTree firstClassOrNull(CompilationUnitTree unit) {
+        return types(unit).stream().filter(tree -> tree.getKind() == Tree.Kind.CLASS).findFirst().orElse(null);
+    }
+
+    /** The annotated validator class, without {@link #validatorClass}'s rejections: the scan runs before them. */
+    ClassTree validatorClassOrNull(CompilationUnitTree unit) {
+        for (var type : types(unit)) {
+            if (isClassOrInterface(type) && !validatorAnnotations(type).isEmpty()) return type;
+        }
+        return null;
+    }
+
+    /**
+     * What lowering reaches of {@code type}, which may be null: its static methods, its entry points and the static fields
+     * it binds. The rest of a unit is read and never lowered.
+     */
+    Set<Tree> lowered(ClassTree type) {
+        Set<Tree> lowered = Collections.newSetFromMap(new IdentityHashMap<>());
+        if (type == null) return lowered;
+        for (var method : methods(type)) {
+            if (facts.element(method).getModifiers().contains(Modifier.STATIC) || isEntrypoint(method)) lowered.add(method);
+        }
+        lowered.addAll(staticFields(type));
+        return lowered;
     }
 
     /** The annotated validator class. */
     ClassTree validatorClass(CompilationUnitTree unit) {
         var types = types(unit);
         for (var type : types) rejectRoleConflict(type);
-        for (var type : types) {
-            if (isClassOrInterface(type) && !validatorAnnotations(type).isEmpty()) return type;
-        }
+        var validator = validatorClassOrNull(unit);
+        if (validator != null) return validator;
         throw validationError(VALIDATOR_ANNOTATION_MISSING,
                 "Add exactly one validator annotation at the class level, such as "
                         + "@SpendingValidator, @MintingValidator, @WithdrawValidator, "

@@ -1,16 +1,20 @@
 package org.julclang.compiler.frontend.javac.subset;
 
+import com.sun.source.tree.AnnotationTree;
+import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.LiteralTree;
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
@@ -30,12 +34,14 @@ import java.util.Set;
  * <p>
  * The list grows with each ported construct, and takes on {@code SubsetValidator}'s rules and codes as it does; it is not
  * that validator yet. A construct on it here is one whose rejections, if any, are its own rules below.
+ * <p>
+ * A kind is allowed where lowering reaches it, not everywhere: {@link #WHERE_LOWERED} holds in the methods and static
+ * fields the compilation lowers, and nowhere else. An assignment is an annotation's argument and nothing else here.
  */
 public final class SubsetScan extends TreeScanner<Void, Void> {
 
     private static final Set<Tree.Kind> ALLOWED = EnumSet.of(
             Tree.Kind.COMPILATION_UNIT, Tree.Kind.PACKAGE, Tree.Kind.IMPORT, Tree.Kind.MODIFIERS, Tree.Kind.ANNOTATION,
-            Tree.Kind.ASSIGNMENT, // an annotation's argument; an assignment in code is not lowered, nor rejected there
             Tree.Kind.CLASS, Tree.Kind.INTERFACE, Tree.Kind.RECORD, Tree.Kind.METHOD, Tree.Kind.VARIABLE,
             Tree.Kind.BLOCK, Tree.Kind.RETURN,
             Tree.Kind.PRIMITIVE_TYPE, Tree.Kind.ARRAY_TYPE, Tree.Kind.PARAMETERIZED_TYPE, Tree.Kind.TYPE_PARAMETER,
@@ -43,26 +49,76 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.IDENTIFIER, Tree.Kind.MEMBER_SELECT, Tree.Kind.PARENTHESIZED, Tree.Kind.NEW_ARRAY,
             Tree.Kind.INT_LITERAL, Tree.Kind.LONG_LITERAL, Tree.Kind.BOOLEAN_LITERAL, Tree.Kind.STRING_LITERAL);
 
-    private final JavacFacts facts;
+    /** The kinds that are subset only where lowering reaches them. */
+    private static final Set<Tree.Kind> WHERE_LOWERED = EnumSet.of(
+            Tree.Kind.METHOD_INVOCATION, Tree.Kind.CONDITIONAL_EXPRESSION,
+            Tree.Kind.PLUS, Tree.Kind.MINUS, Tree.Kind.MULTIPLY, Tree.Kind.DIVIDE, Tree.Kind.REMAINDER,
+            Tree.Kind.EQUAL_TO, Tree.Kind.NOT_EQUAL_TO, Tree.Kind.LESS_THAN, Tree.Kind.LESS_THAN_EQUAL,
+            Tree.Kind.GREATER_THAN, Tree.Kind.GREATER_THAN_EQUAL, Tree.Kind.CONDITIONAL_AND, Tree.Kind.CONDITIONAL_OR,
+            Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.UNARY_MINUS);
 
-    private SubsetScan(JavacFacts facts) {
+    private final JavacFacts facts;
+    private final EqualityRules equality;
+    /** The methods and fields lowering reaches. */
+    private final Set<Tree> lowered;
+    private boolean inLowered;
+    private boolean inAnnotation;
+
+    private SubsetScan(JavacFacts facts, Set<Tree> lowered) {
         this.facts = facts;
+        this.equality = new EqualityRules(facts);
+        this.lowered = lowered;
     }
 
-    public static void check(JavacFacts facts, CompilationUnitTree unit) {
-        new SubsetScan(facts).scan(unit, null);
+    /** @param lowered the methods and fields of {@code unit} that the compilation lowers, by identity */
+    public static void check(JavacFacts facts, CompilationUnitTree unit, Set<Tree> lowered) {
+        new SubsetScan(facts, lowered).scan(unit, null);
     }
 
     @Override
     public Void scan(Tree tree, Void unused) {
-        if (tree != null && !ALLOWED.contains(tree.getKind())) throw NotPorted.at(facts, tree);
+        if (tree != null && !allowed(tree.getKind())) throw NotPorted.at(facts, tree);
         return super.scan(tree, unused);
+    }
+
+    private boolean allowed(Tree.Kind kind) {
+        if (kind == Tree.Kind.ASSIGNMENT) return inAnnotation;
+        return ALLOWED.contains(kind) || inLowered && WHERE_LOWERED.contains(kind);
+    }
+
+    /** A member sets the context of what it holds, so a nested type's members are never in an outer member's. */
+    private void member(Tree tree, Runnable scan) {
+        boolean outer = inLowered;
+        inLowered = lowered.contains(tree);
+        try {
+            scan.run();
+        } finally {
+            inLowered = outer;
+        }
     }
 
     /** A constructor javac generated is not source: its {@code super()} call is no construct of the program. */
     @Override
     public Void visitMethod(MethodTree tree, Void unused) {
-        return facts.isGenerated(tree) ? null : super.visitMethod(tree, unused);
+        if (!facts.isGenerated(tree)) member(tree, () -> super.visitMethod(tree, unused));
+        return null;
+    }
+
+    /** A field is a member; a parameter is its method's. */
+    @Override
+    public Void visitVariable(VariableTree tree, Void unused) {
+        if (facts.parent(tree) instanceof ClassTree) member(tree, () -> super.visitVariable(tree, unused));
+        else super.visitVariable(tree, unused);
+        return null;
+    }
+
+    @Override
+    public Void visitAnnotation(AnnotationTree tree, Void unused) {
+        boolean outer = inAnnotation;
+        inAnnotation = true;
+        super.visitAnnotation(tree, unused);
+        inAnnotation = outer;
+        return null;
     }
 
     /** {@code return} alone is ported, and in code that is not lowered a statement can still be a rejected one. */
@@ -103,6 +159,20 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             throw NotPorted.at(facts, tree);
         }
         return null;
+    }
+
+    /** D6: {@code ==}, {@code !=} and string {@code +} are Java's, not their on-chain lowering's. */
+    @Override
+    public Void visitBinary(BinaryTree tree, Void unused) {
+        equality.check(tree);
+        return super.visitBinary(tree, unused);
+    }
+
+    /** D6: an operation that compares by {@code equals} must not reach an array by identity. */
+    @Override
+    public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
+        equality.check(tree);
+        return super.visitMethodInvocation(tree, unused);
     }
 
     /** A UPLC string is Unicode text: a surrogate must be the high half of a pair followed by its low half. */

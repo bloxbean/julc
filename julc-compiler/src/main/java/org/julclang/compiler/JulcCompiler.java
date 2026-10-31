@@ -132,7 +132,7 @@ public class JulcCompiler {
     private CompilationOutcome onJavac(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, boolean captureDetails,
                                        boolean captureContractSchema, boolean collectDebugMetadata,
                                        CompilationContext context) {
-        var result = JavacGate.onJavacFrontend(() -> JavacCompilation.validator(root, pool, context, captureDetails));
+        var result = JavacGate.onJavacFrontend(() -> JavacCompilation.validator(root, pool, stdlibLookup, context, captureDetails));
         if (captureContractSchema) throw NotPorted.of("a contract schema");
         if (collectDebugMetadata) throw NotPorted.of("debug metadata");
         return new CompilationOutcome(result, null, null);
@@ -821,7 +821,7 @@ public class JulcCompiler {
         if (context.frontend() == CompilerFrontend.JAVAC) {
             var pool = libraryUnits(librarySources, context);
             return JavacGate.onJavacFrontend(() ->
-                    JavacCompilation.method(JavacFrontend.Unit.of(javaSource), pool, methodName, context));
+                    JavacCompilation.method(JavacFrontend.Unit.of(javaSource), pool, methodName, stdlibLookup, context));
         }
         librarySources = javacGate("compileMethod", JavacFrontend.Unit.of(javaSource), librarySources,
                 this::libraryUnit, context);
