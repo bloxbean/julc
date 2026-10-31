@@ -93,7 +93,11 @@ class Adr068NegativeOriginalsTest {
         StdlibLookup lookup = row.lookup().equals("stdlib") ? StdlibRegistry.defaultRegistry() : null;
         try {
             switch (row.entry()) {
-                case "compile", "compileWithDetails" -> new JulcCompiler(lookup, options).compile(source, libraries);
+                case "compile" -> new JulcCompiler(lookup, options).compile(source, libraries);
+                case "compileWithDetails" -> {
+                    var result = new JulcCompiler(lookup, options).compileWithDetails(source);
+                    if (result.hasErrors()) throw new CompilerException(result.diagnostics());
+                }
                 case "compileMethod" -> new JulcCompiler(lookup, options).compileMethod(source, row.method(), libraries);
                 case "JavaLibraryProvider" -> {
                     var provider = new JavaLibraryProvider(libraries, lookup, options);
