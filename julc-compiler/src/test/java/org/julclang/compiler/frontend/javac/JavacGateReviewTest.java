@@ -4,6 +4,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.LibrarySources;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -133,19 +136,39 @@ class JavacGateReviewTest {
                 class M { static int f(Second s) { return s.x(); } }
                 """, SECONDARIES);
         assertTrue(result.isAccepted(), result::toString);
-        // First stays visible (F511), but javac reads its unit whole, which declares the root's Second too: the
-        // compilation fails closed, naming the contested name.
-        var first = analyze("""
-                package app;
-                record Second(int x) {}
-                class M { static int f(First s) { return s.x(); } }
-                """, SECONDARIES);
-        assertEquals("compiler.err.duplicate.class", first.diagnostics().getFirst().key(), first.toString());
-        assertTrue(first.diagnostics().getFirst().message().startsWith("duplicate class: app.Second"),
-                first.toString());
     }
 
-    // --- F511: precedence per qualified name; no non-conflicting type is hidden; pool order does not matter ---
+    // --- F520 (D8 "Whole units"): a shadowed unit is not read; needing another of its declarations is rejected ---
+
+    static final String HELPER_AND_SHARED = """
+            package app;
+            public class Helper { static int one() { return 1; } }
+            class Shared {}
+            """;
+
+    @Test
+    void needingAnotherDeclarationOfAShadowedUnitIsRejectedNamingBoth() {
+        var accepted = analyze("""
+                package app;
+                class Shared {}
+                class Main { Shared s; }
+                """, HELPER_AND_SHARED);
+        assertTrue(accepted.isAccepted(), accepted::toString);
+        var rejected = analyze("""
+                package app;
+                class Shared {}
+                public class Main { int f() { return Helper.one(); } }
+                """, HELPER_AND_SHARED);
+        assertEquals(1, rejected.diagnostics().size(), rejected.toString());
+        var d = rejected.diagnostics().getFirst();
+        assertEquals("JULC0085", d.code());
+        assertEquals("compiler.err.duplicate.class", d.key());
+        assertTrue(d.message().startsWith("duplicate class: app.Shared (declared by Main.java and Helper.java; the"
+                + " root's declaration shadows the library source's"), d.message());
+        assertEquals("Helper.java", d.fileName());
+    }
+
+    // --- F521 (D8): pool units of equal standing declaring one name are an error, referenced or not ---
 
     static final String FOO = """
             package app;
@@ -157,28 +180,49 @@ class JavacGateReviewTest {
             """;
 
     @Test
-    void aContestedNameFailsClosedInEitherPoolOrderAndHidesNothing() {
+    void twoPoolUnitsDeclaringOneNameAreRejectedInEitherOrder() {
         for (var pool : List.of(new String[]{FOO, BAR}, new String[]{BAR, FOO})) {
-            for (String used : List.of("Bar", "Foo", "Shared")) {
-                var result = analyze("package app;\nclass Main { " + used + " b; }\n", pool);
-                assertEquals(1, result.diagnostics().size(), used + " " + result);
+            for (String root : List.of("package app;\nclass Main {}\n", "package app;\nclass Main { Bar b; }\n",
+                    "package app;\nclass Main { Foo f; }\n")) {
+                var result = analyze(root, pool);
+                assertEquals(1, result.diagnostics().size(), root + result);
                 var d = result.diagnostics().getFirst();
                 assertEquals("JULC0085", d.code());
                 assertEquals("compiler.err.duplicate.class", d.key());
                 assertTrue(d.message().startsWith("duplicate class: app.Shared (declared by "), d.message());
-                assertFalse(d.message().contains("cant.resolve"), d.message());
+                assertTrue(d.message().contains("two library sources of equal standing declare it"), d.message());
             }
-            // A root that uses neither unit is accepted, in both orders.
-            assertTrue(analyze("package app;\nclass Main { int x; }\n", pool).isAccepted());
         }
-        // Without the contest every declaration of both units is visible.
-        assertTrue(analyze("package app;\nclass Main { Foo f; Bar b; }\n", """
+        // Without the duplicate, every declaration of both units is visible.
+        assertTrue(analyze("package app;\nclass Main { Foo f; Bar b; OnlyFoo g; OnlyBar h; }\n", """
                 package app;
                 class Foo {} class OnlyFoo {}
                 """, """
                 package app;
                 class Bar {} class OnlyBar {}
                 """).isAccepted());
+    }
+
+    @Test
+    void readJarsRejectsTwoJarsDeclaringOneName(@TempDir Path dir) throws Exception {
+        Path foo = jar(dir.resolve("foo.jar"), "app/Foo.java", FOO);
+        Path bar = jar(dir.resolve("bar.jar"), "app/Bar.java", BAR);
+        for (var jars : List.of(List.of(foo, bar), List.of(bar, foo))) {
+            var e = assertThrows(IllegalArgumentException.class, () -> LibrarySources.readJars(jars));
+            assertTrue(e.getMessage().startsWith("Duplicate library declaration: app.Shared is declared in "),
+                    e.getMessage());
+        }
+        Path other = jar(dir.resolve("other.jar"), "app/Other.java", "package app;\nclass Other {} class Extra {}\n");
+        assertEquals(2, LibrarySources.readJars(List.of(foo, other)).size());
+    }
+
+    static Path jar(Path file, String entry, String text) throws Exception {
+        try (var out = new JarOutputStream(Files.newOutputStream(file))) {
+            out.putNextEntry(new JarEntry("META-INF/plutus-sources/" + entry));
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+        return file;
     }
 
     @Test

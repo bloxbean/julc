@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Consumer;
@@ -126,10 +127,10 @@ public final class JavacFrontend {
 
     /**
      * Analyzes {@code roots} with {@code pool}, then the bundled sources, on the source path (D8): javac attributes
-     * the roots and the pool units they reference, through any of their top-level declarations. Precedence is per
-     * qualified name ({@link Precedence}): a root's name wins over the pool's, and a name two pool units declare is
-     * listed once; every other declaration stays visible. javac cannot read part of a unit, so a compilation that
-     * reads a unit with a contested name fails closed with {@code duplicate class}, naming it.
+     * the roots and the pool units they reference, through any of their top-level declarations. Precedence selects
+     * whole units ({@link Precedence}): a root's names shadow the pool units that also declare them, and a compilation
+     * that needs another declaration of a shadowed unit is rejected naming both; two pool units declaring one name
+     * are rejected before javac runs.
      */
     public JavacResult analyze(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true);
@@ -165,6 +166,7 @@ public final class JavacFrontend {
             var owned = Ownership.check(platform, bundled, rootFiles, poolFiles);
             if (!owned.isEmpty()) return JavacResult.rejected(owned, platform);
         }
+        if (!precedence.duplicates().isEmpty()) return JavacResult.rejected(precedence.duplicates(), platform);
 
         var fileManager = new EmbeddedFileManager(platform, precedence.listed(), opened);
         var collector = new DiagnosticCollector<JavaFileObject>();
@@ -198,7 +200,7 @@ public final class JavacFrontend {
                             Trees.instance(task).getSourcePositions()));
             diagnostics.add(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context));
         }
-        diagnostics.addAll(precedence.conflicts(parsed.keySet(), diagnostics));
+        diagnostics = new ArrayList<>(precedence.withShadowing(parsed.keySet(), diagnostics));
         return diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
     }
 
@@ -213,6 +215,17 @@ public final class JavacFrontend {
                 diagnostic -> { }, OPTIONS, null, List.of());
         task.setLocale(Locale.ENGLISH);
         return new JavacMetadata(task.getElements(), task.getTypes());
+    }
+
+    /**
+     * The qualified names of every top-level type each text declares, read by javac's parser as the gate reads them;
+     * empty when the host's javac is not supported (the gate then rejects with {@code JULC0089}).
+     */
+    public Optional<List<List<String>>> declaredNames(List<String> texts) {
+        JavaCompiler javac = compiler();
+        if (javac == null) return Optional.empty();
+        return Optional.of(files(javac, texts.stream().map(Unit::of).toList()).stream()
+                .map(JavacSourceFile::topLevelNames).toList());
     }
 
     /** Accepted when the host's javac is supported (D3); otherwise rejected with {@code JULC0089}. */

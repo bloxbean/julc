@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -38,6 +40,7 @@ public final class LibrarySources {
 
     public static Map<String, String> readJars(List<Path> jars) throws IOException {
         var result = new LinkedHashMap<String, String>();
+        var origins = new LinkedHashMap<String, String>();
         for (Path path : jars) {
             try (var jar = new JarFile(path.toFile())) {
                 var entries = jar.stream().filter(e -> !e.isDirectory()
@@ -53,10 +56,38 @@ public final class LibrarySources {
                     try (var stream = jar.getInputStream(entry)) {
                         if (result.putIfAbsent(identity, new String(stream.readAllBytes(), StandardCharsets.UTF_8)) != null)
                             throw new IllegalArgumentException("Duplicate library source ownership: " + identity + " in " + path);
+                        origins.put(identity, path + "!/" + entry.getName());
                     }
                 }
             }
         }
+        checkDeclarations(result, origins);
         return Collections.unmodifiableMap(result);
+    }
+
+    /**
+     * ADR-068 D8: two JAR sources declaring one qualified name are an error, over every top-level declaration, not
+     * only the entry paths, read as the javac gate reads them. Without a supported javac the check is left to the
+     * gate, which then rejects every compilation with {@code JULC0089}.
+     */
+    private static void checkDeclarations(Map<String, String> sources, Map<String, String> origins) {
+        var identities = List.copyOf(sources.keySet());
+        Optional<List<List<String>>> names;
+        try {
+            names = JavacFrontend.shared().declaredNames(identities.stream().map(sources::get).toList());
+        } catch (LinkageError e) {
+            return;
+        }
+        if (names.isEmpty()) return;
+        var declarers = new HashMap<String, String>();
+        for (int i = 0; i < identities.size(); i++) {
+            for (String name : names.get().get(i)) {
+                String first = declarers.putIfAbsent(name, identities.get(i));
+                if (first != null) {
+                    throw new IllegalArgumentException("Duplicate library declaration: " + name + " is declared in "
+                            + origins.get(first) + " and " + origins.get(identities.get(i)));
+                }
+            }
+        }
     }
 }
