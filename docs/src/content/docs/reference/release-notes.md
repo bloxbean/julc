@@ -65,7 +65,11 @@ a return, an argument).
 - A value whose type JuLC cannot determine (a `switch` whose arms have different types) is rejected
   with `JULC0012` where it would be Data-encoded or be a diamond's component, rather than encoded as
   Data.
-- **Script bytes change** only for programs with such a diamond, which failed on-chain before.
+- **Script bytes change** for programs with such a diamond, which failed on-chain before, and for
+  programs that call a method on a `switch` expression whose arms all have one type, such as
+  `(switch (s) { case A a -> a.n(); case B b -> b.n(); }).equals(x)`: the result now has the arms'
+  type, so the call is the integer one and the comparison evaluates correctly, where it used the Data
+  representation before.
 
 ## Upcoming preview: JuLC collections compare `byte[]` by content on the JVM
 

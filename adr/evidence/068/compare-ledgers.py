@@ -9,9 +9,13 @@ A prefix names a ledger's files as Adr068BaselineTest writes them, renamed: <pre
 <prefix>-budget.tsv (for example adr/evidence/068/ledger-b0). A variant is a ledger of the new code with one of its
 changes disabled; a case whose cells differ between the new ledger and a variant is attributed to that variant's label.
 A case whose JVM observation changed is attributed to the --jvm-label (a change to JuLC's off-chain classes). The
-attribution column ends with the case's D13 class, from what differs. Totals per kind of change go to standard error.
+attribution column ends with the case's D13 class, from what differs. Where both ledgers have a
+<prefix>-instantiations.tsv, its changed specializations follow as rows of part "instantiation". The evaluation
+ledgers record what each run's own tests evaluated, so they are not compared row by row. Totals per kind of change
+go to standard error.
 """
 import collections
+import os
 import sys
 
 LEVELS = ["NONE", "BASELINE", "PV11_SAFE", "PV11_COSTED"]
@@ -37,6 +41,13 @@ def ledger(prefix):
 
 def runs(prefix, suffix):
     return {(key, row["run"]): row for key, rows in read(prefix + suffix).items() for row in rows}
+
+
+def instantiations(prefix):
+    """The specialization ledger (<prefix>-instantiations.tsv), keyed by case and request; empty when absent."""
+    if not os.path.exists(prefix + "-instantiations.tsv"):
+        return {}
+    return {(key, row["request"]): row for key, rows in read(prefix + "-instantiations.tsv").items() for row in rows}
 
 
 def cells(row):
@@ -81,7 +92,7 @@ def d13_class(kinds, changes):
         return "policy rejection"
     if any(k.startswith("newly accepted") for k in kinds):
         return "accepted by decision"
-    if any(k.startswith("diagnostic") for k in kinds):
+    if any(k.startswith("diagnostic ") for k in kinds):
         return "diagnostic change"
     if any("uplc" in o or "jvm" in o or "verdict" in o for o in observed):
         return "semantic fix"
@@ -89,11 +100,13 @@ def d13_class(kinds, changes):
         return "cost change"
     if "bytes" in kinds:
         return "semantics not observed"
+    if "diagnostics-digest" in kinds:
+        return "diagnostic change"
     return "provenance change"
 
 
 def main(args):
-    ref, new, variants, jvm_label = args[0], args[1], [], None
+    ref, new, variants, variants_i, jvm_label = args[0], args[1], [], [], None
     for i in range(2, len(args), 2):
         if args[i] == "--jvm-label":
             jvm_label = args[i + 1]
@@ -101,6 +114,7 @@ def main(args):
         assert args[i] == "--variant", "usage: <ref prefix> <new prefix> [--variant label=prefix ...] [--jvm-label label]"
         name, prefix = args[i + 1].split("=", 1)
         variants.append((name, ledger(prefix)))
+        variants_i.append((name, instantiations(prefix)))
     a, b = ledger(ref), ledger(new)
     sa, sb = runs(ref, "-semantic.tsv"), runs(new, "-semantic.tsv")
     ba, bb = runs(ref, "-budget.tsv"), runs(new, "-budget.tsv")
@@ -122,7 +136,8 @@ def main(args):
         ca, cb = cells(a[key]), cells(b[key])
         srcmap = "same" if a[key]["srcmap"] == b[key]["srcmap"] else "changed"
         changes = run_changes(key, sa, by_case[key], ba, bb)
-        if ca == cb and srcmap == "same" and not changes:
+        diagnostics = a[key].get("diagnostics") != b[key].get("diagnostics")
+        if ca == cb and srcmap == "same" and not changes and not diagnostics:
             continue
         kinds = set()
         for x, y in zip(ca, cb):
@@ -138,6 +153,8 @@ def main(args):
                 kinds.add("diagnostic " + short(x)[2:] + ">" + short(y)[2:])
         if srcmap != "same":
             kinds.add("srcmap")
+        if diagnostics:
+            kinds.add("diagnostics-digest")
         if changes and not kinds:
             kinds.add("runs only")
         attribution = [name for name, v in variants if key in v and cells(v[key]) != cb]
@@ -149,6 +166,22 @@ def main(args):
         levels = " ".join(level + " " + short(x) + ">" + short(y) for level, x, y in zip(LEVELS, ca, cb) if x != y)
         print("\t".join([key, b[key]["parts"], change, levels or "-", srcmap, "; ".join(attribution),
                          ";".join(changes) or "-"]))
+    # Generic specializations (LibraryRequest.Instantiate), where both ledgers have them: one row per changed request.
+    ia, ib = instantiations(ref), instantiations(new)
+    for key in sorted(set(ia) | set(ib)):
+        if key not in ia or key not in ib:
+            totals["instantiation " + ("added" if key not in ia else "removed")] += 1
+            print("\t".join([key[0] + ":" + key[1], "instantiation", "added" if key not in ia else "removed",
+                             "-", "-", "-", "-"]))
+            continue
+        if cells(ia[key]) == cells(ib[key]):
+            continue
+        totals["instantiation changed"] += 1
+        levels = " ".join(level + " " + short(x) + ">" + short(y)
+                          for level, x, y in zip(LEVELS, cells(ia[key]), cells(ib[key])) if x != y)
+        attribution = [name for name, v in variants_i if key in v and cells(v[key]) != cells(ib[key])]
+        print("\t".join([key[0] + ":" + key[1], "instantiation", "changed", levels, "-",
+                         "; ".join(attribution + ["specialization change"]), "-"]))
     for kind, n in sorted(totals.items()):
         print("total\t" + kind + "\t" + str(n), file=sys.stderr)
 
