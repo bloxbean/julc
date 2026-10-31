@@ -48,7 +48,7 @@ class Adr068GateTimingTest {
                 if (line.startsWith("source: ")) main = text(corpus, line.substring(8));
                 if (line.startsWith("library: ")) libraries.add(text(corpus, line.substring(9)));
             }
-            if (main == null || !StdlibRegistry.class.getName().equals(lookup)) continue;
+            if (main == null || !("default:" + StdlibRegistry.class.getName()).equals(lookup)) continue;
             if (!List.of("compile", "compileWithDetails", "compileContract", "compileMethod").contains(entry)) continue;
             var s = new Sample(entry, method, main, libraries);
             try {
