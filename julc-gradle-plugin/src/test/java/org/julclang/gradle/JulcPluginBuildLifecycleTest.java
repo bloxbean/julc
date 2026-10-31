@@ -202,9 +202,11 @@ class JulcPluginBuildLifecycleTest {
     }
 
     private GradleRunner createRunner(String... args) {
+        // These tests change files between builds. A retained file-system watch can still report the old state
+        // while the machine creates many files, so each build reads the disk.
         return GradleRunner.create()
                 .withProjectDir(testProjectDir.toFile())
-                .withArguments(args)
+                .withArguments(Stream.concat(Stream.of(args), Stream.of("--no-watch-fs")).toList())
                 .withPluginClasspath()
                 .forwardOutput();
     }
