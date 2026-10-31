@@ -992,6 +992,34 @@ Decisions recorded from the M1a reviews:
 - **Secondary top-level types** of pool units are indexed under every top-level name (javac's own source path
   finds only the primary one).
 
+### M1: closed (2026-10-31)
+
+M1a ([`068-m1a-javac-gate.md`](evidence/068-m1a-javac-gate.md)), M1b
+([`068-m1b-dialect-rewrite.md`](evidence/068-m1b-dialect-rewrite.md)) and M1c
+([`068-m1c-reference-b1.md`](evidence/068-m1c-reference-b1.md)) are merged. The reference is B1, the gate's default is
+`enforce`, and javac is the only reader of source a compilation accepts; JavaParser still lowers it. Against M1's exit:
+
+| Exit criterion | Result |
+|---|---|
+| Every migration case accepted by both is byte-identical to B1 (I1a) | Yes. Gate off, 11,410 of 11,417 cases are identical to B1; the other 7 are the Blaster fixtures M1b rewrote. Every case javac accepts has the gate-off row |
+| Every migration case javac rejects has a rewrite that is accepted and costs no more | Of 5,241, 5,135 are byte-identical and 76 are cases D6 now removes, which keep their rejection row. 27 differ: 16 cost less; 8 write out a conversion or library call (r9's exception), as do the 2 Blaster fixtures; 3 are equality rewrites of unrelated types, recorded as semantic differences in fixtures. The other 3 are 2 reference fixtures and a parity probe, which stay gate-off |
+| Negative fixtures stay rejected | Yes, with `Adr068NegativeOriginalsTest` holding the 83 originals (D13) |
+| Warm compile ≤ 2× on the corpus | **1.29–1.30×**, on a quiet machine, 462 sampled cases |
+| Cold recorded, threshold set in review | First compile in a fresh JVM, gate off → report: 249–273 ms → 393–433 ms, about **1.6×** (+150 ms). `new LedgerTypeProvider()`: 225–243 ms → 307–330 ms. **Threshold: 2×**, on a quiet machine |
+| One rejection test per Java 22–25 feature; the negative control | Yes (M1a) |
+| Each host smoke passes | JVM, Gradle plugin, annotation processor, testkit and playground through their adapter tests. Native CLI and `julc-wasm` (full image and the Web Image probe, with a stdlib-using and a `@RequiresSigner` validator), rebuilt with the final blob. Elci at `a3ec190a` against the snapshot: JVM CLI, and native images built with GraalVM 25.0.2 and with 25.3.4.1, the one it ships with: its smoke passes and `custom-library` evaluates to 42 |
+| Built without `--add-exports` | Yes (I6) |
+
+At `d7329478`: 12,745 tests, 0 failures, 0 errors, 530 skipped. `pairCaseTest` 71/0. `verify.sh` reports `ESTABLISHED`, and
+`julc verify run` `SMT-VALID`.
+
+**External `julc-examples`** (at `22b4e00f`, in a scratch clone): 446 tests, 10 failures, all in `ByteStringLibEvalTest`,
+whose wrapper source omits `import org.julclang.stdlib.annotation.OnchainLibrary;`. With that line, all 10 pass. The
+line belongs in that repository, before the release that carries the gate.
+
+**What M1 does not establish.** 5,626 of the 7,596 cases the `compareTo` rule changed have no observation attached: they
+rest on the rule's own tests and on V146 showing it is the only byte change. DevKit end-to-end tests were not run.
+
 ## Revision history
 
 - **r1** (2026-10-30): initial proposal, after the ADR-065 spike and consultation on the seam.
