@@ -252,7 +252,7 @@ class Adr068EncodingsTest {
             skips.merge("a local type has no element by name", 1, Integer::sum);
             return;
         }
-        var sampler = new Adr068Encodings.Sampler(program.facts());
+        var sampler = new Adr068Encodings.Sampler(JavacEvidence.facts(program));
         Adr068Encodings.Sample sample;
         try {
             sample = registry.newTypes().containsKey(sampled) ? sampler.newType(element) : sampler.record(element, 0);
@@ -323,7 +323,7 @@ class Adr068EncodingsTest {
             return;     // no validator, or no schema: nothing to compare
         }
         if (schema == null) return;
-        var facts = program.facts();
+        var facts = JavacEvidence.facts(program);
         var interfaces = new ArrayList<ContractSchema.ValidatorInterface>();
         for (var i : schema.interfaces()) {
             var datum = i.datum() == null ? null : argument(program, i.entrypointName(), i.datum(), true);

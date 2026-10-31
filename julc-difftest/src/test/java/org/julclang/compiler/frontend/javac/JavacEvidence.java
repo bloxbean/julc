@@ -24,6 +24,11 @@ public final class JavacEvidence {
     private JavacEvidence() {
     }
 
+    /** A program's model, for a tool that holds the program on one thread and shares it with nothing. */
+    public static JavacFacts facts(JavacProgram program) {
+        return program.facts();
+    }
+
     /** The position of the closing brace of the unit's first class (the JavaParser frontend's method target), or -1. */
     public static int firstClassEnd(JavacProgram program) {
         var first = new ClassTree[1];
