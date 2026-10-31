@@ -1005,6 +1005,21 @@
         "bad": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A a -> a.v(); case B b -> ZERO; };\n}",
         "good": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A x -> x.v(); case B b -> ZERO; };\n}"
       }
+    },
+    {
+      "code": "JULC0091",
+      "constant": "NATIVE_ARRAY_NOT_DATA_ENCODABLE",
+      "status": "emitted",
+      "title": "Native array in a Data-encoded position",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} needs a Data encoding of the native array {1}, which has none",
+      "summary": "A JulcArray is a native UPLC array, which has no Data encoding (ADR-068 D6, #298). A record or sealed-variant component, a type argument of Optional, Tuple2, Tuple3, JulcList, JulcMap or JulcArray, and a @Param or compileMethod input are Data-encoded, so an array there compiled but failed on-chain where the Java code succeeds. An array of Data-encodable elements, such as JulcArray<JulcList<BigInteger>>, is supported.",
+      "fix": "Store a JulcList in the record, collection or input, and build the array where it is used, for example `xs.toArray()` in a local.",
+      "example": {
+        "bad": "record R(JulcArray<BigInteger> arr) {}\nstatic BigInteger f(JulcList<BigInteger> xs) {\n    R r = new R(xs.toArray());\n    return BigInteger.valueOf(r.arr().length());\n}",
+        "good": "record R(JulcList<BigInteger> xs) {}\nstatic BigInteger f(JulcList<BigInteger> xs) {\n    R r = new R(xs);\n    JulcArray<BigInteger> arr = r.xs().toArray();\n    return BigInteger.valueOf(arr.length());\n}"
+      }
     }
   ]
 }

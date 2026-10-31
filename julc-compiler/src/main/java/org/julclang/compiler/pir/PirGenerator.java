@@ -269,7 +269,7 @@ public class PirGenerator {
                 });
     }
 
-    static SourceLocation sourceLocation(Node node) {
+    public static SourceLocation sourceLocation(Node node) {
         if (node == null || node.getRange().isEmpty()) {
             return null;
         }

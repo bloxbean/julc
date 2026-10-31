@@ -39,6 +39,19 @@ public final class CompilerTypeDiagnostics {
     }
 
     /**
+     * JULC0091 (ADR-068 D6, #298): a native array in a Data-encoded position. It has no Data
+     * encoding, so the script would fail where the Java code succeeds.
+     */
+    public static CompilerException nativeArrayNotDataEncodable(
+            String position,
+            PirType array,
+            SourceLocation location) {
+        var info = DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE;
+        var message = info.format(position, LibraryMethodRegistry.pirTypeName(array));
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
      * JULC0012: {@code var a = JulcArray.of(...)} whose elements have different types. javac
      * would type the local by a common supertype the on-chain subset cannot represent, and the
      * access needs one element type to choose its decode.

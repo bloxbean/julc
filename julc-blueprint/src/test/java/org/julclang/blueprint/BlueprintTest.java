@@ -719,12 +719,16 @@ class BlueprintTest {
                 }
                 """;
 
+        // A record component is Data-encoded, so the array is rejected where its type is written (JULC0091,
+        // ADR-068 D6, #298), before the strict boundary would reject the datum.
         var error = assertThrows(
                 org.julclang.compiler.CompilerException.class,
                 () -> new org.julclang.compiler.JulcCompiler()
                         .compileContract(source));
-        assertTrue(error.getMessage().contains("ArrayType"));
-        assertTrue(error.getMessage().contains("ArrayGate.java"));
+        var diagnostic = error.diagnostics().getFirst();
+        assertEquals("JULC0091", diagnostic.code(), error.getMessage());
+        assertTrue(diagnostic.message().contains("Component 'values' of record Datum"), diagnostic.message());
+        assertTrue(diagnostic.line() > 0, diagnostic.toString());
         assertFalse(error.getMessage().contains("Any Plutus data"));
     }
 

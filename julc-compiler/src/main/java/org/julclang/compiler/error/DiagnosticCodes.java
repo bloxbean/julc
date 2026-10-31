@@ -213,14 +213,6 @@ public final class DiagnosticCodes {
             "floating point types (float/double) are not supported on-chain",
             "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params.");
 
-    public static final DiagnosticInfo INTEGER_LITERAL_INVALID = new DiagnosticInfo(
-            "JULC0070",
-            "INTEGER_LITERAL_INVALID",
-            CompilerDiagnostic.Level.ERROR,
-            "SYNTAX",
-            "Integer literal {0} is invalid: {1}",
-            "Add the L suffix for a long literal, use BigInteger for a larger value, write a negated most-negative literal without parentheses (-2147483648), and keep byte[] elements in -128 to 127.");
-
     public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
             "JULC0077",
             "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
@@ -228,6 +220,14 @@ public final class DiagnosticCodes {
             "CONTROL_FLOW",
             "instanceof with record pattern {0} is not supported",
             "Use a switch expression with a record pattern instead.");
+
+    public static final DiagnosticInfo INTEGER_LITERAL_INVALID = new DiagnosticInfo(
+            "JULC0070",
+            "INTEGER_LITERAL_INVALID",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Integer literal {0} is invalid: {1}",
+            "Add the L suffix for a long literal, use BigInteger for a larger value, write a negated most-negative literal without parentheses (-2147483648), and keep byte[] elements in -128 to 127.");
 
     public static final DiagnosticInfo JULCMAP_OF_OFF_CHAIN_ONLY = new DiagnosticInfo(
             "JULC0062",
@@ -325,6 +325,14 @@ public final class DiagnosticCodes {
             "Mutually recursive bindings with more than 2 participants not yet supported: {0}",
             "Refactor: combine the helpers into a single function with an accumulator, or break the recursion via an explicit dispatch on a sealed interface.");
 
+    public static final DiagnosticInfo NATIVE_ARRAY_NOT_DATA_ENCODABLE = new DiagnosticInfo(
+            "JULC0091",
+            "NATIVE_ARRAY_NOT_DATA_ENCODABLE",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0} needs a Data encoding of the native array {1}, which has none",
+            "Store a JulcList in the record, collection or input, and build the array where it is used, for example `xs.toArray()` in a local.");
+
     public static final DiagnosticInfo NATIVE_TYPE_AT_DATA_BOUNDARY = new DiagnosticInfo(
             "JULC0042",
             "NATIVE_TYPE_AT_DATA_BOUNDARY",
@@ -421,6 +429,14 @@ public final class DiagnosticCodes {
             "Unsupported PIR structure in {0}: {1}",
             "Restructure the term as described; for example bind recursive values as lambdas and give a DataMatch exactly one branch per constructor in tag order.");
 
+    public static final DiagnosticInfo REASSIGNMENT_OUTSIDE_LOOP = new DiagnosticInfo(
+            "JULC0061",
+            "REASSIGNMENT_OUTSIDE_LOOP",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Reassigning ''{0}'' is not supported outside a loop",
+            "Declare a new local for the new value, for example `long squared = x * n;`, or choose the value in one expression, for example `var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;`.");
+
     public static final DiagnosticInfo RECORD_MEMBER_UNSUPPORTED = new DiagnosticInfo(
             "JULC0080",
             "RECORD_MEMBER_UNSUPPORTED",
@@ -436,14 +452,6 @@ public final class DiagnosticCodes {
             "TYPE",
             "Record {0} implements sealed interfaces {1} and {2}; a record may have at most one sealed parent",
             "Wrap the record in a separate variant for the second interface.");
-
-    public static final DiagnosticInfo REASSIGNMENT_OUTSIDE_LOOP = new DiagnosticInfo(
-            "JULC0061",
-            "REASSIGNMENT_OUTSIDE_LOOP",
-            CompilerDiagnostic.Level.ERROR,
-            "SYNTAX",
-            "Reassigning ''{0}'' is not supported outside a loop",
-            "Declare a new local for the new value, for example `long squared = x * n;`, or choose the value in one expression, for example `var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;`.");
 
     public static final DiagnosticInfo RETURN_INSIDE_WHILE = new DiagnosticInfo(
             "JULC0003",
@@ -687,6 +695,7 @@ public final class DiagnosticCodes {
             MISSING_OPTIMIZATION_COST_PROFILE,
             MULTIPLE_DECLARATORS_UNSUPPORTED,
             MUTUAL_RECURSION_TOO_LARGE,
+            NATIVE_ARRAY_NOT_DATA_ENCODABLE,
             NATIVE_TYPE_AT_DATA_BOUNDARY,
             NATIVE_TYPE_MISMATCH,
             NEWTYPE_UNSUPPORTED_FIELD_TYPE,
