@@ -5,11 +5,12 @@ import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
+import org.julclang.compiler.frontend.javac.JavacCompilation;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
-import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.frontend.javac.JavacProvenance;
+import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
@@ -109,23 +110,30 @@ public class JulcCompiler {
 
     /**
      * The library sources a source compiles with when the caller names none: what its imports resolve to in the class
-     * path's scan. The javac frontend takes the whole scan as its pool and reads what the source references (ADR-068 D8).
+     * path's scan. The javac frontend takes the whole scan as its pool, as JAR sources, and reads what the source
+     * references (ADR-068 D8).
      */
-    private List<String> classpathLibraries(String source, ClassLoader classLoader) {
+    private List<String> classpathLibraries(String source, ClassLoader classLoader, CompilationContext context) {
         var available = LibrarySourceResolver.scanClasspathSources(classLoader);
-        if (options.getFrontend() == CompilerFrontend.JAVAC) {
-            throw javacFrontend(JavacFrontend.Unit.of(source),
-                    available.values().stream().map(library -> JavacFrontend.Unit.jar(library.source())).toList());
+        if (context.frontend() == CompilerFrontend.JAVAC) {
+            var scanned = available.values().stream().map(library -> library.source()).toList();
+            context.markJarSources(scanned);
+            return scanned;
         }
         return available.isEmpty() ? List.of() : LibrarySourceResolver.resolve(source, available);
     }
 
     /**
-     * ADR-068 M2: the javac frontend reads the sources and registers their types, and a compilation ends there, with
-     * javac's rejection, a rejected type or {@code JULC0084}. It never reaches the JavaParser frontend (I8).
+     * ADR-068: the one place a compilation leaves for the javac frontend, which never reaches the JavaParser frontend
+     * (I8). What the frontend does not lower yet is {@code JULC0084}, after javac has had its say on the source.
      */
-    private static CompilerException javacFrontend(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool) {
-        return JavacGate.onJavacFrontend(() -> JavacProgram.analyze(List.of(root), pool).notPorted());
+    private CompilationOutcome onJavac(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, boolean captureDetails,
+                                       boolean captureContractSchema, boolean collectDebugMetadata,
+                                       CompilationContext context) {
+        var result = JavacCompilation.validator(root, pool, context, captureDetails);
+        if (captureContractSchema) throw NotPorted.of("a contract schema");
+        if (collectDebugMetadata) throw NotPorted.of("debug metadata");
+        return new CompilationOutcome(result, null, null);
     }
 
     private CompilationContext beginCompilation() {
@@ -147,7 +155,7 @@ public class JulcCompiler {
      */
     public CompileResult compile(String javaSource) {
         var context = beginCompilation();
-        var resolvedLibs = classpathLibraries(javaSource, JulcCompiler.class.getClassLoader());
+        var resolvedLibs = classpathLibraries(javaSource, JulcCompiler.class.getClassLoader(), context);
         if (CorpusRecorder.ACTIVE != null) recordCorpus("compile", null, javaSource, resolvedLibs, context);
         return doCompile(javaSource, resolvedLibs, false, context);
     }
@@ -158,7 +166,7 @@ public class JulcCompiler {
      */
     public CompileResult compileWithDetails(String javaSource) {
         var context = beginCompilation();
-        var resolvedLibs = classpathLibraries(javaSource, JulcCompiler.class.getClassLoader());
+        var resolvedLibs = classpathLibraries(javaSource, JulcCompiler.class.getClassLoader(), context);
         if (CorpusRecorder.ACTIVE != null) recordCorpus("compileWithDetails", null, javaSource, resolvedLibs, context);
         return doCompile(javaSource, resolvedLibs, true, context);
     }
@@ -196,8 +204,8 @@ public class JulcCompiler {
 
     /** Compile a source-debug artifact with classpath-discovered libraries. */
     public DebugCompileResult compileForDebug(String validatorSource) {
-        return compileForDebug(validatorSource,
-                classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader()));
+        return compileForDebug(validatorSource, classpathLibraries(validatorSource,
+                JulcCompiler.class.getClassLoader(), beginCompilation()));
     }
 
     /**
@@ -221,7 +229,7 @@ public class JulcCompiler {
      */
     public ContractCompileResult compileContract(String validatorSource) {
         var context = beginCompilation();
-        var resolvedLibs = classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader());
+        var resolvedLibs = classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader(), context);
         if (CorpusRecorder.ACTIVE != null) {
             recordCorpus("compileContract", null, validatorSource, resolvedLibs, context);
         }
@@ -244,7 +252,7 @@ public class JulcCompiler {
     /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
     public ContractCompileResult compileContractWithDetails(String validatorSource) {
         var context = beginCompilation();
-        var resolvedLibs = classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader());
+        var resolvedLibs = classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader(), context);
         if (CorpusRecorder.ACTIVE != null) {
             recordCorpus("compileContractWithDetails", null, validatorSource, resolvedLibs, context);
         }
@@ -291,7 +299,8 @@ public class JulcCompiler {
             CompilationContext context,
             boolean collectDebugMetadata) {
         if (context.frontend() == CompilerFrontend.JAVAC) {
-            throw javacFrontend(JavacFrontend.Unit.of(validatorSource), librarySources.stream().map(this::libraryUnit).toList());
+            return onJavac(JavacFrontend.Unit.of(validatorSource), libraryUnits(librarySources, context),
+                    captureDetails, captureContractSchema, collectDebugMetadata, context);
         }
         librarySources = javacGate("compile", JavacFrontend.Unit.of(validatorSource), librarySources,
                 this::libraryUnit, context);
@@ -613,9 +622,15 @@ public class JulcCompiler {
                 ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT);
     }
 
+    /** The javac frontend's pool: a source the class-path scan found is a JAR source, whichever way it got here. */
+    private List<JavacFrontend.Unit> libraryUnits(List<String> sources, CompilationContext context) {
+        return sources.stream().map(text -> context.isJarSource(text) ? JavacFrontend.Unit.jar(text) : libraryUnit(text)).toList();
+    }
+
     /** Records a string entry point's inputs for the ADR-068 corpus (test-only; see {@link CorpusRecorder}). */
     private void recordCorpus(String entry, String methodName, String source, List<String> librarySources,
                               CompilationContext context) {
+        if (context.frontend() == CompilerFrontend.JAVAC) return; // the corpus is the reference's inputs
         CorpusRecorder.ACTIVE.record(entry, methodName, new CorpusRecorder.Source(source, null),
                 librarySources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(),
                 stdlibLookup, CorpusRecorder.Options.of(context));
@@ -698,7 +713,8 @@ public class JulcCompiler {
                     ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT));
         }
         if (context.frontend() == CompilerFrontend.JAVAC) {
-            throw javacFrontend(new JavacFrontend.Unit(validatorText, validatorFile), pool);
+            return onJavac(new JavacFrontend.Unit(validatorText, validatorFile), pool, false, captureContractSchema,
+                    false, context);
         }
         var libraries = javacGate(captureContractSchema ? "compileContractPath" : "compilePath",
                 new JavacFrontend.Unit(validatorText, validatorFile), pool, unit -> unit, context);
@@ -768,7 +784,7 @@ public class JulcCompiler {
      */
     public CompileResult compileMethod(String javaSource, String methodName) {
         var context = beginCompilation();
-        var resolvedLibs = classpathLibraries(javaSource, Thread.currentThread().getContextClassLoader());
+        var resolvedLibs = classpathLibraries(javaSource, Thread.currentThread().getContextClassLoader(), context);
         return compileMethod(javaSource, methodName, resolvedLibs, context);
     }
 
@@ -791,7 +807,8 @@ public class JulcCompiler {
             CompilationContext context) {
         if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources, context);
         if (context.frontend() == CompilerFrontend.JAVAC) {
-            throw javacFrontend(JavacFrontend.Unit.of(javaSource), librarySources.stream().map(this::libraryUnit).toList());
+            return JavacCompilation.method(JavacFrontend.Unit.of(javaSource), libraryUnits(librarySources, context),
+                    methodName, context);
         }
         librarySources = javacGate("compileMethod", JavacFrontend.Unit.of(javaSource), librarySources,
                 this::libraryUnit, context);
@@ -1572,7 +1589,7 @@ public class JulcCompiler {
     }
 
     /** System property that enables the ADR-060 binder-namespace check (set by the test tasks). */
-    static final String VERIFY_BINDER_NAMESPACE = "julc.verifyBinderNamespace";
+    public static final String VERIFY_BINDER_NAMESPACE = "julc.verifyBinderNamespace";
 
     /**
      * ADR-060 G2, enabled in tests: every binder that reaches UPLC generation must be a reserved

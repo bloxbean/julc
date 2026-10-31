@@ -217,6 +217,18 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(construct), location);
     }
 
+    /** JULC0088: a {@code @Param} field that is a constant variable to Java (ADR-068 D14). */
+    public static CompilerException paramConstantVariable(String field, SourceLocation location) {
+        var info = DiagnosticCodes.PARAM_CONSTANT_VARIABLE;
+        return exception(info.code(), info.level(), info.fix(), info.format(field), location);
+    }
+
+    /** JULC0093: a string literal holding an unpaired surrogate, which a UPLC string cannot hold. */
+    public static CompilerException unpairedSurrogate(char surrogate, SourceLocation location) {
+        var info = DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE;
+        return exception(info.code(), info.level(), info.fix(), info.format(String.format("%04X", (int) surrogate)), location);
+    }
+
     /** JULC0057: a static field initializer that calls a method of its class. */
     public static CompilerException staticInitializerCallsMethod(String field, String method, SourceLocation location) {
         var info = DiagnosticCodes.STATIC_INITIALIZER_CALLS_METHOD;

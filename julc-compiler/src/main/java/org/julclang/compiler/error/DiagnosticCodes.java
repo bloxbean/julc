@@ -549,6 +549,14 @@ public final class DiagnosticCodes {
             "String concatenation {0} has a non-String operand of type {1}",
             "Concatenate Strings only.");
 
+    public static final DiagnosticInfo STRING_LITERAL_UNPAIRED_SURROGATE = new DiagnosticInfo(
+            "JULC0093",
+            "STRING_LITERAL_UNPAIRED_SURROGATE",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "A string literal holds the unpaired surrogate U+{0}, which a UPLC string cannot hold",
+            "Write a supplementary character as its high surrogate followed by its low surrogate, or remove it.");
+
     public static final DiagnosticInfo SWITCH_DUPLICATE_DEFAULT = new DiagnosticInfo(
             "JULC0082",
             "SWITCH_DUPLICATE_DEFAULT",
@@ -787,6 +795,7 @@ public final class DiagnosticCodes {
             STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,
             STRING_CONCAT_NON_STRING,
+            STRING_LITERAL_UNPAIRED_SURROGATE,
             SWITCH_DUPLICATE_DEFAULT,
             SWITCH_FIELD_SHADOWS_PARAMETER,
             SWITCH_GROUP_UNSUPPORTED,

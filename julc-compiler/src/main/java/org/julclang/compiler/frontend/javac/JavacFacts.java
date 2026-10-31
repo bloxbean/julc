@@ -45,9 +45,6 @@ import java.util.Map;
  */
 public final class JavacFacts {
 
-    private static final String PLUTUS_DATA = "org.julclang.core.PlutusData";
-    private static final String TYPES = "org.julclang.core.types.";
-
     /** A fragment's limit, as the JavaParser frontend's source positions have it. */
     private static final int FRAGMENT_LIMIT = 100;
 
@@ -167,12 +164,17 @@ public final class JavacFacts {
         return permitted;
     }
 
-    /** Whether {@code type} carries the annotation named {@code annotation}, by identity. */
-    public boolean hasAnnotation(TypeElement type, String annotation) {
-        for (AnnotationMirror mirror : type.getAnnotationMirrors()) {
-            if (identity((TypeElement) mirror.getAnnotationType().asElement()).equals(annotation)) return true;
+    /** Whether {@code element} carries the annotation named {@code annotation}, by identity. */
+    public boolean hasAnnotation(Element element, String annotation) {
+        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+            if (identity(mirror.getAnnotationType()).equals(annotation)) return true;
         }
         return false;
+    }
+
+    /** The identity of a declared type: {@link #identity(TypeElement)} of its class. */
+    public String identity(DeclaredType type) {
+        return identity((TypeElement) type.asElement());
     }
 
     /**
@@ -215,7 +217,7 @@ public final class JavacFacts {
     }
 
     /** A rejection at {@code where}. */
-    CompilerException rejection(String message, Tree where) {
+    public CompilerException rejection(String message, Tree where) {
         if (where == null) return new CompilerException(message);
         var at = location(where);
         return new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message,
@@ -229,34 +231,34 @@ public final class JavacFacts {
 
     private PirType declared(DeclaredType type, Tree where) {
         var element = (TypeElement) type.asElement();
-        String identity = identity(element);
+        String identity = identity(type);
         var arguments = type.getTypeArguments();
         String simple = element.getSimpleName().toString();
         return switch (identity) {
-            case "java.math.BigInteger" -> new PirType.IntegerType();
+            case JavacNames.BIG_INTEGER -> new PirType.IntegerType();
             case "java.lang.String" -> new PirType.StringType();
             case "java.lang.Boolean" -> new PirType.BoolType();
-            case PLUTUS_DATA, PLUTUS_DATA + ".ConstrData", PLUTUS_DATA + ".MapData", PLUTUS_DATA + ".ListData",
-                 PLUTUS_DATA + ".IntData", PLUTUS_DATA + ".BytesData" -> new PirType.DataType();
-            case TYPES + "JulcValue" -> new PirType.NativeValueType();
-            case TYPES + "JulcG1" -> new PirType.NativeG1Type();
-            case TYPES + "JulcG2" -> new PirType.NativeG2Type();
-            case TYPES + "JulcMlResult" -> new PirType.NativeMlResultType();
-            case TYPES + "JulcScalars" -> new PirType.NativeListType(new PirType.IntegerType());
-            case TYPES + "JulcG1Points" -> new PirType.NativeListType(new PirType.NativeG1Type());
-            case TYPES + "JulcG2Points" -> new PirType.NativeListType(new PirType.NativeG2Type());
-            case "java.util.List", TYPES + "JulcList" -> new PirType.ListType(argument(arguments, 0, simple, where));
-            case TYPES + "JulcArray" -> new PirType.ArrayType(argument(arguments, 0, simple, where));
-            case "java.util.Map", TYPES + "JulcMap" -> new PirType.MapType(argument(arguments, 0, simple, where),
+            case JavacNames.PLUTUS_DATA, JavacNames.PLUTUS_DATA + ".ConstrData", JavacNames.PLUTUS_DATA + ".MapData", JavacNames.PLUTUS_DATA + ".ListData",
+                 JavacNames.PLUTUS_DATA + ".IntData", JavacNames.PLUTUS_DATA + ".BytesData" -> new PirType.DataType();
+            case JavacNames.TYPES + "JulcValue" -> new PirType.NativeValueType();
+            case JavacNames.TYPES + "JulcG1" -> new PirType.NativeG1Type();
+            case JavacNames.TYPES + "JulcG2" -> new PirType.NativeG2Type();
+            case JavacNames.TYPES + "JulcMlResult" -> new PirType.NativeMlResultType();
+            case JavacNames.TYPES + "JulcScalars" -> new PirType.NativeListType(new PirType.IntegerType());
+            case JavacNames.TYPES + "JulcG1Points" -> new PirType.NativeListType(new PirType.NativeG1Type());
+            case JavacNames.TYPES + "JulcG2Points" -> new PirType.NativeListType(new PirType.NativeG2Type());
+            case "java.util.List", JavacNames.TYPES + "JulcList" -> new PirType.ListType(argument(arguments, 0, simple, where));
+            case JavacNames.TYPES + "JulcArray" -> new PirType.ArrayType(argument(arguments, 0, simple, where));
+            case "java.util.Map", JavacNames.TYPES + "JulcMap" -> new PirType.MapType(argument(arguments, 0, simple, where),
                     argument(arguments, 1, simple, where));
-            case TYPES + "Tuple2" -> new PirType.RecordType("Tuple2", List.of(
+            case JavacNames.TYPES + "Tuple2" -> new PirType.RecordType("Tuple2", List.of(
                     new PirType.Field("first", argument(arguments, 0, simple, where)),
                     new PirType.Field("second", argument(arguments, 1, simple, where))));
-            case TYPES + "Tuple3" -> new PirType.RecordType("Tuple3", List.of(
+            case JavacNames.TYPES + "Tuple3" -> new PirType.RecordType("Tuple3", List.of(
                     new PirType.Field("first", argument(arguments, 0, simple, where)),
                     new PirType.Field("second", argument(arguments, 1, simple, where)),
                     new PirType.Field("third", argument(arguments, 2, simple, where))));
-            case TYPES + "AssetEntry" -> new PirType.RecordType("AssetEntry", List.of(
+            case JavacNames.TYPES + "AssetEntry" -> new PirType.RecordType("AssetEntry", List.of(
                     new PirType.Field("policyId", new PirType.ByteStringType()),
                     new PirType.Field("tokenName", new PirType.ByteStringType()),
                     new PirType.Field("amount", new PirType.IntegerType())));
@@ -297,15 +299,43 @@ public final class JavacFacts {
                 end < 0 ? "" : fragment(unit, start, end));
     }
 
-    private static String fragment(CompilationUnitTree unit, long start, long end) {
-        CharSequence source;
+    private static String text(CompilationUnitTree unit) {
         try {
-            source = unit.getSourceFile().getCharContent(true);
+            return unit.getSourceFile().getCharContent(true).toString();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        String text = source.subSequence((int) start, (int) end).toString().strip().replaceAll("\\s+", " ");
+    }
+
+    private static String fragment(CompilationUnitTree unit, long start, long end) {
+        String text = text(unit).substring((int) start, (int) end).strip().replaceAll("\\s+", " ");
         return text.length() > FRAGMENT_LIMIT ? text.substring(0, FRAGMENT_LIMIT - 3) + "..." : text;
+    }
+
+    /** Whether javac generated {@code tree}: it has no source text, as a default constructor has none. */
+    public boolean isGenerated(Tree tree) {
+        return end(tree) < 0;
+    }
+
+    /**
+     * The first {@code count} characters of {@code tree}'s source as javac reads them: a Unicode escape is the character it
+     * denotes (JLS 3.3). What a token is spelled with can only be read here; javac's trees keep its value.
+     */
+    public String leadingSource(Tree tree, int count) {
+        var unit = path(tree).getCompilationUnit();
+        String text = text(unit);
+        var read = new StringBuilder();
+        for (int at = (int) start(tree); read.length() < count && at < text.length(); at++) {
+            char c = text.charAt(at);
+            if (c == '\\' && at + 1 < text.length() && text.charAt(at + 1) == 'u') {
+                at++;
+                while (text.charAt(at + 1) == 'u') at++;
+                c = (char) Integer.parseInt(text.substring(at + 1, at + 5), 16);
+                at += 4;
+            }
+            read.append(c);
+        }
+        return read.toString();
     }
 
     /** The start offset of {@code tree} in its unit, or -1. */

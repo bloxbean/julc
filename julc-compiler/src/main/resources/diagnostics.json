@@ -1062,12 +1062,12 @@
     {
       "code": "JULC0088",
       "constant": "PARAM_CONSTANT_VARIABLE",
-      "status": "planned",
+      "status": "emitted",
       "title": "@Param field is a Java constant variable",
       "category": "LIBRARY",
       "severity": "error",
       "template": "@Param field {0} is a constant variable in Java, so javac would fold it; it is runtime input",
-      "summary": "Reserved by ADR-068 (D14): a static final primitive or String @Param field with a constant initializer is a constant variable to javac, which folds it, so the JVM program would not be the script that receives the applied parameter.",
+      "summary": "A static final primitive or String @Param field with a constant initializer is a constant variable to javac, which folds it, so the JVM program would not be the script that receives the applied parameter (ADR-068 D14).",
       "fix": "Drop final, or initialize from a non-constant expression such as Boolean.valueOf(true)."
     },
     {
@@ -1121,6 +1121,17 @@
         "bad": "sealed interface Shape {}\nrecord Circle(BigInteger r) implements Shape {}",
         "good": "sealed interface Shape permits Circle {}\nrecord Circle(BigInteger r) implements Shape {}"
       }
+    },
+    {
+      "code": "JULC0093",
+      "constant": "STRING_LITERAL_UNPAIRED_SURROGATE",
+      "status": "emitted",
+      "title": "String literal holds an unpaired surrogate",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "A string literal holds the unpaired surrogate U+{0}, which a UPLC string cannot hold",
+      "summary": "javac accepts a lone surrogate in a string literal, but a UPLC string is Unicode text: the script's FLAT encoding would carry a ? in its place, so the JVM program would not be the script (ADR-065, ADR-068 I2a).",
+      "fix": "Write a supplementary character as its high surrogate followed by its low surrogate, or remove it."
     }
   ]
 }

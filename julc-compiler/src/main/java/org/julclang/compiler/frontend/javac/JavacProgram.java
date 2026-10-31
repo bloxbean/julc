@@ -1,12 +1,7 @@
 package org.julclang.compiler.frontend.javac;
 
-import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
-import com.sun.source.tree.MethodTree;
-import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.error.CompilerDiagnostic;
-import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.resolve.TypeRegistry;
 
 import java.util.ArrayList;
@@ -30,7 +25,7 @@ import java.util.function.Function;
  *       keeps the program and makes a query then, from any thread: the lock also orders it after the attribution. Its
  *       javac task stays in memory for as long as the holder does.</li>
  * </ul>
- * Lowering comes with ADR-068 M3 and M4: nothing here hands a program to the JavaParser frontend (I8).
+ * A construct not ported yet is {@link NotPorted}: nothing here hands a program to the JavaParser frontend (I8).
  */
 public final class JavacProgram {
 
@@ -124,46 +119,5 @@ public final class JavacProgram {
     /** The pool units javac read, in qualified-name order. */
     public List<CompilationUnitTree> libraries() {
         return libraries;
-    }
-
-    /** {@code JULC0084}, naming the first method of the roots: lowering is not ported yet (ADR-068 D4). */
-    public CompilerException notPorted() {
-        for (CompilationUnitTree unit : roots) {
-            for (Tree declaration : unit.getTypeDecls()) {
-                if (declaration instanceof ClassTree type) {
-                    var method = firstMethod(type);
-                    if (method != null) {
-                        return notPorted("the method '" + method.getName() + "' of " + type.getSimpleName(), method);
-                    }
-                }
-            }
-        }
-        return notPorted("this compilation unit", roots.getFirst());
-    }
-
-    private static MethodTree firstMethod(ClassTree type) {
-        for (Tree member : type.getMembers()) {
-            if (member instanceof MethodTree method && method.getBody() != null
-                    && method.getReturnType() != null) return method;
-            if (member instanceof ClassTree nested) {
-                var found = firstMethod(nested);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
-    private CompilerException notPorted(String construct, Tree tree) {
-        var info = DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED;
-        var location = facts.location(tree);
-        return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(construct),
-                location.fileName(), location.line(), location.column(), info.fix(), info.code())));
-    }
-
-    /** {@code JULC0084} for a provider's lowering, which has no method to point at. */
-    public static CompilerException notPorted(String construct) {
-        var info = DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED;
-        return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(construct), "<source>", 0, 0,
-                info.fix(), info.code())));
     }
 }

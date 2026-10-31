@@ -779,9 +779,10 @@ class JavacTypesTest {
                 @SpendingValidator
                 class V {
                     @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return redeemer.equals(redeemer); }
                 }
                 """;
+        private static final String COVERED = VALIDATOR.replace("redeemer.equals(redeemer)", "true");
         private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
 
         @Test
@@ -789,12 +790,28 @@ class JavacTypesTest {
             assertEquals(CompilerFrontend.JAVAPARSER, new CompilerOptions().getFrontend());
         }
 
+        /** The reference accepts {@link #VALIDATOR}, so {@code JULC0084} here says nothing went to it (I8). */
         private static void assertNotPorted(Executable compile) {
             var e = assertThrows(CompilerException.class, compile);
             var diagnostic = e.diagnostics().getFirst();
             assertEquals(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code(), diagnostic.code(), e.getMessage());
-            assertTrue(diagnostic.message().contains("the method 'validate' of V"), diagnostic.message());
-            assertEquals(7, diagnostic.line(), "the method's first line, its annotation");
+            assertTrue(diagnostic.message().contains("METHOD_INVOCATION `redeemer.equals(redeemer)`"), diagnostic.message());
+            assertEquals(8, diagnostic.line(), "the construct's line");
+        }
+
+        @Test
+        void aCoveredProgramCompilesAndWhatIsNotPortedIsNamed() {
+            var compiler = new JulcCompiler(null, JAVAC);
+            assertNotNull(compiler.compile(COVERED).program());
+            assertNotNull(compiler.compile(COVERED, List.of()).program());
+            assertNotNull(compiler.compileWithDetails(COVERED).pirTerm());
+            assertNotNull(compiler.compileMethod(COVERED, "validate", List.of()).program());
+            for (Executable contract : List.<Executable>of(() -> compiler.compileContract(COVERED),
+                    () -> compiler.compileContract(COVERED, List.of()))) {
+                assertEquals("a contract schema", assertThrows(NotPorted.class, contract).construct());
+            }
+            var debug = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setSourceMapEnabled(true));
+            assertEquals("debug metadata", assertThrows(NotPorted.class, () -> debug.compileForDebug(COVERED, List.of())).construct());
         }
 
         @Test
@@ -840,7 +857,7 @@ class JavacTypesTest {
             assertEquals(DiagnosticCodes.JAVAC_ERROR.code(), e.diagnostics().getFirst().code());
         }
 
-        /** Source the JavaParser frontend cannot read reaches JULC0084: nothing of it went to that frontend (I8). */
+        /** Source the JavaParser frontend cannot read is rejected by the javac frontend's own rule: none went to it (I8). */
         @Test
         void sourceTheJavaParserFrontendRejectsNeverReachesIt() {
             String source = "class V { static String m() { return \"\\uD800\"; } }";
@@ -848,7 +865,7 @@ class JavacTypesTest {
                     new CompilerOptions().setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m", List.of()));
             assertNotEquals(DiagnosticCodes.JAVAC_ERROR.code(), reference.diagnostics().isEmpty() ? null : reference.diagnostics().getFirst().code());
             var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, JAVAC).compileMethod(source, "m", List.of()));
-            assertEquals(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code(), javac.diagnostics().getFirst().code(), javac.getMessage());
+            assertEquals(DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE.code(), javac.diagnostics().getFirst().code(), javac.getMessage());
         }
 
         @Test

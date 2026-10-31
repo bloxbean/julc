@@ -11,7 +11,7 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.frontend.javac.JavacLibraryTypes;
-import org.julclang.compiler.frontend.javac.JavacProgram;
+import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.*;
 
@@ -237,7 +237,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
 
     /** ADR-068 D4: what needs library methods lowered is not ported to the javac frontend; types are. */
     private void requireLowering() {
-        if (unportedSources) throw JavacProgram.notPorted("the exports of library sources");
+        if (unportedSources) throw NotPorted.of("the exports of library sources");
     }
 
     @Override

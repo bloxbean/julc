@@ -38,9 +38,6 @@ public final class JavacLibraryTypes {
     public record Described(Map<String, LibraryType> types, Map<String, PirType> definitions) {
     }
 
-    private static final String ONCHAIN_LIBRARY = "org.julclang.stdlib.annotation.OnchainLibrary";
-    private static final String CONSTR_DATA = "org.julclang.core.PlutusData.ConstrData";
-
     private final JavacFacts facts;
 
     private JavacLibraryTypes(JavacFacts facts) {
@@ -70,7 +67,7 @@ public final class JavacLibraryTypes {
             public Void visitClass(ClassTree tree, Void unused) {
                 var element = (TypeElement) facts.element(tree);
                 if (tree.getKind() == Tree.Kind.CLASS && element.getNestingKind() != NestingKind.ANONYMOUS
-                        && !facts.hasAnnotation(element, ONCHAIN_LIBRARY)) {
+                        && !facts.hasAnnotation(element, JavacNames.ONCHAIN_LIBRARY)) {
                     throw new IllegalArgumentException("Only @OnchainLibrary sources can be exported: "
                             + facts.identity(element));
                 }
@@ -142,7 +139,7 @@ public final class JavacLibraryTypes {
         return ElementFilter.methodsIn(record.element().getEnclosedElements()).stream()
                 .filter(method -> method.getSimpleName().contentEquals("toPlutusData"))
                 .allMatch(method -> method.getReturnType() instanceof DeclaredType declared
-                        && facts.identity((TypeElement) declared.asElement()).equals(CONSTR_DATA));
+                        && facts.identity((TypeElement) declared.asElement()).equals(JavacNames.CONSTR_DATA));
     }
 
     private List<LibraryType.Field> fields(TypeElement record) {

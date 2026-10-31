@@ -12,6 +12,9 @@ import org.julclang.vm.OptimizationCostProfile;
 import org.julclang.vm.ProtocolCapability;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -56,6 +59,8 @@ public final class CompilationContext {
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
     private Predicate<String> binderNamespace;
     private JavacProvenance javacProvenance = JavacProvenance.UNAVAILABLE;
+    /** The sources this compilation's class-path scan found, by identity (ADR-068 D8). */
+    private final Set<String> jarSources = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private CompilationContext(
             ResolvedCompilerTarget resolvedTarget,
@@ -111,6 +116,15 @@ public final class CompilationContext {
     /** The Java frontend of this compilation (ADR-068 D4). */
     public CompilerFrontend frontend() {
         return frontend;
+    }
+
+    /** Marks sources this compilation's class-path scan found: on the javac frontend they rank as JAR sources (D8). */
+    void markJarSources(Collection<String> sources) {
+        jarSources.addAll(sources);
+    }
+
+    boolean isJarSource(String source) {
+        return jarSources.contains(source);
     }
 
     /** Whether evidence tooling observes this compilation's lowered methods (ADR-068 I1b). */
@@ -193,7 +207,7 @@ public final class CompilationContext {
         return javacProvenance;
     }
 
-    void setJavacProvenance(JavacProvenance provenance) {
+    public void setJavacProvenance(JavacProvenance provenance) {
         javacProvenance = provenance;
     }
 
@@ -242,7 +256,7 @@ public final class CompilationContext {
      * ADR-060 G2: require every binder that reaches UPLC generation to be accepted by
      * {@code allowed}. The Java frontend enables this in tests; other frontends own their names.
      */
-    void verifyBinderNames(Predicate<String> allowed) {
+    public void verifyBinderNames(Predicate<String> allowed) {
         this.binderNamespace = Objects.requireNonNull(allowed, "allowed");
     }
 
