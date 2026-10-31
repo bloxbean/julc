@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import org.julclang.compiler.backend.BackendException;
 import org.julclang.compiler.backend.LibraryRequest;
 import org.julclang.compiler.backend.LibraryType;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -83,8 +84,16 @@ class Adr068RejectionFixturesTest {
         return e instanceof BackendException b ? b.code() : "null";
     }
 
+    /**
+     * The reference frontend's sites: the javac gate, which enforces by default since M1b and rejects most of these
+     * sources first, stays off.
+     */
+    private static CompilerOptions reference() {
+        return new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+    }
+
     private static void compile(String entry, String source, List<String> libraries) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), reference());
         if (entry.startsWith("method ")) {
             if (libraries.isEmpty()) compiler.compileMethod(source, entry.substring(7).strip());
             else compiler.compileMethod(source, entry.substring(7).strip(), libraries);
@@ -95,7 +104,7 @@ class Adr068RejectionFixturesTest {
             var all = new ArrayList<String>();
             all.add(source);
             all.addAll(libraries);
-            var provider = new JavaLibraryProvider(all, StdlibRegistry.defaultRegistry(), new CompilerOptions());
+            var provider = new JavaLibraryProvider(all, StdlibRegistry.defaultRegistry(), reference());
             String[] words = entry.split(" ");
             if (words[0].equals("describe")) provider.describe(words[1]);
             // An export the provider cannot describe is reported, not thrown: it is a rejection of that export.

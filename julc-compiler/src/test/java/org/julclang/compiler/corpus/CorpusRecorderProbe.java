@@ -61,6 +61,7 @@ public final class CorpusRecorderProbe {
             package sample;
             import java.math.BigInteger;
             import org.julclang.core.types.JulcList;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary public class Twice {
                 public static BigInteger twice(BigInteger x) { return x.add(x); }
                 public static <T> BigInteger count(JulcList<T> items) {
