@@ -292,7 +292,7 @@ final class JavacTypeRegistrar {
             return array.getComponentType().getKind() == TypeKind.BYTE ? new PirType.ByteStringType() : null;
         }
         if (type instanceof DeclaredType declared) {
-            return switch (facts.identity((TypeElement) declared.asElement())) {
+            return switch (facts.identity(declared)) {
                 case "java.math.BigInteger" -> new PirType.IntegerType();
                 case "java.lang.String" -> new PirType.StringType();
                 default -> null;
@@ -308,7 +308,7 @@ final class JavacTypeRegistrar {
     /** The types a record component names: the base type and its type arguments, at any depth. */
     private void dependencies(TypeMirror type, Set<String> names, Set<String> found) {
         if (!(type instanceof DeclaredType declared)) return;
-        String name = facts.identity((TypeElement) declared.asElement());
+        String name = facts.identity(declared);
         if (names.contains(name)) found.add(name);
         for (TypeMirror argument : declared.getTypeArguments()) dependencies(argument, names, found);
     }

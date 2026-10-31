@@ -22,6 +22,7 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeRegistry;
+import org.julclang.core.Constant;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
@@ -106,8 +107,13 @@ public final class JavacCompilation {
         for (var method : discovery.methods(type)) {
             if (!JavacDiscovery.isStatic(method) && !discovery.isEntrypoint(method)) continue;
             try {
-                attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method),
-                        lowering.method(method, parts.scope, false), null));
+                // As the program lowers it: an entry point's boolean returns are guarded under a source map.
+                boolean guarded = methodName == null && discovery.isEntrypoint(method) && context.isSourceMapEnabled();
+                var term = lowering.method(method, parts.scope, guarded);
+                if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) {
+                    BindingCheck.check(parts.bindAround(term), lowering.terms().provenance());
+                }
+                attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method), term, null));
             } catch (NotPorted e) {
                 attempts.add(new MethodAttempt(parts.binder(method), null, null, e.construct()));
             }
@@ -138,6 +144,19 @@ public final class JavacCompilation {
                 bound = bound.bind(element, facts.pirType(element.asType(), field.getType()));
             }
             scope = bound;
+        }
+
+        /** {@code term} under stand-ins for this class's field binders, for I13's check of a method on its own. */
+        PirTerm bindAround(PirTerm term) {
+            for (var param : params) term = standIn(param.element(), term);
+            for (var field : statics) term = standIn(facts.element(field), term);
+            return term;
+        }
+
+        private PirTerm standIn(Element element, PirTerm body) {
+            var binding = new PirTerm.Let(scope.lookup(element).name(), new PirTerm.Const(Constant.unit()), body);
+            lowering.terms().assembled(binding, element);
+            return binding;
         }
 
         /** Step 10: every static method's type, before any body is lowered, so a bad signature is reported first. */

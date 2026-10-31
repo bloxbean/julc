@@ -229,14 +229,14 @@ final class Adr068Ledger {
         }
     }
 
-    private static boolean isProgramEntry(String entry) {
+    static boolean isProgramEntry(String entry) {
         return !entry.equals("JavaLibraryProvider") && !entry.equals("ledger-source");
     }
 
     private static final JavacGateMode GATE = JavacGateMode.valueOf(
             System.getProperty("adr068.gate", "off").toUpperCase(Locale.ROOT));
 
-    private static CompilerOptions options(Adr068Corpus.Case c, OptimizationLevel level, boolean sourceMap) {
+    static CompilerOptions options(Adr068Corpus.Case c, OptimizationLevel level, boolean sourceMap) {
         // The reference rows are the JavaParser frontend's: the javac gate, enforcing by default since M1b, stays off
         // (-Padr068.gate=enforce gives M1b's byte-identity check the same cases with the gate on).
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap)
@@ -246,7 +246,7 @@ final class Adr068Ledger {
         return options;
     }
 
-    private static StdlibLookup lookup(String identity) {
+    static StdlibLookup lookup(String identity) {
         return switch (identity) {
             case "none" -> null;
             case Adr068Corpus.STDLIB_LOOKUP -> StdlibRegistry.defaultRegistry();
@@ -254,7 +254,7 @@ final class Adr068Ledger {
         };
     }
 
-    private CompileResult invoke(Adr068Corpus.Case c, CompilerOptions options) throws IOException {
+    static CompileResult invoke(Adr068Corpus.Case c, CompilerOptions options) throws IOException {
         var compiler = new JulcCompiler(lookup(c.lookup), options);
         var libraries = texts(c.libraries);
         return switch (c.entry) {
@@ -299,7 +299,7 @@ final class Adr068Ledger {
         return target;
     }
 
-    private static List<String> texts(List<Adr068Corpus.Source> sources) {
+    static List<String> texts(List<Adr068Corpus.Source> sources) {
         return sources.stream().map(Adr068Corpus.Source::text).toList();
     }
 
@@ -316,7 +316,7 @@ final class Adr068Ledger {
         return (trace < 0 ? message : message.substring(0, trace)).strip();
     }
 
-    private static List<Diagnostic> diagnostics(List<CompilerDiagnostic> diagnostics) {
+    static List<Diagnostic> diagnostics(List<CompilerDiagnostic> diagnostics) {
         return diagnostics.stream().map(d -> new Diagnostic(d.level().name(), d.code(), stableMessage(d.message()),
                 d.fileName() == null ? "" : Path.of(d.fileName()).getFileName().toString(), d.line(), d.column())).toList();
     }
@@ -351,7 +351,7 @@ final class Adr068Ledger {
      * Everything a library provider exposes, as text: for each type it declares (in FQCN order), its exports with
      * their materialized PIR, its schemes; then its unsupported exports, types and named definitions.
      */
-    private static String describe(JavaLibraryProvider provider, List<Adr068Corpus.Source> sources,
+    static String describe(JavaLibraryProvider provider, List<Adr068Corpus.Source> sources,
                                    List<Diagnostic> failures) {
         var text = new StringBuilder();
         for (String module : declaredTypes(sources)) {

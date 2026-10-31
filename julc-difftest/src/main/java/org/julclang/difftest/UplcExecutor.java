@@ -62,7 +62,7 @@ public final class UplcExecutor {
     /** Applied to each evaluated result term before it is mapped: the identity, except in tests of the runner. */
     private final UnaryOperator<Term> resultTerms;
     /**
-     * Compiled programs by source, method and level, least recently used first; a rejection or crash is
+     * Compiled programs by frontend, level, method and source, least recently used first; a rejection or crash is
      * cached as its observation, with no script bytes. Guarded by {@code this}.
      */
     private final LinkedHashMap<String, Compiled> compiled = new LinkedHashMap<>(16, 0.75f, true);
@@ -122,7 +122,7 @@ public final class UplcExecutor {
      * …")} (ADR-066 D4, G1-I10).
      */
     public Execution run(DiffCase diffCase, DiffConfig config, ExBudget budget, ValueMapping.Representation representation) {
-        String key = config.level() + "\0" + diffCase.method() + "\0" + diffCase.source();
+        String key = config.frontend() + "\0" + config.level() + "\0" + diffCase.method() + "\0" + diffCase.source();
         Compiled entry = cached(key);
         if (entry == null) {
             entry = compile(diffCase, config);
@@ -184,7 +184,7 @@ public final class UplcExecutor {
         Program program;
         try {
             program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                    new CompilerOptions().setOptimizationLevel(config.level()))
+                    new CompilerOptions().setOptimizationLevel(config.level()).setFrontend(config.frontend()))
                     .compileMethod(diffCase.source(), diffCase.method()).program();
         } catch (CompilerException e) {
             var error = e.diagnostics().stream()

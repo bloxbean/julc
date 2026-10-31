@@ -8,6 +8,10 @@ import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
+import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirType;
 
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
@@ -22,6 +26,22 @@ import java.util.List;
 public final class JavacEvidence {
 
     private JavacEvidence() {
+    }
+
+    /** What the javac frontend does with one method of a program, for I1b. */
+    public record Attempt(String binder, PirType type, PirTerm term, String construct) {
+    }
+
+    /**
+     * Every method the reference lowers of {@code root}, each lowered on its own, or nothing if the program is rejected
+     * before its methods; {@code method} is a {@code compileMethod} target, or null for a validator.
+     */
+    public static List<Attempt> attempts(String root, List<String> pool, String method, CompilerOptions options) {
+        var attempts = new ArrayList<Attempt>();
+        JavacCompilation.attempt(JavacFrontend.Unit.of(root), pool.stream().map(JavacFrontend.Unit::of).toList(), method,
+                        CompilationContext.resolve(options))
+                .forEach(a -> attempts.add(new Attempt(a.binder(), a.type(), a.term(), a.construct())));
+        return attempts;
     }
 
     /** A program's model, for a tool that holds the program on one thread and shares it with nothing. */

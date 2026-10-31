@@ -66,13 +66,13 @@ final class JavacDiscovery {
 
     // --- Classes ---
 
-    /** Every class-like type of {@code unit}, in source order, the outer before what it holds. */
+    /** Every declared class-like type of {@code unit}, in source order, the outer before what it holds; none anonymous. */
     private static List<ClassTree> types(CompilationUnitTree unit) {
         var types = new ArrayList<ClassTree>();
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
-                types.add(tree);
+                if (!tree.getSimpleName().isEmpty()) types.add(tree);
                 return super.visitClass(tree, null);
             }
         }.scan(unit, null);

@@ -2,7 +2,9 @@ package org.julclang.compiler.frontend.javac;
 
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.LineMap;
+import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
 import com.sun.source.util.Trees;
@@ -271,13 +273,21 @@ public final class JavacFacts {
     /** A Data-encoded container's type argument, or Data when raw: {@code JULC0091} if it is a native array. */
     private PirType argument(List<? extends TypeMirror> arguments, int index, String container, Tree where) {
         if (arguments.isEmpty()) return new PirType.DataType();
-        PirType type = pirType(arguments.get(index), where);
+        Tree written = typeArgument(where, index);
+        PirType type = pirType(arguments.get(index), written);
         var array = PirType.nativeArrayIn(type);
         if (array != null) {
             throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable("A type argument of " + container, array,
-                    where == null ? null : location(where));
+                    written == null ? null : location(written));
         }
         return type;
+    }
+
+    /** The tree that writes type argument {@code index} of the type {@code where} writes: a rejection anchors there (I2a). */
+    private static Tree typeArgument(Tree where, int index) {
+        Tree written = where instanceof VariableTree variable ? variable.getType() : where;
+        return written instanceof ParameterizedTypeTree type && index < type.getTypeArguments().size()
+                ? type.getTypeArguments().get(index) : where;
     }
 
     /**

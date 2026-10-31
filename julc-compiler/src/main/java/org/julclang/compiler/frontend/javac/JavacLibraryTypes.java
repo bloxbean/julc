@@ -139,7 +139,7 @@ public final class JavacLibraryTypes {
         return ElementFilter.methodsIn(record.element().getEnclosedElements()).stream()
                 .filter(method -> method.getSimpleName().contentEquals("toPlutusData"))
                 .allMatch(method -> method.getReturnType() instanceof DeclaredType declared
-                        && facts.identity((TypeElement) declared.asElement()).equals(JavacNames.CONSTR_DATA));
+                        && facts.identity(declared).equals(JavacNames.CONSTR_DATA));
     }
 
     private List<LibraryType.Field> fields(TypeElement record) {
@@ -163,7 +163,7 @@ public final class JavacLibraryTypes {
 
     private LibraryType.Reference declared(DeclaredType type) {
         var arguments = type.getTypeArguments().stream().map(this::reference).toList();
-        String identity = facts.identity((TypeElement) type.asElement());
+        String identity = facts.identity(type);
         // Nominal identities before primitive aliases; identity is never inferred from erased PIR.
         if (facts.registry().lookupNominal(identity).isPresent()) {
             if (!arguments.isEmpty()) throw unsupported(type);
