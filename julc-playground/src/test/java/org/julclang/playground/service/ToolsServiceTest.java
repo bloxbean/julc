@@ -219,6 +219,16 @@ class ToolsServiceTest {
         assertEquals(Map.of("error", "Example not found: Nope.java"), missing.body());
     }
 
+    @Test
+    void examples_javaSourcesAreAccepted() {
+        var catalog = new ExampleCatalog();
+        for (var example : catalog.list("JAVA").body()) {
+            var source = ((ExampleDto) catalog.get(example.name()).body()).source();
+            var result = SERVICE.compile(new CompileRequest(source));
+            assertNotNull(result.body().compiledCode(), () -> example.name() + ": " + result.body().diagnostics());
+        }
+    }
+
     private static EvaluateRequest spendingRequest(Map<String, String> params, List<String> signers) {
         return new EvaluateRequest(SIMPLE_SPENDING, params,
                 new ScenarioOverrides(signers, null, null), Map.of(), null);

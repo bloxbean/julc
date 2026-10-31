@@ -1,6 +1,8 @@
 import java.math.BigInteger;
 import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
 import org.julclang.stdlib.lib.ContextsLib;
@@ -15,8 +17,8 @@ class VestingValidator {
 
     @Entrypoint
     static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
-        PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-        PlutusData pkh = datum.beneficiary();
+        TxInfo txInfo = ContextsLib.getTxInfo(ctx);
+        byte[] pkh = Builtins.unBData(datum.beneficiary());
         return ContextsLib.signedBy(txInfo, pkh);
     }
 }
