@@ -265,6 +265,25 @@ holding a compiler lowering to account, although here the bounded property set
 could not observe the defect; the regression coverage lives in the compiler's
 `ConditionalYieldLoweringTest`.
 
+## Implementation finding: `compareTo` comparison lowering (#146)
+
+ADR-068 M1 changes how the JavaParser frontend lowers `a.compareTo(b) OP 0` with
+the `int` literal zero: instead of the three-way `compareTo` result compared with
+zero, which evaluated a non-trivial receiver and argument more than once (#146),
+it applies one integer comparison builtin to the operands, each evaluated once
+and in order. Both state-thread fixtures compare
+`redeemer.nextState().compareTo(datum.state()) > 0`, so their compiled bytes
+change; the comparison's value does not, and the receiver and argument are pure
+field projections, so the success sets are unchanged.
+
+The state-thread and state-thread-broken artifacts, their lock entries, the
+`state-thread-broken.output-ref-commitment` counterexample binding, and the
+manifest lock hash are refreshed for the new lowering (lock SHA-256
+`eb6988d5…` → `e283424b…`). The other five locked artifacts are byte-identical.
+The refreshed suite re-establishes the same property outcomes. The lowering
+change itself is tested by the compiler's `ComparisonLoweringTest` and the
+differential harness's `ComparisonOrderDiffTest`.
+
 ## Implementation result
 
 The exit criteria are implemented by the property catalogue, paired correct

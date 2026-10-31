@@ -125,6 +125,17 @@ path previously failed in `tailList` and now yields `false`), and the suite
 re-establishes the same outcomes. See ADR-003, "Implementation finding:
 conditional yield lowering".
 
+ADR-068 M1 (the reference change B0 → B1) lowers `a.compareTo(b) OP 0` to one
+integer comparison that evaluates each operand once (#146). Both state-thread
+fixtures guard the transition with `redeemer.nextState().compareTo(datum.state())
+> 0`, so their bytes change (760 → 733 and 496 → 469 bytes at `baseline`). The
+state-thread and state-thread-broken artifacts, their lock entries, the
+`state-thread-broken.output-ref-commitment` counterexample binding, and the
+manifest lock hash are refreshed; the other five artifacts are byte-identical.
+The comparison has the same value, so the artifacts' success sets are unchanged,
+and the suite re-establishes the same outcomes. See ADR-003, "Implementation
+finding: `compareTo` comparison lowering (#146)".
+
 Blaster's current solver-valid results trust Z3 and its SMT translation. They
 must be reported as `SMT-VALID`, not `KERNEL-PROVED`.
 
