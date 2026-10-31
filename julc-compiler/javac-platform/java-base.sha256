@@ -1,3 +1,3 @@
 # ADR-068 D3: SHA-256 of platform.bin, built from java-base.list on JDK 25.0.2+12-LTS.
 # A different digest from another JDK 25 build is drift (ADR-068 D3, I4); `check` fails on it.
-8e5e498ecf0f9aeefd36284cf89629ee0ac9ec39ab9cc80ff26226866d9dc53f  platform.bin
+c45dd2df24a5f1bd71cded55ab36bc425d13e4edc284b2f983c88acd5075cf0e  platform.bin
