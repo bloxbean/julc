@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r8)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -404,7 +404,8 @@ testkit expose it. The default is `JAVAPARSER` until M5 and `JAVAC` after it; M6
     method-call receiver, the `Shadow` case (unchanged from B0), and a chained accessor the frozen frontend rejects
     today (`box("L", 2).amt().compareTo(…) > 0`, still rejected).
   M1 gates that every rewritten corpus source costs no more, in size and budget, than the **order-correct**
-  lowering of its dialect original, which is the dialect form plus D6's single binding where one is needed.
+  lowering of its dialect original, which is the dialect form plus D6's single binding where one is needed, with the
+  listed exception in M1's exit (a rewrite that writes out a conversion or library call the dialect made implicitly).
 - **Exception 2: security-class fixes go into both frontends.** A security-class defect is any silent divergence
   in a validator's accept/reject outcome from its own Java code, in **either** direction: the script accepts
   what the Java rejects, or rejects (fails, or never terminates) what it accepts, as GHSA-p9v9-f3g2-cqv9 did both.
@@ -743,7 +744,7 @@ Each milestone appends the javac frontend's row and, for every difference, one c
 | **Semantic fix** | Semantic observations differ, and the javac frontend agrees with the JVM where the reference did not | An issue; a saved `.diffcase` on which the javac frontend agrees and the reference diverges |
 | **UPLC-only semantic fix** | Semantic observations differ on a case with no JVM counterpart (malformed Data, ADR-067's UPLC-only checks) | The decision that defines the outcome; the UPLC-only test asserting it |
 | **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, I11) | The decision; a rejection test with the code; docs and release notes |
-| **javac rejection** | javac rejects a migration case (dialect, D6) | The rewritten Java source, which gets its own row |
+| **javac rejection** | javac rejects a migration case (dialect, D6) | The rewritten Java source, which gets its own row; a case D6 removes keeps its rejection row and has none |
 | **Accepted by decision** | The javac frontend accepts a case the reference rejected (escape shapes, javac 25's switch shapes, ADR-067 M2a/M2b record patterns) | The decision; a `.diffcase` per shape on which the javac frontend agrees with the JVM |
 | **Diagnostic change** | Both reject, with a different code, message or position | For a coded JuLC rejection, only a decision this ADR names or I2b's javac-first rejection; for an uncoded one, its new code (I2a) |
 | **Provenance change** | Only source locations differ (I7) | The location pairs, and the rule that explains them |

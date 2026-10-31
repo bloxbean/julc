@@ -92,7 +92,9 @@ public final class ReplExpressionWrapper {
                     .map(d -> relocate(d, bodyLine, block ? 0 : prefix.length())).toList());
         }
         CompilationUnitTree unit = attribution.roots().getFirst();
-        if (!isOnlyTheProbeMethod(unit)) return rejected("the input must be one expression or one block of statements");
+        if (closesTheProbeMethod(attribution, unit, bodyStart + body.length())) {
+            return rejected("the input must be one expression or one block of statements");
+        }
         var returns = block ? returns(attribution, unit) : List.<TreePath>of();
         var inputTypes = block
                 ? returns.stream().map(attribution.trees()::getTypeMirror).toList()
@@ -159,19 +161,27 @@ public final class ReplExpressionWrapper {
         return name;
     }
 
-    /** Whether the unit declares only the wrapper's class and its probe method, so the input did not close them. */
-    private static boolean isOnlyTheProbeMethod(CompilationUnitTree unit) {
-        if (unit.getTypeDecls().size() != 1 || !(unit.getTypeDecls().getFirst() instanceof ClassTree wrapper)) return false;
-        return wrapper.getMembers().stream()
-                .filter(member -> !(member instanceof MethodTree method && method.getName().contentEquals("<init>")))
-                .count() == 1;
+    /**
+     * Whether the input closed the probe method, whose brace the wrapper writes after the input: the method then ends
+     * inside the input. Positions are raw offsets, so a brace spelled as a Unicode escape counts.
+     */
+    private static boolean closesTheProbeMethod(JavacFrontend.Attribution attribution, CompilationUnitTree unit,
+                                                long inputEnd) {
+        return unit.getTypeDecls().size() != 1 || attribution.trees().getSourcePositions()
+                .getEndPosition(unit, probeMethod(unit).getBody()) <= inputEnd;
+    }
+
+    /** The wrapper's method: the first of its name, since the input comes after it. */
+    private static MethodTree probeMethod(CompilationUnitTree unit) {
+        var wrapper = (ClassTree) unit.getTypeDecls().getFirst();
+        return wrapper.getMembers().stream().filter(member -> member instanceof MethodTree m
+                && m.getName().contentEquals(METHOD_NAME)).map(MethodTree.class::cast).findFirst().orElseThrow();
     }
 
     /** The path of the probe method's {@code var}, the first statement of an expression's probe. */
     private static TreePath probeVariable(CompilationUnitTree unit) {
         var wrapper = (ClassTree) unit.getTypeDecls().getFirst();
-        var method = wrapper.getMembers().stream().filter(member -> member instanceof MethodTree m
-                && m.getName().contentEquals(METHOD_NAME)).map(MethodTree.class::cast).findFirst().orElseThrow();
+        var method = probeMethod(unit);
         var path = new TreePath(new TreePath(new TreePath(new TreePath(unit), wrapper), method), method.getBody());
         return new TreePath(path, method.getBody().getStatements().getFirst());
     }
@@ -215,7 +225,7 @@ public final class ReplExpressionWrapper {
     /**
      * A type as source text under {@code imports}: simple names for {@code java.lang}, imported and on-demand
      * imported types, qualified names otherwise; null for a type with no source form here (a type variable,
-     * {@code null}, an intersection).
+     * {@code null}, an intersection, a local or anonymous class).
      */
     static String print(TypeMirror type, List<String> imports) {
         return switch (type.getKind()) {
@@ -227,6 +237,7 @@ public final class ReplExpressionWrapper {
             case DECLARED -> {
                 var declared = (DeclaredType) type;
                 String name = name((TypeElement) declared.asElement(), Set.copyOf(imports));
+                if (name == null) yield null;
                 var args = new ArrayList<String>();
                 for (TypeMirror arg : declared.getTypeArguments()) {
                     String printed = print(arg, imports);
@@ -242,7 +253,9 @@ public final class ReplExpressionWrapper {
     private static String name(TypeElement type, Set<String> imports) {
         Element enclosing = type.getEnclosingElement();
         if (enclosing.getKind() != ElementKind.PACKAGE) {
-            return name((TypeElement) enclosing, imports) + "." + type.getSimpleName();
+            if (!(enclosing instanceof TypeElement outer) || type.getSimpleName().isEmpty()) return null;
+            String outerName = name(outer, imports);
+            return outerName == null ? null : outerName + "." + type.getSimpleName();
         }
         String pkg = ((PackageElement) enclosing).getQualifiedName().toString();
         String fqcn = type.getQualifiedName().toString();

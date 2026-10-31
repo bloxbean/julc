@@ -159,12 +159,21 @@ class ExpressionWrapperTest {
     @Test
     void inputClosingTheWrapper_isRejected() {
         for (String input : List.of("return 1; } static int other() { return 2;",
-                "return 1; } } class Other { static Object __eval() { return \"x\";")) {
+                "return 1; } } class Other { static Object __eval() { return \"x\";",
+                "return 1; } __Repl() {",
+                "BigInteger.ONE)\\u003b } __Repl() { //")) {
             var wrapped = wrap(input);
             assertFalse(wrapped.isAccepted(), input);
             assertTrue(wrapped.errors().getFirst().message().contains("one expression or one block"),
                     wrapped.errors().toString());
         }
+    }
+
+    @Test
+    void anonymousClass_isRejected() {
+        var wrapped = wrap("new Object() {}");
+        assertFalse(wrapped.isAccepted());
+        assertTrue(wrapped.errors().getFirst().message().contains("not an on-chain type"), wrapped.errors().toString());
     }
 
     @Test

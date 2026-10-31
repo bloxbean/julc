@@ -166,28 +166,98 @@ class DialectRemovalAlternativesTest {
         assertTrue(error.diagnostics().stream().anyMatch(d -> "JULC0085".equals(d.code())), error::getMessage);
     }
 
-    // The equality rewrites of M1b (D13 rows "equals for == on Data"). javac rejects == between these types.
+    // The equality rewrites of M1b (D13 rows "equals for == on Data"). javac rejects == between these unrelated types.
+    // No corpus evaluation runs these fixtures, so their loops are compared here, on the fixtures' own operand types.
 
-    private static EvalResult compare(JavacGateMode gate, String expression, String type, PlutusData left) {
-        return run(gate, "    static boolean f(" + type + " x, byte[] y) { return " + expression + "; }",
-                List.of(left, PlutusData.bytes(new byte[] {1})));
+    private static final PlutusData HASH = PlutusData.bytes(new byte[28]);
+    private static final PlutusData NO_SIGNATORIES = PlutusData.list();
+    private static final PlutusData TWO_SIGNATORIES = PlutusData.list(HASH, HASH);
+    private static final PlutusData NO_OUTPUTS = PlutusData.list();
+    private static final PlutusData ONE_OUTPUT = PlutusData.list(PlutusData.constr(0,
+            PlutusData.constr(0, PlutusData.constr(0, HASH), PlutusData.constr(1)), PlutusData.map(),
+            PlutusData.constr(0), PlutusData.constr(1)));
+
+    /** Outcome, value, traces and failure message: everything D13 calls a semantic observation. */
+    private static String observed(EvalResult result) {
+        return switch (result) {
+            case EvalResult.Success s -> "Success " + s.resultTerm() + " " + s.traces();
+            case EvalResult.Failure f -> "Failure " + f.error().split(",")[0] + " " + f.traces();
+            default -> result.toString();
+        };
+    }
+
+    private static String breakOverOutputs(JavacGateMode gate, String expression, PlutusData outputs) {
+        return observed(run(gate, """
+                    static boolean f(JulcList<TxOut> outputs, byte[] redeemer) {
+                        boolean paid = false;
+                        for (var output : outputs) {
+                            if (%s) {
+                                paid = true;
+                                break;
+                            }
+                        }
+                        return paid;
+                    }
+                """.formatted(expression), List.of(outputs, PlutusData.bytes(new byte[] {1}))));
+    }
+
+    private static String twoAccumulators(JavacGateMode gate, String expression, PlutusData signatories) {
+        return observed(run(gate, """
+                    static boolean f(JulcList<PubKeyHash> signatories, BigInteger redeemer) {
+                        boolean found = false;
+                        BigInteger count = BigInteger.ZERO;
+                        for (var sig : signatories) {
+                            found = found || %s;
+                            count = count.add(BigInteger.ONE);
+                        }
+                        return found;
+                    }
+                """.formatted(expression), List.of(signatories, PlutusData.integer(1))));
+    }
+
+    private static String twoAccumulatorsWithBreak(JavacGateMode gate, String expression, PlutusData signatories) {
+        return observed(run(gate, """
+                    static boolean f(JulcList<PubKeyHash> signatories, BigInteger redeemer) {
+                        boolean found = false;
+                        BigInteger count = BigInteger.ZERO;
+                        for (var sig : signatories) {
+                            found = %s;
+                            count = count.add(BigInteger.ONE);
+                            if (found) {
+                                break;
+                            }
+                        }
+                        return found;
+                    }
+                """.formatted(expression), List.of(signatories, PlutusData.integer(1))));
+    }
+
+    @Test
+    void anEmptyLoopReachesNoComparison() {
+        assertEquals(breakOverOutputs(JavacGateMode.OFF, "output.value() == redeemer", NO_OUTPUTS),
+                breakOverOutputs(null, "output.value().equals(redeemer)", NO_OUTPUTS));
+        assertEquals(twoAccumulators(JavacGateMode.OFF, "sig == redeemer", NO_SIGNATORIES),
+                twoAccumulators(null, "sig.equals(redeemer)", NO_SIGNATORIES));
+        assertEquals(twoAccumulatorsWithBreak(JavacGateMode.OFF, "sig == redeemer", NO_SIGNATORIES),
+                twoAccumulatorsWithBreak(null, "sig.equals(redeemer)", NO_SIGNATORIES));
     }
 
     @Test
     void rewritingValueEqualityTurnsARuntimeFailureIntoAComparison() {
-        var map = PlutusData.map();
-        assertInstanceOf(EvalResult.Failure.class, compare(JavacGateMode.OFF, "x == y", "Value", map));
-        var rewritten = (Constant.BoolConst) value(compare(null, "x.equals(y)", "Value", map));
-        assertFalse(rewritten.value(), "a Value is not equal to bytes");
+        assertTrue(breakOverOutputs(JavacGateMode.OFF, "output.value() == redeemer", ONE_OUTPUT)
+                .startsWith("Failure EqualsData: expected data"));
+        assertTrue(breakOverOutputs(null, "output.value().equals(redeemer)", ONE_OUTPUT).contains("value=false"));
     }
 
     @Test
-    void rewritingHashEqualityKeepsEveryObservation() {
-        for (var left : List.of(PlutusData.bytes(new byte[] {1}), PlutusData.bytes(new byte[] {2}), PlutusData.map())) {
-            var dialect = compare(JavacGateMode.OFF, "x == y", "PubKeyHash", left);
-            var rewritten = compare(null, "x.equals(y)", "PubKeyHash", left);
-            assertEquals(dialect.getClass(), rewritten.getClass(), left.toString());
-            if (dialect instanceof EvalResult.Success) assertEquals(value(dialect), value(rewritten), left.toString());
+    void rewritingHashEqualityWithAnIntegerStillFailsAtADifferentBuiltin() {
+        for (var loop : List.of(twoAccumulators(JavacGateMode.OFF, "sig == redeemer", TWO_SIGNATORIES),
+                twoAccumulatorsWithBreak(JavacGateMode.OFF, "sig == redeemer", TWO_SIGNATORIES))) {
+            assertTrue(loop.startsWith("Failure EqualsByteString: expected bytestring"), loop);
+        }
+        for (var loop : List.of(twoAccumulators(null, "sig.equals(redeemer)", TWO_SIGNATORIES),
+                twoAccumulatorsWithBreak(null, "sig.equals(redeemer)", TWO_SIGNATORIES))) {
+            assertTrue(loop.startsWith("Failure UnBData: expected data"), loop);
         }
     }
 }

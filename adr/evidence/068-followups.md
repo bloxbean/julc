@@ -25,6 +25,7 @@ Each entry gives:
 | intersection cast | M0 | `(BigInteger & Serializable) a` compiles without resolving the intersection type (harmless; marked defensive in the rejection catalogue) | Decided by javac typing in M3 |
 | `MathLib.divMod(...).first()` | M1c review (Codex r2) | `ClassCastException` on the JVM, while UPLC returns the quotient (raw `Tuple2` with Data components) | Investigate in the stdlib; M3's typed lowering may change it |
 | for-each over an inline list | M1b review | `for (var x : JulcList.of(a, b))` loses the element type: `x` stays Data, so `acc.subtract(x)` fails on-chain (`SubtractInteger: expected integer`) though javac types `x` as `BigInteger`. A declared local (`JulcList<BigInteger> xs = ...`) works. Fails closed | M3 lowers from javac's types |
+| `.equals` between unrelated types | M1b review (F751) | `PubKeyHash.equals(BigInteger)` is `false` on the JVM and fails on-chain (`UnBData: expected data`). Fails closed. Same family as T34 (`String.equals`, #292) | M3 lowers `equals` from javac's types; a comparison javac can prove false could be diagnosed |
 | chained read on a new object | M1c review | `new Tuple2<>(x, y).second()` is rejected with `JULC0055` (also in the explicit form, as at B0) | M3 lowers from javac types; revisit then |
 
 ## Deferred review findings (P2/P3)
@@ -37,7 +38,6 @@ Each entry gives:
 | F721 | M1c (Codex confirmation) | Pre-existing: `Optional.of` builds `DataConstr` directly and encodes an `UNKNOWN`-typed value without the `JULC0012` check; fails on-chain at `MkCons` | M3 (javac types); or a one-line `requireDataEncodable` in `StdlibRegistry`'s `Optional.of`, if needed earlier |
 | F722 | M1c (Codex confirmation) | Pre-existing: the raw-destination rule (F711) does not look through `switch` arms, so `Tuple2 t = switch … new Tuple2<>(x, y)` then `(BigInteger) t.second()` fails on-chain (`AddInteger: expected integer`). Fails closed | M3 (javac types); until then an accepted residual |
 | F724 | M1c (Codex confirmation) | An unknown-valued multi-accumulator packing reports `JULC0012` at `0:0` (no position; `LoopBodyGenerator.java:231`) | Position it at M4's loop port |
-| F401 | M1a | The javac version and blob digests are not yet in per-compilation metadata (CLI artifact metadata, blueprint `preamble.compiler`) | M1 exit item, added without breaking I5 |
 | E6 cold start | M1a | Cold compile overhead is +150–300 ms and no threshold has been set yet | Set at the M1 review, with measurements on an idle machine |
 | M1 pool simplification | M1a (F404) | The gate's pool is each entry point's resolved library list plus the bundled stdlib, not D8's per-entry-point scan | M3 replaces it with D8's pools |
 | F530 note | M1a | `readJars` without a supported javac checks entry paths only (report and off modes, with a warning) | Revisit when the javac frontend becomes the default (M5) |
@@ -61,4 +61,5 @@ Entries move here, with the commit that resolves them, once they are fixed.
 | ID | Resolved by |
 |---|---|
 | F723 | `7eb301f0`: the release note also covers a single-typed `switch` followed by a method call |
+| F401 | `ed07fb87`: `JavacProvenance` on `CompileResult`. ADR-068 r9 withdraws the note's `preamble.compiler`, which CIP-57 closes |
 | F731, F732 | `compare-ledgers.py` reports a run only the reference has as `lost observation`, keeps each part of a difference, and calls a change a fix only if more levels agree with the JVM. The committed diff is unchanged, so no regression was hidden |

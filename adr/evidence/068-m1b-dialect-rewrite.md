@@ -157,8 +157,9 @@ as D9's `var v = (expr);`, then generates the method with that type, wrapping an
 The first version probed by returning the expression as `Object`. That is not D9's probe: a conditional takes `Object` as
 its target type, so `true ? BigInteger.ONE : BigInteger.TWO` failed with `Unknown type: Object` (review F740). A statement
 block, which D9 does not define, still returns into `Object`; a returned expression that then has no type of its own is
-rejected with its remedy, so it cannot reach the compiler as `Object`. Input that closes the wrapper and adds declarations
-is rejected too.
+rejected with its remedy, so it cannot reach the compiler as `Object`. Input that closes the probe method is rejected,
+however it is spelled (F750): the method must end after the input, by raw offsets. A type with no source form, such as an
+anonymous class, is rejected rather than crashing the wrapper (F753, also at B1).
 
 ## Docs and examples
 
@@ -214,11 +215,17 @@ dialect made implicitly, listed with its cost: the seven decodes, the two Blaste
 The trace's `NONE` growth is the library staying in the script at `NONE`; at every other level it is two bytes. Whether the
 decodes could lower more cheaply was not shown, and is in the follow-ups.
 
-**The three equality rewrites are not cost changes** (review F741). No corpus evaluation runs them, so
-`DialectRemovalAlternativesTest` compares the expressions directly. `PubKeyHash == byte[]` and `.equals` agree on every
-input tried, including a failing one, which covers `twoAccumulatorsNoBreak` and `twoAccumulatorsWithBreak`. In
-`breakInForEachWithInputs`, `Value == byte[]` always failed at run time (`EqualsData: expected data`), and the rewrite
-compares: an expected difference, in a fixture testing the loop, since javac rejects the original.
+**The three equality rewrites are not cost changes** (reviews F741, F751). They compare unrelated types, which javac
+rejects, inside loops whose subject is the loop, and no corpus evaluation runs them. `DialectRemovalAlternativesTest`
+compares each loop, on the fixture's own operand types, before and after, on outcome, value, traces and failure message:
+
+| Fixture | Compared | Empty list | Non-empty list |
+|---|---|---|---|
+| `breakInForEachWithInputs` | `Value`, `byte[]` | Both `false` | `==` fails (`EqualsData: expected data`); `.equals` gives `false` |
+| `twoAccumulatorsNoBreak`, `twoAccumulatorsWithBreak` | `PubKeyHash`, `BigInteger` | Both `false` | Both fail, at a different builtin: `EqualsByteString` before, `UnBData` after |
+
+So the failure observation changes in all three on a non-empty list, and each is a semantic difference in a fixture, not a
+cost. `PubKeyHash.equals(BigInteger)` is `false` on the JVM and fails on-chain, which fails closed; it is in the follow-ups.
 
 Every `compareTo(..) OP 0` rewrite is byte-identical, as M1c promised. Over 13,063 evaluations whose program changed between M0's recording and the head's, on the same
 arguments, no value, trace or failure differs (153 further evaluations could not be paired).
@@ -250,8 +257,8 @@ comparison test compiles with the gate off (it tests the JavaParser frontend's r
 | # | Item | Status |
 |---|---|---|
 | 1 | Table U is outside D6's original list | Decided: D6 and M1's exit amended |
-| 2 | 13 rows that grow | Decided: 10 listed cost changes, 3 equality rewrites classified apart (F741) |
+| 2 | 13 rows that grow | Decided: 10 listed cost changes, 3 equality rewrites classified apart (F741, F751) |
 | 3 | 2 external `julc-examples` cases javac rejects (`ByteStringLibEvalTest`), and Elci | External: not rewritten here; check before release |
 | 4 | `julc-e2e-tests` and `julc-plugin-test` integration runs need a DevKit | Not run; their sources are Java and `onChainHarnessTest` runs |
 | 5 | Native CLI and Web Image with the new blob | Not rebuilt; M1a's digests are superseded |
-| 6 | F401's per-compilation metadata and the cold-compile threshold | M1 exit items, not M1b's |
+| 6 | The cold-compile threshold | An M1 exit item, not M1b's. F401 is done: `JavacProvenance` on `CompileResult` |
