@@ -90,9 +90,11 @@ public interface CorpusRecorder {
 
     /**
      * Records one specialization request made of the provider whose construction {@link #record} recorded as the
-     * case {@code providerCase}.
+     * case {@code providerCase}, against {@code lookup}, the stdlib lookup the provider specializes with now. When
+     * the lookup's identity is no longer the one the case was recorded with (a {@code StdlibRegistry} registered
+     * into after the provider was built, F320), the request is recorded as unreplayable, not under the case.
      */
-    void recordInstantiate(String providerCase, LibraryRequest.Instantiate request);
+    void recordInstantiate(String providerCase, StdlibLookup lookup, LibraryRequest.Instantiate request);
 
     /**
      * The text of {@code case.txt}, whose digest names the case. The ledger of ADR-068 D13 builds the same text for

@@ -257,7 +257,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
                 }
                 case LibraryRequest.Instantiate instantiate -> {
-                    if (corpusCase != null) CorpusRecorder.ACTIVE.recordInstantiate(corpusCase, instantiate);
+                    if (corpusCase != null) CorpusRecorder.ACTIVE.recordInstantiate(corpusCase, lookup, instantiate);
                     var specialized = specialize(instantiate);
                     for (String dependency : PirClosure.freeVariables(specialized.body()))
                         if (!dependency.equals(specialized.name())) gather(dependency, reachable);

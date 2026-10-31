@@ -413,6 +413,7 @@ of every module); the BUILD line is the outer build's.
 | `a8963b85` (the first M0 head) | 12,411 | 0 | 0 | 530 | SUCCESSFUL |
 | The evidence commit (`b53052a4` plus its test-only changes) | 12,453 | 0 | 0 | 530 | SUCCESSFUL (11 min 50 s; 27 modules with tests) |
 | `cbdcbddb` (round 3) | 12,468 | 0 | 0 | 530 | SUCCESSFUL (14 min 3 s; 27 modules with tests) |
+| Round 4 (F320) | 12,469 | 0 | 0 | 530 | SUCCESSFUL (13 min 5 s; 27 modules with tests) |
 
 The skipped counts include environment-dependent skips of this machine.
 
@@ -472,3 +473,15 @@ runs (command 2) pass the six test tasks.
 
 Each regression test fails on the code before its fix (checked in a worktree at `1f5a64db`, or, for the replay,
 with the old replay logic restored) and passes after.
+
+## Review round 4 (F320)
+
+| Finding | Change | Evidence |
+|---|---|---|
+| F320 (P1) provider recording keeps a stale default-lookup identity | `JavaLibraryProvider` hands the recorder its lookup with each specialization request; `FileCorpusRecorder` re-computes the lookup's identity (the same `identity` function) and, when it is no longer the `lookup:` of the provider's `case.txt`, writes the request as `unreplayable-instantiate-<digest>` (reason `lookup-mutated-after-provider-construction`) instead of `instantiate-<digest>`. The ledger loads it as a `U:` row of that case and does not replay it. The case's options remain the snapshot taken at construction (F313) | `Adr068LookupMutationTest` (Codex's probe in a recording child JVM: a provider over `defaultRegistry()`, then `lessThanByteString`'s builder registered under `equalsByteString`, then a specialization calling `Builtins.equalsByteString` on `{1}` and `{2}`, whose PIR uses `lessThanByteString`). The case itself still replays as the default; the instantiation is `U:lookup-mutated-after-provider-construction` at every level. With the old recording restored, the test fails |
+
+The evidence in [`068/`](068/) is not regenerated. No in-repo test registers into a registry after it has built a
+provider from that registry. Re-recording the four test classes that make specializations (`GenericExportsTest`,
+`LibraryOverloadTest`, `TypedArrayLibTest`, `TypedMapLibTest`) writes the same 47 `instantiate-*` files, byte for
+byte, under the same 6 cases, and no `unreplayable-instantiate-*` file. The baseline over that recording
+regenerates `ledger-b0-instantiations.tsv` byte-identical to the committed file (SHA-256 `b5f34065…`).

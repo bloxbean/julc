@@ -79,6 +79,11 @@ final class Adr068Corpus {
         final List<Run> runs = new ArrayList<>();
         /** The specialization requests made of this provider case, by digest of their text ({@code RequestText}). */
         final TreeMap<String, String> instantiations = new TreeMap<>();
+        /**
+         * Why an instantiation the case's inputs would not replay is unreplayable, by digest: a request made of the
+         * provider after its lookup changed (F320), when no provider with the case's inputs made it too.
+         */
+        final TreeMap<String, String> unreplayableInstantiations = new TreeMap<>();
 
         Case(String key, String entry, String method, String lookup, String target, String costProfile,
              boolean sourceMap, List<String> disabledRules, Source main, List<Source> libraries) {
@@ -132,6 +137,7 @@ final class Adr068Corpus {
                 var origins = new TreeSet<String>();
                 var levels = new TreeSet<String>();
                 var instantiations = new TreeMap<String, String>();
+                var unreplayable = new TreeMap<String, String[]>();
                 try (Stream<Path> files = Files.list(caseDir)) {
                     for (Path file : files.sorted().toList()) {
                         String name = file.getFileName().toString();
@@ -140,6 +146,10 @@ final class Adr068Corpus {
                         if (name.startsWith("instantiate-")) {
                             String request = Files.readString(file).strip();
                             instantiations.put(CorpusFiles.sha256(request).substring(0, 16), request);
+                        }
+                        if (name.startsWith("unreplayable-instantiate-")) {
+                            String[] reasonAndRequest = Files.readString(file).strip().split("\n", 2);
+                            unreplayable.put(CorpusFiles.sha256(reasonAndRequest[1]).substring(0, 16), reasonAndRequest);
                         }
                     }
                 }
@@ -154,6 +164,12 @@ final class Adr068Corpus {
                 c.origins.addAll(deterministic);
                 c.recordedLevels.addAll(levels);
                 c.instantiations.putAll(instantiations);
+                c.unreplayableInstantiations.keySet().removeAll(instantiations.keySet());
+                unreplayable.forEach((digest, reasonAndRequest) -> {
+                    if (c.instantiations.containsKey(digest) && !c.unreplayableInstantiations.containsKey(digest)) return;
+                    c.instantiations.put(digest, reasonAndRequest[1]);
+                    c.unreplayableInstantiations.put(digest, reasonAndRequest[0]);
+                });
             }
         }
     }

@@ -155,7 +155,8 @@ final class Adr068Ledger {
         var instantiations = new TreeMap<String, Map<OptimizationLevel, Outcome>>();
         c.instantiations.forEach((digest, text) -> {
             var perLevel = new LinkedHashMap<OptimizationLevel, Outcome>();
-            for (var level : LEVELS) perLevel.put(level, reason != null ? Outcome.unreplayable(reason) : instantiate(c, level, text));
+            String why = reason != null ? reason : c.unreplayableInstantiations.get(digest);
+            for (var level : LEVELS) perLevel.put(level, why != null ? Outcome.unreplayable(why) : instantiate(c, level, text));
             instantiations.put(digest, perLevel);
         });
         return new CaseResult(outcomes, sourceMap, instantiations);

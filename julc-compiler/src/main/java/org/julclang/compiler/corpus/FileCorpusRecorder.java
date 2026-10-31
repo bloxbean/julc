@@ -7,6 +7,7 @@ import org.julclang.core.corpus.CorpusFiles;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,13 +25,19 @@ import java.util.TreeSet;
  *   <li>{@code cases/<key>/level-<LEVEL>}: an empty marker per optimization level the case was compiled at;</li>
  *   <li>{@code cases/<key>/origin-<digest>}: a test that compiled it, {@code Class#method}, as content;</li>
  *   <li>{@code cases/<key>/instantiate-<digest>}: a specialization request ({@link RequestText}) made of the
- *       provider of a {@code JavaLibraryProvider} case.</li>
+ *       provider of a {@code JavaLibraryProvider} case;</li>
+ *   <li>{@code cases/<key>/unreplayable-instantiate-<digest>}: a request made of that provider after its lookup
+ *       stopped being the one the case records ({@link #LOOKUP_MUTATED}, F320), the reason on its first line and the
+ *       request after it; the case's inputs would not replay it.</li>
  * </ul>
  * Loaded by name only (see {@link CorpusRecorder}); never referred to from a compilation path.
  */
 public final class FileCorpusRecorder implements CorpusRecorder {
 
     private static final String STDLIB_REGISTRY = "org.julclang.stdlib.StdlibRegistry";
+
+    /** Why a specialization request is unreplayable when its provider's lookup changed after construction (F320). */
+    public static final String LOOKUP_MUTATED = "lookup-mutated-after-provider-construction";
 
     private final Path root;
 
@@ -58,15 +65,28 @@ public final class FileCorpusRecorder implements CorpusRecorder {
     }
 
     @Override
-    public void recordInstantiate(String providerCase, LibraryRequest.Instantiate request) {
+    public void recordInstantiate(String providerCase, StdlibLookup lookup, LibraryRequest.Instantiate request) {
         try {
             Path dir = root.resolve("cases").resolve(providerCase);
             String text = RequestText.encode(request) + "\n";
-            CorpusFiles.writeOnce(dir.resolve("instantiate-" + CorpusFiles.sha256(text).substring(0, 16)), text);
+            String digest = CorpusFiles.sha256(text).substring(0, 16);
+            // A registry registered into after the provider was built is not the lookup the case replays with (F320).
+            if (identity(lookup).equals(recordedLookup(dir))) {
+                CorpusFiles.writeOnce(dir.resolve("instantiate-" + digest), text);
+            } else {
+                CorpusFiles.writeOnce(dir.resolve("unreplayable-instantiate-" + digest), LOOKUP_MUTATED + "\n" + text);
+            }
             writeOrigin(dir);
         } catch (IOException e) {
             throw new UncheckedIOException("corpus recorder: " + root, e);
         }
+    }
+
+    /** The {@code lookup:} identity in the case's {@code case.txt}. */
+    private static String recordedLookup(Path dir) throws IOException {
+        return CorpusFiles.text(Files.readAllBytes(dir.resolve("case.txt"))).lines()
+                .filter(line -> line.startsWith("lookup: ")).map(line -> line.substring("lookup: ".length()))
+                .findFirst().orElseThrow(() -> new IOException("no lookup in " + dir.resolve("case.txt")));
     }
 
     private void writeOrigin(Path dir) throws IOException {
