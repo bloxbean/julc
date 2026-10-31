@@ -39,12 +39,18 @@ public final class JavaLibraryProvider implements LibraryProvider {
     private final Set<String> overloaded = new LinkedHashSet<>();
     private final Map<String, LibraryType> types;
     private final Map<String, PirType> definitions;
+    /** The inputs, kept only while the ADR-068 corpus recorder is active (null otherwise). */
+    private final List<CorpusRecorder.Source> corpusSources;
+    private final CompilerOptions corpusOptions;
 
     public JavaLibraryProvider(List<String> sources, StdlibLookup lookup, CompilerOptions options) {
         if (CorpusRecorder.ACTIVE != null) {
-            CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null, null,
-                    sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(), lookup,
-                    options != null ? options : new CompilerOptions());
+            corpusSources = sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList();
+            corpusOptions = options != null ? options : new CompilerOptions();
+            CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null, null, corpusSources, lookup, corpusOptions);
+        } else {
+            corpusSources = null;
+            corpusOptions = null;
         }
         context = CompilationContext.resolve(options);
         this.lookup = lookup;
@@ -254,6 +260,9 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
                 }
                 case LibraryRequest.Instantiate instantiate -> {
+                    if (CorpusRecorder.ACTIVE != null) {
+                        CorpusRecorder.ACTIVE.recordInstantiate(corpusSources, lookup, corpusOptions, instantiate);
+                    }
                     var specialized = specialize(instantiate);
                     for (String dependency : PirClosure.freeVariables(specialized.body()))
                         if (!dependency.equals(specialized.name())) gather(dependency, reachable);

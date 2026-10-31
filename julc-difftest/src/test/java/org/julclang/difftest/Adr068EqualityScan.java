@@ -21,6 +21,7 @@ import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.TypeVariable;
+import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
@@ -81,6 +82,8 @@ final class Adr068EqualityScan {
     final List<Site> hits = new ArrayList<>();
     final List<Site> typeVariableSites = new ArrayList<>();
     final List<Site> nestedCollectionSites = new ArrayList<>();
+    /** Sites whose compared type javac did not attribute (only in units it rejected): not decided, counted (F204). */
+    final List<Site> skippedSites = new ArrayList<>();
     final Map<String, int[]> unitCounts = new LinkedHashMap<>();
 
     private final String classPath;
@@ -113,7 +116,7 @@ final class Adr068EqualityScan {
     }
 
     private record Outcome(List<Unit> units, List<Boolean> accepted, boolean imports, List<Site> sites,
-                           List<Site> typeVariables, List<Site> nested) {
+                           List<Site> typeVariables, List<Site> nested, List<Site> skipped) {
     }
 
     private void record(String corpus, Outcome outcome) {
@@ -124,6 +127,7 @@ final class Adr068EqualityScan {
         for (var s : outcome.sites()) hits.add(withCorpus(s, corpus));
         for (var s : outcome.typeVariables()) typeVariableSites.add(withCorpus(s, corpus));
         for (var s : outcome.nested()) nestedCollectionSites.add(withCorpus(s, corpus));
+        for (var s : outcome.skipped()) skippedSites.add(withCorpus(s, corpus));
     }
 
     private static Site withCorpus(Site s, String corpus) {
@@ -157,7 +161,7 @@ final class Adr068EqualityScan {
             task.analyze();
         } catch (RuntimeException | AssertionError e) {
             for (int i = 0; i < units.size(); i++) accepted.set(i, false);
-            return new Outcome(units, accepted, imports, List.of(), List.of(), List.of());
+            return new Outcome(units, accepted, imports, List.of(), List.of(), List.of(), List.of());
         }
         for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
             if (d.getKind() != Diagnostic.Kind.ERROR) continue;
@@ -171,10 +175,11 @@ final class Adr068EqualityScan {
         var sites = new ArrayList<Site>();
         var typeVariables = new ArrayList<Site>();
         var nested = new ArrayList<Site>();
-        var scanner = new SiteScanner(task, units, byUri, accepted, imports, sites, typeVariables, nested);
+        var skipped = new ArrayList<Site>();
+        var scanner = new SiteScanner(task, units, byUri, accepted, imports, sites, typeVariables, nested, skipped);
         for (CompilationUnitTree unit : trees) scanner.scanUnit(unit);
         scanner.checkGenericCalls(trees);
-        return new Outcome(units, accepted, imports, sites, typeVariables, nested);
+        return new Outcome(units, accepted, imports, sites, typeVariables, nested, skipped);
     }
 
     static String withImplicitImports(String text) {
@@ -201,17 +206,19 @@ final class Adr068EqualityScan {
         private final List<Site> sites;
         private final List<Site> typeVariables;
         private final List<Site> nested;
+        private final List<Site> skipped;
         private final ArrayIdentityEquality check;
         private final EqualityOperations operations;
-        private final javax.lang.model.util.Types types;
+        private final Types types;
         /** Per generic method, the type variables it compares directly. */
         private final Map<ExecutableElement, Set<TypeVariable>> summaries = new HashMap<>();
         private CompilationUnitTree current;
         private int currentIndex;
 
         SiteScanner(JavacTask task, List<Unit> units, Map<URI, Integer> byUri, List<Boolean> accepted, boolean imports,
-                    List<Site> sites, List<Site> typeVariables, List<Site> nested) {
+                    List<Site> sites, List<Site> typeVariables, List<Site> nested, List<Site> skipped) {
             this.trees = Trees.instance(task);
+            this.skipped = skipped;
             this.units = units;
             this.byUri = byUri;
             this.accepted = accepted;
@@ -221,12 +228,7 @@ final class Adr068EqualityScan {
             this.nested = nested;
             this.types = task.getTypes();
             var elements = task.getElements();
-            this.check = new ArrayIdentityEquality(types, elements, record -> {
-                var tree = trees.getTree(record);
-                if (tree == null) return null;
-                return tree.getMembers().stream().anyMatch(m -> m instanceof MethodTree method
-                        && method.getName().contentEquals("equals") && method.getParameters().size() == 1);
-            });
+            this.check = new ArrayIdentityEquality(types, elements, trees);
             this.operations = new EqualityOperations(types, elements);
         }
 
@@ -247,10 +249,15 @@ final class Adr068EqualityScan {
             if (element instanceof ExecutableElement method) {
                 TypeMirror receiver = receiver(path, node);
                 var arguments = node.getArguments().stream().map(a -> trees.getTypeMirror(new TreePath(path, a))).toList();
-                var site = arguments.stream().anyMatch(a -> a == null) ? null
-                        : operations.site(method, receiver, arguments).orElse(null);
-                if (site != null && site.compared() != null && site.compared().getKind() != TypeKind.ERROR) {
-                    report(path, site.operation(), site.compared(), site.julcCollection(), site.collectionOperation(), "");
+                if (arguments.stream().noneMatch(a -> a == null)) {
+                    for (var site : operations.sites(method, receiver, arguments)) {
+                        if (site.compared() == null || site.compared().getKind() == TypeKind.ERROR) {
+                            skip(path, site.operation(), String.valueOf(site.compared()));
+                            continue;
+                        }
+                        report(path, site.operation(), site.compared(), site.julcCollection(), site.collectionOperation(),
+                                site.raw() ? "raw collection: compared at the argument's type" : "");
+                    }
                 }
             }
             return super.visitMethodInvocation(node, unused);
@@ -284,8 +291,11 @@ final class Adr068EqualityScan {
                         result.kind().name(), result.path(), "nested JuLC collection compared (#297)"));
             }
             if (!result.rejected()) return;
-            // In a unit javac rejected, a path through a type it could not attribute says nothing.
-            if (result.path().contains(ArrayIdentityEquality.ERROR_TYPE)) return;
+            // A path through a type javac could not attribute (in a unit it rejected) says nothing: counted apart.
+            if (result.path().contains(ArrayIdentityEquality.ERROR_TYPE)) {
+                skip(path, operation, compared.toString());
+                return;
+            }
             if (result.kind() == ArrayIdentityEquality.Kind.TYPE_VARIABLE) {
                 var method = enclosingMethod(path);
                 if (method != null && compared.getKind() == TypeKind.TYPEVAR
@@ -299,6 +309,12 @@ final class Adr068EqualityScan {
             }
             sites.add(new Site("", state(), file, position[0], position[1], operation, compared.toString(),
                     result.kind().name(), result.path(), note));
+        }
+
+        private void skip(TreePath path, String operation, String compared) {
+            var position = position(path.getLeaf());
+            skipped.add(new Site("", state(), units.get(currentIndex).label(), position[0], position[1], operation,
+                    compared, "ERROR_TYPE", "", "compared type not attributed"));
         }
 
         private boolean isJulcCollection(TypeMirror type) {

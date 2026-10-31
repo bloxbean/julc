@@ -1,5 +1,7 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.util.Trees;
+
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -17,6 +19,13 @@ import javax.lang.model.type.TypeVariable;
 import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
+import javax.tools.JavaFileObject;
+import java.io.IOException;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.CodeElement;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -49,10 +58,19 @@ import java.util.Set;
  * types such as {@code PlutusData.ListData} or a user's recursive sealed type terminate. A path deeper than
  * {@link #MAX_DEPTH} (a type whose arguments grow along the path) is {@link Kind#UNRESOLVED}.
  * <p>
- * An explicit {@code equals} is recognised from the element: a method {@code equals(java.lang.Object)} declared in
- * the record whose origin is explicit and, for a record read from a class file, that is not {@code final}. javac
- * marks the implicit record {@code equals} {@code final} in the class files it writes and in the members it adds to
- * a source record, so a {@code final} one is taken as implicit only when it is not explicit in the source tree.
+ * A record declares {@code equals} when its member {@code equals(java.lang.Object)} (that exact signature: an
+ * {@code equals(String)} overload is not an override) is explicit by provenance, not by modifiers (javac marks the
+ * implicit one {@code public final}, and an explicit one may be written {@code final} too):
+ * <ul>
+ *   <li>a source record: the method has a tree ({@code Trees.getTree}); javac's implicit member has none;</li>
+ *   <li>a class-file record: the method's code does not invoke the {@code java.lang.runtime.ObjectMethods}
+ *       bootstrap, through which javac implements every implicit record {@code equals} (read with
+ *       {@code java.lang.classfile} from {@code Elements.getFileObjectOf});</li>
+ *   <li>anything else (a source record without {@code Trees}, an unreadable class file): explicit, conservatively.</li>
+ * </ul>
+ * A collection is checked through its instantiated collection supertype ({@code Hidden<T> extends
+ * ArrayList<byte[]>} is a collection of {@code byte[]}, whatever {@code T} is), and a collection class outside
+ * {@code java.util} and the JuLC collections that declares its own {@code equals} is unresolved.
  */
 public final class ArrayIdentityEquality {
 
@@ -73,6 +91,8 @@ public final class ArrayIdentityEquality {
             "java.math.BigInteger",
             "java.lang.String",
             "java.lang.Boolean",
+            "java.lang.Integer",
+            "java.lang.Long",
             "org.julclang.core.PlutusData.ConstrData",
             "org.julclang.core.PlutusData.MapData",
             "org.julclang.core.PlutusData.ListData",
@@ -125,24 +145,18 @@ public final class ArrayIdentityEquality {
 
     private final Types types;
     private final Elements elements;
-    private final ExplicitEquals explicitEquals;
+    private final Trees trees;
 
-    /** Tells whether a record declares {@code equals} in its source; {@code null} when its tree is not available. */
-    @FunctionalInterface
-    public interface ExplicitEquals {
-        Boolean declaredInSource(TypeElement record);
-    }
-
-    /** A check over javac's types and elements, recognising explicit {@code equals} from the elements alone. */
+    /** A check without source trees: a source record's {@code equals} is then taken as explicit, conservatively. */
     public ArrayIdentityEquality(Types types, Elements elements) {
-        this(types, elements, record -> null);
+        this(types, elements, null);
     }
 
-    /** A check that asks {@code explicitEquals} first, for records whose source tree is available. */
-    public ArrayIdentityEquality(Types types, Elements elements, ExplicitEquals explicitEquals) {
+    /** A check over javac's types, elements and, for source records, trees. */
+    public ArrayIdentityEquality(Types types, Elements elements, Trees trees) {
         this.types = types;
         this.elements = elements;
-        this.explicitEquals = explicitEquals;
+        this.trees = trees;
     }
 
     /** Whether the JVM's equality for some value of {@code type} reaches an array compared by identity. */
@@ -202,11 +216,14 @@ public final class ArrayIdentityEquality {
         String key = type.toString();
         if (!onPath.add(key)) return SAFE;
         try {
-            if (JULC_COLLECTIONS.contains(name) || isJulcCollectionImplementation(element)) {
-                return typeArguments(type, true, onPath, path);
+            for (String collection : JULC_COLLECTIONS) {
+                var view = asSuper(type, elements.getTypeElement(collection));
+                if (view != null) return collection(type, element, view, true, onPath, path);
             }
-            if (CONTAINERS.contains(name) || isJavaUtilCollection(type)) {
-                return typeArguments(type, false, onPath, path);
+            if (CONTAINERS.contains(name)) return typeArguments(type, false, onPath, path);
+            for (String collection : List.of("java.util.Map", "java.util.Collection")) {
+                var view = asSuper(type, elements.getTypeElement(collection));
+                if (view != null) return collection(type, element, view, false, onPath, path);
             }
             if (element.getKind() == ElementKind.ENUM) return SAFE;
             if (element.getKind() == ElementKind.RECORD) return record(type, element, onPath, path);
@@ -214,6 +231,24 @@ public final class ArrayIdentityEquality {
             return result(Kind.UNRESOLVED, path, name + " (not a record, sealed type, container or allow-listed type)");
         } finally {
             onPath.remove(key);
+        }
+    }
+
+    /**
+     * A collection, through its instantiated collection supertype {@code view}; a collection class of another
+     * package that declares its own {@code equals} cannot be decided.
+     */
+    private Result collection(DeclaredType type, TypeElement element, DeclaredType view, boolean julcCollection,
+                              Set<String> onPath, List<String> path) {
+        String name = element.getQualifiedName().toString();
+        if (!name.startsWith("java.util.") && !name.startsWith("org.julclang.core.types.") && declaresEqualsMethod(element)) {
+            return result(Kind.UNRESOLVED, path, name + " declares equals and is not on the value-equality allow-list");
+        }
+        if (view != type) path.add(simpleName(type) + " as " + simpleName(view));
+        try {
+            return typeArguments(view, julcCollection, onPath, path);
+        } finally {
+            if (view != type) path.removeLast();
         }
     }
 
@@ -300,41 +335,97 @@ public final class ArrayIdentityEquality {
         return null;
     }
 
-    /**
-     * Whether {@code record} declares {@code equals(Object)} itself: from its source tree when the caller has it,
-     * otherwise from the element (explicit origin and, read from a class file, not {@code final}).
-     */
+    /** Whether {@code record} declares {@code equals(Object)} itself, by provenance (see the class comment). */
     boolean declaresEquals(TypeElement record) {
-        Boolean inSource = explicitEquals.declaredInSource(record);
-        if (inSource != null) return inSource;
-        for (Element member : record.getEnclosedElements()) {
-            if (member.getKind() != ElementKind.METHOD || !member.getSimpleName().contentEquals("equals")) continue;
-            var method = (ExecutableElement) member;
-            if (method.getParameters().size() != 1) continue;
-            if (!types.isSameType(method.getParameters().getFirst().asType(),
-                    elements.getTypeElement("java.lang.Object").asType())) continue;
-            if (elements.getOrigin(method) != Elements.Origin.EXPLICIT) return false;
-            return !method.getModifiers().contains(Modifier.FINAL);
-        }
-        return false;
-    }
-
-    private boolean isJulcCollectionImplementation(TypeElement element) {
-        for (String collection : JULC_COLLECTIONS) {
-            var target = elements.getTypeElement(collection);
-            if (target != null && types.isSubtype(types.erasure(element.asType()), types.erasure(target.asType()))) {
+        var method = equalsMethod(record);
+        if (method == null) return false;
+        var file = elements.getFileObjectOf(record);
+        if (file == null) return true;
+        if (file.getKind() == JavaFileObject.Kind.SOURCE) return trees == null || trees.getTree(method) != null;
+        if (file.getKind() == JavaFileObject.Kind.CLASS) {
+            try (var in = file.openInputStream()) {
+                return !implicitRecordEquals(in.readAllBytes());
+            } catch (IOException | IllegalArgumentException e) {
                 return true;
             }
         }
+        return true;
+    }
+
+    /** Whether a class (not only a record) declares {@code equals(Object)} among its own members. */
+    private boolean declaresEqualsMethod(TypeElement type) {
+        return equalsMethod(type) != null;
+    }
+
+    /** The type's own {@code equals(java.lang.Object)}, or null. */
+    private ExecutableElement equalsMethod(TypeElement type) {
+        for (Element member : type.getEnclosedElements()) {
+            if (member.getKind() != ElementKind.METHOD || !member.getSimpleName().contentEquals("equals")) continue;
+            var method = (ExecutableElement) member;
+            if (method.getParameters().size() == 1 && types.isSameType(method.getParameters().getFirst().asType(),
+                    elements.getTypeElement("java.lang.Object").asType())) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether the class file's {@code equals(Ljava/lang/Object;)Z} is javac's implicit record method: its code
+     * invokes the {@code java.lang.runtime.ObjectMethods} bootstrap. Public so that a build check can apply the same
+     * test to the API's class files.
+     */
+    public static boolean implicitRecordEquals(byte[] classFile) {
+        ClassModel model = ClassFile.of().parse(classFile);
+        for (MethodModel method : model.methods()) {
+            if (!method.methodName().equalsString("equals")
+                    || !method.methodType().equalsString("(Ljava/lang/Object;)Z")) continue;
+            var code = method.code();
+            if (code.isEmpty()) return false;
+            for (CodeElement element : code.get()) {
+                if (element instanceof InvokeDynamicInstruction indy
+                        && indy.bootstrapMethod().owner().descriptorString().equals("Ljava/lang/runtime/ObjectMethods;")) {
+                    return true;
+                }
+            }
+            return false;
+        }
         return false;
     }
 
-    private boolean isJavaUtilCollection(DeclaredType type) {
-        for (String collection : List.of("java.util.Collection", "java.util.Map")) {
-            var target = elements.getTypeElement(collection);
-            if (target != null && types.isSubtype(types.erasure(type), types.erasure(target.asType()))) return true;
+    /**
+     * {@code type} viewed as {@code target}, with its type arguments substituted, or null when it is not one. A type
+     * variable or wildcard is viewed through its upper bound, an intersection through its bounds.
+     */
+    public DeclaredType asSuper(TypeMirror type, TypeElement target) {
+        if (target == null) return null;
+        return switch (type.getKind()) {
+            case DECLARED -> findView((DeclaredType) type, target, new HashSet<>());
+            case TYPEVAR -> asSuper(((TypeVariable) type).getUpperBound(), target);
+            case WILDCARD -> {
+                var bound = ((WildcardType) type).getExtendsBound();
+                yield bound == null ? null : asSuper(bound, target);
+            }
+            case INTERSECTION -> {
+                for (var bound : ((IntersectionType) type).getBounds()) {
+                    var view = asSuper(bound, target);
+                    if (view != null) yield view;
+                }
+                yield null;
+            }
+            default -> null;
+        };
+    }
+
+    private DeclaredType findView(DeclaredType type, TypeElement target, Set<String> seen) {
+        if (type.asElement().equals(target)) return type;
+        if (!seen.add(type.toString())) return null;
+        for (TypeMirror supertype : types.directSupertypes(type)) {
+            if (supertype.getKind() != TypeKind.DECLARED) continue;
+            var found = findView((DeclaredType) supertype, target, seen);
+            if (found != null) return found;
         }
-        return false;
+        return null;
     }
 
     private static String simpleName(DeclaredType type) {

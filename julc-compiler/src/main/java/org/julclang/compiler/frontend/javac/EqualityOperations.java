@@ -3,167 +3,175 @@ package org.julclang.compiler.frontend.javac;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 
 /**
- * The operations whose JVM implementation compares elements or keys with {@code equals} (ADR-068 D6), and the static
- * type each one compares, after substitution: the receiver of {@code .equals}, and the element or key type of a
- * collection operation. {@link ArrayIdentityEquality} decides that type.
+ * The operations whose JVM implementation compares elements or keys with {@code equals} (ADR-068 D6), matched by
+ * their exact signatures, and the static types each one compares, after substitution: the receiver of
+ * {@code .equals}, and the element, key or value types of a collection operation. {@link ArrayIdentityEquality}
+ * decides each type.
  * <p>
- * The table, derived from the implementations:
+ * The table, derived from the implementations (parameter types are erasures):
  * <ul>
- *   <li>any {@code equals(Object)} instance method, and {@code java.util.Objects.equals(a, b)} (which calls
+ *   <li>any instance {@code equals(Object)}, and {@code java.util.Objects.equals(Object, Object)} (which calls
  *       {@code a.equals(b)});</li>
- *   <li>{@code JulcList.contains} ({@code JulcArrayList} delegates to {@code List.contains});</li>
- *   <li>{@code JulcMap.get}, {@code lookup}, {@code containsKey}, {@code delete}, and {@code getOrDefault}, a default
- *       method that calls {@code get} ({@code JulcAssocMap} compares keys with {@code Objects.equals}). Plain
- *       {@code JulcMap.insert} only prepends, so it is not in the table;</li>
- *   <li>the stdlib wrappers that call them: {@code TypedMapLib.lookup}, {@code member}, {@code insert} (which
- *       deletes first) and {@code remove}; {@code MapLib.lookup}, {@code member} and {@code delete};
- *       {@code ListsLib.contains};</li>
- *   <li>{@code java.util.Collection}'s {@code contains}, {@code remove(Object)}, {@code containsAll},
- *       {@code removeAll} and {@code retainAll}, and {@code List.indexOf} and {@code lastIndexOf};
- *       {@code java.util.Map}'s {@code get}, {@code getOrDefault}, {@code containsKey} and {@code remove} (keys) and
- *       {@code containsValue} (values).</li>
+ *   <li>{@code JulcList.contains(T)} ({@code JulcArrayList} delegates to {@code List.contains});</li>
+ *   <li>{@code JulcMap.get(K)}, {@code lookup(K)}, {@code containsKey(K)}, {@code delete(K)}, and
+ *       {@code getOrDefault(K, V)}, a default method that calls {@code get} ({@code JulcAssocMap} compares keys with
+ *       {@code Objects.equals}). Plain {@code JulcMap.insert} only prepends, so it is not in the table;</li>
+ *   <li>the stdlib wrappers Java code calls: {@code MapLib.lookup}, {@code member} and {@code delete};
+ *       {@code ListsLib.contains}. {@code TypedMapLib}'s methods compare keys too, but they are generic templates,
+ *       which Java code cannot call (ADR-068 D6, ADR-059), so they are not in the table;</li>
+ *   <li>{@code java.util.Collection}'s {@code contains(Object)}, {@code remove(Object)}, {@code containsAll},
+ *       {@code removeAll} and {@code retainAll(Collection)}, and {@code List.indexOf(Object)} and
+ *       {@code lastIndexOf(Object)}; {@code java.util.Map}'s {@code get(Object)}, {@code getOrDefault(Object,
+ *       Object)}, {@code containsKey(Object)} and {@code remove(Object)} (keys), {@code containsValue(Object)}
+ *       (values), and {@code remove(Object, Object)} (the key and the value).</li>
  * </ul>
  */
 public final class EqualityOperations {
 
-    /** How an operation finds the compared type. */
-    private enum From { RECEIVER_ELEMENT, RECEIVER_KEY, RECEIVER_VALUE, FIRST_ARGUMENT_ELEMENT, FIRST_ARGUMENT_KEY }
+    /** Where a comparison's type comes from: the receiver's or the first argument's view as a collection. */
+    private enum From { RECEIVER, FIRST_ARGUMENT }
 
-    private record Rule(String owner, Set<String> methods, From from, String view) {
+    /** One compared type: the view's type argument at {@code index}. */
+    private record Comparison(From from, String view, int index) {
+    }
+
+    private record Rule(String owner, String method, List<String> parameters, List<Comparison> comparisons) {
     }
 
     private static final String JULC_LIST = "org.julclang.core.types.JulcList";
     private static final String JULC_MAP = "org.julclang.core.types.JulcMap";
+    private static final String COLLECTION = "java.util.Collection";
+    private static final String LIST = "java.util.List";
+    private static final String MAP = "java.util.Map";
+    private static final String OBJECT = "java.lang.Object";
+    private static final String DATA = "org.julclang.core.PlutusData";
+
+    private static final Comparison JULC_ELEMENT = new Comparison(From.RECEIVER, JULC_LIST, 0);
+    private static final Comparison JULC_KEY = new Comparison(From.RECEIVER, JULC_MAP, 0);
+    private static final Comparison ELEMENT = new Comparison(From.RECEIVER, COLLECTION, 0);
+    private static final Comparison KEY = new Comparison(From.RECEIVER, MAP, 0);
+    private static final Comparison VALUE = new Comparison(From.RECEIVER, MAP, 1);
 
     private static final List<Rule> RULES = List.of(
-            new Rule(JULC_LIST, Set.of("contains"), From.RECEIVER_ELEMENT, JULC_LIST),
-            new Rule(JULC_MAP, Set.of("get", "lookup", "containsKey", "delete", "getOrDefault"), From.RECEIVER_KEY, JULC_MAP),
-            new Rule("org.julclang.stdlib.lib.TypedMapLib", Set.of("lookup", "member", "insert", "remove"),
-                    From.FIRST_ARGUMENT_KEY, JULC_MAP),
-            new Rule("org.julclang.stdlib.lib.MapLib", Set.of("lookup", "member", "delete"), From.FIRST_ARGUMENT_KEY, JULC_MAP),
-            new Rule("org.julclang.stdlib.lib.ListsLib", Set.of("contains"), From.FIRST_ARGUMENT_ELEMENT, JULC_LIST),
-            new Rule("java.util.Collection", Set.of("contains", "remove", "containsAll", "removeAll", "retainAll",
-                    "indexOf", "lastIndexOf"), From.RECEIVER_ELEMENT, "java.util.Collection"),
-            new Rule("java.util.Map", Set.of("get", "getOrDefault", "containsKey", "remove"), From.RECEIVER_KEY, "java.util.Map"),
-            new Rule("java.util.Map", Set.of("containsValue"), From.RECEIVER_VALUE, "java.util.Map"));
+            new Rule(JULC_LIST, "contains", List.of(OBJECT), List.of(JULC_ELEMENT)),
+            new Rule(JULC_MAP, "get", List.of(OBJECT), List.of(JULC_KEY)),
+            new Rule(JULC_MAP, "lookup", List.of(OBJECT), List.of(JULC_KEY)),
+            new Rule(JULC_MAP, "containsKey", List.of(OBJECT), List.of(JULC_KEY)),
+            new Rule(JULC_MAP, "delete", List.of(OBJECT), List.of(JULC_KEY)),
+            new Rule(JULC_MAP, "getOrDefault", List.of(OBJECT, OBJECT), List.of(JULC_KEY)),
+            new Rule("org.julclang.stdlib.lib.MapLib", "lookup", List.of(JULC_MAP, DATA),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0))),
+            new Rule("org.julclang.stdlib.lib.MapLib", "member", List.of(JULC_MAP, DATA),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0))),
+            new Rule("org.julclang.stdlib.lib.MapLib", "delete", List.of(JULC_MAP, DATA),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0))),
+            new Rule("org.julclang.stdlib.lib.ListsLib", "contains", List.of(JULC_LIST, DATA),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_LIST, 0))),
+            new Rule(COLLECTION, "contains", List.of(OBJECT), List.of(ELEMENT)),
+            new Rule(COLLECTION, "remove", List.of(OBJECT), List.of(ELEMENT)),
+            new Rule(COLLECTION, "containsAll", List.of(COLLECTION), List.of(ELEMENT)),
+            new Rule(COLLECTION, "removeAll", List.of(COLLECTION), List.of(ELEMENT)),
+            new Rule(COLLECTION, "retainAll", List.of(COLLECTION), List.of(ELEMENT)),
+            new Rule(LIST, "indexOf", List.of(OBJECT), List.of(ELEMENT)),
+            new Rule(LIST, "lastIndexOf", List.of(OBJECT), List.of(ELEMENT)),
+            new Rule(MAP, "get", List.of(OBJECT), List.of(KEY)),
+            new Rule(MAP, "getOrDefault", List.of(OBJECT, OBJECT), List.of(KEY)),
+            new Rule(MAP, "containsKey", List.of(OBJECT), List.of(KEY)),
+            new Rule(MAP, "containsValue", List.of(OBJECT), List.of(VALUE)),
+            new Rule(MAP, "remove", List.of(OBJECT), List.of(KEY)),
+            new Rule(MAP, "remove", List.of(OBJECT, OBJECT), List.of(KEY, VALUE)));
 
-    /** The operations in the table, as {@code owner.method}, for reports. */
+    /** The operations in the table, as {@code owner.method(parameters) [compared]}, for reports. */
     public static final List<String> TABLE = tableText();
 
     /**
-     * One equality-using call: the operation ({@code Owner.method}), the static type it compares, whether it is a
-     * collection operation (membership or lookup, not {@code equals}), and whether the compared values are elements,
-     * keys or values of a JuLC collection (so an array of bytes among them is compared deeply after ADR-068 M1).
+     * One compared type of an equality-using call: the operation ({@code Owner.method}), the static type, whether it
+     * is a collection operation (membership or lookup, not {@code equals}), whether the compared values are elements,
+     * keys or values of a JuLC collection (so an array of bytes among them is compared deeply after ADR-068 M1), and
+     * whether the collection is raw, when the compared type is the argument's static type.
      */
-    public record Site(String operation, TypeMirror compared, boolean collectionOperation, boolean julcCollection) {
+    public record Site(String operation, TypeMirror compared, boolean collectionOperation, boolean julcCollection,
+                       boolean raw) {
     }
 
     private final Types types;
     private final Elements elements;
+    private final ArrayIdentityEquality views;
 
     public EqualityOperations(Types types, Elements elements) {
         this.types = types;
         this.elements = elements;
+        this.views = new ArrayIdentityEquality(types, elements);
     }
 
     /**
-     * The equality site of a call to {@code method}, or empty when the method compares no elements or keys.
+     * The compared types of a call to {@code method}: none when the method compares no elements or keys, two for
+     * {@code Map.remove(key, value)}.
      *
      * @param receiver  the static type of the receiver of an instance call (the enclosing class for an implicit
      *                  receiver), or null for a static call
      * @param arguments the static types of the arguments
      */
-    public Optional<Site> site(ExecutableElement method, TypeMirror receiver, List<? extends TypeMirror> arguments) {
+    public List<Site> sites(ExecutableElement method, TypeMirror receiver, List<? extends TypeMirror> arguments) {
         String name = method.getSimpleName().toString();
         var owner = (TypeElement) method.getEnclosingElement();
         boolean isStatic = method.getModifiers().contains(Modifier.STATIC);
-        if (!isStatic && name.equals("equals") && method.getParameters().size() == 1
-                && isObject(method.getParameters().getFirst().asType()) && receiver != null) {
-            return Optional.of(new Site(owner.getSimpleName() + ".equals", receiver, false, false));
+        var parameters = method.getParameters().stream().map(p -> types.erasure(p.asType()).toString()).toList();
+        if (!isStatic && name.equals("equals") && parameters.equals(List.of(OBJECT)) && receiver != null) {
+            return List.of(new Site(owner.getSimpleName() + ".equals", receiver, false, false, false));
         }
         if (isStatic && name.equals("equals") && owner.getQualifiedName().contentEquals("java.util.Objects")
-                && arguments.size() == 2) {
-            return Optional.of(new Site("Objects.equals", arguments.getFirst(), false, false));
+                && parameters.equals(List.of(OBJECT, OBJECT)) && arguments.size() == 2) {
+            return List.of(new Site("Objects.equals", arguments.getFirst(), false, false, false));
         }
         for (Rule rule : RULES) {
-            if (!rule.methods().contains(name)) continue;
+            if (!rule.method().equals(name) || !rule.parameters().equals(parameters)) continue;
             var ruleOwner = elements.getTypeElement(rule.owner());
             if (ruleOwner == null || !isSubtype(owner, ruleOwner)) continue;
-            if (rule.owner().startsWith("java.util.") && name.equals("remove")
-                    && (method.getParameters().isEmpty() || method.getParameters().getFirst().asType().getKind().isPrimitive())) {
-                continue;
+            String operation = owner.getSimpleName() + "." + name;
+            var sites = new ArrayList<Site>();
+            for (Comparison comparison : rule.comparisons()) {
+                TypeMirror base = comparison.from() == From.RECEIVER ? (isStatic ? null : receiver)
+                        : arguments.isEmpty() ? null : arguments.getFirst();
+                if (base == null) continue;
+                var view = views.asSuper(base, elements.getTypeElement(comparison.view()));
+                boolean julc = !comparison.view().startsWith("java.util.");
+                if (view == null) {
+                    // Not resolvable as the collection: the base itself is compared, which the check reports.
+                    sites.add(new Site(operation, base, true, julc, false));
+                } else if (view.getTypeArguments().size() > comparison.index()) {
+                    sites.add(new Site(operation, view.getTypeArguments().get(comparison.index()), true, julc, false));
+                } else {
+                    // A raw collection has no element or key type: the compared value's static type is all there is.
+                    int argument = (comparison.from() == From.FIRST_ARGUMENT ? 1 : 0) + comparison.index();
+                    if (arguments.size() > argument) sites.add(new Site(operation, arguments.get(argument), true, julc, true));
+                }
             }
-            TypeMirror base = switch (rule.from()) {
-                case RECEIVER_ELEMENT, RECEIVER_KEY, RECEIVER_VALUE -> isStatic ? null : receiver;
-                case FIRST_ARGUMENT_ELEMENT, FIRST_ARGUMENT_KEY -> arguments.isEmpty() ? null : arguments.getFirst();
-            };
-            if (base == null) continue;
-            int index = rule.from() == From.RECEIVER_VALUE ? 1 : 0;
-            var view = asSuper(base, elements.getTypeElement(rule.view()));
-            TypeMirror compared;
-            if (view != null && view.getTypeArguments().size() > index) {
-                compared = view.getTypeArguments().get(index);
-            } else {
-                // A raw collection has no element or key type: the compared value's own static type is all there is.
-                int argument = rule.from() == From.FIRST_ARGUMENT_ELEMENT || rule.from() == From.FIRST_ARGUMENT_KEY ? 1 : 0;
-                if (arguments.size() <= argument) continue;
-                compared = arguments.get(argument);
-            }
-            return Optional.of(new Site(owner.getSimpleName() + "." + name, compared, true,
-                    !rule.view().startsWith("java.util.")));
+            return sites;
         }
-        return Optional.empty();
-    }
-
-    private boolean isObject(TypeMirror type) {
-        return types.isSameType(type, elements.getTypeElement("java.lang.Object").asType());
+        return List.of();
     }
 
     private boolean isSubtype(TypeElement type, TypeElement target) {
         return types.isSubtype(types.erasure(type.asType()), types.erasure(target.asType()));
     }
 
-    /** {@code type} viewed as {@code target}, with its type arguments, or null when it is not one. */
-    public DeclaredType asSuper(TypeMirror type, TypeElement target) {
-        if (target == null || type.getKind() != TypeKind.DECLARED) return null;
-        return find((DeclaredType) type, target, new HashSet<>());
-    }
-
-    private DeclaredType find(DeclaredType type, TypeElement target, Set<String> seen) {
-        if (type.asElement().equals(target)) return type;
-        if (!seen.add(type.toString())) return null;
-        for (TypeMirror supertype : types.directSupertypes(type)) {
-            if (supertype.getKind() != TypeKind.DECLARED) continue;
-            var found = find((DeclaredType) supertype, target, seen);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
     private static List<String> tableText() {
         var text = new ArrayList<String>();
-        text.add("*.equals(Object) [receiver]");
-        text.add("java.util.Objects.equals [first argument]");
-        Map<From, String> what = Map.of(From.RECEIVER_ELEMENT, "receiver element", From.RECEIVER_KEY, "receiver key",
-                From.RECEIVER_VALUE, "receiver value", From.FIRST_ARGUMENT_ELEMENT, "first argument's element",
-                From.FIRST_ARGUMENT_KEY, "first argument's key");
+        text.add("*.equals(java.lang.Object) [receiver]");
+        text.add("java.util.Objects.equals(java.lang.Object,java.lang.Object) [first argument]");
         for (Rule rule : RULES) {
-            for (String method : rule.methods().stream().sorted().toList()) {
-                text.add(rule.owner() + "." + method + " [" + what.get(rule.from()) + "]");
-            }
+            var compared = rule.comparisons().stream().map(c -> (c.from() == From.RECEIVER ? "receiver" : "first argument")
+                    + " as " + c.view().substring(c.view().lastIndexOf('.') + 1) + "<" + c.index() + ">").toList();
+            text.add(rule.owner() + "." + rule.method() + "(" + String.join(",", rule.parameters()) + ") ["
+                    + String.join(", ", compared) + "]");
         }
         return List.copyOf(text);
     }

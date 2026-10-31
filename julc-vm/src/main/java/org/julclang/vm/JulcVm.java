@@ -2,6 +2,7 @@ package org.julclang.vm;
 
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
+import org.julclang.vm.corpus.EvaluationRecorder;
 
 import java.util.Comparator;
 import java.util.List;
@@ -135,70 +136,83 @@ public final class JulcVm {
      * Java and Truffle default this path to PV10 when no model is configured.
      */
     public EvalResult evaluate(Program program) {
-        return provider.evaluate(program, language, null);
+        return observed(language, program, List.of(), null, provider.evaluate(program, language, null));
     }
 
     /** Evaluate a UPLC program with a maximum budget and default options. */
     public EvalResult evaluate(Program program, ExBudget budget) {
-        return provider.evaluate(program, language, budget);
+        return observed(language, program, List.of(), budget, provider.evaluate(program, language, budget));
     }
 
     /** Evaluate with arguments, unlimited budget, default options. */
     public EvalResult evaluateWithArgs(Program program, List<PlutusData> args) {
-        return provider.evaluateWithArgs(program, language, args, null);
+        return observed(language, program, args, null, provider.evaluateWithArgs(program, language, args, null));
     }
 
     /** Evaluate with arguments, maximum budget, default options. */
     public EvalResult evaluateWithArgs(Program program, List<PlutusData> args, ExBudget budget) {
-        return provider.evaluateWithArgs(program, language, args, budget);
+        return observed(language, program, args, budget, provider.evaluateWithArgs(program, language, args, budget));
     }
 
     // --- Evaluate with explicit options ---
 
     /** Evaluate a UPLC program with per-evaluation options and unlimited budget. */
     public EvalResult evaluate(Program program, EvalOptions options) {
-        return provider.evaluate(program, language, null, options);
+        return observed(language, program, List.of(), null, provider.evaluate(program, language, null, options));
     }
 
     /** Evaluate a UPLC program with per-evaluation options and a maximum budget. */
     public EvalResult evaluate(Program program, ExBudget budget, EvalOptions options) {
-        return provider.evaluate(program, language, budget, options);
+        return observed(language, program, List.of(), budget, provider.evaluate(program, language, budget, options));
     }
 
     /** Evaluate with arguments, per-evaluation options, and unlimited budget. */
     public EvalResult evaluateWithArgs(Program program, List<PlutusData> args, EvalOptions options) {
-        return provider.evaluateWithArgs(program, language, args, null, options);
+        return observed(language, program, args, null, provider.evaluateWithArgs(program, language, args, null, options));
     }
 
     /** Evaluate with arguments, per-evaluation options, and a maximum budget. */
     public EvalResult evaluateWithArgs(Program program, List<PlutusData> args,
                                        ExBudget budget, EvalOptions options) {
-        return provider.evaluateWithArgs(program, language, args, budget, options);
+        return observed(language, program, args, budget, provider.evaluateWithArgs(program, language, args, budget, options));
     }
 
     // --- Canonical protocol-aware evaluation ---
 
     /** Evaluate for an explicit ledger target with unlimited budget. */
     public EvalResult evaluate(Program program, LedgerEvaluationTarget target) {
-        return provider.evaluate(program, target, null, EvalOptions.DEFAULT);
+        return observed(target, program, List.of(), null, provider.evaluate(program, target, null, EvalOptions.DEFAULT));
     }
 
     /** Evaluate for an explicit ledger target and budget. */
     public EvalResult evaluate(Program program, LedgerEvaluationTarget target, ExBudget budget) {
-        return provider.evaluate(program, target, budget, EvalOptions.DEFAULT);
+        return observed(target, program, List.of(), budget, provider.evaluate(program, target, budget, EvalOptions.DEFAULT));
     }
 
     /** Evaluate for an explicit ledger target, budget, and options. */
     public EvalResult evaluate(Program program, LedgerEvaluationTarget target,
                                ExBudget budget, EvalOptions options) {
-        return provider.evaluate(program, target, budget, options);
+        return observed(target, program, List.of(), budget, provider.evaluate(program, target, budget, options));
     }
 
     /** Evaluate with arguments for an explicit ledger target. */
     public EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
                                        List<PlutusData> args, ExBudget budget,
                                        EvalOptions options) {
-        return provider.evaluateWithArgs(program, target, args, budget, options);
+        return observed(target, program, args, budget, provider.evaluateWithArgs(program, target, args, budget, options));
+    }
+
+    /**
+     * Hands the evaluation to the ADR-068 M0 evaluation recorder when one is active (test-only; one test of a
+     * {@code static final} field otherwise), and returns the result unchanged.
+     */
+    private EvalResult observed(Object target, Program program, List<PlutusData> args, ExBudget budget,
+                                EvalResult result) {
+        if (EvaluationRecorder.ACTIVE != null) {
+            EvaluationRecorder.ACTIVE.record(provider.name(), String.valueOf(target), program,
+                    args == null ? List.of() : args, budget, result);
+        }
+        return result;
     }
 
     // --- Configuration ---
