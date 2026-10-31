@@ -5,15 +5,20 @@ method: m
 arg: 02
 arg: 01
 arg: 80
-expect: DIVERGE T13 Value/Inconclusive
-jvm: Value 02 []
-uplc: Inconclusive "budget exhausted"
+expect: AGREE
 note: Reduced by hand from the T13 programs G0FuzzTest found (ADR-063 D13). Each level makes the previous
 note: expression a compareTo operand under a ternary. The compareTo lowering repeats its operand (#146), so
 note: the script and its evaluation double per level: at nesting 11 PV11_SAFE agrees with a 107,241-byte script
 note: and 6.2M memory units, at 12 it agrees with 214,505 bytes and 12.3M (NONE and BASELINE already exhaust
 note: the budget), and at 13 every level exhausts it, with 625,617 bytes at NONE and BASELINE and 429,033 at
 note: PV11_SAFE and PV11_COSTED. The JVM returns 2. The T13 registry rule needs a script of at least 64 KiB.
+note: ADR-068 M1 (D6, D4 exception 1): every compareTo here is the a.compareTo(b) OP 0 form, which now evaluates
+note: each operand once, so the script no longer doubles per level and the case agrees at every level; its
+note: expectation is AGREE and recorded.jvm and recorded.base keep the old pins. T13 stays open for the other
+note: uses of compareTo: diverge-t13-nested-compare-to-equals-minus-one-exhausts-budget is this program with
+note: `== -1` for `< 0`.
+recorded.jvm: Value 02 []
+recorded.base: Inconclusive "budget exhausted"
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;

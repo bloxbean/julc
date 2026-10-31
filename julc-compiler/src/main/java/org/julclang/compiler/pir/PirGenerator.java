@@ -105,6 +105,8 @@ public class PirGenerator {
     private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
     /** The declared PIR return type of the method being generated (null in a lambda or a void method); ADR-047. */
     private PirType currentReturnType;
+    /** The {@code compareTo} call of the {@code OP 0} comparison being generated, if any (ADR-068 D6). */
+    private CompareToZero pendingCompareTo;
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null,
                 CompilationContext.pv11Defaults());
@@ -1050,9 +1052,111 @@ public class PirGenerator {
     }
 
     private PirTerm generateBinaryExpr(BinaryExpr be) {
+        var compareTo = CompareToZero.match(be);
+        if (compareTo != null) {
+            var saved = pendingCompareTo;
+            pendingCompareTo = compareTo;
+            PirTerm call;
+            try {
+                call = generateExpression(compareTo.call);
+            } finally {
+                pendingCompareTo = saved;
+            }
+            if (compareTo.applied) return call;
+            // Another lowering than the integer compareTo handler: today's comparison.
+            boolean callLeft = be.getLeft() == compareTo.call;
+            var zero = generateExpression(callLeft ? be.getRight() : be.getLeft());
+            return callLeft
+                    ? binaryOperation(be.getOperator(), be.getLeft(), call, be.getRight(), zero, be)
+                    : binaryOperation(be.getOperator(), be.getLeft(), zero, be.getRight(), call, be);
+        }
         var left = generateExpression(be.getLeft());
         var right = generateExpression(be.getRight());
         return binaryOperation(be.getOperator(), be.getLeft(), left, be.getRight(), right, be);
+    }
+
+    /**
+     * {@code a.compareTo(b) OP 0} or {@code 0 OP a.compareTo(b)}, with {@code 0} the {@code int}
+     * literal zero and {@code OP} a comparison (ADR-068 D6, D4 exception 1). {@link #operator} is
+     * normalized to the call-left form ({@code 0 < c} is {@code c > 0}). The match is syntactic
+     * only: the rule applies when {@link #resolveInstanceMethodCall} then selects the integer
+     * {@code compareTo} handler for {@link #call}, which sets {@link #applied}. Every earlier
+     * dispatch (static-library calls in particular) is unchanged.
+     */
+    private static final class CompareToZero {
+        final MethodCallExpr call;
+        final BinaryExpr.Operator operator;
+        boolean applied;
+
+        private CompareToZero(MethodCallExpr call, BinaryExpr.Operator operator) {
+            this.call = call;
+            this.operator = operator;
+        }
+
+        static CompareToZero match(BinaryExpr be) {
+            var op = be.getOperator();
+            boolean comparison = switch (op) {
+                case LESS, LESS_EQUALS, GREATER, GREATER_EQUALS, EQUALS, NOT_EQUALS -> true;
+                default -> false;
+            };
+            if (!comparison) return null;
+            if (isCompareToCall(be.getLeft()) && isIntZero(be.getRight())) {
+                return new CompareToZero(be.getLeft().asMethodCallExpr(), op);
+            }
+            if (isIntZero(be.getLeft()) && isCompareToCall(be.getRight())) {
+                var reversed = switch (op) {
+                    case LESS -> BinaryExpr.Operator.GREATER;
+                    case LESS_EQUALS -> BinaryExpr.Operator.GREATER_EQUALS;
+                    case GREATER -> BinaryExpr.Operator.LESS;
+                    case GREATER_EQUALS -> BinaryExpr.Operator.LESS_EQUALS;
+                    default -> op;
+                };
+                return new CompareToZero(be.getRight().asMethodCallExpr(), reversed);
+            }
+            return null;
+        }
+
+        private static boolean isCompareToCall(Expression e) {
+            return e instanceof MethodCallExpr mce && mce.getScope().isPresent()
+                    && mce.getNameAsString().equals("compareTo") && mce.getArguments().size() == 1;
+        }
+
+        /** The {@code int} literal zero ({@code 0}, {@code 0x0}, {@code 0_0}); not {@code 0L}, {@code -0} or {@code (0)}. */
+        private static boolean isIntZero(Expression e) {
+            if (!(e instanceof IntegerLiteralExpr)) return false;
+            var reading = IntegerLiterals.read(e);
+            return reading.isValid() && reading.value().signum() == 0;
+        }
+    }
+
+    /**
+     * {@code x OP y} on integers, evaluating {@code x} before {@code y} as Java does (ADR-068 D6,
+     * #295). {@code <}, {@code <=}, {@code ==} and {@code !=} apply their builtin to {@code x}
+     * first, which evaluates it first. {@code >} and {@code >=} apply theirs to {@code y} first, so
+     * {@code x} is bound by one {@code let} when both operands are non-trivial; evaluating a
+     * variable or a constant has no effect, so its place does not matter.
+     */
+    private PirTerm integerComparison(BinaryExpr.Operator operator, PirTerm x, PirTerm y) {
+        return switch (operator) {
+            case LESS -> builtinApp2(DefaultFun.LessThanInteger, x, y);
+            case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, x, y);
+            case GREATER -> swappedInOrder(DefaultFun.LessThanInteger, x, y);
+            case GREATER_EQUALS -> swappedInOrder(DefaultFun.LessThanEqualsInteger, x, y);
+            case EQUALS -> generateEquality(x, y, new PirType.IntegerType(), false);
+            case NOT_EQUALS -> generateEquality(x, y, new PirType.IntegerType(), true);
+            default -> throw new IllegalArgumentException("Not a comparison: " + operator);
+        };
+    }
+
+    /** {@code fun y x}, with {@code x} evaluated first. */
+    private static PirTerm swappedInOrder(DefaultFun fun, PirTerm x, PirTerm y) {
+        if (isTrivialOperand(x) || isTrivialOperand(y)) return builtinApp2(fun, y, x);
+        var name = PirHelpers.hygienicName("#lhs", PirHelpers.freeVariables(y));
+        return new PirTerm.Let(name, x, builtinApp2(fun, y, new PirTerm.Var(name, new PirType.IntegerType())));
+    }
+
+    private static boolean isTrivialOperand(PirTerm term) {
+        return term instanceof PirTerm.Var || term instanceof PirTerm.Const;
     }
 
     /**
@@ -1099,8 +1203,7 @@ public class PirGenerator {
             case NOT_EQUALS -> generateEquality(left, right, leftType, true);
             case LESS -> builtinApp2(DefaultFun.LessThanInteger, left, right);
             case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, left, right);
-            case GREATER -> builtinApp2(DefaultFun.LessThanInteger, right, left); // swap
-            case GREATER_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, right, left); // swap
+            case GREATER, GREATER_EQUALS -> integerComparison(operator, left, right);
             case AND -> new PirTerm.IfThenElse(left, right, new PirTerm.Const(Constant.bool(false)));
             case OR -> new PirTerm.IfThenElse(left, new PirTerm.Const(Constant.bool(true)), right);
             default -> collectError("Unsupported operator: " + operator,
@@ -1516,6 +1619,14 @@ public class PirGenerator {
 
             validateLoweringRequirements(
                     typeMethodRegistry.requirements(context, scopeType, methodName), mce);
+            // ADR-068 D6 (D4 exception 1): the integer compareTo handler, in an `OP 0` comparison,
+            // lowers the whole comparison to one builtin over the receiver and argument, each
+            // evaluated once and in order. The term returned is the comparison, not the call.
+            if (pendingCompareTo != null && pendingCompareTo.call == mce
+                    && typeMethodRegistry.selectsIntegerCompareTo(scopeType, methodName)) {
+                pendingCompareTo.applied = true;
+                return integerComparison(pendingCompareTo.operator, scope, compiledArgs.getFirst());
+            }
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
             if (registryResult.isPresent()) {

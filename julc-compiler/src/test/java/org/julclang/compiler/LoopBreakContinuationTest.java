@@ -262,7 +262,9 @@ class LoopBreakContinuationTest {
     void branchLocalsThatShadowNothingKeepTheirBytes() throws Exception {
         // A branch's locals are renamed apart only when one shadows an accumulator. Renaming always
         // made same-named locals in disjoint branches unique, which let later passes fold more and
-        // changed the script of programs with no shadowing. FLAT SHA-256 as on main (b5ff39a8).
+        // changed the script of programs with no shadowing. FLAT SHA-256 as on main (b5ff39a8), re-frozen at ADR-068
+        // M1 (B1), whose comparison rule lowers x.compareTo(b) > 0 to one builtin (D6); with the rule disabled these
+        // programs keep b5ff39a8's hashes.
         String disjoint = """
                 BigInteger s = a;
                 for (var x : xs) { if (x.compareTo(b) > 0) { JulcArray<BigInteger> t = JulcArray.of(BigInteger.ONE, BigInteger.TWO); s = s.add(t.get(0)); } else { JulcArray<BigInteger> t = JulcArray.of(BigInteger.TEN, BigInteger.ZERO); s = s.add(t.get(1)); } }
@@ -272,10 +274,10 @@ class LoopBreakContinuationTest {
                 for (var x : xs) { if (x.compareTo(b) > 0) { JulcArray<BigInteger> t = JulcArray.of(BigInteger.ONE, BigInteger.TWO); s = s.add(t.get(0)); } JulcArray<BigInteger> t = JulcArray.of(BigInteger.TEN, BigInteger.ZERO); s = s.add(t.get(1)); }
                 return s;""";
         var expected = Map.of(
-                "disjoint/NONE", "5f45f41a1f20f790", "disjoint/BASELINE", "2b5534c1e7ceec45",
-                "disjoint/PV11_SAFE", "f5291f420faa9503", "disjoint/PV11_COSTED", "f5291f420faa9503",
-                "after/NONE", "1ddde995398ed2e4", "after/BASELINE", "2311bdbc72edf318",
-                "after/PV11_SAFE", "c24270710016e850", "after/PV11_COSTED", "c24270710016e850");
+                "disjoint/NONE", "a0c1f552fbd130cb", "disjoint/BASELINE", "97c75d5ddaf913e2",
+                "disjoint/PV11_SAFE", "314f4b579a9a6350", "disjoint/PV11_COSTED", "314f4b579a9a6350",
+                "after/NONE", "f5a4ad03d0f3d243", "after/BASELINE", "a51808d15ca04423",
+                "after/PV11_SAFE", "d1cb3ef2459d6926", "after/PV11_COSTED", "d1cb3ef2459d6926");
         for (var fixture : Map.of("disjoint", disjoint, "after", after).entrySet()) {
             String source = source(new String[]{"", fixture.getValue()}).replace(
                     "import org.julclang.core.types.JulcList;", "import org.julclang.core.types.JulcList;\nimport org.julclang.core.types.JulcArray;");

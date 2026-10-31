@@ -20,7 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@link Adr060Corpus} program at every optimization level, with and without source maps, captured at
  * PR #186 head {@code ef932b21} before any binder was renamed. UPLC FLAT carries de Bruijn indices,
  * not names, so renaming compiler-generated binders must leave every row unchanged, except rows
- * listed in {@link #EXPLAINED} with the reason the bytes legitimately moved.
+ * listed in {@link #EXPLAINED} with the reason the bytes legitimately moved. ADR-068 M1 checked its rows by
+ * disabling its comparison rule locally, which left every row as captured.
  * <p>
  * Recapture only from the base commit: set {@code JULC_ADR060_CAPTURE} to an output path.
  */
@@ -38,6 +39,19 @@ class Adr060ByteSnapshotTest {
             for (var row : List.of("NONE-false", "NONE-true", "BASELINE-true", "PV11_SAFE-true", "PV11_COSTED-true"))
                 EXPLAINED.put(entry.id() + "-" + row,
                         "MapLib.keys/values lower JulcMap keys()/values() with a right fold that keeps map order");
+        }
+        // ADR-068 M1 (D6, D4 exception 1) re-freezes the reference: a.compareTo(b) OP 0 lowers to one builtin over
+        // its operands. These programs compare that way, so they move at every level.
+        String compareTo = "ADR-068 D6: a.compareTo(b) OP 0 lowers to one integer comparison";
+        for (var id : List.of("o5-0", "o5-1", "o5-3", "o5-4", "o15-0", "o15-1", "o15-3", "o15-13", "switch-0",
+                "switch-1", "switch-2", "class-spend", "class-mint", "class-multi", "shapes", "statements"))
+            EXPLAINED.put(id + "-", compareTo);
+        // The optimization fixtures import stdlib libraries that compare that way; their unused methods stay in the
+        // program at NONE and with source maps, so those rows move.
+        for (var entry : Adr060Corpus.entries()) {
+            if (!entry.id().matches("o(8|9|10|11|14|15)-\\d+")) continue;
+            for (var row : List.of("NONE-false", "NONE-true", "BASELINE-true", "PV11_SAFE-true", "PV11_COSTED-true"))
+                EXPLAINED.putIfAbsent(entry.id() + "-" + row, compareTo + " in the stdlib's unused methods");
         }
     }
 
