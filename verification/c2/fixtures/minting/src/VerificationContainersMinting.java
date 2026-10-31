@@ -2,6 +2,9 @@ import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
 
 @MintingValidator
 class VerificationContainersMinting {

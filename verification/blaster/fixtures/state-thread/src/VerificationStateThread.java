@@ -1,4 +1,8 @@
 import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class VerificationStateThread {
