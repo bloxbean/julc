@@ -20,6 +20,7 @@ compared	equal-tolerant	6632	4674	187	3727	1841	27	3845	264
 compared	javac-rejects-unreadable	4	4	0	0	0	0	0	0
 compared	ledger-source	38	38	0	0	0	0	0	0
 compared	reference-rejects	15	15	0	0	0	0	0	0
+compared	definitions only in sources javac rejects, variants included	33
 part	blaster	equal	7
 part	c7	equal	6
 part	diffcase	DIFFERENT	5
