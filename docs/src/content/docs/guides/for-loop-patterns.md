@@ -47,7 +47,7 @@ The most common pattern. A single pre-loop variable is updated inside the loop. 
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    if (sig == redeemer) {
+    if (sig.equals(redeemer)) {
         found = true;
     }
 }
@@ -59,7 +59,7 @@ return found;
 ```java
 BigInteger total = BigInteger.ZERO;
 for (var output : txInfo.outputs()) {
-    total = total + ValuesLib.lovelaceOf(output.value());
+    total = total.add(ValuesLib.lovelaceOf(output.value()));
 }
 return total;
 ```
@@ -92,7 +92,7 @@ After the loop, the accumulator is rebound to the fold result for use in subsequ
 ```java
 boolean found = false;
 for (var sig : txInfo.signatories()) {
-    if (sig == redeemer) {
+    if (sig.equals(redeemer)) {
         found = true;
         break;
     }
@@ -120,8 +120,8 @@ return found;
 ```java
 BigInteger sum = BigInteger.ZERO;
 for (var item : items) {
-    sum = sum + item;
-    if (sum > BigInteger.valueOf(100)) {
+    sum = sum.add(item);
+    if (sum.compareTo(BigInteger.valueOf(100)) > 0) {
         break;
     }
 }
@@ -146,7 +146,7 @@ boolean found = false;
 BigInteger count = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
     found = found || sig == redeemer;
-    count = count + BigInteger.ONE;
+    count = count.add(BigInteger.ONE);
 }
 return found;
 ```
@@ -195,7 +195,7 @@ boolean found = false;
 BigInteger index = BigInteger.ZERO;
 for (var sig : txInfo.signatories()) {
     found = sig == redeemer;
-    index = index + BigInteger.ONE;
+    index = index.add(BigInteger.ONE);
     if (found) {
         break;
     }
@@ -214,15 +214,15 @@ BigInteger total = BigInteger.ZERO;
 for (var output : txInfo.outputs()) {
     boolean match = false;
     for (var sig : txInfo.signatories()) {
-        if (sig == redeemer) {
+        if (sig.equals(redeemer)) {
             match = true;
             break;
         }
     }
     // match is available here from the inner loop
-    total = total + BigInteger.ONE;
+    total = total.add(BigInteger.ONE);
 }
-return total == BigInteger.ZERO;
+return total.equals(BigInteger.ZERO);
 ```
 
 The inner loop compiles as a single-accumulator fold with break. The outer loop sees `match` as a local variable and `total` as its own accumulator.
@@ -262,8 +262,8 @@ The most common while loop pattern. A single pre-loop variable is updated inside
 
 ```java
 BigInteger k = BigInteger.valueOf(10);
-while (k > BigInteger.ZERO) {
-    k = k - BigInteger.ONE;
+while (k.compareTo(BigInteger.ZERO) > 0) {
+    k = k.subtract(BigInteger.ONE);
 }
 // k is now 0
 ```
@@ -289,10 +289,10 @@ After the loop, the accumulator is rebound to the loop result for use in subsequ
 
 ```java
 BigInteger k = BigInteger.valueOf(3);
-while (k > BigInteger.ZERO) {
-    k = k - BigInteger.ONE;
+while (k.compareTo(BigInteger.ZERO) > 0) {
+    k = k.subtract(BigInteger.ONE);
 }
-BigInteger result = k + BigInteger.valueOf(100);
+BigInteger result = k.add(BigInteger.valueOf(100));
 // result is 100 (k was rebound to 0 after the loop)
 ```
 
@@ -302,11 +302,11 @@ BigInteger result = k + BigInteger.valueOf(100);
 
 ```java
 BigInteger k = BigInteger.valueOf(10);
-while (k > BigInteger.ZERO) {
-    if (k == BigInteger.valueOf(5)) {
+while (k.compareTo(BigInteger.ZERO) > 0) {
+    if (k.equals(BigInteger.valueOf(5))) {
         break;
     }
-    k = k - BigInteger.ONE;
+    k = k.subtract(BigInteger.ONE);
 }
 // k is now 5
 ```
@@ -327,9 +327,9 @@ When two or more pre-loop variables are assigned inside the while body, the comp
 ```java
 BigInteger sum = BigInteger.ZERO;
 BigInteger k = BigInteger.valueOf(5);
-while (k > BigInteger.ZERO) {
-    sum = sum + k;
-    k = k - BigInteger.ONE;
+while (k.compareTo(BigInteger.ZERO) > 0) {
+    sum = sum.add(k);
+    k = k.subtract(BigInteger.ONE);
 }
 // sum is 15, k is 0
 ```
@@ -343,12 +343,12 @@ Combines multi-accumulator tuple packing with break-aware recursion.
 ```java
 BigInteger sum = BigInteger.ZERO;
 BigInteger k = BigInteger.valueOf(10);
-while (k > BigInteger.ZERO) {
-    sum = sum + k;
-    if (sum > BigInteger.valueOf(20)) {
+while (k.compareTo(BigInteger.ZERO) > 0) {
+    sum = sum.add(k);
+    if (sum.compareTo(BigInteger.valueOf(20)) > 0) {
         break;
     }
-    k = k - BigInteger.ONE;
+    k = k.subtract(BigInteger.ONE);
 }
 // sum > 20, k stopped early
 ```
@@ -357,16 +357,13 @@ At `break`, the current accumulator values are packed and returned (no recursion
 
 ## For-Each on MapType
 
-When iterating over a `Map<K,V>` variable, the compiler auto-detects the `MapType`, prepends an `UnMapData` to convert to a pair list, and types each element as `PairType`. Use `.key()` and `.value()` to access pair elements:
+`JulcMap` is not `Iterable`, so javac rejects a for-each over the map itself (`JULC0085`). Iterate its `keys()` or `values()`:
 
 ```java
-// Iterate over withdrawals map
+// Iterate over the withdrawals map's values
 BigInteger totalWithdrawn = BigInteger.ZERO;
-for (var entry : txInfo.withdrawals()) {
-    // entry is a PairType — use .key() and .value()
-    byte[] credHash = entry.key();   // auto-decoded
-    BigInteger amount = entry.value(); // auto-decoded
-    totalWithdrawn = totalWithdrawn + amount;
+for (BigInteger amount : txInfo.withdrawals().values()) {
+    totalWithdrawn = totalWithdrawn.add(amount);
 }
 ```
 
@@ -377,13 +374,13 @@ for (var entry : txInfo.withdrawals()) {
 ```java
 BigInteger total = BigInteger.ZERO;
 BigInteger i = BigInteger.ZERO;
-while (i < BigInteger.valueOf(3)) {
+while (i.compareTo(BigInteger.valueOf(3)) < 0) {
     BigInteger j = BigInteger.ZERO;
-    while (j < BigInteger.valueOf(4)) {
-        total = total + BigInteger.ONE;
-        j = j + BigInteger.ONE;
+    while (j.compareTo(BigInteger.valueOf(4)) < 0) {
+        total = total.add(BigInteger.ONE);
+        j = j.add(BigInteger.ONE);
     }
-    i = i + BigInteger.ONE;
+    i = i.add(BigInteger.ONE);
 }
 // total is 12
 ```
@@ -395,7 +392,7 @@ BigInteger matchCount = BigInteger.ZERO;
 for (var output : txInfo.outputs()) {
     for (var sig : txInfo.signatories()) {
         if (output.address().credential() == sig) {
-            matchCount = matchCount + BigInteger.ONE;
+            matchCount = matchCount.add(BigInteger.ONE);
         }
     }
 }
@@ -449,7 +446,7 @@ Any type supported by the compiler can be used as a loop accumulator:
 | `do { } while (cond)` | Rejected | Use `while` instead |
 | `break` outside loops | Rejected | Compile-time error |
 | Nested loops | Supported | While-in-while, for-each-in-for-each, mixed |
-| For-each on MapType | Supported | Elements are PairType with `.key()`/`.value()` |
+| For-each on `map.keys()` or `map.values()` | Supported | A for-each over the `JulcMap` itself is not Java |
 | Accumulator reassignment outside if | Supported | Direct loop-body statements; not arbitrary expression positions |
 | `acc += x`, `-=`, `*=`, `/=`, `%=` | Supported | Same as `acc = acc op x` on integers; `+=` also appends to a `String` |
 | `ok &= check(x)`, `\|=`, `^=`, `<<=`, `>>=`, `>>>=` | Rejected (JULC0052) | Java always evaluates the right side of `&=`/`\|=`; write `boolean c = check(x); ok = ok && c;` |
@@ -477,7 +474,7 @@ Instead of `continue`, use an `if` to skip the rest of the body:
 BigInteger sum = BigInteger.ZERO;
 for (var item : items) {
     if (!skipCondition) {
-        sum = sum + item;
+        sum = sum.add(item);
     }
 }
 ```
@@ -505,8 +502,8 @@ The compiler does not support `return` statements inside the body of a multi-acc
 BigInteger sum = BigInteger.ZERO;
 boolean found = false;
 for (var item : items) {
-    sum = sum + item;
-    if (sum > BigInteger.valueOf(100)) {
+    sum = sum.add(item);
+    if (sum.compareTo(BigInteger.valueOf(100)) > 0) {
         found = true;
         return found;  // ERROR: return inside multi-acc loop body
     }
@@ -519,8 +516,8 @@ for (var item : items) {
 BigInteger sum = BigInteger.ZERO;
 boolean found = false;
 for (var item : items) {
-    sum = sum + item;
-    if (sum > BigInteger.valueOf(100)) {
+    sum = sum.add(item);
+    if (sum.compareTo(BigInteger.valueOf(100)) > 0) {
         found = true;
         break;
     }

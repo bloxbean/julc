@@ -91,6 +91,9 @@ expects a concrete method body.
 cannot contain abstract methods.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 // WRONG: abstract method
 @SpendingValidator
 public class MyValidator {
@@ -474,6 +477,7 @@ static boolean check(BigInteger x) {
 **Fix:** `@NewType` records must have exactly one field of a supported primitive type (`byte[]`, `BigInteger`, `String`, `boolean`).
 
 ```java
+import org.julclang.stdlib.annotation.NewType;
 // WRONG: two fields
 @NewType
 record AssetId(byte[] policy, byte[] name) {}
@@ -495,12 +499,12 @@ record PolicyId(byte[] hash) {}
 
 ```java
 // CORRECT: expression body
-var doubled = ListsLib.map(items, item -> item * 2);
+var doubled = items.map(item -> item.multiply(BigInteger.TWO));
 
 // CORRECT: block body
-var filtered = ListsLib.filter(items, item -> {
+var filtered = items.filter(item -> {
     var threshold = new BigInteger("100");
-    return item > threshold;
+    return item.compareTo(threshold) > 0;
 });
 ```
 
@@ -1273,10 +1277,40 @@ BigInteger bigger = new BigInteger("18446744073709551616");
 
 These errors are raised during compiler setup and pipeline orchestration.
 
+### 3.0 `JULC0085` `<javac's message> (compiler.err.<key>)`
+
+**Cause:** javac rejects the source. Before JuLC compiles anything, javac analyzes the
+sources of the compilation (ADR-068 M1), and an error is reported with javac's message, key
+and position. JuLC's dialect beyond Java is rejected this way, for example `a + b` or
+`a > b` on `BigInteger` (`compiler.err.operator.cant.be.applied.1`), an `int` where a
+`BigInteger` is expected (`compiler.err.prob.found.req`), or a ledger or stdlib type used
+without an import (`compiler.err.cant.resolve.location`).
+
+**Fix:** Fix the Java error. Where the hint names a JDK type, use JuLC's on-chain
+equivalent (`JulcList`, `JulcMap`).
+
+```java
+// WRONG
+BigInteger total = a + b;
+if (total > limit) { ... }
+BigInteger one = 1;
+
+// CORRECT
+BigInteger total = a.add(b);
+if (total.compareTo(limit) > 0) { ... }
+BigInteger one = BigInteger.ONE;
+```
+
+The [release notes](/reference/release-notes/) list the rewrites.
+`-Djulc.javacGate=report` or `off` turns the check off for now; this is experimental.
+
+A runtime without a supported javac (JDK 25 with the `jdk.compiler` module) is `JULC0089`.
+
 ### 3.1 `Failed to parse <label> source: <details>`
 
 **Cause:** The Java source code has syntax errors that JavaParser cannot parse.
-`<label>` is either `"validator"` or `"library[n]"`.
+`<label>` is either `"validator"` or `"library[n]"`. javac reports most syntax errors
+first, as `JULC0085`.
 
 **Fix:** Ensure the source compiles with `javac` first. Common causes: missing
 semicolons, unmatched braces, invalid Java 21 syntax.
@@ -1291,6 +1325,7 @@ validator annotation.
 **Fix:** Annotate your validator class with one of the recognized annotations.
 
 ```java
+import org.julclang.ledger.ScriptContext;
 // WRONG: no annotation
 public class MyValidator {
     public static boolean validate(Data redeemer, ScriptContext ctx) {
@@ -1321,6 +1356,8 @@ public class MyValidator {
 **Fix:** Add `@Entrypoint` to the validator's main method.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.SpendingValidator;
 @SpendingValidator
 public class MyValidator {
     // WRONG: missing @Entrypoint
@@ -1381,6 +1418,9 @@ If you specified 3 parameters, the compiler asks if you meant to use
 `@SpendingValidator` if you need a datum parameter.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
 // WRONG: 3 params on a minting validator
 @MintingValidator
 public class MyPolicy {
@@ -1408,6 +1448,8 @@ validator annotation. Library files must not be validators.
 the validator source instead.
 
 ```java
+import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.stdlib.annotation.OnchainLibrary;
 // WRONG: library file with validator annotation
 @OnchainLibrary
 @MintingValidator  // this is not allowed on a library
@@ -1826,9 +1868,10 @@ BigInteger first = Builtins.unIData(mapped.head());
 
 ### Q: Can I call `foldl` as an instance method on a list?
 
-**A:** No. `foldl` is only available as a static call: `ListsLib.foldl(f, init, list)`.
-It is not registered as an instance method because it takes two lambda parameters
-plus an initial value, which makes instance-call syntax ambiguous.
+**A:** No. `foldl` is not registered as an instance method because it takes two lambda
+parameters plus an initial value, which makes instance-call syntax ambiguous. The intrinsic
+`ListsLib.foldl` has no Java declaration, so javac rejects it. Write a fold as an accumulator
+loop.
 
 ---
 
@@ -1901,6 +1944,11 @@ long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
 **A:** Two `@Entrypoint` methods in a `@MultiValidator` class have the same `Purpose` value. Each purpose can only have one handler.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
 // WRONG: duplicate MINT
 @MultiValidator
 public class BadValidator {
@@ -1929,6 +1977,11 @@ public class GoodValidator {
 **A:** You are combining `Purpose.DEFAULT` (manual dispatch) with explicit purposes like `Purpose.MINT` (auto-dispatch). Choose one mode.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
 // WRONG: mixing DEFAULT and MINT
 @MultiValidator
 public class BadValidator {
@@ -1957,6 +2010,12 @@ public class GoodValidator {
 **A:** A class cannot have both `@MultiValidator` and a single-purpose annotation (like `@SpendingValidator`). Use one or the other.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+import org.julclang.stdlib.annotation.SpendingValidator;
 // WRONG
 @SpendingValidator
 @MultiValidator

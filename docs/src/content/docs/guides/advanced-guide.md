@@ -550,8 +550,8 @@ Internally, JuLC represents `MapType` variables as pair lists (not wrapped
 
 ### For-Each on Maps
 
-The `for (var entry : map)` syntax on a `MapType` variable automatically
-prepends `UnMapData` and yields `PairType` elements:
+`JulcMap` is not `Iterable`, so javac rejects a for-each over the map itself
+(`JULC0085`). Iterate its `keys()` or `values()`:
 
 ```java
 import java.math.BigInteger;
@@ -566,12 +566,9 @@ class MapForEach {
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
-        var withdrawals = txInfo.withdrawals();
 
         BigInteger totalWithdrawn = BigInteger.ZERO;
-        for (var entry : withdrawals) {
-            // entry is PairType: entry.key() gives Credential, entry.value() gives amount
-            BigInteger amount = (BigInteger)(Object) entry.value();
+        for (BigInteger amount : txInfo.withdrawals().values()) {
             totalWithdrawn = totalWithdrawn.add(amount);
         }
         return totalWithdrawn.compareTo(BigInteger.ZERO) > 0;
@@ -941,6 +938,7 @@ import org.julclang.core.PlutusData;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ContextsLib;
 
 @SpendingValidator
 class ShortTrace {
@@ -1014,6 +1012,7 @@ import org.julclang.ledger.TxInfo;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ContextsLib;
 
 @SpendingValidator
 class FailFast {
@@ -1048,6 +1047,7 @@ import org.julclang.ledger.TxInfo;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.OutputLib;
 
 @SpendingValidator
 class CachedAccess {
@@ -1082,6 +1082,7 @@ import org.julclang.ledger.ScriptContext;
 import org.julclang.ledger.TxInfo;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ContextsLib;
 
 @SpendingValidator
 class ShortCircuit {
@@ -1139,6 +1140,8 @@ import org.julclang.ledger.ScriptContext;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ListsLib;
+import org.julclang.stdlib.lib.ValuesLib;
 
 @SpendingValidator
 class CrossLibraryBug {
@@ -1171,6 +1174,7 @@ import org.julclang.ledger.TxInfo;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ValuesLib;
 
 @SpendingValidator
 class SafeCrossLibrary {
@@ -1240,6 +1244,7 @@ import org.julclang.ledger.Value;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ValuesLib;
 
 @SpendingValidator
 class WrapperPattern {
@@ -1291,6 +1296,8 @@ import org.julclang.ledger.TxOut;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.ledger.ScriptInfo;
+import org.julclang.ledger.Credential;
 
 @SpendingValidator
 class NestedSwitch {
@@ -1724,17 +1731,12 @@ For detailed patterns including multi-accumulator nested loops, see [For-Loop Pa
 Higher-order functions are available as both instance methods and static calls. Lambda parameter types are auto-inferred from the list element type.
 
 ```java
-// Instance method syntax (preferred)
 boolean hasLargeAmount = outputs.any(o -> o.value().lovelaceOf().compareTo(BigInteger.valueOf(1_000_000)) > 0);
 var filtered = list.filter(x -> x.compareTo(BigInteger.ZERO) > 0);
 var mapped = list.map(x -> x.add(BigInteger.ONE));  // returns JulcList<PlutusData>
-
-// Static syntax
-boolean found = ListsLib.any(list, x -> x.compareTo(threshold) > 0);
-var sum = ListsLib.foldl((acc, x) -> acc.add(Builtins.unIData(x)), BigInteger.ZERO, list);
 ```
 
-**Available HOFs:** `map`, `filter`, `any`, `all`, `find` (instance + static), `foldl`, `zip` (static only).
+**Available HOFs:** `map`, `filter`, `any`, `all`, `find`. There is no Java form of `foldl` or `zip`: write a fold as an accumulator loop.
 
 Variable capture is supported. Block body lambdas and chaining (`list.filter(...).map(...)`) work as expected.
 
@@ -1776,6 +1778,8 @@ import org.julclang.ledger.ScriptContext;
 import org.julclang.ledger.TxInfo;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.stdlib.lib.ContextsLib;
+import org.julclang.stdlib.lib.ValuesLib;
 
 @MintingValidator
 class FactoryPolicy {

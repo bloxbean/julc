@@ -1655,7 +1655,8 @@ not bypass lookup or target-legality checks. See ADR-035 for the contract.
 
 ### Tracing a Stdlib Call End-to-End
 
-Example: `ListsLib.foldl(fn, init, list)` in user Java code:
+Example: `ListsLib.foldl(fn, init, list)`, an intrinsic with no Java declaration, reached through the
+JavaParser frontend's dispatch when the javac gate is off (`julc.javacGate=off`):
 
 1. **PirGenerator.generateMethodCall()** detects scope = `ListsLib` (class name)
 2. **Level 2 dispatch:** Calls `stdlibLookup.lookup("ListsLib", "foldl", compiledArgs)`
@@ -1680,7 +1681,7 @@ Instance HOF calls like `list.map(x -> x + 1)` are compiled via `PirHofBuilders.
 4. **hofUnwrappedVars:** For `ByteStringType` elements (e.g., `JulcList<PubKeyHash>`), the lambda param is tracked as pre-unwrapped to prevent double `UnBData` in `.hash()` calls
 5. Result: `map` wraps results to Data; `filter`/`any`/`all`/`find` preserve element types
 
-`foldl` is only available as `ListsLib.foldl(...)` (static), not as an instance method, due to the complexity of 2-parameter lambdas with an init value.
+`foldl` is only registered as the intrinsic `ListsLib.foldl(...)`, not as an instance method, due to the complexity of 2-parameter lambdas with an init value. It has no Java declaration, so javac rejects it in user source.
 
 ---
 

@@ -120,6 +120,7 @@ import org.julclang.ledger.ScriptContext;
 import org.julclang.ledger.TxInfo;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.ledger.PubKeyHash;
 
 @SpendingValidator
 class VestingValidator {
@@ -129,7 +130,7 @@ class VestingValidator {
     static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
         var sigs = txInfo.signatories();
-        return sigs.contains(datum.beneficiary()) && datum.deadline().compareTo(BigInteger.ZERO) > 0;
+        return sigs.contains(PubKeyHash.of(datum.beneficiary())) && datum.deadline().compareTo(BigInteger.ZERO) > 0;
     }
 }
 ```
@@ -204,6 +205,9 @@ A common pattern is to organize tests into two `@Nested` classes:
 2. **UplcTests** — compile to UPLC and evaluate in the CEK machine
 
 ```java
+import org.julclang.stdlib.lib.ContextsLib;
+import org.julclang.stdlib.lib.IntervalLib;
+
 class VestingTest extends ContractTest {
 
     @BeforeAll
@@ -436,7 +440,7 @@ You can also test inline Java source strings:
 var eval = JulcEval.forSource("""
         class Utils {
             static BigInteger add(BigInteger a, BigInteger b) {
-                return a + b;
+                return a.add(b);
             }
         }
         """);
@@ -666,6 +670,10 @@ Assume `VestingValidator.java` is your validator class in `src/main/java`:
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ContextsLib;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
 
 // src/main/java/com/example/VestingValidator.java
 @SpendingValidator
@@ -674,9 +682,9 @@ class VestingValidator {
 
     @Entrypoint
     static boolean validate(VestingDatum datum, PlutusData redeemer, PlutusData ctx) {
-        PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
         PlutusData pkh = datum.beneficiary();
-        return ContextsLib.signedBy(txInfo, pkh);
+        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(pkh));
     }
 }
 ```
@@ -790,14 +798,18 @@ Assume `SignedMintPolicy.java` is your minting policy in `src/main/java`:
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.stdlib.lib.ContextsLib;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.Builtins;
 
 // src/main/java/com/example/SignedMintPolicy.java
 @MintingValidator
 class SignedMintPolicy {
     @Entrypoint
     static boolean validate(PlutusData redeemer, PlutusData ctx) {
-        PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-        return ContextsLib.signedBy(txInfo, redeemer);
+        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
+        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(redeemer));
     }
 }
 ```
@@ -1377,7 +1389,7 @@ multiple sources:
 static final String MATH_LIB = """
         class MathUtils {
             static BigInteger max(BigInteger a, BigInteger b) {
-                if (a > b) { return a; } else { return b; }
+                if (a.compareTo(b) > 0) { return a; } else { return b; }
             }
         }
         """;
@@ -1409,6 +1421,8 @@ Test standard library calls directly as Java — useful for verifying business
 logic without compiling to UPLC:
 
 ```java
+import org.julclang.stdlib.lib.IntervalLib;
+
 @Nested
 class StdlibDirectTests {
     @Test

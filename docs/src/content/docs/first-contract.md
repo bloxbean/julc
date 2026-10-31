@@ -135,7 +135,6 @@ import org.julclang.stdlib.annotation.SpendingValidator;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.ledger.*;
 import org.julclang.core.PlutusData;
-import org.julclang.core.types.PubKeyHash;
 import java.math.BigInteger;
 
 @SpendingValidator

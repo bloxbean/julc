@@ -3,6 +3,39 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: sources must be Java that javac accepts (ADR-068 M1)
+
+Every compilation now has javac analyze its sources first, on every host (the compiler API,
+the Gradle plugin, the annotation processor, the testkit, the CLI and its REPL, the
+playground and `julc-wasm`). Source javac rejects is rejected with `JULC0085`: javac's
+message, its key (such as `compiler.err.operator.cant.be.applied.1`) and its position. A
+runtime without a supported javac (JDK 25 with `jdk.compiler`) is rejected with `JULC0089`.
+
+JuLC's dialect beyond Java is no longer accepted. Write it as Java:
+
+| Dialect | Java |
+|---|---|
+| `a + b`, `a - b`, `a * b` on `BigInteger` | `a.add(b)`, `a.subtract(b)`, `a.multiply(b)` |
+| `a > b`, `a <= b` on `BigInteger` | `a.compareTo(b) > 0`, `a.compareTo(b) <= 0` |
+| `BigInteger x = 5;` | `BigInteger x = BigInteger.valueOf(5);` |
+| ledger and stdlib types used without an import | explicit imports (`import org.julclang.ledger.TxInfo;`) |
+| `MyHash.of(bytes)` for a `@NewType` | `new MyHash(bytes)` |
+| a `@Param` field read from a `static` method | declare the field `static` |
+
+- **Script bytes do not change** for a source javac accepts: the gate only reads the source.
+  A source rewritten from the dialect can compile to different bytes. In particular,
+  `compareTo(..) > 0` and `compareTo(..) >= 0` cost more than the dialect operator did until
+  the `compareTo` lowering of ADR-068 D6 lands.
+- **Diagnostics change** for invalid Java that JuLC used to reject with its own code. For
+  example, a non-exhaustive or dominated `switch`, a missing `return`, or an undefined name
+  or label is now reported as `JULC0085` with javac's key.
+- **REPL:** javac types each expression. An `int` or `long` result is returned as a
+  `BigInteger`. Integer arithmetic is still JuLC's, which is unbounded on-chain.
+- **Opting out (experimental, temporary):** set `-Djulc.javacGate=off` (javac does not run)
+  or `report` (javac runs and rejects nothing), or call `CompilerOptions.setJavacGate(...)`.
+  With `report`, `-Djulc.javacGate.report=<dir>` records each source javac would reject. The
+  default is `enforce`.
+
 ## Upcoming preview: integer literals have Java's value (#270)
 
 Integer literals were decoded by hand, not as the JLS defines them (§3.10.1):
