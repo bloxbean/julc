@@ -5,10 +5,10 @@ import org.julclang.compiler.corpus.CorpusRecorder;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 /**
@@ -29,27 +30,47 @@ import java.util.stream.Stream;
  *   <li>{@code cases/<key>/entry-<name>} and {@code origin-<digest>}: each entry point and test that compiled it;</li>
  *   <li>{@code failures/<key>/failure.txt}: an internal error of the gate, with its stack trace.</li>
  * </ul>
- * Files are written once, atomically, so concurrent test JVMs can share the directory. {@link #main} summarizes it.
+ * Files are written once, atomically, so concurrent test JVMs can share the directory; writing is best-effort and
+ * never fails a compilation. {@link #main} summarizes it.
  */
 public final class JavacGateReport {
 
     private JavacGateReport() {
     }
 
+    private static final AtomicBoolean WARNED = new AtomicBoolean();
+
+    /** The report directory, or null when none is named or the name is not a path. */
     private static Path directory() {
         String dir = System.getProperty(JavacGate.REPORT_PROPERTY);
-        return dir == null || dir.isBlank() ? null : Path.of(dir).toAbsolutePath();
+        if (dir == null || dir.isBlank()) return null;
+        try {
+            return Path.of(dir).toAbsolutePath();
+        } catch (InvalidPathException e) {
+            warn(dir, e);
+            return null;
+        }
+    }
+
+    /**
+     * Reporting is best-effort: it never fails a compilation. The first failure of a process is printed to standard
+     * error, so a report that could not be written is not mistaken for a complete one.
+     */
+    static void warn(Object where, Throwable e) {
+        if (WARNED.compareAndSet(false, true)) {
+            System.err.println("[julc] WARN: javac gate report " + where + " is incomplete: " + e);
+        }
     }
 
     static void record(String entry, List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool,
                        JavacResult result) {
         Path root = directory();
         if (root == null) return;
-        var text = new StringBuilder();
-        text.append("javac: ").append(result.javacVersion()).append('\n');
-        text.append("platform: ").append(result.platformDigest()).append('\n');
-        text.append("stubs: ").append(result.stubsDigest()).append('\n');
         try {
+            var text = new StringBuilder();
+            text.append("javac: ").append(result.javacVersion()).append('\n');
+            text.append("platform: ").append(result.platformDigest()).append('\n');
+            text.append("stubs: ").append(result.stubsDigest()).append('\n');
             for (var unit : roots) text.append("root: ").append(write(root, unit)).append('\n');
             for (var unit : pool) text.append("pool: ").append(write(root, unit)).append('\n');
             for (var d : result.diagnostics()) {
@@ -63,18 +84,19 @@ public final class JavacGateReport {
             touch(dir.resolve("entry-" + entry));
             String origin = CorpusRecorder.origin();
             writeOnce(dir.resolve("origin-" + CorpusRecorder.sha256(origin).substring(0, 16)), origin + "\n");
-        } catch (IOException e) {
-            throw new UncheckedIOException("javac gate report: " + root, e);
+        } catch (IOException | RuntimeException e) {
+            warn(root, e);
         }
     }
 
     static void recordFailure(String entry, List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool,
                               Throwable failure) {
+        if (failure instanceof BrokenJulcBuildException) warn("(not written: the gate cannot run)", failure);
         Path root = directory();
         if (root == null) return;
-        var trace = new StringWriter();
-        failure.printStackTrace(new PrintWriter(trace));
         try {
+            var trace = new StringWriter();
+            failure.printStackTrace(new PrintWriter(trace));
             var text = new StringBuilder("entry: " + entry + "\n");
             for (var unit : roots) text.append("root: ").append(write(root, unit)).append('\n');
             for (var unit : pool) text.append("pool: ").append(write(root, unit)).append('\n');
@@ -82,8 +104,8 @@ public final class JavacGateReport {
             Path dir = root.resolve("failures").resolve(JavacGate.key(roots, pool));
             Files.createDirectories(dir);
             writeOnce(dir.resolve("failure.txt"), text.toString());
-        } catch (IOException e) {
-            throw new UncheckedIOException("javac gate report: " + root, e);
+        } catch (IOException | RuntimeException e) {
+            warn(root, e);
         }
     }
 

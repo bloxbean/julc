@@ -6,6 +6,7 @@ import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.JavacTask;
 
+import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
@@ -47,7 +48,7 @@ final class JavacUnits {
             else missing.put(digests.get(i), texts.get(i));
         }
         if (!missing.isEmpty()) {
-            var parsed = parse(compiler, platform, List.copyOf(missing.values()));
+            var parsed = parse(compiler, platform, List.copyOf(missing.keySet()), List.copyOf(missing.values()));
             if (CACHE.size() > CACHE_LIMIT) CACHE.clear();
             int i = 0;
             for (String digest : missing.keySet()) {
@@ -58,7 +59,8 @@ final class JavacUnits {
         return digests.stream().map(known::get).toList();
     }
 
-    private static List<UnitInfo> parse(JavaCompiler compiler, JavacPlatform platform, List<String> texts) {
+    private static List<UnitInfo> parse(JavaCompiler compiler, JavacPlatform platform, List<String> digests,
+                                        List<String> texts) {
         var files = new ArrayList<JavaFileObject>();
         for (int i = 0; i < texts.size(); i++) {
             String text = texts.get(i);
@@ -74,25 +76,32 @@ final class JavacUnits {
                 files);
         var result = new ArrayList<UnitInfo>();
         try {
-            for (CompilationUnitTree unit : task.parse()) result.add(info(unit));
+            int i = 0;
+            for (CompilationUnitTree unit : task.parse()) result.add(info(unit, digests.get(i++)));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
         return result;
     }
 
-    private static UnitInfo info(CompilationUnitTree unit) {
+    /**
+     * The unit's names, keeping only well-formed ones: javac's parser recovers from a malformed declaration with
+     * names such as {@code <error>}, which are not Java names and cannot be part of a URI. A unit without a usable
+     * primary name gets a synthetic one from its digest; javac then reports its syntax errors (D5).
+     */
+    private static UnitInfo info(CompilationUnitTree unit, String digest) {
         String pkg = unit.getPackageName() == null ? "" : unit.getPackageName().toString();
+        if (!SourceVersion.isName(pkg)) pkg = "";
         var names = new ArrayList<String>();
         String primary = null;
         for (Tree declaration : unit.getTypeDecls()) {
             if (!(declaration instanceof ClassTree type)) continue;
             String name = type.getSimpleName().toString();
-            if (name.isEmpty()) continue;
+            if (!SourceVersion.isIdentifier(name) || SourceVersion.isKeyword(name) || names.contains(name)) continue;
             names.add(name);
             if (primary == null && type.getModifiers().getFlags().contains(Modifier.PUBLIC)) primary = name;
         }
-        if (primary == null) primary = names.isEmpty() ? "Unit" : names.getFirst();
+        if (primary == null) primary = names.isEmpty() ? "Unit_" + digest.substring(0, 12) : names.getFirst();
         return new UnitInfo(pkg, List.copyOf(names), primary);
     }
 }

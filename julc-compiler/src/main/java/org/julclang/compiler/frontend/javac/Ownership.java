@@ -30,7 +30,7 @@ final class Ownership {
         var units = new ArrayList<>(roots);
         units.addAll(pool);
         for (var unit : units) {
-            String digest = bundled.digests().get(unit.binaryName());
+            String digest = bundled.digests().get(unit.primaryName());
             if (digest != null && digest.equals(JavacPlatform.sha256(unit.text().getBytes(StandardCharsets.UTF_8)))) {
                 continue;
             }

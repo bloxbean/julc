@@ -54,13 +54,19 @@ public final class JavacPlatform {
         stubsCount = count(classPath);
     }
 
-    /** The platform of this JuLC build, from its resources; parsed once per process. */
-    public static JavacPlatform shared() {
-        return Shared.INSTANCE;
-    }
+    private static volatile JavacPlatform shared;
 
-    private static final class Shared {
-        static final JavacPlatform INSTANCE = new JavacPlatform(resource(PLATFORM_RESOURCE), resource(STUBS_RESOURCE));
+    /**
+     * The platform of this JuLC build, from its resources; parsed once per process. A missing resource is
+     * {@link BrokenJulcBuildException}, every time it is asked for (nothing is cached on failure).
+     */
+    public static JavacPlatform shared() {
+        JavacPlatform platform = shared;
+        if (platform != null) return platform;
+        synchronized (JavacPlatform.class) {
+            if (shared == null) shared = new JavacPlatform(resource(PLATFORM_RESOURCE), resource(STUBS_RESOURCE));
+            return shared;
+        }
     }
 
     /** A platform from explicit blobs (tests and the build-time tool). */
@@ -71,7 +77,7 @@ public final class JavacPlatform {
     /** The bytes of a shipped resource blob. */
     public static byte[] resource(String name) {
         try (InputStream in = JavacPlatform.class.getResourceAsStream(name)) {
-            if (in == null) throw new IllegalStateException("missing resource " + name + " (javac platform)");
+            if (in == null) throw new BrokenJulcBuildException("missing resource " + name + " (the javac platform)");
             return in.readAllBytes();
         } catch (IOException e) {
             throw new UncheckedIOException(e);

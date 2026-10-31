@@ -10,10 +10,11 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.ResourceBundle;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,15 +26,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class JavacNativeImageMetadataTest {
 
     static final String FILE = "/META-INF/native-image/org.julclang/julc-compiler/reachability-metadata.json";
-    static final Pattern TYPE = Pattern.compile("\"type\"\\s*:\\s*\"([^\"]+)\"(\\s*,\\s*\"methods\"\\s*:\\s*\\[(.*?)\\]\\s*}\\s*\\])?",
-            Pattern.DOTALL);
-    static final Pattern METHOD = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"parameterTypes\"\\s*:\\s*\\[([^\\]]*)\\]");
-    static final Pattern BUNDLE = Pattern.compile("\"bundle\"\\s*:\\s*\"([^\"]+)\"");
 
-    static String metadata() throws Exception {
+    static Map<String, Object> metadata() throws Exception {
         try (InputStream in = JavacNativeImageMetadataTest.class.getResourceAsStream(FILE)) {
             assertNotNull(in, FILE);
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            @SuppressWarnings("unchecked")
+            var json = (Map<String, Object>) new Json(new String(in.readAllBytes(), StandardCharsets.UTF_8)).value();
+            return json;
         }
     }
 
@@ -41,32 +40,124 @@ class JavacNativeImageMetadataTest {
         return Class.forName(name, false, ClassLoader.getSystemClassLoader());
     }
 
-    @Test
-    void everyEntryExistsInThisJdk() throws Exception {
-        String json = metadata();
-        var types = new ArrayList<String>();
-        Matcher t = TYPE.matcher(json);
-        while (t.find()) {
-            Class<?> type = load(t.group(1));
-            types.add(type.getName());
-            if (t.group(3) == null) continue;
-            Matcher m = METHOD.matcher(t.group(3));
-            while (m.find()) {
+    /** The checked entries: every reflected type and method, every bundle. Throws on the first that is missing. */
+    @SuppressWarnings("unchecked")
+    static int[] validate(Map<String, Object> json) throws Exception {
+        int types = 0, methods = 0, bundles = 0;
+        for (Object o : (List<Object>) json.get("reflection")) {
+            var entry = (Map<String, Object>) o;
+            Class<?> type = load((String) entry.get("type"));
+            types++;
+            for (Object m : (List<Object>) entry.getOrDefault("methods", List.of())) {
+                var method = (Map<String, Object>) m;
                 var parameters = new ArrayList<Class<?>>();
-                for (String p : m.group(2).split(",")) {
-                    if (!p.isBlank()) parameters.add(load(p.strip().replace("\"", "")));
-                }
-                assertNotNull(type.getDeclaredMethod(m.group(1), parameters.toArray(Class<?>[]::new)));
+                for (Object p : (List<Object>) method.get("parameterTypes")) parameters.add(load((String) p));
+                type.getDeclaredMethod((String) method.get("name"), parameters.toArray(Class<?>[]::new));
+                methods++;
             }
         }
-        assertTrue(types.contains("com.sun.tools.javac.api.JavacTrees"), types.toString());
-        var bundles = new ArrayList<String>();
-        Matcher b = BUNDLE.matcher(json);
-        while (b.find()) {
-            assertTrue(java.util.ResourceBundle.class.isAssignableFrom(load(b.group(1))), b.group(1));
-            bundles.add(b.group(1));
+        for (Object o : (List<Object>) json.get("resources")) {
+            var entry = (Map<String, Object>) o;
+            if (entry.containsKey("bundle")) {
+                assertTrue(ResourceBundle.class.isAssignableFrom(load((String) entry.get("bundle"))), entry.toString());
+                bundles++;
+            }
         }
-        assertEquals(List.of("com.sun.tools.javac.resources.compiler", "com.sun.tools.javac.resources.javac"), bundles);
+        return new int[]{types, methods, bundles};
+    }
+
+    @Test
+    void everyEntryExistsInThisJdk() throws Exception {
+        assertArrayEquals(new int[]{4, 1, 2}, validate(metadata()));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aMissingMethodFailsTheCheck() throws Exception {
+        var json = metadata();
+        var trees = (Map<String, Object>) ((List<Object>) json.get("reflection")).getFirst();
+        var instance = (Map<String, Object>) ((List<Object>) trees.get("methods")).getFirst();
+        assertEquals("instance", instance.get("name"));
+        instance.put("name", "NO_SUCH_METHOD");
+        assertThrows(NoSuchMethodException.class, () -> validate(json));
+    }
+
+    /** A minimal JSON reader (objects, arrays, strings, numbers, literals) for the metadata file. */
+    static final class Json {
+        private final String s;
+        private int i;
+
+        Json(String s) {
+            this.s = s;
+        }
+
+        Object value() {
+            skip();
+            char c = s.charAt(i);
+            if (c == '{') {
+                var map = new LinkedHashMap<String, Object>();
+                i++;
+                skip();
+                if (s.charAt(i) == '}') { i++; return map; }
+                while (true) {
+                    skip();
+                    String key = (String) value();
+                    skip();
+                    expect(':');
+                    map.put(key, value());
+                    skip();
+                    if (s.charAt(i++) == '}') return map;
+                }
+            }
+            if (c == '[') {
+                var list = new ArrayList<Object>();
+                i++;
+                skip();
+                if (s.charAt(i) == ']') { i++; return list; }
+                while (true) {
+                    list.add(value());
+                    skip();
+                    if (s.charAt(i++) == ']') return list;
+                }
+            }
+            if (c == '"') {
+                var out = new StringBuilder();
+                i++;
+                while (s.charAt(i) != '"') {
+                    char ch = s.charAt(i++);
+                    if (ch == '\\') {
+                        char e = s.charAt(i++);
+                        out.append(switch (e) {
+                            case 'n' -> '\n';
+                            case 't' -> '\t';
+                            case 'u' -> { char u = (char) Integer.parseInt(s.substring(i, i + 4), 16); i += 4; yield u; }
+                            default -> e;
+                        });
+                    } else {
+                        out.append(ch);
+                    }
+                }
+                i++;
+                return out.toString();
+            }
+            int start = i;
+            while (i < s.length() && ",}] \n\r\t".indexOf(s.charAt(i)) < 0) i++;
+            String literal = s.substring(start, i);
+            return switch (literal) {
+                case "true" -> true;
+                case "false" -> false;
+                case "null" -> null;
+                default -> Double.parseDouble(literal);
+            };
+        }
+
+        private void skip() {
+            while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
+        }
+
+        private void expect(char c) {
+            if (s.charAt(i++) != c) throw new IllegalArgumentException("expected " + c + " at " + (i - 1));
+        }
     }
 
     /** I6: no code references com.sun.tools.javac, and no build file exports or opens a JDK package. */

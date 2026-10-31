@@ -1,6 +1,10 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.util.JavacTask;
+import com.sun.source.util.TaskEvent;
+import com.sun.source.util.TaskListener;
+import com.sun.source.util.Trees;
 import org.julclang.compiler.error.DiagnosticCodes;
 
 import javax.lang.model.SourceVersion;
@@ -58,14 +62,25 @@ public final class JavacFrontend {
         }
     }
 
-    /** The host's javac and this build's platform; the platform is parsed once per process. */
-    public static JavacFrontend shared() {
-        return Shared.INSTANCE;
-    }
+    private static volatile JavacFrontend shared;
 
-    private static final class Shared {
-        static final JavacFrontend INSTANCE = new JavacFrontend(JavacPlatform.shared(),
-                ToolProvider::getSystemJavaCompiler, BundledSources.load());
+    /**
+     * The host's javac and this build's platform; the platform is parsed once per process. The bundled set is
+     * looked up again while it is empty (a later caller may bring the loader that has julc-stdlib), and
+     * {@link BundledSources#load()} fails loudly when julc-stdlib is present without its manifest.
+     */
+    public static JavacFrontend shared() {
+        JavacFrontend frontend = shared;
+        if (frontend != null && !frontend.bundled.digests().isEmpty()) return frontend;
+        synchronized (JavacFrontend.class) {
+            if (shared == null || shared.bundled.digests().isEmpty()) {
+                var bundled = BundledSources.load();
+                if (shared == null || !bundled.digests().isEmpty()) {
+                    shared = new JavacFrontend(JavacPlatform.shared(), ToolProvider::getSystemJavaCompiler, bundled);
+                }
+            }
+            return shared;
+        }
     }
 
     /** A frontend over an explicit platform, compiler and bundled set (tests). */
@@ -86,8 +101,9 @@ public final class JavacFrontend {
 
     /**
      * Analyzes {@code roots} with {@code pool}, then the bundled sources, on the source path (D8): javac attributes
-     * the roots and the pool units they reference. A root's qualified name wins over the pool's; within the pool the
-     * first unit of a name wins, so javac never sees a name twice.
+     * the roots and the pool units they reference, through any of their top-level declarations. A root's qualified
+     * names win over the pool's; within the pool the first unit declaring a name wins, so javac never sees a name
+     * twice.
      */
     public JavacResult analyze(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true);
@@ -112,7 +128,12 @@ public final class JavacFrontend {
         var offered = new ArrayList<>(pool);
         for (String text : bundled.texts().values()) offered.add(Unit.of(text));
         for (var file : files(javac, offered)) {
-            if (names.add(file.binaryName())) poolFiles.add(file);
+            // Precedence over every top-level declaration (D8): a pool unit that declares a name a root, or an
+            // earlier pool unit, declares is left out whole, so javac never sees a name twice.
+            if (file.topLevelNames().stream().noneMatch(names::contains)) {
+                names.addAll(file.topLevelNames());
+                poolFiles.add(file);
+            }
         }
 
         if (checkOwnership) {
@@ -124,6 +145,16 @@ public final class JavacFrontend {
         var collector = new DiagnosticCollector<JavaFileObject>();
         var task = (JavacTask) javac.getTask(null, fileManager, collector, OPTIONS, null, rootFiles);
         task.setLocale(Locale.ENGLISH);
+        // Every parsed unit, roots and the pool units javac reads, for the hints' context (D5).
+        var parsed = new HashMap<URI, CompilationUnitTree>();
+        task.addTaskListener(new TaskListener() {
+            @Override
+            public void finished(TaskEvent e) {
+                if (e.getKind() == TaskEvent.Kind.PARSE && e.getSourceFile() != null) {
+                    parsed.putIfAbsent(e.getSourceFile().toUri(), e.getCompilationUnit());
+                }
+            }
+        });
         try {
             task.analyze();
         } catch (IOException e) {
@@ -133,9 +164,14 @@ public final class JavacFrontend {
         for (var file : rootFiles) byUri.put(file.toUri(), file);
         for (var file : poolFiles) byUri.putIfAbsent(file.toUri(), file);
         var diagnostics = new ArrayList<JavacDiagnostic>();
+        var contexts = new HashMap<URI, JavacHints.UnitContext>();
         for (Diagnostic<? extends JavaFileObject> d : collector.getDiagnostics()) {
             if (d.getKind() != Diagnostic.Kind.ERROR) continue;
-            diagnostics.add(JavacHints.diagnostic(d, d.getSource() == null ? null : byUri.get(d.getSource().toUri())));
+            URI uri = d.getSource() == null ? null : d.getSource().toUri();
+            var context = uri == null || !parsed.containsKey(uri) ? JavacHints.UnitContext.NONE
+                    : contexts.computeIfAbsent(uri, u -> JavacHints.UnitContext.of(parsed.get(u),
+                            Trees.instance(task).getSourcePositions()));
+            diagnostics.add(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context));
         }
         return diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
     }
@@ -227,22 +263,35 @@ public final class JavacFrontend {
             return new BundledSources(digests, texts);
         }
 
-        /** The first manifest on this class's loader, else on the thread context loader; none is empty. */
+        /** A class of julc-stdlib: where it is visible, the manifest must be too. */
+        static final String STDLIB_MARKER = "org/julclang/stdlib/Builtins.class";
+
+        /**
+         * The first manifest on this class's loader, else on the thread context loader; none when neither loader
+         * has julc-stdlib (the compiler alone). A loader that has julc-stdlib's classes but not its manifest, or a
+         * manifest whose sources are missing or differ, is {@link BrokenJulcBuildException}.
+         */
         public static BundledSources load() {
-            for (ClassLoader loader : new ClassLoader[]{JavacFrontend.class.getClassLoader(),
-                    Thread.currentThread().getContextClassLoader()}) {
+            return load(JavacFrontend.class.getClassLoader(), Thread.currentThread().getContextClassLoader());
+        }
+
+        static BundledSources load(ClassLoader... loaders) {
+            for (ClassLoader loader : loaders) {
                 if (loader == null) continue;
                 try (var in = loader.getResourceAsStream(RESOURCE)) {
-                    if (in != null) return load(loader, new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                    if (in != null) return parse(loader, new String(in.readAllBytes(), StandardCharsets.UTF_8));
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
+                }
+                if (loader.getResource(STDLIB_MARKER) != null) {
+                    throw new BrokenJulcBuildException("julc-stdlib is on the class path without " + RESOURCE);
                 }
             }
             return none();
         }
 
         /** Lines {@code <sha256> <path>}, the path relative to {@code META-INF/plutus-sources/}. */
-        static BundledSources load(ClassLoader loader, String manifest) throws IOException {
+        static BundledSources parse(ClassLoader loader, String manifest) throws IOException {
             var digests = new TreeMap<String, String>();
             var texts = new LinkedHashMap<String, String>();
             for (String line : manifest.split("\n")) {
@@ -254,11 +303,12 @@ public final class JavacFrontend {
                 String fqcn = path.substring(0, path.length() - ".java".length()).replace('/', '.');
                 digests.put(fqcn, digest);
                 try (var in = loader.getResourceAsStream(SOURCES + path)) {
-                    if (in == null) continue;
+                    if (in == null) throw new BrokenJulcBuildException("the bundled source " + path + " is missing");
                     String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                    if (digest.equals(JavacPlatform.sha256(text.getBytes(StandardCharsets.UTF_8)))) {
-                        texts.put(fqcn, text);
+                    if (!digest.equals(JavacPlatform.sha256(text.getBytes(StandardCharsets.UTF_8)))) {
+                        throw new BrokenJulcBuildException("the bundled source " + path + " differs from its digest");
                     }
+                    texts.put(fqcn, text);
                 }
             }
             return new BundledSources(digests, texts);
