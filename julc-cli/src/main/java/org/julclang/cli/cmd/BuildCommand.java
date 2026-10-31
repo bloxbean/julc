@@ -3,6 +3,7 @@ package org.julclang.cli.cmd;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTargetRegistry;
 import org.julclang.compiler.JulcCompiler;
@@ -58,6 +59,12 @@ public class BuildCommand implements Callable<Integer> {
             description = "Optional compatibility profile ID (e.g. plutus-v3-pv11-costs-v1); unused by compilation")
     private String costProfile;
 
+    @Option(names = "--frontend",
+            defaultValue = "javaparser",
+            description = "Experimental: the Java frontend, javaparser or javac (default: ${DEFAULT-VALUE}). On javac a"
+                    + " construct not ported yet is JULC0084, and so is a blueprint: use --no-blueprint")
+    private String frontend;
+
     @Override
     public Integer call() {
         try {
@@ -71,7 +78,8 @@ public class BuildCommand implements Callable<Integer> {
             var config = TomlParser.parse(tomlFile);
             var compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
             var options = OptimizationConfiguration.apply(
-                    new CompilerOptions().setTarget(compilerTarget).setVerbose(verbose),
+                    new CompilerOptions().setTarget(compilerTarget).setVerbose(verbose)
+                            .setFrontend(CompilerFrontend.parse(frontend)),
                     optimizationProfile,
                     costProfile);
             System.out.println("Building " + AnsiColors.bold(config.name())

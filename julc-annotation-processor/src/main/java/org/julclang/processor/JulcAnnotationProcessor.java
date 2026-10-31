@@ -5,6 +5,7 @@ import org.julclang.blueprint.BlueprintGenerator;
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.clientlib.ValidatorOutput;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTargetRegistry;
@@ -59,7 +60,7 @@ import java.util.stream.Collectors;
         "org.julclang.stdlib.annotation.ProposingValidator",
         "org.julclang.stdlib.annotation.MultiValidator"
 })
-@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target", "julc.optimization", "julc.costProfile"})
+@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target", "julc.optimization", "julc.costProfile", "julc.frontend"})
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
@@ -71,6 +72,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private CompilerTarget compilerTarget;
     private OptimizationLevel optimizationLevel;
     private OptimizationCostProfile optimizationCostProfile;
+    private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
@@ -97,6 +99,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 "julc.target", CompilerTarget.PLUTUS_V3_PV11.profileId());
         try {
             this.compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
+            var frontendName = processingEnv.getOptions().get("julc.frontend");
+            if (frontendName != null) this.frontend = CompilerFrontend.parse(frontendName);
             var optimizationOptions = OptimizationConfiguration.apply(
                     new CompilerOptions().setTarget(compilerTarget),
                     processingEnv.getOptions().getOrDefault(
@@ -217,7 +221,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             // 3. Compile with JulcCompiler (multi-file if libraries found)
             var options = new CompilerOptions()
                     .setTarget(compilerTarget)
-                    .setOptimizationLevel(optimizationLevel);
+                    .setOptimizationLevel(optimizationLevel)
+                    .setFrontend(frontend);
             if (optimizationCostProfile != null) {
                 options.setOptimizationCostProfile(optimizationCostProfile);
             }

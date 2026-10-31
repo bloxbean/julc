@@ -110,6 +110,10 @@ legacy ID is also accepted. All identifiers are case-sensitive and fail closed.
 See the [cost model catalog](../docs/src/content/docs/reference/cost-model-profiles.md)
 for pinned benchmark models and caller-supplied evaluation costs.
 
+`--frontend javac` (experimental, ADR-068 D4) compiles with the javac frontend,
+which is being ported. A construct not ported yet stops with `JULC0084`, as does
+a blueprint, so use it with `--no-blueprint`. The default is `javaparser`.
+
 ## Documentation
 
 For full documentation, visit: https://github.com/bloxbean/julc

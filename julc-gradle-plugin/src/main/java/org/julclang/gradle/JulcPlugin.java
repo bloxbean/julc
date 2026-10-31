@@ -48,6 +48,7 @@ public class JulcPlugin implements Plugin<Project> {
             task.getTarget().set(extension.getTarget());
             task.getOptimization().set(extension.getOptimization());
             task.getCostProfile().set(extension.getCostProfile());
+            task.getFrontend().set(extension.getFrontend());
             task.getProjectName().set(project.getName());
             task.getProjectVersion().set(project.provider(() -> project.getVersion().toString()));
         });
@@ -82,6 +83,8 @@ public class JulcPlugin implements Plugin<Project> {
                                 "-Ajulc.target=" + extension.getTarget().get());
                         task.getOptions().getCompilerArgs().add(
                                 "-Ajulc.optimization=" + extension.getOptimization().get());
+                        task.getOptions().getCompilerArgs().add(
+                                "-Ajulc.frontend=" + extension.getFrontend().get());
                         if (extension.getCostProfile().isPresent()) {
                             task.getOptions().getCompilerArgs().add(
                                     "-Ajulc.costProfile=" + extension.getCostProfile().get());

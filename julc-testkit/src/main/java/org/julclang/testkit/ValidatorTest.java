@@ -1,6 +1,7 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTargetDiagnostics;
@@ -147,6 +148,25 @@ public final class ValidatorTest {
     public static Program compile(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        CompileResult result = compiler.compile(javaSource);
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return result.program();
+    }
+
+    /**
+     * Compile Java source to a UPLC Program on the given Java frontend (experimental, ADR-068 D4). On
+     * {@link CompilerFrontend#JAVAC} a construct not ported yet is {@code JULC0084}.
+     *
+     * @param javaSource the Java source code
+     * @param frontend   the Java frontend
+     * @return the compiled Program
+     * @throws org.julclang.compiler.CompilerException if compilation fails
+     */
+    public static Program compile(String javaSource, CompilerFrontend frontend) {
+        Objects.requireNonNull(javaSource, "javaSource must not be null");
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(frontend));
         CompileResult result = compiler.compile(javaSource);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());

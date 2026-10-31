@@ -9,5 +9,13 @@ public enum CompilerFrontend {
     /** The frozen reference frontend (ADR-068 D4). */
     JAVAPARSER,
     /** javac reads, attributes and types the sources (ADR-068 D1). */
-    JAVAC
+    JAVAC;
+
+    /** The frontend a host's option names: {@code javaparser} or {@code javac}, in either case. */
+    public static CompilerFrontend parse(String name) {
+        for (var frontend : values()) {
+            if (frontend.name().equalsIgnoreCase(name)) return frontend;
+        }
+        throw new CompilerException("Unknown frontend '" + name + "'. Supported: javaparser, javac.");
+    }
 }

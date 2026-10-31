@@ -1,5 +1,6 @@
 package org.julclang.gradle;
 
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.OptimizationLevel;
 import org.gradle.api.Project;
 import org.gradle.api.file.DirectoryProperty;
@@ -16,6 +17,7 @@ import org.gradle.api.provider.Property;
  *   <li>{@code sourceMap} — enable source map generation for debugging (default: {@code false})</li>
  *   <li>{@code blueprint} — generate strict CIP-57 metadata (default: {@code true})</li>
  *   <li>{@code target} — exact compiler target profile ID (default: PV11)</li>
+ *   <li>{@code frontend} — experimental (ADR-068 D4): {@code javaparser} or {@code javac} (default: {@code javaparser})</li>
  * </ul>
  * <p>
  * Example:
@@ -34,6 +36,7 @@ public class JulcExtension {
     private final Property<String> target;
     private final Property<String> optimization;
     private final Property<String> costProfile;
+    private final Property<String> frontend;
 
     public JulcExtension(Project project) {
         ObjectFactory objects = project.getObjects();
@@ -48,6 +51,7 @@ public class JulcExtension {
         optimization = objects.property(String.class)
                 .convention(OptimizationLevel.DEFAULT_PROFILE_ID);
         costProfile = objects.property(String.class);
+        frontend = objects.property(String.class).convention(CompilerFrontend.JAVAPARSER.name().toLowerCase());
     }
 
     public DirectoryProperty getSourceDir() {
@@ -85,5 +89,13 @@ public class JulcExtension {
     /** Optional compatibility ID (e.g. plutus-v3-pv11-costs-v1); unused by compilation. */
     public Property<String> getCostProfile() {
         return costProfile;
+    }
+
+    /**
+     * Experimental (ADR-068 D4): the Java frontend, {@code javaparser} or {@code javac}. On {@code javac} a construct not
+     * ported yet fails the build with {@code JULC0084}, and so does a blueprint: use {@code blueprint = false}.
+     */
+    public Property<String> getFrontend() {
+        return frontend;
     }
 }

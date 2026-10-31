@@ -9,6 +9,7 @@ import org.julclang.compiler.CompilerTargetRegistry;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.ScriptPurposeMetadata;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.OptimizationConfiguration;
 import org.julclang.core.source.SourceMapSerializer;
 import org.julclang.stdlib.StdlibRegistry;
@@ -72,6 +73,10 @@ public abstract class CompileJulcTask extends DefaultTask {
     @Optional
     public abstract Property<String> getCostProfile();
 
+    /** Experimental (ADR-068 D4): the Java frontend. */
+    @Input
+    public abstract Property<String> getFrontend();
+
     /** Blueprint preamble title. */
     @Input
     public abstract Property<String> getProjectName();
@@ -91,7 +96,7 @@ public abstract class CompileJulcTask extends DefaultTask {
 
         var stdlib = StdlibRegistry.defaultRegistry();
         var options = OptimizationConfiguration.apply(
-                new CompilerOptions().setTarget(compilerTarget),
+                new CompilerOptions().setTarget(compilerTarget).setFrontend(CompilerFrontend.parse(getFrontend().get())),
                 getOptimization().get(),
                 getCostProfile().getOrNull());
         if (sourceMapEnabled) {

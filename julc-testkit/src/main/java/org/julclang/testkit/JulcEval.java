@@ -1,6 +1,7 @@
 package org.julclang.testkit;
 
 import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.core.Term;
 import org.julclang.vm.EvalResult;
@@ -53,6 +54,7 @@ public final class JulcEval {
     private final org.julclang.core.PlutusData[] params;
     private boolean sourceMapEnabled;
     private boolean tracingEnabled;
+    private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
     private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
     private volatile List<BuiltinExecution> lastBuiltinTrace = List.of();
 
@@ -114,6 +116,15 @@ public final class JulcEval {
     public static JulcEval forSource(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
         return new JulcEval(javaSource, null, null, null);
+    }
+
+    /**
+     * Experimental (ADR-068 D4): the Java frontend that compiles the methods, {@link CompilerFrontend#JAVAPARSER} by
+     * default. On {@link CompilerFrontend#JAVAC} a construct not ported yet is {@code JULC0084}.
+     */
+    public JulcEval frontend(CompilerFrontend frontend) {
+        this.frontend = Objects.requireNonNull(frontend, "frontend must not be null");
+        return this;
     }
 
     /**
@@ -270,8 +281,8 @@ public final class JulcEval {
     // --- Internal ---
 
     private Term evaluateTerm(String methodName, org.julclang.core.PlutusData[] args) {
-        if (sourceMapEnabled) {
-            return evaluateTermWithSourceMap(methodName, args);
+        if (sourceMapEnabled || frontend != CompilerFrontend.JAVAPARSER) {
+            return evaluateTermWithOptions(methodName, args);
         }
         if (javaSource != null) {
             return MethodEvaluator.evaluateTerm(javaSource, methodName, params, args);
@@ -279,8 +290,8 @@ public final class JulcEval {
         return MethodEvaluator.evaluateTerm(sourceClass, sourceRoot, methodName, params, args);
     }
 
-    private Term evaluateTermWithSourceMap(String methodName, org.julclang.core.PlutusData[] args) {
-        var options = new CompilerOptions().setSourceMapEnabled(true);
+    private Term evaluateTermWithOptions(String methodName, org.julclang.core.PlutusData[] args) {
+        var options = new CompilerOptions().setSourceMapEnabled(sourceMapEnabled).setFrontend(frontend);
         var compiler = new org.julclang.compiler.JulcCompiler(
                 org.julclang.stdlib.StdlibRegistry.defaultRegistry(), options);
 
