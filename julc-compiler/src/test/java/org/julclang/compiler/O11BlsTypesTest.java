@@ -127,13 +127,13 @@ class O11BlsTypesTest {
         record Bad(String name, String body, String code, String fragment) {}
         var cases = List.of(
                 new Bad("bytes into add", "static JulcG1 m(byte[] a, byte[] dst) { return BlsLib.g1Add(a, Builtins.bls12_381_G1_hashToGroup(a, dst)); }",
-                        "JULC0041", "requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 into G1 add", "static JulcG1 m(byte[] dst) { JulcG2 q = Builtins.bls12_381_G2_hashToGroup(dst, dst); JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return Builtins.bls12_381_G1_add(p, q); }",
-                        "JULC0041", "requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("Miller result into G1 add", "static JulcG1 m(byte[] dst) { JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); JulcG2 q = Builtins.bls12_381_G2_hashToGroup(dst, dst); return BlsLib.g1Add(BlsLib.millerLoop(p, q), p); }",
-                        "JULC0041", "requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 held as byte[]", "static byte[] m(byte[] dst) { byte[] p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return p; }",
-                        "JULC0041", "G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 compared with ==", "static boolean m(byte[] dst) { JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return p == p; }",
                         "JULC0041", "G1"),
                 new Bad("G1 in a Data list", "static boolean m(byte[] dst) { JulcList<JulcG1> ps = JulcList.of(Builtins.bls12_381_G1_hashToGroup(dst, dst)); return true; }",
@@ -141,90 +141,90 @@ class O11BlsTypesTest {
                 new Bad("G1 at the boundary", "static boolean m(JulcG1 p) { return true; }", "JULC0042", "G1"),
                 new Bad("scalars at the boundary", "static boolean m(JulcScalars s) { return true; }", "JULC0042", "NativeList[Integer]"),
                 new Bad("Data list as scalars", "static JulcG1 m(JulcList<BigInteger> s, byte[] dst) { return Builtins.bls12_381_G1_multiScalarMul(s, Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst))); }",
-                        "JULC0041", "received List[Integer], but requires NativeList[Integer]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 in g1Points", "static JulcG1Points m(byte[] dst) { return Builtins.g1Points(Builtins.bls12_381_G2_hashToGroup(dst, dst)); }",
-                        "JULC0041", "requires G1"),
+                        "JULC0085", "(compiler.err.cant.apply.symbol)"),
                 new Bad("points where scalars are required", "static JulcG1 m(byte[] dst) { JulcG1Points ps = Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst)); return Builtins.bls12_381_G1_multiScalarMul(ps, ps); }",
-                        "JULC0041", "requires NativeList[Integer]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 points where G2 points are required", "static JulcG2 m(byte[] dst) { JulcG1Points ps = Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst)); return Builtins.bls12_381_G2_multiScalarMul(Builtins.scalars(BigInteger.ONE), ps); }",
-                        "JULC0041", "requires NativeList[G2]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 where Data is required", "static boolean m(byte[] dst, PlutusData d) { return Builtins.equalsData(Builtins.bls12_381_G1_hashToGroup(dst, dst), d); }",
                         "JULC0041", "G1"),
                 new Bad("G1 in a record", "record Box(JulcG1 p) {}\n static boolean m(byte[] dst) { var box = new Box(Builtins.bls12_381_G1_hashToGroup(dst, dst)); return true; }",
                         "JULC0041", "requires Data"),
                 // G2 and Miller-result shapes
                 new Bad("bytes into g2Add", "static JulcG2 m(byte[] a, byte[] dst) { return BlsLib.g2Add(a, Builtins.bls12_381_G2_hashToGroup(a, dst)); }",
-                        "JULC0041", "requires G2"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 into G2 add", "static JulcG2 m(byte[] dst) { JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); JulcG2 q = Builtins.bls12_381_G2_hashToGroup(dst, dst); return Builtins.bls12_381_G2_add(q, p); }",
-                        "JULC0041", "requires G2"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 held as byte[]", "static byte[] m(byte[] dst) { byte[] q = Builtins.bls12_381_G2_hashToGroup(dst, dst); return q; }",
-                        "JULC0041", "G2"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("Miller result at the boundary", "static boolean m(JulcMlResult r) { return true; }", "JULC0042", "MlResult"),
                 new Bad("G2 points at the boundary", "static boolean m(JulcG2Points ps) { return true; }", "JULC0042", "NativeList[G2]"),
                 // native list producers: element types
-                new Bad("bytes literal in scalars", "static JulcScalars m() { return Builtins.scalars(new byte[]{1}); }", "JULC0041", "requires Integer"),
-                new Bad("bytes variable in scalars", "static JulcScalars m(byte[] dst) { return Builtins.scalars(BigInteger.ONE, dst); }", "JULC0041", "requires Integer"),
-                new Bad("Data in scalars", "static JulcScalars m(PlutusData d) { return Builtins.scalars(d); }", "JULC0041", "requires Integer"),
+                new Bad("bytes literal in scalars", "static JulcScalars m() { return Builtins.scalars(new byte[]{1}); }", "JULC0085", "(compiler.err.cant.apply.symbol)"),
+                new Bad("bytes variable in scalars", "static JulcScalars m(byte[] dst) { return Builtins.scalars(BigInteger.ONE, dst); }", "JULC0085", "(compiler.err.cant.apply.symbol)"),
+                new Bad("Data in scalars", "static JulcScalars m(PlutusData d) { return Builtins.scalars(d); }", "JULC0085", "(compiler.err.cant.apply.symbol)"),
                 new Bad("byte list into scalarsFromList", "static JulcScalars m(JulcList<byte[]> xs) { return Builtins.scalarsFromList(xs); }",
-                        "JULC0041", "received List[ByteString], but requires List[Integer]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("integer list into g1PointsFromCompressed", "static JulcG1Points m(JulcList<BigInteger> xs) { return Builtins.g1PointsFromCompressed(xs); }",
-                        "JULC0041", "received List[Integer], but requires List[ByteString]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 // same-class helpers: parameters and returns
                 new Bad("G1 into a byte[] helper parameter", "static boolean h(byte[] b) { return true; }\n static boolean m(byte[] dst) { return h(Builtins.bls12_381_G1_hashToGroup(dst, dst)); }",
-                        "JULC0041", "h argument 1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("Data list into a native helper parameter", "static JulcG1 f(JulcScalars s, JulcG1Points ps) { return Builtins.bls12_381_G1_multiScalarMul(s, ps); }\n static JulcG1 m(JulcList<BigInteger> xs, byte[] dst) { return f(xs, Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst))); }",
-                        "JULC0041", "received List[Integer], but requires NativeList[Integer]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 returned as byte[]", "static byte[] m(byte[] dst) { return Builtins.bls12_381_G1_hashToGroup(dst, dst); }",
-                        "JULC0041", "Return value"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("byte[] returned as G1 from a helper", "static JulcG1 h(byte[] b) { return b; }\n static boolean m(byte[] dst) { return BlsLib.g1Equal(h(dst), h(dst)); }",
-                        "JULC0041", "requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 // conditional branches (PR #150 review): both orders, native/Data, native/bytes, scalar list/point list, native list/Data list
                 new Bad("G2 in the else branch of a G1 conditional", "static byte[] m(boolean b, byte[] dst) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); var q = Builtins.bls12_381_G2_hashToGroup(dst, dst); return BlsLib.g1Compress(b ? p : q); }",
-                        "JULC0041", "Conditional else branch received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 in the else branch of a G2 conditional", "static byte[] m(boolean b, byte[] dst) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); var q = Builtins.bls12_381_G2_hashToGroup(dst, dst); return BlsLib.g1Compress(b ? q : p); }",
-                        "JULC0041", "Conditional else branch received G1, but requires G2"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("Data in the else branch of a G1 conditional", "static byte[] m(boolean b, byte[] dst, PlutusData d) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return BlsLib.g1Compress(b ? p : d); }",
-                        "JULC0041", "Conditional else branch received Data, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G1 in the else branch of a Data conditional", "static byte[] m(boolean b, byte[] dst, PlutusData d) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return BlsLib.g1Compress(b ? d : p); }",
-                        "JULC0041", "Conditional else branch received G1, but requires Data"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("bytes in the else branch of a G1 conditional", "static byte[] m(boolean b, byte[] dst) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); return BlsLib.g1Compress(b ? p : dst); }",
-                        "JULC0041", "Conditional else branch received ByteString, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("a point list in the else branch of a scalars conditional", "static JulcG1 m(boolean b, byte[] dst) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); var s = Builtins.scalars(BigInteger.ONE); var ps = Builtins.g1Points(p); return BlsLib.g1MultiScalarMul(b ? s : ps, ps); }",
-                        "JULC0041", "Conditional else branch received NativeList[G1], but requires NativeList[Integer]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("scalars in the else branch of a point-list conditional", "static JulcG1 m(boolean b, byte[] dst) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); var s = Builtins.scalars(BigInteger.ONE); var ps = Builtins.g1Points(p); return BlsLib.g1MultiScalarMul(s, b ? ps : s); }",
-                        "JULC0041", "Conditional else branch received NativeList[Integer], but requires NativeList[G1]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("a Data list in the else branch of a scalars conditional", "static JulcG1 m(boolean b, byte[] dst, JulcList<BigInteger> xs) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); var s = Builtins.scalars(BigInteger.ONE); return BlsLib.g1MultiScalarMul(b ? s : xs, Builtins.g1Points(p)); }",
-                        "JULC0041", "Conditional else branch received List[Integer], but requires NativeList[Integer]"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("a mixed conditional as a G1 initializer", "static boolean m(boolean b, byte[] dst) { var p = Builtins.bls12_381_G1_hashToGroup(dst, dst); var q = Builtins.bls12_381_G2_hashToGroup(dst, dst); JulcG1 r = b ? p : q; return BlsLib.g1Equal(r, r); }",
-                        "JULC0041", "Conditional else branch received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 // loop-local declarations (PR #150 review): plain, nested and break-aware loops; bytes as well as the wrong group
                 new Bad("G2 into a loop-local G1 declaration", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { JulcG1 p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); } return ok; }",
-                        "JULC0041", "Variable 'p' initializer received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 into a nested loop-local G1 declaration", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { for (var y : xs) { JulcG1 p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); } } return ok; }",
-                        "JULC0041", "Variable 'p' initializer received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 into a break-aware loop-local G1 declaration", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { JulcG1 p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); if (ok) { break; } } return ok; }",
-                        "JULC0041", "Variable 'p' initializer received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("bytes into a loop-local G1 declaration", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { JulcG1 p = dst; ok = BlsLib.g1Equal(p, p); } return ok; }",
-                        "JULC0041", "Variable 'p' initializer received ByteString, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 // loop assignments (PR #150 review): a single accumulator, before a break, a loop-body local; a native
                 // accumulator among several is rejected earlier, at the Data pack of the multi-accumulator loop
                 new Bad("G2 assigned to a G1 accumulator", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); for (var x : xs) { acc = Builtins.bls12_381_G2_hashToGroup(dst, dst); } return BlsLib.g1Equal(acc, acc); }",
-                        "JULC0041", "Assignment to 'acc' received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 assigned to a G1 accumulator among several", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); BigInteger n = BigInteger.ZERO; for (var x : xs) { n = n.add(x); acc = Builtins.bls12_381_G2_hashToGroup(dst, dst); } return BlsLib.g1Equal(acc, acc) && n.equals(BigInteger.ZERO); }",
-                        "JULC0041", "Data encoding received G1, but requires Data"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 assigned to a G1 accumulator before a break", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); for (var x : xs) { if (x.equals(BigInteger.ONE)) { acc = Builtins.bls12_381_G2_hashToGroup(dst, dst); break; } } return BlsLib.g1Equal(acc, acc); }",
-                        "JULC0041", "Assignment to 'acc' received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 assigned to a G1 accumulator among several before a break", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); BigInteger n = BigInteger.ZERO; for (var x : xs) { if (x.equals(BigInteger.ONE)) { n = n.add(x); acc = Builtins.bls12_381_G2_hashToGroup(dst, dst); break; } } return BlsLib.g1Equal(acc, acc) && n.equals(BigInteger.ZERO); }",
-                        "JULC0041", "Data encoding received G1, but requires Data"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 assigned to a loop-body G1 local", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); } return ok; }",
-                        "JULC0041", "Assignment to 'p' received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("bytes assigned to a G1 accumulator", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); for (var x : xs) { acc = dst; } return BlsLib.g1Equal(acc, acc); }",
-                        "JULC0041", "Assignment to 'acc' received ByteString, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 // a bare nested block in the loop body is spliced into it (PR #150 review round three)
                 new Bad("G2 assigned to a G1 accumulator inside a nested block", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); for (var x : xs) { { acc = Builtins.bls12_381_G2_hashToGroup(dst, dst); } } return BlsLib.g1Equal(acc, acc); }",
-                        "JULC0041", "Assignment to 'acc' received G2, but requires G1"),
+                        "JULC0085", "(compiler.err.prob.found.req)"),
                 new Bad("G2 into a loop-local G1 declaration inside a nested block", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { { JulcG1 p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); } } return ok; }",
-                        "JULC0041", "Variable 'p' initializer received G2, but requires G1"));
+                        "JULC0085", "(compiler.err.prob.found.req)"));
         for (var bad : cases) {
             var error = assertThrows(CompilerException.class,
                     () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + "class Bad {\n" + bad.body() + "\n}\n", "m"),
@@ -242,7 +242,7 @@ class O11BlsTypesTest {
                         JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst);
                         for (var x : xs) {
                             acc = BlsLib.g1Neg(acc);
-                            BlsLib.g2Compress(acc = Builtins.bls12_381_G2_hashToGroup(dst, dst));
+                            BlsLib.g1Compress(acc = BlsLib.g1Neg(acc));
                         }
                         return BlsLib.g1Equal(acc, acc);
                     }
@@ -261,9 +261,14 @@ class O11BlsTypesTest {
                     }
                 }
                 """, "m"));
-        assertTrue(undeclared.getMessage().contains("Assignment to undeclared variable 'undeclared'"), undeclared.getMessage());
+        // javac rejects the undeclared name first (ADR-068 D13).
+        assertEquals("JULC0085", undeclared.diagnostics().getFirst().code(), undeclared.getMessage());
+        assertTrue(undeclared.getMessage().contains("(compiler.err.cant.resolve.location)"), undeclared.getMessage());
         // A validator entrypoint cannot take a point or a native list either (the strict boundary has no decoder for them).
         var validator = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(IMPORTS + """
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class BlsDatumValidator {
                     @Entrypoint

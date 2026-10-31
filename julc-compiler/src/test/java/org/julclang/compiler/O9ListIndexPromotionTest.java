@@ -540,10 +540,11 @@ class O9ListIndexPromotionTest {
     void validatorObservesTheIndexFailureContractThroughTheStrictBoundary() {
         var validator = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class IndexedByRedeemer {
-                    @Param JulcList<BigInteger> allowed;
+                    @Param static JulcList<BigInteger> allowed;
                     @Entrypoint static boolean validate(PlutusData datum, BigInteger index, ScriptContext ctx) {
-                        return allowed.get(index).add(allowed.get(0)).equals(BigInteger.valueOf(70));
+                        return allowed.get(index.longValue()).add(allowed.get(0)).equals(BigInteger.valueOf(70));
                     }
                 }
                 """;
@@ -711,6 +712,7 @@ class O9ListIndexPromotionTest {
                 """;
         var viaCallback = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class CallbackValidator {
                     record Input(JulcList<JulcList<BigInteger>> groups, BigInteger mode) {}
                 """ + helper + """
@@ -733,6 +735,7 @@ class O9ListIndexPromotionTest {
 
         var typed = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class TypedValidator {
                 """ + helper + """
                     @Entrypoint static boolean validate(PlutusData datum, JulcList<BigInteger> xs, ScriptContext ctx) {
@@ -828,8 +831,9 @@ class O9ListIndexPromotionTest {
     void validatorParametersAndDatumFieldsPromoteInsideTheirScopes() {
         var validator = O9ListIndexFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class ParamValidator {
-                    @Param JulcList<BigInteger> allowed;
+                    @Param static JulcList<BigInteger> allowed;
                     record Datum(JulcList<BigInteger> items, BigInteger n) {}
                     static boolean firstTwoAllowed(BigInteger a, BigInteger b) {
                         return allowed.get(0).equals(a) && allowed.get(1).equals(b);
@@ -853,8 +857,9 @@ class O9ListIndexPromotionTest {
         }
 
         var source = O9ListIndexFixtures.IMPORTS + """
+                import org.julclang.stdlib.annotation.Param;
                 class ParamShapes {
-                    @Param JulcList<BigInteger> allowed;
+                    @Param static JulcList<BigInteger> allowed;
                     static BigInteger firstTwo() { return allowed.get(0).add(allowed.get(1)); }
                 }
                 """;
