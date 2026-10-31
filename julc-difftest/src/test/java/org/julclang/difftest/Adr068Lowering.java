@@ -253,7 +253,8 @@ final class Adr068Lowering {
         List<JavacEvidence.Attempt> attempts;
         try {
             attempts = JavacEvidence.attempts(c.main.text(), Adr068Ledger.texts(c.libraries),
-                    c.entry.equals("compileMethod") ? c.method : null, options(c, OptimizationLevel.DEFAULT, c.sourceMap, CompilerFrontend.JAVAC));
+                    c.entry.equals("compileMethod") ? c.method : null, Adr068Ledger.lookup(c.lookup),
+                    options(c, OptimizationLevel.DEFAULT, c.sourceMap, CompilerFrontend.JAVAC));
         } catch (AssertionError e) {
             throw e;
         } catch (RuntimeException e) {
@@ -264,7 +265,8 @@ final class Adr068Lowering {
         String mismatch = null;
         var pir = new ArrayList<String>();
         var attempted = new LinkedHashMap<String, JavacEvidence.Attempt>();
-        for (var attempt : attempts) attempted.put(attempt.binder(), attempt);
+        // Overloads share a binder. The reference stops at the first it cannot accept, having recorded the one before it.
+        for (var attempt : attempts) attempted.putIfAbsent(attempt.binder(), attempt);
         for (var entry : reference.entrySet()) {
             var attempt = attempted.remove(entry.getKey());
             if (attempt == null || attempt.term() == null) {

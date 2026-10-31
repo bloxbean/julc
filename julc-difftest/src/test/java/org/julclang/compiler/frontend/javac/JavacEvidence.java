@@ -12,6 +12,7 @@ import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.compiler.pir.StdlibLookup;
 
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
@@ -36,10 +37,11 @@ public final class JavacEvidence {
      * Every method the reference lowers of {@code root}, each lowered on its own, or nothing if the program is rejected
      * before its methods; {@code method} is a {@code compileMethod} target, or null for a validator.
      */
-    public static List<Attempt> attempts(String root, List<String> pool, String method, CompilerOptions options) {
+    public static List<Attempt> attempts(String root, List<String> pool, String method, StdlibLookup stdlib,
+                                         CompilerOptions options) {
         var attempts = new ArrayList<Attempt>();
         JavacCompilation.attempt(JavacFrontend.Unit.of(root), pool.stream().map(JavacFrontend.Unit::of).toList(), method,
-                        CompilationContext.resolve(options))
+                        stdlib, CompilationContext.resolve(options))
                 .forEach(a -> attempts.add(new Attempt(a.binder(), a.type(), a.term(), a.construct())));
         return attempts;
     }

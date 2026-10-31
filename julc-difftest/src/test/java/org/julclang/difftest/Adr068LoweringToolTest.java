@@ -40,10 +40,10 @@ class Adr068LoweringToolTest {
     /** I1b: a method is compared though the program stops at another. */
     @Test
     void aProgramPartlyCovered() {
-        assertRow("not-ported", 1, 2, "PLUS", row("""
+        assertRow("not-ported", 1, 2, "VARIABLE", row("""
                 class P {
                     static long helper(long a) { return a; }
-                    static long m(long a) { return a + a; }
+                    static long m(long a) { long b = a; return b; }
                 }
                 """));
     }
