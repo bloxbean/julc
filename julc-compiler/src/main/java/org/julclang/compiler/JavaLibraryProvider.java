@@ -6,6 +6,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 
 import org.julclang.compiler.backend.*;
+import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.*;
@@ -40,6 +41,11 @@ public final class JavaLibraryProvider implements LibraryProvider {
     private final Map<String, PirType> definitions;
 
     public JavaLibraryProvider(List<String> sources, StdlibLookup lookup, CompilerOptions options) {
+        if (CorpusRecorder.ACTIVE != null) {
+            CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null, null,
+                    sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(), lookup,
+                    options != null ? options : new CompilerOptions());
+        }
         context = CompilationContext.resolve(options);
         this.lookup = lookup;
         contentHash = contentHash(sources);

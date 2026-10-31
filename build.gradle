@@ -101,6 +101,13 @@ subprojects {
         maxHeapSize = '1g'
         // ADR-060 G2: every compilation in tests checks the generated-binder namespace.
         systemProperty 'julc.verifyBinderNamespace', 'true'
+        // ADR-068 M0: `-Pjulc.corpus.record=<dir>` records every source these modules' tests compile through a
+        // compiler entry point (CorpusRecorder); unset, nothing is recorded and nothing changes.
+        def corpusRecord = providers.gradleProperty('julc.corpus.record')
+        if (corpusRecord.present && project.name in ['julc-compiler', 'julc-stdlib', 'julc-testkit', 'julc-difftest', 'julc-examples']) {
+            systemProperty 'julc.corpus.record', rootProject.file(corpusRecord.get()).absolutePath
+            outputs.upToDateWhen { false }
+        }
     }
 
     tasks.withType(Javadoc).configureEach {
