@@ -95,7 +95,9 @@ class ComparisonLoweringTest {
 
     @Test
     void formsOutsideTheRuleKeepTodaysLowering() {
-        for (String form : List.of("a.compareTo(b) > 0L", "(a.compareTo(b)) > 0", "a.compareTo(b) < 1",
+        // The match is syntactic and sees through no parentheses (ADR-068 D6, review F600).
+        for (String form : List.of("a.compareTo(b) > 0L", "(a.compareTo(b)) > 0", "a.compareTo(b) > (0)",
+                "(0) < a.compareTo(b)", "0 < (a.compareTo(b))", "a.compareTo(b) < 1",
                 "a.compareTo(b) == -1", "0L == a.compareTo(b)", "a.compareTo(b) + 0 > 0")) {
             String pir = pir("return " + form + ";");
             assertEquals(1, count(pir, "(con integer -1)"), form + "\n" + pir);

@@ -168,12 +168,13 @@ class ComparisonOrderDiffTest {
     }
 
     /**
-     * Outside the rule ({@code OP 0L}, a parenthesized call, a comparison with 1) {@code compareTo} keeps today's
+     * Outside the rule ({@code OP 0L}, a parenthesized call or zero, a comparison with 1) {@code compareTo} keeps today's
      * lowering, which evaluates a traced operand more than once (T13, #146): those stay open.
      */
     @Test
     void otherComparisonsKeepTodaysLowering() {
         for (String form : List.of("t(\"A\", a).compareTo(t(\"B\", b)) > 0L", "(t(\"A\", a).compareTo(t(\"B\", b))) > 0",
+                "t(\"A\", a).compareTo(t(\"B\", b)) > (0)",
                 "t(\"A\", a).compareTo(t(\"B\", b)) < 1")) {
             var report = run("", "boolean", "return " + form + ";", 3, 1);
             assertTrue(report.all(Verdict.Kind.MISMATCH), report.describe());
