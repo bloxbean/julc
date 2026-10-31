@@ -11,6 +11,7 @@ import org.julclang.compiler.error.DiagnosticInfo;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
+import org.julclang.compiler.frontend.javac.JavacProvenance;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
@@ -717,7 +718,7 @@ public class JulcCompiler {
 
         var result = new CompileResult(
                 program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap,
-                context.target(), context.optimizationReport());
+                context.target(), context.optimizationReport(), context.javacProvenance());
         ContractSchema contractSchema = captureContractSchema
                 ? buildContractSchema(scriptPurpose, entrypointMethod, entrypointInfos,
                         paramFields, typeResolver, validatorClass)
@@ -733,15 +734,19 @@ public class JulcCompiler {
      * ADR-068 M1's javac gate (D3, D5): javac analyzes the root with the libraries on its source path before the
      * JavaParser frontend runs; libraries in {@link CompilerOptions#getJarLibrarySources()} are JAR sources (D8). In
      * {@code enforce} mode a javac error rejects, and the JavaParser frontend compiles the gate's effective pool (the
-     * libraries without those D8's precedence left out); in {@code report} mode (the default until M1's dialect
-     * rewrite) and {@code off} it compiles the libraries as given, B0's pool.
+     * libraries without those D8's precedence left out); in {@code report} mode and {@code off} it compiles the
+     * libraries as given, B0's pool. What the gate saw goes on the compilation's result (D3).
      *
      * @return the libraries the JavaParser frontend compiles
      */
     private <T> List<T> javacGate(String entry, JavacFrontend.Unit root, List<T> libraries,
                                   Function<T, JavacFrontend.Unit> unit, CompilationContext context) {
         var result = JavacGate.check(entry, List.of(root), libraries.stream().map(unit).toList(), options);
-        if (result == null) return libraries;
+        if (result == null) {
+            context.setJavacProvenance(JavacProvenance.notRun(JavacGate.mode(options)));
+            return libraries;
+        }
+        context.setJavacProvenance(JavacProvenance.of(JavacGate.mode(options), result));
         context.logf("javac gate (%s): javac %s, platform %s, stubs %s: %s", JavacGate.mode(options),
                 result.javacVersion(), result.platformDigest(), result.stubsDigest(),
                 result.isAccepted() ? "accepted" : result.diagnostics().size() + " rejection(s)");
@@ -1169,7 +1174,7 @@ public class JulcCompiler {
                 producingStage);
         return new CompileResult(
                 program, diagnostics, paramInfos, body, uplcTerm, sourceMap,
-                context.target(), context.optimizationReport());
+                context.target(), context.optimizationReport(), context.javacProvenance());
     }
 
     // --- Library compilation ---

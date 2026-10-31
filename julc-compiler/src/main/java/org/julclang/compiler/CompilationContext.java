@@ -1,6 +1,7 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.frontend.javac.JavacProvenance;
 import org.julclang.compiler.pir.ArrayLiteralFoldPass;
 import org.julclang.compiler.pir.ListIndexPromotionPass;
 import org.julclang.compiler.pir.ValueConversionSharingPass;
@@ -50,6 +51,7 @@ public final class CompilationContext {
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
     private Predicate<String> binderNamespace;
+    private JavacProvenance javacProvenance = JavacProvenance.UNAVAILABLE;
 
     private CompilationContext(
             ResolvedCompilerTarget resolvedTarget,
@@ -159,6 +161,15 @@ public final class CompilationContext {
     public void recordOptimizationRules(Iterable<String> ruleIds) {
         Objects.requireNonNull(ruleIds, "ruleIds");
         ruleIds.forEach(this::recordOptimizationRule);
+    }
+
+    /** What javac saw of this compilation (ADR-068 D3). */
+    public JavacProvenance javacProvenance() {
+        return javacProvenance;
+    }
+
+    void setJavacProvenance(JavacProvenance provenance) {
+        javacProvenance = provenance;
     }
 
     public OptimizationReport optimizationReport() {

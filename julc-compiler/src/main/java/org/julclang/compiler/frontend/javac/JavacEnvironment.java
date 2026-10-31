@@ -2,9 +2,8 @@ package org.julclang.compiler.frontend.javac;
 
 /**
  * The javac environment every compilation of this process is checked in (ADR-068 D3): the host's javac version and
- * the digests of the embedded platform and API stubs. It is the same for every compilation of a process, so it is
- * exposed once here, additively, rather than on {@code CompileResult} (a record whose shape I5 fixes); per-result
- * metadata is an M1 exit item.
+ * the digests of the embedded platform and API stubs. It is the same for every compilation of a process; what one
+ * compilation saw is {@link JavacProvenance}, on its result.
  *
  * @param javacVersion   the host runtime's version, which is its javac's
  * @param supported      whether that javac is the supported release (D3); when false, compilations are JULC0089

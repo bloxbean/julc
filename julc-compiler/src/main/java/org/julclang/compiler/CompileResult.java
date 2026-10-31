@@ -1,6 +1,7 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.frontend.javac.JavacProvenance;
 import org.julclang.compiler.pir.PirFormatter;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.Program;
@@ -21,7 +22,8 @@ import java.util.Objects;
  */
 public record CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
                              PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap,
-                             CompilerTarget target, OptimizationReport optimizationReport) {
+                             CompilerTarget target, OptimizationReport optimizationReport,
+                             JavacProvenance javacProvenance) {
 
     public CompileResult {
         diagnostics = List.copyOf(diagnostics);
@@ -29,6 +31,15 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
         target = Objects.requireNonNull(target, "target");
         optimizationReport = Objects.requireNonNull(
                 optimizationReport, "optimizationReport");
+        javacProvenance = Objects.requireNonNull(javacProvenance, "javacProvenance");
+    }
+
+    /** Backward-compatible constructor without javac provenance, which is reported as unavailable. */
+    public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
+                         PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap,
+                         CompilerTarget target, OptimizationReport optimizationReport) {
+        this(program, diagnostics, params, pirTerm, uplcTerm, sourceMap, target, optimizationReport,
+                JavacProvenance.UNAVAILABLE);
     }
 
     /** Backward-compatible constructor without optimization provenance. */
