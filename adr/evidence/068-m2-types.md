@@ -228,7 +228,7 @@ All at `19b4b555`, counted from the JUnit XML of every module; the commits after
 | `:julc-compiler:pairCaseTest --rerun` | 71 tests, 0 failures |
 | `onChainHarnessTest --rerun` | 16 tests, 0 failures |
 | `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1) | `BUILD SUCCESSFUL`; `wasmImageFull` rebuilt; 56 `ok` lines, no `not ok` |
-| `adr068Types`, the command above | `BUILD SUCCESSFUL`; 0 rows moved, 5 listed Data and blueprint differences, and two freezes and a check write identical files |
+| `adr068Types`, the command above | `BUILD SUCCESSFUL`; 0 rows moved, 5 listed Data and blueprint differences. A freeze and the two checks after it wrote identical tables |
 | `adr068Baseline`, gate off | As under Default path |
 | `verifyDiagnosticCodes`, `verifyJavacPlatform`, `checkJavacPlatformDerivation` | `BUILD SUCCESSFUL` |
 
