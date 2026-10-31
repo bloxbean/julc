@@ -1,7 +1,7 @@
 # ADR-068: Replace JavaParser with javac as JuLC's only Java frontend
 
-**Status:** Proposed (r6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r6)
+**Status:** Proposed (r7)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r7)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -388,14 +388,20 @@ testkit expose it. The default is `JAVAPARSER` until M5 and `JAVAC` after it; M6
     I12).
   - **JavaParser frontend:** its typing holds only `PirType`s, so it cannot tell `BigInteger` from an
     integer-backed `@NewType` (both `IntegerType`, `TypeResolver.java:518`), and adding Java-type inference there
-    would put a javac replica into the frozen reference. It matches an `IntegerType` receiver and argument with
-    method `compareTo` and one argument. That is sound because, for every such receiver, the frozen frontend
-    already lowers `compareTo` to the integer comparison: a `@NewType` that declares its own `compareTo` is
+    would put a javac replica into the frozen reference. So the rule is applied **at the point where that
+    frontend's existing dispatch has already selected the integer `compareTo` instance handler**
+    (`TypeMethodRegistry.java:259-273`, reached from `PirGenerator.java:1483-1527`), with the call in an `OP 0`
+    comparison. Every earlier dispatch decision stays as it is: in particular static-library dispatch, which runs
+    first and treats the receiver's spelling as a class name (`PirGenerator.java:1304-1315`, `:1379-1430`), so
+    `BigInteger Shadow = …; Shadow.compareTo(y) > 0` next to an `@OnchainLibrary class Shadow` still calls
+    `Shadow.compareTo`, as today (a name-resolution divergence of the T33 kind, on the accepted list). Where
+    the integer handler is selected, the frozen frontend already lowers `compareTo` to the integer comparison: a `@NewType` that declares its own `compareTo` is
     lowered to the builtin comparison today, ignoring the declared method (probe at B0; that is T31, on the
     accepted list above). So the rule changes only how many times the operands are evaluated (#146), never which
     comparison is made. No javac fact flows into that frontend (I8). Tests: a `@NewType` with a declared
-    `compareTo` (same comparison before and after), an accessor receiver (`p.amt().compareTo(y) > 0`), and a
-    method-call receiver.
+    `compareTo` (same comparison before and after), an accessor receiver (`p.amt().compareTo(y) > 0`), a
+    method-call receiver, the `Shadow` case (unchanged from B0), and a chained accessor the frozen frontend rejects
+    today (`box("L", 2).amt().compareTo(…) > 0`, still rejected).
   M1 gates that every rewritten corpus source costs no more, in size and budget, than the **order-correct**
   lowering of its dialect original, which is the dialect form plus D6's single binding where one is needed.
 - **Exception 2: security-class fixes go into both frontends.** A security-class defect is any silent divergence
@@ -498,8 +504,14 @@ exceptions D11 lists.
     methods included:
     - an array type: yes, except as an element, key or value type of a JuLC collection (`JulcList`, `JulcMap`,
       `JulcArray`), whose JVM equality M1 makes deep for `byte[]` (below);
-    - a JuLC collection whose element, key or value type is itself a JuLC collection: the JVM side is safe once
-      M1's change makes every JuLC collection's equality deep, but the on-chain side is **not** today: `contains`
+    - a JuLC collection whose element, key or value type is itself a JuLC collection: recursion and acceptance
+      are bounded by **Data encodability**. A `JulcArray` (a native array, not Data-encodable:
+      `PirHelpers.wrapEncode`, `:182-214`, and `TypeReferences.dataEncodable`, `:96-104`, have no array case) as an
+      element, key or value type of a `JulcList` or `JulcMap` cannot even be constructed on-chain today
+      (`MkCons: element type … ProtoArray … does not match`); the javac frontend rejects that type with `JULC0091`
+      (`NATIVE_ARRAY_NOT_DATA_ENCODABLE`) where it is written, with a regression. For nested lists and maps, the
+      JVM side is safe once M1's change makes every JuLC collection's equality deep, but the on-chain side is
+      **not** today: `contains`
       passes a nested-list target to `EqualsData` without encoding it (`PirHelpers.java:271`), and fails at run
       time (#297, a pre-existing defect on D4's accepted list). The javac frontend fixes it in M3 by encoding the
       target by its static type (`ListData`, `MapData`) in every collection comparison, as a D13 semantic fix with
@@ -528,20 +540,27 @@ exceptions D11 lists.
     recursive-type paths.
   - **Generic library methods (Elci, `TypedMapLib`).** Equality on a type variable is checked where the type
     variable is bound, not at the generic declaration:
-    - **Summaries.** Each generic method gets a summary, computed in M3 over its body: the set of its type
-      variables whose values it compares, directly or through a callee's summary (`g<T>` calling `h<T>`, which
-      calls `x.equals(y)`) or a lambda (`xs.any(x -> x.equals(t))`), propagated transitively to a fixed point.
-    - **Java call sites.** At a call from Java source, javac binds the type variables; every variable in the
-      callee's summary is checked by the rule above at its javac-bound type, which is nominal (so a Java
+    - **Summaries.** Each generic method gets a summary, computed in M3 over its body: a set of **comparison
+      obligations**, each a pair of the equality operation (`.equals`, or a collection operation from the table
+      above, with its container) and the compared static type as a type expression over the method's type
+      variables (`T`, `Optional<T>`, …). Obligations come from the body directly, from a callee's summary with
+      the call's type arguments substituted (`g<T>` calling `h<Optional<T>>` adds `h`'s obligations at
+      `Optional<T>`), and from lambdas, propagated to a fixed point. So `member(xs, t)` (`xs.contains(t)`) and
+      `direct(xs, t)` (`xs.head().equals(t)`) get different obligations: membership in `JulcList<T>` and
+      `.equals` at `T`.
+    - **Java call sites.** At a call from Java source, javac binds the type variables; every obligation is
+      substituted and checked by the rule above at the resulting type, which is nominal. At `T = byte[]`,
+      `member` is accepted (a JuLC collection's `byte[]` element is safe after M1) and `direct` is rejected; a Java
       `@NewType record Hash(byte[] hash)` is rejected and `PubKeyHash` accepted, although both are
-      `ByteStringType` in PIR).
+      `ByteStringType` in PIR.
     - **Instantiations requested by a non-Java producer** through `LibraryRequest.Instantiate` (Elci) never run on
       the JVM, so there is no JVM equality to diverge from: they are exempt, whatever their type arguments
       (canonical builtins such as `Bytes`, producer-owned types, or Java types), and equality is the producer's,
       Data equality (`EqualsData`) for Elci. The exemption is decided by who requested the instantiation, kept
       with the request, not by the erased `Map<String, PirType>` environment (`JavaLibraryProvider.java:288-317`).
-    - Tests: a two-level generic chain instantiated from Java at `byte[]` (rejected), at `Optional<byte[]>`
-      (rejected) and at `BigInteger` (accepted), and through a lambda; and, from a producer request,
+    - Tests: `member` against `direct` at `byte[]`; a two-level generic chain instantiated from Java at `byte[]`
+      (rejected), at `Optional<byte[]>` (rejected) and at `BigInteger` (accepted); a callee that introduces
+      `Optional<T>` (`h<Optional<T>>`, rejected at `T = byte[]`); and a lambda; and, from a producer request,
       `GenericExportsTest`'s specializations (`items.head().equals(target)` at `Bytes`, and the producer-owned sum,
       `:147-163`, `:242-263`), which stay accepted, plus requests at the Java `Hash` and `PubKeyHash` types and a
       foreign sum. ADR-059's provider contract is unchanged.
@@ -596,7 +615,8 @@ longer parsed on every compile. This closes #284 and #286 by construction.
     pool. A test exports an otherwise unreferenced library, with its schemes and specialization.
   - **Empty input.** `new JavaLibraryProvider(List.of(), …)` stays valid (`JavaLibraryProvider.java:42`, `:204`).
     It builds a **metadata-only task**: a `JavacTask` over the same file manager and stubs with no compilation
-    units, on which `parse()` and `analyze()` are **never called** (with no units they throw
+    units, wrapped in a small JuLC type that exposes only its `Elements` and `Types`, so `parse()` and `analyze()`
+    **cannot be called** on it (a test checks the wrapper's surface) (with no units they throw
     `IllegalStateException: no source files`); ledger metadata is read through the task's `Elements`, the same
     path every other input uses for stubs (D7, I11), and the exports are empty. `LedgerTypeProvider` is this
     empty provider, and Elci uses it: a regression through the real embedded file manager and shipped stubs checks
@@ -959,3 +979,14 @@ milestone's evidence; a skipped check fails the gate.
   - F103, F114 → `TypedMapLib.remove` added and the table checked against every supported signature; the
     `PlutusData` wording fixed; M0's row gains the accepted-divergence list and the `SECURITY.md` sentence; a new
     shape of an accepted row belongs to that row.
+- **r7** (2026-10-31, responds to the reviews of `e4eee805`: the review comment's approval with P3s F120–F121, and
+  Codex's F130–F132):
+  - F130 → the frozen-frontend `compareTo` rule applies where that frontend's dispatch has already selected the
+    integer instance handler, after static-library dispatch, so the `Shadow` case keeps today's behaviour; tests
+    for it and for a chained accessor that stays rejected.
+  - F131, F120 → summaries are comparison obligations (operation and container, compared type expression over the
+    type variables), substituted through calls and lambdas; `member` against `direct` at `byte[]` and a callee
+    introducing `Optional<T>` are tested.
+  - F132 → nested-collection acceptance is bounded by Data encodability; `JulcArray` inside a `JulcList` or
+    `JulcMap` is `JULC0091`.
+  - F121 → the metadata-only task is wrapped so `parse()`/`analyze()` cannot be called, with a surface test.
