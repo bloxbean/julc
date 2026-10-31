@@ -434,7 +434,10 @@ exceptions D11 lists.
 - **Comparisons through `compareTo` (closes #146 for this form).** Where the javac frontend sees
   `a.compareTo(b) OP 0` or `0 OP a.compareTo(b)`, with the call resolved to
   `java.math.BigInteger.compareTo(java.math.BigInteger)`, `OP` one of `<`, `<=`, `>`, `>=`, `==`, `!=`, and `0`
-  the `int` literal zero (`OP 0L` and other zero constants fall outside the rule and keep today's lowering):
+  the `int` literal zero (`OP 0L` and other zero constants fall outside the rule and keep today's lowering). The
+  match is syntactic and identical in both frontends: parentheses are **not** unwrapped, so
+  `(a.compareTo(b)) > 0` and `a.compareTo(b) > (0)` keep today's lowering in both (otherwise I1 would record
+  differences between the frontends that are not attributable):
   - it evaluates `a`, then `b`, each exactly once, with the **minimal binding** that keeps that order: none for
     `<`, `<=`, `==` and `!=`, whose builtin already evaluates its first argument first; for `>` and `>=`, whose
     builtin takes `b` first, one `#`-named `let` binding `a`, and only when both `a` and `b` are non-trivial
@@ -731,7 +734,11 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   frontend limitation a decision lifts, such as `reject-javac-21-25-pair-shape` under D11 or ADR-067 M2a/M2b's
   record patterns: its source and historical rows stay, and it gains an "Accepted by decision" row with that
   class's evidence). Only migration cases (sources meant to compile) are rewritten for javac.
-- A case may move between classes only by a new row; rows are never edited. The ledger is a checked-in,
+- A case may move between classes only by a new row; rows are never edited. The one exception is a **tool
+  correction**: when a frozen value is shown to be an artifact of the ledger tool itself (not of the compiler,
+  for example a class-loader identity hash in a JVM failure message), the frozen file may be regenerated at its
+  own commit with only the tool fix, and the evidence records the old and new values, the reason and that
+  commit. The ledger is a checked-in,
   generated file per milestone, and its totals (accepted, rejected, each class) appear in the milestone's
   evidence.
 
@@ -914,6 +921,34 @@ is [`evidence/068-javac-frontend-baseline.md`](evidence/068-javac-frontend-basel
 - **I1's "target" axis** has one value today (PV11's target); the ledger records it per row.
 - **Hosts.** `CorpusRecorder` is reachable from `JulcCompiler` (it uses `StackWalker`, `Files`, `MessageDigest`), so
   M1's native and Web image smokes confirm the images still build.
+
+### M1a: the javac gate (2026-10-31)
+
+Branch `wip/068-m1a`; evidence in [`evidence/068-m1a-javac-gate.md`](evidence/068-m1a-javac-gate.md) and
+`adr/evidence/068/m1a-gate-corpus-summary.txt`. `JavacFrontend`, `EmbeddedFileManager` (blob, stubs, in-memory pool;
+nothing else), the derived 69-class `java.base` blob (136 KB) and 251 API stubs (257 KB), `Ownership` (`JULC0081`
+by provenance), D5's `JULC0085` diagnostics and hints, and the gate on every entry point in `report` mode (the
+default until M1b switches it to `enforce`). FLAT bytes are identical over the M0 corpus; native CLI +16.98 MB;
+`julc-wasm` +2.63 MB brotli, with javac in the Web Image matching the JVM (`wasmGateProbe`); warm 1.24–1.26×, cold
++150–300 ms. In report mode, javac rejects 6,385 of the 11,196 corpus cases: M1b's worklist.
+
+Decisions recorded from the M1a reviews:
+
+- **Supported javac** is "highest source version is `RELEASE_25`" (D3's wording).
+- **Compile metadata.** `JavacEnvironment.current()` exposes the javac version and the blob and stub digests;
+  per-compilation metadata (CLI artifact metadata, the blueprint's `preamble.compiler`) is an M1 exit item, added
+  without breaking I5.
+- **Pool during M1 (simplification).** The gate's pool for an entry point is the library list that entry point
+  already resolves today, plus the bundled stdlib sources; that equals what the JavaParser frontend reads, so the
+  gate sees the same program. M3, which lowers from javac, replaces it with D8's "each entry point's pool equals
+  today's scan". Precedence is per qualified name (D8): a non-conflicting declaration of a pool unit is never
+  hidden.
+- **The blob's `module-info` is synthetic** (`java.base` exporting exactly the blob's packages), because the JDK's
+  own differs between builds (I4).
+- **javac completion.** `getRecordComponents()` on a class reached only through `getPermittedSubclasses()` needs
+  `Elements.getTypeElement` first; M2's I11 tests go through that path.
+- **Secondary top-level types** of pool units are indexed under every top-level name (javac's own source path
+  finds only the primary one).
 
 ## Revision history
 
