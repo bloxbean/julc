@@ -134,13 +134,20 @@ class JavacRejectionsTest {
 
     @Test
     void aNativeValueThroughARawReturn() {
-        assertSameMethodRejectionAsReference("""
+        // A helper, because the compiled method's own parameters are rejected earlier, at its data boundary.
+        String source = """
                 import org.julclang.core.types.JulcG1;
                 import org.julclang.core.types.JulcList;
                 class P {
-                    static JulcList m(JulcList<JulcG1> xs) { return xs; }
+                    static JulcList raw(JulcList<JulcG1> xs) { return xs; }
+                    static long m() { return 1; }
                 }
-                """.replace("m(JulcList<JulcG1> xs)", "m(boolean b, JulcList<JulcG1> xs)"), "m");
+                """;
+        assertSameMethodRejectionAsReference(source, "m");
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null,
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+        assertEquals(DiagnosticCodes.NATIVE_TYPE_MISMATCH.code(), e.diagnostics().getFirst().code(), e.getMessage());
+        assertTrue(e.diagnostics().getFirst().message().contains("Return value"), e.getMessage());
     }
 
     @Test

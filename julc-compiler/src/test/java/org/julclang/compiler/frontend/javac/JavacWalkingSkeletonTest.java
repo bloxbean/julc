@@ -135,6 +135,24 @@ class JavacWalkingSkeletonTest {
                 """);
     }
 
+    /** The source-map guard is on {@code boolean} returns: anything else keeps its value, as in the reference. */
+    @ParameterizedTest
+    @ValueSource(strings = {"long|5", "String|\"s\"", "Boolean|true"})
+    void anEntrypointThatDoesNotReturnABoolean(String typeAndValue) {
+        var parts = typeAndValue.split("\\|");
+        LoweringFixture.assertSameAsReference("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static %s validate(PlutusData redeemer, ScriptContext ctx) { return %s; }
+                }
+                """.formatted(parts[0], parts[1]));
+    }
+
     @Test
     void aMissingBodyIsReportedAsTheReferenceDoes() {
         LoweringFixture.assertSameRejectionAsReference("""
