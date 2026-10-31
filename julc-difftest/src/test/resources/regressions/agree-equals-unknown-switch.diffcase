@@ -1,0 +1,28 @@
+format: 3
+name: equals on a var from a switch expression (F1c)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 24
+expect: AGREE
+note: ADR-067 F1c: must stay structural.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    record R1(BigInteger x) {}
+    record R2(BigInteger x) {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new B(a);
+        var x = switch (s) {
+            case A p -> new R1(a);
+            case B q -> new R2(a);
+        };
+        return x.equals(new R2(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

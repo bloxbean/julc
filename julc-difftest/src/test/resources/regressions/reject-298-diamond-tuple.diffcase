@@ -1,0 +1,23 @@
+format: 2
+name: a diamond Tuple2 of JulcArrays is rejected (#298, F700)
+class: Probe
+method: m
+arg: 9f0102ff
+expect: REJECT JULC0091
+note: ADR-068 D6 (#298), review F700: a tuple's components are Data-encoded, and with a diamond their types are not
+note: written. Both components are arrays, so B0's failure (recorded.base) is the array's, not #299's.
+recorded.jvm: Value 01 []
+recorded.base: Failure [] "MkCons: element type Apply[f=ProtoArray[], arg=Data[]] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.core.types.Tuple2;
+
+public class Probe {
+
+    public static long m(JulcList<BigInteger> xs) {
+        var a = xs.toArray();
+        var t = new Tuple2<>(a, a);
+        return 1;
+    }
+}

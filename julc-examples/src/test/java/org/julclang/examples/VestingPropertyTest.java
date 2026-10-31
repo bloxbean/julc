@@ -24,15 +24,22 @@ import java.util.Arrays;
 class VestingPropertyTest {
 
     static final String VESTING_SOURCE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
             @SpendingValidator
             class VestingValidator {
                 record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}
 
                 @Entrypoint
                 static boolean validate(VestingDatum datum, PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                    PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
                     PlutusData pkh = datum.beneficiary();
-                    return ContextsLib.signedBy(txInfo, pkh);
+                    return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(pkh));
                 }
             }
             """;

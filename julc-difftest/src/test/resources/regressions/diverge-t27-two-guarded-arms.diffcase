@@ -1,0 +1,31 @@
+format: 3
+name: two guarded arms with different binding names, then unguarded (G5, T27)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 22
+arg: 00
+expect: AGREE
+recorded.jvm: Value 22 []
+recorded.base: Value 01 []
+note: ADR-067 G5: both guards are false for a = -3, so Java returns the third arm, -3.
+note: ADR-067 M1: guards are lowered with Java's meaning (D1, D2), so the case agrees; it diverged as T27 at the base (recorded.jvm and recorded.base).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a, BigInteger b) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when x.v().signum() > 0 -> BigInteger.ONE;
+            case A y when y.v().compareTo(BigInteger.valueOf(-10)) < 0 -> BigInteger.TWO;
+            case A z -> z.v();
+            case B w -> BigInteger.ZERO;
+        };
+    }
+}

@@ -1,0 +1,32 @@
+format: 3
+name: guards in a switch statement (G9)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 22
+expect: REJECT none
+note: ADR-067 G9: switch statements are out of scope.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        switch (s) {
+            case A x when x.v().signum() > 0 -> {
+                return BigInteger.ONE;
+            }
+            case A x -> {
+                return BigInteger.TWO;
+            }
+            case B y -> {
+                return BigInteger.ZERO;
+            }
+        }
+    }
+}

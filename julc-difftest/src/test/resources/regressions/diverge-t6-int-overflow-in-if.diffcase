@@ -1,0 +1,20 @@
+format: 2
+name: int arithmetic overflow in an if (round 3, T6)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T6 Value/Value
+jvm: Value 01 []
+uplc: Value 02 []
+note: ADR-067 M1 round 3, outside guards: Java wraps a.signum() + 2147483647 to a negative int (1); JuLC evaluates it without Java's width (2). ADR-062 T6.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    public static BigInteger m(BigInteger a) {
+        if (a.signum() + 2147483647 < 0) {
+            return BigInteger.ONE;
+        }
+        return BigInteger.TWO;
+    }
+}

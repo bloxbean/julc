@@ -252,6 +252,8 @@ class ValidatorProgramTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.MultiValidator;
                 import org.julclang.stdlib.annotation.Purpose;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
                 @MultiValidator
                 class Parity {
                     record Action(BigInteger amount) {}

@@ -95,7 +95,7 @@ class TestkitTest {
         @Test
         void compileResultEvaluationUsesExactTargetAndRejectsMismatch() {
             var compiled = MethodEvaluator.compileMethodResult(
-                    "class Targeted { static BigInteger answer() { return 42; } }",
+                    "import java.math.BigInteger;\nclass Targeted { static BigInteger answer() { return BigInteger.valueOf(42); } }",
                     "answer");
 
             assertTrue(ValidatorTest.evaluate(compiled).isSuccess());
@@ -288,6 +288,8 @@ class TestkitTest {
         void compileAndEvaluateAlwaysTrue() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class AlwaysTrueValidator {
@@ -307,6 +309,8 @@ class TestkitTest {
         void compileAndEvaluateAlwaysFalse() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class AlwaysFalseValidator {
@@ -359,6 +363,8 @@ class TestkitTest {
             var ct = new TestableContract();
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class AlwaysTrue {
@@ -378,6 +384,8 @@ class TestkitTest {
             var ct = new TestableContract();
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class AlwaysFalse {

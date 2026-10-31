@@ -1,0 +1,31 @@
+format: 3
+name: the Pair shape javac 21.0.3 rejects and javac 25 accepts
+class: Probe
+method: m
+tag: Probe$C Probe$T 0
+tag: Probe$D Probe$T 1
+tag: Probe$Pair Probe$PP 0
+arg: 05
+expect: REJECT JULC0076
+note: ADR-067 (javac table, open question 10): not exhaustive under JLS 21 (javac 21.0.3); the harness's javac 25 accepts it (5).
+note: ADR-067 M1 (interim): the not-exhaustive rejection is now coded, JULC0005; record patterns are still dropped until M2a/M2b, which set the final verdict. REJECT none at the base.
+note: ADR-067 M1 review (F35, interim): record-pattern labels are rejected with JULC0076 until M2a lowers them, so no label is dropped silently; M2a/M2b set the final verdict. Expectation before: REJECT JULC0005.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface T permits C, D {}
+    record C(BigInteger w) implements T {}
+    record D(BigInteger w) implements T {}
+    sealed interface PP permits Pair {}
+    record Pair(T l, T r) implements PP {}
+
+    public static BigInteger m(BigInteger a) {
+        PP pp = new Pair(new D(a), new D(a));
+        return switch (pp) {
+            case Pair(C c, var t) -> BigInteger.ONE;
+            case Pair(var t, C c) -> BigInteger.TWO;
+            case Pair(D d, D d2) -> d.w();
+        };
+    }
+}

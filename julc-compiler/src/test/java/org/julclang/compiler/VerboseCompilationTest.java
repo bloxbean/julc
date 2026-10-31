@@ -13,6 +13,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class VerboseCompilationTest {
 
     private static final String SIMPLE_VALIDATOR = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class SimpleValidator {
                 @Entrypoint
@@ -69,6 +73,7 @@ class VerboseCompilationTest {
         var compiler = new JulcCompiler(null, opts);
 
         var libSource = """
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 class MathHelper {
                     static boolean isPositive(long x) {
@@ -77,6 +82,10 @@ class VerboseCompilationTest {
                 }
                 """;
         var validatorSource = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class LibValidator {
                     @Entrypoint
@@ -100,14 +109,19 @@ class VerboseCompilationTest {
 
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ParamValidator {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return threshold > 0;
+                        return threshold.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;

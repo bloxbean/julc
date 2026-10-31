@@ -135,7 +135,6 @@ import org.julclang.stdlib.annotation.SpendingValidator;
 import org.julclang.stdlib.annotation.Entrypoint;
 import org.julclang.ledger.*;
 import org.julclang.core.PlutusData;
-import org.julclang.core.types.PubKeyHash;
 import java.math.BigInteger;
 
 @SpendingValidator
@@ -303,11 +302,7 @@ julc> 1 + 2
 => 3
    CPU: 230,100  Mem: 602
 
-julc> ListsLib.length(List.of(1, 2, 3))
-=> 3
-   CPU: 1,082,720  Mem: 3,410
-
-julc> MathLib.pow(2, 10)
+julc> MathLib.pow(BigInteger.TWO, BigInteger.TEN)
 => 1024
    CPU: 4,510,306  Mem: 12,818
 
@@ -318,6 +313,11 @@ ListsLib.filter(list, predicate)
 ```
 
 Every expression is compiled to UPLC and evaluated — CPU and memory budgets are shown in real time.
+
+Expressions are Java: javac types them, so library calls take `BigInteger` arguments (`BigInteger.TEN`,
+`BigInteger.valueOf(42)`), and an `int` or `long` result such as `1 + 2` is shown as an integer. The arithmetic is
+JuLC's, which is unbounded on-chain: `2147483647 + 1` evaluates to `2147483648`, where the JVM would wrap it to
+`-2147483648`.
 
 ---
 

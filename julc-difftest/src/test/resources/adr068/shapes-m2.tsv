@@ -1,0 +1,340 @@
+component	BigInteger	equal	
+in-sealed	BigInteger	equal	
+component	int	equal	
+in-sealed	int	equal	
+component	long	equal	
+in-sealed	long	equal	
+component	boolean	equal	
+in-sealed	boolean	equal	
+component	byte[]	equal	
+in-sealed	byte[]	equal	
+component	String	equal	
+in-sealed	String	equal	
+component	Boolean	equal	
+in-sealed	Boolean	equal	
+component	Integer	both-reject	Unknown type: Integer. Did you mean: BigInteger? /// Unknown type: Integer (resolved to java.lang.Integer). Did you mean: BigInteger?
+in-sealed	Integer	both-reject	Unknown type: Integer. Did you mean: BigInteger? /// Unknown type: Integer (resolved to java.lang.Integer). Did you mean: BigInteger?
+component	Long	both-reject	Unknown type: Long. Did you mean: Vote? /// Unknown type: Long (resolved to java.lang.Long). Did you mean: Vote?
+in-sealed	Long	both-reject	Unknown type: Long. Did you mean: Vote? /// Unknown type: Long (resolved to java.lang.Long). Did you mean: Vote?
+component	PlutusData	equal	
+in-sealed	PlutusData	equal	
+component	PlutusData.ConstrData	equal	
+in-sealed	PlutusData.ConstrData	equal	
+component	PlutusData.MapData	equal	
+in-sealed	PlutusData.MapData	equal	
+component	PlutusData.ListData	equal	
+in-sealed	PlutusData.ListData	equal	
+component	PlutusData.IntData	equal	
+in-sealed	PlutusData.IntData	equal	
+component	PlutusData.BytesData	equal	
+in-sealed	PlutusData.BytesData	equal	
+component	JulcList<BigInteger>	equal	
+in-sealed	JulcList<BigInteger>	equal	
+component	List<BigInteger>	equal	
+in-sealed	List<BigInteger>	equal	
+component	JulcList	equal	
+in-sealed	JulcList	equal	
+component	List	equal	
+in-sealed	List	equal	
+component	JulcMap<BigInteger, byte[]>	equal	
+in-sealed	JulcMap<BigInteger, byte[]>	equal	
+component	Map<BigInteger, byte[]>	equal	
+in-sealed	Map<BigInteger, byte[]>	equal	
+component	JulcMap	equal	
+in-sealed	JulcMap	equal	
+component	Map	equal	
+in-sealed	Map	equal	
+component	JulcAssocMap<BigInteger, byte[]>	both-reject	Unknown type: JulcAssocMap /// Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap)
+in-sealed	JulcAssocMap<BigInteger, byte[]>	both-reject	Unknown type: JulcAssocMap /// Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap)
+component	JulcAssocMap	both-reject	Unknown type: JulcAssocMap /// Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap)
+in-sealed	JulcAssocMap	both-reject	Unknown type: JulcAssocMap /// Unknown type: JulcAssocMap (resolved to org.julclang.core.types.JulcAssocMap)
+component	JulcArray<BigInteger>	both-reject-same	JULC0091: Component 'x' of record R needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: Component 'x' of record R needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	JulcArray<BigInteger>	both-reject-same	JULC0091: Component 'x' of record A needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: Component 'x' of record A needs a Data encoding of the native array Array[Integer], which has none
+component	JulcArray	both-reject-same	JULC0091: Component 'x' of record R needs a Data encoding of the native array Array[Data], which has none /// JULC0091: Component 'x' of record R needs a Data encoding of the native array Array[Data], which has none
+in-sealed	JulcArray	both-reject-same	JULC0091: Component 'x' of record A needs a Data encoding of the native array Array[Data], which has none /// JULC0091: Component 'x' of record A needs a Data encoding of the native array Array[Data], which has none
+component	Optional<BigInteger>	equal	
+in-sealed	Optional<BigInteger>	equal	
+component	Optional	equal	
+in-sealed	Optional	equal	
+component	Optional<Optional<BigInteger>>	equal	
+in-sealed	Optional<Optional<BigInteger>>	equal	
+component	Tuple2<BigInteger, byte[]>	equal	
+in-sealed	Tuple2<BigInteger, byte[]>	equal	
+component	Tuple2	equal	
+in-sealed	Tuple2	equal	
+component	Tuple3<BigInteger, byte[], String>	equal	
+in-sealed	Tuple3<BigInteger, byte[], String>	equal	
+component	Tuple3	equal	
+in-sealed	Tuple3	equal	
+component	AssetEntry	equal	
+in-sealed	AssetEntry	equal	
+component	JulcValue	equal	
+in-sealed	JulcValue	equal	
+component	JulcG1	equal	
+in-sealed	JulcG1	equal	
+component	JulcG2	equal	
+in-sealed	JulcG2	equal	
+component	JulcMlResult	equal	
+in-sealed	JulcMlResult	equal	
+component	JulcScalars	equal	
+in-sealed	JulcScalars	equal	
+component	JulcG1Points	equal	
+in-sealed	JulcG1Points	equal	
+component	JulcG2Points	equal	
+in-sealed	JulcG2Points	equal	
+component	JulcList<JulcG1>	equal	
+in-sealed	JulcList<JulcG1>	equal	
+component	JulcList<JulcValue>	equal	
+in-sealed	JulcList<JulcValue>	equal	
+component	Optional<JulcValue>	equal	
+in-sealed	Optional<JulcValue>	equal	
+component	JulcMap<BigInteger, JulcG2>	equal	
+in-sealed	JulcMap<BigInteger, JulcG2>	equal	
+component	Tuple2<JulcValue, BigInteger>	equal	
+in-sealed	Tuple2<JulcValue, BigInteger>	equal	
+component	JulcList<JulcArray<BigInteger>>	both-reject-same	JULC0091: A type argument of JulcList needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: A type argument of JulcList needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	JulcList<JulcArray<BigInteger>>	both-reject-same	JULC0091: A type argument of JulcList needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: A type argument of JulcList needs a Data encoding of the native array Array[Integer], which has none
+component	Optional<JulcArray<BigInteger>>	both-reject-same	JULC0091: A type argument of Optional needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: A type argument of Optional needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	Optional<JulcArray<BigInteger>>	both-reject-same	JULC0091: A type argument of Optional needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: A type argument of Optional needs a Data encoding of the native array Array[Integer], which has none
+component	Tuple2<JulcArray<BigInteger>, BigInteger>	both-reject-same	JULC0091: A type argument of Tuple2 needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: A type argument of Tuple2 needs a Data encoding of the native array Array[Integer], which has none
+in-sealed	Tuple2<JulcArray<BigInteger>, BigInteger>	both-reject-same	JULC0091: A type argument of Tuple2 needs a Data encoding of the native array Array[Integer], which has none /// JULC0091: A type argument of Tuple2 needs a Data encoding of the native array Array[Integer], which has none
+component	Value	equal	
+in-sealed	Value	equal	
+component	TxOut	equal	
+in-sealed	TxOut	equal	
+component	Address	equal	
+in-sealed	Address	equal	
+component	PubKeyHash	equal	
+in-sealed	PubKeyHash	equal	
+component	PolicyId	equal	
+in-sealed	PolicyId	equal	
+component	TokenName	equal	
+in-sealed	TokenName	equal	
+component	TxId	equal	
+in-sealed	TxId	equal	
+component	Credential	equal	
+in-sealed	Credential	equal	
+component	Credential.PubKeyCredential	equal	
+in-sealed	Credential.PubKeyCredential	equal	
+component	Interval	equal	
+in-sealed	Interval	equal	
+component	ScriptInfo	equal	
+in-sealed	ScriptInfo	equal	
+component	ScriptInfo.SpendingScript	equal	
+in-sealed	ScriptInfo.SpendingScript	equal	
+component	JulcList<Tuple2<BigInteger, BigInteger>>	equal	
+in-sealed	JulcList<Tuple2<BigInteger, BigInteger>>	equal	
+component	JulcMap<PubKeyHash, JulcList<Value>>	equal	
+in-sealed	JulcMap<PubKeyHash, JulcList<Value>>	equal	
+component	List<JulcList<BigInteger>>	equal	
+in-sealed	List<JulcList<BigInteger>>	equal	
+component	Map<String, Map<String, BigInteger>>	equal	
+in-sealed	Map<String, Map<String, BigInteger>>	equal	
+component	JulcList<?>	both-reject-same	Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+in-sealed	JulcList<?>	both-reject-same	Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+component	JulcList<? extends BigInteger>	both-reject	Cannot resolve type: ? extends BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ? extends java.math.BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+in-sealed	JulcList<? extends BigInteger>	both-reject	Cannot resolve type: ? extends BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ? extends java.math.BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+component	JulcList<? super BigInteger>	both-reject	Cannot resolve type: ? super BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ? super java.math.BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+in-sealed	JulcList<? super BigInteger>	both-reject	Cannot resolve type: ? super BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ? super java.math.BigInteger. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+component	Optional<?>	both-reject-same	Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+in-sealed	Optional<?>	both-reject-same	Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces /// Cannot resolve type: ?. Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces
+component	Object	both-reject	Unknown type: Object /// Unknown type: Object (resolved to java.lang.Object)
+in-sealed	Object	both-reject	Unknown type: Object /// Unknown type: Object (resolved to java.lang.Object)
+component	Comparable<BigInteger>	both-reject	Unknown type: Comparable /// Unknown type: Comparable (resolved to java.lang.Comparable)
+in-sealed	Comparable<BigInteger>	both-reject	Unknown type: Comparable /// Unknown type: Comparable (resolved to java.lang.Comparable)
+component	ArrayList<BigInteger>	both-reject	Unknown type: ArrayList /// Unknown type: ArrayList (resolved to java.util.ArrayList)
+in-sealed	ArrayList<BigInteger>	both-reject	Unknown type: ArrayList /// Unknown type: ArrayList (resolved to java.util.ArrayList)
+component	byte	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
+in-sealed	byte	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
+component	short	both-reject-same	Unsupported primitive type: short. Supported types: boolean, int, long /// Unsupported primitive type: short. Supported types: boolean, int, long
+in-sealed	short	both-reject-same	Unsupported primitive type: short. Supported types: boolean, int, long /// Unsupported primitive type: short. Supported types: boolean, int, long
+component	char	both-reject-same	Unsupported primitive type: char. Supported types: boolean, int, long /// Unsupported primitive type: char. Supported types: boolean, int, long
+in-sealed	char	both-reject-same	Unsupported primitive type: char. Supported types: boolean, int, long /// Unsupported primitive type: char. Supported types: boolean, int, long
+component	float	both-reject-same	Unsupported primitive type: float. Supported types: boolean, int, long /// Unsupported primitive type: float. Supported types: boolean, int, long
+in-sealed	float	both-reject-same	Unsupported primitive type: float. Supported types: boolean, int, long /// Unsupported primitive type: float. Supported types: boolean, int, long
+component	double	both-reject-same	Unsupported primitive type: double. Supported types: boolean, int, long /// Unsupported primitive type: double. Supported types: boolean, int, long
+in-sealed	double	both-reject-same	Unsupported primitive type: double. Supported types: boolean, int, long /// Unsupported primitive type: double. Supported types: boolean, int, long
+component	int[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: int[]
+in-sealed	int[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: int[]
+component	long[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: long[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: long[]
+in-sealed	long[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: long[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: long[]
+component	byte[][]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][] /// Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][]
+in-sealed	byte[][]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][] /// Arrays are not supported except byte[]. Use List<T> instead. Got: byte[][]
+component	boolean[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[]
+in-sealed	boolean[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: boolean[]
+component	String[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: String[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.lang.String[]
+in-sealed	String[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: String[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.lang.String[]
+component	BigInteger[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: BigInteger[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
+in-sealed	BigInteger[]	both-reject	Arrays are not supported except byte[]. Use List<T> instead. Got: BigInteger[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
+component	Short	both-reject	Unknown type: Short. Did you mean: TxOut? /// Unknown type: Short (resolved to java.lang.Short). Did you mean: TxOut?
+in-sealed	Short	both-reject	Unknown type: Short. Did you mean: TxOut? /// Unknown type: Short (resolved to java.lang.Short). Did you mean: TxOut?
+component	Byte	both-reject	Unknown type: Byte. Did you mean: Vote? /// Unknown type: Byte (resolved to java.lang.Byte). Did you mean: Vote?
+in-sealed	Byte	both-reject	Unknown type: Byte. Did you mean: Vote? /// Unknown type: Byte (resolved to java.lang.Byte). Did you mean: Vote?
+component	Character	both-reject	Unknown type: Character /// Unknown type: Character (resolved to java.lang.Character)
+in-sealed	Character	both-reject	Unknown type: Character /// Unknown type: Character (resolved to java.lang.Character)
+component	Double	both-reject	Unknown type: Double /// Unknown type: Double (resolved to java.lang.Double)
+in-sealed	Double	both-reject	Unknown type: Double /// Unknown type: Double (resolved to java.lang.Double)
+component	Float	both-reject	Unknown type: Float. Did you mean: TxOut? /// Unknown type: Float (resolved to java.lang.Float). Did you mean: TxOut?
+in-sealed	Float	both-reject	Unknown type: Float. Did you mean: TxOut? /// Unknown type: Float (resolved to java.lang.Float). Did you mean: TxOut?
+component	Void	both-reject	Unknown type: Void. Did you mean: Vote? /// Unknown type: Void (resolved to java.lang.Void). Did you mean: Vote?
+in-sealed	Void	both-reject	Unknown type: Void. Did you mean: Vote? /// Unknown type: Void (resolved to java.lang.Void). Did you mean: Vote?
+component	Number	both-reject	Unknown type: Number /// Unknown type: Number (resolved to java.lang.Number)
+in-sealed	Number	both-reject	Unknown type: Number /// Unknown type: Number (resolved to java.lang.Number)
+component	CharSequence	both-reject	Unknown type: CharSequence /// Unknown type: CharSequence (resolved to java.lang.CharSequence)
+in-sealed	CharSequence	both-reject	Unknown type: CharSequence /// Unknown type: CharSequence (resolved to java.lang.CharSequence)
+component	Runnable	both-reject	Unknown type: Runnable /// JULC0085: cannot find symbol   symbol:   class Runnable   location: class R (compiler.err.cant.resolve.location)
+in-sealed	Runnable	both-reject	Unknown type: Runnable /// JULC0085: cannot find symbol   symbol:   class Runnable   location: class S.A (compiler.err.cant.resolve.location)
+component	java.math.BigInteger	equal	
+in-sealed	java.math.BigInteger	equal	
+component	java.util.List<java.math.BigInteger>	equal	
+in-sealed	java.util.List<java.math.BigInteger>	equal	
+component	org.julclang.ledger.Value	equal	
+in-sealed	org.julclang.ledger.Value	equal	
+component	org.julclang.ledger.Credential.PubKeyCredential	equal	
+in-sealed	org.julclang.ledger.Credential.PubKeyCredential	equal	
+decl	record R<T>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	record R<T>(BigInteger v) {} class P {}	equal	
+decl	record R<T extends BigInteger>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	sealed interface S<T> { record A(BigInteger v) implements S<BigInteger> {} record B() implements S<BigInteger> {} } class P {}	equal	
+decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+decl	sealed interface S permits A, B {} record A() implements S {} record B() implements S {} class P {}	equal	
+decl	sealed interface S permits S.A, B {record A() implements S {}} record B() implements S {} class P {}	equal	
+decl	sealed interface S permits S.B, S.A { record A() implements S {} record B(BigInteger v) implements S {} } class P {}	equal	
+decl	sealed interface S {} final class C implements S {} class P {}	JAVAC-REJECTS	JULC0092: Sealed interface 'S' has no permits clause, and its permitted subclasses (C) are not exactly the records nested in it
+decl	sealed interface S permits C {} final class C implements S {} class P {}	equal	
+decl	sealed interface S permits T {} sealed interface T extends S permits R {} record R() implements T {} class P {}	equal	
+decl	sealed interface S permits S.A, T {record A() implements S {}} non-sealed interface T extends S {} class P {}	equal	
+decl	sealed interface S { record A() implements S {} final class C implements S {} } class P {}	JAVAC-REJECTS	JULC0092: Sealed interface 'S' has no permits clause, and its permitted subclasses (A, C) are not exactly the records nested in it
+decl	sealed interface S { record A() implements S {} enum E implements S { X } } class P {}	JAVAC-REJECTS	JULC0085: cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access)
+decl	sealed abstract class S permits A {} final class A extends S {} class P {}	equal	
+decl	sealed interface S1 { record A() implements S1, S2 {} } sealed interface S2 permits S1.A {} class P {}	equal	
+decl	sealed interface S1 permits R {} sealed interface S2 permits R {} record R(BigInteger v) implements S1, S2 {} class P {}	equal	
+decl	interface I { record R(BigInteger v) {} } class P {}	equal	
+decl	interface I { record R(BigInteger v) implements I {} } class P {}	equal	
+decl	enum E { A, B } record R(E e) {} class P {}	both-reject	Unknown type: E. Did you mean: DRep? /// JULC0085: cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access)
+decl	record R(BigInteger a, BigInteger b) { R { } } class P {}	equal	
+decl	record R(BigInteger a, BigInteger b) { R(BigInteger b, BigInteger a) { this.a = a; this.b = b; } } class P {}	JAVAC-REJECTS	JULC0085: invalid canonical constructor in record R   (invalid parameter names in canonical constructor) (compiler.err.invalid.canonical.constructor.in.record)
+decl	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {}	equal	
+decl	record R(BigInteger a) { record N(R r) {} } class P {}	equal	
+decl	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	equal	
+decl	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
+decl	record R(byte... xs) {} class P {}	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
+decl	record R(final BigInteger a) {} class P {}	JAVAC-REJECTS	JULC0085: record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers)
+decl	record R(@Deprecated BigInteger a) {} class P {}	equal	
+decl	class P { record R(BigInteger a) {} static class Q { record R(byte[] b) {} } record H(R r, Q.R q) {} }	equal	
+decl	class P { interface A { record R(BigInteger a) {} } interface B { record R(byte[] a) {} } record H(A.R a, B.R b) {} }	equal	
+decl	@NewType record N(byte[] v) {} class P {}	equal	
+decl	@NewType record N(BigInteger v) {} class P {}	equal	
+decl	@NewType record N(String v) {} class P {}	equal	
+decl	@NewType record N(boolean v) {} class P {}	equal	
+decl	@NewType record N(Boolean v) {} class P {}	both-reject-same	@NewType record 'N' field type 'Boolean' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'Boolean' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType record N(int v) {} class P {}	both-reject-same	@NewType record 'N' field type 'int' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'int' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType record N(long v) {} class P {}	both-reject-same	@NewType record 'N' field type 'long' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'long' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType record N(PlutusData v) {} class P {}	both-reject-same	@NewType record 'N' field type 'PlutusData' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'PlutusData' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType record N(java.math.BigInteger v) {} class P {}	REFERENCE-REJECTS	@NewType record 'N' field type 'java.math.BigInteger' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType record N(java.lang.String v) {} class P {}	REFERENCE-REJECTS	@NewType record 'N' field type 'java.lang.String' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType record N(byte... v) {} class P {}	both-reject-same	@NewType record 'N' field type 'byte' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'byte' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType() record N(byte[] v) {} class P {}	DIFFERENT	record N: RecordType[name=N, fields=[Field[name=v, type=ByteStringType[]]]] / null
+decl	@org.julclang.stdlib.annotation.NewType record N(byte[] v) {} class P {}	DIFFERENT	record N: RecordType[name=N, fields=[Field[name=v, type=ByteStringType[]]]] / null
+decl	@NewType record N<T>(byte[] v) {} class P {}	equal	
+decl	@NewType record N(byte[] v) implements PlutusDataConvertible { public PlutusData toPlutusData() { return null; } } class P {}	equal	
+decl	@NewType record N(byte[] v) {} record H(N n, JulcList<N> ns, Optional<N> o) {} class P {}	equal	
+decl	@NewType record N(byte[] v) {} @NewType record M(N n) {} class P {}	both-reject-same	@NewType record 'M' field type 'N' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'M' field type 'N' is not supported. Supported types: byte[], BigInteger, String, boolean
+decl	@NewType sealed interface S { record A() implements S {} } class P {}	equal	
+decl	@NewType class N {} class P {}	equal	
+decl	sealed interface S { @NewType record A(byte[] v) implements S {} record B() implements S {} } class P {}	equal	
+decl	record A(B b) {} record B(JulcList<A> as) {} class P {}	equal	
+decl	record A(Optional<A> next) {} class P {}	equal	
+decl	record A(JulcList<A> kids) {} class P {}	equal	
+decl	record A(JulcMap<BigInteger, A> kids) {} class P {}	equal	
+decl	sealed interface T { record Leaf() implements T {} record Node(T l, T r) implements T {} } class P {}	equal	
+decl	sealed interface T { record Node(T l) implements T {} } class P {}	both-reject-same	Recursive type dependency has no finite base constructor: [T.Node, T] /// Recursive type dependency has no finite base constructor: [T.Node, T]
+decl	record Value(BigInteger x) {} record H(Value v) {} class P {}	DIFFERENT	record H: RecordType[name=H, fields=[Field[name=v, type=RecordType[name=Value, fields=[Field[name=inner, type=MapType[keyType=ByteStringType[], valueType=MapType[keyType=ByteStringType[], valueType=IntegerType[]]]]]]]]] / RecordType[name=H, fields=[Field[name=v, type=RecordType[name=Value, fields=[Field[name=x, type=IntegerType[]]]]]]]
+decl	record TxOut(BigInteger x) {} record H(TxOut v) {} class P {}	DIFFERENT	record H: RecordType[name=H, fields=[Field[name=v, type=RecordType[name=TxOut, fields=[Field[name=address, type=RecordType[name=Address, fields=[Field[name=credential, type=SumType[name=Credential, constructors=[Constructor[name=PubKeyCredential, tag=0, fields=[Field[name=hash, type=ByteStringType[]]]], Constructor[name=ScriptCredential, tag=1, fields=[Field[name=hash, type=ByteStringType[]]]]]]], Field[nam... / RecordType[name=H, fields=[Field[name=v, type=RecordType[name=TxOut, fields=[Field[name=x, type=IntegerType[]]]]]]]
+decl	record Address(BigInteger x) {} class P {}	DIFFERENT	record Address: null / RecordType[name=Address, fields=[Field[name=x, type=IntegerType[]]]]
+decl	sealed interface Credential { record A() implements Credential {} } record H(Credential c) {} class P {}	DIFFERENT	record H: RecordType[name=H, fields=[Field[name=c, type=SumType[name=Credential, constructors=[Constructor[name=PubKeyCredential, tag=0, fields=[Field[name=hash, type=ByteStringType[]]]], Constructor[name=ScriptCredential, tag=1, fields=[Field[name=hash, type=ByteStringType[]]]]]]]]] / RecordType[name=H, fields=[Field[name=c, type=SumType[name=Credential, constructors=[Constructor[name=A, tag=0, fields=[]]]]]]]
+decl	sealed interface Vote permits Vote.Yes { record Yes() implements Vote {} } class P {}	DIFFERENT	sum Vote: null / SumType[name=Vote, constructors=[Constructor[name=Yes, tag=0, fields=[]]]]
+decl	class P { record Value(BigInteger x) {} record H(Value v) {} }	equal	
+decl	class P { record PubKeyHash(byte[] h) {} record H(PubKeyHash v) {} }	DIFFERENT	record P.H: RecordType[name=H, fields=[Field[name=v, type=ByteStringType[]]]] / RecordType[name=H, fields=[Field[name=v, type=RecordType[name=PubKeyHash, fields=[Field[name=h, type=ByteStringType[]]]]]]]
+decl	class Q { record Inner(BigInteger x) {} } record H(Q.Inner i) {} class P {}	equal	
+decl	class P { static void m() { record L(BigInteger v) {} } }	DIFFERENT	record L: RecordType[name=L, fields=[Field[name=v, type=IntegerType[]]]] / null
+decl	class P { static void m() { record L(BigInteger v) {} record M(L l) {} } }	DIFFERENT	record L: RecordType[name=L, fields=[Field[name=v, type=IntegerType[]]]] / null
+decl	class P { static void m() { sealed interface S permits A {} record A() implements S {} } }	JAVAC-REJECTS	JULC0085: sealed or non-sealed local classes are not allowed (compiler.err.sealed.or.non.sealed.local.classes.not.allowed)
+decl	class Other { interface S {} } sealed interface S { record A() implements Other.S {} record B() implements S {} } class P {}	JAVAC-REJECTS	JULC0092: Sealed interface 'S' has no permits clause, and its permitted subclasses (B) are not exactly the records nested in it
+decl	class P { record R(BigInteger x, byte[] a) { R(byte[] y, byte... z) { this(BigInteger.ONE, z); } } }	equal	
+decl	class P { sealed interface S permits A, B {} record A() implements S {} record B() implements S {} static <T> boolean u(T x) { record S(byte[] b) {} return true; } }	DIFFERENT	record P$1S: null / RecordType[name=S, fields=[Field[name=b, type=ByteStringType[]]]]
+pkg	record R<T>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	record R<T>(BigInteger v) {} class P {}	equal	
+pkg	record R<T extends BigInteger>(T v) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	record Box<T>(T v) {} record H(Box<BigInteger> b) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	sealed interface S<T> { record A(BigInteger v) implements S<BigInteger> {} record B() implements S<BigInteger> {} } class P {}	equal	
+pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} record B<T>() implements S<T> {} } class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	sealed interface S<T> { record A<T>(T v) implements S<T> {} } record H(S<BigInteger> s) {} class P {}	both-reject-same	Unknown type: T. Did you mean: Vote? /// Unknown type: T. Did you mean: Vote?
+pkg	sealed interface S permits A, B {} record A() implements S {} record B() implements S {} class P {}	equal	
+pkg	sealed interface S permits S.A, B {record A() implements S {}} record B() implements S {} class P {}	equal	
+pkg	sealed interface S permits S.B, S.A { record A() implements S {} record B(BigInteger v) implements S {} } class P {}	equal	
+pkg	sealed interface S {} final class C implements S {} class P {}	JAVAC-REJECTS	JULC0092: Sealed interface 'S' has no permits clause, and its permitted subclasses (C) are not exactly the records nested in it
+pkg	sealed interface S permits C {} final class C implements S {} class P {}	equal	
+pkg	sealed interface S permits T {} sealed interface T extends S permits R {} record R() implements T {} class P {}	equal	
+pkg	sealed interface S permits S.A, T {record A() implements S {}} non-sealed interface T extends S {} class P {}	equal	
+pkg	sealed interface S { record A() implements S {} final class C implements S {} } class P {}	JAVAC-REJECTS	JULC0092: Sealed interface 'S' has no permits clause, and its permitted subclasses (A, C) are not exactly the records nested in it
+pkg	sealed interface S { record A() implements S {} enum E implements S { X } } class P {}	JAVAC-REJECTS	JULC0085: cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access)
+pkg	sealed abstract class S permits A {} final class A extends S {} class P {}	equal	
+pkg	sealed interface S1 { record A() implements S1, S2 {} } sealed interface S2 permits S1.A {} class P {}	equal	
+pkg	sealed interface S1 permits R {} sealed interface S2 permits R {} record R(BigInteger v) implements S1, S2 {} class P {}	equal	
+pkg	interface I { record R(BigInteger v) {} } class P {}	equal	
+pkg	interface I { record R(BigInteger v) implements I {} } class P {}	equal	
+pkg	enum E { A, B } record R(E e) {} class P {}	both-reject	Unknown type: E. Did you mean: DRep? /// JULC0085: cannot access java.lang.Enum.EnumDesc   class file for java.lang.Enum$EnumDesc not found (compiler.err.cant.access)
+pkg	record R(BigInteger a, BigInteger b) { R { } } class P {}	equal	
+pkg	record R(BigInteger a, BigInteger b) { R(BigInteger b, BigInteger a) { this.a = a; this.b = b; } } class P {}	JAVAC-REJECTS	JULC0085: invalid canonical constructor in record R   (invalid parameter names in canonical constructor) (compiler.err.invalid.canonical.constructor.in.record)
+pkg	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {}	equal	
+pkg	record R(BigInteger a) { record N(R r) {} } class P {}	equal	
+pkg	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	equal	
+pkg	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
+pkg	record R(byte... xs) {} class P {}	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
+pkg	record R(final BigInteger a) {} class P {}	JAVAC-REJECTS	JULC0085: record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers)
+pkg	record R(@Deprecated BigInteger a) {} class P {}	equal	
+pkg	class P { record R(BigInteger a) {} static class Q { record R(byte[] b) {} } record H(R r, Q.R q) {} }	equal	
+pkg	class P { interface A { record R(BigInteger a) {} } interface B { record R(byte[] a) {} } record H(A.R a, B.R b) {} }	equal	
+pkg	@NewType record N(byte[] v) {} class P {}	equal	
+pkg	@NewType record N(BigInteger v) {} class P {}	equal	
+pkg	@NewType record N(String v) {} class P {}	equal	
+pkg	@NewType record N(boolean v) {} class P {}	equal	
+pkg	@NewType record N(Boolean v) {} class P {}	both-reject-same	@NewType record 'N' field type 'Boolean' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'Boolean' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType record N(int v) {} class P {}	both-reject-same	@NewType record 'N' field type 'int' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'int' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType record N(long v) {} class P {}	both-reject-same	@NewType record 'N' field type 'long' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'long' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType record N(PlutusData v) {} class P {}	both-reject-same	@NewType record 'N' field type 'PlutusData' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'PlutusData' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType record N(java.math.BigInteger v) {} class P {}	REFERENCE-REJECTS	@NewType record 'N' field type 'java.math.BigInteger' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType record N(java.lang.String v) {} class P {}	REFERENCE-REJECTS	@NewType record 'N' field type 'java.lang.String' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType record N(byte... v) {} class P {}	both-reject-same	@NewType record 'N' field type 'byte' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'N' field type 'byte' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType() record N(byte[] v) {} class P {}	DIFFERENT	record a.b.N: RecordType[name=N, fields=[Field[name=v, type=ByteStringType[]]]] / null
+pkg	@org.julclang.stdlib.annotation.NewType record N(byte[] v) {} class P {}	DIFFERENT	record a.b.N: RecordType[name=N, fields=[Field[name=v, type=ByteStringType[]]]] / null
+pkg	@NewType record N<T>(byte[] v) {} class P {}	equal	
+pkg	@NewType record N(byte[] v) implements PlutusDataConvertible { public PlutusData toPlutusData() { return null; } } class P {}	equal	
+pkg	@NewType record N(byte[] v) {} record H(N n, JulcList<N> ns, Optional<N> o) {} class P {}	equal	
+pkg	@NewType record N(byte[] v) {} @NewType record M(N n) {} class P {}	both-reject-same	@NewType record 'M' field type 'N' is not supported. Supported types: byte[], BigInteger, String, boolean /// @NewType record 'M' field type 'N' is not supported. Supported types: byte[], BigInteger, String, boolean
+pkg	@NewType sealed interface S { record A() implements S {} } class P {}	equal	
+pkg	@NewType class N {} class P {}	equal	
+pkg	sealed interface S { @NewType record A(byte[] v) implements S {} record B() implements S {} } class P {}	equal	
+pkg	record A(B b) {} record B(JulcList<A> as) {} class P {}	equal	
+pkg	record A(Optional<A> next) {} class P {}	equal	
+pkg	record A(JulcList<A> kids) {} class P {}	equal	
+pkg	record A(JulcMap<BigInteger, A> kids) {} class P {}	equal	
+pkg	sealed interface T { record Leaf() implements T {} record Node(T l, T r) implements T {} } class P {}	equal	
+pkg	sealed interface T { record Node(T l) implements T {} } class P {}	both-reject-same	Recursive type dependency has no finite base constructor: [a.b.T.Node, a.b.T] /// Recursive type dependency has no finite base constructor: [a.b.T.Node, a.b.T]
+pkg	record Value(BigInteger x) {} record H(Value v) {} class P {}	equal	
+pkg	record TxOut(BigInteger x) {} record H(TxOut v) {} class P {}	equal	
+pkg	record Address(BigInteger x) {} class P {}	equal	
+pkg	sealed interface Credential { record A() implements Credential {} } record H(Credential c) {} class P {}	equal	
+pkg	sealed interface Vote permits Vote.Yes { record Yes() implements Vote {} } class P {}	equal	
+pkg	class P { record Value(BigInteger x) {} record H(Value v) {} }	equal	
+pkg	class P { record PubKeyHash(byte[] h) {} record H(PubKeyHash v) {} }	DIFFERENT	record a.b.P.H: RecordType[name=H, fields=[Field[name=v, type=ByteStringType[]]]] / RecordType[name=H, fields=[Field[name=v, type=RecordType[name=PubKeyHash, fields=[Field[name=h, type=ByteStringType[]]]]]]]
+pkg	class Q { record Inner(BigInteger x) {} } record H(Q.Inner i) {} class P {}	equal	
+pkg	class P { static void m() { record L(BigInteger v) {} } }	DIFFERENT	record L: RecordType[name=L, fields=[Field[name=v, type=IntegerType[]]]] / null
+pkg	class P { static void m() { record L(BigInteger v) {} record M(L l) {} } }	DIFFERENT	record L: RecordType[name=L, fields=[Field[name=v, type=IntegerType[]]]] / null
+pkg	class P { static void m() { sealed interface S permits A {} record A() implements S {} } }	JAVAC-REJECTS	JULC0085: sealed or non-sealed local classes are not allowed (compiler.err.sealed.or.non.sealed.local.classes.not.allowed)
+pkg	class Other { interface S {} } sealed interface S { record A() implements Other.S {} record B() implements S {} } class P {}	JAVAC-REJECTS	JULC0092: Sealed interface 'S' has no permits clause, and its permitted subclasses (B) are not exactly the records nested in it
+pkg	class P { record R(BigInteger x, byte[] a) { R(byte[] y, byte... z) { this(BigInteger.ONE, z); } } }	equal	
+pkg	class P { sealed interface S permits A, B {} record A() implements S {} record B() implements S {} static <T> boolean u(T x) { record S(byte[] b) {} return true; } }	DIFFERENT	record S: RecordType[name=S, fields=[Field[name=b, type=ByteStringType[]]]] / null

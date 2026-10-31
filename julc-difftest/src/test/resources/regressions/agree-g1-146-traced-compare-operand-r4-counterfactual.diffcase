@@ -1,0 +1,35 @@
+format: 3
+name: the #146 reproducer 146-traced-compare-operand with its trigger removed agrees (counterfactual)
+class: Probe
+method: m
+profile: G1 r4 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES +TRACE_IN_COMPARISON steer=146
+arg: 24
+arg: 25
+arg: 80
+expect: AGREE
+note: ADR-066 D10.1 cause check for #146: only the trigger changes (the operand is evaluated into a local before the
+note: comparison); the JVM observation is unchanged and UPLC agrees.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger o = t("k0", BigInteger.valueOf(-5).add(BigInteger.valueOf(0)));
+        if (o.compareTo(BigInteger.valueOf(-5)) < 0) {
+            return BigInteger.valueOf(-5);
+        } else {
+            return BigInteger.valueOf(-5);
+        }
+    }
+}

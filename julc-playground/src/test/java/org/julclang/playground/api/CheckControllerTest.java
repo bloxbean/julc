@@ -25,6 +25,8 @@ class CheckControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CheckRequest("""
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class SimpleValidator {

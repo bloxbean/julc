@@ -30,6 +30,9 @@ class PairCaseLoweringTest {
     static final String RECORD = """
             import java.math.BigInteger;
             import java.util.Optional;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class PairRecord {
                 record Redeemer(BigInteger amount, boolean approved, Optional<BigInteger> limit) {}
                 @Entrypoint static boolean validate(Redeemer r, ScriptContext ctx) { return r.approved(); }
@@ -37,6 +40,9 @@ class PairCaseLoweringTest {
             """;
     static final String SUM = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class PairSum {
                 sealed interface Action permits Pay, Cancel {}
                 record Pay(BigInteger amount) implements Action {}
@@ -47,6 +53,9 @@ class PairCaseLoweringTest {
     static final String NESTED = """
             import java.math.BigInteger;
             import java.util.List;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class PairNested {
                 record Item(BigInteger value) {}
                 record Redeemer(List<Item> items) {}
@@ -108,6 +117,9 @@ class PairCaseLoweringTest {
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
                 import org.julclang.stdlib.lib.MathLib;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
                 @MintingValidator class AggregatePair {
                     record Redeemer(JulcList<BigInteger> values, long dropCount, BigInteger minimum) {}
                     @Entrypoint static boolean validate(Redeemer r, ScriptContext ctx) {

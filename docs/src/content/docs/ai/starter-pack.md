@@ -55,7 +55,7 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - Declare one variable per statement (`BigInteger a = x, b = y;` is `JULC0053`). Overloaded methods are rejected unless every declaration compiles to the same code (`JULC0054`). A local, parameter or field may share a method's name. Calling a member on a value whose type is unknown, such as `d.amount()` on `PlutusData`, is `JULC0055`. Do not update a static field or `@Param` in a loop except in the entrypoint, and only when no other method reads it (`JULC0056`); copy it into a local accumulator. Do not reassign a for-each variable in a loop that updates no variable declared before it (`JULC0058`); declare a new local.
 - An `instanceof` pattern variable is bound only when `x instanceof T v` is the whole condition of an `if` outside a loop ([#204](https://github.com/bloxbean/julc/issues/204)). In a loop body, an `&&` condition, a `!` guard, a ternary or a lambda, switch on the sealed type instead. A pattern variable may not reuse a field or `@Param` name (`JULC0059`).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
-- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`. Compiled `any`/`all` evaluate the predicate for every element (no early exit), so guard a predicate that can fail with `&&`. Assign `map`'s result to a typed `JulcList<T>` local before a lambda uses its elements. In a javac-compiled project do **not** use `list.find(...)` (the compiled result is an optional value, not the element) or the static `ListsLib.any/all/filter/map/find/foldl/zip` forms (not declared in Java, so javac rejects them); write a fold as an accumulator loop.
+- **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`. Compiled `any`/`all` evaluate the predicate for every element (no early exit), so guard a predicate that can fail with `&&`. Assign `map`'s result to a typed `JulcList<T>` local before a lambda uses its elements. Do **not** use `list.find(...)` (the compiled result is an optional value, not the element) or the static `ListsLib.any/all/filter/map/find/foldl/zip` forms (not declared in Java, so javac rejects them); write a fold as an accumulator loop.
 - **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
@@ -177,6 +177,10 @@ public static boolean validate(PlutusData datum, PlutusData redeemer, ScriptCont
 **✅ GOOD: type-class style**
 
 ```java
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+
 record VestingDatum(byte[] beneficiary) {}
 record VestingRedeemer(BigInteger amount) {}
 
@@ -317,7 +321,14 @@ For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByt
 |---|---|---|
 | `Method must have a body: <name>` | Abstract method in validator class | Provide a body for every method. |
 | `Variable must be initialized: <name>` | `var x;` without initializer | Initialize at declaration (`var x = BigInteger.ZERO;`). |
-| `Cannot return inside while loop` | `return` inside `while` body | Use a boolean accumulator; return after the loop. |
+| `'return' is not supported inside while loop body` (`JULC0003`) | `return` inside `while` body | Exit with `break`, or keep the result in a variable declared before the loop; return after the loop. |
+| `continue is not supported on-chain` (`JULC0060`) | `continue` in a loop | Guard the rest of the body with an `if`. |
+| `Reassigning '<name>' is not supported outside a loop` (`JULC0061`) | `x = ...` outside a loop | Declare a new local, or choose the value in one expression. |
+| `JulcMap.of is off-chain only ...` (`JULC0062`) | `JulcMap.of(...)` in contract code | `JulcMap.<K, V>empty().insert(k, v)`; `insert` adds at the front, so insert several entries in reverse order. |
+| `break is not supported in a loop that updates no variable declared before the loop` (`JULC0063`) | `break` in a loop that only checks | Set a variable declared before the loop where it breaks. |
+| `A nested ... loop is not supported in a loop that contains break ...` (`JULC0064`) | nested loop in a loop with `break` | Move the nested loop into a helper method. |
+| `Updating '<name>' inside a switch statement ... is not supported in this loop` (`JULC0065`) | loop update inside a `switch` statement, an expression or a lambda | Write the update as a statement of its own, in the loop body or an `if`/`else` branch. |
+| `Labels are not supported on-chain: '<construct>'` (`JULC0066`) | labelled statement, `break outer;` or `continue outer;` | Remove the label; to leave an outer loop, set a variable declared before the loops where the inner loop breaks and skip the rest of the outer loop while it is set. |
 | `Switch is not exhaustive on <Type>: missing <variants>` | Sealed-interface switch missing cases | Add the missing case branches or a `default ->`. |
 | `Method does not return on all paths` | Missing return in some branch | Make every path return; void methods are exempt. |
 | `Type mismatch: expected IntegerType, got DataType` | Comparing `Builtins.unIData(...)` with raw `Data` field | Apply `unIData`/`unBData`/etc. to the right operand too. |
@@ -338,7 +349,7 @@ All imports are from `org.julclang.stdlib.lib.*`.
 `signedBy(txInfo, pkh)`, `findOwnInput(ctx)`, `getContinuingOutputs(ctx)`, `findDatum(txInfo, hash)`, `valueSpent(txInfo)`, `valuePaid(txInfo, addr)`, `ownHash(ctx)`, `scriptOutputsAt(txInfo, hash)`, `listIndex(list, n)`, `trace(msg)`. Field shorthands: `txInfoInputs`, `txInfoOutputs`, `txInfoSignatories`, `txInfoValidRange`, `txInfoMint`, `txInfoFee`, `txInfoId`, `txInfoRefInputs`, `txInfoWithdrawals`, `txInfoRedeemers`. **Prefer `ctx.txInfo().outputs()` etc. via type-class field access.**
 
 ### ListsLib
-`empty()`, `prepend(list, x)`, `length(list)`, `isEmpty(list)`, `head(list)`, `tail(list)`, `reverse(list)`, `concat(a, b)`, `nth(list, n)`, `take(list, n)`, `drop(list, n)`, `contains(list, x)`, `containsInt(list, n)`, `containsBytes(list, bs)`, `hasDuplicateInts(list)`, `hasDuplicateBytes(list)`, plus HOFs: `any(list, pred)`, `all(list, pred)`, `find(list, pred)`, `foldl(f, init, list)`, `map(list, f)`, `filter(list, pred)`, `zip(a, b)`. **Most of these are also instance methods on `JulcList<T>`** — prefer `list.map(...)` over `ListsLib.map(list, ...)`.
+`empty()`, `prepend(list, x)`, `length(list)`, `isEmpty(list)`, `head(list)`, `tail(list)`, `reverse(list)`, `concat(a, b)`, `nth(list, n)`, `take(list, n)`, `drop(list, n)`, `contains(list, x)`, `containsInt(list, n)`, `containsBytes(list, bs)`, `hasDuplicateInts(list)`, `hasDuplicateBytes(list)`. **Most of these are also instance methods on `JulcList<T>`**, as are the HOFs `any`, `all`, `filter` and `map`, which `ListsLib` does not declare.
 
 ### ValuesLib
 `lovelaceOf(value)`, `assetOf(value, policy, token)`, `containsPolicy(value, policy)`, `geq(a, b)`, `geqMultiAsset(a, b)`, `leq(a, b)`, `eq(a, b)`, `isZero(value)`, `singleton(policy, token, amount)`, `negate(value)`, `flatten(value)`, `add(a, b)`, `subtract(a, b)`. **Prefer `value.lovelaceOf()`, `value.assetOf(policy, token)`, `value.isEmpty()` instance methods where available.**
@@ -436,7 +447,7 @@ All ledger types live in `org.julclang.ledger.*`.
 - **`Tuple2<A,B>`** — `.first()`, `.second()`. Use field access; **not switchable** (limitation 6.2).
 - **`Tuple3<A,B,C>`** — `.first()`, `.second()`, `.third()`.
 - **`JulcList<T>`** — On-chain list. Instance methods: `head()`, `tail()`, `get(i)`, `size()`, `isEmpty()`, `contains(x)`, `prepend(x)`, `reverse()`, `concat(other)`, `take(n)`, `drop(n)`, `map(f)`, `filter(p)`, `any(p)`, `all(p)`, `find(p)`. **Iterable**: `for (var x : list) { ... }`.
-- **`JulcMap<K,V>`** — On-chain map (association list of pairs). Instance methods: `get(k)`, `lookup(k) : Optional<V>`, `containsKey(k)`, `size()`, `isEmpty()`, `keys()`, `values()`, `insert(k, v)`, `delete(k)`. **Iterable as pairs**: `for (var entry : map) { K k = entry.key(); V v = entry.value(); }`.
+- **`JulcMap<K,V>`** — On-chain map (association list of pairs). Instance methods: `get(k)`, `lookup(k) : Optional<V>`, `containsKey(k)`, `size()`, `isEmpty()`, `keys()`, `values()`, `insert(k, v)`, `delete(k)`. **Not `Iterable`**: javac rejects `for (var entry : map)`; iterate `map.keys()` or `map.values()`.
 
 <!-- catalog:ledger-start -->
 For the complete machine-readable ledger types catalog (every record, field, sealed-interface variant, and doc), fetch [/ai/catalog.json](/ai/catalog.json). The AI-served copy of this starter pack at [/ai/starter-pack.md](/ai/starter-pack.md) inlines the full reference below.
@@ -478,6 +489,13 @@ public class VestingValidator {
 ### 10.2 Sealed-interface redeemer with switch (auction)
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class AuctionValidator {
 
@@ -508,6 +526,11 @@ public class AuctionValidator {
 import org.julclang.stdlib.annotation.MintingValidator;
 import org.julclang.stdlib.annotation.Param;
 import org.julclang.stdlib.Builtins;
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
 
 @MintingValidator
 public class OneShotMintPolicy {
@@ -536,6 +559,17 @@ public class OneShotMintPolicy {
 ### 10.4 Output checking with OutputLib (escrow)
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.ledger.Address;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.TxOut;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.OutputLib;
+
 @SpendingValidator
 public class OutputCheckValidator {
     record PaymentDatum(Address recipientAddress, BigInteger minAmount) {}
@@ -584,6 +618,13 @@ static BigInteger totalPaidTo(JulcList<TxOut> outputs, byte[] targetPkh) {
 ### 10.6 Reusable on-chain library
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.Value;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+import org.julclang.stdlib.lib.IntervalLib;
+
 @OnchainLibrary
 public class ValidationUtils {
     public static boolean isAfterDeadline(TxInfo txInfo, BigInteger deadline) {

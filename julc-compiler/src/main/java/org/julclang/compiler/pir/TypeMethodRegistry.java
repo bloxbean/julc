@@ -47,6 +47,8 @@ public final class TypeMethodRegistry {
 
     // Key: "IntegerType.abs", "ListType.contains", etc.
     private final Map<String, MethodRegistration> registry = new HashMap<>();
+    /** The default registry's integer {@code compareTo} lowering, or null (ADR-068 D6). */
+    private MethodRegistration integerCompareTo;
 
     public void register(String typeKey, String method,
                          InstanceMethodHandler handler, ReturnTypeResolver returnType) {
@@ -133,6 +135,15 @@ public final class TypeMethodRegistry {
         return registration != null
                 ? registration.requirements().resolve(context)
                 : LoweringRequirements.NONE;
+    }
+
+    /**
+     * Whether {@link #dispatch} of {@code method} on {@code scopeType} selects the default
+     * registry's integer {@code compareTo} lowering (ADR-068 D6, D4 exception 1).
+     */
+    public boolean selectsIntegerCompareTo(PirType scopeType, String method) {
+        return integerCompareTo != null && scopeType instanceof PirType.IntegerType
+                && registry.get(scopeType.getClass().getSimpleName() + "." + method) == integerCompareTo;
     }
 
     public boolean contains(String typeKey, String method) {
@@ -271,6 +282,8 @@ public final class TypeMethodRegistry {
                                     one));
                 },
                 scopeType -> new PirType.IntegerType());
+        // In an `OP 0` comparison, PirGenerator lowers the comparison itself (ADR-068 D6).
+        reg.integerCompareTo = reg.registry.get("IntegerType.compareTo");
 
         // intValue / longValue: identity (int, long, BigInteger are all IntegerType on-chain)
         reg.register("IntegerType", "intValue",

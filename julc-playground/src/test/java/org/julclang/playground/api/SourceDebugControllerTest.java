@@ -46,6 +46,10 @@ class SourceDebugControllerTest {
     void opensActsAndClosesTheSameBoundSession() {
         JavalinTest.test(app(), (server, client) -> {
             var open = client.post("/api/source-debug/open", JSON.writeValueAsString(new OpenRequest("""
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class BrowserSourceDebug {
                         @Entrypoint

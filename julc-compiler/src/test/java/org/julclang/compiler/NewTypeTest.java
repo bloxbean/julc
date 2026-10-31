@@ -44,6 +44,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -51,7 +54,7 @@ class NewTypeTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             byte[] hash = Builtins.unBData(redeemer);
                             var pkh = PubKeyHash.of(hash);
-                            return Builtins.equalsByteString(pkh, hash);
+                            return Builtins.equalsByteString(PlutusData.cast(pkh, byte[].class), hash);
                         }
                     }
                     """;
@@ -68,6 +71,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -75,7 +81,7 @@ class NewTypeTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             byte[] hash = Builtins.unBData(redeemer);
                             var pid = PolicyId.of(hash);
-                            return Builtins.lengthOfByteString(pid) == 28;
+                            return Builtins.lengthOfByteString(PlutusData.cast(pid, byte[].class)) == 28;
                         }
                     }
                     """;
@@ -91,6 +97,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -98,7 +107,7 @@ class NewTypeTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             byte[] name = Builtins.unBData(redeemer);
                             var tn = TokenName.of(name);
-                            return Builtins.lengthOfByteString(tn) > 0;
+                            return Builtins.lengthOfByteString(PlutusData.cast(tn, byte[].class)) > 0;
                         }
                     }
                     """;
@@ -122,6 +131,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -132,7 +144,7 @@ class NewTypeTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             byte[] raw = Builtins.unBData(redeemer);
                             var h = new MyHash(raw);
-                            return Builtins.lengthOfByteString(h) == 28;
+                            return Builtins.lengthOfByteString(PlutusData.cast(h, byte[].class)) == 28;
                         }
                     }
                     """;
@@ -149,6 +161,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -160,7 +175,7 @@ class NewTypeTest {
                             byte[] raw = Builtins.unBData(redeemer);
                             var h = new MyHash(raw);
                             // h is just raw bytes, equalsByteString should work directly
-                            return Builtins.equalsByteString(h, raw);
+                            return Builtins.equalsByteString(PlutusData.cast(h, byte[].class), raw);
                         }
                     }
                     """;
@@ -177,6 +192,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -186,8 +204,8 @@ class NewTypeTest {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             byte[] raw = Builtins.unBData(redeemer);
-                            var h = MyHash.of(raw);
-                            return Builtins.equalsByteString(h, raw);
+                            var h = new MyHash(raw);
+                            return Builtins.equalsByteString(PlutusData.cast(h, byte[].class), raw);
                         }
                     }
                     """;
@@ -204,6 +222,9 @@ class NewTypeTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -214,7 +235,7 @@ class NewTypeTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             BigInteger raw = Builtins.unIData(redeemer);
                             var a = new Amount(raw);
-                            return a == 42;
+                            return a.value().equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -231,6 +252,9 @@ class NewTypeTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -240,8 +264,8 @@ class NewTypeTest {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             BigInteger raw = Builtins.unIData(redeemer);
-                            var a = Amount.of(raw);
-                            return a == 42;
+                            var a = new Amount(raw);
+                            return a.value().equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -259,6 +283,9 @@ class NewTypeTest {
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -289,6 +316,9 @@ class NewTypeTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -297,7 +327,7 @@ class NewTypeTest {
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            var n = Nonce.of(BigInteger.ONE, BigInteger.TWO);
+                            var n = new Nonce(BigInteger.ONE, BigInteger.TWO);
                             return true;
                         }
                     }
@@ -306,14 +336,18 @@ class NewTypeTest {
                 var compiler = new JulcCompiler(STDLIB);
                 compiler.compile(source);
             }, "NewType.of() with two arguments should be rejected");
-            assertTrue(ex.getMessage().contains("requires exactly 1 argument"),
-                    "Error should name the arity rule. Got: " + ex.getMessage());
+            // javac rejects the two-argument constructor call first (ADR-068 I2b).
+            assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.cant.apply.symbol)"),
+                    "Error should name the arity mismatch. Got: " + ex.getMessage());
         }
 
         @Test
         void rejectsMultiFieldNewType() {
             var source = """
                     import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -337,6 +371,9 @@ class NewTypeTest {
             var source = """
                     import java.util.List;
                     import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -362,6 +399,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -372,9 +412,9 @@ class NewTypeTest {
 
                         @Entrypoint
                         static boolean validate(CompareRedeemer redeemer, PlutusData ctx) {
-                            var expected = AssetId.of(redeemer.expected());
-                            var actual = AssetId.of(redeemer.actual());
-                            return Builtins.equalsByteString(expected, actual);
+                            var expected = new AssetId(redeemer.expected());
+                            var actual = new AssetId(redeemer.actual());
+                            return Builtins.equalsByteString(PlutusData.cast(expected, byte[].class), PlutusData.cast(actual, byte[].class));
                         }
                     }
                     """;
@@ -393,6 +433,9 @@ class NewTypeTest {
             var source = """
                     import org.julclang.stdlib.annotation.NewType;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -403,9 +446,9 @@ class NewTypeTest {
 
                         @Entrypoint
                         static boolean validate(CompareRedeemer redeemer, PlutusData ctx) {
-                            var expected = AssetId.of(redeemer.expected());
-                            var actual = AssetId.of(redeemer.actual());
-                            return Builtins.equalsByteString(expected, actual);
+                            var expected = new AssetId(redeemer.expected());
+                            var actual = new AssetId(redeemer.actual());
+                            return Builtins.equalsByteString(PlutusData.cast(expected, byte[].class), PlutusData.cast(actual, byte[].class));
                         }
                     }
                     """;

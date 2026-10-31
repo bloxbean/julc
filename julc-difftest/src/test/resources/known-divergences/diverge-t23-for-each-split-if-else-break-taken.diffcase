@@ -1,0 +1,28 @@
+format: 2
+name: for-each with an if/else assigning different variables, then a taken break (T23)
+class: Probe
+method: m
+arg: 01
+arg: 22
+arg: 9f23030102ff
+expect: DIVERGE T23 Value/Value
+jvm: Value 02 []
+uplc: Value 181d []
+note: Found by the exhaustive corpus (ADR-063 r4, D7): G0Enumeration FOR_EACH [IF_ELSE_UPDATE, BREAK] on
+note: a = 1, b = -3, xs = [-4, 3, 1, 2]. The JVM returns 2, UPLC 29, at every optimization level. An if/else
+note: that assigns one variable, an if without else, a break before the if/else, or no break all agree.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = a;
+        BigInteger v1 = b;
+        for (var x0 : xs) {
+            if (x0.compareTo(b) < 0) { v0 = v0.add(BigInteger.valueOf(1)); } else { v1 = v1.add(x0); }
+            if (x0.compareTo(b) > 0) { break; }
+        }
+        return v0.add(v1.multiply(BigInteger.valueOf(3)));
+    }
+}

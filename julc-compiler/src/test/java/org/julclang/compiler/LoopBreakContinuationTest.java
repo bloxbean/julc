@@ -1,0 +1,308 @@
+package org.julclang.compiler;
+
+import org.julclang.core.Constant;
+import org.julclang.core.PlutusData;
+import org.julclang.core.Term;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.EvalResult;
+import org.julclang.vm.ExBudget;
+import org.junit.jupiter.api.Test;
+
+import javax.tools.ToolProvider;
+import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Method;
+import java.math.BigInteger;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.HexFormat;
+import java.security.MessageDigest;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * ADR-062 T21 (#254) and T23 (#255): in a loop with {@code break}, a branch that does not break continues
+ * with the statements after its {@code if}, then with the next iteration. The lowering used to send such a
+ * branch straight to the next iteration, so the statements after the {@code if} were skipped or run on
+ * the wrong values, or a {@code while} never terminated. javac is the oracle: each shape runs on the JVM
+ * and on UPLC at every optimization level, on inputs that take and skip each branch and the break.
+ */
+class LoopBreakContinuationTest {
+
+    private static String source(String[] shape) {
+        // An optional third element declares class members, such as a field a local may shadow.
+        return "import java.math.BigInteger;\nimport org.julclang.core.types.JulcList;\npublic class Loop { "
+                + (shape.length > 2 ? shape[2] : "")
+                + " public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {\n" + shape[1] + "\n} }\n";
+    }
+
+    /** #209: a field and a record type with the same components in another order, for a local to shadow it. */
+    private static final String POLICY = "record Policy(BigInteger maxPerTx, BigInteger maxTotal) {} "
+            + "record Budget(BigInteger maxTotal, BigInteger maxPerTx) {} "
+            + "static Policy policy = new Policy(BigInteger.TWO, BigInteger.valueOf(1000000));";
+    private static final String LIMITS = "record Bounds(BigInteger min, BigInteger max) {} "
+            + "record Quote(BigInteger max, BigInteger min) {} "
+            + "static Bounds limits = new Bounds(BigInteger.valueOf(-3), BigInteger.valueOf(500));";
+
+    /** Loop bodies, each named by the shape it covers. */
+    private static final List<String[]> SHAPES = List.of(
+            new String[]{"while: an update, then a break (T21)", """
+                    BigInteger v0 = a; BigInteger v1 = b; long i = 0;
+                    while (i < 1) { if (a.compareTo(BigInteger.ZERO) < 0) { v1 = v0; } if (b.compareTo(BigInteger.ZERO) > 0) { break; } i = i + 1; }
+                    return v1;"""},
+            new String[]{"for-each: a split if/else, then a break (T23)", """
+                    BigInteger v0 = a; BigInteger v1 = b;
+                    for (var x0 : xs) { if (x0.compareTo(b) < 0) { v0 = v0.add(BigInteger.ONE); } else { v1 = v1.add(x0); } if (x0.compareTo(b) > 0) { break; } }
+                    return v0.add(v1.multiply(BigInteger.valueOf(3)));"""},
+            new String[]{"one accumulator: break, else an update, then a statement", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { break; } else { s = s.add(x); } s = s.multiply(BigInteger.TWO); }
+                    return s;"""},
+            new String[]{"one accumulator: an update, else break, then a statement", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(b) <= 0) { s = s.add(x); } else { break; } s = s.multiply(BigInteger.TWO); }
+                    return s;"""},
+            new String[]{"two accumulators: break, else an update, then a statement", """
+                    BigInteger s = a; BigInteger n = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { break; } else { s = s.add(x); } n = n.add(BigInteger.ONE); }
+                    return s.add(n.multiply(BigInteger.valueOf(100)));"""},
+            new String[]{"one accumulator: an update, then a break", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(BigInteger.ZERO) < 0) { s = s.add(x); } if (x.compareTo(b) > 0) { break; } }
+                    return s;"""},
+            new String[]{"two accumulators: a break, then a split if/else last", """
+                    BigInteger s = a; BigInteger n = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { break; } if (x.compareTo(BigInteger.ZERO) < 0) { s = s.add(x); } else { n = n.add(x); } }
+                    return s.add(n.multiply(BigInteger.valueOf(100)));"""},
+            new String[]{"two accumulators: a break, then an if without else last", """
+                    BigInteger s = a; BigInteger n = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { break; } n = n.add(BigInteger.ONE); if (x.compareTo(BigInteger.ZERO) < 0) { s = s.add(x); } }
+                    return s.add(n.multiply(BigInteger.valueOf(100)));"""},
+            new String[]{"one accumulator: a nested break that can fall through, then a statement", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(BigInteger.ZERO) > 0) { if (x.compareTo(b) > 0) { break; } s = s.add(x); } s = s.multiply(BigInteger.TWO); }
+                    return s;"""},
+            new String[]{"one accumulator: a nested break that can fall through, last", """
+                    BigInteger s = a;
+                    for (var x : xs) { s = s.multiply(BigInteger.TWO); if (x.compareTo(BigInteger.ZERO) > 0) { if (x.compareTo(b) > 0) { break; } s = s.add(x); } }
+                    return s;"""},
+            new String[]{"two accumulators: a nested break that can fall through, then a statement", """
+                    BigInteger s = a; BigInteger n = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(BigInteger.ZERO) > 0) { if (x.compareTo(b) > 0) { break; } s = s.add(x); } n = n.add(BigInteger.ONE); }
+                    return s.add(n.multiply(BigInteger.valueOf(100)));"""},
+            new String[]{"a scan for a forbidden item behind an outer check", """
+                    boolean clean = true;
+                    for (var x : xs) { if (x.compareTo(BigInteger.ZERO) > 0) { if (x.compareTo(b) > 0) { clean = false; break; } } }
+                    return clean ? BigInteger.ONE : BigInteger.ZERO;"""},
+            new String[]{"two accumulators: three ifs in sequence, two of them breaking", """
+                    BigInteger s = a; BigInteger n = b;
+                    for (var x : xs) { if (x.compareTo(BigInteger.ZERO) < 0) { s = s.add(x); } else { n = n.add(x); } if (x.compareTo(b) > 0) { break; } else { s = s.add(BigInteger.ONE); } if (n.compareTo(BigInteger.TEN) > 0) { break; } n = n.add(BigInteger.ONE); }
+                    return s.add(n.multiply(BigInteger.valueOf(100)));"""},
+            new String[]{"while, one accumulator: break, else an update, then a statement", """
+                    BigInteger s = a; long i = 0;
+                    while (i < 3) { if (s.compareTo(b) > 0) { break; } else { s = s.add(BigInteger.ONE); } i = i + 1; }
+                    return s;"""},
+            new String[]{"while, two accumulators: an update, else break, then a statement", """
+                    BigInteger s = a; long i = 0;
+                    while (i < 4) { if (s.compareTo(b) <= 0) { s = s.add(BigInteger.TWO); } else { break; } i = i + 1; }
+                    return s.add(BigInteger.valueOf(i * 100));"""},
+            // Review of the fix: the statements after the if are generated in their own scope, so a
+            // declaration there does not change how a branch reads a field of the same name.
+            new String[]{"a declaration after the if does not retype a field a branch reads", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { if (t.equals(BigInteger.TEN)) { s = BigInteger.ONE; break; } } String t = "hello"; s = s.add(BigInteger.valueOf(t.length())); }
+                    return s;""", "static BigInteger t = BigInteger.TEN;"},
+            // A branch local named like a field accumulator stays inside its branch, through a break...
+            new String[]{"a branch local shadowing a field accumulator, then break", """
+                    for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; break; } s = s.add(BigInteger.ONE); }
+                    return s;""", "static BigInteger s = BigInteger.TEN;"},
+            // A local declared in the loop body itself, after a field accumulator's update (review A).
+            new String[]{"a loop-body local shadowing a field accumulator, for-each", """
+                    for (var x : xs) { s = s.add(x); BigInteger s = x.add(BigInteger.valueOf(100)); }
+                    return s;""", "static BigInteger s = BigInteger.TEN;"},
+            new String[]{"a loop-body local shadowing a field accumulator, while with break", """
+                    long i = 0;
+                    while (i < 3) { s = s.add(BigInteger.ONE); if (s.compareTo(b) > 100) { break; } BigInteger s = a; i = i + 1; }
+                    return s.add(BigInteger.valueOf(i * 1000));""", "static BigInteger s = BigInteger.TEN;"},
+            new String[]{"a loop-body local shadowing one of two field accumulators", """
+                    for (var x : xs) { s = s.add(x); n = n.add(BigInteger.ONE); if (x.compareTo(b) > 0) { break; } BigInteger s = x; }
+                    return s.add(n.multiply(BigInteger.valueOf(100)));""", "static BigInteger s = BigInteger.TEN; static BigInteger n = BigInteger.ZERO;"},
+            // Review A, F4: a body local updated in a loop with one accumulator and a break was rejected.
+            new String[]{"one accumulator and break: a branch local updated in place", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(b) > 0) { s = s.add(x); break; } else { BigInteger t = x; t = t.add(x); s = s.add(t); } s = s.add(BigInteger.ONE); }
+                    return s;"""},
+            new String[]{"one accumulator and break: a loop-body local updated in place", """
+                    BigInteger s = a;
+                    for (var x : xs) { BigInteger t = x; t = t.multiply(BigInteger.TWO); if (t.compareTo(b) > 4) { break; } s = s.add(t); }
+                    return s;"""},
+            // ...and without one.
+            new String[]{"a branch local shadowing a field accumulator, no break", """
+                    for (var x : xs) { if (x.compareTo(b) > 0) { BigInteger s = x; s = s.add(x); } s = s.add(BigInteger.ONE); }
+                    return s;""", "static BigInteger s = BigInteger.TEN;"},
+            // #209: a branch local's type stayed in the symbol table after its if, so a later read of a field
+            // with the same name and another record type projected the wrong field. Each branch now has its
+            // own scope, in loops with and without break.
+            new String[]{"#209: a branch local does not retype a field read after the if", """
+                    boolean ok = true; BigInteger total = BigInteger.ZERO;
+                    for (var w : xs) { total = total.add(w); if (a.compareTo(BigInteger.valueOf(5)) > 0) { Budget policy = new Budget(BigInteger.valueOf(2000000), BigInteger.valueOf(900)); ok = ok && total.compareTo(policy.maxTotal()) <= 0; } ok = ok && w.compareTo(policy.maxPerTx()) <= 0; }
+                    return ok ? BigInteger.ONE : BigInteger.ZERO;""", POLICY},
+            new String[]{"#209: the same, from a branch the input takes", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { Quote limits = new Quote(BigInteger.valueOf(2000), BigInteger.ZERO); s = s.add(limits.max()); } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: an else-branch local", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { s = s.add(x); } else { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: a nested-branch local", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { if (x.compareTo(b) < 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.min()); } s = s.add(limits.max()); } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: a while loop", """
+                    BigInteger s = BigInteger.ZERO; long i = 0;
+                    while (i < 3) { if (a.compareTo(BigInteger.valueOf(i)) > 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } s = s.add(limits.min()); i = i + 1; }
+                    return s;""", LIMITS},
+            new String[]{"#209: a loop with break", """
+                    BigInteger s = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } if (x.compareTo(b) > 0) { break; } s = s.add(limits.min()); }
+                    return s;""", LIMITS},
+            new String[]{"#209: two accumulators", """
+                    BigInteger s = BigInteger.ZERO; BigInteger n = BigInteger.ZERO;
+                    for (var x : xs) { if (x.compareTo(a) > 0) { Quote limits = new Quote(BigInteger.TEN, BigInteger.ONE); s = s.add(limits.max()); } n = n.add(limits.min()); }
+                    return s.add(n.multiply(BigInteger.valueOf(1000)));""", LIMITS},
+            // A second accumulator assigned between an updating if and a later break (found by ADR-066 M2 probes).
+            new String[]{"two accumulators: an updating if, a plain update, then a break on it", """
+                    BigInteger acc = a; BigInteger pa = a;
+                    for (var z : xs) { if (z.compareTo(a) > 0) { acc = z; } pa = z; if (pa.compareTo(a) > 0) { break; } }
+                    return acc.add(pa.multiply(BigInteger.TEN));"""},
+            new String[]{"two accumulators: an if/else update, a plain update, then a break", """
+                    BigInteger acc = a; BigInteger pa = a;
+                    for (var z : xs) { if (z.compareTo(a) > 0) { acc = z; } else { acc = acc.add(BigInteger.ONE); } pa = z; if (pa.compareTo(a) > 0) { break; } }
+                    return acc.add(pa.multiply(BigInteger.TEN));"""},
+            new String[]{"two accumulators: a plain update, an updating if, then a break", """
+                    BigInteger acc = a; BigInteger pa = a;
+                    for (var z : xs) { pa = z; if (z.compareTo(a) > 0) { acc = z; } if (pa.compareTo(a) > 0) { break; } }
+                    return acc.add(pa.multiply(BigInteger.TEN));"""},
+            // An else-if chain whose middle branch breaks: the statement after it was skipped.
+            new String[]{"a break inside an else-if chain", """
+                    BigInteger s = a;
+                    for (var x : xs) { if (x.compareTo(BigInteger.ZERO) < 0) { s = s.subtract(x); } else if (x.compareTo(b) > 0) { break; } else { s = s.add(x); } s = s.add(BigInteger.ONE); }
+                    return s;"""});
+
+    private static final long[][] INPUTS = {{-4, 1}, {1, -3}, {-2, 1}, {2, 3}, {0, 10}, {5, 0}};
+    private static final long[][] LISTS = {{0}, {-4, 3, 1, 2}, {-1, 2, 4}, {1, 2, 5, 1}, {-5, -6}, {}};
+    private static final ExBudget BUDGET = new ExBudget(10_000_000_000L, 14_000_000L);
+
+    @Test
+    void everyShapeReturnsWhatTheJvmReturns() throws Exception {
+        var problems = new ArrayList<String>();
+        for (var shape : SHAPES) {
+            String source = source(shape);
+            var classes = javac(source);
+            for (var level : OptimizationLevel.values()) {
+                var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                        new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "m").program();
+                for (int k = 0; k < INPUTS.length; k++) {
+                    var xs = Arrays.stream(LISTS[k]).mapToObj(BigInteger::valueOf).toList();
+                    // A fresh class for each input, so that a static field starts at its initial value.
+                    Object expected = method(classes).invoke(null, BigInteger.valueOf(INPUTS[k][0]), BigInteger.valueOf(INPUTS[k][1]),
+                            JulcList.of(xs.toArray(BigInteger[]::new)));
+                    var args = List.<PlutusData>of(new PlutusData.IntData(BigInteger.valueOf(INPUTS[k][0])),
+                            new PlutusData.IntData(BigInteger.valueOf(INPUTS[k][1])),
+                            new PlutusData.ListData(xs.stream().map(v -> (PlutusData) new PlutusData.IntData(v)).toList()));
+                    for (String vm : List.of("Java", "Scalus")) {
+                        var result = CompilerTestVm.pv11(vm).evaluateWithArgs(program, args, BUDGET);
+                        var actual = result instanceof EvalResult.Success ok ? ok.resultTerm() : result;
+                        if (!new Term.Const(Constant.integer((BigInteger) expected)).equals(actual)) {
+                            problems.add(shape[0] + " at " + level + " on " + vm + ", a=" + INPUTS[k][0] + " b=" + INPUTS[k][1]
+                                    + " xs=" + xs + ": JVM " + expected + ", UPLC " + actual);
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(problems.isEmpty(), String.join("\n", problems));
+    }
+
+    @Test
+    void chainedBreakingIfsGrowTheScriptLinearly() {
+        // Each if that breaks binds what follows it once, as a join point, instead of copying it into
+        // every branch that falls through. Both branches fall through here (review A, F2: with only
+        // one falling through, copying stays linear too), so copying would double the size per if.
+        for (boolean twoAccumulators : new boolean[]{false, true}) {
+            var sizes = new ArrayList<Integer>();
+            for (int n = 1; n <= 8; n++) {
+                var body = new StringBuilder("BigInteger s = a; BigInteger t = b;\nfor (var x : xs) {\n");
+                for (int i = 0; i < n; i++) {
+                    String other = twoAccumulators ? "t = t.add(x);" : "s = s.subtract(x);";
+                    body.append("if (x.compareTo(BigInteger.valueOf(").append(i).append(")) > 0) { if (x.compareTo(b) > 0) { break; } s = s.add(x); } else { ")
+                            .append(other).append(" }\n");
+                    body.append(twoAccumulators ? "t = t.add(BigInteger.ONE);\n" : "s = s.add(BigInteger.ONE);\n");
+                }
+                body.append("}\nreturn s.add(t);");
+                var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source(new String[]{"", body.toString()}), "m").program();
+                sizes.add(UplcFlatEncoder.encodeProgram(program).length);
+            }
+            int step = sizes.get(1) - sizes.get(0);
+            for (int n = 2; n < sizes.size(); n++) {
+                assertTrue(sizes.get(n) - sizes.get(n - 1) <= 2 * step, (twoAccumulators ? "two" : "one") + " accumulators: script sizes " + sizes);
+            }
+        }
+    }
+
+    @Test
+    void branchLocalsThatShadowNothingKeepTheirBytes() throws Exception {
+        // A branch's locals are renamed apart only when one shadows an accumulator. Renaming always
+        // made same-named locals in disjoint branches unique, which let later passes fold more and
+        // changed the script of programs with no shadowing. FLAT SHA-256 as on main (b5ff39a8), re-frozen at ADR-068
+        // M1 (B1), whose comparison rule lowers x.compareTo(b) > 0 to one builtin (D6); with the rule disabled these
+        // programs keep b5ff39a8's hashes.
+        String disjoint = """
+                BigInteger s = a;
+                for (var x : xs) { if (x.compareTo(b) > 0) { JulcArray<BigInteger> t = JulcArray.of(BigInteger.ONE, BigInteger.TWO); s = s.add(t.get(0)); } else { JulcArray<BigInteger> t = JulcArray.of(BigInteger.TEN, BigInteger.ZERO); s = s.add(t.get(1)); } }
+                return s;""";
+        String after = """
+                BigInteger s = a;
+                for (var x : xs) { if (x.compareTo(b) > 0) { JulcArray<BigInteger> t = JulcArray.of(BigInteger.ONE, BigInteger.TWO); s = s.add(t.get(0)); } JulcArray<BigInteger> t = JulcArray.of(BigInteger.TEN, BigInteger.ZERO); s = s.add(t.get(1)); }
+                return s;""";
+        var expected = Map.of(
+                "disjoint/NONE", "a0c1f552fbd130cb", "disjoint/BASELINE", "97c75d5ddaf913e2",
+                "disjoint/PV11_SAFE", "314f4b579a9a6350", "disjoint/PV11_COSTED", "314f4b579a9a6350",
+                "after/NONE", "f5a4ad03d0f3d243", "after/BASELINE", "a51808d15ca04423",
+                "after/PV11_SAFE", "d1cb3ef2459d6926", "after/PV11_COSTED", "d1cb3ef2459d6926");
+        for (var fixture : Map.of("disjoint", disjoint, "after", after).entrySet()) {
+            String source = source(new String[]{"", fixture.getValue()}).replace(
+                    "import org.julclang.core.types.JulcList;", "import org.julclang.core.types.JulcList;\nimport org.julclang.core.types.JulcArray;");
+            for (var level : OptimizationLevel.values()) {
+                var bytes = UplcFlatEncoder.encodeProgram(new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                        new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "m").program());
+                var sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 16);
+                assertEquals(expected.get(fixture.getKey() + "/" + level), sha, fixture.getKey() + " at " + level);
+            }
+        }
+    }
+
+    private static Path javac(String source) throws Exception {
+        var dir = Files.createTempDirectory("julc-loop-break-");
+        var file = dir.resolve("Loop.java");
+        Files.writeString(file, source);
+        var errors = new ByteArrayOutputStream();
+        int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors,
+                "-cp", System.getProperty("java.class.path"), "-d", dir.toString(), file.toString());
+        assertEquals(0, status, errors::toString);
+        return dir;
+    }
+
+    private static Method method(Path classes) throws Exception {
+        var loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, LoopBreakContinuationTest.class.getClassLoader());
+        return Arrays.stream(loader.loadClass("Loop").getMethods()).filter(m -> m.getName().equals("m")).findFirst().orElseThrow();
+    }
+}

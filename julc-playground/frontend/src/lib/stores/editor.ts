@@ -9,16 +9,18 @@ import type {
 } from '../api/client';
 
 const DEFAULT_JAVA_SOURCE = `import java.math.BigInteger;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class SimpleValidator {
     static boolean isPositive(BigInteger x) {
-        return x > 0;
+        return x.compareTo(BigInteger.ZERO) > 0;
     }
 
     @Entrypoint
     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-        return isPositive(42);
+        return isPositive(BigInteger.valueOf(42));
     }
 }
 `;

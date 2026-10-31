@@ -1,8 +1,6 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
@@ -190,6 +188,26 @@ public final class LibrarySourceResolver {
         }
         target.put(librarySource.fqcn(), librarySource);
     }
+
+    /**
+     * The sources of a host's merged pool that are JAR sources (ADR-068 D8), by provenance: the entries of
+     * {@code pool} that are still the very {@link LibrarySource} {@code jarSources} has for that key; a project source
+     * put over one is a project source even when its text is the same. A host passes them to
+     * {@link CompilerOptions#setJarLibrarySources}, which compares them by identity; it prunes nothing itself.
+     */
+    public static List<String> jarSourceTexts(Map<String, LibrarySource> pool, Map<String, LibrarySource> jarSources) {
+        var sources = new ArrayList<String>();
+        pool.forEach((key, source) -> {
+            if (jarSources.get(key) == source) sources.add(source.source());
+        });
+        return sources;
+    }
+
+    /** {@code options} with every source of a class-path pool marked as a JAR source (a host with no project pool). */
+    public static CompilerOptions withJarSources(CompilerOptions options, Map<String, LibrarySource> classpathPool) {
+        return options.setJarLibrarySources(classpathPool.values().stream().map(LibrarySource::source).toList());
+    }
+
 
     /**
      * Scan classpath for {@code META-INF/plutus-sources/} entries and collect
@@ -523,9 +541,7 @@ public final class LibrarySourceResolver {
     }
 
     private static CompilationUnit parseCompilationUnit(String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
+        var result = JavaSourceParser.parse(source);
         if (!result.isSuccessful()) {
             throw new IllegalArgumentException("Could not parse Java source: " + result.getProblems());
         }

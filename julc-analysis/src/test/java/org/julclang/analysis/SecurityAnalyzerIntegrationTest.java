@@ -20,6 +20,10 @@ class SecurityAnalyzerIntegrationTest {
     private static final HexFormat HEX = HexFormat.of();
 
     static final String ALWAYS_TRUE_SOURCE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
@@ -31,15 +35,19 @@ class SecurityAnalyzerIntegrationTest {
 
     static final String VALUE_MANIPULATION_SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class ValueValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    BigInteger a = 100;
-                    BigInteger b = 50;
-                    BigInteger result = a + b;
-                    return result == 150;
+                    BigInteger a = BigInteger.valueOf(100);
+                    BigInteger b = BigInteger.valueOf(50);
+                    BigInteger result = a.add(b);
+                    return result.equals(BigInteger.valueOf(150));
                 }
             }
             """;

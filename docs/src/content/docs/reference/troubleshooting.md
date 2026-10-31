@@ -91,6 +91,9 @@ expects a concrete method body.
 cannot contain abstract methods.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 // WRONG: abstract method
 @SpendingValidator
 public class MyValidator {
@@ -137,6 +140,9 @@ var total = BigInteger.ZERO;
 **Hint:** `break can only be used inside for-each or while loops.`
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop scope.
+A `break` inside a loop that updates no variable declared before it reports
+`JULC0063` instead ([1.22](#122-julc0063-break-is-not-supported-in-a-loop-that-updates-no-variable-declared-before-the-loop)).
+A `break` that names a label reports `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Move the `break` inside a loop body, or restructure your logic to use
 `return` instead.
@@ -166,6 +172,8 @@ expression statements are supported on-chain.`
 **Cause:** A Java statement type that has no on-chain equivalent was used.
 Unsupported statements include `switch` statements (as opposed to `switch`
 expressions), `try`/`catch`, `do`/`while`, labeled statements, and others.
+`continue` reports `JULC0060` ([1.25](#125-julc0060-continue-is-not-supported-on-chain)),
+and a labelled statement `JULC0066` ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Rewrite using the supported statement forms: variable declarations, if/else,
 for-each, while, return, and expression statements.
@@ -185,44 +193,45 @@ var result = switch (action) {
 
 ---
 
-### 1.5 `Unsupported statement in break-aware loop body: <StatementType>`
+### 1.5 `JULC0064` `A nested while loop is not supported in a loop that contains break and updates one variable declared before the loop`
 
-**Hint:** `Inside loops with break, only variable declarations, assignments, if/else,
-and break are supported.`
+**Cause:** A loop that contains `break` and updates exactly one variable declared
+before it may contain only variable declarations, assignments, if/else and break.
+A nested `while` or for-each loop in its body is rejected with this code; the
+message says `A nested while loop` or `A nested for-each loop`. Another unsupported
+statement keeps its own message, `Unsupported statement in break-aware loop body:
+<StatementType>`. A loop with `break` that updates two or more variables declared
+before it supports nested loops.
 
-**Cause:** A loop body that contains `break` used an unsupported statement type.
-When a loop body contains `break`, the compiler uses a specialized translation
-path that supports a narrower set of statements.
-
-**Fix:** Simplify the loop body to contain only variable declarations, accumulator
-assignments, if/else, and break.
+**Fix:** Move the nested loop into a helper method that returns the value it
+computes, and call the helper from the loop body.
 
 ```java
-// WRONG: nested for-each inside a break-aware loop body
-for (var item : items) {
-    for (var sub : item.children()) { // not supported inside break-aware body
-        if (condition) break;
-    }
+// WRONG: nested while inside a loop with break
+BigInteger v = BigInteger.ZERO;
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    long i = 0;
+    while (i < 3) { v = v.add(x); i = i + 1; }
 }
 
-// CORRECT: nested for-each without break is supported
-for (var item : items) {
-    for (var sub : item.children()) { // OK — no break in outer loop
-        sum = sum + sub.amount();
-    }
+// CORRECT: the nested loop is a helper
+static BigInteger addTimes(BigInteger v, BigInteger x) {
+    BigInteger r = v;
+    long i = 0;
+    while (i < 3) { r = r.add(x); i = i + 1; }
+    return r;
 }
 
-// CORRECT: use a helper method for the break pattern
-var found = false;
-for (var item : items) {
-    if (checkCondition(item)) {
-        found = true;
-        break;
-    }
+BigInteger v = BigInteger.ZERO;
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    v = addTimes(v, x);
 }
 ```
 
-Note: Nested loops (while-in-while, for-each-in-for-each, mixed) are fully supported. The restriction is specifically about nesting inside a **break-aware** loop body — when the outer loop uses `break`, the inner statements must be limited to declarations, assignments, if/else, and break.
+Before [#257](https://github.com/bloxbean/julc/issues/257) this was reported as
+`Unsupported statement in break-aware loop body: WhileStmt`, without a code.
 
 ---
 
@@ -443,7 +452,7 @@ var result = switch (action) {
 ```java
 // WRONG: missing return on else path
 static boolean check(BigInteger x) {
-    if (x > 0) {
+    if (x.compareTo(BigInteger.ZERO) > 0) {
         return true;
     }
     // no return here
@@ -451,7 +460,7 @@ static boolean check(BigInteger x) {
 
 // CORRECT
 static boolean check(BigInteger x) {
-    if (x > 0) {
+    if (x.compareTo(BigInteger.ZERO) > 0) {
         return true;
     } else {
         return false;
@@ -468,6 +477,7 @@ static boolean check(BigInteger x) {
 **Fix:** `@NewType` records must have exactly one field of a supported primitive type (`byte[]`, `BigInteger`, `String`, `boolean`).
 
 ```java
+import org.julclang.stdlib.annotation.NewType;
 // WRONG: two fields
 @NewType
 record AssetId(byte[] policy, byte[] name) {}
@@ -489,12 +499,12 @@ record PolicyId(byte[] hash) {}
 
 ```java
 // CORRECT: expression body
-var doubled = ListsLib.map(items, item -> item * 2);
+var doubled = items.map(item -> item.multiply(BigInteger.TWO));
 
 // CORRECT: block body
-var filtered = ListsLib.filter(items, item -> {
+var filtered = items.filter(item -> {
     var threshold = new BigInteger("100");
-    return item > threshold;
+    return item.compareTo(threshold) > 0;
 });
 ```
 
@@ -568,27 +578,33 @@ var negative = -amount;
 
 ---
 
-### 1.18 `Unsupported expression: AssignExpr`
+### 1.18 `JULC0061` `Reassigning '<name>' is not supported outside a loop`
 
-**Hint:** `Variables are immutable on-chain. Use the accumulator pattern in
-for-each/while loops for mutable state.`
+**Cause:** On-chain variables are single-assignment. Only a loop can update a
+variable declared before it (the loop's accumulator). Anywhere else, assigning to a
+local variable, a parameter or a field is rejected, including in an `if`/`else`
+branch and inside an expression. Before [#257](https://github.com/bloxbean/julc/issues/257)
+this was reported as `Unsupported expression: AssignExpr`, without a code; an
+assignment inside an expression in a loop still is.
 
-**Cause:** An assignment expression was used outside of the accumulator pattern
-in a loop. On-chain UPLC does not support mutation.
-
-**Fix:** Variables are immutable. Use the accumulator pattern in for-each or while
-loops.
+**Fix:** Declare a new local for the new value, or choose the value in one
+expression.
 
 ```java
-// WRONG: assignment outside loop accumulator
-var x = BigInteger.ZERO;
-x = BigInteger.ONE; // not inside a loop accumulator context
+// WRONG
+long x = n;
+x = x * n;
 
-// CORRECT: accumulator pattern in for-each
-var total = BigInteger.ZERO;
-for (var item : items) {
-    total = total + item.value(); // accumulator assignment in loop
-}
+// CORRECT: a new local
+long x = n;
+long squared = x * n;
+
+// WRONG
+BigInteger limit = BigInteger.TEN;
+if (vip) { limit = BigInteger.valueOf(100); }
+
+// CORRECT: one expression
+var limit = vip ? BigInteger.valueOf(100) : BigInteger.TEN;
 ```
 
 ---
@@ -627,6 +643,219 @@ condition of an `if` statement outside a loop. Used anywhere else, for example
 `if (x instanceof Bid b && b.amount() > 0)` or inside a loop body, it is reported as
 undefined until [#204](https://github.com/bloxbean/julc/issues/204). Use a `switch` on the sealed type there, which binds case
 variables in every position.
+
+`JulcMap.of(...)` used to be reported as `Undefined variable: JulcMap`; it now
+reports `JULC0062` ([1.23](#123-julc0062-julcmapof-is-off-chain-only-and-has-no-on-chain-implementation)).
+
+---
+
+### 1.21 `JULC0003` `'return' is not supported inside while loop body`
+
+**Cause:** A `while` loop body cannot `return` from the enclosing method. A `while`
+loop is compiled to a recursive function whose result is the variables the loop
+updates, so it has no way to leave the method early. The location is the first
+such `return`.
+
+**Fix:** Exit the loop with `break`, or keep the result in a variable declared
+before the loop, and return after the loop.
+
+```java
+// WRONG
+long i = 0;
+while (i < n) {
+    if (i > 3) { return i; }
+    i = i + 1;
+}
+return n;
+
+// CORRECT
+long i = 0;
+while (i < n) {
+    if (i > 3) { break; }
+    i = i + 1;
+}
+return i;
+```
+
+---
+
+### 1.22 `JULC0063` `break is not supported in a loop that updates no variable declared before the loop`
+
+**Cause:** A loop supports `break` only when it updates a variable declared before
+the loop. A loop that updates none compiles its body as plain statements, which
+cannot stop the loop. Before [#257](https://github.com/bloxbean/julc/issues/257) this was
+reported as `break statement outside of a loop`, although the `break` is inside one.
+
+The same applies to such a loop nested inside a loop that does update a variable.
+That form used to be accepted, with its `break` ignored, so the inner loop ran to its
+end ([#273](https://github.com/bloxbean/julc/issues/273)); it is now rejected with this
+code too. A loop whose only update is inside a `switch` statement or an expression
+reports `JULC0065` at the update instead ([1.24](#124-julc0065-updating-name-inside-a-switch-statement-is-not-supported-in-this-loop)).
+
+**Fix:** Declare a variable before the loop and set it where the loop breaks.
+
+```java
+// WRONG
+for (var x : xs) {
+    if (x.equals(target)) { break; }
+    if (x.signum() < 0) { Builtins.error(); }
+}
+
+// CORRECT
+boolean stopped = false;
+for (var x : xs) {
+    if (x.equals(target)) { stopped = true; break; }
+    if (x.signum() < 0) { Builtins.error(); }
+}
+```
+
+---
+
+### 1.23 `JULC0062` `JulcMap.of is off-chain only and has no on-chain implementation`
+
+**Cause:** `JulcMap.of(...)` builds a `JulcAssocMap` in Java, for tests and
+off-chain code. The compiler has no lowering for it. Before
+[#257](https://github.com/bloxbean/julc/issues/257) this was reported as
+`Undefined variable: JulcMap`.
+
+**Fix:** Build the map from `JulcMap.empty()` with `insert`. `insert` adds the
+entry at the front of the map, so insert the entries in reverse order to get the
+order `JulcMap.of` gives.
+
+```java
+// WRONG
+JulcMap<byte[], BigInteger> map = JulcMap.of(key, BigInteger.ONE);
+JulcMap<byte[], BigInteger> two = JulcMap.of(a, BigInteger.ONE, b, BigInteger.TWO);
+
+// CORRECT
+JulcMap<byte[], BigInteger> map = JulcMap.<byte[], BigInteger>empty().insert(key, BigInteger.ONE);
+JulcMap<byte[], BigInteger> two = JulcMap.<byte[], BigInteger>empty()
+        .insert(b, BigInteger.TWO).insert(a, BigInteger.ONE); // keys: a, b
+```
+
+---
+
+### 1.24 `JULC0065` `Updating '<name>' inside a switch statement is not supported in this loop`
+
+**Cause:** A loop carries an update of a variable declared before it only when the
+update is a statement of its own, directly in the loop body or in an `if`/`else`
+branch. An update in the loop condition or iterable, inside a `switch` statement,
+inside an expression or inside a lambda is not seen as one. A loop with `break`
+whose only updates are in such a position reports this code at the update; the
+message says where (`in the loop condition`, `inside a switch statement`, `inside an
+expression`, `inside a lambda`). The code covers only such a loop with `break`: the
+same update in a loop without `break` is still reported as `Unsupported statement:
+SwitchStmt` or `Unsupported expression: AssignExpr`, without a code
+([#206](https://github.com/bloxbean/julc/issues/206)).
+
+**Fix:** Write the update as a statement of its own.
+
+```java
+// WRONG
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    switch (x.intValue()) { case 1 -> c = c + 1; default -> c = c + 2; }
+}
+
+// CORRECT
+for (var x : xs) {
+    if (x.signum() < 0) { break; }
+    if (x.intValue() == 1) { c = c + 1; } else { c = c + 2; }
+}
+
+// WRONG
+if ((c = c + 1) > 5) { Builtins.error(); }
+
+// CORRECT
+c = c + 1;
+if (c > 5) { Builtins.error(); }
+
+// WRONG
+while ((x = x - 1) > 0) { if (x == 3) { break; } }
+
+// CORRECT
+while (x - 1 > 0) {
+    x = x - 1;
+    if (x == 3) { break; }
+}
+```
+
+---
+
+### 1.25 `JULC0060` `continue is not supported on-chain`
+
+**Cause:** `continue` is outside the on-chain subset. Loops are compiled to folds
+and recursive functions whose body runs to its end on every iteration; there is no
+lowering that skips the rest of the body. The error is reported when the compiler
+lowers the loop that contains the `continue`, so code JuLC never compiles, such as
+a nested off-chain helper class, is not affected. Before
+[#257](https://github.com/bloxbean/julc/issues/257) this was reported as
+`Unsupported statement: ContinueStmt`, without a code.
+
+**Fix:** Guard the rest of the loop body with an `if` instead.
+
+```java
+// WRONG
+for (var x : xs) {
+    if (x.signum() < 0) { continue; }
+    total = total.add(x);
+}
+
+// CORRECT
+for (var x : xs) {
+    if (x.signum() >= 0) { total = total.add(x); }
+}
+```
+
+---
+
+### 1.26 `JULC0066` `Labels are not supported on-chain: '<construct>'`
+
+**Cause:** Labelled statements are outside the on-chain subset, so no `break` or
+`continue` can name a label. A labelled statement (`outer:`), a `break` that names a
+label (`break outer`) and a `continue` that names one (`continue outer`) report this
+code, at that statement, whether or not a matching label exists. `continue` is not
+supported without a label either ([1.25](#125-julc0060-continue-is-not-supported-on-chain)).
+
+Before [#201](https://github.com/bloxbean/julc/issues/201), a `break` that named a
+label was accepted and compiled as a plain `break` of the innermost loop. javac
+rejects `break outer;` when no statement carries the label `outer`, so a Gradle build
+stopped there, but tools that compile source text without javac (the testkit's
+`compileMethod`, the playground) compiled it with a different meaning: the example
+below returned 3 instead of leaving both loops. A labelled statement used to be
+reported as `Unsupported statement: LabeledStmt`, without a code. A label is reported
+when the compiler lowers the code that contains it, so code JuLC never compiles, such
+as a nested off-chain helper class, is not affected. Only a labelled `break` outside
+any loop, which subset validation already rejected
+([2.5](#25-break-is-only-supported-inside-for-each-or-while-loops-on-chain)), is
+reported there.
+
+**Fix:** Remove the label. To leave an outer loop from an inner one, declare a
+variable before the loops, set it where the inner loop breaks, and skip the rest of
+the outer loop while it is set.
+
+```java
+// WRONG
+long count = 0;
+for (var x : xs) {
+    for (var y : xs) {
+        if (y.equals(BigInteger.TWO)) { break outer; }
+        count = count + 1;
+    }
+}
+
+// CORRECT: returns 1 for [1, 2, 3], as `outer:` on the outer loop and `break outer` do in Java
+long count = 0;
+boolean stop = false;
+for (var x : xs) {
+    if (!stop) {
+        for (var y : xs) {
+            if (y.equals(BigInteger.TWO)) { stop = true; break; }
+            count = count + 1;
+        }
+    }
+}
+```
 
 ---
 
@@ -729,6 +958,7 @@ while (i < BigInteger.TEN) {
 **Suggestion:** `Use for-each or while with an accumulator and break to exit early`
 
 **Cause:** A `break` statement appeared outside of a for-each or while loop.
+A `break` there that names a label reports `JULC0066` instead ([1.26](#126-julc0066-labels-are-not-supported-on-chain-construct)).
 
 **Fix:** Place `break` inside a for-each or while loop.
 
@@ -1012,14 +1242,75 @@ if (action instanceof Bid bid) { return bid.amount(); }
 
 ---
 
+### 2.19 `JULC0070` `Integer literal <literal> is invalid: <reason>`
+
+**Cause:** javac rejects the literal, and so does JuLC
+([#270](https://github.com/bloxbean/julc/issues/270)) (JLS 21 §3.10.1):
+
+- An `int` literal has 32 bits and a `long` literal (suffix `L`) 64. A decimal literal must
+  fit the signed range; `2147483648` and `9223372036854775808L` are allowed only directly
+  after a unary minus, not inside parentheses. A hexadecimal, octal or binary literal must
+  fit the width.
+- An octal literal (a leading `0`) has only the digits 0 to 7, so `08` is invalid.
+- A `byte[]` initializer element must be in -128 to 127.
+
+A hexadecimal, octal or binary literal that fits denotes the two's-complement value of its
+bits, as in Java: `0xFFFFFFFF` is `-1`, and `0xFFFFFFFFL` is `4294967295`.
+
+**Fix:** Add the `L` suffix for a `long` literal, use `BigInteger` for a larger value, write a
+negated most-negative literal without parentheses, and keep `byte[]` elements in range.
+
+```java
+// WRONG
+long big = 4294967296;
+byte[] b = new byte[]{0xFF};
+
+// CORRECT
+long big = 4294967296L;
+byte[] b = new byte[]{-1};
+BigInteger bigger = new BigInteger("18446744073709551616");
+```
+
+---
+
 ## 3. Configuration Errors (JulcCompiler)
 
 These errors are raised during compiler setup and pipeline orchestration.
 
+### 3.0 `JULC0085` `<javac's message> (compiler.err.<key>)`
+
+**Cause:** javac rejects the source. Before JuLC compiles anything, javac analyzes the
+sources of the compilation (ADR-068 M1), and an error is reported with javac's message, key
+and position. JuLC's dialect beyond Java is rejected this way, for example `a + b` or
+`a > b` on `BigInteger` (`compiler.err.operator.cant.be.applied.1`), an `int` where a
+`BigInteger` is expected (`compiler.err.prob.found.req`), or a ledger or stdlib type used
+without an import (`compiler.err.cant.resolve.location`).
+
+**Fix:** Fix the Java error. Where the hint names a JDK type, use JuLC's on-chain
+equivalent (`JulcList`, `JulcMap`).
+
+```java
+// WRONG
+BigInteger total = a + b;
+if (total > limit) { ... }
+BigInteger one = 1;
+
+// CORRECT
+BigInteger total = a.add(b);
+if (total.compareTo(limit) > 0) { ... }
+BigInteger one = BigInteger.ONE;
+```
+
+The [release notes](/reference/release-notes/) list the rewrites.
+`-Djulc.javacGate=report` or `off` turns the check off for now; this is experimental.
+
+A runtime without a supported javac (JDK 25 with the `jdk.compiler` module) is `JULC0089`.
+
 ### 3.1 `Failed to parse <label> source: <details>`
 
 **Cause:** The Java source code has syntax errors that JavaParser cannot parse.
-`<label>` is either `"validator"` or `"library[n]"`.
+`<label>` is either `"validator"` or `"library[n]"`. javac reports most syntax errors
+first, as `JULC0085`.
 
 **Fix:** Ensure the source compiles with `javac` first. Common causes: missing
 semicolons, unmatched braces, invalid Java 21 syntax.
@@ -1034,6 +1325,7 @@ validator annotation.
 **Fix:** Annotate your validator class with one of the recognized annotations.
 
 ```java
+import org.julclang.ledger.ScriptContext;
 // WRONG: no annotation
 public class MyValidator {
     public static boolean validate(Data redeemer, ScriptContext ctx) {
@@ -1064,6 +1356,8 @@ public class MyValidator {
 **Fix:** Add `@Entrypoint` to the validator's main method.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.SpendingValidator;
 @SpendingValidator
 public class MyValidator {
     // WRONG: missing @Entrypoint
@@ -1124,6 +1418,9 @@ If you specified 3 parameters, the compiler asks if you meant to use
 `@SpendingValidator` if you need a datum parameter.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
 // WRONG: 3 params on a minting validator
 @MintingValidator
 public class MyPolicy {
@@ -1151,6 +1448,8 @@ validator annotation. Library files must not be validators.
 the validator source instead.
 
 ```java
+import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.stdlib.annotation.OnchainLibrary;
 // WRONG: library file with validator annotation
 @OnchainLibrary
 @MintingValidator  // this is not allowed on a library
@@ -1398,7 +1697,7 @@ new variable with a different name.
 ```java
 // WRONG
 var x = BigInteger.ONE;
-x = BigInteger.TWO; // CompilerException: Unsupported expression: AssignExpr
+x = BigInteger.TWO; // JULC0061: Reassigning 'x' is not supported outside a loop
 
 // CORRECT: use a new variable
 var x = BigInteger.ONE;
@@ -1569,9 +1868,10 @@ BigInteger first = Builtins.unIData(mapped.head());
 
 ### Q: Can I call `foldl` as an instance method on a list?
 
-**A:** No. `foldl` is only available as a static call: `ListsLib.foldl(f, init, list)`.
-It is not registered as an instance method because it takes two lambda parameters
-plus an initial value, which makes instance-call syntax ambiguous.
+**A:** No. `foldl` is not registered as an instance method because it takes two lambda
+parameters plus an initial value, which makes instance-call syntax ambiguous. The intrinsic
+`ListsLib.foldl` has no Java declaration, so javac rejects it. Write a fold as an accumulator
+loop.
 
 ---
 
@@ -1644,6 +1944,11 @@ long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
 **A:** Two `@Entrypoint` methods in a `@MultiValidator` class have the same `Purpose` value. Each purpose can only have one handler.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
 // WRONG: duplicate MINT
 @MultiValidator
 public class BadValidator {
@@ -1672,6 +1977,11 @@ public class GoodValidator {
 **A:** You are combining `Purpose.DEFAULT` (manual dispatch) with explicit purposes like `Purpose.MINT` (auto-dispatch). Choose one mode.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
 // WRONG: mixing DEFAULT and MINT
 @MultiValidator
 public class BadValidator {
@@ -1700,6 +2010,12 @@ public class GoodValidator {
 **A:** A class cannot have both `@MultiValidator` and a single-purpose annotation (like `@SpendingValidator`). Use one or the other.
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+import org.julclang.stdlib.annotation.SpendingValidator;
 // WRONG
 @SpendingValidator
 @MultiValidator

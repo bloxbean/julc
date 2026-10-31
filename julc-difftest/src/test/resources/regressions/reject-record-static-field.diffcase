@@ -1,0 +1,19 @@
+format: 2
+name: #282 a static field declared in a record (N8)
+class: Probe
+method: m
+arg: 05
+expect: REJECT none
+note: ADR-067 N8: legal Java (15).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record R(BigInteger x) {
+        static final BigInteger K = BigInteger.valueOf(15);
+    }
+
+    public static BigInteger m(BigInteger a) {
+        return R.K;
+    }
+}

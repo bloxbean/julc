@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class NativeValueTypingTest {
@@ -53,7 +54,7 @@ class NativeValueTypingTest {
                     }
                 }
                 """, "bad");
-        assertEquals("JULC0041", typed.diagnostics().getFirst().code());
+        assertJavacRejected(typed, "compiler.err.prob.found.req");
 
         var raw = assertCompileError(IMPORTS + """
                 class RawMixing {
@@ -62,7 +63,7 @@ class NativeValueTypingTest {
                     }
                 }
                 """, "bad");
-        assertEquals("JULC0041", raw.diagnostics().getFirst().code());
+        assertJavacRejected(raw, "compiler.err.prob.found.req");
     }
 
     @Test
@@ -97,7 +98,7 @@ class NativeValueTypingTest {
                     }
                 }
                 """, "bad");
-        assertEquals("JULC0041", dataAsNative.diagnostics().getFirst().code());
+        assertJavacRejected(dataAsNative, "compiler.err.prob.found.req");
 
         var nativeAsData = assertCompileError(IMPORTS + """
                 class NativeAsDataVariable {
@@ -107,7 +108,7 @@ class NativeValueTypingTest {
                     }
                 }
                 """, "bad");
-        assertEquals("JULC0041", nativeAsData.diagnostics().getFirst().code());
+        assertJavacRejected(nativeAsData, "compiler.err.prob.found.req");
     }
 
     @Test
@@ -180,6 +181,9 @@ class NativeValueTypingTest {
     void reportsStableDiagnosticForNativeValidatorDatum() {
         var error = assertThrows(CompilerException.class, () ->
                 new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(IMPORTS + """
+                        import org.julclang.ledger.ScriptContext;
+                        import org.julclang.stdlib.annotation.Entrypoint;
+                        import org.julclang.stdlib.annotation.SpendingValidator;
                         @SpendingValidator
                         class NativeDatumValidator {
                             @Entrypoint
@@ -205,7 +209,7 @@ class NativeValueTypingTest {
                     }
                 }
                 """, "bad");
-        assertEquals("JULC0041", assigned.diagnostics().getFirst().code());
+        assertJavacRejected(assigned, "compiler.err.prob.found.req");
 
         var dataOperation = assertCompileError(IMPORTS + """
                 class LiteralInDataOperation {
@@ -226,7 +230,14 @@ class NativeValueTypingTest {
                     }
                 }
                 """, "bad");
-        assertEquals("JULC0041", arrayElement.diagnostics().getFirst().code());
+        assertJavacRejected(arrayElement, "compiler.err.prob.found.req");
+    }
+
+    /** javac rejects the mismatch first (ADR-068 I2b): JULC0085 with javac's key, where JuLC gave JULC0041. */
+    private static void assertJavacRejected(CompilerException error, String key) {
+        var diagnostic = error.diagnostics().getFirst();
+        assertEquals("JULC0085", diagnostic.code(), error.getMessage());
+        assertTrue(diagnostic.message().endsWith("(" + key + ")"), diagnostic.message());
     }
 
     private static CompileResult compile(String source, String method) {

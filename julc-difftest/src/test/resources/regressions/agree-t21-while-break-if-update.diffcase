@@ -1,0 +1,32 @@
+format: 2
+name: while with break: a taken if that updates a variable terminates as Java does (T21, fixed)
+class: Probe
+method: m
+arg: 23
+arg: 01
+arg: 8100
+expect: AGREE
+note: Found by the G0 nightly campaign (ADR-063 M2), then reduced by hand. In a while loop whose body
+note: contains break, a taken if branch that updates a variable makes the loop run until the budget is
+note: exhausted, at every optimization level; the JVM returns after one iteration. The for-each form
+note: agrees, and so does a while whose if is not taken.
+note: Fixed by #254: in a loop with break, a branch that does not break continues with the statements
+note: after the if, then the next iteration. Before the fix the expectation was DIVERGE T21 Value/Inconclusive,
+note: UPLC exhausting its budget.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = a;
+        BigInteger v1 = b;
+        long i = 0;
+        while (i < 1) {
+            if (a.compareTo(BigInteger.ZERO) < 0) { v1 = v0; }
+            if (b.compareTo(BigInteger.ZERO) > 0) { break; }
+            i = i + 1;
+        }
+        return v1;
+    }
+}

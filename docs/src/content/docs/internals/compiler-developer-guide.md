@@ -1655,7 +1655,8 @@ not bypass lookup or target-legality checks. See ADR-035 for the contract.
 
 ### Tracing a Stdlib Call End-to-End
 
-Example: `ListsLib.foldl(fn, init, list)` in user Java code:
+Example: `ListsLib.foldl(fn, init, list)`, an intrinsic with no Java declaration, reached through the
+JavaParser frontend's dispatch when the javac gate is off (`julc.javacGate=off`):
 
 1. **PirGenerator.generateMethodCall()** detects scope = `ListsLib` (class name)
 2. **Level 2 dispatch:** Calls `stdlibLookup.lookup("ListsLib", "foldl", compiledArgs)`
@@ -1680,7 +1681,7 @@ Instance HOF calls like `list.map(x -> x + 1)` are compiled via `PirHofBuilders.
 4. **hofUnwrappedVars:** For `ByteStringType` elements (e.g., `JulcList<PubKeyHash>`), the lambda param is tracked as pre-unwrapped to prevent double `UnBData` in `.hash()` calls
 5. Result: `map` wraps results to Data; `filter`/`any`/`all`/`find` preserve element types
 
-`foldl` is only available as `ListsLib.foldl(...)` (static), not as an instance method, due to the complexity of 2-parameter lambdas with an init value.
+`foldl` is only registered as the intrinsic `ListsLib.foldl(...)`, not as an instance method, due to the complexity of 2-parameter lambdas with an init value. It has no Java declaration, so javac rejects it in user source.
 
 ---
 
@@ -1873,6 +1874,10 @@ If the new type needs special DataConstr encoding or DataMatch decoding, add cas
 **Step 1: Write the on-chain Java source** (`julc-stdlib/src/main/java/.../onchain/SortLib.java`):
 
 ```java
+import java.util.List;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class SortLib {
     public static List<PlutusData> sort(List<PlutusData> items) {
@@ -1885,6 +1890,10 @@ public class SortLib {
 **Step 2: Write the off-chain stub** (`julc-onchain-api/src/main/java/.../SortLib.java`):
 
 ```java
+import java.util.List;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class SortLib {
     public static List<PlutusData> sort(List<PlutusData> items) {
@@ -2014,6 +2023,10 @@ void testMyNewOptimization() {
 ### Source
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class SimpleValidator {
     @Entrypoint

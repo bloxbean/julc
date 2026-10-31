@@ -34,6 +34,43 @@ class ProjectScannerTest {
     }
 
     @Test
+    void scanReadsEscapedAnnotationsAndSkipsSourcesThatNameNone(@TempDir Path tempDir) throws IOException {
+        // ADR-062 T24: a validator whose annotation name is an escape is found; a source javac compiles but JuLC's
+        // strict reading rejects names no validator annotation, so the scan does not parse it.
+        Files.writeString(tempDir.resolve("MyValidator.java"), """
+                @\\u0053pendingValidator
+                public class MyValidator {
+                    @Entrypoint
+                    public static boolean validate(PlutusData r, ScriptContext ctx) { return true; }
+                }
+                """);
+        Files.writeString(tempDir.resolve("SurrogateRegex.java"), """
+                public final class SurrogateRegex {
+                    static final java.util.regex.Pattern HIGH = java.util.regex.Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
+
+        // Mentions a validator annotation in a Javadoc, so it is a candidate, but it declares none.
+        Path mentions = tempDir.resolve("com/example/Mentions.java");
+        Files.createDirectories(mentions.getParent());
+        Files.writeString(mentions, """
+                package com.example;
+
+                import java.util.regex.Pattern;
+
+                /** Helper for the @SpendingValidator and @OnchainLibrary code. */
+                public final class Mentions {
+                    static final Pattern HIGH = Pattern.compile("[\\uD800-\\uDBFF]");
+                }
+                """);
+
+        var result = ProjectScanner.scan(tempDir);
+        assertEquals(java.util.Set.of("MyValidator"), result.validators().keySet());
+        assertTrue(result.libraries().containsKey("SurrogateRegex"));
+        assertTrue(result.libraries().containsKey("com.example.Mentions"));
+    }
+
+    @Test
     void scanKeysLibrariesByFqcnToAvoidSimpleNameCollisions(@TempDir Path tempDir) throws IOException {
         Path left = tempDir.resolve("com/left/Utils.java");
         Path right = tempDir.resolve("com/right/Utils.java");

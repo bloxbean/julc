@@ -1,0 +1,21 @@
+format: 2
+name: equals of Optional of different record types (F16d, T29)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T29 Value/Value
+jvm: Value 00 []
+uplc: Value 01 []
+note: ADR-067 F16d: retained divergence.
+---
+import java.math.BigInteger;
+import java.util.Optional;
+
+public class Probe {
+    record R1(BigInteger x) {}
+    record R2(BigInteger x) {}
+
+    public static BigInteger m(BigInteger a) {
+        return Optional.of(new R1(a)).equals(Optional.of(new R2(a))) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

@@ -4,7 +4,7 @@
     "method": "POST",
     "path": "/api/check",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n"
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.Param;\nimport org.julclang.stdlib.annotation.SpendingValidator;\nimport org.julclang.stdlib.lib.ContextsLib;\nimport org.julclang.ledger.TxInfo;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);\n        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), authorizedSigner);\n    }\n}\n"
     }
   },
   {
@@ -12,7 +12,7 @@
     "method": "POST",
     "path": "/api/check",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass VestingValidator {\n    record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}\n\n    static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {\n        return currentTime > deadline;\n    }\n\n    @Entrypoint\n    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        PlutusData pkh = datum.beneficiary();\n        return ContextsLib.signedBy(txInfo, pkh);\n    }\n}\n"
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.SpendingValidator;\nimport org.julclang.stdlib.lib.ContextsLib;\nimport org.julclang.ledger.TxInfo;\nimport org.julclang.stdlib.Builtins;\n\n@SpendingValidator\nclass VestingValidator {\n    record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}\n\n    static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {\n        return currentTime.compareTo(deadline) > 0;\n    }\n\n    @Entrypoint\n    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);\n        PlutusData pkh = datum.beneficiary();\n        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(pkh));\n    }\n}\n"
     }
   },
   {
@@ -28,7 +28,7 @@
     "method": "POST",
     "path": "/api/compile",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.Param;\nimport org.julclang.stdlib.annotation.SpendingValidator;\nimport org.julclang.stdlib.lib.ContextsLib;\nimport org.julclang.ledger.TxInfo;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);\n        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), authorizedSigner);\n    }\n}\n",
       "blueprint": true
     }
   },
@@ -37,7 +37,7 @@
     "method": "POST",
     "path": "/api/compile",
     "body": {
-      "source": "@SpendingValidator\nclass AlwaysTrue {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return true;\n    }\n}\n",
+      "source": "import org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.SpendingValidator;\n@SpendingValidator\nclass AlwaysTrue {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return true;\n    }\n}\n",
       "blueprint": false
     }
   },
@@ -54,8 +54,8 @@
     "method": "POST",
     "path": "/api/compile",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass UsesLibrary {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return AmountRules.isPositive(BigInteger.valueOf(5));\n    }\n}\n",
-      "librarySource": "import java.math.BigInteger;\n\n@OnchainLibrary\nclass AmountRules {\n    static boolean isPositive(BigInteger amount) {\n        return amount > 0;\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.SpendingValidator;\n\n@SpendingValidator\nclass UsesLibrary {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return AmountRules.isPositive(BigInteger.valueOf(5));\n    }\n}\n",
+      "librarySource": "import java.math.BigInteger;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n\n@OnchainLibrary\nclass AmountRules {\n    static boolean isPositive(BigInteger amount) {\n        return amount.compareTo(BigInteger.ZERO) > 0;\n    }\n}\n",
       "blueprint": true
     }
   },
@@ -64,7 +64,7 @@
     "method": "POST",
     "path": "/api/compile",
     "body": {
-      "source": "@SpendingValidator\nclass Broken {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return undefinedThing;\n    }\n}\n",
+      "source": "import org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.SpendingValidator;\n@SpendingValidator\nclass Broken {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return undefinedThing;\n    }\n}\n",
       "blueprint": true
     }
   },
@@ -73,7 +73,7 @@
     "method": "POST",
     "path": "/api/evaluate",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.Param;\nimport org.julclang.stdlib.annotation.SpendingValidator;\nimport org.julclang.stdlib.lib.ContextsLib;\nimport org.julclang.ledger.TxInfo;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);\n        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), authorizedSigner);\n    }\n}\n",
       "paramValues": {
         "authorizedSigner": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
@@ -90,7 +90,7 @@
     "method": "POST",
     "path": "/api/evaluate",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.Param;\nimport org.julclang.stdlib.annotation.SpendingValidator;\nimport org.julclang.stdlib.lib.ContextsLib;\nimport org.julclang.ledger.TxInfo;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);\n        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), authorizedSigner);\n    }\n}\n",
       "paramValues": {
         "authorizedSigner": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
@@ -107,7 +107,7 @@
     "method": "POST",
     "path": "/api/evaluate",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.Param;\nimport org.julclang.stdlib.annotation.SpendingValidator;\nimport org.julclang.stdlib.lib.ContextsLib;\nimport org.julclang.ledger.TxInfo;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);\n        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), authorizedSigner);\n    }\n}\n",
       "paramValues": {
         "other": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
@@ -124,7 +124,7 @@
     "method": "POST",
     "path": "/api/evaluate",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass VestingValidator {\n    record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}\n\n    static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {\n        return currentTime > deadline;\n    }\n\n    @Entrypoint\n    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        PlutusData pkh = datum.beneficiary();\n        return ContextsLib.signedBy(txInfo, pkh);\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.SpendingValidator;\nimport org.julclang.stdlib.lib.ContextsLib;\nimport org.julclang.ledger.TxInfo;\nimport org.julclang.stdlib.Builtins;\n\n@SpendingValidator\nclass VestingValidator {\n    record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}\n\n    static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {\n        return currentTime.compareTo(deadline) > 0;\n    }\n\n    @Entrypoint\n    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);\n        PlutusData pkh = datum.beneficiary();\n        return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(pkh));\n    }\n}\n",
       "scenario": {
         "signers": [
           "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -141,7 +141,7 @@
     "method": "POST",
     "path": "/api/evaluate",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@MintingValidator\nclass MintingPolicy {\n    sealed interface Action {\n        record Mint(BigInteger amount) implements Action {}\n        record Burn(BigInteger amount) implements Action {}\n    }\n\n    static boolean validateMint(BigInteger amount) {\n        return amount > 0;\n    }\n\n    static boolean validateBurn(BigInteger amount) {\n        return amount < 0;\n    }\n\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        BigInteger mintAmount = 1;\n        return validateMint(mintAmount);\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.MintingValidator;\n\n@MintingValidator\nclass MintingPolicy {\n    sealed interface Action {\n        record Mint(BigInteger amount) implements Action {}\n        record Burn(BigInteger amount) implements Action {}\n    }\n\n    static boolean validateMint(BigInteger amount) {\n        return amount.compareTo(BigInteger.ZERO) > 0;\n    }\n\n    static boolean validateBurn(BigInteger amount) {\n        return amount.compareTo(BigInteger.ZERO) < 0;\n    }\n\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        BigInteger mintAmount = BigInteger.ONE;\n        return validateMint(mintAmount);\n    }\n}\n",
       "scenario": {
         "signers": [],
         "validRangeAfter": null,
@@ -155,8 +155,8 @@
     "method": "POST",
     "path": "/api/evaluate",
     "body": {
-      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass UsesLibrary {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return AmountRules.isPositive(BigInteger.valueOf(5));\n    }\n}\n",
-      "librarySource": "import java.math.BigInteger;\n\n@OnchainLibrary\nclass AmountRules {\n    static boolean isPositive(BigInteger amount) {\n        return amount > 0;\n    }\n}\n",
+      "source": "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.SpendingValidator;\n\n@SpendingValidator\nclass UsesLibrary {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return AmountRules.isPositive(BigInteger.valueOf(5));\n    }\n}\n",
+      "librarySource": "import java.math.BigInteger;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n\n@OnchainLibrary\nclass AmountRules {\n    static boolean isPositive(BigInteger amount) {\n        return amount.compareTo(BigInteger.ZERO) > 0;\n    }\n}\n",
       "scenario": {
         "signers": [],
         "validRangeAfter": null,
@@ -170,7 +170,7 @@
     "method": "POST",
     "path": "/api/evaluate",
     "body": {
-      "source": "@SpendingValidator\nclass BlsCheck {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        byte[] msg = Builtins.integerToByteString(true, 4, 42);\n        byte[] point = Builtins.bls12_381_G1_compress(Builtins.bls12_381_G1_hashToGroup(msg, msg));\n        return Builtins.lengthOfByteString(point) == 48;\n    }\n}\n",
+      "source": "import org.julclang.core.PlutusData;\nimport org.julclang.ledger.ScriptContext;\nimport org.julclang.stdlib.Builtins;\nimport org.julclang.stdlib.annotation.Entrypoint;\nimport org.julclang.stdlib.annotation.SpendingValidator;\n@SpendingValidator\nclass BlsCheck {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        byte[] msg = Builtins.integerToByteString(true, 4, 42);\n        byte[] point = Builtins.bls12_381_G1_compress(Builtins.bls12_381_G1_hashToGroup(msg, msg));\n        return Builtins.lengthOfByteString(point) == 48;\n    }\n}\n",
       "scenario": {
         "signers": [],
         "validRangeAfter": null,
@@ -185,7 +185,7 @@
     "method": "POST",
     "path": "/api/eval",
     "body": {
-      "expression": "MathLib.abs(-5)"
+      "expression": "MathLib.abs(BigInteger.valueOf(-5))"
     }
   },
   {

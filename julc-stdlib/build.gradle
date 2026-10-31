@@ -39,6 +39,16 @@ tasks.register('bundlePlutusSources') {
         }
         // Write index file so classpath scanning works from jar URLs too
         new File(outDir, 'index.txt').text = entries.join('\n') + '\n'
+        // ADR-068 D3: the bundled set with a build-time digest of each source (SHA-256 of its UTF-8 text), which the
+        // javac frontend's ownership check reads; a source offered under a bundled name is bundled only if it matches.
+        def digests = entries.toSorted().collect { relative ->
+            def text = new File(srcDir, relative).getText('UTF-8')
+            java.security.MessageDigest.getInstance('SHA-256').digest(text.getBytes('UTF-8')).encodeHex().toString() +
+                    ' ' + relative
+        }
+        def julcDir = file("${generatedResDir}/META-INF/julc")
+        julcDir.mkdirs()
+        new File(julcDir, 'bundled-sources.sha256').text = digests.join('\n') + '\n'
     }
 }
 sourceSets.main.resources.srcDir generatedResDir

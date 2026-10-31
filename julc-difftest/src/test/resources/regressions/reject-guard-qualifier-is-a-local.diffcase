@@ -1,0 +1,29 @@
+format: 3
+name: a qualified guard constant whose qualifier is a local named like the class (F50)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: REJECT JULC0072
+note: ADR-067 review F50: Java reads the component (false) and returns 2. M1 folded Probe.ON as the class constant (true) and returned 1; the guard is now never folded, and fails closed because JuLC cannot type the component read.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    record Flags(boolean ON) {}
+    static final boolean ON = true;
+
+    public static BigInteger m(BigInteger a) {
+        Flags Probe = new Flags(false);
+        S s = new A(a);
+        return switch (s) {
+            case A x when Probe.ON -> BigInteger.ONE;
+            case A x -> BigInteger.TWO;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

@@ -205,6 +205,11 @@ class LedgerTypeAccessTest {
         @Test
         void compileCtxTxInfo() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -225,6 +230,11 @@ class LedgerTypeAccessTest {
             // Validator that accesses ctx.txInfo().fee() and checks fee > 0
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -232,7 +242,7 @@ class LedgerTypeAccessTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             BigInteger fee = txInfo.fee();
-                            return fee > 0;
+                            return fee.compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -253,6 +263,11 @@ class LedgerTypeAccessTest {
         void evalTxInfoSignatories() {
             // Access txInfo.signatories() — should return a list
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -278,6 +293,12 @@ class LedgerTypeAccessTest {
         void evalTxInfoValidRange() {
             // Access txInfo.validRange() — should return an Interval (RecordType)
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Interval;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -297,12 +318,17 @@ class LedgerTypeAccessTest {
         void evalTxInfoId() {
             // Access txInfo.id() — should return ByteString
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            byte[] txId = txInfo.id();
+                            byte[] txId = PlutusData.cast(txInfo.id(), byte[].class);
                             return true;
                         }
                     }
@@ -319,17 +345,25 @@ class LedgerTypeAccessTest {
         void evalListContains() {
             // signatories.contains(pkh)
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.stdlib.Builtins;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             var sigs = txInfo.signatories();
-                            return sigs.contains(redeemer);
+                            return sigs.contains(PlutusData.cast(Builtins.unBData(redeemer), PubKeyHash.class));
                         }
                     }
                     """;
-            var compiler = new JulcCompiler();
+            // The Java form decodes the redeemer with Builtins.unBData, which needs the stdlib (ADR-068 M1b).
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
             var program = compiler.compile(source).program();
 
             var pkh = new byte[]{1, 2, 3, 4, 5};
@@ -345,17 +379,25 @@ class LedgerTypeAccessTest {
         @Test
         void evalListContainsNotFound() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.stdlib.Builtins;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             var sigs = txInfo.signatories();
-                            return sigs.contains(redeemer);
+                            return sigs.contains(PlutusData.cast(Builtins.unBData(redeemer), PubKeyHash.class));
                         }
                     }
                     """;
-            var compiler = new JulcCompiler();
+            // The Java form decodes the redeemer with Builtins.unBData, which needs the stdlib (ADR-068 M1b).
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
             var program = compiler.compile(source).program();
 
             var pkh = new byte[]{1, 2, 3};
@@ -373,6 +415,11 @@ class LedgerTypeAccessTest {
         void evalListSize() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -399,6 +446,11 @@ class LedgerTypeAccessTest {
         @Test
         void evalListIsEmpty() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -428,16 +480,24 @@ class LedgerTypeAccessTest {
         void evalChainedContains() {
             // txInfo.signatories().contains(pkh) — chained without intermediate var
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.stdlib.Builtins;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            return txInfo.signatories().contains(redeemer);
+                            return txInfo.signatories().contains(PlutusData.cast(Builtins.unBData(redeemer), PubKeyHash.class));
                         }
                     }
                     """;
-            var compiler = new JulcCompiler();
+            // The Java form decodes the redeemer with Builtins.unBData, which needs the stdlib (ADR-068 M1b).
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
             var program = compiler.compile(source).program();
 
             var pkh = new byte[]{1, 2, 3};
@@ -454,6 +514,11 @@ class LedgerTypeAccessTest {
         void evalChainedIsEmpty() {
             // txInfo.signatories().isEmpty()
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -481,6 +546,10 @@ class LedgerTypeAccessTest {
             // Custom datum with byte[] and BigInteger fields — already works, verify it still does
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -489,7 +558,7 @@ class LedgerTypeAccessTest {
                         @Entrypoint
                         static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
                             BigInteger d = datum.deadline();
-                            return d == 1000;
+                            return d.equals(BigInteger.valueOf(1000));
                         }
                     }
                     """;
@@ -519,6 +588,11 @@ class LedgerTypeAccessTest {
             // Custom datum with PubKeyHash field (resolves to ByteStringType)
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -526,9 +600,9 @@ class LedgerTypeAccessTest {
 
                         @Entrypoint
                         static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
-                            byte[] ownerPkh = datum.owner();
+                            byte[] ownerPkh = PlutusData.cast(datum.owner(), byte[].class);
                             BigInteger d = datum.deadline();
-                            return d > 0;
+                            return d.compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -545,6 +619,9 @@ class LedgerTypeAccessTest {
         void plutusDataCtxStillWorks() {
             // Old-style validator with PlutusData ctx should still compile
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -561,6 +638,9 @@ class LedgerTypeAccessTest {
         @Test
         void evalPlutusDataCtxStillWorks() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -585,13 +665,19 @@ class LedgerTypeAccessTest {
             // Using ContextsLib.signedBy with typed txInfo parameter
             var source = """
                     import org.julclang.stdlib.lib.ContextsLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.stdlib.Builtins;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            return ContextsLib.signedBy(txInfo, redeemer);
+                            return ContextsLib.signedBy(txInfo, Builtins.unBData(redeemer));
                         }
                     }
                     """;
@@ -653,6 +739,8 @@ class LedgerTypeAccessTest {
                     package com.example;
                     import org.julclang.core.PlutusData;
                     import org.julclang.stdlib.annotation.OnchainLibrary;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.TxOut;
 
                     @OnchainLibrary
                     public class TestOutputLib {
@@ -665,6 +753,12 @@ class LedgerTypeAccessTest {
             var validator = """
                     import com.example.TestOutputLib;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -672,8 +766,8 @@ class LedgerTypeAccessTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = Constr(0, [txOut, address])
                             var fields = Builtins.constrFields(redeemer);
-                            TxOut txOut = Builtins.headList(fields);
-                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            TxOut txOut = PlutusData.cast(Builtins.headList(fields), TxOut.class);
+                            Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             return TestOutputLib.matchesAddress(txOut, addr);
                         }
                     }
@@ -704,6 +798,7 @@ class LedgerTypeAccessTest {
                     import org.julclang.core.PlutusData;
                     import org.julclang.stdlib.annotation.OnchainLibrary;
                     import java.util.List;
+                    import org.julclang.ledger.TxOut;
 
                     @OnchainLibrary
                     public class TestOutputLib {
@@ -719,13 +814,17 @@ class LedgerTypeAccessTest {
             var validator = """
                     import com.example.TestOutputLib;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = ListData of TxOuts
-                            long count = TestOutputLib.countOutputs(Builtins.unListData(redeemer));
+                            long count = TestOutputLib.countOutputs(PlutusData.cast(Builtins.unListData(redeemer), java.util.List.class));
                             return count == 2;
                         }
                     }
@@ -756,6 +855,8 @@ class LedgerTypeAccessTest {
                     import org.julclang.core.PlutusData;
                     import org.julclang.stdlib.annotation.OnchainLibrary;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.ledger.Value;
 
                     @OnchainLibrary
                     public class TestOutputLib {
@@ -766,19 +867,24 @@ class LedgerTypeAccessTest {
                             var tokenMapData = Builtins.sndPair(firstPair);
                             var tokenPairs = Builtins.unMapData(tokenMapData);
                             var firstTokenPair = Builtins.headList(tokenPairs);
-                            return Builtins.unIData(Builtins.sndPair(firstTokenPair));
+                            return Builtins.unIData(Builtins.sndPair(firstTokenPair)).longValue();
                         }
                     }
                     """;
             var validator = """
                     import com.example.TestOutputLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.TxOut;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = a TxOut
-                            long lovelace = TestOutputLib.getLovelace(redeemer);
+                            long lovelace = TestOutputLib.getLovelace(PlutusData.cast(redeemer, TxOut.class));
                             return lovelace == 5000000;
                         }
                     }
@@ -807,6 +913,12 @@ class LedgerTypeAccessTest {
             // A realistic vesting validator using typed access
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PubKeyHash;
 
                     @SpendingValidator
                     class VestingValidator {
@@ -816,7 +928,7 @@ class LedgerTypeAccessTest {
                         static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             var sigs = txInfo.signatories();
-                            boolean hasSigner = sigs.contains(datum.beneficiary());
+                            boolean hasSigner = sigs.contains(PlutusData.cast(datum.beneficiary(), PubKeyHash.class));
                             return hasSigner;
                         }
                     }
@@ -848,6 +960,12 @@ class LedgerTypeAccessTest {
         void realisticVestingValidatorRejects() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PubKeyHash;
 
                     @SpendingValidator
                     class VestingValidator {
@@ -857,7 +975,7 @@ class LedgerTypeAccessTest {
                         static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             var sigs = txInfo.signatories();
-                            boolean hasSigner = sigs.contains(datum.beneficiary());
+                            boolean hasSigner = sigs.contains(PlutusData.cast(datum.beneficiary(), PubKeyHash.class));
                             return hasSigner;
                         }
                     }

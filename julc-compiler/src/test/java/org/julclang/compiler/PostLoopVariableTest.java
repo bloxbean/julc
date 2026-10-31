@@ -89,6 +89,9 @@ class PostLoopVariableTest {
     void testPreLoopVarAccessibleAfterMultiAccWhile() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -116,6 +119,9 @@ class PostLoopVariableTest {
     void testPreLoopVarAccessibleAfterSingleAccWhile() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -141,6 +147,9 @@ class PostLoopVariableTest {
     void testMultiplePreLoopVarsPreserved() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -169,6 +178,9 @@ class PostLoopVariableTest {
     void testPreLoopVarInReturnAfterWhile() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -196,6 +208,9 @@ class PostLoopVariableTest {
     void testAccumulatorsStillWork() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -222,6 +237,9 @@ class PostLoopVariableTest {
     void testNestedWhilePreservesOuterVars() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -247,6 +265,9 @@ class PostLoopVariableTest {
     void testForEachUnaffected() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -272,6 +293,9 @@ class PostLoopVariableTest {
     void testNoPreLoopVarsNoChange() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -298,6 +322,9 @@ class PostLoopVariableTest {
     void testPreLoopVarUsedInConditionAndAfter() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -325,6 +352,9 @@ class PostLoopVariableTest {
     void testWhileAsLastStatementNoRebinding() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -355,6 +385,8 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
             import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -387,6 +419,8 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
             import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -421,6 +455,8 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
             import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -448,6 +484,9 @@ class PostLoopVariableTest {
     void testSequentialWhileLoops() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -479,6 +518,9 @@ class PostLoopVariableTest {
     void testThreeSequentialLoops() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -518,6 +560,8 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
             import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -556,6 +600,8 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
             import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -592,6 +638,9 @@ class PostLoopVariableTest {
     void testHelperMethodCallAfterLoop() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -623,6 +672,8 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
             import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -655,6 +706,9 @@ class PostLoopVariableTest {
     void testPreLoopVarInIfAfterLoop() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {

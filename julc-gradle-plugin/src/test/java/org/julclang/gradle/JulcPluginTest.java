@@ -161,6 +161,8 @@ class JulcPluginTest {
 
         Files.writeString(plutusSrcDir.resolve("AlwaysMint.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
 
                 @MintingValidator
                 class AlwaysMint {
@@ -195,6 +197,8 @@ class JulcPluginTest {
                 """);
         Files.writeString(plutusSrcDir.resolve("MultiGate.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MultiValidator;
 
                 @MultiValidator
                 class MultiGate {
@@ -263,6 +267,8 @@ class JulcPluginTest {
                 import org.julclang.core.types.JulcArray;
                 import org.julclang.ledger.ScriptContext;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AlwaysTrue {
@@ -481,6 +487,8 @@ class JulcPluginTest {
 
         Files.writeString(customSrcDir.resolve("AlwaysTrue.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AlwaysTrue {
@@ -565,6 +573,8 @@ class JulcPluginTest {
     private void writeAlwaysTrueValidator() throws IOException {
         Files.writeString(plutusSrcDir.resolve("AlwaysTrue.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AlwaysTrue {

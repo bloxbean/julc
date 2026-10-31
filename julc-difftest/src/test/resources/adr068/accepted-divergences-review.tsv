@@ -1,0 +1,46 @@
+# ADR-068 D4: the hand-reviewed decision for every ADR-062 catalogue row at B0, and D4's named issues (F204).
+# id	decision	reason
+# decision: open (a silent divergence, accepted on the default frontend until M5) | closed (no silent divergence at B0)
+T1	closed	history: #155 and #161 fixed, guarded by ADR-048 and ADR-050
+T2	closed	contained: the probe is rejected with JULC0056 (ADR-060)
+T3	open	== on BigInteger is value equality on-chain, reference on the JVM (D6: JULC0086 in M3)
+T4	open	== on records, sealed types and Data (D6: JULC0086 in M3)
+T5	open	== on byte[] and equals of records with byte[] components (D6: JULC0086, JULC0087 in M3)
+T6	open	int and long are unbounded on-chain (an ADR-062 S5 decision)
+T7	open	any/all do not short-circuit on-chain
+T8	open	builtins that throw off-chain (S2)
+T9	open	on-chain-only casts fail off-chain (S2)
+T10	open	JulcAssocMap key equality off-chain (D6: deep byte[] equality in M1)
+T11	open	BigInteger.mod with a negative modulus
+T12	open	failure and trace model
+T13	open	budget and size limits; also #146's remaining compareTo forms (the harness's T13 rule)
+T14	open	target profiles (to confirm)
+T15	open	only one shape refuted (an unused BigInteger.divide); other unused failing expressions not examined
+T16	open	boundary conversion (to confirm)
+T17	open	strings (to confirm)
+T18	open	off-chain crypto (to confirm)
+T19	open	callbacks capturing mutable state (ADR-061)
+T20	closed	resolved: every rejection carries a code (#257)
+T21	closed	resolved: #254, GHSA-p9v9-f3g2-cqv9
+T22	closed	fixed (#256); the shapes JuLC still rejects are I2c rejections, scheduled for acceptance, not silent
+T23	closed	resolved: #255
+T24	closed	fixed (#268); residual reading rejections as T22
+T25	closed	resolved: #270
+T26	closed	resolved: #273
+T27	closed	ADR-062's status is stale: ADR-067 M1 lowers switch guards (#275), and its pins agree
+T28	closed	record patterns are rejected with JULC0076 (ADR-067 F35, interim) instead of being dropped; acceptance is scheduled (D11)
+T29	open	equals across record types (#277)
+T30	open	a record with two sealed parents (#279)
+T31	open	record members ignored (#282)
+T32	open	colon-form switch fall-through (#283)
+T33	open	type names in packageless sources, ledger names by simple name (#284)
+T34	open	String.equals with a non-String argument (#292)
+T35	open	operand order of > and >= (#295), found after M0 froze this list; fixed in both frontends at M1c (D6, D4 exception 1)
+T36	open	diamond and raw Tuple2/Tuple3 components (#299), found in M1c review after M0 froze this list; fixed in both frontends at M1c (D4 exception 2)
+#146	open	compareTo operands evaluated more than once, outside D6's OP 0 rule (pins diverge-g1-146-*)
+#280	open	named in ADR-068 D4 (pins diverge-*-280-*)
+#288	open	named in ADR-068 D4
+#289	open	named in ADR-068 D4 (T3, T4)
+#295	open	comparison operand order (D6, fixed in both frontends at M1)
+#296	open	"a" + 1 fails at run time (D6: JULC0090 in M3)
+#297	open	nested JuLC collection contains (D6)

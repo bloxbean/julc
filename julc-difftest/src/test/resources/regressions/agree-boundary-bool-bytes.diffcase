@@ -1,0 +1,17 @@
+format: 2
+name: boolean and byte[] arguments and results
+class: Probe
+method: m
+arg: d87a80
+arg: 420102
+arg: 4103
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static byte[] m(boolean flag, byte[] a, byte[] b) {
+        return flag ? a : b;
+    }
+}

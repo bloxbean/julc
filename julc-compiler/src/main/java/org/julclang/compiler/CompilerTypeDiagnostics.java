@@ -39,6 +39,55 @@ public final class CompilerTypeDiagnostics {
     }
 
     /**
+     * JULC0091 (ADR-068 D6, #298): a native array in a Data-encoded position. It has no Data
+     * encoding, so the script would fail where the Java code succeeds.
+     */
+    public static CompilerException nativeArrayNotDataEncodable(
+            String position,
+            PirType array,
+            SourceLocation location) {
+        var info = DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE;
+        var message = info.format(position, LibraryMethodRegistry.pirTypeName(array));
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /** The message of {@link #unknownTypeEncoded}, by which PirGenerator places it. */
+    public static final String UNKNOWN_TYPE_ENCODED = "the type of this value, a switch expression whose arms have different types";
+
+    /**
+     * JULC0012 (review F710): a value whose type the lowering does not know would be Data-encoded or
+     * be a diamond tuple's component, and encoding it as Data could be wrong.
+     */
+    public static CompilerException unknownTypeEncoded(SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format(UNKNOWN_TYPE_ENCODED + ", which it would Data-encode. Give the arms one type, or "
+                + "assign the switch to a typed local first");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
+     * JULC0012 (#299): a diamond {@code new Tuple2<>(...)} whose component types neither a declared
+     * target nor the arguments give. Its components could not be Data-encoded by type.
+     */
+    public static CompilerException diamondTypeArgumentsUnknown(String typeName, SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format("the type arguments of new " + typeName + "<>(...): neither a declared target type nor "
+                + "the arguments give them. Write them, as in new " + typeName + "<BigInteger, byte[]>(a, b)");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
+     * JULC0012 (#299): a non-Data component of a raw {@code Tuple2} or {@code Tuple3}. javac types
+     * its components {@code Object}, so it has no on-chain encoding and its reads no on-chain type.
+     */
+    public static CompilerException rawTupleUnsupported(String typeName, SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format("a component of a raw " + typeName + ", which Java types as Object and JuLC cannot encode"
+                + " unless it is already PlutusData. Write the type arguments, as in " + typeName + "<BigInteger, byte[]>");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
      * JULC0012: {@code var a = JulcArray.of(...)} whose elements have different types. javac
      * would type the local by a common supertype the on-chain subset cannot represent, and the
      * access needs one element type to choose its decode.
@@ -94,6 +143,12 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(field, reason), location);
     }
 
+    /** JULC0070 (ADR-062 T25): an integer literal javac rejects; {@code problem} says why. */
+    public static CompilerException invalidIntegerLiteral(String literal, String problem, SourceLocation location) {
+        var info = DiagnosticCodes.INTEGER_LITERAL_INVALID;
+        return exception(info.code(), info.level(), info.fix(), info.format(literal, problem), location);
+    }
+
     /**
      * JULC0058: a for-each loop with no accumulator reassigns its loop variable or a body local;
      * {@code kind} is {@code "loop variable"} or {@code "local variable"}.
@@ -101,6 +156,65 @@ public final class CompilerTypeDiagnostics {
     public static CompilerException loopReassignmentWithoutAccumulator(String kind, String name, SourceLocation location) {
         var info = DiagnosticCodes.LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR;
         return exception(info.code(), info.level(), info.fix(), info.format(kind, name), location);
+    }
+
+    /** JULC0003: a {@code return} directly in a while loop body; {@code location} is the return (ADR-062 T20). */
+    public static CompilerException returnInsideWhile(SourceLocation location) {
+        var info = DiagnosticCodes.RETURN_INSIDE_WHILE;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /** JULC0062: {@code JulcMap.of(...)}, which exists off-chain only (ADR-062 T20). */
+    public static CompilerException julcMapOfOffChainOnly(SourceLocation location) {
+        var info = DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0063: a {@code break} in a loop that updates no variable declared before it. Such a
+     * loop compiles its body as plain statements, which cannot stop the loop (ADR-062 T20).
+     */
+    public static CompilerException breakInLoopWithoutAccumulator(SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_IN_LOOP_WITHOUT_ACCUMULATOR;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0060: a {@code continue} in a loop the compiler lowers. It is reported at loop lowering,
+     * not by subset validation, so code JuLC never compiles is unaffected (ADR-062 T20).
+     */
+    public static CompilerException continueUnsupported(SourceLocation location) {
+        var info = DiagnosticCodes.CONTINUE_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(), location);
+    }
+
+    /**
+     * JULC0065: an update of {@code name}, a variable declared before the loop, in a position the
+     * loop lowering does not carry; {@code position} says where, for example
+     * {@code "inside a switch statement"} (ADR-062 T20).
+     */
+    public static CompilerException loopUpdatePositionUnsupported(String name, String position, SourceLocation location) {
+        var info = DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(name, position), location);
+    }
+
+    /**
+     * JULC0064: a nested loop in the break-aware body of a single-accumulator loop;
+     * {@code statement} is {@code "A nested while loop"} or {@code "A nested for-each loop"} (ADR-062 T20).
+     */
+    public static CompilerException breakLoopStatementUnsupported(String statement, SourceLocation location) {
+        var info = DiagnosticCodes.BREAK_LOOP_STATEMENT_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(statement), location);
+    }
+
+    /**
+     * JULC0066: a labelled statement, or a {@code break} or {@code continue} that names a label;
+     * {@code construct} is the construct as written, for example {@code "break outer"} or
+     * {@code "outer:"} (#201).
+     */
+    public static CompilerException labelUnsupported(String construct, SourceLocation location) {
+        var info = DiagnosticCodes.LABEL_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(), info.format(construct), location);
     }
 
     /** JULC0057: a static field initializer that calls a method of its class. */

@@ -1,0 +1,27 @@
+format: 3
+name: int arithmetic that is not constant in a guard (round 3)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: REJECT JULC0072
+recorded.jvm: Value 01 []
+recorded.base: Value 02 []
+note: ADR-067 M1 round 3 (implementer, I9): Java wraps signum() + 2147483647 to a negative int (1); JuLC evaluates it without Java's width (ADR-062 T6) and gave 2 at a4a7d834, so the guard is rejected.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when x.v().signum() + 2147483647 < 0 -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

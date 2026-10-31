@@ -155,7 +155,7 @@ public class TypeRegistrar {
 
         // 3. Register dependency SCCs. Acyclic singleton groups retain the old path;
         // recursive groups first publish nominal identities for their internal references.
-        for (var group : dependencyGroups(deps)) {
+        for (var group : TypeGroups.dependencyGroups(deps)) {
             boolean recursive = group.size() > 1
                     || deps.getOrDefault(group.getFirst(), Set.of()).contains(group.getFirst());
             if (!recursive) {
@@ -388,157 +388,18 @@ public class TypeRegistrar {
         return result;
     }
 
-    private List<List<String>> dependencyGroups(Map<String, Set<String>> deps) {
-        var index = new int[] {0};
-        var indexes = new HashMap<String, Integer>();
-        var lowLinks = new HashMap<String, Integer>();
-        var stack = new ArrayDeque<String>();
-        var onStack = new HashSet<String>();
-        var components = new ArrayList<List<String>>();
-
-        for (String node : deps.keySet()) {
-            if (!indexes.containsKey(node)) {
-                strongConnect(node, deps, index, indexes, lowLinks,
-                        stack, onStack, components);
-            }
-        }
-
-        var declarationOrder = new HashMap<String, Integer>();
-        int position = 0;
-        for (String node : deps.keySet()) declarationOrder.put(node, position++);
-        components.forEach(component -> component.sort(
-                Comparator.comparingInt(declarationOrder::get)));
-
-        var componentOf = new HashMap<String, Integer>();
-        for (int i = 0; i < components.size(); i++) {
-            for (String node : components.get(i)) componentOf.put(node, i);
-        }
-
-        var componentDeps = new ArrayList<Set<Integer>>();
-        var inDegree = new int[components.size()];
-        for (int i = 0; i < components.size(); i++) componentDeps.add(new LinkedHashSet<>());
-        for (var entry : deps.entrySet()) {
-            int owner = componentOf.get(entry.getKey());
-            for (String dependency : entry.getValue()) {
-                int target = componentOf.get(dependency);
-                if (owner != target && componentDeps.get(owner).add(target)) {
-                    inDegree[owner]++;
-                }
-            }
-        }
-
-        Comparator<Integer> byDeclarationOrder = Comparator.comparingInt(component ->
-                declarationOrder.get(components.get(component).getFirst()));
-        var ready = new PriorityQueue<>(byDeclarationOrder);
-        for (int i = 0; i < inDegree.length; i++) {
-            if (inDegree[i] == 0) ready.add(i);
-        }
-
-        var result = new ArrayList<List<String>>();
-        while (!ready.isEmpty()) {
-            int completed = ready.remove();
-            result.add(components.get(completed));
-            for (int owner = 0; owner < componentDeps.size(); owner++) {
-                if (componentDeps.get(owner).contains(completed)
-                        && --inDegree[owner] == 0) {
-                    ready.add(owner);
-                }
-            }
-        }
-        if (result.size() != components.size()) {
-            throw new IllegalStateException("SCC condensation graph must be acyclic");
-        }
-        return result;
-    }
-
-    private void strongConnect(
-            String node,
-            Map<String, Set<String>> deps,
-            int[] nextIndex,
-            Map<String, Integer> indexes,
-            Map<String, Integer> lowLinks,
-            ArrayDeque<String> stack,
-            Set<String> onStack,
-            List<List<String>> components) {
-        int nodeIndex = nextIndex[0]++;
-        indexes.put(node, nodeIndex);
-        lowLinks.put(node, nodeIndex);
-        stack.push(node);
-        onStack.add(node);
-
-        for (String dependency : deps.getOrDefault(node, Set.of())) {
-            if (!indexes.containsKey(dependency)) {
-                strongConnect(dependency, deps, nextIndex, indexes, lowLinks,
-                        stack, onStack, components);
-                lowLinks.put(node, Math.min(lowLinks.get(node), lowLinks.get(dependency)));
-            } else if (onStack.contains(dependency)) {
-                lowLinks.put(node, Math.min(lowLinks.get(node), indexes.get(dependency)));
-            }
-        }
-
-        if (lowLinks.get(node).equals(indexes.get(node))) {
-            var component = new ArrayList<String>();
-            String member;
-            do {
-                member = stack.pop();
-                onStack.remove(member);
-                component.add(member);
-            } while (!member.equals(node));
-            components.add(component);
-        }
-    }
-
     private void validateProductive(
             List<String> group,
             Map<String, RecordDeclaration> allRecords,
             Map<String, ClassOrInterfaceDeclaration> allSealed,
             TypeResolver typeResolver) {
-        var definitions = typeResolver.namedDefinitions();
-        var productive = new LinkedHashSet<String>();
-        boolean changed;
-        do {
-            changed = false;
-            for (String fqcn : group) {
-                if (!productive.contains(fqcn)
-                        && isProductive(definitions.get(fqcn), productive)) {
-                    productive.add(fqcn);
-                    changed = true;
-                }
-            }
-        } while (changed);
-
-        if (productive.containsAll(group)) return;
-        var unproductive = group.stream()
-                .filter(name -> !productive.contains(name))
-                .toList();
+        var unproductive = TypeGroups.unproductive(group, typeResolver);
+        if (unproductive.isEmpty()) return;
         String first = unproductive.getFirst();
         Node declaration = allRecords.containsKey(first)
                 ? allRecords.get(first) : allSealed.get(first);
         throw errorAt(declaration,
                 "Recursive type dependency has no finite base constructor: " + unproductive);
-    }
-
-    private boolean isProductive(PirType type, Set<String> productive) {
-        if (type == null) return false;
-        return switch (type) {
-            case PirType.NamedTypeRef ref -> productive.contains(ref.stableId());
-            case PirType.RecordType record -> record.fields().stream()
-                    .allMatch(field -> isProductiveField(field.type(), productive));
-            case PirType.SumType sum -> sum.constructors().stream()
-                    .anyMatch(constructor -> constructor.fields().stream()
-                            .allMatch(field -> isProductiveField(field.type(), productive)));
-            default -> true;
-        };
-    }
-
-    private boolean isProductiveField(PirType type, Set<String> productive) {
-        // Empty/None container values are finite regardless of their element type.
-        if (type instanceof PirType.ListType
-                || type instanceof PirType.MapType
-                || type instanceof PirType.OptionalType) {
-            return true;
-        }
-        return isProductive(type, productive);
     }
 
     /** Create a CompilerException with source position from a JavaParser node. */

@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.core.*;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.JulcVm;
@@ -27,6 +29,18 @@ class PlutusDataConversionTest {
         vm = CompilerTestVm.pv11();
     }
 
+    /**
+     * ADR-068 M1b: {@code fromPlutusData} on a user-defined record or sealed interface is a JuLC-registered factory
+     * with no Java declaration; javac rejects it, so it is compiled with the gate off (M1b's report).
+     */
+    static Program compileDialectValidator(String source) {
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        var result = compiler.compile(source);
+        assertFalse(result.hasErrors(), "Compilation failed: " + result);
+        assertNotNull(result.program(), "Program should not be null");
+        return result.program();
+    }
+
     static Program compileValidator(String source) {
         var compiler = new JulcCompiler(STDLIB);
         var result = compiler.compile(source);
@@ -48,6 +62,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -73,6 +90,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -98,6 +118,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -124,6 +147,10 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -136,7 +163,7 @@ class PlutusDataConversionTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             // MyDatum = Constr(0, [count, owner])
             var datumData = PlutusData.constr(0, PlutusData.integer(42), PlutusData.bytes(new byte[28]));
             var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
@@ -151,6 +178,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -178,6 +208,10 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -190,7 +224,7 @@ class PlutusDataConversionTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var datumData = PlutusData.constr(0, PlutusData.integer(42));
             var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
             var result = vm.evaluateWithArgs(program, List.of(ctx));
@@ -205,6 +239,10 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -213,7 +251,7 @@ class PlutusDataConversionTest {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             MyDatum datum = (MyDatum)(Object) redeemer;
-                            return datum.count() > 0;
+                            return datum.count().compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -231,6 +269,10 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -239,7 +281,7 @@ class PlutusDataConversionTest {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             var datum = (MyDatum)(Object) redeemer;
-                            return datum.count() > 0;
+                            return datum.count().compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -256,6 +298,10 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -267,7 +313,7 @@ class PlutusDataConversionTest {
                             StateDatum sd = (StateDatum)(Object) redeemer;
                             BigInteger fee = sd.fee();
                             BigInteger ttl = sd.ttl();
-                            return fee > 0 && ttl > 100;
+                            return fee.compareTo(BigInteger.ZERO) > 0 && ttl.compareTo(BigInteger.valueOf(100)) > 0;
                         }
                     }
                     """;
@@ -291,6 +337,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -319,6 +368,10 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -330,13 +383,13 @@ class PlutusDataConversionTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             var action = Action.fromPlutusData(redeemer);
                             return switch (action) {
-                                case Mint m -> m.amount() > 0;
-                                case Burn b -> b.amount() > 0;
+                                case Mint m -> m.amount().compareTo(BigInteger.ZERO) > 0;
+                                case Burn b -> b.amount().compareTo(BigInteger.ZERO) > 0;
                             };
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             // Mint = Constr(0, [amount])
             var mintData = PlutusData.constr(0, PlutusData.integer(100));
             var ctx = PlutusData.constr(0, PlutusData.integer(0), mintData, PlutusData.integer(0));
@@ -358,6 +411,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -382,6 +438,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -408,12 +467,15 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            long amount = Builtins.unIData(redeemer);
+                            long amount = Builtins.unIData(redeemer).longValue();
                             var data = Builtins.iData(amount);
                             // Roundtrip: unIData then iData should equal original
                             return Builtins.equalsData(data, redeemer);
@@ -433,6 +495,9 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -458,6 +523,10 @@ class PlutusDataConversionTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -471,7 +540,7 @@ class PlutusDataConversionTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var datumData = PlutusData.constr(0, PlutusData.integer(42), PlutusData.bytes(new byte[28]));
             var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
             var result = vm.evaluateWithArgs(program, List.of(ctx));

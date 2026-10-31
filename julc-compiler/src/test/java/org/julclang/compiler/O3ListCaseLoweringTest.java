@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.uplc.UplcGenerator;
 import org.julclang.core.*;
@@ -155,7 +157,9 @@ class O3ListCaseLoweringTest {
                 }
                 """;
         for (var method : List.of("map", "walk")) {
-            var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, method);
+            // ADR-068 M1b: a for-each over a JulcMap is not Java (U1); compiled with the javac gate off.
+            var result = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setJavacGate(JavacGateMode.OFF)).compileMethod(source, method);
             assertFalse(result.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_LIST_RULE));
         }
     }

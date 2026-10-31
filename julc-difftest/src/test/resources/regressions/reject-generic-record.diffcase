@@ -1,0 +1,18 @@
+format: 2
+name: a generic record (K1)
+class: Probe
+method: m
+arg: 03
+expect: REJECT none
+note: ADR-067 K1: out of scope.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    record Box<V>(V value) {}
+
+    public static BigInteger m(BigInteger a) {
+        Box<BigInteger> box = new Box<>(a);
+        return box.value();
+    }
+}

@@ -1,0 +1,29 @@
+format: 3
+name: a record with two sealed parents at equal positions (M2)
+class: Probe
+method: m
+tag: Probe$A Probe$S 1
+tag: Probe$B Probe$S 0
+tag: Probe$B Probe$T 0
+tag: Probe$C Probe$T 1
+arg: 05
+expect: AGREE
+note: ADR-067 M2: agrees at the base; D6 rejects it (M3).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits B, A {}
+    sealed interface T permits B, C {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S, T {}
+    record C(BigInteger v) implements T {}
+
+    public static BigInteger m(BigInteger a) {
+        T t = new B(a);
+        S s = new B(a);
+        BigInteger x = switch (t) { case B q -> BigInteger.ONE; case C q -> BigInteger.TWO; };
+        BigInteger y = switch (s) { case A q -> BigInteger.TEN; case B q -> BigInteger.valueOf(20); };
+        return x.add(y);
+    }
+}

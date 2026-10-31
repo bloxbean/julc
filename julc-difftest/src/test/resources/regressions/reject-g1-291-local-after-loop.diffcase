@@ -1,0 +1,80 @@
+format: 3
+name: a local declared after a loop in a default arm block of a switch passed to a method is rejected (#291)
+class: Probe
+method: m
+tag: Probe$A0 Probe$S0 1
+tag: Probe$B0 Probe$S0 0
+profile: G1 r7 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSIGN_PATTERN_BINDING -ZERO_ARG_HELPERS -SHADOW_IN_LOOP_BRANCH -LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON +DEFAULT_BLOCK_SCOPE steer=291_LOOPS
+arg: 21
+arg: 23
+arg: 80
+arg: d8799fd87980ff
+expect: AGREE
+note: Rediscovered by the G1 r7 campaign under REDISCOVER_291_LOOPS (ADR-066 D10.1), the shrunk reproducer as found:
+note: #291's second symptom with one loop. The default arm block declares S0 v4 after its loop and yields it, and the
+note: switch is an argument of a method call (v.equals(...)). Java accepts the program and returns R0(-5, -5, -5);
+note: JuLC rejects it at every level with a diagnostic that has no code, "Unbound variable: v4". The default arm
+note: need not run. This expectation pins #291's rejection form; it becomes AGREE when #291 is fixed.
+note: ADR-067 M1 round 3 fixed #291 (the default arm block is scoped): the program compiles and agrees at every
+note: level, so its expectation is AGREE (ADR-066 D9, merge reconciliation); it was REJECT none.
+found.by: G1PropertyTest rediscovery
+found.generator: G1 r7
+found.plan: 1,0,2,0,3,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,1,0,0,0,0,11,1,569,450,870,21,12,298,129,405,707,64,946,526,164,7,118,1000,22,80,899
+found.inputs: 82,262,170,60,986,53,17,72
+found.seed: 20261030
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-47-gf4a9fa6a43f8-dirty
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+    sealed interface S0 permits B0, A0 {}
+    record B0(boolean w) implements S0 {}
+    record A0(BigInteger v) implements S0 {}
+    record R0(BigInteger v, BigInteger w, BigInteger x) {}
+
+
+    static BigInteger t(String k, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(k, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger z) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    static boolean w(BigInteger v, BigInteger w) {
+        return BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0;
+    }
+
+    public static R0 m(BigInteger a, BigInteger b, JulcList<BigInteger> xs, S0 v) {
+        B0 x = new B0(v.equals(switch (v) {
+            case A0 v1 -> {
+                A0 v2 = v1;
+                long i0 = 0;
+                while (i0 < 0) {
+                    v2 = new A0(BigInteger.valueOf(-5));
+                    i0 = i0 + 1;
+                }
+                yield new B0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+            }
+            default -> {
+                BigInteger v3 = BigInteger.valueOf(-5);
+                long i1 = 0;
+                while (i1 < 0) {
+                    v3 = BigInteger.valueOf(-5);
+                    i1 = i1 + 1;
+                }
+                S0 v4 = new B0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+                yield v4;
+            }
+        }));
+        R0 v5 = new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+        long i2 = 0;
+        while (i2 < 0) {
+            x = new B0(BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0);
+            i2 = i2 + 1;
+        }
+        return new R0(BigInteger.valueOf(-5), BigInteger.valueOf(-5), BigInteger.valueOf(-5));
+    }
+}

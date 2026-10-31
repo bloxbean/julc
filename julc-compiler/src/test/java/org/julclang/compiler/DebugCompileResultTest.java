@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.core.debug.DebugMetadata;
 import org.julclang.stdlib.StdlibRegistry;
@@ -14,6 +16,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class DebugCompileResultTest {
     private static final String SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class DebugLocalsValidator {
@@ -69,7 +75,7 @@ class DebugCompileResultTest {
                 .map(DebugMetadata.LoweredBinding::id).findFirst().orElseThrow();
 
         assertTrue(metadata.suspensionPoints().stream().anyMatch(point ->
-                        point.range() != null && point.range().startLine() == 7
+                        point.range() != null && point.range().startLine() == 11
                                 && !point.expectedBinderIds().contains(loweredId)),
                 "the initializer must execute outside the local's binder");
         assertTrue(metadata.suspensionPoints().stream().anyMatch(point ->
@@ -79,8 +85,12 @@ class DebugCompileResultTest {
 
     @Test
     void lambdaCapturesAndSameSpellingUseStableDistinctIdentities() {
-        var metadata = compileDebug("""
+        var metadata = compileDialectDebug("""
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class CaptureDebugValidator {
@@ -123,12 +133,16 @@ class DebugCompileResultTest {
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MutableDebugValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        JulcList<BigInteger> values = Builtins.unListData(redeemer);
+                        JulcList<BigInteger> values = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                         BigInteger total = BigInteger.ZERO;
                         for (BigInteger value : values) {
                             total = total.add(value);
@@ -149,6 +163,12 @@ class DebugCompileResultTest {
                                 == DebugMetadata.Availability.UNSUPPORTED_LOWERING
                                 && visible.reason().contains("not identity-proven")),
                 "an in-scope mutable declaration must be explicitly unavailable rather than guessed or hidden");
+    }
+
+    /** ADR-068 M1b: lambdas bound to {@code var} locals are not Java (U3); compiled with the javac gate off. */
+    private static DebugCompileResult compileDialectDebug(String source) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true)
+                .setJavacGate(JavacGateMode.OFF)).compileForDebug(source, List.of());
     }
 
     private static DebugCompileResult compileDebug(String source) {

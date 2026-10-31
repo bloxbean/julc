@@ -15,6 +15,9 @@ final class O5IntegerCaseFixtures {
     /** Two constructors, one with a field. */
     static final String TWO = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class TwoWay {
                 sealed interface Action permits Pay, Cancel {}
                 record Pay(BigInteger amount) implements Action {}
@@ -31,6 +34,9 @@ final class O5IntegerCaseFixtures {
     /** Three constructors with a {@code default} arm covering the last one. */
     static final String THREE = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class ThreeWay {
                 sealed interface Action permits Mint, Burn, Pause {}
                 record Mint(BigInteger amount) implements Action {}
@@ -48,6 +54,9 @@ final class O5IntegerCaseFixtures {
 
     /** Five zero-field constructors: pure dispatch, nothing else to evaluate. */
     static final String FIVE = """
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class FiveWay {
                 sealed interface Step permits A, B, C, D, E {}
                 record A() implements Step {}
@@ -70,6 +79,9 @@ final class O5IntegerCaseFixtures {
     /** Outer two-way dispatch with an inner three-way dispatch on a field. */
     static final String NESTED = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class NestedWay {
                 sealed interface Mode permits Fast, Slow, Manual {}
                 record Fast() implements Mode {}
@@ -94,6 +106,9 @@ final class O5IntegerCaseFixtures {
     /** Single constructor: no dispatch is generated, so O5 must leave it byte-identical. */
     static final String SINGLE = """
             import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator class SingleWay {
                 sealed interface Action permits Only {}
                 record Only(BigInteger value) implements Action {}

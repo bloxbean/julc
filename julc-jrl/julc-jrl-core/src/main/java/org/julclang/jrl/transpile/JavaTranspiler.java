@@ -75,7 +75,8 @@ public final class JavaTranspiler {
 
     private void emitParams(List<ParamNode> params) {
         for (var param : params) {
-            emitLine("@Param static " + TypeMapper.toJavaType(param.type())
+            // Qualified: the contract's own class may be named Param, which would shadow the annotation (javac).
+            emitLine("@org.julclang.stdlib.annotation.Param static " + TypeMapper.toJavaType(param.type())
                     + " " + param.name() + ";");
         }
     }
@@ -194,7 +195,7 @@ public final class JavaTranspiler {
     private void emitRuleBlocks(List<RuleNode> rules, DatumDeclNode datum,
                                 RedeemerDeclNode redeemer) {
         for (var rule : rules) {
-            emitLine("// Rule: \"" + rule.name() + "\"");
+            emitLine("// Rule: \"" + commentText(rule.name()) + "\"");
             emitRuleBlock(rule, datum, redeemer);
             emitLine();
         }
@@ -250,7 +251,7 @@ public final class JavaTranspiler {
             emitCastAndExtract(variantRedeemerPattern.match(), "redeemer");
             if (!conditionExprs.isEmpty()) {
                 if (rule.traceMessage() != null) {
-                    emitLine("// trace: " + rule.traceMessage());
+                    emitLine("// trace: " + commentText(rule.traceMessage()));
                 }
                 String combined = joinConditions(conditionExprs);
                 if (rule.action() == DefaultAction.ALLOW) {
@@ -294,7 +295,7 @@ public final class JavaTranspiler {
         if (op.datum() != null) {
             String datumVar = "_outDatum" + (varCounter++);
             emitLine("var " + datumVar + " = (" + op.datum().typeName()
-                    + ") OutputLib.getInlineDatum(OutputLib.uniqueOutputAt(txInfo.outputs(), " + toExpr + "));");
+                    + ") (Object) OutputLib.getInlineDatum(OutputLib.uniqueOutputAt(txInfo.outputs(), " + toExpr + "));");
             for (String cond : FactTranslator.translateDatumConstraint(op.datum(), datumVar)) {
                 conditionExprs.add(cond);
             }
@@ -350,7 +351,7 @@ public final class JavaTranspiler {
         if (cop.datum() != null) {
             String datumVar = "_coDatum" + (varCounter++);
             emitLine("var " + datumVar + " = (" + cop.datum().typeName()
-                    + ") OutputLib.getInlineDatum(" + continuingVar + ".head());");
+                    + ") (Object) OutputLib.getInlineDatum(" + continuingVar + ".head());");
             for (String cond : FactTranslator.translateDatumConstraint(cop.datum(), datumVar)) {
                 conditionExprs.add(cond);
             }
@@ -378,7 +379,8 @@ public final class JavaTranspiler {
         String localVar = "_" + varName.charAt(0) + (varCounter++);
 
         if (!match.fields().isEmpty()) {
-            emitLine("var " + localVar + " = (" + typeName + ") " + varName + ";");
+            // Through Object: a record is not a PlutusData in Java, and JuLC lowers both casts to the value.
+            emitLine("var " + localVar + " = (" + typeName + ") (Object) " + varName + ";");
             for (var fm : match.fields()) {
                 if (fm.value() instanceof MatchValue.Binding binding) {
                     emitLine("var " + binding.varName() + " = " + localVar
@@ -391,7 +393,7 @@ public final class JavaTranspiler {
 
     private void emitReturnAction(RuleNode rule) {
         if (rule.traceMessage() != null) {
-            emitLine("// trace: " + rule.traceMessage());
+            emitLine("// trace: " + commentText(rule.traceMessage()));
         }
         boolean returnValue = rule.action() == DefaultAction.ALLOW;
         emitLine("return " + returnValue + ";");
@@ -412,6 +414,14 @@ public final class JavaTranspiler {
             case VOTING -> "VotingValidator";
             case PROPOSING -> "ProposingValidator";
         };
+    }
+
+    /**
+     * JRL text for a Java comment. javac and JuLC translate Unicode escapes in comments too (ADR-062 T24), so a
+     * backslash in a rule name or trace message could end the comment. A doubled backslash starts no escape.
+     */
+    private static String commentText(String text) {
+        return text.replace("\\", "\\\\");
     }
 
     private String sanitizeClassName(String name) {

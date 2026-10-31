@@ -52,7 +52,8 @@ public final class FactTranslator {
             case Expression.IntLiteralExpr il ->
                     "BigInteger.valueOf(" + il.value() + ")";
             case Expression.StringLiteralExpr sl ->
-                    "\"" + sl.value() + "\"";
+                    // A JRL string has no escapes, so each backslash is one character; Java needs it doubled.
+                    "\"" + sl.value().replace("\\", "\\\\") + "\"";
             case Expression.HexLiteralExpr hl ->
                     "new byte[]{" + hexToByteArrayLiteral(hl.value()) + "}";
             case Expression.BoolLiteralExpr bl ->
@@ -90,7 +91,8 @@ public final class FactTranslator {
         String value = translateExpr(tp.value());
         return switch (tp.field()) {
             case SIGNED_BY ->
-                    "ListsLib.contains(txInfo.signatories(), " + value + ")";
+                    // The signer is a byte[] (TypeMapper); the signatories are PubKeyHash values.
+                    "txInfo.signatories().contains(PubKeyHash.of(" + value + "))";
             case VALID_AFTER ->
                     "IntervalLib.finiteLowerBound(txInfo.validRange()).compareTo(" + value + ") >= 0";
             case VALID_BEFORE ->

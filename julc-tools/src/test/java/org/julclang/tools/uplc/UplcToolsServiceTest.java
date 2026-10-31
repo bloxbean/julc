@@ -36,6 +36,13 @@ class UplcToolsServiceTest {
     static final String OTHER = "bb".repeat(28);
 
     static final String SIGNED_SPEND = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.Param;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.ledger.TxInfo;
             @SpendingValidator
             class SignedSpend {
                 @Param static byte[] owner;
@@ -43,8 +50,8 @@ class UplcToolsServiceTest {
                 @Entrypoint
                 static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
                     ContextsLib.trace("checking owner");
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                    return ContextsLib.signedBy(txInfo, owner);
+                    PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);
+                    return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), owner);
                 }
             }
             """;

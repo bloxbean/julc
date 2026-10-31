@@ -1,0 +1,30 @@
+format: 3
+name: equals between two sealed families with tag 0 (E9, T29)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+tag: Probe$C Probe$T 0
+tag: Probe$D Probe$T 1
+arg: 05
+expect: DIVERGE T29 Value/Value
+jvm: Value 00 []
+uplc: Value 01 []
+note: ADR-067 E9.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    sealed interface T permits C, D {}
+    record C(BigInteger w) implements T {}
+    record D(BigInteger w) implements T {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        T t = new C(a);
+        return s.equals(t) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

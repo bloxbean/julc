@@ -33,15 +33,22 @@ class RealisticVestingTest {
      * Uses ContextsLib.getTxInfo and ContextsLib.signedBy.
      */
     static final String VESTING_SOURCE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
             @SpendingValidator
             class VestingValidator {
                 record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}
 
                 @Entrypoint
                 static boolean validate(VestingDatum datum, PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                    PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
                     PlutusData pkh = datum.beneficiary();
-                    return ContextsLib.signedBy(txInfo, pkh);
+                    return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(pkh));
                 }
             }
             """;
@@ -52,12 +59,19 @@ class RealisticVestingTest {
      * the tx is signed by that key.
      */
     static final String SIGNED_BY_SOURCE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
             @SpendingValidator
             class SignedByValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                    return ContextsLib.signedBy(txInfo, redeemer);
+                    PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
+                    return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(redeemer));
                 }
             }
             """;

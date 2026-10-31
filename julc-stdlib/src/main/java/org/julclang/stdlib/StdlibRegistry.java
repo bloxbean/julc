@@ -61,6 +61,17 @@ public final class StdlibRegistry implements StdlibLookup {
     private final Map<String, Registration> registry = new HashMap<>();
 
     /**
+     * The token of a registry exactly as {@link #defaultRegistry()} built it: set there, after the last default
+     * registration, and cleared by every later {@link #register} call (even one that re-registers a key). A registry
+     * holding it has the default registrations, builders included; nothing else can set it. ADR-068 M0's corpus
+     * recorder reads it reflectively to tell the default registry from a custom one (F310): comparing registrations
+     * cannot, because table-built builders share a class but capture different builtins.
+     */
+    private volatile Object pristineDefault;
+
+    private static final Object PRISTINE_DEFAULT = new Object();
+
+    /**
      * Creates a new empty registry.
      */
     public StdlibRegistry() {}
@@ -83,6 +94,7 @@ public final class StdlibRegistry implements StdlibLookup {
             PirTermBuilder builder,
             LoweringRequirements requirements) {
         String key = className + "." + methodName;
+        pristineDefault = null;
         registry.put(key, new Registration(
                 java.util.Objects.requireNonNull(builder, "builder"),
                 java.util.Objects.requireNonNull(requirements, "requirements")));
@@ -114,6 +126,7 @@ public final class StdlibRegistry implements StdlibLookup {
         if (isOptionalClass(className) && methodName.equals("of") && args.size() == 1) {
             var elemType = (argTypes != null && !argTypes.isEmpty()) ? argTypes.get(0) : new PirType.DataType();
             rejectNativeDataArgument("Optional.of argument 1", elemType);
+            PirHelpers.requireDataEncodable(elemType);
             var recordType = new PirType.RecordType("Optional",
                     List.of(new PirType.Field("value", elemType)));
             return Optional.of(new PirTerm.DataConstr(0, recordType, List.of(args.get(0))));
@@ -576,6 +589,7 @@ public final class StdlibRegistry implements StdlibLookup {
         registerOptionalFactories(reg);
         registerValueFactories(reg);
         registerIntervalFactories(reg);
+        reg.pristineDefault = PRISTINE_DEFAULT;
         return reg;
     }
 

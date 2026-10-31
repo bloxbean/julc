@@ -45,6 +45,9 @@ class ListCaseOnChainTest extends E2ETestBase {
     private static final String SOURCE = """
             import java.math.BigInteger;
             import org.julclang.core.types.JulcList;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class ListCaseGate {
                 @Entrypoint

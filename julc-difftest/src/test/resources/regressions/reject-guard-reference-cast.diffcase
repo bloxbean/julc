@@ -1,0 +1,30 @@
+format: 3
+name: a guard instanceof over a reference cast that Java checks (F61, #288)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+tag: Probe$C Probe$T 0
+tag: Probe$D Probe$T 1
+arg: 03
+expect: REJECT JULC0072
+note: ADR-067 review F61: the cast throws ClassCastException on the JVM; JuLC erased it and returned 1 (#288). Reference casts are outside the guard subset.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    sealed interface T permits C, D {}
+    record C(BigInteger w) implements T {}
+    record D(BigInteger w) implements T {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when ((S) (Object) new C(a)) instanceof A -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

@@ -1,0 +1,23 @@
+format: 2
+name: helper called in a loop
+class: Probe
+method: m
+arg: 04
+expect: AGREE
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    static long sq(long v) { return v * v; }
+
+    public static long m(long n) {
+        long s = 0;
+        long i = 1;
+        while (i <= n) {
+            s = s + sq(i);
+            i = i + 1;
+        }
+        return s;
+    }
+}

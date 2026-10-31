@@ -4,8 +4,8 @@
   "fixture": "state-thread-broken",
   "source": "fixtures/state-thread-broken/src/VerificationStateThreadBroken.java",
   "omittedCheck": "owner authorization, value preservation, and successor output commitment",
-  "compiledCodeSha256": "b05c728d73a8fd25c7d5b3f9bcccba0fe73bd617e6b18a41e8e45c491046b471",
-  "cardanoScriptHash": "e794a51bf14bdf64fbb32a734e057dc2c7beff47dcca5b7c1c9b4a99",
+  "compiledCodeSha256": "5b96f1de609931ef1a63f6d783d90d8b7a8f0432872abba33f9d8eb694e36306",
+  "cardanoScriptHash": "c0c52b8c6115679f56ea6a208a0bccd91a800174e32f62746de4758c",
   "expectedResult": "REFUTED",
   "witness": {
     "domain": "first spending input is the current output reference and a first output exists",

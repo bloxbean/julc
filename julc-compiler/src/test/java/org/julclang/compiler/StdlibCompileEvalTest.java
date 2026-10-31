@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.core.*;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.JulcVm;
@@ -207,6 +209,20 @@ class StdlibCompileEvalTest {
 
     // ---- Compilation helpers ----
 
+    /**
+     * ADR-068 M1b: a JuLC dialect construct that has no Java equivalent with today's API (a for-each over a
+     * {@code JulcMap}, which is not {@code Iterable} in Java; a {@code ListsLib} higher-order function whose lambda
+     * JuLC types from a typed list). javac rejects it, so the frozen JavaParser frontend's behaviour is compiled with
+     * the javac gate off until the API changes; ADR-068 M1b's report lists each use.
+     */
+    static Program compileDialectValidator(String source) {
+        var compiler = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        var result = compiler.compile(source);
+        assertFalse(result.hasErrors(), "Compilation failed: " + result);
+        assertNotNull(result.program(), "Program should not be null");
+        return result.program();
+    }
+
     static Program compileValidator(String source) {
         var compiler = new JulcCompiler(STDLIB);
         var result = compiler.compile(source);
@@ -236,6 +252,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -257,6 +276,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -278,6 +300,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -307,6 +332,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -328,6 +356,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -359,13 +390,18 @@ class StdlibCompileEvalTest {
         void containsInAlwaysInterval() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Interval;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.always();
-                            return IntervalLib.contains(interval, 500);
+                            PlutusData interval = PlutusData.cast(IntervalLib.always(), PlutusData.class);
+                            return IntervalLib.contains(PlutusData.cast(interval, Interval.class), BigInteger.valueOf(500));
                         }
                     }
                     """;
@@ -378,13 +414,18 @@ class StdlibCompileEvalTest {
         void betweenThenContains() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.Interval;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.between(100, 200);
-                            return IntervalLib.contains(interval, 150);
+                            PlutusData interval = PlutusData.cast(IntervalLib.between(BigInteger.valueOf(100), BigInteger.valueOf(200)), PlutusData.class);
+                            return IntervalLib.contains(PlutusData.cast(interval, Interval.class), BigInteger.valueOf(150));
                         }
                     }
                     """;
@@ -397,13 +438,17 @@ class StdlibCompileEvalTest {
         void isEmptyOnNever() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Interval;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.never();
-                            return IntervalLib.isEmpty(interval);
+                            PlutusData interval = PlutusData.cast(IntervalLib.never(), PlutusData.class);
+                            return IntervalLib.isEmpty(PlutusData.cast(interval, Interval.class));
                         }
                     }
                     """;
@@ -416,13 +461,18 @@ class StdlibCompileEvalTest {
         void betweenDoesNotContainOutside() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.Interval;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.between(100, 200);
-                            return IntervalLib.contains(interval, 250);
+                            PlutusData interval = PlutusData.cast(IntervalLib.between(BigInteger.valueOf(100), BigInteger.valueOf(200)), PlutusData.class);
+                            return IntervalLib.contains(PlutusData.cast(interval, Interval.class), BigInteger.valueOf(250));
                         }
                     }
                     """;
@@ -444,12 +494,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            long lovelace = ValuesLib.lovelaceOf(redeemer);
+                            long lovelace = ValuesLib.lovelaceOf(PlutusData.cast(redeemer, Value.class)).longValue();
                             return lovelace == 5000000;
                         }
                     }
@@ -468,6 +522,10 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
@@ -476,8 +534,8 @@ class StdlibCompileEvalTest {
                             var fields = Builtins.constrFields(redeemer);
                             PlutusData policy = Builtins.headList(fields);
                             PlutusData token = Builtins.headList(Builtins.tailList(fields));
-                            PlutusData val = ValuesLib.singleton(policy, token, 42);
-                            long amt = ValuesLib.assetOf(val, policy, token);
+                            PlutusData val = PlutusData.cast(ValuesLib.singleton(Builtins.unBData(policy), Builtins.unBData(token), BigInteger.valueOf(42)), PlutusData.class);
+                            long amt = ValuesLib.assetOf(PlutusData.cast(val, Value.class), Builtins.unBData(policy), Builtins.unBData(token)).longValue();
                             return amt == 42;
                         }
                     }
@@ -497,6 +555,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
@@ -504,9 +567,9 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             PlutusData policy = Builtins.bData(Builtins.emptyByteString());
                             PlutusData token = Builtins.bData(Builtins.emptyByteString());
-                            PlutusData larger = ValuesLib.singleton(policy, token, 5000000);
-                            PlutusData smaller = ValuesLib.singleton(policy, token, 3000000);
-                            return ValuesLib.geq(larger, smaller);
+                            PlutusData larger = PlutusData.cast(ValuesLib.singleton(Builtins.unBData(policy), Builtins.unBData(token), BigInteger.valueOf(5000000)), PlutusData.class);
+                            PlutusData smaller = PlutusData.cast(ValuesLib.singleton(Builtins.unBData(policy), Builtins.unBData(token), BigInteger.valueOf(3000000)), PlutusData.class);
+                            return ValuesLib.geq(PlutusData.cast(larger, Value.class), PlutusData.cast(smaller, Value.class));
                         }
                     }
                     """;
@@ -521,6 +584,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
@@ -528,8 +596,8 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             PlutusData policy = Builtins.bData(Builtins.emptyByteString());
                             PlutusData token = Builtins.bData(Builtins.emptyByteString());
-                            PlutusData val = ValuesLib.singleton(policy, token, 2000000);
-                            return ValuesLib.geq(val, val);
+                            PlutusData val = PlutusData.cast(ValuesLib.singleton(Builtins.unBData(policy), Builtins.unBData(token), BigInteger.valueOf(2000000)), PlutusData.class);
+                            return ValuesLib.geq(PlutusData.cast(val, Value.class), PlutusData.cast(val, Value.class));
                         }
                     }
                     """;
@@ -545,6 +613,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
@@ -552,14 +625,14 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             PlutusData policyA = Builtins.bData(Builtins.emptyByteString());
                             PlutusData tokenA = Builtins.bData(Builtins.emptyByteString());
-                            PlutusData.MapData valA = ValuesLib.singleton(policyA, tokenA, 2000000);
+                            Value valA = ValuesLib.singleton(Builtins.unBData(policyA), Builtins.unBData(tokenA), BigInteger.valueOf(2000000));
                             var fields = Builtins.constrFields(redeemer);
                             PlutusData policyB = Builtins.headList(fields);
                             PlutusData tokenB = Builtins.headList(Builtins.tailList(fields));
-                            PlutusData.MapData valB = ValuesLib.singleton(policyB, tokenB, 1000000);
-                            PlutusData.MapData sum = ValuesLib.add(valA, valB);
-                            long amtA = ValuesLib.assetOf(sum, policyA, tokenA);
-                            long amtB = ValuesLib.assetOf(sum, policyB, tokenB);
+                            Value valB = ValuesLib.singleton(Builtins.unBData(policyB), Builtins.unBData(tokenB), BigInteger.valueOf(1000000));
+                            Value sum = ValuesLib.add(valA, valB);
+                            long amtA = ValuesLib.assetOf(sum, Builtins.unBData(policyA), Builtins.unBData(tokenA)).longValue();
+                            long amtB = ValuesLib.assetOf(sum, Builtins.unBData(policyB), Builtins.unBData(tokenB)).longValue();
                             return amtA == 2000000 && amtB == 1000000;
                         }
                     }
@@ -582,23 +655,28 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             // Build 2 outputs as list of Constrs, each containing a Value
-                            PlutusData.MapData val1 = ValuesLib.singleton(
-                                Builtins.bData(Builtins.emptyByteString()),
-                                Builtins.bData(Builtins.emptyByteString()), 2000000);
-                            PlutusData.MapData val2 = ValuesLib.singleton(
-                                Builtins.bData(Builtins.emptyByteString()),
-                                Builtins.bData(Builtins.emptyByteString()), 1000000);
+                            Value val1 = ValuesLib.singleton(
+                                Builtins.unBData(Builtins.bData(Builtins.emptyByteString())),
+                                Builtins.unBData(Builtins.bData(Builtins.emptyByteString())), BigInteger.valueOf(2000000));
+                            Value val2 = ValuesLib.singleton(
+                                Builtins.unBData(Builtins.bData(Builtins.emptyByteString())),
+                                Builtins.unBData(Builtins.bData(Builtins.emptyByteString())), BigInteger.valueOf(1000000));
                             // Outputs as list of Constr(0, [addr, value])
                             PlutusData out1 = Builtins.constrData(0, Builtins.mkCons(Builtins.iData(1),
-                                Builtins.mkCons(val1, Builtins.mkNilData())));
+                                Builtins.mkCons(PlutusData.cast(val1, PlutusData.class), Builtins.mkNilData())));
                             PlutusData out2 = Builtins.constrData(0, Builtins.mkCons(Builtins.iData(2),
-                                Builtins.mkCons(val2, Builtins.mkNilData())));
+                                Builtins.mkCons(PlutusData.cast(val2, PlutusData.class), Builtins.mkNilData())));
                             PlutusData.ListData outputs = Builtins.mkCons(out1, Builtins.mkCons(out2, Builtins.mkNilData()));
 
                             // Multi-acc while loop: boolean found + list remaining
@@ -615,7 +693,7 @@ class StdlibCompileEvalTest {
                                     PlutusData tokenMap = Builtins.sndPair(pair);
                                     PlutusData innerPairs = Builtins.unMapData(tokenMap);
                                     PlutusData firstTokenPair = Builtins.headList(innerPairs);
-                                    long amt = Builtins.unIData(Builtins.sndPair(firstTokenPair));
+                                    long amt = Builtins.unIData(Builtins.sndPair(firstTokenPair)).longValue();
                                     if (amt == 2000000) {
                                         found = true;
                                     }
@@ -639,6 +717,9 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import org.julclang.core.types.JulcList;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -648,7 +729,7 @@ class StdlibCompileEvalTest {
                                 Builtins.mkCons(Builtins.iData(2),
                                 Builtins.mkCons(Builtins.iData(3), Builtins.mkNilData())));
                             JulcList<PlutusData> rev = ListsLib.reverse(list);
-                            return Builtins.unIData(rev.head()) == 3;
+                            return Builtins.unIData(rev.head()).equals(BigInteger.valueOf(3));
                         }
                     }
                     """;
@@ -665,6 +746,9 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import org.julclang.core.types.JulcList;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -701,12 +785,17 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData.ListData flat = ValuesLib.flatten(redeemer);
+                            JulcList<PlutusData> flat = ValuesLib.flatten(PlutusData.cast(redeemer, Value.class));
                             return !Builtins.nullList(flat);
                         }
                     }
@@ -733,12 +822,16 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            JulcList<AssetEntry> entries = (JulcList<AssetEntry>)(Object) ValuesLib.flatten(redeemer);
+                            JulcList<AssetEntry> entries = (JulcList<AssetEntry>)(Object) ValuesLib.flatten(PlutusData.cast(redeemer, Value.class));
                             boolean found = false;
                             for (AssetEntry entry : entries) {
                                 if (entry.amount().compareTo(BigInteger.valueOf(100)) == 0) {
@@ -776,16 +869,19 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData result = MathLib.divMod(10, 3);
+                            PlutusData result = PlutusData.cast(MathLib.divMod(BigInteger.TEN, BigInteger.valueOf(3)), PlutusData.class);
                             PlutusData fields = Builtins.constrFields(result);
-                            long divVal = Builtins.unIData(Builtins.headList(fields));
+                            long divVal = Builtins.unIData(Builtins.headList(fields)).longValue();
                             if (divVal == 3) {
-                                long modVal = Builtins.unIData(Builtins.headList(Builtins.tailList(fields)));
+                                long modVal = Builtins.unIData(Builtins.headList(Builtins.tailList(fields))).longValue();
                                 return modVal == 1;
                             } else {
                                 return false;
@@ -803,6 +899,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -830,6 +929,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -872,6 +974,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -920,6 +1025,9 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -927,10 +1035,10 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             Tuple2 divMod = MathLib.divMod(BigInteger.valueOf(-7), BigInteger.valueOf(2));
                             Tuple2 quotRem = MathLib.quotRem(BigInteger.valueOf(-7), BigInteger.valueOf(2));
-                            long div = Builtins.unIData(divMod.first());
-                            long mod = Builtins.unIData(divMod.second());
-                            long quot = Builtins.unIData(quotRem.first());
-                            long rem = Builtins.unIData(quotRem.second());
+                            long div = Builtins.unIData(divMod.first()).longValue();
+                            long mod = Builtins.unIData(divMod.second()).longValue();
+                            long quot = Builtins.unIData(quotRem.first()).longValue();
+                            long rem = Builtins.unIData(quotRem.second()).longValue();
                             return div == -4 && mod == 1 && quot == -3 && rem == -1;
                         }
                     }
@@ -955,6 +1063,9 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -979,10 +1090,10 @@ class StdlibCompileEvalTest {
                                 && bigRem.equals(BigInteger.valueOf(-1))
                                 && floorDiv.equals(BigInteger.valueOf(-4))
                                 && floorMod.equals(BigInteger.ONE)
-                                && Builtins.unIData(divMod.first()) == -4
-                                && Builtins.unIData(divMod.second()) == 1
-                                && Builtins.unIData(quotRem.first()) == -3
-                                && Builtins.unIData(quotRem.second()) == -1;
+                                && Builtins.unIData(divMod.first()).equals(BigInteger.valueOf(-4))
+                                && Builtins.unIData(divMod.second()).equals(BigInteger.ONE)
+                                && Builtins.unIData(quotRem.first()).equals(BigInteger.valueOf(-3))
+                                && Builtins.unIData(quotRem.second()).equals(BigInteger.valueOf(-1));
                         }
                     }
                     """;
@@ -998,12 +1109,15 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            long result = MathLib.pow(2, 10);
+                            long result = MathLib.pow(BigInteger.TWO, BigInteger.TEN).longValue();
                             return result == 1024;
                         }
                     }
@@ -1018,13 +1132,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            long absVal = MathLib.abs(0 - 5);
-                            long signVal = MathLib.sign(0 - 5);
+                            long absVal = MathLib.abs(BigInteger.valueOf(0 - 5)).longValue();
+                            long signVal = MathLib.sign(BigInteger.valueOf(0 - 5)).longValue();
                             return absVal == 5 && signVal + 1 == 0;
                         }
                     }
@@ -1050,6 +1167,9 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.lib.*;
                     import org.julclang.core.types.JulcMap;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -1074,12 +1194,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return MapLib.member(redeemer, Builtins.iData(2));
+                            return MapLib.member(PlutusData.cast(redeemer, JulcMap.class), Builtins.iData(2));
                         }
                     }
                     """;
@@ -1094,12 +1218,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData keysList = MapLib.keys(redeemer);
+                            PlutusData keysList = PlutusData.cast(MapLib.keys(PlutusData.cast(redeemer, JulcMap.class)), PlutusData.class);
                             return !Builtins.nullList(keysList);
                         }
                     }
@@ -1123,12 +1251,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Address;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            byte[] hash = AddressLib.credentialHash(redeemer);
+                            byte[] hash = AddressLib.credentialHash(PlutusData.cast(redeemer, Address.class));
                             return Builtins.equalsByteString(hash, Builtins.unBData(Builtins.headList(
                                 Builtins.constrFields(Builtins.headList(Builtins.constrFields(redeemer))))));
                         }
@@ -1146,12 +1278,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Address;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            byte[] hash = AddressLib.credentialHash(redeemer);
+                            byte[] hash = AddressLib.credentialHash(PlutusData.cast(redeemer, Address.class));
                             return Builtins.equalsByteString(hash, Builtins.unBData(Builtins.headList(
                                 Builtins.constrFields(Builtins.headList(Builtins.constrFields(redeemer))))));
                         }
@@ -1168,12 +1304,16 @@ class StdlibCompileEvalTest {
         void isScriptAddressReturnsTrue() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Address;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return AddressLib.isScriptAddress(redeemer);
+                            return AddressLib.isScriptAddress(PlutusData.cast(redeemer, Address.class));
                         }
                     }
                     """;
@@ -1188,12 +1328,16 @@ class StdlibCompileEvalTest {
         void isScriptAddressReturnsFalseForPubKey() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Address;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return AddressLib.isScriptAddress(redeemer);
+                            return AddressLib.isScriptAddress(PlutusData.cast(redeemer, Address.class));
                         }
                     }
                     """;
@@ -1208,12 +1352,16 @@ class StdlibCompileEvalTest {
         void isPubKeyAddressReturnsTrue() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Address;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return AddressLib.isPubKeyAddress(redeemer);
+                            return AddressLib.isPubKeyAddress(PlutusData.cast(redeemer, Address.class));
                         }
                     }
                     """;
@@ -1229,12 +1377,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Address;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData cred = AddressLib.paymentCredential(redeemer);
+                            PlutusData cred = PlutusData.cast(AddressLib.paymentCredential(PlutusData.cast(redeemer, Address.class)), PlutusData.class);
                             return Builtins.constrTag(cred) == 1;
                         }
                     }
@@ -1258,13 +1410,18 @@ class StdlibCompileEvalTest {
         void finiteUpperBoundExtractsTime() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.Interval;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.between(100, 500);
-                            return IntervalLib.finiteUpperBound(interval) == 500;
+                            PlutusData interval = PlutusData.cast(IntervalLib.between(BigInteger.valueOf(100), BigInteger.valueOf(500)), PlutusData.class);
+                            return IntervalLib.finiteUpperBound(PlutusData.cast(interval, Interval.class)).equals(BigInteger.valueOf(500));
                         }
                     }
                     """;
@@ -1277,13 +1434,18 @@ class StdlibCompileEvalTest {
         void finiteLowerBoundExtractsTime() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.Interval;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.between(100, 500);
-                            return IntervalLib.finiteLowerBound(interval) == 100;
+                            PlutusData interval = PlutusData.cast(IntervalLib.between(BigInteger.valueOf(100), BigInteger.valueOf(500)), PlutusData.class);
+                            return IntervalLib.finiteLowerBound(PlutusData.cast(interval, Interval.class)).equals(BigInteger.valueOf(100));
                         }
                     }
                     """;
@@ -1296,13 +1458,18 @@ class StdlibCompileEvalTest {
         void finiteUpperBoundOnAlwaysReturnsMinus1() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Interval;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.always();
-                            return IntervalLib.finiteUpperBound(interval) + 1 == 0;
+                            PlutusData interval = PlutusData.cast(IntervalLib.always(), PlutusData.class);
+                            return IntervalLib.finiteUpperBound(PlutusData.cast(interval, Interval.class)).add(BigInteger.ONE).equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -1315,13 +1482,18 @@ class StdlibCompileEvalTest {
         void finiteLowerBoundOnAlwaysReturnsMinus1() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Interval;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.always();
-                            return IntervalLib.finiteLowerBound(interval) + 1 == 0;
+                            PlutusData interval = PlutusData.cast(IntervalLib.always(), PlutusData.class);
+                            return IntervalLib.finiteLowerBound(PlutusData.cast(interval, Interval.class)).add(BigInteger.ONE).equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -1334,13 +1506,18 @@ class StdlibCompileEvalTest {
         void finiteUpperBoundOnAfterReturnsMinus1() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.Interval;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.after(1000);
-                            return IntervalLib.finiteUpperBound(interval) + 1 == 0;
+                            PlutusData interval = PlutusData.cast(IntervalLib.after(BigInteger.valueOf(1000)), PlutusData.class);
+                            return IntervalLib.finiteUpperBound(PlutusData.cast(interval, Interval.class)).add(BigInteger.ONE).equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -1353,13 +1530,18 @@ class StdlibCompileEvalTest {
         void finiteLowerBoundOnAfterExtractsTime() {
             var source = """
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.Interval;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData interval = IntervalLib.after(1000);
-                            return IntervalLib.finiteLowerBound(interval) == 1000;
+                            PlutusData interval = PlutusData.cast(IntervalLib.after(BigInteger.valueOf(1000)), PlutusData.class);
+                            return IntervalLib.finiteLowerBound(PlutusData.cast(interval, Interval.class)).equals(BigInteger.valueOf(1000));
                         }
                     }
                     """;
@@ -1381,12 +1563,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return ListsLib.hasDuplicateInts(Builtins.unListData(redeemer));
+                            return ListsLib.hasDuplicateInts(PlutusData.cast(Builtins.unListData(redeemer), JulcList.class));
                         }
                     }
                     """;
@@ -1403,12 +1589,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return ListsLib.hasDuplicateInts(Builtins.unListData(redeemer));
+                            return ListsLib.hasDuplicateInts(PlutusData.cast(Builtins.unListData(redeemer), JulcList.class));
                         }
                     }
                     """;
@@ -1423,12 +1613,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return ListsLib.hasDuplicateInts(Builtins.unListData(redeemer));
+                            return ListsLib.hasDuplicateInts(PlutusData.cast(Builtins.unListData(redeemer), JulcList.class));
                         }
                     }
                     """;
@@ -1443,12 +1637,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return ListsLib.hasDuplicateBytes(Builtins.unListData(redeemer));
+                            return ListsLib.hasDuplicateBytes(PlutusData.cast(Builtins.unListData(redeemer), JulcList.class));
                         }
                     }
                     """;
@@ -1464,12 +1662,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            return ListsLib.hasDuplicateBytes(Builtins.unListData(redeemer));
+                            return ListsLib.hasDuplicateBytes(PlutusData.cast(Builtins.unListData(redeemer), JulcList.class));
                         }
                     }
                     """;
@@ -1485,6 +1687,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
@@ -1493,7 +1699,7 @@ class StdlibCompileEvalTest {
                             PlutusData fields = Builtins.constrFields(redeemer);
                             PlutusData listData = Builtins.headList(fields);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
-                            return ListsLib.containsBytes(Builtins.unListData(listData), target);
+                            return ListsLib.containsBytes(PlutusData.cast(Builtins.unListData(listData), JulcList.class), target);
                         }
                     }
                     """;
@@ -1511,6 +1717,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
@@ -1519,7 +1729,7 @@ class StdlibCompileEvalTest {
                             PlutusData fields = Builtins.constrFields(redeemer);
                             PlutusData listData = Builtins.headList(fields);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
-                            return ListsLib.containsBytes(Builtins.unListData(listData), target);
+                            return ListsLib.containsBytes(PlutusData.cast(Builtins.unListData(listData), JulcList.class), target);
                         }
                     }
                     """;
@@ -1570,13 +1780,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                            PlutusData refInputs = ContextsLib.txInfoRefInputs(txInfo);
+                            PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
+                            PlutusData refInputs = PlutusData.cast(ContextsLib.txInfoRefInputs(PlutusData.cast(txInfo, TxInfo.class)), PlutusData.class);
                             // refInputs should be a list; check it's non-empty
                             return !Builtins.nullList(refInputs);
                         }
@@ -1594,13 +1809,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                            PlutusData withdrawals = ContextsLib.txInfoWithdrawals(txInfo);
+                            PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
+                            PlutusData withdrawals = PlutusData.cast(ContextsLib.txInfoWithdrawals(PlutusData.cast(txInfo, TxInfo.class)), PlutusData.class);
                             // withdrawals returns JulcMap (already unwrapped pair list); check non-empty
                             return !Builtins.nullList(withdrawals);
                         }
@@ -1618,13 +1838,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                            PlutusData redeemers = ContextsLib.txInfoRedeemers(txInfo);
+                            PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
+                            PlutusData redeemers = PlutusData.cast(ContextsLib.txInfoRedeemers(PlutusData.cast(txInfo, TxInfo.class)), PlutusData.class);
                             // redeemers returns JulcMap (already unwrapped pair list); check non-empty
                             return !Builtins.nullList(redeemers);
                         }
@@ -1650,6 +1875,12 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -1657,8 +1888,8 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = Constr(0, [txOut, expectedAddress])
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            TxOut txOut = Builtins.headList(fields);
-                            Address expected = Builtins.headList(Builtins.tailList(fields));
+                            TxOut txOut = PlutusData.cast(Builtins.headList(fields), TxOut.class);
+                            Address expected = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             Address actual = OutputLib.txOutAddress(txOut);
                             return actual == expected;
                         }
@@ -1680,20 +1911,26 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.Value;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.TxOut;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = a TxOut
-                            Value val = OutputLib.txOutValue(redeemer);
+                            Value val = OutputLib.txOutValue(PlutusData.cast(redeemer, TxOut.class));
                             // Extract lovelace from Value using Builtins
                             var pairs = Builtins.unMapData(val);
                             var firstPair = Builtins.headList(pairs);
                             var tokenMap = Builtins.sndPair(firstPair);
                             var tokenPairs = Builtins.unMapData(tokenMap);
                             var firstToken = Builtins.headList(tokenPairs);
-                            long lovelace = Builtins.unIData(Builtins.sndPair(firstToken));
+                            long lovelace = Builtins.unIData(Builtins.sndPair(firstToken)).longValue();
                             return lovelace == 3000000;
                         }
                     }
@@ -1710,13 +1947,19 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.OutputDatum;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.TxOut;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = TxOut with InlineDatum
-                            OutputDatum d = OutputLib.txOutDatum(redeemer);
+                            OutputDatum d = OutputLib.txOutDatum(PlutusData.cast(redeemer, TxOut.class));
                             // InlineDatum is Constr(2, [datum]) — check tag == 2
                             return Builtins.constrTag(d) == 2;
                         }
@@ -1735,6 +1978,14 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
@@ -1742,10 +1993,10 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = Constr(0, [outputs_list, target_address])
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
-                            Address addr = Builtins.headList(Builtins.tailList(fields));
-                            List<TxOut> matched = OutputLib.outputsAt(outputs, addr);
-                            return ListsLib.length(matched) == 2;
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
+                            JulcList<TxOut> matched = OutputLib.outputsAt(outputs, addr);
+                            return ListsLib.length(PlutusData.cast(matched, JulcList.class)) == 2;
                         }
                     }
                     """;
@@ -1767,14 +2018,22 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
-                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             return OutputLib.countOutputsAt(outputs, addr) == 3;
                         }
                     }
@@ -1796,14 +2055,22 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
-                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             TxOut unique = OutputLib.uniqueOutputAt(outputs, addr);
                             // Verify it's the expected output by checking address equality
                             return OutputLib.txOutAddress(unique) == addr;
@@ -1827,14 +2094,22 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
-                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             TxOut unique = OutputLib.uniqueOutputAt(outputs, addr);
                             // Force evaluation of unique by comparing its address field
                             return unique.address() == addr;
@@ -1857,17 +2132,24 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
                             PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
-                            List<TxOut> matched = OutputLib.outputsWithToken(outputs, policyId, tokenName);
-                            return ListsLib.length(matched) == 1;
+                            JulcList<TxOut> matched = OutputLib.outputsWithToken(outputs, Builtins.unBData(policyId), Builtins.unBData(tokenName));
+                            return ListsLib.length(PlutusData.cast(matched, JulcList.class)) == 1;
                         }
                     }
                     """;
@@ -1889,17 +2171,24 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
                             PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
-                            List<TxOut> matched = OutputLib.outputsWithToken(outputs, policyId, tokenName);
-                            return ListsLib.length(matched) == 0;
+                            JulcList<TxOut> matched = OutputLib.outputsWithToken(outputs, Builtins.unBData(policyId), Builtins.unBData(tokenName));
+                            return ListsLib.length(PlutusData.cast(matched, JulcList.class)) == 0;
                         }
                     }
                     """;
@@ -1921,14 +2210,22 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
-                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             return OutputLib.lovelacePaidTo(outputs, addr).longValue() == 10000000;
                         }
                     }
@@ -1953,14 +2250,22 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
-                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            JulcList<TxOut> outputs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            Address addr = PlutusData.cast(Builtins.headList(Builtins.tailList(fields)), Address.class);
                             return OutputLib.paidAtLeast(outputs, addr, BigInteger.valueOf(4000000));
                         }
                     }
@@ -1981,14 +2286,20 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.ledger.TxOut;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = TxOut with InlineDatum(IData(42))
-                            PlutusData datum = OutputLib.getInlineDatum(redeemer);
-                            return Builtins.unIData(datum) == 42;
+                            PlutusData datum = OutputLib.getInlineDatum(PlutusData.cast(redeemer, TxOut.class));
+                            return Builtins.unIData(datum).equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -2006,6 +2317,12 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import org.julclang.core.types.JulcMap;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2013,10 +2330,10 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             // redeemer = Constr(0, [txOut, datumsMap])
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            TxOut txOut = Builtins.headList(fields);
+                            TxOut txOut = PlutusData.cast(Builtins.headList(fields), TxOut.class);
                             JulcMap<PlutusData, PlutusData> datumsMap = (JulcMap)(Object) Builtins.headList(Builtins.tailList(fields));
                             PlutusData datum = OutputLib.resolveDatum(txOut, datumsMap);
-                            return Builtins.unIData(datum) == 99;
+                            return Builtins.unIData(datum).equals(BigInteger.valueOf(99));
                         }
                     }
                     """;
@@ -2059,6 +2376,9 @@ class StdlibCompileEvalTest {
                     """;
             var validator = """
                     import com.example.MyDataLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2093,6 +2413,9 @@ class StdlibCompileEvalTest {
                     """;
             var validator = """
                     import com.example.MyMathLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2138,6 +2461,9 @@ class StdlibCompileEvalTest {
                     """;
             var validator = """
                     import com.example.MiddleLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2171,12 +2497,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             long total = 0;
                             for (var entry : m) {
                                 total = total + Builtins.unIData(entry.key());
@@ -2185,7 +2515,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             // Map with keys 1 and 2 → total = 3
             var mapData = PlutusData.map(
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
@@ -2200,12 +2530,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             long total = 0;
                             for (var entry : m) {
                                 total = total + Builtins.unIData(entry.value());
@@ -2214,7 +2548,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var mapData = PlutusData.map(
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
                     new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
@@ -2229,12 +2563,16 @@ class StdlibCompileEvalTest {
         void mapIsEmptyTrue() {
             var source = """
                     import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return m.isEmpty();
                         }
                     }
@@ -2248,12 +2586,16 @@ class StdlibCompileEvalTest {
         void mapIsEmptyFalse() {
             var source = """
                     import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return !m.isEmpty();
                         }
                     }
@@ -2271,12 +2613,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
                     import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             List<PlutusData> ks = (List<PlutusData>)(Object) m.keys();
                             return ks.size() == 2;
                         }
@@ -2296,12 +2642,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
                     import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             List<PlutusData> vs = (List<PlutusData>)(Object) m.values();
                             return vs.size() == 3;
                         }
@@ -2324,12 +2674,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             long sum = 0;
                             for (var entry : m) {
                                 sum = sum + Builtins.unIData(entry.key()) + Builtins.unIData(entry.value());
@@ -2338,7 +2692,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             // keys: 1,2  values: 10,20 → sum = 1+10+2+20 = 33
             var mapData = PlutusData.map(
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
@@ -2352,12 +2706,16 @@ class StdlibCompileEvalTest {
         void forEachOverEmptyMap() {
             var source = """
                     import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             long count = 0;
                             for (var entry : m) {
                                 count = count + 1;
@@ -2366,7 +2724,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.map())));
             assertTrue(result.isSuccess(), "for-each over empty map should yield 0. Got: " + result);
         }
@@ -2377,13 +2735,17 @@ class StdlibCompileEvalTest {
         void valueLovelaceOf() {
             var source = """
                     import org.julclang.ledger.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             Value v = (Value)(Object) redeemer;
-                            return v.lovelaceOf() == 5000000;
+                            return v.lovelaceOf().equals(BigInteger.valueOf(5000000));
                         }
                     }
                     """;
@@ -2397,6 +2759,9 @@ class StdlibCompileEvalTest {
         void valueIsEmptyTrue() {
             var source = """
                     import org.julclang.ledger.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2416,6 +2781,9 @@ class StdlibCompileEvalTest {
         void valueIsEmptyFalse() {
             var source = """
                     import org.julclang.ledger.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2438,6 +2806,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PolicyId;
+                    import org.julclang.ledger.TokenName;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2447,7 +2820,7 @@ class StdlibCompileEvalTest {
                             Value v = (Value)(Object) Builtins.headList(fields);
                             PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
                             PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
-                            long amount = v.assetOf(policyId, tokenName);
+                            long amount = v.assetOf(PolicyId.of(Builtins.unBData(policyId)), TokenName.of(Builtins.unBData(tokenName))).longValue();
                             return amount == 42;
                         }
                     }
@@ -2465,6 +2838,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.ledger.*;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PolicyId;
+                    import org.julclang.ledger.TokenName;
 
                     @SpendingValidator
                     class TestValidator {
@@ -2474,7 +2852,7 @@ class StdlibCompileEvalTest {
                             Value v = (Value)(Object) Builtins.headList(fields);
                             PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
                             PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
-                            long amount = v.assetOf(policyId, tokenName);
+                            long amount = v.assetOf(PolicyId.of(Builtins.unBData(policyId)), TokenName.of(Builtins.unBData(tokenName))).longValue();
                             return amount == 0;
                         }
                     }
@@ -2501,12 +2879,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(10)), Builtins.iData(BigInteger.valueOf(20)));
-                            return Builtins.unIData(t.first()) == 10;
+                            return Builtins.unIData(t.first()).equals(BigInteger.TEN);
                         }
                     }
                     """;
@@ -2520,12 +2903,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(10)), Builtins.iData(BigInteger.valueOf(20)));
-                            return Builtins.unIData(t.second()) == 20;
+                            return Builtins.unIData(t.second()).equals(BigInteger.valueOf(20));
                         }
                     }
                     """;
@@ -2539,12 +2927,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(7)));
-                            return Builtins.unIData(t.first()) + Builtins.unIData(t.second()) == 10;
+                            return Builtins.unIData(t.first()).add(Builtins.unIData(t.second())).equals(BigInteger.TEN);
                         }
                     }
                     """;
@@ -2559,13 +2952,18 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2 result = MathLib.divMod(BigInteger.valueOf(17), BigInteger.valueOf(5));
-                            long div = Builtins.unIData(result.first());
-                            long rem = Builtins.unIData(result.second());
+                            long div = Builtins.unIData(result.first()).longValue();
+                            long rem = Builtins.unIData(result.second()).longValue();
                             return div == 3 && rem == 2;
                         }
                     }
@@ -2581,13 +2979,18 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2 result = MathLib.quotRem(BigInteger.valueOf(17), BigInteger.valueOf(5));
-                            long q = Builtins.unIData(result.first());
-                            long r = Builtins.unIData(result.second());
+                            long q = Builtins.unIData(result.first()).longValue();
+                            long r = Builtins.unIData(result.second()).longValue();
                             return q == 3 && r == 2;
                         }
                     }
@@ -2602,12 +3005,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2<BigInteger, BigInteger> t = new Tuple2<BigInteger, BigInteger>(BigInteger.valueOf(10), BigInteger.valueOf(20));
-                            return t.first() == 10;
+                            return t.first().equals(BigInteger.TEN);
                         }
                     }
                     """;
@@ -2621,12 +3029,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            byte[] a = Builtins.encodeUtf8("hello");
-                            byte[] b = Builtins.encodeUtf8("world");
+                            byte[] a = PlutusData.cast(Builtins.encodeUtf8("hello"), byte[].class);
+                            byte[] b = PlutusData.cast(Builtins.encodeUtf8("world"), byte[].class);
                             Tuple2<byte[], byte[]> t = new Tuple2<byte[], byte[]>(a, b);
                             return Builtins.equalsByteString(t.first(), a);
                         }
@@ -2642,12 +3054,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Tuple2<BigInteger, byte[]> t = new Tuple2<BigInteger, byte[]>(BigInteger.valueOf(42), Builtins.encodeUtf8("ab"));
-                            return t.first() == 42;
+                            Tuple2<BigInteger, byte[]> t = new Tuple2<BigInteger, byte[]>(BigInteger.valueOf(42), PlutusData.cast(Builtins.encodeUtf8("ab"), byte[].class));
+                            return t.first().equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -2662,12 +3079,17 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2<BigInteger, BigInteger> result = MathLib.divMod(BigInteger.valueOf(17), BigInteger.valueOf(5));
-                            return result.first() == 3 && result.second() == 2;
+                            return result.first().equals(BigInteger.valueOf(3)) && result.second().equals(BigInteger.TWO);
                         }
                     }
                     """;
@@ -2682,12 +3104,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple2;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(10)), Builtins.iData(BigInteger.valueOf(20)));
-                            return Builtins.unIData(t.first()) == 10 && Builtins.unIData(t.second()) == 20;
+                            return Builtins.unIData(t.first()).equals(BigInteger.TEN) && Builtins.unIData(t.second()).equals(BigInteger.valueOf(20));
                         }
                     }
                     """;
@@ -2705,6 +3132,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple3;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -2712,9 +3144,9 @@ class StdlibCompileEvalTest {
                             Tuple3 t = new Tuple3(Builtins.iData(BigInteger.valueOf(1)),
                                                   Builtins.iData(BigInteger.valueOf(2)),
                                                   Builtins.iData(BigInteger.valueOf(3)));
-                            return Builtins.unIData(t.first()) == 1
-                                && Builtins.unIData(t.second()) == 2
-                                && Builtins.unIData(t.third()) == 3;
+                            return Builtins.unIData(t.first()).equals(BigInteger.ONE)
+                                && Builtins.unIData(t.second()).equals(BigInteger.TWO)
+                                && Builtins.unIData(t.third()).equals(BigInteger.valueOf(3));
                         }
                     }
                     """;
@@ -2728,6 +3160,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple3;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -2735,7 +3172,7 @@ class StdlibCompileEvalTest {
                             Tuple3 t = new Tuple3(Builtins.iData(BigInteger.valueOf(10)),
                                                   Builtins.iData(BigInteger.valueOf(20)),
                                                   Builtins.iData(BigInteger.valueOf(30)));
-                            return Builtins.unIData(t.first()) + Builtins.unIData(t.second()) + Builtins.unIData(t.third()) == 60;
+                            return Builtins.unIData(t.first()).add(Builtins.unIData(t.second())).add(Builtins.unIData(t.third())).equals(BigInteger.valueOf(60));
                         }
                     }
                     """;
@@ -2749,13 +3186,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.Tuple3;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Tuple3<BigInteger, byte[], BigInteger> t = new Tuple3<BigInteger, byte[], BigInteger>(
-                                BigInteger.valueOf(10), Builtins.encodeUtf8("ab"), BigInteger.valueOf(30));
-                            return t.first() == 10 && t.third() == 30;
+                                BigInteger.valueOf(10), PlutusData.cast(Builtins.encodeUtf8("ab"), byte[].class), BigInteger.valueOf(30));
+                            return t.first().equals(BigInteger.TEN) && t.third().equals(BigInteger.valueOf(30));
                         }
                     }
                     """;
@@ -2777,11 +3219,15 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                             return items.size() == 3;
                         }
                     }
@@ -2797,14 +3243,19 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                             PlutusData first = items.head();
                             JulcList<PlutusData> rest = items.tail();
-                            return Builtins.unIData(first) == 10 && rest.size() == 2;
+                            return Builtins.unIData(first).equals(BigInteger.TEN) && rest.size() == 2;
                         }
                     }
                     """;
@@ -2818,14 +3269,21 @@ class StdlibCompileEvalTest {
         void listReverse() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            List<PlutusData> rev = items.reverse();
-                            return Builtins.unIData(rev.head()) == 3;
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> rev = items.reverse();
+                            return Builtins.unIData(rev.head()).equals(BigInteger.valueOf(3));
                         }
                     }
                     """;
@@ -2839,15 +3297,21 @@ class StdlibCompileEvalTest {
         void listConcat() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<PlutusData> a = Builtins.unListData(Builtins.headList(fields));
-                            List<PlutusData> b = Builtins.unListData(Builtins.headList(Builtins.tailList(fields)));
-                            List<PlutusData> combined = a.concat(b);
+                            JulcList<PlutusData> a = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            JulcList<PlutusData> b = PlutusData.cast(Builtins.unListData(Builtins.headList(Builtins.tailList(fields))), JulcList.class);
+                            JulcList<PlutusData> combined = a.concat(b);
                             return combined.size() == 5;
                         }
                     }
@@ -2864,18 +3328,24 @@ class StdlibCompileEvalTest {
         void listConcatPreservesOrder() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             PlutusData fields = Builtins.constrFields(redeemer);
-                            List<PlutusData> a = Builtins.unListData(Builtins.headList(fields));
-                            List<PlutusData> b = Builtins.unListData(Builtins.headList(Builtins.tailList(fields)));
-                            List<PlutusData> combined = a.concat(b);
+                            JulcList<PlutusData> a = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            JulcList<PlutusData> b = PlutusData.cast(Builtins.unListData(Builtins.headList(Builtins.tailList(fields))), JulcList.class);
+                            JulcList<PlutusData> combined = a.concat(b);
                             // [1,2] ++ [3,4] -> [1,2,3,4], head should be 1
-                            long first = Builtins.unIData(combined.head());
-                            long last = Builtins.unIData(combined.get(3));
+                            long first = Builtins.unIData(combined.head()).longValue();
+                            long last = Builtins.unIData(combined.get(3)).longValue();
                             return first == 1 && last == 4;
                         }
                     }
@@ -2892,14 +3362,21 @@ class StdlibCompileEvalTest {
         void listTake() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            List<PlutusData> first2 = items.take(2);
-                            return first2.size() == 2 && Builtins.unIData(first2.head()) == 10;
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> first2 = items.take(2);
+                            return first2.size() == 2 && Builtins.unIData(first2.head()).equals(BigInteger.TEN);
                         }
                     }
                     """;
@@ -2913,14 +3390,21 @@ class StdlibCompileEvalTest {
         void listDrop() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
+                    import java.math.BigInteger;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            List<PlutusData> rest = items.drop(2);
-                            return rest.size() == 1 && Builtins.unIData(rest.head()) == 30;
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> rest = items.drop(2);
+                            return rest.size() == 1 && Builtins.unIData(rest.head()).equals(BigInteger.valueOf(30));
                         }
                     }
                     """;
@@ -2934,14 +3418,21 @@ class StdlibCompileEvalTest {
         void listPrependAutoWrap() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<BigInteger> items = Builtins.unListData(redeemer);
-                            List<BigInteger> prepended = items.prepend(BigInteger.valueOf(99));
-                            return prepended.size() == 4 && prepended.head() == 99;
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<BigInteger> prepended = items.prepend(BigInteger.valueOf(99));
+                            return prepended.size() == 4 && prepended.head().equals(BigInteger.valueOf(99));
                         }
                     }
                     """;
@@ -2955,6 +3446,10 @@ class StdlibCompileEvalTest {
         void julcListEmpty() {
             var source = """
                     import org.julclang.core.types.JulcList;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -2974,12 +3469,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             JulcList<PlutusData> items = JulcList.of(Builtins.iData(BigInteger.valueOf(42)));
-                            return items.size() == 1 && Builtins.unIData(items.head()) == 42;
+                            return items.size() == 1 && Builtins.unIData(items.head()).equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -2993,6 +3493,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -3002,8 +3507,8 @@ class StdlibCompileEvalTest {
                             PlutusData c = Builtins.iData(BigInteger.valueOf(30));
                             JulcList<PlutusData> items = JulcList.of(a, b, c);
                             return items.size() == 3
-                                && Builtins.unIData(items.head()) == 10
-                                && Builtins.unIData(items.get(2)) == 30;
+                                && Builtins.unIData(items.head()).equals(BigInteger.TEN)
+                                && Builtins.unIData(items.get(2)).equals(BigInteger.valueOf(30));
                         }
                     }
                     """;
@@ -3017,12 +3522,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             JulcList<PlutusData> items = JulcList.<PlutusData>empty().prepend(Builtins.iData(BigInteger.valueOf(99)));
-                            return items.size() == 1 && Builtins.unIData(items.head()) == 99;
+                            return items.size() == 1 && Builtins.unIData(items.head()).equals(BigInteger.valueOf(99));
                         }
                     }
                     """;
@@ -3035,12 +3545,17 @@ class StdlibCompileEvalTest {
         void julcListOfAutoWrapsBigIntegers() {
             var source = """
                     import org.julclang.core.types.JulcList;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             JulcList<BigInteger> nums = JulcList.of(BigInteger.valueOf(10), BigInteger.valueOf(20));
-                            return nums.size() == 2 && nums.head() == 10 && nums.get(1) == 20;
+                            return nums.size() == 2 && nums.head().equals(BigInteger.TEN) && nums.get(1).equals(BigInteger.valueOf(20));
                         }
                     }
                     """;
@@ -3054,6 +3569,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -3079,6 +3598,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -3103,6 +3627,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -3135,6 +3664,10 @@ class StdlibCompileEvalTest {
         void julcMapResolvesAsMapType() {
             var source = """
                     import org.julclang.core.types.JulcMap;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -3156,13 +3689,20 @@ class StdlibCompileEvalTest {
         void mapInsert() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            Map<PlutusData, PlutusData> updated = m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)));
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> updated = m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)));
                             return updated.size() == 3;
                         }
                     }
@@ -3179,13 +3719,20 @@ class StdlibCompileEvalTest {
         void mapDelete() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            Map<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(1)));
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(1)));
                             return updated.size() == 1;
                         }
                     }
@@ -3202,13 +3749,20 @@ class StdlibCompileEvalTest {
         void mapDeleteNonExistent() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            Map<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(99)));
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(99)));
                             return updated.size() == 2;
                         }
                     }
@@ -3241,16 +3795,22 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_containsKey() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             PlutusData key = Builtins.iData(BigInteger.valueOf(1));
                             return w.containsKey(key);
                         }
@@ -3265,16 +3825,22 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_containsKeyMissing() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             PlutusData key = Builtins.iData(BigInteger.valueOf(99));
                             return !w.containsKey(key);
                         }
@@ -3289,14 +3855,20 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_isEmpty() {
             var source = """
-                    import org.julclang.ledger.api.*;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             return !w.isEmpty();
                         }
                     }
@@ -3310,14 +3882,20 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_isEmptyTrue() {
             var source = """
-                    import org.julclang.ledger.api.*;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             return w.isEmpty();
                         }
                     }
@@ -3331,14 +3909,20 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_size() {
             var source = """
-                    import org.julclang.ledger.api.*;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             return w.size() == 2;
                         }
                     }
@@ -3352,16 +3936,22 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_get() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             PlutusData key = Builtins.iData(BigInteger.valueOf(1));
                             PlutusData result = w.get(key);
                             return Builtins.equalsData(result, Builtins.iData(BigInteger.valueOf(100)));
@@ -3377,16 +3967,24 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_keys() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
-                            List<PlutusData> ks = w.keys();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
+                            JulcList<PlutusData> ks = w.keys();
                             return !Builtins.nullList(ks);
                         }
                     }
@@ -3400,16 +3998,24 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_values() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
-                            List<PlutusData> vs = w.values();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
+                            JulcList<PlutusData> vs = w.values();
                             return !Builtins.nullList(vs);
                         }
                     }
@@ -3429,12 +4035,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return m.containsKey(Builtins.iData(BigInteger.valueOf(1)));
                         }
                     }
@@ -3452,12 +4064,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return !m.containsKey(Builtins.iData(BigInteger.valueOf(99)));
                         }
                     }
@@ -3475,12 +4093,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             PlutusData result = m.get(Builtins.iData(BigInteger.valueOf(1)));
                             return Builtins.equalsData(result, Builtins.iData(BigInteger.valueOf(10)));
                         }
@@ -3499,12 +4123,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             PlutusData result = m.get(Builtins.iData(BigInteger.valueOf(99)));
                             return Builtins.equalsData(result, Builtins.iData(BigInteger.ONE));
                         }
@@ -3521,11 +4151,17 @@ class StdlibCompileEvalTest {
         @Test
         void mapCast_isEmpty() {
             var source = """
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return !m.isEmpty();
                         }
                     }
@@ -3540,11 +4176,17 @@ class StdlibCompileEvalTest {
         @Test
         void mapCast_isEmptyTrue() {
             var source = """
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return m.isEmpty();
                         }
                     }
@@ -3559,13 +4201,21 @@ class StdlibCompileEvalTest {
         void mapCast_keys() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            List<PlutusData> ks = m.keys();
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcList<PlutusData> ks = m.keys();
                             return !Builtins.nullList(ks);
                         }
                     }
@@ -3582,13 +4232,21 @@ class StdlibCompileEvalTest {
         void mapCast_values() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            List<PlutusData> vs = m.values();
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcList<PlutusData> vs = m.values();
                             return !Builtins.nullList(vs);
                         }
                     }
@@ -3610,13 +4268,19 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            Map<PlutusData, PlutusData> updated = m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)));
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> updated = m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)));
                             return updated.containsKey(Builtins.iData(BigInteger.valueOf(3)));
                         }
                     }
@@ -3634,13 +4298,19 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            Map<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(1)));
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(1)));
                             return !updated.containsKey(Builtins.iData(BigInteger.valueOf(1)));
                         }
                     }
@@ -3658,13 +4328,19 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            Map<PlutusData, PlutusData> updated = m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)));
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> updated = m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)));
                             return updated.size() == 3;
                         }
                     }
@@ -3682,13 +4358,19 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            Map<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(1)));
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(1)));
                             return updated.size() == 1;
                         }
                     }
@@ -3708,14 +4390,20 @@ class StdlibCompileEvalTest {
         @Test
         void forEachOnMapFromFieldAccess() {
             var source = """
-                    import org.julclang.ledger.api.*;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             int count = 0;
                             for (var entry : w) {
                                 count = count + 1;
@@ -3724,7 +4412,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var ctx = fieldAccessCtx(twoEntryWithdrawals());
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "forEachOnMapFromFieldAccess should count 2 entries. Got: " + result);
@@ -3737,18 +4425,24 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_insertThenSize() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             PlutusData newKey = Builtins.iData(BigInteger.valueOf(5));
-                            Map<PlutusData, PlutusData> updated = w.insert(newKey, Builtins.iData(BigInteger.valueOf(500)));
+                            JulcMap<PlutusData, PlutusData> updated = w.insert(newKey, Builtins.iData(BigInteger.valueOf(500)));
                             return updated.size() == 3;
                         }
                     }
@@ -3762,18 +4456,24 @@ class StdlibCompileEvalTest {
         @Test
         void mapFromFieldAccess_deleteThenContainsKey() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             PlutusData key = Builtins.iData(BigInteger.valueOf(1));
-                            Map<PlutusData, PlutusData> updated = w.delete(key);
+                            JulcMap<PlutusData, PlutusData> updated = w.delete(key);
                             return !updated.containsKey(key);
                         }
                     }
@@ -3793,12 +4493,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return !m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)))
                                       .delete(Builtins.iData(BigInteger.valueOf(1)))
                                       .containsKey(Builtins.iData(BigInteger.valueOf(1)));
@@ -3816,16 +4522,22 @@ class StdlibCompileEvalTest {
         @Test
         void mapFieldAccessInsertDeleteChain() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             return !w.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)))
                                       .delete(Builtins.iData(BigInteger.valueOf(1)))
                                       .containsKey(Builtins.iData(BigInteger.valueOf(1)));
@@ -3843,12 +4555,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             return m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)))
                                      .insert(Builtins.iData(BigInteger.valueOf(4)), Builtins.iData(BigInteger.valueOf(40)))
                                      .size() == 4;
@@ -3872,12 +4590,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             int i = 0;
                             while (i < 3) {
                                 i = i + 1;
@@ -3900,17 +4624,23 @@ class StdlibCompileEvalTest {
         @Test
         void mapLibMemberOnFieldAccessMap_knownLimitation() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.MapLib;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
                             PlutusData key = Builtins.iData(BigInteger.valueOf(1));
                             return MapLib.member(w, key);
                         }
@@ -3931,12 +4661,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             PlutusData val = m.get(Builtins.iData(BigInteger.valueOf(1)));
                             return Builtins.equalsData(val, Builtins.iData(BigInteger.valueOf(10)));
                         }
@@ -3955,12 +4691,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             PlutusData val = m.get(Builtins.iData(BigInteger.valueOf(99)));
                             return Builtins.equalsData(val, Builtins.iData(BigInteger.ONE));
                         }
@@ -3979,12 +4721,18 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
                     import java.util.Optional;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             Optional<PlutusData> opt = m.lookup(Builtins.iData(BigInteger.valueOf(1)));
                             return opt.isPresent();
                         }
@@ -4003,12 +4751,18 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
                     import java.util.Optional;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
                             Optional<PlutusData> opt = m.lookup(Builtins.iData(BigInteger.valueOf(99)));
                             return opt.isEmpty();
                         }
@@ -4029,21 +4783,28 @@ class StdlibCompileEvalTest {
         void forEach_integerList_autoUnwrap() {
             // Test auto-unwrapping of integer elements via map.values() which returns a typed list
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.List;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            List<PlutusData> vs = m.values();
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcList<PlutusData> vs = m.values();
                             BigInteger total = BigInteger.ZERO;
                             for (var v : vs) {
                                 total = total.add(Builtins.unIData(v));
                             }
-                            return total == 6;
+                            return total.equals(BigInteger.valueOf(6));
                         }
                     }
                     """;
@@ -4060,15 +4821,22 @@ class StdlibCompileEvalTest {
         void forEach_byteStringList_autoUnwrap() {
             // Test for-each over signatories (List<PubKeyHash>) — ByteStringType elements
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            List<PubKeyHash> sigs = txInfo.signatories();
+                            JulcList<PubKeyHash> sigs = txInfo.signatories();
                             int count = 0;
                             for (var sig : sigs) {
                                 count = count + 1;
@@ -4092,16 +4860,23 @@ class StdlibCompileEvalTest {
         void forEach_plutusDataList_unchanged() {
             // Test for-each over untyped (DataType) list — no auto-unwrap, backward compat
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.List;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcMap;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
-                            List<PlutusData> ks = m.keys();
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            JulcList<PlutusData> ks = m.keys();
                             int count = 0;
                             for (var k : ks) {
                                 count = count + 1;
@@ -4122,22 +4897,30 @@ class StdlibCompileEvalTest {
         @Test
         void forEach_mapValues_autoUnwrap() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.stdlib.Builtins;
                     import java.math.BigInteger;
+                    import java.util.List;
+                    import java.util.Map;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
+                    import org.julclang.core.types.JulcMap;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
-                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
-                            List<PlutusData> vs = w.values();
+                            JulcMap<PlutusData, PlutusData> w = PlutusData.cast(txInfo.withdrawals(), JulcMap.class);
+                            JulcList<PlutusData> vs = w.values();
                             BigInteger total = BigInteger.ZERO;
                             for (var v : vs) {
                                 total = total.add(Builtins.unIData(v));
                             }
-                            return total == 300;
+                            return total.equals(BigInteger.valueOf(300));
                         }
                     }
                     """;
@@ -4184,6 +4967,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
@@ -4192,7 +4979,7 @@ class StdlibCompileEvalTest {
                             var fields = Builtins.constrFields(redeemer);
                             PlutusData value = Builtins.headList(fields);
                             byte[] policyId = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
-                            return ValuesLib.containsPolicy(value, policyId);
+                            return ValuesLib.containsPolicy(PlutusData.cast(value, Value.class), policyId);
                         }
                     }
                     """;
@@ -4209,6 +4996,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
@@ -4217,7 +5008,7 @@ class StdlibCompileEvalTest {
                             var fields = Builtins.constrFields(redeemer);
                             PlutusData value = Builtins.headList(fields);
                             byte[] policyId = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
-                            return ValuesLib.containsPolicy(value, policyId);
+                            return ValuesLib.containsPolicy(PlutusData.cast(value, Value.class), policyId);
                         }
                     }
                     """;
@@ -4235,6 +5026,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
@@ -4243,7 +5038,7 @@ class StdlibCompileEvalTest {
                             var fields = Builtins.constrFields(redeemer);
                             PlutusData value = Builtins.headList(fields);
                             PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
-                            return ValuesLib._containsPolicy(value, policyId);
+                            return ValuesLib._containsPolicy(PlutusData.cast(value, Value.class), policyId);
                         }
                     }
                     """;
@@ -4260,6 +5055,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
@@ -4268,7 +5067,7 @@ class StdlibCompileEvalTest {
                             var fields = Builtins.constrFields(redeemer);
                             PlutusData value = Builtins.headList(fields);
                             byte[] policyId = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
-                            return ValuesLib.containsPolicy(value, policyId);
+                            return ValuesLib.containsPolicy(PlutusData.cast(value, Value.class), policyId);
                         }
                     }
                     """;
@@ -4285,7 +5084,11 @@ class StdlibCompileEvalTest {
         void valueInstanceContainsPolicyFound() {
             var source = """
                     import org.julclang.stdlib.Builtins;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Value;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PolicyId;
 
                     @SpendingValidator
                     class TestValidator {
@@ -4294,7 +5097,7 @@ class StdlibCompileEvalTest {
                             var fields = Builtins.constrFields(redeemer);
                             Value value = (Value)(Object) Builtins.headList(fields);
                             PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
-                            return value.containsPolicy(policyId);
+                            return value.containsPolicy(PolicyId.of(Builtins.unBData(policyId)));
                         }
                     }
                     """;
@@ -4310,7 +5113,11 @@ class StdlibCompileEvalTest {
         void valueInstanceContainsPolicyNotFound() {
             var source = """
                     import org.julclang.stdlib.Builtins;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Value;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PolicyId;
 
                     @SpendingValidator
                     class TestValidator {
@@ -4319,7 +5126,7 @@ class StdlibCompileEvalTest {
                             var fields = Builtins.constrFields(redeemer);
                             Value value = (Value)(Object) Builtins.headList(fields);
                             PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
-                            return value.containsPolicy(policyId);
+                            return value.containsPolicy(PolicyId.of(Builtins.unBData(policyId)));
                         }
                     }
                     """;
@@ -4336,7 +5143,13 @@ class StdlibCompileEvalTest {
         void mintContainsPolicyChained() {
             var source = """
                     import org.julclang.stdlib.Builtins;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.ledger.Value;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.PolicyId;
 
                     @SpendingValidator
                     class TestValidator {
@@ -4344,7 +5157,7 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ctx.txInfo();
                             Value mint = txInfo.mint();
-                            return mint.containsPolicy(redeemer);
+                            return mint.containsPolicy(PolicyId.of(Builtins.unBData(redeemer)));
                         }
                     }
                     """;
@@ -4370,12 +5183,15 @@ class StdlibCompileEvalTest {
             // @Param PolicyId is decoded to ByteStringType, but containsPolicy uses EqualsData
             // which needs Data args. Without wrapEncode, this fails with deserialization error.
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.ledger.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
-                        @Param PolicyId blacklistCs;
+                        @Param static PolicyId blacklistCs;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4411,12 +5227,15 @@ class StdlibCompileEvalTest {
         @Test
         void paramPolicyIdContainsPolicyNotFound() {
             var source = """
-                    import org.julclang.ledger.api.*;
                     import org.julclang.ledger.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
-                        @Param PolicyId blacklistCs;
+                        @Param static PolicyId blacklistCs;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4464,13 +5283,20 @@ class StdlibCompileEvalTest {
         void listMapWithTypedLambda() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.core.types.JulcList;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            List<PlutusData> mapped = items.map((PlutusData x) -> Builtins.iData(Builtins.unIData(x) + 1));
-                            return Builtins.unIData(mapped.head()) == 2;
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> mapped = items.map((PlutusData x) -> Builtins.iData(Builtins.unIData(x).add(BigInteger.ONE)));
+                            return Builtins.unIData(mapped.head()).equals(BigInteger.TWO);
                         }
                     }
                     """;
@@ -4484,12 +5310,19 @@ class StdlibCompileEvalTest {
         void listFilterWithTypedLambda() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.core.types.JulcList;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            List<PlutusData> filtered = items.filter((PlutusData x) -> Builtins.unIData(x) > 2);
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> filtered = items.filter((PlutusData x) -> Builtins.unIData(x).compareTo(BigInteger.TWO) > 0);
                             return filtered.size() == 1;
                         }
                     }
@@ -4504,12 +5337,19 @@ class StdlibCompileEvalTest {
         void listAnyWithTypedLambda() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.core.types.JulcList;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            return items.any((PlutusData x) -> Builtins.unIData(x) > 2);
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            return items.any((PlutusData x) -> Builtins.unIData(x).compareTo(BigInteger.TWO) > 0);
                         }
                     }
                     """;
@@ -4523,12 +5363,19 @@ class StdlibCompileEvalTest {
         void listAllWithTypedLambda() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.core.types.JulcList;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            return items.all((PlutusData x) -> Builtins.unIData(x) > 0);
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            return items.all((PlutusData x) -> Builtins.unIData(x).compareTo(BigInteger.ZERO) > 0);
                         }
                     }
                     """;
@@ -4542,12 +5389,19 @@ class StdlibCompileEvalTest {
         void listFindWithTypedLambda() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
+                    import org.julclang.core.types.JulcList;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<PlutusData> items = Builtins.unListData(redeemer);
-                            PlutusData found = items.find((PlutusData x) -> Builtins.unIData(x) == 3);
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            PlutusData found = items.find((PlutusData x) -> Builtins.unIData(x).equals(BigInteger.valueOf(3)));
                             return Builtins.constrTag(found) == 0;
                         }
                     }
@@ -4566,13 +5420,17 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<PlutusData> mapped = items.map(x -> x + 1);
-                            return Builtins.unIData(mapped.head()) == 2;
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> mapped = PlutusData.cast(items.map(x -> x.add(BigInteger.ONE)), JulcList.class);
+                            return Builtins.unIData(mapped.head()).equals(BigInteger.TWO);
                         }
                     }
                     """;
@@ -4588,12 +5446,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<BigInteger> filtered = items.filter(x -> x > 2);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<BigInteger> filtered = items.filter(x -> x.compareTo(BigInteger.TWO) > 0);
                             return filtered.size() == 1;
                         }
                     }
@@ -4610,12 +5472,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            return items.any(x -> x > 2);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            return items.any(x -> x.compareTo(BigInteger.TWO) > 0);
                         }
                     }
                     """;
@@ -4631,12 +5497,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            return items.all(x -> x > 0);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            return items.all(x -> x.compareTo(BigInteger.ZERO) > 0);
                         }
                     }
                     """;
@@ -4654,13 +5524,17 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                             BigInteger threshold = BigInteger.valueOf(2);
-                            JulcList<BigInteger> filtered = items.filter(x -> x > threshold);
+                            JulcList<BigInteger> filtered = items.filter(x -> x.compareTo(threshold) > 0);
                             return filtered.size() == 1;
                         }
                     }
@@ -4677,14 +5551,18 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                             BigInteger offset = BigInteger.valueOf(10);
-                            JulcList<PlutusData> mapped = items.map(x -> x + offset);
-                            return Builtins.unIData(mapped.head()) == 11;
+                            JulcList<PlutusData> mapped = PlutusData.cast(items.map(x -> x.add(offset)), JulcList.class);
+                            return Builtins.unIData(mapped.head()).equals(BigInteger.valueOf(11));
                         }
                     }
                     """;
@@ -4703,17 +5581,21 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.ListsLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                             JulcList<PlutusData> mapped = ListsLib.map(items, x -> x + 1);
-                            return Builtins.unIData(mapped.head()) == 2;
+                            return Builtins.unIData(mapped.head()).equals(BigInteger.TWO);
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
             assertTrue(result.isSuccess(), "ListsLib.map with inferred types should work. Got: " + result);
@@ -4726,17 +5608,21 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.ListsLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                             JulcList<BigInteger> filtered = ListsLib.filter(items, x -> x > 2);
                             return filtered.size() == 1;
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
             assertTrue(result.isSuccess(), "ListsLib.filter with inferred types should work. Got: " + result);
@@ -4750,13 +5636,17 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<PlutusData> result = items.filter(x -> x > 1).map(x -> x * 2);
-                            return Builtins.unIData(result.head()) == 4;
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> result = PlutusData.cast(items.filter(x -> x.compareTo(BigInteger.ONE) > 0).map(x -> x.multiply(BigInteger.TWO)), JulcList.class);
+                            return Builtins.unIData(result.head()).equals(BigInteger.valueOf(4));
                         }
                     }
                     """;
@@ -4774,16 +5664,20 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<PlutusData> mapped = items.map(x -> {
-                                BigInteger y = x + 1;
-                                return y * 2;
-                            });
-                            return Builtins.unIData(mapped.head()) == 4;
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> mapped = PlutusData.cast(items.map(x -> {
+                                BigInteger y = x.add(BigInteger.ONE);
+                                return y.multiply(BigInteger.TWO);
+                            }), JulcList.class);
+                            return Builtins.unIData(mapped.head()).equals(BigInteger.valueOf(4));
                         }
                     }
                     """;
@@ -4801,12 +5695,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<BigInteger> mapped = items.map(x -> x + 1);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<BigInteger> mapped = items.map(x -> x.add(BigInteger.ONE));
                             return mapped.isEmpty();
                         }
                     }
@@ -4823,12 +5721,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<BigInteger> filtered = items.filter(x -> x > 0);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<BigInteger> filtered = items.filter(x -> x.compareTo(BigInteger.ZERO) > 0);
                             return filtered.size() == 3;
                         }
                     }
@@ -4845,12 +5747,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<BigInteger> filtered = items.filter(x -> x > 100);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<BigInteger> filtered = items.filter(x -> x.compareTo(BigInteger.valueOf(100)) > 0);
                             return filtered.isEmpty();
                         }
                     }
@@ -4869,16 +5775,20 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            JulcList<PlutusData> bools = items.map(x -> x > 0);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            JulcList<PlutusData> bools = PlutusData.cast(items.map(x -> x.compareTo(BigInteger.ZERO) > 0), JulcList.class);
                             // bools should be [ConstrData(1,[]), ConstrData(0,[]), ConstrData(1,[])]
                             // ConstrData tag 1 = True, tag 0 = False
-                            BigInteger firstTag = Builtins.constrTag(bools.head());
-                            return firstTag == 1;
+                            BigInteger firstTag = BigInteger.valueOf(Builtins.constrTag(bools.head()));
+                            return firstTag.equals(BigInteger.ONE);
                         }
                     }
                     """;
@@ -4895,12 +5805,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
-                            PlutusData found = items.find(x -> x > 2);
+                            JulcList<BigInteger> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                            PlutusData found = PlutusData.cast(items.find(x -> x.compareTo(BigInteger.TWO) > 0), PlutusData.class);
                             // found should be Some(IData(3)) = Constr(0, [IData(3)])
                             return Builtins.constrTag(found) == 0;
                         }
@@ -4923,13 +5837,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<PubKeyHash> sigs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             return sigs.any(sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
                         }
@@ -4951,13 +5869,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<PubKeyHash> sigs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             JulcList<PubKeyHash> matched = sigs.filter(sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
                             return matched.size() == 1;
@@ -4979,13 +5901,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<PubKeyHash> sigs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             return sigs.any((PubKeyHash sig) -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
                         }
@@ -5008,13 +5934,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TokenName;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<TokenName> names = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<TokenName> names = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             boolean found = false;
                             for (var tn : names) {
@@ -5043,19 +5973,23 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.lib.ListsLib;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<PubKeyHash> sigs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             return ListsLib.any(sigs, sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
                         }
                     }
                     """;
-            var program = compileValidator(source);
+            var program = compileDialectValidator(source);
             var sigsList = PlutusData.list(
                     PlutusData.bytes(new byte[]{1, 2, 3}),
                     PlutusData.bytes(new byte[]{4, 5, 6}));
@@ -5075,14 +6009,18 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.PubKeyHash;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
-                            JulcList<PubKeyHash> whitelist = Builtins.unListData(Builtins.headList(Builtins.tailList(fields)));
+                            JulcList<PubKeyHash> sigs = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
+                            JulcList<PubKeyHash> whitelist = PlutusData.cast(Builtins.unListData(Builtins.headList(Builtins.tailList(fields))), JulcList.class);
                             // Nested HOF: filter sigs where sig is in whitelist
                             JulcList<PubKeyHash> matched = sigs.filter(sig ->
                                 whitelist.any(w -> Builtins.equalsByteString((byte[])(Object) sig.hash(), (byte[])(Object) w.hash()))
@@ -5112,13 +6050,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.ScriptHash;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<ScriptHash> hashes = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<ScriptHash> hashes = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             return hashes.any(h -> Builtins.equalsByteString((byte[])(Object) h.hash(), target));
                         }
@@ -5139,13 +6081,17 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
-                    import org.julclang.ledger.api.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxId;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<TxId> txIds = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<TxId> txIds = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             return txIds.any(tx -> Builtins.equalsByteString((byte[])(Object) tx.hash(), target));
                         }
@@ -5170,6 +6116,11 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.core.types.JulcList;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @NewType
@@ -5178,7 +6129,7 @@ class StdlibCompileEvalTest {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
-                            JulcList<AssetId> assets = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<AssetId> assets = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
                             return assets.any(a -> Builtins.equalsByteString(a.id(), target));
                         }
@@ -5228,6 +6179,9 @@ class StdlibCompileEvalTest {
                     """;
             var validator = """
                     import com.example.MyLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5260,6 +6214,9 @@ class StdlibCompileEvalTest {
                     """;
             var validator = """
                     import com.example.MyLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5291,6 +6248,9 @@ class StdlibCompileEvalTest {
                     """;
             var validator = """
                     import com.example.MyLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5321,13 +6281,16 @@ class StdlibCompileEvalTest {
                     @OnchainLibrary
                     public class MyLib {
                         public static TxOut getFirstOutput(PlutusData outputsList) {
-                            return Builtins.headList(Builtins.unListData(outputsList));
+                            return PlutusData.cast(Builtins.headList(Builtins.unListData(outputsList)), TxOut.class);
                         }
                     }
                     """;
             var validator = """
                     import com.example.MyLib;
                     import org.julclang.ledger.Address;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5371,6 +6334,9 @@ class StdlibCompileEvalTest {
                     """;
             var validator = """
                     import com.example.MyLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5401,6 +6367,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5427,6 +6396,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5453,6 +6425,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5474,6 +6449,9 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5497,6 +6475,9 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5524,6 +6505,9 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5557,6 +6541,10 @@ class StdlibCompileEvalTest {
         void asBytesExtractsFromBytesData() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5577,6 +6565,11 @@ class StdlibCompileEvalTest {
         void asIntegerExtractsFromIntData() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5597,6 +6590,10 @@ class StdlibCompileEvalTest {
         void asListExtractsFromListData() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5617,6 +6614,10 @@ class StdlibCompileEvalTest {
         void asMapExtractsFromMapData() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5638,6 +6639,10 @@ class StdlibCompileEvalTest {
         void unBDataReturnsBytes() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5658,6 +6663,10 @@ class StdlibCompileEvalTest {
         void backwardCompatRedundantCast() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5678,6 +6687,10 @@ class StdlibCompileEvalTest {
         void constrTagExtractsTag() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5698,6 +6711,11 @@ class StdlibCompileEvalTest {
         void constrFieldsExtractsFields() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5719,6 +6737,10 @@ class StdlibCompileEvalTest {
         void asBytesWithHeadList() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5740,6 +6762,10 @@ class StdlibCompileEvalTest {
         void varTypeInferenceWithAsBytes() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5825,6 +6851,10 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5852,6 +6882,10 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5879,6 +6913,10 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5906,6 +6944,11 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5937,6 +6980,11 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5962,6 +7010,12 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -5997,6 +7051,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6023,6 +7081,10 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6057,13 +7119,20 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            List<TxOut> continuing = ContextsLib.getContinuingOutputs(ctx);
-                            return ListsLib.length(continuing) == 2;
+                            JulcList<TxOut> continuing = ContextsLib.getContinuingOutputs(ctx);
+                            return ListsLib.length(PlutusData.cast(continuing, JulcList.class)) == 2;
                         }
                     }
                     """;
@@ -6096,14 +7165,22 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.ledger.Value;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ContextsLib.getTxInfo(ctx);
-                            List<Value> values = ContextsLib.valueSpent(txInfo);
-                            return ListsLib.length(values) == 2;
+                            JulcList<Value> values = ContextsLib.valueSpent(txInfo);
+                            return ListsLib.length(PlutusData.cast(values, JulcList.class)) == 2;
                         }
                     }
                     """;
@@ -6132,6 +7209,15 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.ledger.Value;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Address;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6139,8 +7225,8 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ContextsLib.getTxInfo(ctx);
                             // redeemer holds the target address
-                            List<Value> values = ContextsLib.valuePaid(txInfo, redeemer);
-                            return ListsLib.length(values) == 2;
+                            JulcList<Value> values = ContextsLib.valuePaid(txInfo, PlutusData.cast(redeemer, Address.class));
+                            return ListsLib.length(PlutusData.cast(values, JulcList.class)) == 2;
                         }
                     }
                     """;
@@ -6166,6 +7252,14 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6174,8 +7268,8 @@ class StdlibCompileEvalTest {
                             TxInfo txInfo = ContextsLib.getTxInfo(ctx);
                             // redeemer holds the script hash as bytes
                             byte[] sh = Builtins.unBData(redeemer);
-                            List<TxOut> outputs = ContextsLib.scriptOutputsAt(txInfo, sh);
-                            return ListsLib.length(outputs) == 2;
+                            JulcList<TxOut> outputs = ContextsLib.scriptOutputsAt(txInfo, sh);
+                            return ListsLib.length(PlutusData.cast(outputs, JulcList.class)) == 2;
                         }
                     }
                     """;
@@ -6200,6 +7294,14 @@ class StdlibCompileEvalTest {
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import java.util.List;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.ledger.TxOut;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.types.JulcList;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6207,8 +7309,8 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             TxInfo txInfo = ContextsLib.getTxInfo(ctx);
                             byte[] sh = Builtins.unBData(redeemer);
-                            List<TxOut> outputs = ContextsLib.scriptOutputsAt(txInfo, sh);
-                            return ListsLib.length(outputs) == 0;
+                            JulcList<TxOut> outputs = ContextsLib.scriptOutputsAt(txInfo, sh);
+                            return ListsLib.length(PlutusData.cast(outputs, JulcList.class)) == 0;
                         }
                     }
                     """;
@@ -6232,6 +7334,11 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6263,6 +7370,11 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import java.util.Optional;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6299,6 +7411,9 @@ class StdlibCompileEvalTest {
         void getBytesProducesCorrectBytes() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6318,6 +7433,9 @@ class StdlibCompileEvalTest {
         void emptyStringGetBytes() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6337,6 +7455,9 @@ class StdlibCompileEvalTest {
         void staticFinalByteConstant() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6365,6 +7486,9 @@ class StdlibCompileEvalTest {
         void byteArrayLiteralCompiles() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6384,6 +7508,9 @@ class StdlibCompileEvalTest {
         void emptyByteArrayLiteral() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6403,6 +7530,9 @@ class StdlibCompileEvalTest {
         void staticFinalByteArrayLiteral() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6423,6 +7553,9 @@ class StdlibCompileEvalTest {
         void byteArrayLiteralEqualsGetBytes() {
             var source = """
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6452,6 +7585,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.ByteStringLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6473,6 +7609,9 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.ByteStringLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -6506,12 +7645,16 @@ class StdlibCompileEvalTest {
                     import org.julclang.core.types.JulcList;
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            JulcList<AssetEntry> entries = ValuesLib.flattenTyped(redeemer);
+                            JulcList<AssetEntry> entries = ValuesLib.flattenTyped(PlutusData.cast(redeemer, Value.class));
                             boolean found = false;
                             for (AssetEntry entry : entries) {
                                 if (entry.amount().compareTo(BigInteger.valueOf(100)) == 0) {
@@ -6550,6 +7693,9 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import org.julclang.ledger.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -6583,6 +7729,9 @@ class StdlibCompileEvalTest {
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
                     import org.julclang.ledger.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -6646,12 +7795,16 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.lib.*;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.Value;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            long lovelace = ValuesLib.lovelaceOf(redeemer);
+                            long lovelace = ValuesLib.lovelaceOf(PlutusData.cast(redeemer, Value.class)).longValue();
                             return lovelace == 5000000;
                         }
                     }

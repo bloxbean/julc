@@ -1,0 +1,30 @@
+format: 2
+name: >= on long whose right operand fails runs the left operand first (#295)
+class: Probe
+method: m
+arg: 03
+arg: 01
+expect: AGREE
+note: ADR-068 D6 (#295): with the right operand evaluated first, a failing right operand failed before the left
+note: operand's trace, so the script reported a different failure than the Java code. ADR-068 M1 evaluates the left
+note: operand first; recorded.base is the reference frontend at B0.
+recorded.jvm: Failure ["X"] "java.lang.RuntimeException: Plutus script error"
+recorded.base: Failure [] "Error term encountered"
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+
+    static BigInteger said(String m, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(m, Builtins.iData(v)));
+    }
+
+    static BigInteger fail(BigInteger v) {
+        return Builtins.unIData(Builtins.error());
+    }
+
+    public static boolean m(BigInteger x, BigInteger y) {
+        return said("X", x).longValue() >= fail(y).longValue();
+    }
+}

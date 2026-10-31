@@ -2,12 +2,14 @@ package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.SwitchDiagnostics;
 import org.julclang.compiler.CompilerTargetDiagnostics;
 import org.julclang.compiler.LoweringRequirements;
 import org.julclang.compiler.desugar.LoopDesugarer;
 import org.julclang.compiler.desugar.PatternMatchDesugarer;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
@@ -15,6 +17,9 @@ import org.julclang.core.DefaultFun;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
@@ -82,7 +87,14 @@ public class PirGenerator {
      */
     private final java.util.Deque<PatternScope> patternScopes = new java.util.ArrayDeque<>();
 
-    private record PatternScope(String patternVar, Set<String> fieldNames) {}
+    /**
+     * {@code bindings.get(i)} holds the decoded field {@code i}: {@code #__pfield-<var>-<i>} on the base
+     * lowering, a per-constructor name on the guard-aware one (ADR-067 D2), shared by that constructor's arms.
+     */
+    private record PatternScope(String patternVar, Set<String> fieldNames, List<String> bindings, boolean hygienic) {}
+
+    /** Above zero while a {@code switch} guard is lowered: instanceof is then a total dispatch (ADR-067 D1, F3). */
+    private int guardDepth;
     /**
      * When true, each {@code return <boolExpr>} is compiled as
      * {@code IfThenElse(expr, True, Error)} with the Error mapped to the return statement.
@@ -93,6 +105,8 @@ public class PirGenerator {
     private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
     /** The declared PIR return type of the method being generated (null in a lambda or a void method); ADR-047. */
     private PirType currentReturnType;
+    /** The {@code compareTo} call of the {@code OP 0} comparison being generated, if any (ADR-068 D6). */
+    private CompareToZero pendingCompareTo;
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null,
                 CompilationContext.pv11Defaults());
@@ -255,7 +269,7 @@ public class PirGenerator {
                 });
     }
 
-    static SourceLocation sourceLocation(Node node) {
+    public static SourceLocation sourceLocation(Node node) {
         if (node == null || node.getRange().isEmpty()) {
             return null;
         }
@@ -272,7 +286,11 @@ public class PirGenerator {
      * so compilation can continue and report multiple errors.
      */
     private PirTerm collectError(String msg, String suggestion, Node node) {
-        var location = extractLocation(node);
+        return collectError(null, msg, suggestion, node);
+    }
+
+    /** {@link #collectError(String, String, Node)} with a diagnostic catalog code. */
+    private PirTerm collectError(String code, String msg, String suggestion, Node node) {
         String fileName = "<source>";
         int line = 0, col = 0;
         if (node != null) {
@@ -286,8 +304,12 @@ public class PirGenerator {
                     .map(s -> s.getFileName())
                     .orElse("<source>");
         }
-        collectedErrors.add(new CompilerDiagnostic(
-                CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion));
+        var diagnostic = new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion, code);
+        // A lambda body can be generated more than once; report a coded diagnostic once.
+        if (code == null || !collectedErrors.contains(diagnostic)) {
+            collectedErrors.add(diagnostic);
+        }
         return new PirTerm.Error(new PirType.DataType());
     }
 
@@ -460,6 +482,9 @@ public class PirGenerator {
             return cont == null ? new PirTerm.Const(Constant.unit()) : cont.get();
         }
         var stmt = stmts.get(index);
+        if (isLabelled(stmt)) {
+            throw labelUnsupported(stmt);
+        }
         if (stmt instanceof ReturnStmt rs) {
             var result = rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
@@ -508,11 +533,19 @@ public class PirGenerator {
         if (stmt instanceof WhileStmt ws) {
             return generateWhileStmt(ws, stmts, index, cont);
         }
-        if (stmt instanceof BreakStmt) {
+        if (stmt instanceof BreakStmt br) {
+            // A labelled break is rejected before lowering (#201); never lower it as a plain one.
+            if (br.getLabel().isPresent()) throw labelUnsupported(br);
             // break outside break-aware context: return current accumulator
             if (forEachAccumulatorVar != null) {
                 var accType = symbolTable.lookup(forEachAccumulatorVar).orElse(new PirType.BoolType());
                 return new PirTerm.Var(forEachAccumulatorVar, accType);
+            }
+            // A loop without an accumulator rejects its break before lowering its body
+            // (rejectBreakWithoutAccumulator); this covers any other break inside a loop.
+            var loop = stmt.findAncestor(Statement.class, s -> s instanceof ForEachStmt || s instanceof WhileStmt);
+            if (loop.isPresent()) {
+                throw breakWithoutAccumulator(loop.get(), stmt);
             }
             throw enrichedError("break statement outside of a loop",
                     "break can only be used inside for-each or while loops.", stmt);
@@ -820,6 +853,9 @@ public class PirGenerator {
     }
 
     PirTerm generateStatement(Statement stmt) {
+        if (isLabelled(stmt)) {
+            throw labelUnsupported(stmt);
+        }
         if (stmt instanceof BlockStmt block) {
             symbolTable.pushScope();
             var result = generateBlock(block);
@@ -861,31 +897,80 @@ public class PirGenerator {
                 stmt);
     }
 
+    /**
+     * ADR-062 T25: the value javac gives an integer literal. SubsetValidator rejects a literal javac
+     * rejects; sources it does not validate (a library provider's) are rejected here with the same code.
+     */
+    private static BigInteger valid(IntegerLiterals.Reading reading, Expression literal) {
+        if (reading.isValid()) return reading.value();
+        throw CompilerTypeDiagnostics.invalidIntegerLiteral(IntegerLiterals.text(literal), reading.problem(), sourceLocation(literal));
+    }
+
     public PirTerm generateExpression(Expression expr) {
-        if (expr instanceof IntegerLiteralExpr ile) {
-            var val = ile.getValue();
-            BigInteger intVal;
-            if (val.startsWith("0x") || val.startsWith("0X")) {
-                intVal = new BigInteger(val.substring(2), 16);
-            } else if (val.startsWith("0b") || val.startsWith("0B")) {
-                intVal = new BigInteger(val.substring(2), 2);
-            } else if (val.length() > 1 && val.startsWith("0") && !val.equals("0")) {
-                intVal = new BigInteger(val.substring(1), 8);
-            } else {
-                intVal = new BigInteger(val);
-            }
-            return new PirTerm.Const(Constant.integer(intVal));
+        try {
+            return lowerExpression(expr);
+        } catch (CompilerException e) {
+            throw locateDataEncoding(e, expr);
         }
-        if (expr instanceof LongLiteralExpr lle) {
-            var val = lle.getValue();
-            if (val.endsWith("L") || val.endsWith("l")) val = val.substring(0, val.length() - 1);
-            return new PirTerm.Const(Constant.integer(new BigInteger(val)));
+    }
+
+    /**
+     * JULC0091 raised where lowering Data-encodes a value ({@link PirHelpers#requireDataEncodable})
+     * has no position. The innermost expression being generated gives it one: the argument of a call
+     * or constructor whose type holds the native array, or else the expression itself.
+     */
+    private CompilerException locateDataEncoding(CompilerException e, Expression expr) {
+        if (e.diagnostics().size() != 1) return e;
+        var diagnostic = e.diagnostics().getFirst();
+        if (diagnostic.line() > 0) return e;
+        if (diagnostic.message() != null && diagnostic.message().contains(CompilerTypeDiagnostics.UNKNOWN_TYPE_ENCODED)) {
+            var location = sourceLocation(expr);
+            return location == null ? e : CompilerTypeDiagnostics.unknownTypeEncoded(location);
+        }
+        if (!DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
+        List<Expression> arguments = expr instanceof MethodCallExpr call ? call.getArguments()
+                : expr instanceof ObjectCreationExpr creation ? creation.getArguments() : List.of();
+        for (var argument : arguments) {
+            var array = nativeArrayOf(argument);
+            if (array != null) {
+                return CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                        "The value of '" + argument + "'", array, sourceLocation(argument));
+            }
+        }
+        var own = nativeArrayOf(expr);
+        if (own != null) {
+            return CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                    "The value of '" + expr + "'", own, sourceLocation(expr));
+        }
+        var location = sourceLocation(expr);
+        if (location == null) return e;
+        return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(),
+                diagnostic.message(), location.fileName(), location.line(), location.column(),
+                diagnostic.suggestion(), diagnostic.code()));
+    }
+
+    /** The native array an expression's static type holds, if its type is known (JULC0091). */
+    private PirType.ArrayType nativeArrayOf(Expression expr) {
+        try {
+            return PirType.nativeArrayIn(resolveExpressionType(expr));
+        } catch (CompilerException | IllegalArgumentException _) {
+            return null;
+        }
+    }
+
+    private PirTerm lowerExpression(Expression expr) {
+        if (guardDepth > 0) {
+            var exact = guardFixedWidthConstant(expr);
+            if (exact != null) return exact;
+        }
+        if (expr instanceof IntegerLiteralExpr || expr instanceof LongLiteralExpr) {
+            return new PirTerm.Const(Constant.integer(valid(IntegerLiterals.read(expr), expr)));
         }
         if (expr instanceof BooleanLiteralExpr ble) {
             return new PirTerm.Const(Constant.bool(ble.getValue()));
         }
         if (expr instanceof StringLiteralExpr sle) {
-            return new PirTerm.Const(Constant.string(sle.getValue()));
+            return new PirTerm.Const(Constant.string(stringLiteral(sle)));
         }
         if (expr instanceof NameExpr ne) {
             var name = ne.getNameAsString();
@@ -945,6 +1030,10 @@ public class PirGenerator {
         if (expr instanceof SwitchExpr se) {
             var result = generateSwitchExpr(se);
             recordPosition(result, se);
+            // Keep the type the arms agree on, which the outer match alone does not give (review F710).
+            var type = typeInference.switchResultType(result);
+            if (type == null) typeInference.recordTermType(result, PirHelpers.UNKNOWN);
+            else if (!(type instanceof PirType.DataType)) typeInference.recordTermType(result, type);
             return result;
         }
         if (expr instanceof InstanceOfExpr ioe) {
@@ -977,7 +1066,13 @@ public class PirGenerator {
             var values = ace.getInitializer().get().getValues();
             byte[] bytes = new byte[values.size()];
             for (int i = 0; i < values.size(); i++) {
-                bytes[i] = (byte) values.get(i).asIntegerLiteralExpr().asNumber().intValue();
+                var element = values.get(i);
+                var reading = IntegerLiterals.byteElement(element);
+                if (reading == null) {
+                    throw enrichedError("A byte[] initializer element must be an integer literal: " + element,
+                            "Write each element as a literal in -128 to 127, such as 0x46 or -1.", element);
+                }
+                bytes[i] = valid(reading, element).byteValueExact();
             }
             return new PirTerm.Const(Constant.byteString(bytes));
         }
@@ -994,6 +1089,13 @@ public class PirGenerator {
                             + "an assignment inside another expression or statement is not supported.",
                     expr);
         }
+        if (expr instanceof AssignExpr ae && !insideLoop(expr)) {
+            // Only a loop can update a variable declared before it (ADR-062 T20).
+            var info = DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP;
+            var target = ae.getTarget() instanceof NameExpr ne
+                    ? LoopBodyGenerator.sourceName(ne.getNameAsString()) : ae.getTarget().toString();
+            return collectError(info.code(), info.format(target), info.fix(), expr);
+        }
         String suggestion;
         if (expr instanceof AssignExpr) {
             suggestion = "Variables are immutable on-chain. Use the accumulator pattern in for-each/while loops for mutable state.";
@@ -1006,9 +1108,111 @@ public class PirGenerator {
     }
 
     private PirTerm generateBinaryExpr(BinaryExpr be) {
+        var compareTo = CompareToZero.match(be);
+        if (compareTo != null) {
+            var saved = pendingCompareTo;
+            pendingCompareTo = compareTo;
+            PirTerm call;
+            try {
+                call = generateExpression(compareTo.call);
+            } finally {
+                pendingCompareTo = saved;
+            }
+            if (compareTo.applied) return call;
+            // Another lowering than the integer compareTo handler: today's comparison.
+            boolean callLeft = be.getLeft() == compareTo.call;
+            var zero = generateExpression(callLeft ? be.getRight() : be.getLeft());
+            return callLeft
+                    ? binaryOperation(be.getOperator(), be.getLeft(), call, be.getRight(), zero, be)
+                    : binaryOperation(be.getOperator(), be.getLeft(), zero, be.getRight(), call, be);
+        }
         var left = generateExpression(be.getLeft());
         var right = generateExpression(be.getRight());
         return binaryOperation(be.getOperator(), be.getLeft(), left, be.getRight(), right, be);
+    }
+
+    /**
+     * {@code a.compareTo(b) OP 0} or {@code 0 OP a.compareTo(b)}, with {@code 0} the {@code int}
+     * literal zero and {@code OP} a comparison (ADR-068 D6, D4 exception 1). {@link #operator} is
+     * normalized to the call-left form ({@code 0 < c} is {@code c > 0}). The match is syntactic
+     * only: the rule applies when {@link #resolveInstanceMethodCall} then selects the integer
+     * {@code compareTo} handler for {@link #call}, which sets {@link #applied}. Every earlier
+     * dispatch (static-library calls in particular) is unchanged.
+     */
+    private static final class CompareToZero {
+        final MethodCallExpr call;
+        final BinaryExpr.Operator operator;
+        boolean applied;
+
+        private CompareToZero(MethodCallExpr call, BinaryExpr.Operator operator) {
+            this.call = call;
+            this.operator = operator;
+        }
+
+        static CompareToZero match(BinaryExpr be) {
+            var op = be.getOperator();
+            boolean comparison = switch (op) {
+                case LESS, LESS_EQUALS, GREATER, GREATER_EQUALS, EQUALS, NOT_EQUALS -> true;
+                default -> false;
+            };
+            if (!comparison) return null;
+            if (isCompareToCall(be.getLeft()) && isIntZero(be.getRight())) {
+                return new CompareToZero(be.getLeft().asMethodCallExpr(), op);
+            }
+            if (isIntZero(be.getLeft()) && isCompareToCall(be.getRight())) {
+                var reversed = switch (op) {
+                    case LESS -> BinaryExpr.Operator.GREATER;
+                    case LESS_EQUALS -> BinaryExpr.Operator.GREATER_EQUALS;
+                    case GREATER -> BinaryExpr.Operator.LESS;
+                    case GREATER_EQUALS -> BinaryExpr.Operator.LESS_EQUALS;
+                    default -> op;
+                };
+                return new CompareToZero(be.getRight().asMethodCallExpr(), reversed);
+            }
+            return null;
+        }
+
+        private static boolean isCompareToCall(Expression e) {
+            return e instanceof MethodCallExpr mce && mce.getScope().isPresent()
+                    && mce.getNameAsString().equals("compareTo") && mce.getArguments().size() == 1;
+        }
+
+        /** The {@code int} literal zero ({@code 0}, {@code 0x0}, {@code 0_0}); not {@code 0L}, {@code -0} or {@code (0)}. */
+        private static boolean isIntZero(Expression e) {
+            if (!(e instanceof IntegerLiteralExpr)) return false;
+            var reading = IntegerLiterals.read(e);
+            return reading.isValid() && reading.value().signum() == 0;
+        }
+    }
+
+    /**
+     * {@code x OP y} on integers, evaluating {@code x} before {@code y} as Java does (ADR-068 D6,
+     * #295). {@code <}, {@code <=}, {@code ==} and {@code !=} apply their builtin to {@code x}
+     * first, which evaluates it first. {@code >} and {@code >=} apply theirs to {@code y} first, so
+     * {@code x} is bound by one {@code let} when both operands are non-trivial; evaluating a
+     * variable or a constant has no effect, so its place does not matter.
+     */
+    private PirTerm integerComparison(BinaryExpr.Operator operator, PirTerm x, PirTerm y) {
+        return switch (operator) {
+            case LESS -> builtinApp2(DefaultFun.LessThanInteger, x, y);
+            case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, x, y);
+            case GREATER -> swappedInOrder(DefaultFun.LessThanInteger, x, y);
+            case GREATER_EQUALS -> swappedInOrder(DefaultFun.LessThanEqualsInteger, x, y);
+            case EQUALS -> generateEquality(x, y, new PirType.IntegerType(), false);
+            case NOT_EQUALS -> generateEquality(x, y, new PirType.IntegerType(), true);
+            default -> throw new IllegalArgumentException("Not a comparison: " + operator);
+        };
+    }
+
+    /** {@code fun y x}, with {@code x} evaluated first. */
+    private static PirTerm swappedInOrder(DefaultFun fun, PirTerm x, PirTerm y) {
+        if (isTrivialOperand(x) || isTrivialOperand(y)) return builtinApp2(fun, y, x);
+        var name = PirHelpers.hygienicName("#lhs", PirHelpers.freeVariables(y));
+        return new PirTerm.Let(name, x, builtinApp2(fun, y, new PirTerm.Var(name, new PirType.IntegerType())));
+    }
+
+    private static boolean isTrivialOperand(PirTerm term) {
+        return term instanceof PirTerm.Var || term instanceof PirTerm.Const;
     }
 
     /**
@@ -1055,8 +1259,7 @@ public class PirGenerator {
             case NOT_EQUALS -> generateEquality(left, right, leftType, true);
             case LESS -> builtinApp2(DefaultFun.LessThanInteger, left, right);
             case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, left, right);
-            case GREATER -> builtinApp2(DefaultFun.LessThanInteger, right, left); // swap
-            case GREATER_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, right, left); // swap
+            case GREATER, GREATER_EQUALS -> integerComparison(operator, left, right);
             case AND -> new PirTerm.IfThenElse(left, right, new PirTerm.Const(Constant.bool(false)));
             case OR -> new PirTerm.IfThenElse(left, new PirTerm.Const(Constant.bool(true)), right);
             default -> collectError("Unsupported operator: " + operator,
@@ -1260,6 +1463,12 @@ public class PirGenerator {
             // 4. Static stdlib/library dispatch
             result = tryStaticStdlibCall(mce, scopeExpr, methodName, args);
             if (result != null) return result;
+
+            // JulcMap.of has no on-chain lowering; it used to fail as "Undefined variable: JulcMap"
+            // (ADR-062 T20).
+            if (methodName.equals("of") && isJulcMapType(scopeExpr)) {
+                throw CompilerTypeDiagnostics.julcMapOfOffChainOnly(sourceLocation(mce));
+            }
 
             // 5-8. Instance dispatch (field access, chained access, registry, fallback)
             return resolveInstanceMethodCall(mce, scopeExpr, methodName, args);
@@ -1466,6 +1675,14 @@ public class PirGenerator {
 
             validateLoweringRequirements(
                     typeMethodRegistry.requirements(context, scopeType, methodName), mce);
+            // ADR-068 D6 (D4 exception 1): the integer compareTo handler, in an `OP 0` comparison,
+            // lowers the whole comparison to one builtin over the receiver and argument, each
+            // evaluated once and in order. The term returned is the comparison, not the call.
+            if (pendingCompareTo != null && pendingCompareTo.call == mce
+                    && typeMethodRegistry.selectsIntegerCompareTo(scopeType, methodName)) {
+                pendingCompareTo.applied = true;
+                return integerComparison(pendingCompareTo.operator, scope, compiledArgs.getFirst());
+            }
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
             if (registryResult.isPresent()) {
@@ -1578,9 +1795,10 @@ public class PirGenerator {
         // which silently returned the wrong record's field when two records in the same scope
         // shared a field name (e.g. accessing box.amount() inside `case Transfer t` where both
         // Transfer and Box have an `amount` field) — a check-bypass miscompilation (issue #47).
-        if (ownsDestructuredField(varName, fieldName)) {
+        var owner = destructuredFieldOwner(varName, fieldName);
+        if (owner != null) {
             final PirType fType = fieldType;
-            final String binding = destructuredFieldBinding(varName, fieldIndex);
+            final String binding = owner.bindings().get(fieldIndex);
             return java.util.Optional.of(scope -> new PirTerm.Var(binding, fType));
         }
 
@@ -1590,21 +1808,27 @@ public class PirGenerator {
     }
 
     /**
-     * True iff {@code varName.fieldName()} may reuse the internal binding produced by pattern
-     * destructuring instead of re-extracting from the record Data.
+     * The pattern scope whose field binding {@code varName.fieldName()} may reuse instead of re-extracting
+     * the field from the record Data, or null.
      * <p>
      * The reuse is sound only when the innermost active pattern scope that contains
      * {@code fieldName} belongs to {@code varName}; otherwise an inner case that destructured a
      * same-named field would shadow it (e.g. an outer {@code a.amount()} must not pick up an inner
      * {@code case D d}'s {@code amount}). {@code patternScopes} is iterated innermost-first.
      */
-    private boolean ownsDestructuredField(String varName, String fieldName) {
+    private PatternScope destructuredFieldOwner(String varName, String fieldName) {
+        // The guard-aware lowering binds fields under hygienic names that no inner binder can shadow, so its
+        // pattern variable reuses them even under an inner pattern with a same-named field (ADR-067 D2, I4, F58).
+        // An inner pattern variable of the same name is rejected (JULC0083), so the owner is unambiguous.
+        for (var ps : patternScopes) {
+            if (ps.hygienic() && ps.patternVar().equals(varName) && ps.fieldNames().contains(fieldName)) return ps;
+        }
         for (var ps : patternScopes) { // innermost first
             if (ps.fieldNames().contains(fieldName)) {
-                return ps.patternVar().equals(varName);
+                return ps.patternVar().equals(varName) ? ps : null;
             }
         }
-        return false;
+        return null;
     }
 
     /**
@@ -1762,7 +1986,7 @@ public class PirGenerator {
         if (typeName.equals("BigInteger") && oce.getArguments().size() == 1) {
             var arg = oce.getArguments().get(0);
             if (arg instanceof StringLiteralExpr sle) {
-                return new PirTerm.Const(Constant.integer(new BigInteger(sle.getValue())));
+                return new PirTerm.Const(Constant.integer(new BigInteger(stringLiteral(sle))));
             }
             throw enrichedError("new BigInteger() requires a string literal argument",
                     "Use new BigInteger(\"12345\") or BigInteger.valueOf(n) for integer constants.", oce);
@@ -1774,11 +1998,7 @@ public class PirGenerator {
             rejectNativeDataConstruction(typeName, sumType.get(), oce);
             for (var ctor : sumType.get().constructors()) {
                 if (ctor.name().equals(typeName)) {
-                    var fields = new ArrayList<PirTerm>();
-                    for (var arg : oce.getArguments()) {
-                        fields.add(generateExpression(arg));
-                    }
-                    return new PirTerm.DataConstr(ctor.tag(), sumType.get(), fields);
+                    return new PirTerm.DataConstr(ctor.tag(), sumType.get(), constructedFields(typeName, oce));
                 }
             }
         }
@@ -1789,9 +2009,21 @@ public class PirGenerator {
             var resolvedType = typeResolver.resolve(ct);
             if (resolvedType instanceof PirType.RecordType rt) {
                 rejectNativeDataConstruction(typeName, rt, oce);
-                var fields = new ArrayList<PirTerm>();
-                for (var arg : oce.getArguments()) {
-                    fields.add(generateExpression(arg));
+                var fields = constructedFields(typeName, oce);
+                if (ct.getTypeArguments().isEmpty()) {
+                    // A raw construction: javac types its components Object, so only Data components
+                    // (`new Tuple2(Builtins.iData(a), …)`, as MathLib uses it) keep their meaning (#299).
+                    for (int i = 0; i < fields.size(); i++) requireDataComponent(typeName, oce.getArgument(i), fields.get(i));
+                    return new PirTerm.DataConstr(0, rt, fields);
+                }
+                if (ct.getTypeArguments().get().isEmpty()) {
+                    // A diamond: no component type is written (#299). The term carries the inferred
+                    // type, which a `var` local and chained reads take.
+                    var inferred = inferredTupleType(typeName, rt, oce, fields);
+                    rejectNativeDataConstruction(typeName, inferred, oce);
+                    var tuple = new PirTerm.DataConstr(0, inferred, fields);
+                    typeInference.recordTermType(tuple, inferred);
+                    return tuple;
                 }
                 return new PirTerm.DataConstr(0, rt, fields);
             }
@@ -1801,11 +2033,7 @@ public class PirGenerator {
         var recordType = typeResolver.lookupRecord(resolvedTypeName);
         if (recordType.isPresent()) {
             rejectNativeDataConstruction(typeName, recordType.get(), oce);
-            var fields = new ArrayList<PirTerm>();
-            for (var arg : oce.getArguments()) {
-                fields.add(generateExpression(arg));
-            }
-            return new PirTerm.DataConstr(0, recordType.get(), fields);
+            return new PirTerm.DataConstr(0, recordType.get(), constructedFields(typeName, oce));
         }
         throw enrichedError("Cannot construct non-record type: " + typeName,
                 "Only record types can be constructed on-chain. Define " + typeName + " as a record.",
@@ -1844,6 +2072,129 @@ public class PirGenerator {
         checkNativeBoundary("Assignment to '" + LoopBodyGenerator.sourceName(name) + "'", expressionType(valueExpr, value), target, valueExpr);
     }
 
+    /**
+     * The component types of {@code new Tuple2<>(a, b)} or {@code new Tuple3<>(a, b, c)} (ADR-068 D4
+     * exception 2, #299): from its destination where that is written (a declared local, an
+     * assignment, a {@code return}, or a parameter of a method of this class), component by
+     * component, else from each argument's type. Each component is then encoded by its type, as the
+     * explicit form does. A destination component of type Data (a raw {@code Tuple2}, or
+     * {@code PlutusData}) is read back as Data, so its argument must already be Data (review F711).
+     */
+    private PirType.RecordType inferredTupleType(String typeName, PirType.RecordType declared,
+                                                 ObjectCreationExpr oce, List<PirTerm> fields) {
+        var target = tupleDestinationType(oce);
+        var arguments = oce.getArguments();
+        var components = new ArrayList<PirType.Field>();
+        for (int i = 0; i < declared.fields().size(); i++) {
+            PirType type;
+            if (target != null && target.fields().size() == declared.fields().size()) {
+                type = target.fields().get(i).type();
+                if (type instanceof PirType.DataType) requireDataComponent(typeName, arguments.get(i), fields.get(i));
+            } else {
+                type = componentType(typeName, oce, arguments.get(i), fields.get(i));
+            }
+            components.add(new PirType.Field(declared.fields().get(i).name(), type));
+        }
+        return new PirType.RecordType(declared.name(), components);
+    }
+
+    /** The type of a diamond tuple's argument, which its component takes; JULC0012 where it is unknown. */
+    private PirType componentType(String typeName, ObjectCreationExpr oce, Expression argument, PirTerm field) {
+        PirType type;
+        try {
+            type = expressionType(argument, field);
+        } catch (CompilerException | IllegalArgumentException _) {
+            throw CompilerTypeDiagnostics.diamondTypeArgumentsUnknown(typeName, sourceLocation(oce));
+        }
+        if (type == PirHelpers.UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(argument));
+        return type;
+    }
+
+    /**
+     * JULC0012 unless a tuple component that is read back as Data is already Data (a {@code PlutusData},
+     * record, sealed value or {@code Optional}), which needs no encoding (#299).
+     */
+    private void requireDataComponent(String typeName, Expression argument, PirTerm field) {
+        PirType type;
+        try {
+            type = expressionType(argument, field);
+        } catch (CompilerException | IllegalArgumentException _) {
+            type = new PirType.DataType();
+        }
+        if (type == PirHelpers.UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(argument));
+        if (!TypeInferenceHelper.isDataShaped(type)) {
+            throw CompilerTypeDiagnostics.rawTupleUnsupported(typeName, sourceLocation(argument));
+        }
+    }
+
+    /** The position of {@code argument} among the call's arguments, by identity; -1 when it is not one. */
+    private static int argumentIndex(MethodCallExpr call, Node argument) {
+        for (int i = 0; i < call.getArguments().size(); i++) {
+            if (call.getArgument(i) == argument) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * The written tuple type an expression's value goes to, through parentheses and conditionals: a
+     * declared local, an assignment to a local, a {@code return}, or an argument of a method of this
+     * class; null when there is none (a {@code var} local, a library call).
+     */
+    private PirType.RecordType tupleDestinationType(Expression expr) {
+        Node child = expr;
+        Node parent = expr.getParentNode().orElse(null);
+        while (parent instanceof EnclosedExpr || (parent instanceof ConditionalExpr ce && ce.getCondition() != child)) {
+            child = parent;
+            parent = parent.getParentNode().orElse(null);
+        }
+        PirType target = null;
+        try {
+            if (parent instanceof VariableDeclarator vd && vd.getInitializer().orElse(null) == child
+                    && !(vd.getType() instanceof com.github.javaparser.ast.type.VarType)) {
+                target = typeResolver.resolve(vd.getType());
+            } else if (parent instanceof ReturnStmt) {
+                target = currentReturnType;
+            } else if (parent instanceof AssignExpr ae && ae.getValue() == child && ae.getTarget() instanceof NameExpr ne) {
+                target = symbolTable.lookup(ne.getNameAsString()).orElse(null);
+            } else if (parent instanceof MethodCallExpr call && call.getScope().isEmpty()
+                    && argumentIndex(call, child) >= 0) {
+                int index = argumentIndex(call, child);
+                var signature = symbolTable.lookupMethodSignature(call.getNameAsString());
+                PirType fn = signature.map(SymbolTable.MethodSignature::type).orElse(null);
+                for (int i = 0; fn instanceof PirType.FunType ft && i < index; i++) fn = ft.returnType();
+                if (fn instanceof PirType.FunType ft) target = ft.paramType();
+            }
+        } catch (IllegalArgumentException _) {
+            return null;
+        }
+        if (target != null) target = typeResolver.resolveNamed(target);
+        return target instanceof PirType.RecordType rt ? rt : null;
+    }
+
+    /**
+     * The fields of a constructed record, variant or tuple, which are Data-encoded: an argument whose
+     * type holds a native array is JULC0091 (ADR-068 D6, #298), also where the declared field type is
+     * not written (a diamond {@code new Tuple2<>(a, b)}).
+     */
+    private List<PirTerm> constructedFields(String typeName, ObjectCreationExpr oce) {
+        var fields = new ArrayList<PirTerm>();
+        for (var arg : oce.getArguments()) {
+            var field = generateExpression(arg);
+            PirType.ArrayType array;
+            try {
+                array = PirType.nativeArrayIn(expressionType(arg, field));
+            } catch (CompilerException | IllegalArgumentException _) {
+                array = null;
+            }
+            if (array != null) {
+                throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable(
+                        "Argument '" + arg + "' of new " + typeName, array, sourceLocation(arg));
+            }
+            fields.add(field);
+        }
+        return fields;
+    }
+
     private void rejectNativeDataConstruction(String typeName, PirType type, Node source) {
         if (typeResolver.containsNativeOpaque(type)) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(
@@ -1856,6 +2207,8 @@ public class PirGenerator {
 
     PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        rejectLabels(fes);
+        rejectContinue(fes);
         loopBody.validateConditionalLocalUpdates(fes.getBody(),
                 Set.of(fes.getVariable().getVariable(0).getNameAsString()));
         if (containsReturn(fes.getBody())) {
@@ -2064,6 +2417,7 @@ public class PirGenerator {
                         loopVariable ? "loop variable" : "local variable", LoopBodyGenerator.sourceName(name),
                         sourceLocation(reassignment.get()));
             }
+            if (hasBreak) rejectBreakWithoutAccumulator(fes, fes.getBody());
             symbolTable.pushScope();
             symbolTable.define(itemName, elemType);
 
@@ -2110,6 +2464,170 @@ public class PirGenerator {
 
     private boolean containsReturn(Statement stmt) {
         return loopBody.containsReturn(stmt);
+    }
+
+    private static final String JULC_MAP_FQCN = "org.julclang.core.types.JulcMap";
+
+    /**
+     * True when {@code scope} names {@code org.julclang.core.types.JulcMap}: written fully qualified,
+     * or as {@code JulcMap} with no local, type of the compilation unit or explicit import of
+     * another {@code JulcMap} by that name. Like {@code JulcMap.empty()}, an unimported
+     * {@code JulcMap} is the stdlib map. A library {@code JulcMap.of} resolves before this check
+     * (JULC0062).
+     */
+    private boolean isJulcMapType(Expression scope) {
+        if (scope.toString().equals(JULC_MAP_FQCN)) return true;
+        if (!(scope instanceof NameExpr ne) || !ne.getNameAsString().equals("JulcMap")
+                || symbolTable.lookup("JulcMap").isPresent()) {
+            return false;
+        }
+        var cu = scope.findCompilationUnit();
+        if (cu.isEmpty()) return false;
+        boolean declared = cu.get().findAll(TypeDeclaration.class).stream()
+                .anyMatch(t -> t.getNameAsString().equals("JulcMap"));
+        boolean importsOther = cu.get().getImports().stream().anyMatch(i -> !i.isStatic() && !i.isAsterisk()
+                && i.getName().getIdentifier().equals("JulcMap") && !i.getNameAsString().equals(JULC_MAP_FQCN));
+        return !declared && !importsOther;
+    }
+
+    /** True when the node is inside a for-each or while statement (ADR-062 T20). */
+    private static boolean insideLoop(Node node) {
+        return node.findAncestor(Statement.class, s -> s instanceof ForEachStmt || s instanceof WhileStmt).isPresent();
+    }
+
+    /**
+     * The first exit of the given kind that {@link #containsReturn} or {@link #containsBreak}
+     * finds: the statement itself, or one in its blocks or if/else branches, not in a nested loop
+     * (JULC0003 and JULC0063 point at it).
+     */
+    private static Optional<Statement> firstDirectExit(Statement stmt, Class<? extends Statement> exit) {
+        if (exit.isInstance(stmt)) return Optional.of(stmt);
+        if (stmt instanceof BlockStmt bs) {
+            for (var inner : bs.getStatements()) {
+                var found = firstDirectExit(inner, exit);
+                if (found.isPresent()) return found;
+            }
+            return Optional.empty();
+        }
+        if (stmt instanceof IfStmt is) {
+            var found = firstDirectExit(is.getThenStmt(), exit);
+            if (found.isPresent()) return found;
+            return is.getElseStmt().flatMap(e -> firstDirectExit(e, exit));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * JULC0060: a loop the compiler lowers contains {@code continue}. Checked when the loop is
+     * lowered, so code the compiler never reaches is unaffected (ADR-062 T20).
+     */
+    private static void rejectContinue(Statement loop) {
+        var found = loop.findFirst(ContinueStmt.class);
+        if (found.isPresent()) {
+            throw CompilerTypeDiagnostics.continueUnsupported(sourceLocation(found.get()));
+        }
+    }
+
+    /**
+     * True for a labelled statement and for a {@code break} or {@code continue} that names a label.
+     * Labels are outside the subset; a {@code break} naming one used to compile as a plain
+     * {@code break} of the innermost loop (#201).
+     */
+    private static boolean isLabelled(Node node) {
+        return node instanceof LabeledStmt
+                || node instanceof BreakStmt bs && bs.getLabel().isPresent()
+                || node instanceof ContinueStmt cs && cs.getLabel().isPresent();
+    }
+
+    /** JULC0066 for a node {@link #isLabelled} accepts, naming the construct as written. */
+    static CompilerException labelUnsupported(Node node) {
+        String construct;
+        if (node instanceof LabeledStmt ls) {
+            construct = ls.getLabel().asString() + ":";
+        } else if (node instanceof BreakStmt bs) {
+            construct = "break " + bs.getLabel().orElseThrow().asString();
+        } else {
+            construct = "continue " + ((ContinueStmt) node).getLabel().orElseThrow().asString();
+        }
+        return CompilerTypeDiagnostics.labelUnsupported(construct, sourceLocation(node));
+    }
+
+    /**
+     * JULC0066: a loop the compiler lowers contains a label. Checked before the loop's other
+     * checks and its lowering, which would treat {@code break outer} as a plain {@code break}, so
+     * the label is reported wherever it is in the loop: in a nested loop, an if/else or switch
+     * arm, or a lambda (#201).
+     */
+    private static void rejectLabels(Statement loop) {
+        var found = loop.findFirst(Node.class, PirGenerator::isLabelled);
+        if (found.isPresent()) {
+            throw labelUnsupported(found.get());
+        }
+    }
+
+    /**
+     * A loop with no accumulator compiles its body as plain statements, which cannot stop the
+     * loop, so its {@code break} is rejected before the body is lowered. Nested in a loop that has
+     * an accumulator, the break used to be lowered as a no-op (ADR-062 T26, #273).
+     */
+    private static void rejectBreakWithoutAccumulator(Statement loop, Statement body) {
+        var found = firstDirectExit(body, BreakStmt.class);
+        if (found.isPresent()) {
+            throw breakWithoutAccumulator(loop, found.get());
+        }
+    }
+
+    /**
+     * The diagnostic for {@code breakStmt} in {@code loop}, which has no accumulator. JULC0063 when
+     * the body updates no variable declared before the loop; otherwise JULC0065 at the first such
+     * update, which is in a position the accumulator analysis does not see (ADR-062 T20).
+     */
+    private static CompilerException breakWithoutAccumulator(Statement loop, Node breakStmt) {
+        var declared = new HashSet<String>();
+        Statement body;
+        Expression header;
+        String headerPosition;
+        if (loop instanceof ForEachStmt fes) {
+            fes.getVariable().getVariables().forEach(v -> declared.add(v.getNameAsString()));
+            body = fes.getBody();
+            header = fes.getIterable();
+            headerPosition = "in the loop iterable";
+        } else {
+            var ws = (WhileStmt) loop;
+            body = ws.getBody();
+            header = ws.getCondition();
+            headerPosition = "in the loop condition";
+        }
+        body.findAll(VariableDeclarator.class).forEach(v -> declared.add(v.getNameAsString()));
+        body.findAll(Parameter.class).forEach(p -> declared.add(p.getNameAsString()));
+        body.findAll(TypePatternExpr.class).forEach(p -> declared.add(p.getNameAsString()));
+        // The header runs before the body, so an update there is reported first.
+        for (var assign : header.findAll(AssignExpr.class)) {
+            if (assign.getTarget() instanceof NameExpr ne) {
+                return CompilerTypeDiagnostics.loopUpdatePositionUnsupported(
+                        LoopBodyGenerator.sourceName(ne.getNameAsString()), headerPosition, sourceLocation(assign));
+            }
+        }
+        for (var assign : body.findAll(AssignExpr.class)) {
+            if (assign.getTarget() instanceof NameExpr ne && !declared.contains(ne.getNameAsString())) {
+                return CompilerTypeDiagnostics.loopUpdatePositionUnsupported(
+                        LoopBodyGenerator.sourceName(ne.getNameAsString()), updatePosition(assign, body),
+                        sourceLocation(assign));
+            }
+        }
+        return CompilerTypeDiagnostics.breakInLoopWithoutAccumulator(sourceLocation(breakStmt));
+    }
+
+    /** Where an update the accumulator analysis does not see sits in the loop body (JULC0065). */
+    private static String updatePosition(AssignExpr assign, Statement body) {
+        for (Node n = assign.getParentNode().orElse(null); n != null && n != body; n = n.getParentNode().orElse(null)) {
+            if (n instanceof LambdaExpr) return "inside a lambda";
+            if (n instanceof SwitchStmt) return "inside a switch statement";
+            if (n instanceof SwitchExpr) return "inside a switch expression";
+            if (n instanceof ForEachStmt || n instanceof WhileStmt) return "inside a nested loop";
+        }
+        if (!(assign.getParentNode().orElse(null) instanceof ExpressionStmt)) return "inside an expression";
+        return "in this position";
     }
 
     private boolean containsYield(Statement stmt) {
@@ -2180,14 +2698,12 @@ public class PirGenerator {
 
     PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        rejectLabels(ws);
+        rejectContinue(ws);
         loopBody.validateConditionalLocalUpdates(ws.getBody(), Set.of());
         if (containsReturn(ws.getBody())) {
-            throw enrichedError(
-                    "'return' is not supported inside while loop body",
-                    "Use 'break' to exit the loop early, then return after the loop. "
-                            + "Or use the accumulator pattern: result = value; (continue iterating) "
-                            + "then return result; after the loop.",
-                    ws);
+            Node exit = firstDirectExit(ws.getBody(), ReturnStmt.class).orElseThrow();
+            throw CompilerTypeDiagnostics.returnInsideWhile(sourceLocation(exit));
         }
         if (containsYield(ws.getBody())) {
             throw enrichedError(
@@ -2353,6 +2869,7 @@ public class PirGenerator {
 
         } else {
             // --- No accumulator: existing side-effect-only while loop ---
+            if (hasBreak) rejectBreakWithoutAccumulator(ws, ws.getBody());
             var condition = generateExpression(ws.getCondition());
             var bodyTerm = generateStatement(ws.getBody());
 
@@ -2383,9 +2900,22 @@ public class PirGenerator {
             }
         }
         if (!(selectorType instanceof PirType.SumType sumType)) {
-            throw enrichedError("switch expression requires a sealed interface type, got: " + selectorType,
-                    "Ensure the switch variable's type is a sealed interface with record variants.", se);
+            throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_REQUIRES_SEALED_INTERFACE, sourceLocation(se),
+                    LibraryMethodRegistry.pirTypeName(selectorType));
         }
+        if (typeResolver.isParameterizedSumType(sumType)) {
+            // ADR-067 D4 (F14): type arguments are dropped, so neither applicability nor exhaustiveness
+            // can be decided for a sealed interface that declares type parameters.
+            throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_REQUIRES_SEALED_INTERFACE, sourceLocation(se),
+                    sumType.name() + ", a sealed interface with type parameters; JuLC drops type arguments, so it "
+                            + "cannot decide which variants apply or whether the switch is exhaustive");
+        }
+        // ADR-067 D4: every compile-time rule JuLC owns, on the source, before anything is lowered.
+        var model = SwitchPatternChecker.check(se, sumType, typeResolver);
+        if (model.guarded()) {
+            return generateGuardedSwitch(selector, sumType, model);
+        }
+        // A switch without a guard keeps the base lowering, byte for byte (ADR-067 I8).
 
         var desugarer = new PatternMatchDesugarer(typeResolver);
         var matchEntries = new ArrayList<PatternMatchDesugarer.MatchEntry>();
@@ -2393,8 +2923,14 @@ public class PirGenerator {
 
         for (var entry : se.getEntries()) {
             if (entry.isDefault()) {
-                // Compile the default branch body for use as catch-all for unmatched variants
-                defaultBranchBody = generateSwitchEntryBody(entry);
+                // Compile the default branch body for use as catch-all for unmatched variants, in its own scope:
+                // its locals must not outlive the switch (#291), as each type-pattern arm's do not.
+                symbolTable.pushScope();
+                try {
+                    defaultBranchBody = generateSwitchEntryBody(entry);
+                } finally {
+                    symbolTable.popScope();
+                }
                 continue;
             }
             for (var label : entry.getLabels()) {
@@ -2403,18 +2939,8 @@ public class PirGenerator {
                     var typeName = tpe.getType().asClassOrInterfaceType().getNameAsString();
                     var varName = tpe.getNameAsString();
 
-                    // Find the constructor fields for this variant
-                    var ctorOpt = sumType.constructors().stream()
-                            .filter(c -> c.name().equals(typeName))
-                            .findFirst();
-                    if (ctorOpt.isEmpty()) {
-                        String available = sumType.constructors().stream()
-                                .map(PirType.Constructor::name)
-                                .reduce((a, b) -> a + ", " + b).orElse("none");
-                        throw enrichedError("Unknown variant in switch: " + typeName,
-                                "Available variants: " + available, se);
-                    }
-                    var ctor = ctorOpt.get();
+                    // The checker proved the label applicable: typeName is a constructor.
+                    var ctor = constructorNamed(sumType, typeName);
 
                     symbolTable.pushScope();
                     // Bind the destructured fields under INTERNAL names (not their bare field
@@ -2434,7 +2960,9 @@ public class PirGenerator {
                     symbolTable.define(varName, varRecordType);
                     // Record which pattern variable owns these destructured fields so that
                     // var.field() reuse is restricted to this variable (see resolveRecordFieldAccess).
-                    patternScopes.push(new PatternScope(varName, fieldNames));
+                    patternScopes.push(new PatternScope(varName, fieldNames,
+                            java.util.stream.IntStream.range(0, ctorFields.size())
+                                    .mapToObj(fi -> destructuredFieldBinding(varName, fi)).toList(), false));
 
                     // Generate body from the entry's statements
                     PirTerm bodyTerm = generateSwitchEntryBody(entry);
@@ -2462,25 +2990,232 @@ public class PirGenerator {
                             ctor.name(), List.of(), defaultBranchBody));
                 }
             }
-        } else {
-            // Exhaustiveness check: verify all constructors are covered
-            var coveredCases = matchEntries.stream()
-                    .map(PatternMatchDesugarer.MatchEntry::variantName)
-                    .collect(java.util.stream.Collectors.toSet());
-            var missingCases = new LinkedHashSet<String>();
-            for (var ctor : sumType.constructors()) {
-                if (!coveredCases.contains(ctor.name())) {
-                    missingCases.add(ctor.name());
-                }
+        }
+        // Without default the checker proved every constructor covered (JULC0005).
+
+        return desugarer.buildDataMatch(selector, sumType, matchEntries);
+    }
+
+    private static PirType.Constructor constructorNamed(PirType.SumType sumType, String name) {
+        return sumType.constructors().stream().filter(c -> c.name().equals(name)).findFirst()
+                .orElseThrow(() -> new CompilerException("Unknown variant in switch: " + name));
+    }
+
+    /**
+     * ADR-067 D2: a switch with a guard. It keeps one {@code DataMatch} over the selector with one branch per
+     * constructor in tag order, so ADR-038 and ADR-041 dispatch apply unchanged. In a constructor's branch its
+     * fields are decoded once (ADR-051) under names all of its arms share, and its arms form a chain in source
+     * order: each binds its pattern variable to the scrutinee, then tests its guard, then runs its body; a false
+     * guard continues with the next arm for the constructor, and finally with {@code default}. A continuation is
+     * bound as a unit lambda before the arm's binder and inlined only when the arm's variable is not free in it
+     * (F9), so a later arm or {@code default} never resolves a name under an earlier arm's binding; {@code default}
+     * is a join bound outside the {@code DataMatch}. Constructors without an arm call {@code default} and decode
+     * nothing. A one-constructor sum type checks the tag first (F11). Every generated name is chosen here, before
+     * the term is built, against the free names of the terms in its scope (ADR-060).
+     */
+    private PirTerm generateGuardedSwitch(PirTerm selector, PirType.SumType sumType, SwitchPatternChecker.Model model) {
+        var avoid = new HashSet<>(symbolTable.allVisibleVariables().keySet());
+        var fieldBindings = new LinkedHashMap<String, List<String>>();
+        for (var ctor : sumType.constructors()) {
+            if (model.arms().stream().noneMatch(arm -> arm.variant().equals(ctor.name()))) continue;
+            var names = new ArrayList<String>();
+            for (int i = 0; i < ctor.fields().size(); i++) {
+                var name = PirHelpers.hygienicName("#case_" + ctor.name() + "_" + i, avoid);
+                avoid.add(name);
+                names.add(name);
             }
-            if (!missingCases.isEmpty()) {
-                collectError("Switch on sealed interface '" + sumType.name()
-                                + "' is not exhaustive. Missing cases: " + String.join(", ", missingCases),
-                        "Add explicit cases for all variants.", se);
+            fieldBindings.put(ctor.name(), names);
+        }
+
+        // default and every arm are compiled in the switch's scope; an arm adds only its own bindings (F9).
+        PirTerm defaultBody = null;
+        if (model.defaultEntry() != null) {
+            // Its own scope: locals that default declares are not visible to the arms compiled after it (F53).
+            symbolTable.pushScope();
+            try {
+                defaultBody = generateSwitchEntryBody(model.defaultEntry());
+            } finally {
+                symbolTable.popScope();
+            }
+        }
+        record CompiledArm(SwitchPatternChecker.Arm arm, PirTerm guard, PirTerm body) {
+        }
+        var compiled = new ArrayList<CompiledArm>();
+        for (var arm : model.arms()) {
+            var ctor = constructorNamed(sumType, arm.variant());
+            var bindings = fieldBindings.get(ctor.name());
+            symbolTable.pushScope();
+            var fieldNames = new HashSet<String>();
+            for (int i = 0; i < ctor.fields().size(); i++) {
+                symbolTable.define(bindings.get(i), ctor.fields().get(i).type());
+                fieldNames.add(ctor.fields().get(i).name());
+            }
+            symbolTable.define(arm.patternVar(), new PirType.RecordType(arm.variant(), ctor.fields()));
+            patternScopes.push(new PatternScope(arm.patternVar(), fieldNames, bindings, true));
+            try {
+                PirTerm guard = arm.guard() == null ? null : generateGuard(arm);
+                compiled.add(new CompiledArm(arm, guard, generateSwitchEntryBody(arm.entry())));
+            } finally {
+                patternScopes.pop();
+                symbolTable.popScope();
             }
         }
 
-        return desugarer.buildDataMatch(selector, sumType, matchEntries);
+        var userTerms = new ArrayList<PirTerm>();
+        userTerms.add(selector);
+        if (defaultBody != null) userTerms.add(defaultBody);
+        for (var arm : compiled) {
+            if (arm.guard() != null) userTerms.add(arm.guard());
+            userTerms.add(arm.body());
+        }
+        avoid.addAll(PirHelpers.freeVariables(userTerms.toArray(PirTerm[]::new)));
+        var dataName = PirHelpers.hygienicName("#case_data", avoid);
+        avoid.add(dataName);
+        var defaultName = PirHelpers.hygienicName("#case_default", avoid);
+        avoid.add(defaultName);
+        var unitName = PirHelpers.hygienicName("#case_unit", avoid);
+        avoid.add(unitName);
+        var unit = new PirTerm.Const(Constant.unit());
+        PirTerm defaultCall = defaultBody == null ? null
+                : new PirTerm.App(new PirTerm.Var(defaultName, new PirType.FunType(new PirType.UnitType(),
+                inferPirType(defaultBody))), unit);
+
+        var branches = new ArrayList<PirTerm.MatchBranch>();
+        for (var ctor : sumType.constructors()) {
+            var arms = compiled.stream().filter(arm -> arm.arm().variant().equals(ctor.name())).toList();
+            // Unreachable for well-formed values: without default, the checker proved every constructor
+            // covered by an unguarded arm.
+            PirTerm rest = defaultCall != null ? defaultCall : new PirTerm.Error(new PirType.UnitType());
+            if (arms.isEmpty()) {
+                branches.add(new PirTerm.MatchBranch(ctor.name(), List.of(), List.of(), rest));
+                continue;
+            }
+            for (int i = arms.size() - 1; i >= 0; i--) {
+                var arm = arms.get(i);
+                var variable = arm.arm().patternVar();
+                var bindData = new PirTerm.Var(dataName, new PirType.DataType());
+                if (arm.guard() == null) {
+                    // An unguarded arm ends the chain; the checker rejected any later arm for it as dominated.
+                    rest = new PirTerm.Let(variable, bindData, arm.body());
+                } else if (!PirHelpers.freeVariables(rest).contains(variable)) {
+                    rest = new PirTerm.Let(variable, bindData, new PirTerm.IfThenElse(arm.guard(), arm.body(), rest));
+                } else {
+                    var scoped = new HashSet<>(avoid);
+                    scoped.addAll(PirHelpers.freeVariables(arm.guard(), arm.body()));
+                    var nextName = PirHelpers.hygienicName("#case_next", scoped);
+                    var next = new PirTerm.Var(nextName, new PirType.FunType(new PirType.UnitType(), inferPirType(rest)));
+                    rest = new PirTerm.Let(nextName, new PirTerm.Lam(unitName, new PirType.UnitType(), rest),
+                            new PirTerm.Let(variable, bindData,
+                                    new PirTerm.IfThenElse(arm.guard(), arm.body(), new PirTerm.App(next, unit))));
+                }
+            }
+            var fieldTypes = ctor.fields().stream().map(PirType.Field::type).toList();
+            branches.add(new PirTerm.MatchBranch(ctor.name(), fieldBindings.get(ctor.name()), fieldTypes, rest, dataName));
+        }
+
+        PirTerm scrutinee = sumType.constructors().size() == 1 ? singleConstructorTagCheck(selector, avoid) : selector;
+        PirTerm match = new PirTerm.DataMatch(scrutinee, branches);
+        if (defaultBody != null && PirHelpers.freeVariables(match).contains(defaultName)) {
+            match = new PirTerm.Let(defaultName, new PirTerm.Lam(unitName, new PirType.UnitType(), defaultBody), match);
+        }
+        return match;
+    }
+
+    /**
+     * The selector of a one-constructor sum type on the guard-aware path, with its tag checked: a
+     * {@code DataMatch} with one branch dispatches without a tag test, which would accept any {@code Constr}
+     * value as the constructor (ADR-067 D2, F11, I5).
+     */
+    private static PirTerm singleConstructorTagCheck(PirTerm selector, Set<String> avoid) {
+        var name = PirHelpers.hygienicName("#case_selector", avoid);
+        avoid.add(name);
+        var value = new PirTerm.Var(name, new PirType.DataType());
+        var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), value));
+        return new PirTerm.Let(name, selector, new PirTerm.IfThenElse(
+                builtinApp2(DefaultFun.EqualsInteger, tag, new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                value, new PirTerm.Error(new PirType.DataType())));
+    }
+
+    /**
+     * A guard's PIR (ADR-067 D1). Inside it, {@code instanceof} on a sealed type is a total dispatch. The guard must
+     * be {@code boolean} or {@code Boolean} by its Java type, established from the source before casts are erased
+     * (JULC0072, F28, F52); a guard whose type cannot be established is rejected (fail closed, M1 decision). Names
+     * and calls the source rules leave open are typed from the symbol table and the declared return types; a guard
+     * that is itself such a leaf may also be typed by its lowered term.
+     */
+    private PirTerm generateGuard(SwitchPatternChecker.Arm arm) {
+        var type = SwitchPatternChecker.sourceType(arm.guard(), this::guardLeafType);
+        for (var call : arm.guard().findAll(MethodCallExpr.class)) {
+            // F75: String.equals lowers to EqualsString, which fails on a non-String argument where Java gives false (#292).
+            if (call.getNameAsString().equals("equals") && call.getArguments().size() == 1 && call.getScope().isPresent()
+                    && SwitchPatternChecker.sourceType(call.getScope().get(), this::guardLeafType) == SwitchPatternChecker.JType.STRING
+                    && SwitchPatternChecker.sourceType(call.getArgument(0), this::guardLeafType) != SwitchPatternChecker.JType.STRING) {
+                throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(call),
+                        SwitchPatternChecker.labelText(arm.entry()), "'" + call + "' compares a String with a value that is "
+                                + "not established as a String, which fails on-chain where Java gives false (#292)");
+            }
+        }
+        PirTerm guard;
+        guardDepth++;
+        try {
+            guard = generateExpression(arm.guard());
+        } finally {
+            guardDepth--;
+        }
+        if (type == SwitchPatternChecker.JType.UNKNOWN && isGuardLeaf(arm.guard())
+                && typeResolver.resolveNamed(inferPirType(guard)) instanceof PirType.BoolType) {
+            type = SwitchPatternChecker.JType.BOOLEAN;
+        }
+        if (type != SwitchPatternChecker.JType.BOOLEAN && type != SwitchPatternChecker.JType.BOOLEAN_BOX) {
+            throw SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(arm.guard()),
+                    SwitchPatternChecker.labelText(arm.entry()), SwitchPatternChecker.notBoolean(arm.guard(), type));
+        }
+        return guard;
+    }
+
+    /**
+     * ADR-067 M1 review round 3: inside a guard, an {@code int} or {@code long} constant expression of the verified
+     * subset (JLS 15.29, {@link JavaConstants}) is lowered as its Java value, so its overflow, narrowing casts and
+     * constant variables keep Java's fixed width even when the guard as a whole is not constant
+     * ({@code (2147483647 + 1) < x.v().signum()}). The ordinary lowering evaluates them without Java's width (ADR-062
+     * T6), and a guard's value must be Java's (I9). Null when the expression is not such a constant.
+     */
+    private PirTerm guardFixedWidthConstant(Expression expr) {
+        if (!(expr instanceof IntegerLiteralExpr || expr instanceof LongLiteralExpr || expr instanceof UnaryExpr
+                || expr instanceof BinaryExpr || expr instanceof CastExpr || expr instanceof NameExpr
+                || expr instanceof FieldAccessExpr || expr instanceof ConditionalExpr || expr instanceof EnclosedExpr)) {
+            return null;
+        }
+        var constant = JavaConstants.evaluate(expr);
+        if (!constant.constant() || constant.unclassifiable()) return null;
+        var kind = constant.value().kind();
+        if (kind != JavaConstants.Kind.INT && kind != JavaConstants.Kind.LONG) return null;
+        return new PirTerm.Const(Constant.integer(BigInteger.valueOf(constant.value().asLong())));
+    }
+
+    /** The Java type of a guard leaf (a name or call the source rules leave open), from the symbol table. */
+    private SwitchPatternChecker.JType guardLeafType(Expression leaf) {
+        PirType type;
+        try {
+            type = typeResolver.resolveNamed(resolveExpressionType(leaf));
+        } catch (CompilerException | IllegalArgumentException e) {
+            return SwitchPatternChecker.JType.UNKNOWN;
+        }
+        return switch (type) {
+            case PirType.BoolType ignored -> SwitchPatternChecker.JType.BOOLEAN;
+            // An integer whose Java type the source does not give is taken to be a BigInteger (a reference).
+            case PirType.IntegerType ignored -> SwitchPatternChecker.JType.BIGINTEGER;
+            case PirType.StringType ignored -> SwitchPatternChecker.JType.STRING;
+            case PirType.DataType ignored -> SwitchPatternChecker.JType.UNKNOWN;
+            default -> SwitchPatternChecker.JType.OTHER;
+        };
+    }
+
+    private static boolean isGuardLeaf(Expression guard) {
+        var inner = guard;
+        while (inner instanceof EnclosedExpr enclosed) inner = enclosed.getInner();
+        return inner instanceof MethodCallExpr || inner instanceof NameExpr || inner instanceof FieldAccessExpr;
     }
 
     private PirTerm generateSwitchEntryBody(com.github.javaparser.ast.stmt.SwitchEntry entry) {
@@ -2513,6 +3248,9 @@ public class PirGenerator {
     }
 
     private PirTerm generateInstanceOf(InstanceOfExpr ioe) {
+        if (guardDepth > 0) {
+            return generateGuardInstanceOf(ioe);
+        }
         // For pattern matching: expr instanceof TypeName varName
         // This is used in if/else chains for ad-hoc matching
         // For now, just check the constructor tag
@@ -2540,6 +3278,49 @@ public class PirGenerator {
         throw enrichedError("Unsupported instanceof pattern: " + ioe,
                 "instanceof is supported only with sealed interface variants: if (x instanceof Variant v) { ... }",
                 ioe);
+    }
+
+    /**
+     * {@code x instanceof V} inside a switch guard (ADR-067 D1, F3): a total dispatch over the constructors of V's
+     * sealed interface, {@code true} for V and {@code false} for the others, so a tag that is no constructor fails
+     * instead of selecting a later arm (I5). Outside guards, instanceof keeps its tag comparison.
+     */
+    private PirTerm generateGuardInstanceOf(InstanceOfExpr ioe) {
+        // A pattern here introduces nothing the arm can see (the checker rejected those, JULC0074): only its type tests.
+        var type = ioe.getPattern().map(p -> p instanceof TypePatternExpr tpe ? (com.github.javaparser.ast.type.Type) tpe.getType() : null)
+                .orElse(ioe.getType());
+        if (type == null || !type.isClassOrInterfaceType()) {
+            throw guardInstanceOfError(ioe, "only a type test or type pattern naming a sealed-interface variant is supported");
+        }
+        var target = type.asClassOrInterfaceType();
+        var typeName = target.getNameAsString();
+        Optional<PirType.SumType> sumType;
+        try {
+            sumType = typeResolver.lookupSumTypeForVariant(typeResolver.resolveTypeWithScope(target));
+        } catch (CompilerException | IllegalArgumentException e) {
+            sumType = Optional.empty();
+        }
+        if (sumType.isEmpty()) {
+            throw guardInstanceOfError(ioe, target + " is not a variant of a sealed interface");
+        }
+        // The checker proved, by declaration, that the operand is this variant or its sealed interface (F51, F62).
+        var scrutinee = generateExpression(ioe.getExpression());
+        var constructors = sumType.get().constructors();
+        var branches = constructors.stream()
+                .map(c -> new PirTerm.MatchBranch(c.name(), List.of(), List.of(),
+                        new PirTerm.Const(Constant.bool(c.name().equals(typeName)))))
+                .toList();
+        var avoid = new HashSet<>(PirHelpers.freeVariables(scrutinee));
+        var selected = constructors.size() == 1 ? singleConstructorTagCheck(scrutinee, avoid) : scrutinee;
+        PirTerm result = new PirTerm.DataMatch(selected, branches);
+        typeInference.recordTermType(result, new PirType.BoolType());
+        return result;
+    }
+
+    private CompilerException guardInstanceOfError(InstanceOfExpr ioe, String reason) {
+        var entry = ioe.findAncestor(com.github.javaparser.ast.stmt.SwitchEntry.class);
+        return SwitchDiagnostics.error(DiagnosticCodes.SWITCH_GUARD_INVALID, sourceLocation(ioe),
+                entry.map(SwitchPatternChecker::labelText).orElse(ioe.toString()), "'" + ioe + "': " + reason);
     }
 
     private PirTerm generateLambda(LambdaExpr le) {
@@ -2675,8 +3456,17 @@ public class PirGenerator {
         // Auto-wrap result for map (MkCons expects Data elements)
         if (wrapResultToData) {
             var bodyType = inferPirType(bodyTerm);
+            if (bodyType == PirHelpers.UNKNOWN) {
+                throw CompilerTypeDiagnostics.unknownTypeEncoded(sourceLocation(
+                        lambdaBody instanceof com.github.javaparser.ast.stmt.ExpressionStmt es ? es.getExpression() : le));
+            }
             if (!(bodyType instanceof PirType.DataType)) {
-                bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);
+                try {
+                    bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);
+                } catch (CompilerException e) {
+                    throw locateDataEncoding(e, lambdaBody instanceof com.github.javaparser.ast.stmt.ExpressionStmt es
+                            ? es.getExpression() : le);
+                }
             }
         }
 
@@ -2760,6 +3550,15 @@ public class PirGenerator {
         return new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(fun), a),
                 b);
+    }
+
+    /** The string javac gives a literal, or a compile error where JuLC rejects it (ADR-062 T22). */
+    private static String stringLiteral(StringLiteralExpr literal) {
+        try {
+            return StringLiterals.decode(literal.getValue());
+        } catch (StringLiterals.IllegalLiteralException e) {
+            throw enrichedError(e.getMessage(), e.suggestion(), literal);
+        }
     }
 
     // --- Error enrichment helpers ---

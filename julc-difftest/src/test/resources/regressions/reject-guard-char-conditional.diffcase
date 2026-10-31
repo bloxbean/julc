@@ -1,0 +1,25 @@
+format: 3
+name: a guard with a char-typed constant conditional (F63)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: REJECT JULC0072
+note: ADR-067 review F63: Java narrows the conditional to char (JLS 15.25.2), a constant true guard (1); char, byte and short are outside the guard subset (known over-rejection).
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when ("x" + (true ? 'a' : 98)) == "xa" -> BigInteger.ONE;
+            case B y -> BigInteger.ZERO;
+        };
+    }
+}

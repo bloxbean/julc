@@ -1,0 +1,23 @@
+format: 3
+name: equals on a var from a ternary of a variant and a sealed value (F1b)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 24
+expect: AGREE
+note: ADR-067 F1b: must stay structural.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new B(a);
+        var x = a.signum() > 0 ? new A(a) : s;
+        return x.equals(new B(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

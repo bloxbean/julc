@@ -1,10 +1,9 @@
 package org.julclang.tools.java;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.validate.SubsetValidator;
 import org.julclang.tools.model.*;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
@@ -63,9 +62,7 @@ public final class JavaMetadataExtractor {
      */
     public static CheckResponse extract(String source) {
         CompilationUnit cu;
-        var parser = new JavaParser(new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
-        var parseResult = parser.parse(source);
+        var parseResult = JavaSourceParser.parse(source);
         if (!parseResult.isSuccessful() || parseResult.getResult().isEmpty()) {
             var diagnostics = new ArrayList<DiagnosticDto>();
             for (var problem : parseResult.getProblems()) {

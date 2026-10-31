@@ -235,6 +235,7 @@ import org.julclang.ledger.ScriptContext;
 import org.julclang.ledger.TxInfo;
 import org.julclang.core.PlutusData;
 import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
 
 @MintingValidator
 public class TokenPolicy {
@@ -253,7 +254,7 @@ public class TokenPolicy {
                 // Only mint positive amounts, and only if authorized
                 boolean positive = m.amount().compareTo(BigInteger.ZERO) > 0;
                 boolean signed = txInfo.signatories().contains(
-                    new byte[]{/* authority pkh */});
+                    PubKeyHash.of(new byte[]{/* authority pkh */}));
                 yield positive && signed;
             }
             case Action.Burn b -> {
@@ -327,6 +328,12 @@ runtime.
 #### Auto-dispatch example
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+
 @MultiValidator
 public class TokenManager {
 
@@ -351,6 +358,13 @@ Error at runtime.
 #### Auto-dispatch with datum (3-param SPEND)
 
 ```java
+import java.util.Optional;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+
 @MultiValidator
 public class TokenManagerWithDatum {
 
@@ -370,6 +384,12 @@ public class TokenManagerWithDatum {
 #### Manual dispatch example
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.ledger.ScriptInfo;
+
 @MultiValidator
 public class ManualRouter {
 
@@ -379,7 +399,7 @@ public class ManualRouter {
             case ScriptInfo.MintingScript m -> handleMint(redeemer, ctx);
             case ScriptInfo.SpendingScript s -> handleSpend(redeemer, ctx);
             case ScriptInfo.RewardingScript r -> handleWithdraw(redeemer, ctx);
-            // Must cover all ScriptInfo variants you handle
+            default -> false;   // A switch on a sealed type must cover every variant
         };
     }
 
@@ -459,8 +479,9 @@ if (shape instanceof Shape.Circle c) {
 ### 5.3 @NewType
 
 The `@NewType` annotation creates a zero-cost type alias for a single-field record.
-On-chain, the constructor and `.of()` factory method compile to identity (no
-`ConstrData` wrapping).
+On-chain, the constructor compiles to identity (no `ConstrData` wrapping). Construct
+it with `new`: JuLC no longer accepts a synthesized `AssetId.of(...)` factory, which is
+not Java (ADR-068 D6).
 
 ```java
 import org.julclang.stdlib.annotation.NewType;
@@ -468,8 +489,8 @@ import org.julclang.stdlib.annotation.NewType;
 @NewType
 record AssetId(byte[] hash) {}
 
-// AssetId.of(bytes) compiles to identity -- no ConstrData overhead
-AssetId id = AssetId.of(someBytes);
+// new AssetId(bytes) compiles to identity -- no ConstrData overhead
+AssetId id = new AssetId(someBytes);
 ```
 
 `@NewType` is `@Retention(RUNTIME)`, `@Target(TYPE)`. The single field must be one
@@ -609,13 +630,12 @@ support the following instance methods:
 Internally, `MapType` variables always hold pair lists (not `MapData`-wrapped
 values). The `insert` and `delete` operations return pair lists.
 
-Iterating over a map with `for-each` yields pairs:
+`JulcMap` is not `Iterable`, so javac rejects a for-each over the map itself. Iterate its
+`keys()` or `values()`:
 
 ```java
-// For-each on a map yields PairType entries with .key() and .value()
-for (var entry : ctx.txInfo().withdrawals()) {
-    Credential cred = entry.key();
-    BigInteger amount = entry.value();
+for (Credential cred : ctx.txInfo().withdrawals().keys()) {
+    BigInteger amount = ctx.txInfo().withdrawals().get(cred);
 }
 ```
 
@@ -946,6 +966,12 @@ public class MyLib {
 ### Using a library from a validator
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class MyValidator {
     @Entrypoint
@@ -962,6 +988,9 @@ Static fields with initializers in `@OnchainLibrary` classes compile as `Let`
 bindings:
 
 ```java
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
 @OnchainLibrary
 public class Constants {
     static BigInteger THRESHOLD = BigInteger.valueOf(1000000);
@@ -996,16 +1025,18 @@ import org.julclang.stdlib.annotation.Param;
 import org.julclang.ledger.ScriptContext;
 import org.julclang.core.PlutusData;
 import java.math.BigInteger;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.stdlib.Builtins;
 
 @SpendingValidator
 public class ParameterizedVesting {
 
-    @Param PlutusData beneficiary;
-    @Param PlutusData deadline;
+    @Param static PlutusData beneficiary;
+    @Param static PlutusData deadline;
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        return ctx.txInfo().signatories().contains(beneficiary);
+        return ctx.txInfo().signatories().contains(PubKeyHash.of(Builtins.unBData(beneficiary)));
     }
 }
 ```
@@ -1030,41 +1061,12 @@ PlutusV3Script script = JulcScriptLoader.load(ParameterizedVesting.class,
 The standard library provides higher-order functions that accept lambda expressions.
 These are registered as PIR-level functions in the `StdlibRegistry`.
 
-### ListsLib HOFs
-
-```java
-import org.julclang.stdlib.lib.ListsLib;
-
-// map: transform each element
-var doubled = ListsLib.map(amounts, x -> x.multiply(BigInteger.TWO));
-
-// filter: keep elements matching a predicate
-var positives = ListsLib.filter(amounts, x -> x.compareTo(BigInteger.ZERO) > 0);
-
-// foldl: left fold with accumulator
-BigInteger sum = ListsLib.foldl(amounts, BigInteger.ZERO,
-    (acc, x) -> acc.add(x));
-
-// any: true if any element matches
-boolean hasLarge = ListsLib.any(amounts, x -> x.compareTo(BigInteger.valueOf(1000)) > 0);
-
-// all: true if all elements match
-boolean allPositive = ListsLib.all(amounts, x -> x.compareTo(BigInteger.ZERO) > 0);
-
-// find: return first matching element (as Optional-encoded Data)
-PlutusData found = ListsLib.find(items, x -> someCondition(x));
-
-// zip: combine two lists pairwise
-var zipped = ListsLib.zip(listA, listB);
-```
-
 ### Instance HOF methods
 
-Lists also support HOF methods as instance calls. Lambda parameter types are
+Lists support HOF methods as instance calls. Lambda parameter types are
 auto-inferred from the list element type:
 
 ```java
-// Instance methods -- equivalent to the static calls above
 var doubled = amounts.map(x -> x.multiply(BigInteger.TWO));
 var positives = amounts.filter(x -> x.compareTo(BigInteger.ZERO) > 0);
 boolean hasLarge = amounts.any(x -> x.compareTo(BigInteger.valueOf(1000)) > 0);
@@ -1080,8 +1082,8 @@ var processed = items.map(item -> {
 });
 ```
 
-`foldl` is only available as a static call (`ListsLib.foldl`) because it takes
-two lambda parameters plus an initial value.
+The static forms `ListsLib.any`, `all`, `filter`, `map`, `find`, `foldl` and `zip` have no
+Java declaration, so javac rejects them (`JULC0085`). Write a fold as an accumulator loop.
 
 ### Lambda syntax
 
@@ -1324,6 +1326,12 @@ to the documented DSL construction surface and schema-1 meanings, not a
 production-safety certification for the compiler or contract.
 
 ```java
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.verification.annotation.RequiresSigner;
+import org.julclang.stdlib.lib.ContextsLib;
+
 @RequiresSigner("datum.owner")
 @SpendingValidator
 class AuthorizedStateValidator {
@@ -1553,7 +1561,7 @@ following limitations apply:
 ### Functions
 
 - **No lambda `.apply()`**: Lambda expressions can only be passed directly to HOF
-  methods (like `ListsLib.map`). You cannot store a lambda in a variable and invoke
+  methods (like `list.map`). You cannot store a lambda in a variable and invoke
   it later.
 - **Multi-binding LetRec**: Mutual recursion is supported for up to 2 mutually
   recursive methods (via Bekic's theorem). More than 2 mutually recursive bindings

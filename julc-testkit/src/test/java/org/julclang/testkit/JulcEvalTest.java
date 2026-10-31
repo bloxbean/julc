@@ -78,11 +78,12 @@ class JulcEvalTest {
     // -------------------------------------------------------------------------
 
     static final String MATH_SOURCE = """
+            import java.math.BigInteger;
             class MathUtils {
-                static BigInteger doubleIt(BigInteger x) { return x * 2; }
-                static BigInteger add(BigInteger x, BigInteger y) { return x + y; }
-                static boolean isEven(BigInteger x) { return x % 2 == 0; }
-                static BigInteger theAnswer() { return 42; }
+                static BigInteger doubleIt(BigInteger x) { return x.multiply(BigInteger.TWO); }
+                static BigInteger add(BigInteger x, BigInteger y) { return x.add(y); }
+                static boolean isEven(BigInteger x) { return x.remainder(BigInteger.TWO).equals(BigInteger.ZERO); }
+                static BigInteger theAnswer() { return BigInteger.valueOf(42); }
             }
             """;
 
@@ -133,6 +134,7 @@ class JulcEvalTest {
     class ArgTypes {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class ArgTest {
                     static BigInteger identity(BigInteger x) { return x; }
                     static boolean not(boolean b) { return !b; }
@@ -189,8 +191,9 @@ class JulcEvalTest {
     class ReturnTypes {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class ReturnTest {
-                    static BigInteger getInt() { return 42; }
+                    static BigInteger getInt() { return BigInteger.valueOf(42); }
                     static boolean getBool() { return true; }
                 }
                 """;
@@ -530,19 +533,20 @@ class JulcEvalTest {
 
         static final String PARAM_SOURCE = """
                 import org.julclang.stdlib.annotation.Param;
+                import java.math.BigInteger;
                 class ParamClass {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
                     static BigInteger getThreshold() {
                         return threshold;
                     }
                     static boolean isAboveThreshold(BigInteger x) {
-                        return x > threshold;
+                        return x.compareTo(threshold) > 0;
                     }
                     static BigInteger addToThreshold(BigInteger x) {
-                        return threshold + x;
+                        return threshold.add(x);
                     }
                     static BigInteger doubleIt(BigInteger x) {
-                        return x * 2;
+                        return x.multiply(BigInteger.TWO);
                     }
                 }
                 """;

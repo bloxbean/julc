@@ -21,7 +21,7 @@ class O1DropListLoweringTest {
             import org.julclang.stdlib.Builtins;
             class DropListSample {
                 static PlutusData drop(PlutusData data, long count) {
-                    JulcList<PlutusData> items = Builtins.unListData(data);
+                    JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(data), JulcList.class);
                     return Builtins.listData(items.drop(count));
                 }
             }

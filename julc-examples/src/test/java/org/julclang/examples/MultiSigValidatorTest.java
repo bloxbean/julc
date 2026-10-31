@@ -22,36 +22,36 @@ class MultiSigValidatorTest {
      */
     static final String MULTISIG_SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MultiSigValidator {
                 static boolean check1(BigInteger x) {
-                    return x > 0;
+                    return x.compareTo(BigInteger.ZERO) > 0;
                 }
 
                 static boolean check2(BigInteger x) {
-                    return x < 1000;
+                    return x.compareTo(BigInteger.valueOf(1000)) < 0;
                 }
 
                 static boolean check3(BigInteger x) {
-                    return x == 42;
+                    return x.equals(BigInteger.valueOf(42));
                 }
 
                 static BigInteger boolToInt(boolean b) {
                     if (b) {
-                        return 1;
+                        return BigInteger.ONE;
                     } else {
-                        return 0;
+                        return BigInteger.ZERO;
                     }
                 }
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    BigInteger value = 42;
-                    BigInteger trueCount = boolToInt(check1(value))
-                                         + boolToInt(check2(value))
-                                         + boolToInt(check3(value));
-                    return trueCount >= 2;
+                    BigInteger value = BigInteger.valueOf(42);
+                    BigInteger trueCount = boolToInt(check1(value)).add(boolToInt(check2(value))).add(boolToInt(check3(value)));
+                    return trueCount.compareTo(BigInteger.TWO) >= 0;
                 }
             }
             """;
@@ -61,36 +61,36 @@ class MultiSigValidatorTest {
      */
     static final String MULTISIG_FAILING = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MultiSigValidator {
                 static boolean check1(BigInteger x) {
-                    return x > 0;
+                    return x.compareTo(BigInteger.ZERO) > 0;
                 }
 
                 static boolean check2(BigInteger x) {
-                    return x < 1000;
+                    return x.compareTo(BigInteger.valueOf(1000)) < 0;
                 }
 
                 static boolean check3(BigInteger x) {
-                    return x == 42;
+                    return x.equals(BigInteger.valueOf(42));
                 }
 
                 static BigInteger boolToInt(boolean b) {
                     if (b) {
-                        return 1;
+                        return BigInteger.ONE;
                     } else {
-                        return 0;
+                        return BigInteger.ZERO;
                     }
                 }
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    BigInteger value = -5;
-                    BigInteger trueCount = boolToInt(check1(value))
-                                         + boolToInt(check2(value))
-                                         + boolToInt(check3(value));
-                    return trueCount >= 3;
+                    BigInteger value = BigInteger.valueOf(-5);
+                    BigInteger trueCount = boolToInt(check1(value)).add(boolToInt(check2(value))).add(boolToInt(check3(value)));
+                    return trueCount.compareTo(BigInteger.valueOf(3)) >= 0;
                 }
             }
             """;

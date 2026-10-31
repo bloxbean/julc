@@ -1,0 +1,19 @@
+format: 2
+name: a top-level user record Value, on the constructor (F45c, T33)
+class: Probe
+method: m
+arg: 05
+expect: DIVERGE T33 Value/Failure
+jvm: Value d87a80 []
+uplc: Failure []
+note: ADR-067 F45c (#284 resolves it to the ledger type).
+---
+import java.math.BigInteger;
+record Value(boolean isEmpty) {}
+
+public class Probe {
+
+    public static boolean m(BigInteger a) {
+        return new Value(a.signum() > 0).isEmpty();
+    }
+}

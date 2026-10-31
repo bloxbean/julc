@@ -1,4 +1,9 @@
 import java.math.BigInteger;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.ScriptInfo;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
 
 @MintingValidator
 class VerificationControlledMint {

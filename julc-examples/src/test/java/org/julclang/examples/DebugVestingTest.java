@@ -183,21 +183,23 @@ class DebugVestingTest extends ContractTest {
 
                 class MathUtils {
                     static BigInteger max(BigInteger a, BigInteger b) {
-                        if (a > b) { return a; } else { return b; }
+                        if (a.compareTo(b) > 0) { return a; } else { return b; }
                     }
                 }
                 """;
 
         static final String VALIDATOR_WITH_LIB = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AuctionValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        BigInteger bid = 100;
-                        BigInteger minBid = 50;
-                        return MathUtils.max(bid, minBid) == 100;
+                        BigInteger bid = BigInteger.valueOf(100);
+                        BigInteger minBid = BigInteger.valueOf(50);
+                        return MathUtils.max(bid, minBid).equals(BigInteger.valueOf(100));
                     }
                 }
                 """;

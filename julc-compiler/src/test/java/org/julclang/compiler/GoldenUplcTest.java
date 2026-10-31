@@ -41,12 +41,14 @@ class GoldenUplcTest {
 
     static final String SIMPLE_VALIDATOR = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class LetValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    var sum = redeemer + ctx;
+                    var sum = redeemer.add(ctx);
                     return sum == BigInteger.valueOf(100);
                 }
             }
@@ -62,6 +64,8 @@ class GoldenUplcTest {
     static final String FOREACH_SINGLE_ACC = """
             import java.math.BigInteger;
             import org.julclang.ledger.*;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -87,6 +91,9 @@ class GoldenUplcTest {
 
     static final String WHILE_BREAK = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -115,6 +122,8 @@ class GoldenUplcTest {
 
     static final String NESTED_WHILE = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class NestedWhileSum {
@@ -122,13 +131,13 @@ class GoldenUplcTest {
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
                     BigInteger sum = BigInteger.ZERO;
                     BigInteger i = BigInteger.ZERO;
-                    while (i < BigInteger.valueOf(3)) {
+                    while (i.compareTo(BigInteger.valueOf(3)) < 0) {
                         BigInteger j = BigInteger.ZERO;
-                        while (j < BigInteger.valueOf(3)) {
-                            sum = sum + i * BigInteger.valueOf(10) + j;
-                            j = j + BigInteger.ONE;
+                        while (j.compareTo(BigInteger.valueOf(3)) < 0) {
+                            sum = sum.add(i.multiply(BigInteger.valueOf(10))).add(j);
+                            j = j.add(BigInteger.ONE);
                         }
-                        i = i + BigInteger.ONE;
+                        i = i.add(BigInteger.ONE);
                     }
                     return sum == BigInteger.valueOf(99);
                 }
@@ -146,14 +155,19 @@ class GoldenUplcTest {
             import org.julclang.stdlib.Builtins;
             import org.julclang.ledger.*;
             import java.util.List;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import java.math.BigInteger;
+            import org.julclang.core.types.JulcList;
 
             @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    List<PlutusData> items = Builtins.unListData(redeemer);
-                    List<PlutusData> mapped = items.map((PlutusData x) -> Builtins.iData(Builtins.unIData(x) + 1));
-                    return Builtins.unIData(mapped.head()) == 2;
+                    JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                    JulcList<PlutusData> mapped = items.map((PlutusData x) -> Builtins.iData(Builtins.unIData(x).add(BigInteger.ONE)));
+                    return Builtins.unIData(mapped.head()).equals(BigInteger.TWO);
                 }
             }
             """;
@@ -169,13 +183,18 @@ class GoldenUplcTest {
             import org.julclang.stdlib.Builtins;
             import org.julclang.ledger.*;
             import java.util.List;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import java.math.BigInteger;
+            import org.julclang.core.types.JulcList;
 
             @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    List<PlutusData> items = Builtins.unListData(redeemer);
-                    List<PlutusData> filtered = items.filter((PlutusData x) -> Builtins.unIData(x) > 2);
+                    JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                    JulcList<PlutusData> filtered = items.filter((PlutusData x) -> Builtins.unIData(x).compareTo(BigInteger.TWO) > 0);
                     return filtered.size() == 1;
                 }
             }
@@ -190,6 +209,9 @@ class GoldenUplcTest {
 
     static final String MULTI_ACC_WHILE = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {
@@ -217,6 +239,9 @@ class GoldenUplcTest {
 
     static final String NESTED_WHILE_NO_ACC = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class TestValidator {

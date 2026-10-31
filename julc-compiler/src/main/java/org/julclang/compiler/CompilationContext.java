@@ -1,6 +1,7 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.frontend.javac.JavacProvenance;
 import org.julclang.compiler.pir.ArrayLiteralFoldPass;
 import org.julclang.compiler.pir.ListIndexPromotionPass;
 import org.julclang.compiler.pir.ValueConversionSharingPass;
@@ -46,10 +47,12 @@ public final class CompilationContext {
     private final OptimizationLevel optimizationLevel;
     private final OptimizationCostProfile optimizationCostProfile;
     private final Set<String> disabledOptimizationRules;
+    private final CompilerFrontend frontend;
     private final Consumer<String> logger;
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
     private Predicate<String> binderNamespace;
+    private JavacProvenance javacProvenance = JavacProvenance.UNAVAILABLE;
 
     private CompilationContext(
             ResolvedCompilerTarget resolvedTarget,
@@ -58,6 +61,7 @@ public final class CompilationContext {
             OptimizationLevel optimizationLevel,
             OptimizationCostProfile optimizationCostProfile,
             Set<String> disabledOptimizationRules,
+            CompilerFrontend frontend,
             Consumer<String> logger) {
         this.resolvedTarget = Objects.requireNonNull(resolvedTarget, "resolvedTarget");
         this.verbose = verbose;
@@ -66,6 +70,7 @@ public final class CompilationContext {
                 optimizationLevel, "optimizationLevel");
         this.optimizationCostProfile = optimizationCostProfile;
         this.disabledOptimizationRules = Set.copyOf(disabledOptimizationRules);
+        this.frontend = Objects.requireNonNull(frontend, "frontend");
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
@@ -93,7 +98,13 @@ public final class CompilationContext {
                 optimizationLevel,
                 costProfile,
                 effectiveOptions.getDisabledOptimizationRules(),
+                effectiveOptions.getFrontend(),
                 effectiveOptions.getLogger());
+    }
+
+    /** The Java frontend of this compilation (ADR-068 D4). */
+    public CompilerFrontend frontend() {
+        return frontend;
     }
 
     /** The rule ids that can be disabled individually, in catalog order. */
@@ -143,6 +154,11 @@ public final class CompilationContext {
         return optimizationCostProfile;
     }
 
+    /** The optimization rules this compilation disabled (an immutable snapshot). */
+    public Set<String> disabledOptimizationRules() {
+        return disabledOptimizationRules;
+    }
+
     /** Record one stable rule identity in first-application order. */
     public void recordOptimizationRule(String ruleId) {
         if (ruleId == null || ruleId.isBlank()) {
@@ -154,6 +170,15 @@ public final class CompilationContext {
     public void recordOptimizationRules(Iterable<String> ruleIds) {
         Objects.requireNonNull(ruleIds, "ruleIds");
         ruleIds.forEach(this::recordOptimizationRule);
+    }
+
+    /** What javac saw of this compilation (ADR-068 D3). */
+    public JavacProvenance javacProvenance() {
+        return javacProvenance;
+    }
+
+    void setJavacProvenance(JavacProvenance provenance) {
+        javacProvenance = provenance;
     }
 
     public OptimizationReport optimizationReport() {

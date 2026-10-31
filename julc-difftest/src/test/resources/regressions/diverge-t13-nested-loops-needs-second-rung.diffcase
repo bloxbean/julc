@@ -1,0 +1,61 @@
+format: 2
+name: two nested while loops around a deep comparison need 107 times the budget at NONE (T13, #146)
+class: Probe
+method: m
+arg: 25
+arg: 06
+arg: 9f25ff
+expect: AGREE
+note: Found by G0FuzzTest in review round r5 of #253 (ADR-063 D13, F15). The JVM returns -5. Every level
+note: exhausts the budget; the program finishes with 100 times the budget at BASELINE, PV11_SAFE and
+note: PV11_COSTED, and only with 1000 times at NONE, which needs about 107 times. The nested loops
+note: multiply the cost of the deep comparison, so T13 confirms with a second rung (D6).
+note: ADR-068 M1 (D6, D4 exception 1): the deep comparison is the a.compareTo(b) OP 0 form, which now evaluates
+note: each operand once, so the case agrees at every level; its expectation is AGREE, and the recorded lines keep
+note: the old pins. diverge-t13-nested-loops-equals-minus-one-needs-second-rung keeps T13's second rung with
+note: `== -1` for `< 0` in the deep comparison.
+found.by: G0FuzzTest
+found.generator: G0 r2
+found.plan: 111,16,127,243,213,0,0,0,21,124,142,7,96,20,1,25,78,162,94,75,47,155,163,167,139,0,0,0,2,59,173,239,96,226,203,203,203,203,99,101,100,95,95,97,35,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,0,9,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,203,70,173,251,183,36
+found.compiler: 0.1.0-pre20 v0.1.0-pre20-21-ge067b4f7a8dd
+recorded.jvm: Value 24 []
+recorded.Java/NONE: Inconclusive "budget exhausted"
+recorded.Java/NONE.cost: cpu 4075208786 mem 14000057 size 1859106
+recorded.Java/BASELINE: Inconclusive "budget exhausted"
+recorded.Java/BASELINE.cost: cpu 3521455221 mem 14000073 size 1153400
+recorded.Java/PV11_SAFE: Inconclusive "budget exhausted"
+recorded.Java/PV11_SAFE.cost: cpu 3176880219 mem 14000004 size 761708
+recorded.Java/PV11_COSTED: Inconclusive "budget exhausted"
+recorded.Java/PV11_COSTED.cost: cpu 3176880219 mem 14000004 size 761708
+recorded.Java/NONE.rerun.x100: Inconclusive "budget exhausted"
+recorded.Java/NONE.rerun.x100.cost: factor 100 budget cpu 1000000000000 mem 1400000000 used cpu 408081689758 mem 1400000039 size 1859106
+recorded.Java/BASELINE.rerun.x100: Value 24 []
+recorded.Java/BASELINE.rerun.x100.cost: factor 100 budget cpu 1000000000000 mem 1400000000 used cpu 259326049239 mem 1030198215 size 1153400
+recorded.Java/PV11_SAFE.rerun.x100: Value 24 []
+recorded.Java/PV11_SAFE.rerun.x100.cost: factor 100 budget cpu 1000000000000 mem 1400000000 used cpu 93608056038 mem 412442666 size 761708
+recorded.Java/PV11_COSTED.rerun.x100: Value 24 []
+recorded.Java/PV11_COSTED.rerun.x100.cost: factor 100 budget cpu 1000000000000 mem 1400000000 used cpu 93608056038 mem 412442666 size 761708
+recorded.base: Inconclusive "budget exhausted"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = (BigInteger.valueOf(-5).compareTo(a) <= 0 ? b : (b.add(b).compareTo(BigInteger.valueOf(-5).add(b)) != 0 ? a : b));
+        long i1 = 0;
+        while (i1 < 3) {
+            long i2 = 0;
+            while (i2 < 3) {
+                v0 = (((((((((((((((BigInteger.valueOf(i1).compareTo(((((((((((((BigInteger.valueOf(i1).compareTo(BigInteger.valueOf(i1)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5))) < 0 ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5)).compareTo(BigInteger.valueOf(-5)) < 0 || BigInteger.valueOf(-5).compareTo(BigInteger.valueOf(-5)) < 0) ? BigInteger.valueOf(-5) : BigInteger.valueOf(-5));
+                v0 = BigInteger.valueOf(-5);
+                v0 = BigInteger.valueOf(-5);
+                i2 = i2 + 1;
+            }
+            v0 = BigInteger.valueOf(-5);
+            v0 = BigInteger.valueOf(-5);
+            i1 = i1 + 1;
+        }
+        return BigInteger.valueOf(-5);
+    }
+}

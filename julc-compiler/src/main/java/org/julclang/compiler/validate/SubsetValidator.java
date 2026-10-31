@@ -1,5 +1,6 @@
 package org.julclang.compiler.validate;
 
+import org.julclang.compiler.pir.IntegerLiterals;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
 import com.github.javaparser.ast.CompilationUnit;
@@ -21,8 +22,10 @@ import java.util.Set;
 import static org.julclang.compiler.error.DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.C_STYLE_FOR_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.DO_WHILE_UNSUPPORTED;
+import static org.julclang.compiler.error.DiagnosticCodes.LABEL_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.MULTIPLE_DECLARATORS_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.NULL_UNSUPPORTED;
+import static org.julclang.compiler.error.DiagnosticCodes.INTEGER_LITERAL_INVALID;
 import static org.julclang.compiler.error.DiagnosticCodes.PATTERN_VARIABLE_SHADOWS_FIELD;
 import static org.julclang.compiler.error.DiagnosticCodes.THROW_UNSUPPORTED;
 import static org.julclang.compiler.error.DiagnosticCodes.TRY_CATCH_UNSUPPORTED;
@@ -115,6 +118,25 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
         super.visit(n, arg);
     }
 
+    /** ADR-062 T25: an integer literal javac rejects (JLS 21 §3.10.1). */
+    @Override
+    public void visit(IntegerLiteralExpr n, Void arg) {
+        checkIntegerLiteral(n, IntegerLiterals.read(n));
+        super.visit(n, arg);
+    }
+
+    @Override
+    public void visit(LongLiteralExpr n, Void arg) {
+        checkIntegerLiteral(n, IntegerLiterals.read(n));
+        super.visit(n, arg);
+    }
+
+    private void checkIntegerLiteral(Expression literal, IntegerLiterals.Reading reading) {
+        if (reading != null && !reading.isValid()) {
+            error(literal, INTEGER_LITERAL_INVALID, INTEGER_LITERAL_INVALID.fix(), IntegerLiterals.text(literal), reading.problem());
+        }
+    }
+
     /**
      * An instanceof pattern variable is bound only when the pattern is the whole condition of an
      * if statement outside a loop. Anywhere else its name resolves to a field of the same name
@@ -180,7 +202,11 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     @Override
     public void visit(BreakStmt n, Void arg) {
-        if (forEachDepth == 0 && whileDepth == 0) {
+        if (forEachDepth == 0 && whileDepth == 0 && n.getLabel().isPresent()) {
+            // Labels are outside the subset (JULC0066, #201); a labelled break in a loop is
+            // reported where the loop is lowered.
+            error(n, LABEL_UNSUPPORTED, LABEL_UNSUPPORTED.fix(), "break " + n.getLabel().get().asString());
+        } else if (forEachDepth == 0 && whileDepth == 0) {
             error(n, "break is only supported inside for-each or while loops on-chain",
                     "Use for-each or while with an accumulator and break to exit early");
         }
@@ -278,9 +304,17 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
         if (n.getElementType().isPrimitiveType()
                 && n.getElementType().asPrimitiveType().getType() == PrimitiveType.Primitive.BYTE
                 && n.getInitializer().isPresent()) {
-            boolean allLiterals = n.getInitializer().get().getValues().stream()
-                    .allMatch(v -> v.isIntegerLiteralExpr());
+            var values = n.getInitializer().get().getValues();
+            boolean allLiterals = values.stream().allMatch(v -> IntegerLiterals.byteElement(v) != null);
             if (allLiterals) {
+                // ADR-062 T25: each element as javac assigns it to a byte. The literals themselves are
+                // checked by visit(IntegerLiteralExpr); a valid one outside -128 to 127 is reported here.
+                for (var value : values) {
+                    var reading = IntegerLiterals.byteElement(value);
+                    if (!reading.isValid() && IntegerLiterals.read(value instanceof UnaryExpr ue ? ue.getExpression() : value).isValid()) {
+                        error(value, INTEGER_LITERAL_INVALID, INTEGER_LITERAL_INVALID.fix(), IntegerLiterals.text(value), reading.problem());
+                    }
+                }
                 super.visit(n, arg);
                 return;
             }

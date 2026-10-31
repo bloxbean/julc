@@ -1,0 +1,24 @@
+format: 2
+name: an Optional of a JulcArray is rejected (#298)
+class: Probe
+method: m
+arg: 9f0102ff
+expect: REJECT JULC0091
+note: ADR-068 D6 (#298): an Optional's value is Data-encoded and a native array has none, so the program compiled
+note: and failed where the JVM returns 2. Both frontends reject it at M1; recorded.base is the reference frontend
+note: at B0.
+recorded.jvm: Value 02 []
+recorded.base: Failure [] "MkCons: element type Apply[f=ProtoArray[], arg=Data[]] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import java.util.Optional;
+import org.julclang.core.types.JulcArray;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+
+    public static BigInteger m(JulcList<BigInteger> xs) {
+        Optional<JulcArray<BigInteger>> o = Optional.of(xs.toArray());
+        return BigInteger.valueOf(o.get().length());
+    }
+}

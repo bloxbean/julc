@@ -165,6 +165,7 @@ class NeutralBackendTest {
                         List.of(
                                 """
                                 package demo;
+                                import org.julclang.stdlib.annotation.OnchainLibrary;
                                 @OnchainLibrary
                                 public class Arithmetic {
                                     private static long helper(long x) { return x + 1; }
@@ -203,6 +204,7 @@ class NeutralBackendTest {
                 new JavaLibraryProvider(
                         List.of(
                                 """
+                                import org.julclang.stdlib.annotation.OnchainLibrary;
                                 @OnchainLibrary class Overloaded {
                                     public static long f(long x) { return x; }
                                     public static long f(long x, long y) { return x; }
@@ -245,6 +247,9 @@ class NeutralBackendTest {
                         .compile(
                                 """
                                 import java.math.BigInteger;
+                                import org.julclang.ledger.ScriptContext;
+                                import org.julclang.stdlib.annotation.Entrypoint;
+                                import org.julclang.stdlib.annotation.SpendingValidator;
                                 @SpendingValidator class Threshold {
                                     @Entrypoint static boolean validate(BigInteger datum, BigInteger redeemer, ScriptContext context) {
                                         return datum.compareTo(redeemer) <= 0;

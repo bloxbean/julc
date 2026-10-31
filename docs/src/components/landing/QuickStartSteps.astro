@@ -10,7 +10,12 @@ const step1Code = `dependencies {
     testRuntimeOnly "org.julclang:julc-vm-scalus:\${julcVersion}"
 }`
 
-const step2Code = `@SpendingValidator
+const step2Code = `import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.*;
+import org.julclang.stdlib.annotation.*;
+
+@SpendingValidator
 public class VestingValidator {
     record VestingDatum(PubKeyHash beneficiary, BigInteger deadline) {}
 

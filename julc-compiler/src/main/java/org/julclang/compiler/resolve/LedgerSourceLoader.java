@@ -1,7 +1,7 @@
 package org.julclang.compiler.resolve;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.CompilerException;
-import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 
 import java.io.BufferedReader;
@@ -34,10 +34,10 @@ public final class LedgerSourceLoader {
      * @throws CompilerException if sources cannot be loaded or parsed
      */
     public static List<CompilationUnit> loadLedgerSources(ClassLoader classLoader) {
-        return loadLedgerSources(classLoader, StaticJavaParser::parse);
+        return loadLedgerSources(classLoader, JavaSourceParser::parseCompilationUnit);
     }
 
-    /** Parse with an invocation-local parser, without mutating StaticJavaParser configuration. */
+    /** As {@link #loadLedgerSources(ClassLoader)}, parsing each source with {@code parser}. */
     public static List<CompilationUnit> loadLedgerSources(
             ClassLoader classLoader, java.util.function.Function<String, CompilationUnit> parser) {
         var indexUrl = classLoader.getResource(INDEX_FILE);

@@ -46,8 +46,9 @@ public final class ProjectScanner {
                             if (fileName.endsWith(".java")) {
                                 String source = Files.readString(p);
                                 String simpleName = fileName.replace(".java", "");
-                                if (JavaSourceIntrospector.mightContainValidatorAnnotation(source)) {
-                                    var sourceInfo = inspect(p, source);
+                                var sourceInfo = JavaSourceIntrospector.mightContainValidatorAnnotation(source)
+                                        ? inspect(p, source) : null;
+                                if (sourceInfo != null) {
                                     rejectRoleConflicts(sourceInfo);
                                     if (sourceInfo.legacyValidatorType().isPresent()) {
                                         throw new IllegalArgumentException(
@@ -101,10 +102,12 @@ public final class ProjectScanner {
                 });
     }
 
+    /** The source's info, or null for a candidate JuLC cannot read that plainly declares no JuLC annotation. */
     private static JavaSourceIntrospector.SourceInfo inspect(Path path, String source) {
         try {
             return JavaSourceIntrospector.inspect(source);
         } catch (JavaSourceIntrospector.SourceParseException e) {
+            if (JavaSourceIntrospector.declaresNoJulcRole(source)) return null;
             throw new IllegalArgumentException("Could not parse validator candidate "
                     + path + ": " + e.problems(), e);
         }

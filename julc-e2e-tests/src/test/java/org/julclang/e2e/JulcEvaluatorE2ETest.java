@@ -44,6 +44,9 @@ class JulcEvaluatorE2ETest extends E2ETestBase {
     // --- Validators ---
 
     static final String ALWAYS_TRUE_V3 = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
@@ -54,6 +57,9 @@ class JulcEvaluatorE2ETest extends E2ETestBase {
             """;
 
     static final String ALWAYS_TRUE_MINT_V3 = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator
             class AlwaysTrueMint {
                 @Entrypoint

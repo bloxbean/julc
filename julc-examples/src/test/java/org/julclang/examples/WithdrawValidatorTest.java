@@ -25,6 +25,8 @@ class WithdrawValidatorTest {
      */
     static final String AUTHORIZED_WITHDRAW = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.WithdrawValidator;
 
             @WithdrawValidator
             class AuthorizedWithdraw {
@@ -34,7 +36,7 @@ class WithdrawValidatorTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isAuthorized(12345, 12345);
+                    return isAuthorized(BigInteger.valueOf(12345), BigInteger.valueOf(12345));
                 }
             }
             """;
@@ -44,6 +46,8 @@ class WithdrawValidatorTest {
      */
     static final String REJECTING_WITHDRAW = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.WithdrawValidator;
 
             @WithdrawValidator
             class RejectingWithdraw {
@@ -53,7 +57,7 @@ class WithdrawValidatorTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return isAuthorized(99999, 12345);
+                    return isAuthorized(BigInteger.valueOf(99999), BigInteger.valueOf(12345));
                 }
             }
             """;
@@ -63,6 +67,8 @@ class WithdrawValidatorTest {
      */
     static final String ALWAYS_ALLOW_WITHDRAW = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.WithdrawValidator;
 
             @WithdrawValidator
             class AlwaysAllowWithdraw {

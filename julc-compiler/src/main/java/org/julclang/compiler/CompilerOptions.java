@@ -1,8 +1,11 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.vm.OptimizationCostProfile;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -22,6 +25,9 @@ public class CompilerOptions {
     private OptimizationCostProfile optimizationCostProfile;
     private final Set<String> disabledOptimizationRules = new LinkedHashSet<>();
     private Consumer<String> logger = System.out::println;
+    private JavacGateMode javacGate;
+    private Set<String> jarLibrarySources = Set.of();
+    private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
 
     /**
      * Select the ledger target for this compilation.
@@ -108,6 +114,57 @@ public class CompilerOptions {
 
     public boolean isSourceMapEnabled() {
         return sourceMapEnabled;
+    }
+
+    /**
+     * Experimental (ADR-068 M1): how the javac gate acts, which has javac analyze every compilation's sources before
+     * the JavaParser frontend compiles them. {@code null} (the default) defers to the system property
+     * {@code julc.javacGate} ({@code off}, {@code report} or {@code enforce}), and then to {@code enforce}, which
+     * fails a compilation javac rejects. {@code report} never fails one.
+     */
+    public CompilerOptions setJavacGate(JavacGateMode javacGate) {
+        this.javacGate = javacGate;
+        return this;
+    }
+
+    /** The javac gate's mode, or {@code null} to use the system property. */
+    public JavacGateMode getJavacGate() {
+        return javacGate;
+    }
+
+    /**
+     * Experimental (ADR-068 M1, D8): the library sources of this compilation that came from JARs (a class-path scan),
+     * by provenance: the {@code String} objects the scan returned, compared by identity, never by text, so a project
+     * source whose text equals a JAR copy stays a project source. The javac gate ranks JAR sources below project
+     * sources (a JAR unit declaring a project unit's name is shadowed); every other library source is a project
+     * source. In {@code enforce} mode the JavaParser frontend compiles the same effective pool; in {@code report} and
+     * {@code off} modes it compiles the libraries as given.
+     */
+    public CompilerOptions setJarLibrarySources(Collection<String> sources) {
+        var identities = Collections.newSetFromMap(new IdentityHashMap<String, Boolean>());
+        identities.addAll(sources);
+        this.jarLibrarySources = Collections.unmodifiableSet(identities);
+        return this;
+    }
+
+    /** The library sources marked as JAR sources, an identity set ({@link #setJarLibrarySources}). */
+    public Set<String> getJarLibrarySources() {
+        return jarLibrarySources;
+    }
+
+    /**
+     * Experimental (ADR-068 D4): the Java frontend of this compilation, {@link CompilerFrontend#JAVAPARSER} by default.
+     * {@link CompilerFrontend#JAVAC} has javac read and type the sources and never falls back: until ADR-068 M4 a
+     * construct it has not ported is {@code JULC0084}.
+     */
+    public CompilerOptions setFrontend(CompilerFrontend frontend) {
+        this.frontend = Objects.requireNonNull(frontend, "frontend");
+        return this;
+    }
+
+    /** The Java frontend of this compilation. */
+    public CompilerFrontend getFrontend() {
+        return frontend;
     }
 
     public CompilerOptions setLogger(Consumer<String> logger) {

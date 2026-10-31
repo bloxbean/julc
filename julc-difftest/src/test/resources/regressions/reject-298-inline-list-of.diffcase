@@ -1,0 +1,20 @@
+format: 2
+name: an inline JulcList.of of a JulcArray is rejected (#298, F601)
+class: Probe
+method: m
+arg: 9f0102ff
+expect: REJECT JULC0091
+note: ADR-068 D6 (#298), review F601: the element type is inferred, not written, so the declared-type check missed it;
+note: lowering now checks each value it Data-encodes. recorded.base is the reference frontend at B0.
+recorded.jvm: Value 01 []
+recorded.base: Failure [] "MkCons: element type Apply[f=ProtoArray[], arg=Data[]] does not match list element type Data[]"
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+
+    public static long m(JulcList<BigInteger> xs) {
+        return JulcList.of(xs.toArray()).size();
+    }
+}

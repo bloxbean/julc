@@ -18,6 +18,8 @@ class CrossMethodTypeInferenceTest {
     void helperWithLongParamUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
@@ -48,6 +50,8 @@ class CrossMethodTypeInferenceTest {
     void helperWithBigIntegerParamUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
@@ -75,6 +79,9 @@ class CrossMethodTypeInferenceTest {
     @Test
     void helperWithByteArrayParamUsesEqualsByteString() {
         var source = """
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     record BsHolder(byte[] a, byte[] b) {}
@@ -104,17 +111,19 @@ class CrossMethodTypeInferenceTest {
     void varInferredHelperReturnUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     static BigInteger doubleIt(BigInteger x) {
-                        return x + x;
+                        return x.add(x);
                     }
 
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
                         var result = doubleIt(redeemer);
-                        return result == 10;
+                        return result.equals(BigInteger.TEN);
                     }
                 }
                 """;
@@ -133,20 +142,22 @@ class CrossMethodTypeInferenceTest {
     void chainedHelpersPreserveType() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     static BigInteger addOne(BigInteger x) {
-                        return x + 1;
+                        return x.add(BigInteger.ONE);
                     }
 
                     static BigInteger doubleAndAdd(BigInteger x) {
-                        return addOne(x + x);
+                        return addOne(x.add(x));
                     }
 
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return doubleAndAdd(redeemer) == 21;
+                        return doubleAndAdd(redeemer).equals(BigInteger.valueOf(21));
                     }
                 }
                 """;
@@ -166,12 +177,14 @@ class CrossMethodTypeInferenceTest {
     void literalComparisonUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return redeemer == 42;
+                        return redeemer.equals(BigInteger.valueOf(42));
                     }
                 }
                 """;
@@ -191,16 +204,18 @@ class CrossMethodTypeInferenceTest {
     void helperWithArithmeticResultUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     static BigInteger compute(BigInteger x) {
-                        return x * 2 + 1;
+                        return x.multiply(BigInteger.TWO).add(BigInteger.ONE);
                     }
 
                     static boolean checkComputed(BigInteger x) {
                         var result = compute(x);
-                        return result == 43;
+                        return result.equals(BigInteger.valueOf(43));
                     }
 
                     @Entrypoint
@@ -225,6 +240,8 @@ class CrossMethodTypeInferenceTest {
     void entrypointParamComparisonUsesEqualsInteger() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
@@ -245,6 +262,10 @@ class CrossMethodTypeInferenceTest {
     @Test
     void helperWithStringParamUsesEqualsString() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     static boolean matches(String a, String b) {

@@ -1,0 +1,20 @@
+format: 2
+name: == on BigInteger (T3)
+class: Probe
+method: m
+arg: 1903e8
+expect: DIVERGE T3 Value/Value
+jvm: Value d87980 []
+uplc: Value d87a80 []
+note: BigInteger.valueOf caches only -16..16, so the JVM compares two objects and returns false.
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static boolean m(long n) {
+        BigInteger a = BigInteger.valueOf(n);
+        BigInteger b = BigInteger.valueOf(n);
+        return a == b;
+    }
+}

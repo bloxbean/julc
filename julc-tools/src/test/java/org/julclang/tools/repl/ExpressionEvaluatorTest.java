@@ -9,7 +9,7 @@ class ExpressionEvaluatorTest {
 
     @Test
     void evaluatesDefaultPv11CaseBoolLoweringUnderCompiledTarget() {
-        var result = new ExpressionEvaluator().evaluate("MathLib.abs(-5)");
+        var result = new ExpressionEvaluator().evaluate("MathLib.abs(BigInteger.valueOf(-5))");
 
         assertTrue(result.success(), result::error);
         assertEquals("5", result.result());

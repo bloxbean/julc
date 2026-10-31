@@ -1,0 +1,22 @@
+format: 2
+name: return inside a while loop is outside the subset
+class: Probe
+method: m
+arg: 0a
+expect: REJECT JULC0003
+note: Rejected with JULC0003 at the return, with the remedy to break and return after the loop. Before
+note: #257 the diagnostic had no code (ADR-062 T20).
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static long m(long n) {
+        long i = 0;
+        while (i < n) {
+            if (i > 3) { return i; }
+            i = i + 1;
+        }
+        return n;
+    }
+}

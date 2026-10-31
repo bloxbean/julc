@@ -1127,6 +1127,10 @@ Let's trace a simple validator through the entire pipeline:
 ### Source
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class AlwaysSucceeds {
     @Entrypoint

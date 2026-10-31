@@ -260,6 +260,13 @@ recording a vacuous success.
 ### Stateful spending
 
 ```java
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.verification.annotation.Monotonic;
+import org.julclang.verification.annotation.OutputSelection;
+import org.julclang.verification.annotation.PreservesValue;
+import org.julclang.verification.annotation.Relation;
+import org.julclang.verification.annotation.RequiresSigner;
+
 @RequiresSigner("datum.owner")
 @Monotonic(
     current = "datum.state",
@@ -285,6 +292,10 @@ implementation.
 ### Controlled mint or burn
 
 ```java
+import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.verification.annotation.ControlledMint;
+import org.julclang.verification.annotation.MintAction;
+
 @ControlledMint(
     authority = "4a554c435f5645524946595f415554484f524954595f303030303031",
     tokenName = "4a554c43",

@@ -1,0 +1,27 @@
+format: 2
+name: > on int evaluates its left operand first (#295)
+class: Probe
+method: m
+arg: 03
+arg: 01
+expect: AGREE
+note: ADR-068 D6 (#295): JuLC lowered a > b and a >= b with the operand terms swapped, [[lessThanInteger b] a], so
+note: the right operand was evaluated first: UPLC traced Y, then X, where the JVM traces X, then Y (JLS 15.7), at
+note: every level, for int, long and the BigInteger operator dialect. ADR-068 M1 binds the left operand once when
+note: both operands are non-trivial, in both frontends (D4 exception 1); recorded.base is the reference frontend at B0.
+recorded.jvm: Value d87a80 ["X", "Y"]
+recorded.base: Value d87a80 ["Y", "X"]
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.Builtins;
+
+public class Probe {
+
+    static BigInteger said(String m, BigInteger v) {
+        return Builtins.unIData(Builtins.trace(m, Builtins.iData(v)));
+    }
+
+    public static boolean m(BigInteger x, BigInteger y) {
+        return said("X", x).intValue() > said("Y", y).intValue();
+    }
+}

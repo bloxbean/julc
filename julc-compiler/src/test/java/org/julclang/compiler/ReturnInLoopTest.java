@@ -50,6 +50,9 @@ class ReturnInLoopTest {
         void returnInWhileBodyRejected() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -74,6 +77,9 @@ class ReturnInLoopTest {
         void returnInIfInsideWhileRejected() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -101,6 +107,9 @@ class ReturnInLoopTest {
         void returnInElseInsideWhileRejected() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -130,6 +139,9 @@ class ReturnInLoopTest {
             // return in inner while — only inner while triggers error, outer is fine
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -160,6 +172,9 @@ class ReturnInLoopTest {
         void breakPlusReturnAfterLoopCompilesFine() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -187,6 +202,9 @@ class ReturnInLoopTest {
         void accumulatorPatternCompilesFine() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -218,12 +236,16 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
                 import java.util.List;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                        List<PlutusData> items = (List<PlutusData>) redeemer;
+                        JulcList<PlutusData> items = (JulcList<PlutusData>) (Object) redeemer;
                         for (var item : items) {
                             return true;
                         }
@@ -243,12 +265,16 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
                 import java.util.List;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                        List<PlutusData> items = (List<PlutusData>) redeemer;
+                        JulcList<PlutusData> items = (JulcList<PlutusData>) (Object) redeemer;
                         boolean found = false;
                         for (var item : items) {
                             if (item == redeemer) {
@@ -270,12 +296,16 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
                 import java.util.List;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                        List<PlutusData> items = (List<PlutusData>) redeemer;
+                        JulcList<PlutusData> items = (JulcList<PlutusData>) (Object) redeemer;
                         boolean found = false;
                         for (var item : items) {
                             if (item == redeemer) {
@@ -297,16 +327,20 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
                 import java.util.List;
+                import org.julclang.core.types.JulcList;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                        PlutusData items = Builtins.unListData(redeemer);
+                        JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                         long sum = 0;
                         for (var item : items) {
-                            sum = sum + Builtins.unIData(item);
+                            sum = sum + Builtins.unIData(item).longValue();
                         }
                         return sum > 0;
                     }
@@ -332,6 +366,9 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -359,6 +396,9 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
@@ -386,6 +426,9 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {

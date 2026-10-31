@@ -1,0 +1,32 @@
+format: 2
+name: exhaustive corpus program 135 on input 1, a for-each with a split if/else and a taken break (T23, fixed)
+class: Probe
+method: m
+arg: 21
+arg: 01
+arg: 9f200204ff
+expect: AGREE
+note: The D7 corpus program FOR_EACH [IF_ELSE_UPDATE, BREAK] on its input 1: a = -2, b = 1, xs = [-1, 2, 4].
+note: The break is taken at the second element; the JVM returns 8, UPLC 38, at every optimization level.
+note: Fixed by #255, the lowering of #254: a branch that does not break continues with the statements
+note: after the if, then the next iteration. Before the fix the expectation was DIVERGE T23 Value/Value,
+note: with UPLC Value 1826 [].
+found.by: G0ExhaustiveTest
+found.generator: G0 enumeration r1
+found.program: FOR_EACH [IF_ELSE_UPDATE, BREAK]
+found.compiler: 0.1.0-pre20-d47e7bf4-SNAPSHOT v0.1.0-pre19-36-gd47e7bf4d7f3-dirty
+---
+import java.math.BigInteger;
+import org.julclang.core.types.JulcList;
+
+public class Probe {
+    public static BigInteger m(BigInteger a, BigInteger b, JulcList<BigInteger> xs) {
+        BigInteger v0 = a;
+        BigInteger v1 = b;
+        for (var x0 : xs) {
+            if (x0.compareTo(b) < 0) { v0 = v0.add(BigInteger.valueOf(1)); } else { v1 = v1.add(x0); }
+            if (x0.compareTo(b) > 0) { break; }
+        }
+        return v0.add(v1.multiply(BigInteger.valueOf(3)));
+    }
+}

@@ -1,0 +1,26 @@
+format: 3
+name: the total type pattern case S t (K3)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 01
+expect: REJECT JULC0076
+note: ADR-067 K3: legal Java (1); unsupported in JuLC (non-goal).
+note: ADR-067 M1: JULC0076, reason "unsupported: total type pattern" (D4, r6); REJECT none at the base.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x -> BigInteger.ONE;
+            case S t -> BigInteger.TWO;
+        };
+    }
+}

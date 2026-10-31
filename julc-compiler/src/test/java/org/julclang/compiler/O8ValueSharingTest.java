@@ -370,8 +370,9 @@ class O8ValueSharingTest {
     @Test
     void parameterBoundConversionsInStaticHelpersShareInsideTheWrapperScope() {
         var source = O8ValueSharingFixtures.IMPORTS + """
+                import org.julclang.stdlib.annotation.Param;
                 class ParamShapes {
-                    @Param PlutusData p;
+                    @Param static PlutusData p;
                     static JulcValue expected() { return NativeValueLib.fromData(p); }
                     static boolean same() {
                         return NativeValueLib.contains(NativeValueLib.fromData(p), expected());
@@ -381,8 +382,9 @@ class O8ValueSharingTest {
         // The validator entry point wraps @Param lambdas the same way; it must compile too.
         var validator = O8ValueSharingFixtures.IMPORTS + """
                 import org.julclang.ledger.*;
+                import org.julclang.stdlib.annotation.*;
                 @SpendingValidator class ParamValidator {
-                    @Param PlutusData expectedValue;
+                    @Param static PlutusData expectedValue;
                     static JulcValue expected() { return NativeValueLib.fromData(expectedValue); }
                     @Entrypoint static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         JulcValue e = NativeValueLib.fromData(expectedValue);

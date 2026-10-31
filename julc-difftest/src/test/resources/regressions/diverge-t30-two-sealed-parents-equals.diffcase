@@ -1,0 +1,28 @@
+format: 3
+name: #279 equals across a record with two sealed parents (M6, T30)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+tag: Probe$B Probe$T 0
+tag: Probe$C Probe$T 1
+arg: 05
+expect: DIVERGE T30 Value/Value
+jvm: Value 00 []
+uplc: Value 01 []
+note: ADR-067 M6.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    sealed interface T permits B, C {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S, T {}
+    record C(BigInteger v) implements T {}
+
+    public static BigInteger m(BigInteger a) {
+        S s = new B(a);
+        return s.equals(new A(a)) ? BigInteger.ONE : BigInteger.ZERO;
+    }
+}

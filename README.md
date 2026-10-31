@@ -225,6 +225,14 @@ implementation "org.julclang:julc-stdlib:${julcVersion}"
 ### Write a Spending Validator
 
 ```java
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+
 @SpendingValidator
 public class VestingValidator {
     record VestingDatum(PubKeyHash beneficiary, BigInteger deadline) {}
@@ -248,6 +256,12 @@ public class VestingValidator {
 ### Write a Minting Validator with Sealed Interface Redeemer
 
 ```java
+import java.math.BigInteger;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
+
 @MintingValidator
 public class TokenPolicy {
     sealed interface Action permits Mint, Burn {}
@@ -268,6 +282,12 @@ public class TokenPolicy {
 ### Write a Multi-Validator (Mint + Spend)
 
 ```java
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
+
 @MultiValidator
 public class TokenManager {
 

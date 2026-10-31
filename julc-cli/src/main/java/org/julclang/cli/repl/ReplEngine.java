@@ -6,6 +6,7 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.frontend.javac.ReplExpressionWrapper;
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
@@ -62,24 +63,24 @@ public final class ReplEngine {
     }
 
     /**
-     * Evaluate an expression by wrapping, compiling, and running it.
+     * Evaluate an expression by wrapping, compiling, and running it. javac types the expression first (ADR-068 D9);
+     * its rejection is the REPL's error.
      */
     ReplResult evaluateExpression(String expression) {
-        // First attempt: inferred return type
-        String source = ExpressionWrapper.wrap(expression, userImports);
-        ReplResult result = compileAndEval(source);
+        var wrapped = wrap(expression);
+        if (!wrapped.isAccepted()) return new ReplResult.Error(formatDiagnostics(wrapped.errors()));
+        return compileAndEval(wrapped.source());
+    }
 
-        // Fallback: if compilation failed, try PlutusData cast wrapper
-        if (result instanceof ReplResult.Error) {
-            String fallbackSource = ExpressionWrapper.wrapAsData(expression, userImports);
-            ReplResult fallbackResult = compileAndEval(fallbackSource);
-            if (fallbackResult instanceof ReplResult.Success) {
-                return fallbackResult;
-            }
-            // Return original error (more meaningful)
+    /** The expression wrapped by the shared typed wrapper, with the libraries it uses as its pool. */
+    private ReplExpressionWrapper.Wrapped wrap(String expression) {
+        List<String> pool;
+        try {
+            pool = LibrarySourceResolver.resolve(ExpressionWrapper.resolutionText(expression, userImports), libraryPool);
+        } catch (RuntimeException e) {
+            pool = List.of();
         }
-
-        return result;
+        return ExpressionWrapper.wrap(expression, userImports, pool);
     }
 
     private ReplResult compileAndEval(String source) {
@@ -128,7 +129,9 @@ public final class ReplEngine {
      * Compile-only evaluation for :type, :uplc, :pir commands.
      */
     ReplResult compileOnly(String expression) {
-        String source = ExpressionWrapper.wrap(expression, userImports);
+        var wrapped = wrap(expression);
+        if (!wrapped.isAccepted()) return new ReplResult.Error(formatDiagnostics(wrapped.errors()));
+        String source = wrapped.source();
         try {
             var resolvedLibs = LibrarySourceResolver.resolve(source, libraryPool);
             CompileResult result = compiler.compileMethod(
@@ -158,7 +161,7 @@ public final class ReplEngine {
                 if (arg.isEmpty()) yield new ReplResult.Error(":type requires an expression");
                 ReplResult r = compileOnly(arg);
                 if (r instanceof ReplResult.Success s) {
-                    yield new ReplResult.MetaOutput("Type: " + ExpressionWrapper.inferReturnType(arg));
+                    yield new ReplResult.MetaOutput("Type: " + wrap(arg).returnType());
                 }
                 yield r;
             }
@@ -231,10 +234,12 @@ public final class ReplEngine {
                   :reset              Clear session state (user imports)
                   :clear              Clear screen
 
+                Expressions are Java, typed by javac; an int or long result is shown as an integer.
+                Integer arithmetic is unbounded on-chain: 2147483647 + 1 is 2147483648 (the JVM wraps it).
+
                 Examples:
-                  1 + 2                           => 3
-                  MathLib.pow(2, 10)              => 1024
-                  ListsLib.length(List.of(1,2,3)) => 3
+                  1 + 2                                          => 3
+                  MathLib.pow(BigInteger.TWO, BigInteger.TEN)    => 1024
                   Builtins.sha2_256(new byte[]{1,2,3})
                   :doc MathLib.pow
                   :methods ListsLib

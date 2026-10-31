@@ -1,0 +1,19 @@
+format: 2
+name: equals between PubKeyHash and ScriptHash (E11, T29)
+class: Probe
+method: m
+arg: 420102
+expect: DIVERGE T29 Value/Value
+jvm: Value d87980 []
+uplc: Value d87a80 []
+note: ADR-067 E11: retained (open question 2).
+---
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptHash;
+
+public class Probe {
+
+    public static boolean m(byte[] h) {
+        return PubKeyHash.of(h).equals(ScriptHash.of(h));
+    }
+}

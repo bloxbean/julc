@@ -1,5 +1,7 @@
 package org.julclang.stdlib.lib;
 
+import org.julclang.compiler.CompilerException;
+
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.Builtins;
 import org.julclang.testkit.JulcEval;
@@ -110,7 +112,9 @@ class VariadicIntrinsicsTest {
                     }
                     """);
 
-            assertThrows(IllegalArgumentException.class, () -> eval.call("test"));
+            // javac rejects the call first (ADR-068 I2b): concat takes at least two parts.
+            var error = assertThrows(CompilerException.class, () -> eval.call("test"));
+            assertTrue(error.getMessage().contains("(compiler.err.cant.apply.symbol)"), error.getMessage());
         }
 
         @Test
@@ -123,8 +127,9 @@ class VariadicIntrinsicsTest {
                     }
                     """);
 
-            assertThrows(IllegalArgumentException.class,
-                    () -> eval.call("test", new byte[]{1}));
+            // javac rejects the call first (ADR-068 I2b): concat takes at least two parts.
+            var error = assertThrows(CompilerException.class, () -> eval.call("test", new byte[]{1}));
+            assertTrue(error.getMessage().contains("(compiler.err.cant.apply.symbol)"), error.getMessage());
         }
     }
 

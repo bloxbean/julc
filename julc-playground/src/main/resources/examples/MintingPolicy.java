@@ -1,4 +1,8 @@
 import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MintingValidator;
 
 @MintingValidator
 class MintingPolicy {
@@ -8,16 +12,16 @@ class MintingPolicy {
     }
 
     static boolean validateMint(BigInteger amount) {
-        return amount > 0;
+        return amount.compareTo(BigInteger.ZERO) > 0;
     }
 
     static boolean validateBurn(BigInteger amount) {
-        return amount < 0;
+        return amount.compareTo(BigInteger.ZERO) < 0;
     }
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        BigInteger mintAmount = 1;
+        BigInteger mintAmount = BigInteger.ONE;
         return validateMint(mintAmount);
     }
 }

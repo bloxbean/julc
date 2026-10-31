@@ -1,14 +1,17 @@
 package org.julclang.compiler;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 
 import org.julclang.compiler.backend.*;
+import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacGate;
+import org.julclang.compiler.frontend.javac.JavacLibraryTypes;
+import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.*;
 
@@ -40,18 +43,41 @@ public final class JavaLibraryProvider implements LibraryProvider {
     private final Set<String> overloaded = new LinkedHashSet<>();
     private final Map<String, LibraryType> types;
     private final Map<String, PirType> definitions;
+    /**
+     * This provider's case in the ADR-068 corpus, recorded at construction from the options it resolved (never from
+     * the caller's {@code CompilerOptions}, which may change afterwards, F313); null unless the recorder is active.
+     */
+    private final String corpusCase;
+    /** Library sources the javac frontend read but cannot lower yet (ADR-068 M3): their exports are {@code JULC0084}. */
+    private final boolean unportedSources;
 
     public JavaLibraryProvider(List<String> sources, StdlibLookup lookup, CompilerOptions options) {
         context = CompilationContext.resolve(options);
+        corpusCase = CorpusRecorder.ACTIVE == null ? null : CorpusRecorder.ACTIVE.record("JavaLibraryProvider", null,
+                null, sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(), lookup,
+                CorpusRecorder.Options.of(context));
         this.lookup = lookup;
         contentHash = contentHash(sources);
-        var parser =
-                new JavaParser(
-                        new ParserConfiguration()
-                                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
+        // ADR-068 D7, D8: javac reads the units and the stubs; nothing reaches the JavaParser frontend (I8).
+        if (context.frontend() == CompilerFrontend.JAVAC) {
+            var described = JavacGate.onJavacFrontend(() -> JavacLibraryTypes.describe(sources));
+            types = described.types();
+            definitions = described.definitions();
+            unportedSources = !sources.isEmpty();
+            resolver = null;
+            registry = null;
+            known = Set.of();
+            descriptions = null;
+            return;
+        }
+        unportedSources = false;
+        // ADR-068 M1's javac gate (D8): the supplied units are roots; with none, a metadata-only task over the stubs.
+        if (sources.isEmpty()) JavacGate.metadata(options);
+        else JavacGate.check("JavaLibraryProvider", sources.stream().map(JavacFrontend.Unit::of).toList(), List.of(),
+                options);
         var units = new ArrayList<CompilationUnit>();
         for (var source : sources) {
-            var parsed = parser.parse(source);
+            var parsed = JavaSourceParser.parse(source);
             if (!parsed.isSuccessful())
                 throw new IllegalArgumentException(
                         "Invalid Java library source: " + parsed.getProblems());
@@ -63,9 +89,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
             if (!owners.add(identity)) throw new IllegalArgumentException("Duplicate library type ownership: " + identity);
         }
         resolver = new TypeResolver();
-        var ledgerSources = LedgerSourceLoader.loadLedgerSources(
-                                getClass().getClassLoader(),
-                                source -> parser.parse(source).getResult().orElseThrow());
+        var ledgerSources = LedgerSourceLoader.loadLedgerSources(getClass().getClassLoader());
         new TypeRegistrar().registerAll(ledgerSources, resolver);
         for (String identity : owners) if (resolver.allRegisteredFqcns().contains(identity)
                 || TypeResolver.ledgerHashFqcns().contains(identity))
@@ -206,10 +230,19 @@ public final class JavaLibraryProvider implements LibraryProvider {
     @Override public Map<String, LibraryType> types() { return types; }
     @Override public int revision() { return BackendContract.REVISION_2; }
     @Override public Map<String, PirType> namedDefinitions() { return definitions; }
-    @Override public Map<String, String> unsupportedExports() { return Collections.unmodifiableMap(unsupported); }
+    @Override public Map<String, String> unsupportedExports() {
+        requireLowering();
+        return Collections.unmodifiableMap(unsupported);
+    }
+
+    /** ADR-068 D4: what needs library methods lowered is not ported to the javac frontend; types are. */
+    private void requireLowering() {
+        if (unportedSources) throw JavacProgram.notPorted("the exports of library sources");
+    }
 
     @Override
     public List<LibraryExport> describe(String module) {
+        requireLowering();
         return exports.values().stream()
                 .filter(e -> e.symbol().substring(0, e.symbol().lastIndexOf('.')).equals(module))
                 .toList();
@@ -217,6 +250,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
 
     @Override
     public List<LibraryScheme> schemes(String module) {
+        requireLowering();
         return templates.values().stream()
                 .map(Template::scheme)
                 .filter(Objects::nonNull)
@@ -226,6 +260,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
 
     @Override
     public PirTerm materialize(String symbol) {
+        requireLowering();
         if (!exports.containsKey(symbol))
             throw new IllegalArgumentException("Unknown public on-chain export: " + symbol);
         var root = registry.lookupMethod(symbol).orElseThrow();
@@ -242,6 +277,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
      */
     @Override
     public LibraryImports materialize(List<LibraryRequest> requests) {
+        requireLowering();
         var reachable = new LinkedHashMap<String, PirTerm>();
         var bindings = new LinkedHashMap<LibraryRequest, LibraryImports.Binding>();
         for (var request : requests) {
@@ -256,6 +292,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     bindings.put(request, new LibraryImports.Binding(export.symbol(), described.type()));
                 }
                 case LibraryRequest.Instantiate instantiate -> {
+                    if (corpusCase != null) CorpusRecorder.ACTIVE.recordInstantiate(corpusCase, lookup, instantiate);
                     var specialized = specialize(instantiate);
                     for (String dependency : PirClosure.freeVariables(specialized.body()))
                         if (!dependency.equals(specialized.name())) gather(dependency, reachable);

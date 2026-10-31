@@ -33,19 +33,30 @@ class ToolsServiceTest {
     static final String SIGNER = "aa".repeat(28);
 
     static final String SIMPLE_SPENDING = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.Param;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.ledger.TxInfo;
             @SpendingValidator
             class SimpleSpending {
                 @Param static byte[] authorizedSigner;
 
                 @Entrypoint
                 static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                    return ContextsLib.signedBy(txInfo, authorizedSigner);
+                    PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(ctx), PlutusData.class);
+                    return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), authorizedSigner);
                 }
             }
             """;
 
     static final String ALWAYS_TRUE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
@@ -103,6 +114,10 @@ class ToolsServiceTest {
     @Test
     void compile_errorReturnsDiagnosticsWithStatus200() {
         var result = SERVICE.compile(new CompileRequest("""
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class Broken {
                     @Entrypoint
@@ -166,7 +181,7 @@ class ToolsServiceTest {
         var evaluator = new ExpressionEvaluator(COMPILER, JulcVm.withProvider(new JavaVmProvider()),
                 LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader()));
 
-        var ok = ToolsService.evalExpression(evaluator, new EvalExpressionRequest("MathLib.abs(-5)"));
+        var ok = ToolsService.evalExpression(evaluator, new EvalExpressionRequest("MathLib.abs(BigInteger.valueOf(-5))"));
         var blank = ToolsService.evalExpression(evaluator, new EvalExpressionRequest(""));
 
         assertEquals(200, ok.status());
@@ -202,6 +217,16 @@ class ToolsServiceTest {
         var missing = catalog.get("Nope.java");
         assertEquals(404, missing.status());
         assertEquals(Map.of("error", "Example not found: Nope.java"), missing.body());
+    }
+
+    @Test
+    void examples_javaSourcesAreAccepted() {
+        var catalog = new ExampleCatalog();
+        for (var example : catalog.list("JAVA").body()) {
+            var source = ((ExampleDto) catalog.get(example.name()).body()).source();
+            var result = SERVICE.compile(new CompileRequest(source));
+            assertNotNull(result.body().compiledCode(), () -> example.name() + ": " + result.body().diagnostics());
+        }
     }
 
     private static EvaluateRequest spendingRequest(Map<String, String> params, List<String> signers) {

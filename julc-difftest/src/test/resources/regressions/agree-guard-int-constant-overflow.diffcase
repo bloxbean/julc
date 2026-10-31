@@ -1,0 +1,26 @@
+format: 3
+name: a constant guard with int overflow through a constant variable (round 3)
+class: Probe
+method: m
+tag: Probe$A Probe$S 0
+tag: Probe$B Probe$S 1
+arg: 05
+expect: AGREE
+note: ADR-067 M1 round 3: int arithmetic wraps (JLS 15.18.2), so the guard is the constant true; kept exact by the verified constant subset.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    sealed interface S permits A, B {}
+    record A(BigInteger v) implements S {}
+    record B(BigInteger v) implements S {}
+    static final int N = 2147483647;
+
+    public static BigInteger m(BigInteger a) {
+        S s = new A(a);
+        return switch (s) {
+            case A x when N + 1 < 0 -> BigInteger.ONE;
+            default -> BigInteger.TWO;
+        };
+    }
+}

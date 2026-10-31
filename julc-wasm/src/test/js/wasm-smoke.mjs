@@ -93,6 +93,10 @@ try {
     }
     const sourceSession = await api.sourceDebug.open({
       source: `import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class WasmSourceDebugSmoke {
