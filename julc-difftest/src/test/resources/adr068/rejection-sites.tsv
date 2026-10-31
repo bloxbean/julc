@@ -55,8 +55,11 @@ JULC0073	code	JULC0073	SWITCH_GUARD_VARIABLE_NOT_EFFECTIVELY_FINAL	source
 JULC0074	code	JULC0074	SWITCH_GUARD_PATTERN_VARIABLE_UNSUPPORTED	source
 JULC0075	code	JULC0075	SWITCH_GROUP_UNSUPPORTED	source
 JULC0076	code	JULC0076	CASE_PATTERN_UNSUPPORTED	source
+JULC0081	code	JULC0081	LEDGER_TYPE_REDECLARED	gate: emitted by the M1 javac gate (ownership check, D3) only in enforce mode; the reference frontend at B0 never emits it
 JULC0082	code	JULC0082	SWITCH_DUPLICATE_DEFAULT	source
 JULC0083	code	JULC0083	PATTERN_VARIABLE_CONFLICT	source
+JULC0085	code	JULC0085	JAVAC_ERROR	gate: emitted by the M1 javac gate (D5) only in enforce mode; not a reference-frontend rejection
+JULC0089	code	JULC0089	JAVAC_UNSUPPORTED	gate: emitted by the M1 javac gate when no supported javac is available (D3); not a reference-frontend rejection
 U-synchronized	uncoded	^synchronized is not supported on-chain	SubsetValidator:184	source
 U-break-outside-loop	uncoded	break is only supported inside for-each or while loops	SubsetValidator:210	source
 U-method-reference	uncoded	Method references \(::\) are not supported	SubsetValidator:242	source

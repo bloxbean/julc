@@ -107,7 +107,7 @@ public class BuildCommand implements Callable<Integer> {
 
                 try {
                     var resolvedLibs = ProjectSourceResolver.resolve(source, pool);
-                    var compiler = new JulcCompiler(stdlib, options);
+                    var compiler = new JulcCompiler(stdlib, ProjectSourceResolver.options(options, pool));
                     CompileResult result;
                     org.julclang.compiler.schema.ContractSchema contractSchema = null;
                     if (noBlueprint) {

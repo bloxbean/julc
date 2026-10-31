@@ -15,9 +15,11 @@ import java.util.Optional;
 /**
  * File plumbing of the test-only corpus recorders of ADR-068 M0 (the compiler's {@code FileCorpusRecorder} and the
  * VM's {@code FileEvaluationRecorder}) and of the ledger that reads what they write: content digests, a lossless
- * text encoding, write-once files and the origin of a recording. Nothing on a compilation or evaluation path refers
- * to this class: the recorders are loaded by name only when their system property is set, so native and Web images,
- * which never set it, do not reach {@link StackWalker}, {@link Files} or {@link MessageDigest} through them.
+ * text encoding, write-once files and the origin of a recording. The recorders are loaded by name only when their
+ * system property is set, so native and Web images, which never set it, do not reach them. The javac gate of
+ * ADR-068 M1 uses {@link #bytes} and {@link #sha256} as JuLC's one injective text identity (its cache key and source
+ * identities), and its report writer, which writes only when {@code julc.javacGate.report} names a directory, uses
+ * the file helpers.
  */
 public final class CorpusFiles {
 

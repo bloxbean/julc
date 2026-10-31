@@ -5,6 +5,8 @@ import org.julclang.blueprint.BlueprintGenerator;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.schema.ContractSchema;
@@ -54,6 +56,15 @@ public final class ToolsService {
      * @param cachedLibSources stdlib sources scanned once from the classpath
      * @param vmFactory        creates the VM used for each evaluation
      */
+    /**
+     * A compiler for a host whose libraries are its class-path scan plus the editor's: the scan's sources are JAR
+     * sources and editor sources are project sources, which the javac gate ranks above them (ADR-068 D8).
+     */
+    public static JulcCompiler compilerFor(Map<String, LibrarySource> classpathLibraries) {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                LibrarySourceResolver.withJarSources(new CompilerOptions(), classpathLibraries));
+    }
+
     public ToolsService(JulcCompiler julcCompiler, Map<String, LibrarySource> cachedLibSources,
                              Supplier<JulcVm> vmFactory) {
         this.julcCompiler = julcCompiler;

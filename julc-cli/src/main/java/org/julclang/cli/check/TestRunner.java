@@ -1,6 +1,8 @@
 package org.julclang.cli.check;
 
+import org.julclang.cli.project.ProjectSourceResolver;
 import org.julclang.compiler.CompileResult;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySourceResolver;
@@ -37,7 +39,8 @@ public final class TestRunner {
             var resolvedLibs = LibrarySourceResolver.resolve(test.source(), libraryPool);
 
             // Compile the test method
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    ProjectSourceResolver.options(new CompilerOptions(), libraryPool));
             CompileResult result = compiler.compileMethod(test.source(), test.methodName(), resolvedLibs);
 
             if (result.hasErrors()) {

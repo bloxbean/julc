@@ -196,6 +196,169 @@ tasks.withType(Test).configureEach {
     systemProperty 'julc.test.expectedCompilerVersion', project.version.toString()
 }
 
+// ADR-068 D3, I10: the javac frontend's closed environment, embedded as uncompressed resources so that every host
+// (JVM, native image, Web Image) reads the same bytes.
+//   platform.bin: a signature-only java.base, the classes listed in javac-platform/java-base.list (derived, not
+//                 hand-written: the classes javac opens while attributing JuLC's in-repo sources, closed under
+//                 supertypes), checked against javac-platform/java-base.sha256 (`check` fails on drift);
+//   stubs.bin:    signature-only class files of the on-chain API: julc-core, julc-ledger-api, julc-stdlib's on-chain
+//                 classes (not its @OnchainLibrary sources, not the compiler-facing classes) and
+//                 org.julclang.verification.annotation. julc-stdlib and julc-verification depend on this module,
+//                 so their API classes are compiled here, from their own sources, only to be stubbed.
+// Re-derive after changing in-repo sources (the corpus is ADR-068 M0's recording, optional):
+//   ./gradlew :julc-compiler:deriveJavacPlatform :julc-compiler:updateJavacPlatformDigest \
+//       [-Pjulc.javacPlatform.corpus=build/julc-corpus] --offline
+sourceSets {
+    javacPlatform
+}
+
+configurations {
+    javacStubInputs { transitive = false }
+    javacPlatformImplementation.extendsFrom(configurations.implementation, configurations.api)
+}
+
+dependencies {
+    javacPlatformImplementation files(sourceSets.main.output.classesDirs)
+    javacStubInputs project(':julc-core')
+    javacStubInputs project(':julc-ledger-api')
+}
+
+def javacResources = layout.buildDirectory.dir('generated/javac-resources')
+def javacResourcePath = 'org/julclang/compiler/frontend/javac'
+def javacPlatformList = layout.projectDirectory.file('javac-platform/java-base.list')
+def javacPlatformDigest = layout.projectDirectory.file('javac-platform/java-base.sha256')
+def javacPlatformBlob = javacResources.map { it.file("${javacResourcePath}/platform.bin") }
+def javacStubsBlob = javacResources.map { it.file("${javacResourcePath}/stubs.bin") }
+def javacToolLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+def stdlibSources = rootProject.file('julc-stdlib/src/main/java')
+def compilerFacingStdlib = ['org/julclang/stdlib/StdlibRegistry.java', 'org/julclang/stdlib/ListsLibHof.java',
+                            'org/julclang/stdlib/StdlibLibraryProvider.java']
+// The in-repo sources the derivation and its `check` attribute without a corpus (the corpus adds every test source).
+def javacDerivationSources = [
+        'julc-stdlib/src/main/java/org/julclang/stdlib/lib',
+        'julc-stdlib/src/main/java/org/julclang/stdlib/test',
+        'julc-ledger-api/src/main/java',
+] + fileTree(rootProject.file('verification')) { include '*/fixtures/*/src/*.java' }.files
+        .collect { rootProject.relativePath(it.parentFile) }.unique().sort()
+
+tasks.register('compileJavacStubSources', JavaCompile) {
+    description = 'Compile julc-stdlib\'s on-chain API classes and julc-verification\'s annotations, to stub them.'
+    source = files(
+            fileTree(stdlibSources) { include '**/*.java'; exclude compilerFacingStdlib }
+                    .filter { !(it.getText('UTF-8') =~ /(?m)^@OnchainLibrary/) },
+            fileTree(rootProject.file('julc-verification/src/main/java')) {
+                include 'org/julclang/verification/annotation/**/*.java'
+            })
+    classpath = configurations.javacStubInputs
+    destinationDirectory = layout.buildDirectory.dir('javac-stub-classes')
+    options.release = 25
+    options.encoding = 'UTF-8'
+    javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
+def javacTool = { JavaExec task ->
+    task.classpath = sourceSets.javacPlatform.runtimeClasspath
+    task.mainClass = 'org.julclang.compiler.frontend.javac.tool.JavacPlatformTool'
+    task.javaLauncher = javacToolLauncher
+}
+
+tasks.register('generateJavacStubs', JavaExec) {
+    description = 'Generate the javac frontend\'s signature-only API stubs (ADR-068 I10).'
+    javacTool(it)
+    def stubClasses = tasks.named('compileJavacStubSources').flatMap { it.destinationDirectory }
+    inputs.files(configurations.javacStubInputs).withPropertyName('apiJars')
+    inputs.dir(stubClasses).withPropertyName('apiClasses')
+    outputs.file(javacStubsBlob)
+    argumentProviders.add({
+        ['stubs', javacStubsBlob.get().asFile.path] + configurations.javacStubInputs.files*.path +
+                [stubClasses.get().asFile.path]
+    } as CommandLineArgumentProvider)
+}
+
+tasks.register('generateJavacPlatform', JavaExec) {
+    description = 'Generate the javac frontend\'s signature-only java.base blob (ADR-068 D3).'
+    javacTool(it)
+    inputs.file(javacPlatformList).withPropertyName('list')
+    inputs.property('jdk', javacToolLauncher.map { it.metadata.javaRuntimeVersion })
+    outputs.file(javacPlatformBlob)
+    argumentProviders.add({
+        ['platform', javacPlatformBlob.get().asFile.path, javacPlatformList.asFile.path]
+    } as CommandLineArgumentProvider)
+}
+
+sourceSets.main.resources.srcDir(javacResources)
+tasks.named('processResources') { dependsOn 'generateJavacStubs', 'generateJavacPlatform' }
+tasks.named('sourcesJar') { dependsOn 'generateJavacStubs', 'generateJavacPlatform' }
+
+def deriveArgs = { String mode ->
+    def args = ['derive', javacStubsBlob.get().asFile.path, javacPlatformList.asFile.path, mode]
+    def corpus = providers.gradleProperty('julc.javacPlatform.corpus')
+    if (mode == 'write' && corpus.present) args += ['--corpus', rootProject.file(corpus.get()).path]
+    args + javacDerivationSources.collect { rootProject.file(it).path }
+}
+
+tasks.register('deriveJavacPlatform', JavaExec) {
+    description = 'Re-derive javac-platform/java-base.list from in-repo sources (and -Pjulc.javacPlatform.corpus).'
+    group = 'build'
+    javacTool(it)
+    dependsOn 'generateJavacStubs'
+    maxHeapSize = '4g'
+    argumentProviders.add({ deriveArgs('write') } as CommandLineArgumentProvider)
+    outputs.upToDateWhen { false }
+}
+
+def javacSha256 = { File f -> java.security.MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+
+tasks.register('updateJavacPlatformDigest') {
+    description = 'Record the digest of the java.base blob built from javac-platform/java-base.list.'
+    group = 'build'
+    dependsOn 'generateJavacPlatform'
+    mustRunAfter 'deriveJavacPlatform'
+    doLast {
+        def blob = javacPlatformBlob.get().asFile
+        javacPlatformDigest.asFile.text = "# ADR-068 D3: SHA-256 of platform.bin, built from java-base.list on JDK " +
+                "${javacToolLauncher.get().metadata.javaRuntimeVersion}.\n" +
+                "# A different digest from another JDK 25 build is drift (ADR-068 D3, I4); `check` fails on it.\n" +
+                "${javacSha256(blob)}  platform.bin\n"
+    }
+}
+
+tasks.register('verifyJavacPlatform') {
+    description = 'Fail when the java.base blob drifts from javac-platform/java-base.sha256 (ADR-068 D3).'
+    group = 'verification'
+    dependsOn 'generateJavacPlatform'
+    inputs.file(javacPlatformDigest)
+    inputs.file(javacPlatformBlob)
+    doLast {
+        def expected = javacPlatformDigest.asFile.readLines().find { it && !it.startsWith('#') }?.split(/\s+/)?.getAt(0)
+        def actual = javacSha256(javacPlatformBlob.get().asFile)
+        if (expected != actual) {
+            throw new GradleException("The javac platform blob drifted: sha256 ${actual}, but " +
+                    "javac-platform/java-base.sha256 records ${expected}. Built on JDK " +
+                    "${javacToolLauncher.get().metadata.javaRuntimeVersion}. If java-base.list changed on purpose, run " +
+                    "./gradlew :julc-compiler:updateJavacPlatformDigest and commit; a JDK 25 patch release that changes " +
+                    "the blob is release-blocking (ADR-068 D3).")
+        }
+    }
+}
+
+tasks.register('checkJavacPlatformDerivation', JavaExec) {
+    description = 'Fail when in-repo sources need java.base classes outside javac-platform/java-base.list.'
+    group = 'verification'
+    javacTool(it)
+    dependsOn 'generateJavacStubs'
+    inputs.file(javacPlatformList)
+    inputs.files(javacDerivationSources.collect { rootProject.file(it) })
+    argumentProviders.add({ deriveArgs('check') } as CommandLineArgumentProvider)
+    def marker = layout.buildDirectory.file('javac-platform/derivation-checked')
+    outputs.file(marker)
+    doLast { marker.get().asFile.text = 'ok\n' }
+}
+
+tasks.named('check') {
+    dependsOn 'verifyJavacPlatform', 'checkJavacPlatformDerivation'
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -205,4 +368,41 @@ publishing {
             }
         }
     }
+}
+
+// ADR-068 M1: summarize a javac gate report (every source the gate would reject, and why):
+//   ./gradlew test --offline --continue --rerun -Pjulc.javacGate.report=build/javac-gate
+//   ./gradlew :julc-compiler:javacGateSummary -Pjulc.javacGate.report=build/javac-gate
+tasks.register('javacGateSummary', JavaExec) {
+    description = 'Summarize a javac gate report directory (-Pjulc.javacGate.report=<dir>).'
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.julclang.compiler.frontend.javac.JavacGateReport'
+    javaLauncher = javacToolLauncher
+    argumentProviders.add({
+        def dir = providers.gradleProperty('julc.javacGate.report')
+        if (!dir.present) throw new GradleException('Pass -Pjulc.javacGate.report=<dir>')
+        [rootProject.file(dir.get()).absolutePath]
+    } as CommandLineArgumentProvider)
+    outputs.upToDateWhen { false }
+}
+
+// ADR-068 M1: the gate over a recorded corpus (ADR-068 M0's recording), with the shipped blobs: rejections by javac
+// key, every case's outcome, and a check that the derived platform gives the same diagnostics as all of java.base:
+//   ./gradlew :julc-compiler:javacGateCorpus -Pjulc.javacGate.corpus=build/julc-corpus -Pjulc.javacGate.out=<dir>
+tasks.register('javacGateCorpus', JavaExec) {
+    description = 'Run the javac gate over a recorded corpus (-Pjulc.javacGate.corpus, -Pjulc.javacGate.out).'
+    group = 'verification'
+    javacTool(it)
+    dependsOn 'generateJavacStubs', 'generateJavacPlatform'
+    maxHeapSize = '6g'
+    argumentProviders.add({
+        def corpus = providers.gradleProperty('julc.javacGate.corpus')
+        if (!corpus.present) throw new GradleException('Pass -Pjulc.javacGate.corpus=<dir>')
+        def out = providers.gradleProperty('julc.javacGate.out').orElse('build/javac-gate-corpus')
+        ['gate-corpus', javacPlatformBlob.get().asFile.path, javacStubsBlob.get().asFile.path,
+         rootProject.file(corpus.get()).path, rootProject.file(out.get()).path] +
+                javacDerivationSources.take(2).collect { rootProject.file(it).path }
+    } as CommandLineArgumentProvider)
+    outputs.upToDateWhen { false }
 }

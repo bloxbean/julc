@@ -1,8 +1,10 @@
 package org.julclang.cli.project;
 
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,14 +24,37 @@ public final class ProjectSourceResolver {
      */
     public static Map<String, LibrarySource> buildPool(Map<String, String> userLibraries) {
         // 1. Classpath stdlib (META-INF/plutus-sources/ from julc-stdlib JAR)
-        var pool = new LinkedHashMap<>(
-                LibrarySourceResolver.scanClasspathSources(
-                        ProjectSourceResolver.class.getClassLoader()));
+        var pool = new LinkedHashMap<>(classpathSources());
 
         // 2. User sources override classpath sources
         LibrarySourceResolver.librarySourcesFrom(userLibraries).forEach(pool::put);
 
         return pool;
+    }
+
+    private static volatile Map<String, LibrarySource> classpath;
+
+    /** The class path's sources, scanned once, so that the pool and its tags share the same source objects. */
+    private static Map<String, LibrarySource> classpathSources() {
+        var sources = classpath;
+        if (sources == null) {
+            sources = Collections.unmodifiableMap(new LinkedHashMap<>(
+                    LibrarySourceResolver.scanClasspathSources(ProjectSourceResolver.class.getClassLoader())));
+            classpath = sources;
+        }
+        return sources;
+    }
+
+    /**
+     * Compiler options for a pool built by {@link #buildPool}: its class-path sources are JAR sources, which the javac
+     * gate ranks below the project's (ADR-068 D8).
+     */
+    public static CompilerOptions options(CompilerOptions options, Map<String, ?> pool) {
+        var sources = new LinkedHashMap<String, LibrarySource>();
+        pool.forEach((key, value) -> {
+            if (value instanceof LibrarySource source) sources.put(key, source);
+        });
+        return options.setJarLibrarySources(LibrarySourceResolver.jarSourceTexts(sources, classpathSources()));
     }
 
     /**

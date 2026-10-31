@@ -37,7 +37,7 @@ tasks.withType(Test).configureEach {
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
-        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline'
+        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline', 'adr068-gate-timing'
     }
     // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
     def cases = providers.gradleProperty('difftest.cases')
@@ -119,3 +119,23 @@ tasks.register('adr068Baseline', Test) {
 }
 // After the root build's Test defaults (1g), which would otherwise apply last.
 tasks.named('adr068Baseline').configure { maxHeapSize = '6g' }
+
+// ADR-068 M1, E6: the javac gate's warm and cold compile time against the JavaParser-only path, on a corpus sample:
+//   ./gradlew :julc-difftest:adr068GateTiming -Padr068.corpus=build/julc-corpus [-Padr068.out=<dir>] --offline
+tasks.register('adr068GateTiming', Test) {
+    group = 'verification'
+    description = 'ADR-068 M1: javac gate compile time (E6)'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter'
+        includeTags 'adr068-gate-timing'
+    }
+    ['adr068.corpus', 'adr068.out'].each { key ->
+        def value = providers.gradleProperty(key)
+        if (value.isPresent()) systemProperty key, rootProject.file(value.get()).absolutePath
+    }
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }
+}
+tasks.named('adr068GateTiming').configure { maxHeapSize = '4g' }

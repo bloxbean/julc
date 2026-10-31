@@ -2,7 +2,6 @@ package org.julclang.wasm;
 
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySourceResolver;
-import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.tools.debug.SourceDebugService;
 import org.julclang.tools.model.CheckRequest;
 import org.julclang.tools.model.CompileRequest;
@@ -32,8 +31,8 @@ public final class FullApi {
     }
 
     public static void register(ApiRegistry api, VmApi vmApi) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var libraries = LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader());
+        var compiler = ToolsService.compilerFor(libraries);
         var vm = JulcVm.withProvider(new JavaVmProvider());
         var service = new ToolsService(compiler, libraries, () -> vm);
         var evaluator = new ExpressionEvaluator(compiler, vm, libraries);
