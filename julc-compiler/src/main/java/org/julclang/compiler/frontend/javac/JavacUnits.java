@@ -1,6 +1,5 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.corpus.CorpusRecorder;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.Tree;
@@ -39,7 +38,7 @@ final class JavacUnits {
 
     /** The names of each text, in order. */
     static List<UnitInfo> infos(JavaCompiler compiler, JavacPlatform platform, List<String> texts) {
-        var digests = texts.stream().map(text -> JavacPlatform.sha256(CorpusRecorder.bytes(text))).toList();
+        var digests = texts.stream().map(JavacPlatform::identity).toList();
         var known = new LinkedHashMap<String, UnitInfo>();
         var missing = new LinkedHashMap<String, String>();
         for (int i = 0; i < texts.size(); i++) {

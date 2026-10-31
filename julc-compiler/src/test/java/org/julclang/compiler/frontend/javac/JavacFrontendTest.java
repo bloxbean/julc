@@ -263,8 +263,11 @@ class JavacFrontendTest {
         assertTrue(JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(user), JavacFrontend.Unit.of(lib)),
                 List.of(JavacFrontend.Unit.of(broken))).isAccepted());
         assertEquals("compiler.err.prob.found.req", keys(analyze(user, broken)));
-        // The first pool unit of a name wins.
-        assertTrue(analyze(user, lib, broken).isAccepted());
+        // Two pool units of one name: whichever javac reads, the compilation fails closed (F511).
+        assertEquals("compiler.err.duplicate.class", keys(analyze(user, lib, broken)));
+        assertTrue(keys(analyze(user, broken, lib)).endsWith("compiler.err.duplicate.class"));
+        // The same text offered twice is one unit.
+        assertTrue(analyze(user, lib, lib).isAccepted());
     }
 
     // --- I2c: Java 22-25 features are rejected under -source 21 ---
@@ -370,15 +373,15 @@ class JavacFrontendTest {
     void metadataTaskExposesOnlyElementsAndTypes() {
         var methods = Stream.of(JavacMetadata.class.getDeclaredMethods())
                 .filter(m -> java.lang.reflect.Modifier.isPublic(m.getModifiers()))
-                .map(m -> m.getName()).sorted().toList();
-        assertEquals(List.of("elements", "types"), methods);
+                .map(m -> m.getName() + java.util.Arrays.toString(m.getParameterTypes())).sorted().toList();
+        assertEquals(List.of("read[interface java.util.function.BiFunction]"), methods);
         assertEquals(Object.class, JavacMetadata.class.getSuperclass());
         assertEquals(0, JavacMetadata.class.getInterfaces().length);
         var metadata = JavacFrontend.shared().metadata();
-        assertNotNull(metadata.elements().getTypeElement("org.julclang.ledger.TxInfo"));
-        assertNull(metadata.elements().getTypeElement("org.julclang.stdlib.lib.MapLib"),
+        assertNotNull(metadata.read((elements, types) -> elements.getTypeElement("org.julclang.ledger.TxInfo")));
+        assertNull(metadata.read((elements, types) -> elements.getTypeElement("org.julclang.stdlib.lib.MapLib")),
                 "@OnchainLibrary classes are sources only, never stubs (D3)");
-        assertNull(metadata.elements().getTypeElement("org.julclang.stdlib.StdlibRegistry"),
+        assertNull(metadata.read((elements, types) -> elements.getTypeElement("org.julclang.stdlib.StdlibRegistry")),
                 "compiler-facing stdlib classes are not stubbed (I10)");
     }
 

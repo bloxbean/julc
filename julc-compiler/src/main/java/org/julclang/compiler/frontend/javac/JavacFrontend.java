@@ -54,6 +54,14 @@ public final class JavacFrontend {
     private final BundledSources bundled;
     private volatile JavaCompiler compiler;
     private volatile String unsupported;
+    /** Results of this environment, by input digest (JavacGate); a frontend's environment never changes. */
+    private final Map<String, JavacResult> cache = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, JavacResult> eldest) {
+            return size() > CACHE_LIMIT;
+        }
+    };
+    private static final int CACHE_LIMIT = 512;
 
     /** A source given to javac: its text and, for the path entry points, its file. */
     public record Unit(String text, Path path) {
@@ -94,6 +102,23 @@ public final class JavacFrontend {
         return platform;
     }
 
+    public BundledSources bundled() {
+        return bundled;
+    }
+
+    /** The cached result for {@code key} in this environment, else {@code analysis}'s, cached. */
+    JavacResult cached(String key, Supplier<JavacResult> analysis) {
+        synchronized (cache) {
+            JavacResult hit = cache.get(key);
+            if (hit != null) return hit;
+        }
+        JavacResult result = analysis.get();
+        synchronized (cache) {
+            cache.put(key, result);
+        }
+        return result;
+    }
+
     /** The host's Java runtime version, which is javac's on a JVM host (D3: recorded with the result). */
     public static String javacVersion() {
         return Runtime.version().toString();
@@ -101,9 +126,10 @@ public final class JavacFrontend {
 
     /**
      * Analyzes {@code roots} with {@code pool}, then the bundled sources, on the source path (D8): javac attributes
-     * the roots and the pool units they reference, through any of their top-level declarations. A root's qualified
-     * names win over the pool's; within the pool the first unit declaring a name wins, so javac never sees a name
-     * twice.
+     * the roots and the pool units they reference, through any of their top-level declarations. Precedence is per
+     * qualified name ({@link Precedence}): a root's name wins over the pool's, and a name two pool units declare is
+     * listed once; every other declaration stays visible. javac cannot read part of a unit, so a compilation that
+     * reads a unit with a contested name fails closed with {@code duplicate class}, naming it.
      */
     public JavacResult analyze(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true);
@@ -121,27 +147,26 @@ public final class JavacFrontend {
         JavaCompiler javac = compiler();
         if (javac == null) return supported();
         if (roots.isEmpty()) return JavacResult.accepted(platform);
-        var rootFiles = files(javac, roots);
-        var poolFiles = new ArrayList<JavacSourceFile>();
-        var names = new HashSet<String>();
-        for (var root : rootFiles) names.addAll(root.topLevelNames());
-        var offered = new ArrayList<>(pool);
+        var offered = new ArrayList<Unit>(roots);
+        offered.addAll(pool);
         for (String text : bundled.texts().values()) offered.add(Unit.of(text));
-        for (var file : files(javac, offered)) {
-            // Precedence over every top-level declaration (D8): a pool unit that declares a name a root, or an
-            // earlier pool unit, declares is left out whole, so javac never sees a name twice.
-            if (file.topLevelNames().stream().noneMatch(names::contains)) {
-                names.addAll(file.topLevelNames());
-                poolFiles.add(file);
-            }
+        var all = files(javac, offered);
+        var rootFiles = all.subList(0, roots.size());
+        // A pool unit with a root's text, or an earlier pool unit's, is that unit (a host may offer it twice).
+        var texts = new HashSet<String>();
+        for (var root : rootFiles) texts.add(JavacPlatform.identity(root.text()));
+        var poolFiles = new ArrayList<JavacSourceFile>();
+        for (var file : all.subList(roots.size(), all.size())) {
+            if (texts.add(JavacPlatform.identity(file.text()))) poolFiles.add(file);
         }
+        var precedence = Precedence.of(rootFiles, poolFiles);
 
         if (checkOwnership) {
             var owned = Ownership.check(platform, bundled, rootFiles, poolFiles);
             if (!owned.isEmpty()) return JavacResult.rejected(owned, platform);
         }
 
-        var fileManager = new EmbeddedFileManager(platform, poolFiles, opened);
+        var fileManager = new EmbeddedFileManager(platform, precedence.listed(), opened);
         var collector = new DiagnosticCollector<JavaFileObject>();
         var task = (JavacTask) javac.getTask(null, fileManager, collector, OPTIONS, null, rootFiles);
         task.setLocale(Locale.ENGLISH);
@@ -173,6 +198,7 @@ public final class JavacFrontend {
                             Trees.instance(task).getSourcePositions()));
             diagnostics.add(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context));
         }
+        diagnostics.addAll(precedence.conflicts(parsed.keySet(), diagnostics));
         return diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
     }
 
@@ -225,13 +251,19 @@ public final class JavacFrontend {
         }
     }
 
+    /** The units' file objects, each with a URI of its own (a repeated name gets a distinct URI authority). */
     private List<JavacSourceFile> files(JavaCompiler javac, List<Unit> units) {
         var infos = JavacUnits.infos(javac, platform, units.stream().map(Unit::text).toList());
         var files = new ArrayList<JavacSourceFile>(units.size());
+        var uris = new HashSet<URI>();
         for (int i = 0; i < units.size(); i++) {
             Unit unit = units.get(i);
-            files.add(unit.path() == null ? JavacSourceFile.ofText(unit.text(), infos.get(i))
-                    : JavacSourceFile.ofPath(unit.path(), unit.text(), infos.get(i)));
+            JavacSourceFile file = unit.path() == null ? JavacSourceFile.ofText(unit.text(), infos.get(i), 0)
+                    : JavacSourceFile.ofPath(unit.path(), unit.text(), infos.get(i));
+            for (int copy = 1; !uris.add(file.toUri()); copy++) {
+                file = JavacSourceFile.ofText(unit.text(), infos.get(i), copy);
+            }
+            files.add(file);
         }
         return files;
     }
@@ -310,6 +342,9 @@ public final class JavacFrontend {
                     }
                     texts.put(fqcn, text);
                 }
+            }
+            if (digests.isEmpty() && loader.getResource(STDLIB_MARKER) != null) {
+                throw new BrokenJulcBuildException("julc-stdlib's " + RESOURCE + " lists no bundled source");
             }
             return new BundledSources(digests, texts);
         }

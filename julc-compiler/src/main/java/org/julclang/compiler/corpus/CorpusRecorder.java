@@ -184,11 +184,21 @@ public final class CorpusRecorder {
 
     /**
      * The stored form of {@code text}: its UTF-8 bytes, or, for a text UTF-8 cannot encode (an unpaired surrogate,
-     * which JuLC's tests compile to check its rejection), a marker followed by its UTF-16 code units, big-endian,
-     * so that every source is stored without loss.
+     * which JuLC's tests compile to check its rejection) or whose UTF-8 starts with the marker, a marker followed by
+     * its UTF-16 code units, big-endian, so that every source is stored without loss and distinct texts have
+     * distinct stored forms.
      */
     public static byte[] bytes(String text) {
-        if (StandardCharsets.UTF_8.newEncoder().canEncode(text)) return text.getBytes(StandardCharsets.UTF_8);
+        if (StandardCharsets.UTF_8.newEncoder().canEncode(text)) {
+            byte[] utf8 = text.getBytes(StandardCharsets.UTF_8);
+            // A text whose UTF-8 starts with the marker is stored in the marker form too, so that no UTF-8 text can
+            // equal another text's marker form: the stored form, and so its digest, identify the text (ADR-068
+            // M1a F512). Source texts never start with the marker, so no recorded M0 digest changes.
+            if (utf8.length < UTF16_MARK.length
+                    || !Arrays.equals(utf8, 0, UTF16_MARK.length, UTF16_MARK, 0, UTF16_MARK.length)) {
+                return utf8;
+            }
+        }
         var out = new byte[UTF16_MARK.length + 2 * text.length()];
         System.arraycopy(UTF16_MARK, 0, out, 0, UTF16_MARK.length);
         for (int i = 0; i < text.length(); i++) {

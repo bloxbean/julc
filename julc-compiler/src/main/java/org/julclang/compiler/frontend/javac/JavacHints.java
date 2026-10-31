@@ -31,11 +31,12 @@ final class JavacHints {
             + "\\s+([\\w.$]+)");
     private static final Pattern LOCATION_PACKAGE = Pattern.compile("location:\\s+package\\s+([\\w.]+)");
 
-    /** JuLC's replacements for the JDK collection types users reach for first. */
+    /** JuLC's replacements for the JDK collection types users reach for first: all are in {@code java.util}. */
     private static final Map<String, String> REPLACEMENTS = Map.ofEntries(
             Map.entry("ArrayList", "JulcList"), Map.entry("LinkedList", "JulcList"), Map.entry("Vector", "JulcList"),
             Map.entry("HashMap", "JulcMap"), Map.entry("TreeMap", "JulcMap"), Map.entry("LinkedHashMap", "JulcMap"),
             Map.entry("Hashtable", "JulcMap"));
+    private static final String REPLACEMENTS_PACKAGE = "java.util";
 
     private JavacHints() {
     }
@@ -133,10 +134,15 @@ final class JavacHints {
                     : ": JuLC compiles against a fixed subset of java.base (ADR-068 D3)");
         }
         if (kind.equals("class") && !context.jdkWildcardImports().isEmpty()) {
-            return name + " is not available on-chain" + (replacement != null ? "; use " + replacement : "")
-                    + ": JuLC compiles against a fixed subset of java.base (ADR-068 D3), so "
+            // Only a name known to be a JDK type gets the categorical hint; any other name may as well be a missing
+            // project source or import (F513).
+            if (replacement != null && context.jdkWildcardImports().contains(REPLACEMENTS_PACKAGE)) {
+                return REPLACEMENTS_PACKAGE + "." + name + " is not available on-chain; use " + replacement;
+            }
+            return "If " + name + " is a JDK type (from "
                     + String.join(", ", context.jdkWildcardImports().stream().map(p -> "import " + p + ".*").toList())
-                    + " does not provide it";
+                    + "), it is not available on-chain: JuLC compiles against a fixed subset of java.base (ADR-068"
+                    + " D3); otherwise check the import or the source that declares it";
         }
         return null;
     }
