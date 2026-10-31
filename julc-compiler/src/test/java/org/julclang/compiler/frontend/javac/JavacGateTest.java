@@ -86,13 +86,13 @@ class JavacGateTest {
     }
 
     @Test
-    void modeComesFromOptionsThenThePropertyThenReport() {
+    void modeComesFromOptionsThenThePropertyThenEnforce() {
         String saved = System.getProperty(JavacGate.MODE_PROPERTY);
         try {
             System.clearProperty(JavacGate.MODE_PROPERTY);
-            assertEquals(JavacGateMode.REPORT, JavacGate.mode(new CompilerOptions()));
-            System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
-            assertEquals(JavacGateMode.ENFORCE, JavacGate.mode(null));
+            assertEquals(JavacGateMode.ENFORCE, JavacGate.mode(new CompilerOptions()));
+            System.setProperty(JavacGate.MODE_PROPERTY, "report");
+            assertEquals(JavacGateMode.REPORT, JavacGate.mode(null));
             assertEquals(JavacGateMode.OFF, JavacGate.mode(new CompilerOptions().setJavacGate(JavacGateMode.OFF)));
             System.setProperty(JavacGate.MODE_PROPERTY, "sometimes");
             assertThrows(IllegalArgumentException.class, () -> JavacGate.mode(null));

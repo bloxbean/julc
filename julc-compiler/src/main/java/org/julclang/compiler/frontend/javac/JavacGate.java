@@ -23,8 +23,8 @@ import java.util.Map;
  * alters what the JavaParser frontend compiles or produces.
  * <p>
  * The mode comes from {@link CompilerOptions#getJavacGate()}, else the system property {@value #MODE_PROPERTY}
- * ({@code off}, {@code report} or {@code enforce}), else {@link JavacGateMode#REPORT} (until M1's dialect rewrite
- * lands). {@code report} never fails a compilation: a would-be rejection is written under the directory the system
+ * ({@code off}, {@code report} or {@code enforce}), else {@link JavacGateMode#ENFORCE} (M1b rewrote every in-repo
+ * source to Java, D6). {@code report} never fails a compilation: a would-be rejection is written under the directory the system
  * property {@value #REPORT_PROPERTY} names, if it names one ({@link JavacGateReport}).
  * <p>
  * Results are cached by the digest of the inputs within the frontend's immutable environment (see {@link #cached}),
@@ -42,7 +42,7 @@ public final class JavacGate {
     public static JavacGateMode mode(CompilerOptions options) {
         if (options != null && options.getJavacGate() != null) return options.getJavacGate();
         String value = System.getProperty(MODE_PROPERTY);
-        if (value == null || value.isBlank()) return JavacGateMode.REPORT;
+        if (value == null || value.isBlank()) return JavacGateMode.ENFORCE;
         try {
             return JavacGateMode.valueOf(value.strip().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {

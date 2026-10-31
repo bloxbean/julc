@@ -122,6 +122,11 @@ final class JavacHints {
         String kind = symbol.group(1);
         String name = symbol.group(2);
         if (context.inAnnotation(position)) {
+            // JuLC's legacy validator annotations, removed before ADR-068: name their replacement.
+            if (name.equals("Validator")) return "@Validator is no longer supported. Use @SpendingValidator instead.";
+            if (name.equals("MintingPolicy")) {
+                return "@MintingPolicy is no longer supported. Use @MintingValidator instead.";
+            }
             return "Annotation @" + name + " is not available to JuLC: a validator may use java.lang's annotations"
                     + " and those of JuLC's on-chain API (org.julclang.stdlib.annotation,"
                     + " org.julclang.verification.annotation) (ADR-068 I10)";
