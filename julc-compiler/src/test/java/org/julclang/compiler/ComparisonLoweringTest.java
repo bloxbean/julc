@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
@@ -104,13 +105,16 @@ class ComparisonLoweringTest {
         }
     }
 
-    /** JuLC's BigInteger operator dialect (rejected by javac, so outside the harness) evaluates left to right too (#295). */
+    /**
+     * JuLC's BigInteger operator dialect (rejected by javac, so outside the harness) evaluates left to right too
+     * (#295). D6 puts this rule in the JavaParser frontend, which the gate-off path still reaches until M5.
+     */
     @Test
     void dialectRelationalOperatorsTraceInSourceOrder() {
         for (String op : List.of("<", "<=", ">", ">=")) {
             for (var level : OptimizationLevel.values()) {
                 var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                        new CompilerOptions().setOptimizationLevel(level))
+                        new CompilerOptions().setOptimizationLevel(level).setJavacGate(JavacGateMode.OFF))
                         .compileMethod(source("return t(\"X\", a) " + op + " t(\"Y\", b);"), "m").program();
                 var vm = CompilerTestVm.pv11("Java");
                 var result = vm.evaluateWithArgs(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(),

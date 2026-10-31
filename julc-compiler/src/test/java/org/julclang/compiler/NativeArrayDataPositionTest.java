@@ -161,7 +161,7 @@ class NativeArrayDataPositionTest {
     void boundaryInputs() {
         rejected("Parameter 'arr' of the compiled method", 12, 25, "", "BigInteger m(JulcArray<BigInteger> arr)",
                 "return BigInteger.valueOf(arr.length());");
-        rejected("@Param field 'limits'", 11, 12, "    @Param JulcArray<BigInteger> limits;", SIG,
+        rejected("@Param field 'limits'", 11, 19, "    @Param static JulcArray<BigInteger> limits;", SIG,
                 "return BigInteger.valueOf(limits.length());");
     }
 
