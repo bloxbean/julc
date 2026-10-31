@@ -63,6 +63,10 @@ Nice-to-have additions, not part of the migration. Pick these up once M6 is done
 | `JulcList.foldl` | A real instance method beside `map`: `<A> A foldl(BiFunction<A, T, A> fn, A initial)` | D6 removed the undeclared `ListsLib.foldl`. Needs `BiFunction` in the platform blob (only `Function`, `Predicate` and `Supplier` are there, so the digest changes and the native and Web Image hosts are rebuilt), a JVM implementation, `TypeMethodRegistry` dispatch over the existing on-chain code, and JVM/UPLC agreement tests. Additive |
 | `JulcList.zip` | The same, for `zip` | Decide its result type first, probably `JulcList<Tuple2<A, B>>` |
 
+Vavr (https://vavr.io/) is the inspiration for these additions to `JulcList` and `JulcMap`, for naming and API shape. Vavr
+itself is not supported on-chain: `Try` cannot work, because a UPLC failure stops the whole evaluation, and its other types
+would duplicate `JulcList`, `JulcMap` and `Optional`. Each addition needs JVM and UPLC agreement tests.
+
 ## Closed here
 
 Entries move here, with the commit that resolves them, once they are fixed.
