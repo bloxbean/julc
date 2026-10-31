@@ -65,9 +65,29 @@ public final class JavacFrontend {
     private static final int CACHE_LIMIT = 512;
 
     /** A source given to javac: its text and, for the path entry points, its file. */
-    public record Unit(String text, Path path) {
+    /**
+     * Where a pool unit comes from (D8: roots, then same-project sources, then JAR sources). A host that merges a
+     * class-path pool with project sources tags the JAR ones; every other unit is a project unit, so untagged units
+     * are of equal standing.
+     */
+    public enum Origin { PROJECT, JAR }
+
+    /** A source given to javac: its text, for the path entry points its file, and its origin. */
+    public record Unit(String text, Path path, Origin origin) {
+        public Unit {
+            origin = origin == null ? Origin.PROJECT : origin;
+        }
+
+        public Unit(String text, Path path) {
+            this(text, path, Origin.PROJECT);
+        }
+
         public static Unit of(String text) {
             return new Unit(text, null);
+        }
+
+        public static Unit jar(String text) {
+            return new Unit(text, null, Origin.JAR);
         }
     }
 
@@ -128,9 +148,10 @@ public final class JavacFrontend {
     /**
      * Analyzes {@code roots} with {@code pool}, then the bundled sources, on the source path (D8): javac attributes
      * the roots and the pool units they reference, through any of their top-level declarations. Precedence selects
-     * whole units ({@link Precedence}): a root's names shadow the pool units that also declare them, and a compilation
-     * that needs another declaration of a shadowed unit is rejected naming both; two pool units declaring one name
-     * are rejected before javac runs.
+     * whole units ({@link Precedence}): roots, then project units, then JAR units; a shadowed unit is not read, and
+     * if javac then rejects, a note names it and the declaration that takes precedence; two units of equal standing
+     * declaring one name are rejected before javac runs. The result says which pool units were left out
+     * ({@link JavacResult#effective}).
      */
     public JavacResult analyze(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true, null);
@@ -156,17 +177,29 @@ public final class JavacFrontend {
         if (roots.isEmpty()) return JavacResult.accepted(platform);
         var offered = new ArrayList<Unit>(roots);
         offered.addAll(pool);
-        for (String text : bundled.texts().values()) offered.add(Unit.of(text));
+        for (String text : bundled.texts().values()) offered.add(Unit.jar(text));
         var all = files(javac, offered);
         var rootFiles = all.subList(0, roots.size());
-        // A pool unit with a root's text, or an earlier pool unit's, is that unit (a host may offer it twice).
+        // A pool unit with a root's text, or an earlier pool unit's, is that unit (a host may offer it twice); it is
+        // a project unit if any of its offers is.
         var texts = new HashSet<String>();
         for (var root : rootFiles) texts.add(JavacPlatform.identity(root.text()));
         var poolFiles = new ArrayList<JavacSourceFile>();
-        for (var file : all.subList(roots.size(), all.size())) {
-            if (texts.add(JavacPlatform.identity(file.text()))) poolFiles.add(file);
+        var origins = new ArrayList<Origin>();
+        var positions = new HashMap<String, Integer>();
+        for (int i = roots.size(); i < all.size(); i++) {
+            var file = all.get(i);
+            String identity = JavacPlatform.identity(file.text());
+            Origin origin = offered.get(i).origin();
+            if (texts.add(identity)) {
+                positions.put(identity, poolFiles.size());
+                poolFiles.add(file);
+                origins.add(origin);
+            } else if (origin == Origin.PROJECT && positions.containsKey(identity)) {
+                origins.set(positions.get(identity), Origin.PROJECT);
+            }
         }
-        var precedence = Precedence.of(rootFiles, poolFiles);
+        var precedence = Precedence.of(rootFiles, poolFiles, origins);
 
         if (checkOwnership) {
             var owned = Ownership.check(platform, bundled, rootFiles, poolFiles);
@@ -205,10 +238,12 @@ public final class JavacFrontend {
             var context = uri == null || !parsed.containsKey(uri) ? JavacHints.UnitContext.NONE
                     : contexts.computeIfAbsent(uri, u -> JavacHints.UnitContext.of(parsed.get(u),
                             Trees.instance(task).getSourcePositions()));
-            diagnostics.add(precedence.explain(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context),
-                    context));
+            diagnostics.add(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context));
         }
-        return diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
+        // javac's diagnostics stay as they are; a shadowed unit javac did not read is named in a note (D8).
+        if (!diagnostics.isEmpty()) diagnostics.addAll(precedence.notes());
+        var result = diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
+        return result.withDropped(precedence.droppedIdentities());
     }
 
     /**

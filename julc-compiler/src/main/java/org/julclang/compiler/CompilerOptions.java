@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.vm.OptimizationCostProfile;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -24,6 +25,7 @@ public class CompilerOptions {
     private final Set<String> disabledOptimizationRules = new LinkedHashSet<>();
     private Consumer<String> logger = System.out::println;
     private JavacGateMode javacGate;
+    private Set<String> jarLibrarySources = Set.of();
 
     /**
      * Select the ledger target for this compilation.
@@ -126,6 +128,22 @@ public class CompilerOptions {
     /** The javac gate's mode, or {@code null} to use the system property. */
     public JavacGateMode getJavacGate() {
         return javacGate;
+    }
+
+    /**
+     * Experimental (ADR-068 M1, D8): the library sources of this compilation that came from JARs, by text. The javac
+     * gate ranks them below same-project sources (a JAR unit declaring a project unit's name is shadowed); every other
+     * library source is a project source. In {@code enforce} mode the JavaParser frontend compiles the same effective
+     * pool; in {@code report} and {@code off} modes it compiles the libraries as given.
+     */
+    public CompilerOptions setJarLibrarySources(Collection<String> texts) {
+        this.jarLibrarySources = Set.copyOf(texts);
+        return this;
+    }
+
+    /** The library sources marked as JAR sources ({@link #setJarLibrarySources}). */
+    public Set<String> getJarLibrarySources() {
+        return jarLibrarySources;
     }
 
     public CompilerOptions setLogger(Consumer<String> logger) {

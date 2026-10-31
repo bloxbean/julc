@@ -11,10 +11,12 @@ import org.julclang.stdlib.StdlibRegistry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Auto-discovers validator source files and their library dependencies
@@ -79,11 +81,13 @@ public final class SourceDiscovery {
         }
 
         // Build library pool and resolve dependencies
-        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot);
+        var jarTexts = new HashSet<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         // Compile with stdlib
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setJarLibrarySources(jarTexts));
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -134,10 +138,11 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read validator source: " + sourceFile, e);
         }
 
-        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot);
+        var jarTexts = new HashSet<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -152,7 +157,8 @@ public final class SourceDiscovery {
      * Build the available library pool from same-project sources (Tier 1)
      * and classpath META-INF/plutus-sources/ (Tier 2).
      */
-    private static Map<String, LibrarySource> buildLibraryPool(String validatorSource, Path sourceRoot) {
+    private static Map<String, LibrarySource> buildLibraryPool(String validatorSource, Path sourceRoot,
+                                                               Set<String> jarTexts) {
         var pool = new LinkedHashMap<String, LibrarySource>();
 
         // Tier 2: Classpath sources (added first, lower precedence)
@@ -194,8 +200,9 @@ public final class SourceDiscovery {
         //  same-project sources for transitive deps too)
         addTransitiveSameProjectSources(pool, sourceRoot);
 
-        // Same-project wins over JAR over every declared name, not only primary names (ADR-068 D8).
-        return LibrarySourceResolver.withProjectPrecedence(pool, classpath);
+        // The class path's sources are JAR sources: the javac gate ranks them below this project's (ADR-068 D8).
+        jarTexts.addAll(LibrarySourceResolver.jarSourceTexts(pool, classpath));
+        return pool;
     }
 
     // --- Method compilation ---
@@ -230,10 +237,12 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read source: " + sourceFile, e);
         }
 
-        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot);
+        var jarTexts = new HashSet<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setJarLibrarySources(jarTexts));
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {
@@ -274,10 +283,12 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read source for " + fqcn + ": " + sourceFile, e);
         }
 
-        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot);
+        var jarTexts = new HashSet<String>();
+        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot, jarTexts);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setJarLibrarySources(jarTexts));
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {

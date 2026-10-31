@@ -224,6 +224,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             if (sourceMapEnabled) {
                 options.setSourceMapEnabled(true);
             }
+            // The class path's sources are JAR sources: the javac gate ranks them below this project's (ADR-068 D8).
+            options.setJarLibrarySources(LibrarySourceResolver.jarSourceTexts(libraryPool(), classpathLibraries));
             var compiler = new JulcCompiler(stdlib, options);
             var contractResult = blueprintEnabled
                     ? compiler.compileContract(source, librarySources)
@@ -324,19 +326,22 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
     }
 
+    /** Same-project and class-path libraries, merged by primary name (same-project takes precedence). */
+    private Map<String, LibrarySource> libraryPool() {
+        var pool = new LinkedHashMap<>(classpathLibraries);
+        pool.putAll(sameProjectLibraries);
+        return pool;
+    }
+
     /**
      * Resolve library sources needed by the given validator source.
      * Uses import statements and same-package references to find matching
      * {@code @OnchainLibrary} classes, then recursively resolves transitive imports.
      */
     private List<String> resolveLibrarySources(String validatorSource) {
-        // Merge same-project + classpath into one pool (same-project takes precedence)
-        var pool = new LinkedHashMap<>(classpathLibraries);
-        pool.putAll(sameProjectLibraries);
+        var pool = libraryPool();
 
-        // Same-project wins over JAR over every declared name, not only primary names (ADR-068 D8).
-        return LibrarySourceResolver.resolve(validatorSource,
-                LibrarySourceResolver.withProjectPrecedence(pool, classpathLibraries));
+        return LibrarySourceResolver.resolve(validatorSource, pool);
     }
 
     /**

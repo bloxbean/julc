@@ -1,10 +1,6 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.DiagnosticCollector;
-import org.julclang.compiler.frontend.javac.JavacFrontend;
-import org.julclang.compiler.frontend.javac.JavacGate;
-import org.julclang.compiler.frontend.javac.JavacGateMode;
-import org.julclang.compiler.frontend.javac.LibraryOrigins;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
@@ -194,46 +190,17 @@ public final class LibrarySourceResolver {
     }
 
     /**
-     * ADR-068 D8: same-project sources win over JAR sources over every top-level name a unit declares, not only its
-     * primary name. {@code pool} is a host's merged pool (JAR sources, then same-project sources put over them by
-     * primary name). The JAR texts still in it are registered ({@link LibraryOrigins}) for the javac gate, which
-     * applies the merge to the pool it hands javac in every mode. What JuLC itself compiles depends on the mode:
-     * <ul>
-     *   <li>{@code off} and {@code report}: the pool as it is, B0's merge by primary name, so JuLC's output is B0's
-     *       in every case;</li>
-     *   <li>{@code enforce}: every JAR entry that declares a name a same-project entry declares is dropped, so what
-     *       javac accepted is what JuLC compiles (a reference change of D4/I1 for a duplicate-declaration edge case;
-     *       the order of the remaining entries is kept). Without a supported javac the pool is returned as it is,
-     *       and the gate reports the missing javac.</li>
-     * </ul>
+     * The texts of a host's merged pool that are JAR sources (ADR-068 D8): the entries of {@code pool} whose source is
+     * still {@code jarSources}' for that key. A host passes them to {@link CompilerOptions#setJarLibrarySources} so
+     * that the javac gate ranks them below same-project sources; it prunes nothing itself.
      */
-    public static Map<String, LibrarySource> withProjectPrecedence(Map<String, LibrarySource> pool,
-                                                                   Map<String, LibrarySource> jarSources) {
-        JavacGateMode mode = JavacGate.mode(null);
-        if (mode == JavacGateMode.OFF) return pool;
-        var jarKeys = new ArrayList<String>();
-        var projectKeys = new ArrayList<String>();
-        pool.forEach((key, source) -> (jarSources.get(key) == source ? jarKeys : projectKeys).add(key));
-        LibraryOrigins.jar(jarKeys.stream().map(k -> pool.get(k).source()).toList());
-        if (mode != JavacGateMode.ENFORCE || jarKeys.isEmpty() || projectKeys.isEmpty()) return pool;
-        var keys = new ArrayList<>(projectKeys);
-        keys.addAll(jarKeys);
-        Optional<List<List<String>>> names;
-        try {
-            names = JavacFrontend.shared().declaredNames(keys.stream().map(k -> pool.get(k).source()).toList());
-        } catch (LinkageError | RuntimeException e) {
-            return pool;
-        }
-        if (names.isEmpty()) return pool;
-        var projectNames = new HashSet<String>();
-        for (int i = 0; i < projectKeys.size(); i++) projectNames.addAll(names.get().get(i));
-        var result = new LinkedHashMap<>(pool);
-        for (int i = 0; i < jarKeys.size(); i++) {
-            if (names.get().get(projectKeys.size() + i).stream().anyMatch(projectNames::contains)) {
-                result.remove(jarKeys.get(i));
-            }
-        }
-        return result;
+    public static Set<String> jarSourceTexts(Map<String, LibrarySource> pool, Map<String, LibrarySource> jarSources) {
+        var texts = new LinkedHashSet<String>();
+        pool.forEach((key, source) -> {
+            var jar = jarSources.get(key);
+            if (jar != null && jar.source().equals(source.source())) texts.add(source.source());
+        });
+        return texts;
     }
 
     /**

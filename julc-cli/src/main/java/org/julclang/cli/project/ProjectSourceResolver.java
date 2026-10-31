@@ -1,5 +1,6 @@
 package org.julclang.cli.project;
 
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 
@@ -22,13 +23,28 @@ public final class ProjectSourceResolver {
      */
     public static Map<String, LibrarySource> buildPool(Map<String, String> userLibraries) {
         // 1. Classpath stdlib (META-INF/plutus-sources/ from julc-stdlib JAR)
-        var classpath = LibrarySourceResolver.scanClasspathSources(ProjectSourceResolver.class.getClassLoader());
-        var pool = new LinkedHashMap<>(classpath);
+        var pool = new LinkedHashMap<>(classpathSources());
 
-        // 2. User sources override classpath sources, over every declared name (ADR-068 D8)
+        // 2. User sources override classpath sources
         LibrarySourceResolver.librarySourcesFrom(userLibraries).forEach(pool::put);
 
-        return LibrarySourceResolver.withProjectPrecedence(pool, classpath);
+        return pool;
+    }
+
+    private static Map<String, LibrarySource> classpathSources() {
+        return LibrarySourceResolver.scanClasspathSources(ProjectSourceResolver.class.getClassLoader());
+    }
+
+    /**
+     * Compiler options for a pool built by {@link #buildPool}: its class-path sources are JAR sources, which the javac
+     * gate ranks below the project's (ADR-068 D8).
+     */
+    public static CompilerOptions options(CompilerOptions options, Map<String, ?> pool) {
+        var sources = new LinkedHashMap<String, LibrarySource>();
+        pool.forEach((key, value) -> {
+            if (value instanceof LibrarySource source) sources.put(key, source);
+        });
+        return options.setJarLibrarySources(LibrarySourceResolver.jarSourceTexts(sources, classpathSources()));
     }
 
     /**

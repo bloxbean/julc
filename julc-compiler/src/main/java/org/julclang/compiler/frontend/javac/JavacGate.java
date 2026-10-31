@@ -167,8 +167,8 @@ public final class JavacGate {
 
     /**
      * The digest of an unambiguous encoding of the inputs: the number of groups, then per group its number of units,
-     * then per unit a tag for whether it has a path, the length-prefixed UTF-16 code units of the path, and those of
-     * the text. No two different inputs share an encoding, so a cached result is always the result of these inputs.
+     * then per unit a tag for whether it has a path, the length-prefixed UTF-16 code units of the path, those of
+     * the text, and its origin. No two different inputs share an encoding, so a cached result is always the result of these inputs.
      */
     static String key(List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
         try {
@@ -183,6 +183,7 @@ public final class JavacGate {
                     out.writeBoolean(path != null);
                     if (path != null) writeChars(out, path.toString());
                     writeChars(out, unit.text());
+                    out.writeByte(unit.origin().ordinal());
                 }
             }
             out.flush();

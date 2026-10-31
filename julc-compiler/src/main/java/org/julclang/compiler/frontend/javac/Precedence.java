@@ -6,92 +6,72 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
+import java.util.Set;
 
 /**
- * ADR-068 D8's precedence, decided before javac runs, over every top-level declaration of every unit. javac reads a
- * compilation unit whole, so precedence selects or drops <em>units</em> by every name each declares ("Whole units",
- * D8 as amended for F520):
+ * ADR-068 D8's precedence, decided before javac runs, over every top-level declaration of every unit: roots first,
+ * then project units, then JAR units ({@link JavacFrontend.Origin}, carried by each unit of the compilation). javac
+ * reads a compilation unit whole, so precedence selects or drops <em>units</em> ("Whole units", D8 as amended for
+ * F520):
  * <ul>
- *   <li><b>Roots over the pool.</b> A pool unit that declares a name a root declares is <em>shadowed</em>: it is left
- *       off javac's source path entirely, so javac never parses or enters it. Its declarations are kept in an index:
- *       where javac then cannot resolve a name that only a shadowed unit declares, that diagnostic becomes D8's
- *       named conflict, citing both declarations and their sources.</li>
- *   <li><b>Same-project sources over JAR sources.</b> A JAR unit ({@link LibraryOrigins}) that declares a name a
- *       same-project pool unit declares is shadowed the same way, by every declared name.</li>
- *   <li><b>Pool units of equal standing.</b> Among the pool units that are not shadowed, two that declare one
- *       qualified name are an error before javac runs, whether or not the name is referenced. The bundled stdlib
- *       sources come last, and a host unit declaring a bundled name is {@code JULC0081} already.</li>
+ *   <li>A pool unit that declares a name a unit of higher precedence declares is <em>shadowed</em>: it is left off
+ *       javac's source path entirely, so javac never parses or enters it. If javac then reports an error, each
+ *       shadowed unit gets a note naming it and the declaration that takes precedence; javac's own diagnostics are
+ *       kept exactly as they are (JuLC does not re-resolve Java names to attribute them).</li>
+ *   <li>Two units of equal standing (both project, or both JAR) that declare one qualified name are an error before
+ *       javac runs, whether or not the name is referenced.</li>
  * </ul>
- * No declaration is silently hidden, and no outcome depends on the pool's order.
+ * The bundled stdlib sources are JAR units after the host's; a host unit declaring a bundled name is {@code JULC0081}
+ * already. The outcome depends only on the compilation's own inputs, never on the pool's order.
  */
 final class Precedence {
 
     static final String KEY = "compiler.err.duplicate.class";
 
-    /**
-     * A declaration of a shadowed unit: the unit, the name by which it is shadowed, and the unit that declares that
-     * name with precedence (a root, or a same-project source over a JAR source).
-     */
-    private record Shadowed(JavacSourceFile unit, String rootName, JavacSourceFile root, boolean byRoot) {
+    /** A shadowed unit, the qualified name it shares with a unit of higher precedence, and that unit. */
+    record Shadowed(JavacSourceFile unit, String name, JavacSourceFile winner) {
     }
 
     private final List<JavacSourceFile> listed;
-    /** Qualified name -> the shadowed unit declaring it (a name declared by no listed unit or root). */
-    private final Map<String, Shadowed> shadowed;
+    private final List<Shadowed> shadowed;
     private final List<JavacDiagnostic> duplicates;
 
-    private Precedence(List<JavacSourceFile> listed, Map<String, Shadowed> shadowed, List<JavacDiagnostic> duplicates) {
+    private Precedence(List<JavacSourceFile> listed, List<Shadowed> shadowed, List<JavacDiagnostic> duplicates) {
         this.listed = listed;
         this.shadowed = shadowed;
         this.duplicates = duplicates;
     }
 
-    static Precedence of(List<JavacSourceFile> roots, List<JavacSourceFile> pool) {
-        var rootDeclarers = new LinkedHashMap<String, JavacSourceFile>();
-        for (var unit : roots) for (String name : unit.topLevelNames()) rootDeclarers.putIfAbsent(name, unit);
-        var shadowedUnits = new LinkedHashMap<JavacSourceFile, String>();   // unit -> the name it is shadowed by
-        var shadowers = new LinkedHashMap<JavacSourceFile, JavacSourceFile>();
-        var afterRoots = new ArrayList<JavacSourceFile>();
-        for (var unit : pool) {
-            String rootName = unit.topLevelNames().stream().filter(rootDeclarers::containsKey).findFirst().orElse(null);
-            if (rootName != null) {
-                shadowedUnits.put(unit, rootName);
-                shadowers.put(unit, rootDeclarers.get(rootName));
-            } else {
-                afterRoots.add(unit);
-            }
-        }
-        // Same-project sources over JAR sources (LibraryOrigins), by every declared name.
-        var projectDeclarers = new LinkedHashMap<String, JavacSourceFile>();
-        for (var unit : afterRoots) {
-            if (!LibraryOrigins.isJar(unit)) for (String name : unit.topLevelNames()) projectDeclarers.putIfAbsent(name, unit);
-        }
+    /** {@code origins} gives each pool unit's origin, by position. */
+    static Precedence of(List<JavacSourceFile> roots, List<JavacSourceFile> pool, List<JavacFrontend.Origin> origins) {
+        var winners = new LinkedHashMap<String, JavacSourceFile>();   // name -> the unit of highest precedence
+        for (var unit : roots) for (String name : unit.topLevelNames()) winners.putIfAbsent(name, unit);
+        var shadowed = new ArrayList<Shadowed>();
         var kept = new ArrayList<JavacSourceFile>();
-        for (var unit : afterRoots) {
-            String projectName = !LibraryOrigins.isJar(unit) ? null
-                    : unit.topLevelNames().stream().filter(projectDeclarers::containsKey).findFirst().orElse(null);
-            if (projectName != null) {
-                shadowedUnits.put(unit, projectName);
-                shadowers.put(unit, projectDeclarers.get(projectName));
-            } else {
-                kept.add(unit);
-            }
-        }
-        var poolDeclarers = new LinkedHashMap<String, List<JavacSourceFile>>();
-        for (var unit : kept) {
-            for (String name : unit.topLevelNames()) poolDeclarers.computeIfAbsent(name, n -> new ArrayList<>()).add(unit);
-        }
         var duplicates = new ArrayList<JavacDiagnostic>();
-        poolDeclarers.forEach((name, units) -> {
-            if (units.size() > 1) {
-                duplicates.add(conflict(name, units.stream().map(JavacSourceFile::displayName).toList(),
-                        units.get(1).displayName(), 1, 1, -1, -1, "two library sources of equal standing declare it"));
+        for (var origin : List.of(JavacFrontend.Origin.PROJECT, JavacFrontend.Origin.JAR)) {
+            var level = new ArrayList<JavacSourceFile>();
+            for (int i = 0; i < pool.size(); i++) {
+                if (origins.get(i) != origin) continue;
+                var unit = pool.get(i);
+                var name = unit.topLevelNames().stream().filter(winners::containsKey).findFirst();
+                if (name.isPresent()) shadowed.add(new Shadowed(unit, name.get(), winners.get(name.get())));
+                else level.add(unit);
             }
-        });
+            // Equal standing: a name two units of this level declare is an error.
+            var declarers = new LinkedHashMap<String, List<JavacSourceFile>>();
+            for (var unit : level) {
+                for (String n : unit.topLevelNames()) declarers.computeIfAbsent(n, k -> new ArrayList<>()).add(unit);
+            }
+            declarers.forEach((n, units) -> {
+                if (units.size() > 1) duplicates.add(duplicate(n, units));
+            });
+            for (var unit : level) for (String n : unit.topLevelNames()) winners.putIfAbsent(n, unit);
+            kept.addAll(level);
+        }
         var listed = new ArrayList<JavacSourceFile>();
-        var taken = new HashSet<>(rootDeclarers.keySet());
+        Set<String> taken = new HashSet<>();
+        for (var unit : roots) taken.addAll(unit.topLevelNames());
         for (var unit : kept) {
             if (unit.topLevelNames().isEmpty()) {
                 listed.add(unit);   // a malformed unit, under its synthetic name; javac reports it if read
@@ -103,25 +83,16 @@ final class Precedence {
                 listed.add(simple.equals(unit.simpleName()) ? unit : unit.listedAs(simple));
             }
         }
-        var shadowed = new LinkedHashMap<String, Shadowed>();
-        var rootSet = new HashSet<>(roots);
-        shadowedUnits.forEach((unit, by) -> {
-            JavacSourceFile shadower = shadowers.get(unit);
-            for (String name : unit.topLevelNames()) {
-                if (!taken.contains(name)) shadowed.putIfAbsent(name, new Shadowed(unit, by, shadower,
-                        rootSet.contains(shadower)));
-            }
-        });
-        return new Precedence(List.copyOf(listed), shadowed, List.copyOf(duplicates));
+        return new Precedence(List.copyOf(listed), List.copyOf(shadowed), List.copyOf(duplicates));
     }
 
-    private static JavacDiagnostic conflict(String name, List<String> declaredBy, String fileName, long line,
-                                            long column, long start, long end, String why) {
-        String message = "duplicate class: " + name + " (declared by " + String.join(" and ", declaredBy) + "; " + why
-                + ")";
+    private static JavacDiagnostic duplicate(String name, List<JavacSourceFile> declarers) {
+        String message = "duplicate class: " + name + " (declared by "
+                + String.join(" and ", declarers.stream().map(JavacSourceFile::displayName).toList())
+                + "; two library sources of equal standing declare it)";
         return JavacDiagnostic.of(DiagnosticCodes.JAVAC_ERROR, KEY, DiagnosticCodes.JAVAC_ERROR.format(message, KEY),
-                fileName, line, column, start, end, "A qualified name may be declared by one source of a compilation"
-                        + " only: rename one of the types, or remove one of the sources (ADR-068 D8)");
+                declarers.get(1).displayName(), 1, 1, -1, -1, "A qualified name may be declared by one source of a"
+                        + " compilation only: rename one of the types, or remove one of the sources (ADR-068 D8)");
     }
 
     /** The source-path entries: a unit per listed name. Shadowed units are not among them. */
@@ -129,51 +100,33 @@ final class Precedence {
         return listed;
     }
 
-    /** Pool units of equal standing declaring one name: rejected before javac runs. */
+    /** The shadowed pool units, which javac does not read. */
+    List<Shadowed> shadowed() {
+        return shadowed;
+    }
+
+    /** Units of equal standing declaring one name: rejected before javac runs. */
     List<JavacDiagnostic> duplicates() {
         return duplicates;
     }
 
-    /**
-     * {@code d} itself, or, when it is javac's failure to resolve a name that only a shadowed unit declares, D8's
-     * named conflict at the same position. The name is resolved to its exact qualified name from the unit's scope,
-     * as Java resolves a simple name: a single-type import, the qualifier javac names, the unit's own package, then
-     * the on-demand imports (one candidate only). Each javac diagnostic is considered once.
-     */
-    JavacDiagnostic explain(JavacDiagnostic d, JavacHints.UnitContext context) {
-        if (shadowed.isEmpty() || d.key() == null) return d;
-        String name = null;
-        if (d.key().startsWith("compiler.err.cant.resolve")) {
-            Matcher symbol = JavacHints.SYMBOL.matcher(d.message());
-            if (!symbol.find() || symbol.group(1).equals("method") || symbol.group(1).equals("package")) return d;
-            Matcher location = JavacHints.LOCATION_PACKAGE.matcher(d.message());
-            name = resolve(symbol.group(2), location.find() ? location.group(1) : null, context);
-        } else if (d.key().startsWith("compiler.err.doesnt.exist")) {
-            Matcher missing = JavacHints.MISSING_PACKAGE.matcher(d.message());
-            if (!missing.find()) return d;
-            String pkg = missing.group(1);
-            name = context.singleImports().stream().filter(i -> i.startsWith(pkg + ".")
-                    && i.lastIndexOf('.') == pkg.length() && shadowed.containsKey(i)).findFirst().orElse(null);
+    /** One note per shadowed unit, naming it and the declaration that takes precedence (added when javac rejects). */
+    List<JavacDiagnostic> notes() {
+        var notes = new ArrayList<JavacDiagnostic>();
+        for (var s : shadowed) {
+            String file = s.unit().displayName();
+            notes.add(new JavacDiagnostic(DiagnosticCodes.JAVAC_ERROR.code(), null, file + " was not read: it declares "
+                    + s.name() + ", also declared by " + s.winner().displayName() + ", which takes precedence (ADR-068"
+                    + " D8). If the program needs another declaration of " + file + ", remove or rename the duplicate.",
+                    file, 0, 0, -1, -1, null));
         }
-        Shadowed declaration = name == null ? null : shadowed.get(name);
-        if (declaration == null) return d;
-        return conflict(declaration.rootName(), List.of(declaration.root().displayName(),
-                        declaration.unit().displayName()), d.fileName(), d.line(), d.column(), d.start(), d.end(),
-                (declaration.byRoot() ? "the root's" : "the project source's") + " declaration shadows "
-                        + declaration.unit().displayName() + ", which javac therefore does not read, and the program"
-                        + " needs its " + name);
+        return notes;
     }
 
-    private String resolve(String simple, String qualifier, JavacHints.UnitContext context) {
-        if (simple.contains(".")) return simple;
-        for (String single : context.singleImports()) {
-            if (single.endsWith("." + simple)) return single;
-        }
-        if (qualifier != null) return qualifier + "." + simple;
-        String own = context.packageName().isEmpty() ? simple : context.packageName() + "." + simple;
-        if (shadowed.containsKey(own)) return own;
-        var onDemand = context.wildcardImports().stream().map(p -> p + "." + simple).filter(shadowed::containsKey)
-                .toList();
-        return onDemand.size() == 1 ? onDemand.getFirst() : own;
+    /** The identities of the shadowed units' texts: what an enforced compilation leaves out of JuLC's pool too. */
+    Set<String> droppedIdentities() {
+        var dropped = new HashSet<String>();
+        for (var s : shadowed) dropped.add(JavacPlatform.identity(s.unit().text()));
+        return dropped;
     }
 }

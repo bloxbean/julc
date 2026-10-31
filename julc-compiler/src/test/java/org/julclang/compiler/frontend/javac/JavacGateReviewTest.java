@@ -4,8 +4,6 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.LibrarySource;
-import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.LibrarySources;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.core.flat.UplcFlatEncoder;
@@ -21,10 +19,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Map;
+import java.util.TreeSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.jar.JarEntry;
@@ -145,7 +142,7 @@ class JavacGateReviewTest {
         assertTrue(result.isAccepted(), result::toString);
     }
 
-    // --- F520/F533 (D8 "Whole units"): a shadowed unit is not read; needing another of its declarations is rejected ---
+    // --- F520/F533 (D8 "Whole units"): a shadowed unit is not read; a note names it when javac rejects ---
 
     /** {@code Helper} and the root's {@code Shared}; the body is invalid, so reading the unit would show. */
     static final String HELPER_AND_SHARED = """
@@ -154,9 +151,9 @@ class JavacGateReviewTest {
             class Shared {}
             """;
 
-    static JavacResult analyzeRecording(List<String> roots, List<String> pool, List<TaskEvent> events) {
-        return JavacFrontend.shared().analyze(roots.stream().map(JavacFrontend.Unit::of).toList(),
-                pool.stream().map(JavacFrontend.Unit::of).toList(), events::add);
+    static JavacResult analyzeRecording(List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool,
+                                        List<TaskEvent> events) {
+        return JavacFrontend.shared().analyze(roots, pool, events::add);
     }
 
     static boolean read(List<TaskEvent> events, String fileName) {
@@ -165,93 +162,74 @@ class JavacGateReviewTest {
                 && (e.getKind() == TaskEvent.Kind.PARSE || e.getKind() == TaskEvent.Kind.ENTER));
     }
 
+    static List<JavacDiagnostic> javacs(JavacResult result) {
+        return result.diagnostics().stream().filter(d -> d.key() != null).toList();
+    }
+
+    static List<String> notes(JavacResult result) {
+        return result.diagnostics().stream().filter(d -> d.key() == null).map(JavacDiagnostic::message).toList();
+    }
+
     @Test
-    void aShadowedUnitIsNeverReadAndNeedingItIsRejectedNamingBoth() {
+    void aShadowedUnitIsNeverReadAndJavacsDiagnosticsAreKeptWithANote() {
         var events = new ArrayList<TaskEvent>();
-        var accepted = analyzeRecording(List.of("""
+        var accepted = analyzeRecording(List.of(JavacFrontend.Unit.of("""
                 package app;
                 class Shared {}
                 class Main { Shared s; }
-                """), List.of(HELPER_AND_SHARED), events);
+                """)), List.of(JavacFrontend.Unit.of(HELPER_AND_SHARED)), events);
         assertTrue(accepted.isAccepted(), accepted::toString);
         assertFalse(read(events, "Helper.java"), "a shadowed unit is not parsed or entered");
 
-        events.clear();
-        var rejected = analyzeRecording(List.of("""
+        String usesHelper = """
                 package app;
                 class Shared {}
                 public class Main { int f() { return Helper.one(); } }
-                """), List.of(HELPER_AND_SHARED), events);
+                """;
+        events.clear();
+        var rejected = analyzeRecording(List.of(JavacFrontend.Unit.of(usesHelper)),
+                List.of(JavacFrontend.Unit.of(HELPER_AND_SHARED)), events);
         assertFalse(read(events, "Helper.java"), "a shadowed unit is not parsed or entered");
-        assertEquals(1, rejected.diagnostics().size(), rejected.toString());
-        var d = rejected.diagnostics().getFirst();
-        assertEquals("JULC0085", d.code());
-        assertEquals("compiler.err.duplicate.class", d.key());
-        assertEquals("duplicate class: app.Shared (declared by Main.java and Helper.java; the root's declaration"
-                + " shadows Helper.java, which javac therefore does not read, and the program needs its app.Helper)"
-                + " (compiler.err.duplicate.class)", d.message());
-        assertEquals("Main.java", d.fileName());
-        assertEquals(3, d.line());
-
+        // javac's diagnostics are exactly those of the program without the shadowed unit.
+        assertEquals(analyze(usesHelper).diagnostics(), javacs(rejected));
+        assertEquals("compiler.err.cant.resolve.location", javacs(rejected).getFirst().key());
+        assertEquals(List.of("Helper.java was not read: it declares app.Shared, also declared by Main.java, which takes"
+                + " precedence (ADR-068 D8). If the program needs another declaration of Helper.java, remove or"
+                + " rename the duplicate."), notes(rejected));
+        assertEquals("JULC0085", rejected.diagnostics().getLast().code());
     }
 
     @Test
-    void aShadowedUnitReachedByImportIsNamedExactly() {
-        var shadowed = JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of("""
-                package app;
-                import lib.Helper;
-                class Main { int f() { return Helper.one(); } }
-                """), JavacFrontend.Unit.of("""
-                package lib;
-                public class Clash {}
-                """)), List.of(JavacFrontend.Unit.of("""
-                package lib;
-                public class Helper { public static int one() { return 1; } }
-                class Clash {}
-                """)));
-        assertFalse(shadowed.diagnostics().isEmpty(), shadowed::toString);
-        assertTrue(shadowed.diagnostics().stream().allMatch(x -> x.message().startsWith(
-                "duplicate class: lib.Clash (declared by Clash.java and Helper.java;")), shadowed.toString());
-    }
-
-    // --- F532: conflicts are attached to exact qualified names, once each ---
-
-    @Test
-    void conflictsInTwoPackagesAreNamedExactlyInEitherPoolOrder() {
-        String defaultRoot = """
+    void notesNameEachShadowedUnitInEitherPoolOrder() {
+        var roots = List.of(JavacFrontend.Unit.of("""
                 class Shared {}
                 class UseHelper { int f() { return Helper.one(); } }
-                """;
-        String appRoot = """
+                """), JavacFrontend.Unit.of("""
                 package app;
                 class Shared {}
                 class UseOther { int f() { return Other.two(); } }
-                """;
-        String defaultPool = """
+                """));
+        var defaultPool = JavacFrontend.Unit.of("""
                 public class Helper { static int one() { return 1; } }
                 class Shared {}
-                """;
-        String appPool = """
+                """);
+        var appPool = JavacFrontend.Unit.of("""
                 package app;
                 public class Other { static int two() { return 2; } }
                 class Shared {}
-                """;
-        var outcomes = new ArrayList<List<String>>();
-        for (var pool : List.of(List.of(defaultPool, appPool), List.of(appPool, defaultPool))) {
-            var result = JavacFrontend.shared().analyze(
-                    List.of(JavacFrontend.Unit.of(defaultRoot), JavacFrontend.Unit.of(appRoot)),
-                    pool.stream().map(JavacFrontend.Unit::of).toList());
-            outcomes.add(result.diagnostics().stream().map(JavacDiagnostic::message).sorted().toList());
-        }
-        assertEquals(outcomes.get(0), outcomes.get(1));
-        assertEquals(2, outcomes.get(0).size(), outcomes.toString());
-        assertTrue(outcomes.get(0).get(0).startsWith("duplicate class: Shared (declared by Shared.java and Helper.java;")
-                && outcomes.get(0).get(0).contains("needs its Helper)"), outcomes.toString());
-        assertTrue(outcomes.get(0).get(1).startsWith("duplicate class: app.Shared (declared by Shared.java and"
-                + " Other.java;") && outcomes.get(0).get(1).contains("needs its app.Other)"), outcomes.toString());
+                """);
+        var first = JavacFrontend.shared().analyze(roots, List.of(defaultPool, appPool));
+        var second = JavacFrontend.shared().analyze(roots, List.of(appPool, defaultPool));
+        assertEquals(javacs(first), javacs(second));
+        assertEquals(new TreeSet<>(notes(first)), new TreeSet<>(notes(second)));
+        assertEquals(2, notes(first).size(), first.toString());
+        assertTrue(notes(first).stream().anyMatch(n -> n.startsWith("Helper.java was not read: it declares Shared,"
+                + " also declared by Shared.java")), notes(first).toString());
+        assertTrue(notes(first).stream().anyMatch(n -> n.startsWith("Other.java was not read: it declares app.Shared,"
+                + " also declared by Shared.java")), notes(first).toString());
     }
 
-    // --- F531: same-project wins over JAR over every declared name; JuLC keeps B0's pool unless enforced ---
+    // --- F531/F541: origin is the compilation's own input; JuLC keeps B0's pool unless enforced ---
 
     static final String CURRENT = """
             package com.example;
@@ -273,22 +251,13 @@ class JavacGateReviewTest {
             import java.math.BigInteger;
             class M { static BigInteger f() { return Current.one().add(Shared.two()); } }
             """;
+    /** A host's pool: the JAR's Shared, the project's Current (with a secondary Shared); B0's merge. */
+    static final List<String> HOST_POOL = List.of(JAR_SHARED, CURRENT);
 
-    /** A host's merge: the JAR pool, then the project's sources over it by primary name (B0). */
-    static Map<String, LibrarySource>[] hostPools() {
-        var jar = new LinkedHashMap<String, LibrarySource>();
-        jar.put("com.example.Shared", LibrarySourceResolver.librarySource(JAR_SHARED));
-        var pool = new LinkedHashMap<>(jar);
-        pool.put("com.example.Current", LibrarySourceResolver.librarySource(CURRENT));
-        @SuppressWarnings("unchecked")
-        Map<String, LibrarySource>[] pools = new Map[]{pool, jar};
-        return pools;
-    }
-
-    static String outcome(JavacGateMode mode, List<String> libraries) {
+    static String outcome(CompilerOptions options) {
         try {
-            var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setJavacGate(mode))
-                    .compileMethod(USES_BOTH, "f", libraries);
+            var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setLogger(m -> { }))
+                    .compileMethod(USES_BOTH, "f", HOST_POOL);
             return result.hasErrors() ? "errors " + result.diagnostics()
                     : HexFormat.of().formatHex(UplcFlatEncoder.encodeProgram(result.program()));
         } catch (RuntimeException e) {
@@ -296,47 +265,75 @@ class JavacGateReviewTest {
         }
     }
 
+    static CompilerOptions tagged(JavacGateMode mode) {
+        return new CompilerOptions().setJavacGate(mode).setJarLibrarySources(List.of(JAR_SHARED));
+    }
+
     @Test
-    void reportModeKeepsB0sPoolForJulcWhileTheGateUsesTheMergedPool() {
-        var pools = hostPools();
-        var b0 = LibrarySourceResolver.resolve(USES_BOTH, pools[0]);
-        assertEquals(2, b0.size(), b0.toString());
-        // Report: JuLC gets B0's pool, unchanged, and compiles exactly as with the gate off.
-        var reportPool = withProperty(JavacGate.MODE_PROPERTY, "report",
-                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1]));
-        assertEquals(pools[0], reportPool);
-        assertEquals(outcome(JavacGateMode.OFF, b0), outcome(JavacGateMode.REPORT, b0));
-        // ... while the gate decides on the merged pool: the JAR Shared is shadowed by the project's.
-        var enforcePool = withProperty(JavacGate.MODE_PROPERTY, "enforce",
-                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1]));
-        assertEquals(List.of("com.example.Current"), List.copyOf(enforcePool.keySet()));
-        var merged = LibrarySourceResolver.resolve(USES_BOTH, enforcePool);
+    void theGateDecidesOnTheMergedPoolWhileReportModeCompilesB0sPool() {
+        // The gate: the JAR Shared is shadowed by the project's Shared, so javac reads Current only.
         var gate = JavacGate.check("compileMethod", List.of(JavacFrontend.Unit.of(USES_BOTH)),
-                b0.stream().map(JavacFrontend.Unit::of).toList(), REPORT);
+                List.of(JavacFrontend.Unit.jar(JAR_SHARED), JavacFrontend.Unit.of(CURRENT)), REPORT);
         var direct = JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(USES_BOTH)),
-                merged.stream().map(JavacFrontend.Unit::of).toList());
-        assertEquals(direct.diagnostics(), gate.diagnostics());
-        assertFalse(gate.diagnostics().stream().anyMatch(d -> d.message().contains("equal standing")), gate.toString());
-        // The project's Shared has no two(): javac rejects what the merged pool means.
-        assertEquals("compiler.err.cant.resolve.location.args", gate.diagnostics().getFirst().key(), gate.toString());
+                List.of(JavacFrontend.Unit.of(CURRENT)));
+        assertEquals(direct.diagnostics(), javacs(gate));
+        assertEquals(1, notes(gate).size(), gate.toString());
+        assertTrue(notes(gate).getFirst().startsWith("Shared.java was not read: it declares com.example.Shared, also"
+                + " declared by Current.java"), notes(gate).toString());
+        assertEquals(List.of(CURRENT), gate.effective(HOST_POOL, text -> text));
+        // Untagged, the two are of equal standing.
+        var untagged = analyze(USES_BOTH, JAR_SHARED, CURRENT);
+        assertTrue(untagged.diagnostics().getFirst().message().contains("equal standing"), untagged.toString());
+        // JuLC: report mode compiles B0's pool, exactly as with the gate off.
+        assertEquals(outcome(tagged(JavacGateMode.OFF)), outcome(tagged(JavacGateMode.REPORT)));
     }
 
     @Test
-    void enforceModeHandsBothFrontendsTheMergedPool() {
-        var pools = hostPools();
-        var enforcePool = withProperty(JavacGate.MODE_PROPERTY, "enforce",
-                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1]));
-        var merged = LibrarySourceResolver.resolve(USES_BOTH, enforcePool);
-        assertEquals(List.of(CURRENT), merged);
-        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(), ENFORCE)
-                .compileMethod(USES_BOTH, "f", merged));
-        assertEquals("compiler.err.cant.resolve.location.args", e.diagnostics().getFirst().message()
-                .substring(e.diagnostics().getFirst().message().lastIndexOf("(compiler.err.") + 1).replace(")", ""));
-        // With the gate off, B0's merge.
-        assertEquals(pools[0], withProperty(JavacGate.MODE_PROPERTY, "off",
-                () -> LibrarySourceResolver.withProjectPrecedence(pools[0], pools[1])));
+    void enforceModeCompilesTheMergedPoolInBothFrontends() {
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                tagged(JavacGateMode.ENFORCE)).compileMethod(USES_BOTH, "f", HOST_POOL));
+        assertTrue(e.diagnostics().getFirst().message().endsWith("(compiler.err.cant.resolve.location.args)"),
+                e.diagnostics().toString());
     }
 
+    @Test
+    void anExplicitReportOptionWinsOverAGlobalEnforceProperty() {
+        String b0 = outcome(tagged(JavacGateMode.OFF));
+        assertEquals(b0, withProperty(JavacGate.MODE_PROPERTY, "enforce", () -> outcome(tagged(JavacGateMode.REPORT))));
+    }
+
+    // --- F540: provenance belongs to the compilation, not to the process ---
+
+    @Test
+    void anUnrelatedCompilationsTagsNeverChangeAResult() throws Exception {
+        String one = "package leak;\npublic class One {} class Dup {}\n";
+        String two = "package leak;\npublic class Two {} class Dup {}\n";
+        String root = "package leak;\nclass Main {}\n";
+        var before = analyze(root, one, two);
+        assertTrue(before.diagnostics().getFirst().message().contains("equal standing"), before.toString());
+        // Another compilation marks the same text as a JAR source.
+        var other = JavacGate.check("compile", List.of(JavacFrontend.Unit.of(root)),
+                List.of(JavacFrontend.Unit.jar(one), JavacFrontend.Unit.of(two)), REPORT);
+        assertFalse(other.diagnostics().stream().anyMatch(d -> d.message().contains("equal standing")), other.toString());
+        assertEquals(before.diagnostics(), analyze(root, one, two).diagnostics());
+        assertNotEquals(JavacGate.key(List.of(JavacFrontend.Unit.of(root)), List.of(JavacFrontend.Unit.jar(one))),
+                JavacGate.key(List.of(JavacFrontend.Unit.of(root)), List.of(JavacFrontend.Unit.of(one))));
+        // A unit never shadows itself, however analyses interleave.
+        String single = "package solo;\npublic class Only { static int one() { return 1; } } class Also {}\n";
+        String user = "package solo;\nclass Main { int f() { return Only.one(); } }\n";
+        var pool = Executors.newFixedThreadPool(8);
+        try {
+            var futures = new ArrayList<Future<JavacResult>>();
+            for (int i = 0; i < 64; i++) {
+                var origin = i % 2 == 0 ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT;
+                futures.add(pool.submit(() -> JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(user)),
+                        List.of(new JavacFrontend.Unit(single, null, origin)))));
+            }
+            for (var f : futures) assertTrue(f.get().isAccepted(), f.get().toString());
+        } finally {
+            pool.shutdown();
+        }
+    }
 
     // --- F521 (D8): pool units of equal standing declaring one name are an error, referenced or not ---
 
