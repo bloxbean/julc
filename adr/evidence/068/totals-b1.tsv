@@ -1,0 +1,27 @@
+# ADR-068 M0 totals. Generated; do not edit.
+cases	10968
+cases.blaster	7
+cases.c7	6
+cases.diffcase	190
+cases.g0	376
+cases.g1	123
+cases.ledger	39
+cases.recorded	10896
+cases.stdlib	17
+stdlib.sources	16
+g1.tries	150
+g1.cases.also-recorded	123/123
+g0.cases.also-recorded	376/376
+excluded.nondeterministic	org.julclang.compiler.IntegerLiteralTest#generatedLiteralsHaveJavacsValue	300
+ledger.NONE	accepted 9324	rejected 1637	unreplayable 7
+ledger.BASELINE	accepted 9324	rejected 1637	unreplayable 7
+ledger.PV11_SAFE	accepted 9324	rejected 1637	unreplayable 7
+ledger.PV11_COSTED	accepted 9324	rejected 1637	unreplayable 7
+inventory	permanent 1616	scheduled 21
+runs	1862
+runs.verdicts.AGREE	7056
+runs.verdicts.INCONCLUSIVE	8
+runs.verdicts.MISMATCH	184
+runs.verdicts.REJECTED	200
+unreplayable	custom stdlib lookup org.julclang.compiler.StdlibIntegrationTest$1	5
+unreplayable	custom stdlib lookup org.julclang.compiler.pir.CompositeStdlibLookup	2
