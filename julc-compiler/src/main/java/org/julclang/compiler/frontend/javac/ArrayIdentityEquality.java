@@ -21,11 +21,23 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
+import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeElement;
+import java.lang.classfile.CodeModel;
+import java.lang.classfile.Instruction;
 import java.lang.classfile.MethodModel;
+import java.lang.classfile.attribute.RecordComponentInfo;
 import java.lang.classfile.instruction.InvokeDynamicInstruction;
+import java.lang.classfile.instruction.LoadInstruction;
+import java.lang.classfile.instruction.ReturnInstruction;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDesc;
+import java.lang.constant.ConstantDescs;
+import java.lang.constant.DirectMethodHandleDesc;
+import java.lang.constant.MethodTypeDesc;
+import java.lang.reflect.AccessFlag;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -63,14 +75,16 @@ import java.util.Set;
  * implicit one {@code public final}, and an explicit one may be written {@code final} too):
  * <ul>
  *   <li>a source record: the method has a tree ({@code Trees.getTree}); javac's implicit member has none;</li>
- *   <li>a class-file record: the method's code does not invoke the {@code java.lang.runtime.ObjectMethods}
- *       bootstrap, through which javac implements every implicit record {@code equals} (read with
- *       {@code java.lang.classfile} from {@code Elements.getFileObjectOf});</li>
+ *   <li>a class-file record: the method is not exactly javac's implicit one, the canonical {@code public final}
+ *       body that calls the {@code java.lang.runtime.ObjectMethods} bootstrap on the record's own components (read
+ *       with {@code java.lang.classfile} from {@code Elements.getFileObjectOf}; see {@link #implicitRecordEquals},
+ *       which also covers API stubs without method code);</li>
  *   <li>anything else (a source record without {@code Trees}, an unreadable class file): explicit, conservatively.</li>
  * </ul>
  * A collection is checked through its instantiated collection supertype ({@code Hidden<T> extends
  * ArrayList<byte[]>} is a collection of {@code byte[]}, whatever {@code T} is), and a collection class outside
- * {@code java.util} and the JuLC collections that declares its own {@code equals} is unresolved.
+ * {@code java.util} and the JuLC collections that declares its own {@code equals}, or inherits one from a superclass
+ * outside them, is unresolved.
  */
 public final class ArrayIdentityEquality {
 
@@ -240,9 +254,12 @@ public final class ArrayIdentityEquality {
      */
     private Result collection(DeclaredType type, TypeElement element, DeclaredType view, boolean julcCollection,
                               Set<String> onPath, List<String> path) {
-        String name = element.getQualifiedName().toString();
-        if (!name.startsWith("java.util.") && !name.startsWith("org.julclang.core.types.") && declaresEqualsMethod(element)) {
-            return result(Kind.UNRESOLVED, path, name + " declares equals and is not on the value-equality allow-list");
+        String owner = customEqualsOwner(element);
+        if (owner != null) {
+            return result(Kind.UNRESOLVED, path, owner.equals(element.getQualifiedName().toString())
+                    ? owner + " declares equals and is not on the value-equality allow-list"
+                    : element.getQualifiedName() + " inherits equals from " + owner
+                            + ", which is not on the value-equality allow-list");
         }
         if (view != type) path.add(simpleName(type) + " as " + simpleName(view));
         try {
@@ -352,9 +369,22 @@ public final class ArrayIdentityEquality {
         return true;
     }
 
-    /** Whether a class (not only a record) declares {@code equals(Object)} among its own members. */
-    private boolean declaresEqualsMethod(TypeElement type) {
-        return equalsMethod(type) != null;
+    /**
+     * The class whose {@code equals(Object)} a collection class runs, when that is not a {@code java.util} or JuLC
+     * collection's (F316): the nearest class on the superclass chain that declares one, stopping at the first
+     * {@code java.util} or {@code org.julclang.core.types} class, whose collection equality is the one assumed. Null
+     * when the collection equality is inherited unchanged. An interface cannot supply {@code equals} (a default
+     * method may not override an {@code Object} method), so only superclasses are followed.
+     */
+    private String customEqualsOwner(TypeElement type) {
+        for (TypeElement current = type; current != null; ) {
+            String name = current.getQualifiedName().toString();
+            if (name.startsWith("java.util.") || name.startsWith("org.julclang.core.types.")) return null;
+            if (equalsMethod(current) != null) return name;
+            var superclass = current.getSuperclass();
+            current = superclass.getKind() == TypeKind.DECLARED ? (TypeElement) ((DeclaredType) superclass).asElement() : null;
+        }
+        return null;
     }
 
     /** The type's own {@code equals(java.lang.Object)}, or null. */
@@ -371,27 +401,98 @@ public final class ArrayIdentityEquality {
     }
 
     /**
-     * Whether the class file's {@code equals(Ljava/lang/Object;)Z} is javac's implicit record method: its code
-     * invokes the {@code java.lang.runtime.ObjectMethods} bootstrap. Public so that a build check can apply the same
-     * test to the API's class files.
+     * Whether the class file's {@code equals(Ljava/lang/Object;)Z} is javac's implicit record method. Public so that a
+     * build check can apply the same test to the API's class files.
+     * <p>
+     * The class must be a record (a {@code Record} attribute, superclass {@code java.lang.Record}) and the method
+     * {@code public final}. With code, the code must be exactly the canonical body javac generates (F317):
+     * {@code aload_0; aload_1; invokedynamic equals:(LThis;Ljava/lang/Object;)Z; ireturn}, the call site bootstrapped
+     * by {@code java.lang.runtime.ObjectMethods.bootstrap} with the record's own class, its component names joined
+     * by {@code ;}, and a getter of each component field of the record, in component order. Any other body (an
+     * inverted result, other components, extra instructions) is explicit, conservatively.
+     * <p>
+     * Without code (an API stub whose method bodies were stripped, ADR-068 M1a's {@code stubs.bin}, F210) the
+     * modifiers decide: {@code final}, and neither {@code native} nor {@code abstract}, is implicit. That is sound for
+     * the API only because {@code ApiRecordEqualsTest} requires that no API record declares a {@code final equals};
+     * for other stripped class files an explicit {@code final equals} would be taken as implicit.
      */
     public static boolean implicitRecordEquals(byte[] classFile) {
         ClassModel model = ClassFile.of().parse(classFile);
+        var record = model.findAttribute(Attributes.record());
+        if (record.isEmpty()) return false;
+        if (model.superclass().isEmpty() || !model.superclass().get().asInternalName().equals("java/lang/Record")) {
+            return false;
+        }
+        ClassDesc self = model.thisClass().asSymbol();
         for (MethodModel method : model.methods()) {
             if (!method.methodName().equalsString("equals")
                     || !method.methodType().equalsString("(Ljava/lang/Object;)Z")) continue;
-            var code = method.code();
-            if (code.isEmpty()) return false;
-            for (CodeElement element : code.get()) {
-                if (element instanceof InvokeDynamicInstruction indy
-                        && indy.bootstrapMethod().owner().descriptorString().equals("Ljava/lang/runtime/ObjectMethods;")) {
-                    return true;
-                }
+            var flags = method.flags();
+            if (!flags.has(AccessFlag.PUBLIC) || !flags.has(AccessFlag.FINAL) || flags.has(AccessFlag.STATIC)) {
+                return false;
             }
-            return false;
+            var code = method.code();
+            if (code.isEmpty()) return !flags.has(AccessFlag.NATIVE) && !flags.has(AccessFlag.ABSTRACT);
+            return canonicalRecordEquals(code.get(), self, record.get().components());
         }
         return false;
     }
+
+    /** Whether {@code code} is exactly javac's implicit record {@code equals} over {@code components}. */
+    private static boolean canonicalRecordEquals(CodeModel code, ClassDesc self, List<RecordComponentInfo> components) {
+        var instructions = new ArrayList<Instruction>();
+        for (CodeElement element : code) {
+            if (element instanceof Instruction instruction) instructions.add(instruction);
+        }
+        if (instructions.size() != 4
+                || !(instructions.get(0) instanceof LoadInstruction receiver)
+                || !(instructions.get(1) instanceof LoadInstruction other)
+                || !(instructions.get(2) instanceof InvokeDynamicInstruction indy)
+                || !(instructions.get(3) instanceof ReturnInstruction ret)) {
+            return false;
+        }
+        if (receiver.slot() != 0 || receiver.typeKind() != java.lang.classfile.TypeKind.REFERENCE
+                || other.slot() != 1 || other.typeKind() != java.lang.classfile.TypeKind.REFERENCE
+                || ret.typeKind() != java.lang.classfile.TypeKind.INT) {
+            return false;
+        }
+        if (!indy.name().equalsString("equals")
+                || !indy.typeSymbol().equals(MethodTypeDesc.of(ConstantDescs.CD_boolean, self, ConstantDescs.CD_Object))) {
+            return false;
+        }
+        DirectMethodHandleDesc bootstrap = indy.bootstrapMethod();
+        if (bootstrap.kind() != DirectMethodHandleDesc.Kind.STATIC
+                || !bootstrap.owner().descriptorString().equals("Ljava/lang/runtime/ObjectMethods;")
+                || !bootstrap.methodName().equals("bootstrap")
+                || !bootstrap.lookupDescriptor().equals(OBJECT_METHODS_BOOTSTRAP)) {
+            return false;
+        }
+        List<ConstantDesc> arguments = indy.bootstrapArgs();
+        if (arguments.size() != 2 + components.size()
+                || !(arguments.get(0) instanceof ClassDesc owner) || !owner.descriptorString().equals(self.descriptorString())
+                || !(arguments.get(1) instanceof String names)) {
+            return false;
+        }
+        var expectedNames = new ArrayList<String>();
+        for (var component : components) expectedNames.add(component.name().stringValue());
+        if (!names.equals(String.join(";", expectedNames))) return false;
+        for (int i = 0; i < components.size(); i++) {
+            var component = components.get(i);
+            if (!(arguments.get(2 + i) instanceof DirectMethodHandleDesc getter)
+                    || getter.kind() != DirectMethodHandleDesc.Kind.GETTER
+                    || !getter.owner().descriptorString().equals(self.descriptorString())
+                    || !getter.methodName().equals(component.name().stringValue())
+                    || !getter.lookupDescriptor().equals(component.descriptor().stringValue())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The descriptor of {@code java.lang.runtime.ObjectMethods.bootstrap}. */
+    private static final String OBJECT_METHODS_BOOTSTRAP = "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+            + "Ljava/lang/invoke/TypeDescriptor;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/invoke/MethodHandle;)"
+            + "Ljava/lang/Object;";
 
     /**
      * {@code type} viewed as {@code target}, with its type arguments substituted, or null when it is not one. A type

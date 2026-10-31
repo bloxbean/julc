@@ -84,6 +84,14 @@ class ArrayIdentityEqualityTest {
                 sealed interface BTree { record BLeaf(byte[] v) implements BTree {} record BNode(BTree l, BTree r) implements BTree {} }
                 enum Colour { RED, GREEN }
                 static class Hidden<T> extends java.util.ArrayList<byte[]> {}
+                static class Parent extends java.util.ArrayList<String> {
+                    byte[] tag;
+                    public boolean equals(Object o) { return o instanceof Parent p && p.tag == tag; }
+                    public int hashCode() { return super.hashCode(); }
+                }
+                static class Child extends Parent {}
+                static class Grandchild extends Child {}
+                static class PlainChild extends java.util.ArrayList<String> {}
                 record Overload(byte[] b) { public boolean equals(String s) { return false; } }
 
                 static byte[] bytes;
@@ -125,6 +133,10 @@ class ArrayIdentityEqualityTest {
                 static ScriptContext scriptContext;
                 static Object object;
                 static Hidden<String> hidden;
+                static Parent parent;
+                static Child child;
+                static Grandchild grandchild;
+                static PlainChild plainChild;
                 static Overload overload;
                 static List<Integer> integers;
                 static Long boxedLong;
@@ -252,6 +264,22 @@ class ArrayIdentityEqualityTest {
         var hidden = check.check(field("hidden"));
         assertEquals(ArrayIdentityEquality.Kind.ARRAY_IDENTITY, hidden.kind());
         assertEquals("Hidden as Collection > Collection<0> > byte[]", hidden.path());
+    }
+
+    /**
+     * F316: a collection subclass that declares no {@code equals} runs the nearest superclass's; when that is a
+     * custom one (here comparing a {@code byte[]} field by identity), the collection equality is not the one assumed.
+     */
+    @Test
+    void inheritedCustomEqualsIsUnresolved() {
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("parent"));
+        var child = check.check(field("child"));
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, child.kind());
+        assertEquals("probe.Probe.Child inherits equals from probe.Probe.Parent, which is not on the value-equality"
+                + " allow-list", child.path());
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("grandchild"));
+        // A subclass that inherits java.util's equals unchanged is still a collection of its elements.
+        assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("plainChild"));
     }
 
     @Test
