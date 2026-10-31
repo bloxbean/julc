@@ -7,6 +7,7 @@ import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
 import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.tools.service.ToolsService;
 import org.julclang.vm.EvalOptions;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
@@ -49,8 +50,11 @@ public final class ExpressionEvaluator {
     private final Map<String, LibrarySource> libraryPool;
 
     public ExpressionEvaluator() {
-        this(new JulcCompiler(StdlibRegistry.defaultRegistry()), JulcVm.create(),
-                LibrarySourceResolver.scanClasspathSources(ExpressionEvaluator.class.getClassLoader()));
+        this(LibrarySourceResolver.scanClasspathSources(ExpressionEvaluator.class.getClassLoader()));
+    }
+
+    private ExpressionEvaluator(Map<String, LibrarySource> classpathLibraries) {
+        this(ToolsService.compilerFor(classpathLibraries), JulcVm.create(), classpathLibraries);
     }
 
     /**

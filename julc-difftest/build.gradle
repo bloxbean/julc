@@ -37,7 +37,7 @@ tasks.withType(Test).configureEach {
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
-        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline'
+        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline', 'adr068-gate-timing'
     }
     // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
     def cases = providers.gradleProperty('difftest.cases')
@@ -81,8 +81,11 @@ tasks.register('rediscoveryDiffTest', Test) {
 // ADR-068 M0 (adr/evidence/068-javac-frontend-baseline.md). First the G1 fixed-seed corpus is captured with the pull-request
 // campaign's seed, then the baseline compiles the corpus with the reference (JavaParser) frontend and writes the D13
 // ledger, the I2a rejection inventory, the D6 equality scan and the accepted-divergence list under adr/evidence/068/:
-//   ./gradlew test -Pjulc.corpus.record=build/julc-corpus --offline --continue --rerun
-//   ./gradlew :julc-difftest:adr068Baseline -Padr068.corpus=build/julc-corpus [-Padr068.external=../julc-examples] --offline
+//   ./gradlew :julc-compiler:test :julc-compiler:pairCaseTest :julc-stdlib:test :julc-testkit:test :julc-difftest:test \
+//       :julc-examples:test -Pjulc.corpus.record=build/julc-corpus --offline --continue --rerun
+//   ./gradlew :julc-difftest:adr068Baseline -Padr068.corpus=build/julc-corpus [-Padr068.corpus.external=<dir>]
+//       [-Padr068.corpus.elci=<dir>] [-Padr068.external=<julc-examples checkout>] [-Padr068.threads=<n>] [-Padr068.out=<dir>] --offline
+// The evidence file has the external and Elci recording commands.
 tasks.register('adr068G1Capture', Test) {
     group = 'verification'
     description = 'ADR-068 M0: capture the G1 fixed-seed corpus'
@@ -106,7 +109,7 @@ tasks.register('adr068Baseline', Test) {
         includeTags 'adr068-baseline'
     }
     systemProperty 'adr068.repo', rootDir.absolutePath
-    ['adr068.corpus', 'adr068.external', 'adr068.out', 'adr068.threads'].each { key ->
+    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.external', 'adr068.out', 'adr068.threads'].each { key ->
         def value = providers.gradleProperty(key)
         if (value.isPresent()) {
             systemProperty key, key in ['adr068.threads'] ? value.get() : rootProject.file(value.get()).absolutePath
@@ -116,3 +119,23 @@ tasks.register('adr068Baseline', Test) {
 }
 // After the root build's Test defaults (1g), which would otherwise apply last.
 tasks.named('adr068Baseline').configure { maxHeapSize = '6g' }
+
+// ADR-068 M1, E6: the javac gate's warm and cold compile time against the JavaParser-only path, on a corpus sample:
+//   ./gradlew :julc-difftest:adr068GateTiming -Padr068.corpus=build/julc-corpus [-Padr068.out=<dir>] --offline
+tasks.register('adr068GateTiming', Test) {
+    group = 'verification'
+    description = 'ADR-068 M1: javac gate compile time (E6)'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter'
+        includeTags 'adr068-gate-timing'
+    }
+    ['adr068.corpus', 'adr068.out'].each { key ->
+        def value = providers.gradleProperty(key)
+        if (value.isPresent()) systemProperty key, rootProject.file(value.get()).absolutePath
+    }
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }
+}
+tasks.named('adr068GateTiming').configure { maxHeapSize = '4g' }

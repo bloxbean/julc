@@ -80,7 +80,9 @@ public final class SourceDebugService {
         if (validation != null) return ServiceResult.status(400, error(validation, List.of()));
 
         try {
-            var options = new CompilerOptions().setSourceMapEnabled(true);
+            // The cached class-path sources are JAR sources; the editor's are project sources (ADR-068 D8).
+            var options = LibrarySourceResolver.withJarSources(new CompilerOptions().setSourceMapEnabled(true),
+                    cachedLibSources);
             var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
             var libraries = new ArrayList<>(LibrarySourceResolver.resolve(request.source(), cachedLibSources));
             if (request.librarySource() != null && !request.librarySource().isBlank()) {

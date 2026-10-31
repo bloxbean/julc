@@ -8,6 +8,9 @@ import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacGate;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
@@ -44,6 +47,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -131,7 +135,7 @@ public class JulcCompiler {
         var resolvedLibs = availableLibs.isEmpty()
                 ? List.<String>of()
                 : LibrarySourceResolver.resolve(javaSource, availableLibs);
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compile", null, javaSource, resolvedLibs);
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compile", null, javaSource, resolvedLibs, context);
         return doCompile(javaSource, resolvedLibs, false, context);
     }
 
@@ -146,7 +150,7 @@ public class JulcCompiler {
         var resolvedLibs = availableLibs.isEmpty()
                 ? List.<String>of()
                 : LibrarySourceResolver.resolve(javaSource, availableLibs);
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileWithDetails", null, javaSource, resolvedLibs);
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileWithDetails", null, javaSource, resolvedLibs, context);
         return doCompile(javaSource, resolvedLibs, true, context);
     }
 
@@ -154,8 +158,11 @@ public class JulcCompiler {
      * Compile a validator with library sources, capturing PIR and UPLC intermediate representations.
      */
     public CompileResult compileWithDetails(String validatorSource, List<String> librarySources) {
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileWithDetails", null, validatorSource, librarySources);
-        return doCompile(validatorSource, librarySources, true, beginCompilation());
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileWithDetails", null, validatorSource, librarySources, context);
+        }
+        return doCompile(validatorSource, librarySources, true, context);
     }
 
     /**
@@ -166,9 +173,12 @@ public class JulcCompiler {
         if (!options.isSourceMapEnabled()) {
             throw new IllegalStateException("Java locals metadata requires source-map compilation");
         }
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileForDebug", null, validatorSource, librarySources);
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileForDebug", null, validatorSource, librarySources, context);
+        }
         var outcome = doCompileOutcome(
-                validatorSource, librarySources, true, false, beginCompilation(), true);
+                validatorSource, librarySources, true, false, context, true);
         if (outcome.debugMetadata() == null) {
             throw new IllegalStateException("Java locals metadata was not collected");
         }
@@ -191,8 +201,9 @@ public class JulcCompiler {
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compile(String validatorSource, List<String> librarySources) {
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compile", null, validatorSource, librarySources);
-        return doCompile(validatorSource, librarySources, false, beginCompilation());
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compile", null, validatorSource, librarySources, context);
+        return doCompile(validatorSource, librarySources, false, context);
     }
 
     /**
@@ -208,7 +219,9 @@ public class JulcCompiler {
         var resolvedLibs = availableLibs.isEmpty()
                 ? List.<String>of()
                 : LibrarySourceResolver.resolve(validatorSource, availableLibs);
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileContract", null, validatorSource, resolvedLibs);
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileContract", null, validatorSource, resolvedLibs, context);
+        }
         var outcome = doCompileOutcome(validatorSource, resolvedLibs, false, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
@@ -216,9 +229,12 @@ public class JulcCompiler {
     /** Compile a validator with library sources and capture its resolved contract schema. */
     public ContractCompileResult compileContract(
             String validatorSource, List<String> librarySources) {
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileContract", null, validatorSource, librarySources);
+        var context = beginCompilation();
+        if (CorpusRecorder.ACTIVE != null) {
+            recordCorpus("compileContract", null, validatorSource, librarySources, context);
+        }
         var outcome = doCompileOutcome(
-                validatorSource, librarySources, false, true, beginCompilation());
+                validatorSource, librarySources, false, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
@@ -231,7 +247,7 @@ public class JulcCompiler {
                 ? List.<String>of()
                 : LibrarySourceResolver.resolve(validatorSource, availableLibs);
         if (CorpusRecorder.ACTIVE != null) {
-            recordCorpus("compileContractWithDetails", null, validatorSource, resolvedLibs);
+            recordCorpus("compileContractWithDetails", null, validatorSource, resolvedLibs, context);
         }
         var outcome = doCompileOutcome(validatorSource, resolvedLibs, true, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
@@ -240,11 +256,12 @@ public class JulcCompiler {
     /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
     public ContractCompileResult compileContractWithDetails(
             String validatorSource, List<String> librarySources) {
+        var context = beginCompilation();
         if (CorpusRecorder.ACTIVE != null) {
-            recordCorpus("compileContractWithDetails", null, validatorSource, librarySources);
+            recordCorpus("compileContractWithDetails", null, validatorSource, librarySources, context);
         }
         var outcome = doCompileOutcome(
-                validatorSource, librarySources, true, true, beginCompilation());
+                validatorSource, librarySources, true, true, context);
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
@@ -274,6 +291,8 @@ public class JulcCompiler {
             boolean captureContractSchema,
             CompilationContext context,
             boolean collectDebugMetadata) {
+        librarySources = javacGate("compile", JavacFrontend.Unit.of(validatorSource), librarySources,
+                this::libraryUnit, context);
         // 1. Parse all sources
         context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + librarySources.size(), librarySources.size());
@@ -710,18 +729,45 @@ public class JulcCompiler {
         return new CompilationOutcome(result, contractSchema, completedMetadata);
     }
 
+    /**
+     * ADR-068 M1's javac gate (D3, D5): javac analyzes the root with the libraries on its source path before the
+     * JavaParser frontend runs; libraries in {@link CompilerOptions#getJarLibrarySources()} are JAR sources (D8). In
+     * {@code enforce} mode a javac error rejects, and the JavaParser frontend compiles the gate's effective pool (the
+     * libraries without those D8's precedence left out); in {@code report} mode (the default until M1's dialect
+     * rewrite) and {@code off} it compiles the libraries as given, B0's pool.
+     *
+     * @return the libraries the JavaParser frontend compiles
+     */
+    private <T> List<T> javacGate(String entry, JavacFrontend.Unit root, List<T> libraries,
+                                  Function<T, JavacFrontend.Unit> unit, CompilationContext context) {
+        var result = JavacGate.check(entry, List.of(root), libraries.stream().map(unit).toList(), options);
+        if (result == null) return libraries;
+        context.logf("javac gate (%s): javac %s, platform %s, stubs %s: %s", JavacGate.mode(options),
+                result.javacVersion(), result.platformDigest(), result.stubsDigest(),
+                result.isAccepted() ? "accepted" : result.diagnostics().size() + " rejection(s)");
+        return JavacGate.mode(options) == JavacGateMode.ENFORCE
+                ? result.effective(libraries, library -> unit.apply(library).text()) : libraries;
+    }
+
+    private JavacFrontend.Unit libraryUnit(String text) {
+        return new JavacFrontend.Unit(text, null, options.getJarLibrarySources().contains(text)
+                ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT);
+    }
+
     /** Records a string entry point's inputs for the ADR-068 corpus (test-only; see {@link CorpusRecorder}). */
-    private void recordCorpus(String entry, String methodName, String source, List<String> librarySources) {
+    private void recordCorpus(String entry, String methodName, String source, List<String> librarySources,
+                              CompilationContext context) {
         CorpusRecorder.ACTIVE.record(entry, methodName, new CorpusRecorder.Source(source, null),
                 librarySources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(),
-                stdlibLookup, options);
+                stdlibLookup, CorpusRecorder.Options.of(context));
     }
 
     /**
      * Records a path entry point's inputs, with each file's name, for the ADR-068 corpus (test-only). A library file
      * that cannot be read is not recorded here; the compilation reports it as before.
      */
-    private void recordCorpusPaths(String entry, Path validatorFile, String validatorText, List<Path> libraryFiles) {
+    private void recordCorpusPaths(String entry, Path validatorFile, String validatorText, List<Path> libraryFiles,
+                                   CompilationContext context) {
         var libraries = new ArrayList<CorpusRecorder.Source>();
         for (var libraryFile : libraryFiles) {
             try {
@@ -731,7 +777,7 @@ public class JulcCompiler {
             }
         }
         CorpusRecorder.ACTIVE.record(entry, null, new CorpusRecorder.Source(validatorText, fileName(validatorFile)),
-                libraries, stdlibLookup, options);
+                libraries, stdlibLookup, CorpusRecorder.Options.of(context));
     }
 
     private static String fileName(Path file) {
@@ -784,13 +830,20 @@ public class JulcCompiler {
         var validatorText = Files.readString(validatorFile);
         if (CorpusRecorder.ACTIVE != null) {
             recordCorpusPaths(captureContractSchema ? "compileContractPath" : "compilePath",
-                    validatorFile, validatorText, libraryFiles);
+                    validatorFile, validatorText, libraryFiles, context);
         }
+        var pool = new ArrayList<JavacFrontend.Unit>();
+        for (var libFile : libraryFiles) {
+            var text = Files.readString(libFile);
+            pool.add(new JavacFrontend.Unit(text, libFile, options.getJarLibrarySources().contains(text)
+                    ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT));
+        }
+        var libraries = javacGate(captureContractSchema ? "compileContractPath" : "compilePath",
+                new JavacFrontend.Unit(validatorText, validatorFile), pool, unit -> unit, context);
         var validatorCu = parseSource(validatorText, "validator", validatorFile);
         var libraryCus = new ArrayList<CompilationUnit>();
-        for (int i = 0; i < libraryFiles.size(); i++) {
-            var libFile = libraryFiles.get(i);
-            libraryCus.add(parseSource(Files.readString(libFile), "library[" + i + "]", libFile));
+        for (int i = 0; i < libraries.size(); i++) {
+            libraryCus.add(parseSource(libraries.get(i).text(), "library[" + i + "]", libraries.get(i).path()));
         }
 
         return doCompileFromCus(
@@ -878,7 +931,9 @@ public class JulcCompiler {
             String methodName,
             List<String> librarySources,
             CompilationContext context) {
-        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources);
+        if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources, context);
+        librarySources = javacGate("compileMethod", JavacFrontend.Unit.of(javaSource), librarySources,
+                this::libraryUnit, context);
         // 1. Parse all sources
         var cu = parseSource(javaSource, "method source");
         var libraryCus = new ArrayList<CompilationUnit>();

@@ -103,6 +103,15 @@ subprojects {
         systemProperty 'julc.verifyBinderNamespace', 'true'
         // ADR-068 M0: `-Pjulc.corpus.record=<dir>` records every source these modules' tests compile through a
         // compiler entry point (CorpusRecorder); unset, nothing is recorded and nothing changes.
+        // ADR-068 M1: the javac gate's mode (`-Pjulc.javacGate=off|report|enforce`; unset, the compiler's default,
+        // report) and its report directory (`-Pjulc.javacGate.report=<dir>`: every source the gate would reject).
+        def javacGate = providers.gradleProperty('julc.javacGate')
+        if (javacGate.present) systemProperty 'julc.javacGate', javacGate.get()
+        def javacGateReport = providers.gradleProperty('julc.javacGate.report')
+        if (javacGateReport.present) {
+            systemProperty 'julc.javacGate.report', rootProject.file(javacGateReport.get()).absolutePath
+            outputs.upToDateWhen { false }
+        }
         def corpusRecord = providers.gradleProperty('julc.corpus.record')
         if (corpusRecord.present && project.name in ['julc-compiler', 'julc-stdlib', 'julc-testkit', 'julc-difftest', 'julc-examples']) {
             systemProperty 'julc.corpus.record', rootProject.file(corpusRecord.get()).absolutePath

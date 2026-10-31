@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
 import com.sun.source.tree.MemberSelectTree;
-import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TreePath;
@@ -17,6 +16,7 @@ import org.julclang.ledger.TxId;
 import org.julclang.ledger.ValidatorHash;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -32,6 +32,7 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 import java.math.BigInteger;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -82,6 +83,16 @@ class ArrayIdentityEqualityTest {
                 sealed interface Tree { record Leaf(BigInteger v) implements Tree {} record Node(Tree l, Tree r) implements Tree {} }
                 sealed interface BTree { record BLeaf(byte[] v) implements BTree {} record BNode(BTree l, BTree r) implements BTree {} }
                 enum Colour { RED, GREEN }
+                static class Hidden<T> extends java.util.ArrayList<byte[]> {}
+                static class Parent extends java.util.ArrayList<String> {
+                    byte[] tag;
+                    public boolean equals(Object o) { return o instanceof Parent p && p.tag == tag; }
+                    public int hashCode() { return super.hashCode(); }
+                }
+                static class Child extends Parent {}
+                static class Grandchild extends Child {}
+                static class PlainChild extends java.util.ArrayList<String> {}
+                record Overload(byte[] b) { public boolean equals(String s) { return false; } }
 
                 static byte[] bytes;
                 static BigInteger integer;
@@ -121,8 +132,17 @@ class ArrayIdentityEqualityTest {
                 static TxOut txOut;
                 static ScriptContext scriptContext;
                 static Object object;
+                static Hidden<String> hidden;
+                static Parent parent;
+                static Child child;
+                static Grandchild grandchild;
+                static PlainChild plainChild;
+                static Overload overload;
+                static List<Integer> integers;
+                static Long boxedLong;
 
                 static <T> boolean generic(T a, T b) { return a.equals(b); }
+                static <L extends List<byte[]>> boolean bounded(L xs, String s) { return xs.contains(s); }
 
                 static boolean calls(JulcList<byte[]> xs, JulcMap<Bytes, BigInteger> m, List<byte[]> ys, Bytes k) {
                     boolean r = xs.contains(bytes);
@@ -134,6 +154,8 @@ class ArrayIdentityEqualityTest {
                     r = r && java.util.Objects.equals(bytes, bytes);
                     r = r && plain.equals(plain);
                     r = r && ((JulcMap) (Object) m).containsKey(pubKeyHash);
+                    r = r && utilMapBytes.remove(integer, bytes);
+                    r = r && hidden.equals(hidden);
                     m.insert(k, integer);
                     return r;
                 }
@@ -168,7 +190,7 @@ class ArrayIdentityEqualityTest {
         elements = task.getElements();
         trees = Trees.instance(task);
         probe = elements.getTypeElement("probe.Probe");
-        check = new ArrayIdentityEquality(types, elements);
+        check = new ArrayIdentityEquality(types, elements, trees);
         var operations = new EqualityOperations(types, elements);
         new TreePathScanner<Void, Void>() {
             @Override
@@ -181,9 +203,10 @@ class ArrayIdentityEqualityTest {
                 }
                 var arguments = node.getArguments().stream()
                         .map(a -> trees.getTypeMirror(new TreePath(path, a))).toList();
-                operations.site(method, receiver, arguments).ifPresent(site ->
-                        sites.add(site.operation() + " " + site.compared() + " "
-                                + check.check(site.compared(), site.julcCollection()).kind()));
+                for (var site : operations.sites(method, receiver, arguments)) {
+                    sites.add(site.operation() + " " + site.compared() + " "
+                            + check.check(site.compared(), site.julcCollection()).kind());
+                }
                 return super.visitMethodInvocation(node, unused);
             }
         }.scan(units.iterator().next(), null);
@@ -207,8 +230,10 @@ class ArrayIdentityEqualityTest {
         assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("string"));
         assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("boxedBoolean"));
         assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("colour"));
-        // Not on the allow-list, so rejected conservatively (ADR-068 D6 lists BigInteger, String and Boolean only).
-        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("boxedInteger"));
+        // ADR-068 M0's clarification puts the boxed Integer, Long and Boolean on the allow-list (F307).
+        assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("boxedInteger"));
+        assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("boxedLong"));
+        assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("integers"));
         assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("object"));
     }
 
@@ -224,15 +249,37 @@ class ArrayIdentityEqualityTest {
     @Test
     void declaringEqualsIsNotEnough() {
         assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("declares"));
-        // An explicit final equals looks like the implicit one in the element; the source tree tells them apart.
-        var withTrees = new ArrayIdentityEquality(types, elements, record -> {
-            var tree = trees.getTree(record);
-            if (tree == null) return null;
-            return tree.getMembers().stream().anyMatch(m -> m instanceof MethodTree method
-                    && method.getName().contentEquals("equals") && method.getParameters().size() == 1);
-        });
-        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, withTrees.check(field("declaresFinal")).kind());
-        assertEquals(ArrayIdentityEquality.Kind.SAFE, withTrees.check(field("plain")).kind());
+        // An explicit final equals has the implicit one's modifiers; its tree tells them apart (F305).
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("declaresFinal"));
+        // equals(String) is an overload, not an override: the implicit equals(Object) still compares the array.
+        assertEquals(ArrayIdentityEquality.Kind.ARRAY_IDENTITY, kind("overload"));
+        // Without trees a source record's equals cannot be told apart, so it is taken as explicit.
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED,
+                new ArrayIdentityEquality(types, elements).check(field("plain")).kind());
+    }
+
+    /** A collection is checked at its instantiated collection supertype, not its own type arguments (F306). */
+    @Test
+    void collectionSupertypes() {
+        var hidden = check.check(field("hidden"));
+        assertEquals(ArrayIdentityEquality.Kind.ARRAY_IDENTITY, hidden.kind());
+        assertEquals("Hidden as Collection > Collection<0> > byte[]", hidden.path());
+    }
+
+    /**
+     * F316: a collection subclass that declares no {@code equals} runs the nearest superclass's; when that is a
+     * custom one (here comparing a {@code byte[]} field by identity), the collection equality is not the one assumed.
+     */
+    @Test
+    void inheritedCustomEqualsIsUnresolved() {
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("parent"));
+        var child = check.check(field("child"));
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, child.kind());
+        assertEquals("probe.Probe.Child inherits equals from probe.Probe.Parent, which is not on the value-equality"
+                + " allow-list", child.path());
+        assertEquals(ArrayIdentityEquality.Kind.UNRESOLVED, kind("grandchild"));
+        // A subclass that inherits java.util's equals unchanged is still a collection of its elements.
+        assertEquals(ArrayIdentityEquality.Kind.SAFE, kind("plainChild"));
     }
 
     @Test
@@ -241,6 +288,57 @@ class ArrayIdentityEqualityTest {
         assertTrue(check.declaresEquals(elements.getTypeElement("org.julclang.ledger.PubKeyHash")));
         assertFalse(check.declaresEquals(elements.getTypeElement("probe.Probe.Plain")));
         assertTrue(check.declaresEquals(elements.getTypeElement("probe.Probe.Declares")));
+    }
+
+    /**
+     * Source and class-file provenance agree: the same records, read from source and from the class files javac
+     * writes for them, are classified alike, including an explicit {@code final equals} and an overload (F305).
+     */
+    @Test
+    void sourceAndClassFileProvenanceAgree(@TempDir Path classes) throws Exception {
+        String records = """
+                package parity;
+                public class Records {
+                    public record Implicit(byte[] b) {}
+                    public record Explicit(byte[] b) { public boolean equals(Object o) { return false; } }
+                    public record ExplicitFinal(byte[] b) { public final boolean equals(Object o) { return false; } }
+                    public record Overload(byte[] b) { public boolean equals(String s) { return false; } }
+                }
+                """;
+        var names = List.of("Implicit", "Explicit", "ExplicitFinal", "Overload");
+        var fromSource = new ArrayList<Boolean>();
+        var sourceTask = task(List.of(unit("parity/Records.java", records)), List.of("-d", classes.toString()));
+        sourceTask.analyze();
+        var sourceCheck = new ArrayIdentityEquality(sourceTask.getTypes(), sourceTask.getElements(), Trees.instance(sourceTask));
+        for (String name : names) fromSource.add(sourceCheck.declaresEquals(sourceTask.getElements().getTypeElement("parity.Records." + name)));
+        sourceTask.generate();
+        var fromClasses = new ArrayList<Boolean>();
+        var classTask = task(List.of(unit("parity/User.java", "package parity; class User { Records r; }")),
+                List.of("-classpath", classes + java.io.File.pathSeparator + System.getProperty("java.class.path")));
+        classTask.analyze();
+        var classCheck = new ArrayIdentityEquality(classTask.getTypes(), classTask.getElements(), Trees.instance(classTask));
+        for (String name : names) {
+            var element = classTask.getElements().getTypeElement("parity.Records." + name);
+            assertEquals(JavaFileObject.Kind.CLASS, classTask.getElements().getFileObjectOf(element).getKind(), name);
+            fromClasses.add(classCheck.declaresEquals(element));
+        }
+        assertEquals(List.of(false, true, true, false), fromSource);
+        assertEquals(fromSource, fromClasses);
+    }
+
+    private static JavacTask task(List<JavaFileObject> files, List<String> extra) {
+        var options = new ArrayList<>(List.of("-proc:none", "-classpath", System.getProperty("java.class.path")));
+        options.addAll(extra);
+        return (JavacTask) ToolProvider.getSystemJavaCompiler().getTask(null, null, null, options, null, files);
+    }
+
+    private static JavaFileObject unit(String path, String text) {
+        return new SimpleJavaFileObject(URI.create("string:///" + path), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return text;
+            }
+        };
     }
 
     @Test
@@ -310,14 +408,17 @@ class ArrayIdentityEqualityTest {
                 "BigInteger.equals java.math.BigInteger SAFE",
                 "BigInteger.equals java.math.BigInteger SAFE",
                 "Object.equals T TYPE_VARIABLE",
+                "List.contains byte[] ARRAY_IDENTITY",
                 "JulcList.contains byte[] SAFE",
                 "JulcMap.containsKey probe.Probe.Bytes ARRAY_IDENTITY",
                 "JulcMap.getOrDefault probe.Probe.Bytes ARRAY_IDENTITY",
-                "TypedMapLib.member probe.Probe.Bytes ARRAY_IDENTITY",
                 "List.contains byte[] ARRAY_IDENTITY",
                 "Objects.equals byte[] ARRAY_IDENTITY",
                 "Plain.equals probe.Probe.Plain SAFE",
-                "JulcMap.containsKey org.julclang.ledger.PubKeyHash SAFE"), sites);
+                "JulcMap.containsKey org.julclang.ledger.PubKeyHash SAFE",
+                "Map.remove java.math.BigInteger SAFE",
+                "Map.remove byte[] ARRAY_IDENTITY",
+                "ArrayList.equals probe.Probe.Hidden<java.lang.String> ARRAY_IDENTITY"), sites);
     }
 
     /** Each allow-list entry compares every component by value: distinct equal arrays are equal. */
@@ -332,6 +433,8 @@ class ArrayIdentityEqualityTest {
         assertValueEquality(DatumHash::new);
         assertValueEquality(PlutusData.BytesData::new);
         assertValueEquality(b -> new PlutusData.IntData(new BigInteger(1, b)));
+        assertValueEquality(b -> Integer.valueOf(1000 + b[2]));
+        assertValueEquality(b -> Long.valueOf(1000L + b[2]));
         assertValueEquality(b -> new PlutusData.ConstrData(1, List.of(new PlutusData.BytesData(b))));
         assertValueEquality(b -> new PlutusData.ListData(List.of(new PlutusData.BytesData(b))));
         assertValueEquality(b -> new PlutusData.MapData(List.of(
@@ -339,7 +442,7 @@ class ArrayIdentityEqualityTest {
         assertEquals(new BigInteger("12345678901234567890"), new BigInteger("12345678901234567890"));
         assertEquals(new String(new char[]{'a'}), new String(new char[]{'a'}));
         assertEquals(Boolean.valueOf("true"), Boolean.valueOf("true"));
-        assertEquals(15, ArrayIdentityEquality.VALUE_EQUALITY_ALLOW_LIST.size(),
+        assertEquals(17, ArrayIdentityEquality.VALUE_EQUALITY_ALLOW_LIST.size(),
                 "every allow-list entry has a value-equality assertion above");
     }
 

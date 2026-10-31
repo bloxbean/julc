@@ -10,7 +10,8 @@
     "LIBRARY": "@OnchainLibrary and @Param errors",
     "STDLIB": "Stdlib method usage errors (wrong arity, missing args)",
     "PIR": "PIR generation errors (internal pipeline)",
-    "BACKEND": "Language-neutral backend descriptors and producer PIR verification"
+    "BACKEND": "Language-neutral backend descriptors and producer PIR verification",
+    "FRONTEND": "The javac frontend and its closed compilation environment (ADR-068)"
   },
   "diagnostics": [
     {
@@ -968,13 +969,17 @@
     {
       "code": "JULC0081",
       "constant": "LEDGER_TYPE_REDECLARED",
-      "status": "planned",
-      "title": "User type redeclares a ledger type",
+      "status": "emitted",
+      "title": "Source redeclares or extends a JuLC API type or bundled library",
       "category": "TYPE",
       "severity": "error",
-      "template": "{0} redeclares the bundled ledger type {1}",
-      "summary": "Reserved by ADR-067 (D9): a user declaration of a bundled ledger FQCN, or of a ledger hash simple name, would be confused with the ledger type.",
-      "fix": "Rename the type."
+      "template": "{0} declares {1}, which JuLC''s {2} owns",
+      "summary": "JuLC's on-chain API (julc-core, julc-ledger-api, the stdlib's on-chain classes, julc-verification's annotations) and its bundled stdlib libraries come only from JuLC. A source is a bundled library only if its text is the shipped one (by digest); any other source that declares a type with an API or bundled name, or in a package they define, is rejected before javac runs, so no source can replace or extend them (ADR-068 D3, generalizing ADR-067 D9's ledger redeclaration). The javac gate emits it when julc.javacGate=enforce (ADR-068 M1); ADR-067's simple-name rule for ledger hash types is still planned.",
+      "fix": "Rename the type, or move it to a package of your own.",
+      "example": {
+        "bad": "package org.julclang.ledger;\n\nrecord Value(java.math.BigInteger lovelace) {}",
+        "good": "package com.example;\n\nrecord Amount(java.math.BigInteger lovelace) {}"
+      }
     },
     {
       "code": "JULC0082",
@@ -1005,6 +1010,87 @@
         "bad": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A a -> a.v(); case B b -> ZERO; };\n}",
         "good": "static BigInteger m(BigInteger a, S s) {\n    return switch (s) { case A x -> x.v(); case B b -> ZERO; };\n}"
       }
+    },
+    {
+      "code": "JULC0084",
+      "constant": "FRONTEND_CONSTRUCT_NOT_PORTED",
+      "status": "internal",
+      "title": "Construct not yet ported to the javac frontend",
+      "category": "FRONTEND",
+      "severity": "error",
+      "template": "The javac frontend does not compile {0} yet",
+      "summary": "Reserved by ADR-068 (D4): during milestones M2-M4 the experimental javac frontend (CompilerOptions.frontend = JAVAC) rejects a construct it has not ported yet, naming it, and never falls back to the JavaParser frontend (I8). The default frontend is unaffected.",
+      "fix": "Compile with the default frontend until the construct is ported."
+    },
+    {
+      "code": "JULC0085",
+      "constant": "JAVAC_ERROR",
+      "status": "emitted",
+      "title": "javac rejects the source",
+      "category": "FRONTEND",
+      "severity": "error",
+      "template": "{0} ({1})",
+      "summary": "Source that is not valid Java is rejected with javac's own diagnostic: its message, its key (such as compiler.err.cant.resolve.location) and its position, with the column counted in characters from the line start. JuLC's closed environment (ADR-068 I10) adds a hint where a name is missing because JuLC does not provide it: a JDK type or package outside JuLC's platform, or an annotation from outside the on-chain API. Emitted by the javac gate when julc.javacGate=enforce (ADR-068 D5, M1).",
+      "fix": "Fix the Java error javac reports; where the hint names a JDK type, use JuLC's on-chain equivalent.",
+      "example": {
+        "bad": "BigInteger total = a + b;",
+        "good": "BigInteger total = a.add(b);"
+      }
+    },
+    {
+      "code": "JULC0086",
+      "constant": "REFERENCE_EQUALITY_UNSUPPORTED",
+      "status": "planned",
+      "title": "Reference equality is not supported",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} compares {1} by reference; use equals",
+      "summary": "Reserved by ADR-068 (D6): == and != on BigInteger, byte[], String, boxed values or records is reference equality in Java (JLS 15.21.3), but value equality on-chain. Constant String operands built from literals and string + alone keep their meaning.",
+      "fix": "Use a.equals(b), or ByteStringLib.equals(a, b) for bytes."
+    },
+    {
+      "code": "JULC0087",
+      "constant": "ARRAY_EQUALS_UNSUPPORTED",
+      "status": "planned",
+      "title": "Equality would compare an array by identity",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} compares {1}, whose equality on the JVM compares an array by identity",
+      "summary": "Reserved by ADR-068 (D6): an equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM.",
+      "fix": "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper."
+    },
+    {
+      "code": "JULC0088",
+      "constant": "PARAM_CONSTANT_VARIABLE",
+      "status": "planned",
+      "title": "@Param field is a Java constant variable",
+      "category": "LIBRARY",
+      "severity": "error",
+      "template": "@Param field {0} is a constant variable in Java, so javac would fold it; it is runtime input",
+      "summary": "Reserved by ADR-068 (D14): a static final primitive or String @Param field with a constant initializer is a constant variable to javac, which folds it, so the JVM program would not be the script that receives the applied parameter.",
+      "fix": "Drop final, or initialize from a non-constant expression such as Boolean.valueOf(true)."
+    },
+    {
+      "code": "JULC0089",
+      "constant": "JAVAC_UNSUPPORTED",
+      "status": "emitted",
+      "title": "The host's javac is missing or not supported",
+      "category": "FRONTEND",
+      "severity": "error",
+      "template": "javac on Java {0} is not supported: {1}",
+      "summary": "JuLC reads Java with the host's javac (ToolProvider.getSystemJavaCompiler), against a platform built for javac feature release 25. A runtime without the jdk.compiler module, or a javac whose highest source version is not RELEASE_25, is rejected (ADR-068 D3, I6). Emitted by the javac gate when julc.javacGate=enforce (ADR-068 M1).",
+      "fix": "Run JuLC on a JDK 25 runtime that includes jdk.compiler."
+    },
+    {
+      "code": "JULC0090",
+      "constant": "STRING_CONCAT_NON_STRING",
+      "status": "planned",
+      "title": "String concatenation with a non-String operand",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "String concatenation {0} has a non-String operand of type {1}",
+      "summary": "Reserved by ADR-068 (D6, #296): \"a\" + 1 is valid Java, but JuLC lowers string + to appendString, which fails at run time on an integer. A switch guard that is a constant expression as a whole keeps its meaning.",
+      "fix": "Concatenate Strings only."
     },
     {
       "code": "JULC0091",

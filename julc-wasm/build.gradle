@@ -230,3 +230,45 @@ tasks.register('typeScriptDeclarations', JavaExec) {
     outputs.dir(layout.buildDirectory.dir('declarations'))
 }
 tasks.named('test') { dependsOn 'typeScriptDeclarations' }
+
+// ADR-068 M1 host smoke: JavacGateProbe (test sources) as a Web Image, run under Node; its lines must equal the
+// JVM's (JavacGateProbeTest). Writes build/wasm-gate-probe/{probe.txt,jvm.txt}:
+//   ./gradlew :julc-wasm:wasmGateProbe -PgraalvmHome=<GraalVM 25.3 with Web Image>
+tasks.register('wasmGateProbe', Exec) {
+    group = 'verification'
+    description = 'ADR-068 M1: the javac gate, enforced, inside a Web Image built from this module\'s class path'
+    dependsOn 'testClasses', 'jar'
+    def dir = layout.buildDirectory.dir('wasm-gate-probe')
+    outputs.upToDateWhen { false }
+    doFirst {
+        def out = dir.get().asFile
+        fileOps.delete { delete out }
+        out.mkdirs()
+        def cp = (sourceSets.test.output.classesDirs.files + sourceSets.main.runtimeClasspath.files.findAll {
+            it.name.endsWith('.jar') } + [tasks.named('jar').get().archiveFile.get().asFile])
+        executable resolveNativeImage().absolutePath
+        args '--tool:svm-wasm', '-cp', cp.collect { it.absolutePath }.join(File.pathSeparator),
+                '-o', new File(out, 'probe').absolutePath, '-H:+ReportExceptionStackTraces',
+                'org.julclang.wasm.JavacGateProbe'
+    }
+    doLast {
+        def out = dir.get().asFile
+        fileOps.delete { delete new File(out, 'probe.js.wat') }
+        def run = { List<String> command ->
+            def process = new ProcessBuilder(command).redirectErrorStream(true).start()
+            def text = process.inputStream.getText('UTF-8')
+            if (process.waitFor() != 0) throw new GradleException("${command} failed:\n${text}")
+            text.readLines().findAll { !it.startsWith('javac ') && !it.startsWith('probe ') }
+        }
+        def wasm = run(['node', '--experimental-wasm-exnref', new File(out, 'probe.js').absolutePath])
+        def java = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }.get().executablePath
+                .asFile.absolutePath
+        def cp = (sourceSets.test.output.classesDirs.files + sourceSets.test.runtimeClasspath.files)
+                .collect { it.absolutePath }.join(File.pathSeparator)
+        def jvm = run([java, '-cp', cp, 'org.julclang.wasm.JavacGateProbe'])
+        new File(out, 'probe.txt').text = wasm.join('\n') + '\n'
+        new File(out, 'jvm.txt').text = jvm.join('\n') + '\n'
+        if (wasm != jvm) throw new GradleException("Web Image probe differs from the JVM:\n${wasm}\nvs\n${jvm}")
+        logger.lifecycle("Web Image probe (${new File(out, 'probe.js.wasm').length()} bytes) = JVM:\n" + wasm.join('\n'))
+    }
+}

@@ -5,6 +5,14 @@ package org.julclang.compiler.error;
 public final class DiagnosticCodes {
     private DiagnosticCodes() {}
 
+    public static final DiagnosticInfo ARRAY_EQUALS_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0087",
+            "ARRAY_EQUALS_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0} compares {1}, whose equality on the JVM compares an array by identity",
+            "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper.");
+
     public static final DiagnosticInfo ARRAY_UNSUPPORTED = new DiagnosticInfo(
             "JULC0014",
             "ARRAY_UNSUPPORTED",
@@ -213,6 +221,14 @@ public final class DiagnosticCodes {
             "floating point types (float/double) are not supported on-chain",
             "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params.");
 
+    public static final DiagnosticInfo FRONTEND_CONSTRUCT_NOT_PORTED = new DiagnosticInfo(
+            "JULC0084",
+            "FRONTEND_CONSTRUCT_NOT_PORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "FRONTEND",
+            "The javac frontend does not compile {0} yet",
+            "Compile with the default frontend until the construct is ported.");
+
     public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
             "JULC0077",
             "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
@@ -228,6 +244,22 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "Integer literal {0} is invalid: {1}",
             "Add the L suffix for a long literal, use BigInteger for a larger value, write a negated most-negative literal without parentheses (-2147483648), and keep byte[] elements in -128 to 127.");
+
+    public static final DiagnosticInfo JAVAC_ERROR = new DiagnosticInfo(
+            "JULC0085",
+            "JAVAC_ERROR",
+            CompilerDiagnostic.Level.ERROR,
+            "FRONTEND",
+            "{0} ({1})",
+            "Fix the Java error javac reports; where the hint names a JDK type, use JuLC's on-chain equivalent.");
+
+    public static final DiagnosticInfo JAVAC_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0089",
+            "JAVAC_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "FRONTEND",
+            "javac on Java {0} is not supported: {1}",
+            "Run JuLC on a JDK 25 runtime that includes jdk.compiler.");
 
     public static final DiagnosticInfo JULCMAP_OF_OFF_CHAIN_ONLY = new DiagnosticInfo(
             "JULC0062",
@@ -258,8 +290,8 @@ public final class DiagnosticCodes {
             "LEDGER_TYPE_REDECLARED",
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
-            "{0} redeclares the bundled ledger type {1}",
-            "Rename the type.");
+            "{0} declares {1}, which JuLC''s {2} owns",
+            "Rename the type, or move it to a package of your own.");
 
     public static final DiagnosticInfo LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
             "JULC0058",
@@ -381,6 +413,14 @@ public final class DiagnosticCodes {
             "Optimization cost profile {0} targets {1}, but compiler target {2} evaluates as {3}",
             "Use a cost profile pinned for the selected compiler target, or select a compatible compiler target explicitly.");
 
+    public static final DiagnosticInfo PARAM_CONSTANT_VARIABLE = new DiagnosticInfo(
+            "JULC0088",
+            "PARAM_CONSTANT_VARIABLE",
+            CompilerDiagnostic.Level.ERROR,
+            "LIBRARY",
+            "@Param field {0} is a constant variable in Java, so javac would fold it; it is runtime input",
+            "Drop final, or initialize from a non-constant expression such as Boolean.valueOf(true).");
+
     public static final DiagnosticInfo PARAM_RAW_PLUTUS_DATA = new DiagnosticInfo(
             "JULC0013",
             "PARAM_RAW_PLUTUS_DATA",
@@ -453,6 +493,14 @@ public final class DiagnosticCodes {
             "Record {0} implements sealed interfaces {1} and {2}; a record may have at most one sealed parent",
             "Wrap the record in a separate variant for the second interface.");
 
+    public static final DiagnosticInfo REFERENCE_EQUALITY_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0086",
+            "REFERENCE_EQUALITY_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0} compares {1} by reference; use equals",
+            "Use a.equals(b), or ByteStringLib.equals(a, b) for bytes.");
+
     public static final DiagnosticInfo RETURN_INSIDE_WHILE = new DiagnosticInfo(
             "JULC0003",
             "RETURN_INSIDE_WHILE",
@@ -484,6 +532,14 @@ public final class DiagnosticCodes {
             "STDLIB",
             "Stdlib method called with wrong number of arguments: {0}",
             "See the message itself \u2014 it includes a `Usage:` hint with the correct signature.");
+
+    public static final DiagnosticInfo STRING_CONCAT_NON_STRING = new DiagnosticInfo(
+            "JULC0090",
+            "STRING_CONCAT_NON_STRING",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "String concatenation {0} has a non-String operand of type {1}",
+            "Concatenate Strings only.");
 
     public static final DiagnosticInfo SWITCH_DUPLICATE_DEFAULT = new DiagnosticInfo(
             "JULC0082",
@@ -655,6 +711,7 @@ public final class DiagnosticCodes {
 
 
     private static final java.util.List<DiagnosticInfo> ALL = java.util.List.of(
+            ARRAY_EQUALS_UNSUPPORTED,
             ARRAY_UNSUPPORTED,
             BACKEND_CAPABILITY_UNAVAILABLE,
             BACKEND_INVALID_DESCRIPTOR,
@@ -681,8 +738,11 @@ public final class DiagnosticCodes {
             EQUALS_ALWAYS_FALSE,
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
+            FRONTEND_CONSTRUCT_NOT_PORTED,
             INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
             INTEGER_LITERAL_INVALID,
+            JAVAC_ERROR,
+            JAVAC_UNSUPPORTED,
             JULCMAP_OF_OFF_CHAIN_ONLY,
             LABEL_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
@@ -702,6 +762,7 @@ public final class DiagnosticCodes {
             NEWTYPE_WRONG_FIELD_COUNT,
             NULL_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
+            PARAM_CONSTANT_VARIABLE,
             PARAM_RAW_PLUTUS_DATA,
             PATTERN_VARIABLE_CONFLICT,
             PATTERN_VARIABLE_SHADOWS_FIELD,
@@ -711,10 +772,12 @@ public final class DiagnosticCodes {
             REASSIGNMENT_OUTSIDE_LOOP,
             RECORD_MEMBER_UNSUPPORTED,
             RECORD_MULTIPLE_SEALED_PARENTS,
+            REFERENCE_EQUALITY_UNSUPPORTED,
             RETURN_INSIDE_WHILE,
             SOURCE_PARSE_FAILED,
             STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,
+            STRING_CONCAT_NON_STRING,
             SWITCH_DUPLICATE_DEFAULT,
             SWITCH_FIELD_SHADOWS_PARAMETER,
             SWITCH_GROUP_UNSUPPORTED,
