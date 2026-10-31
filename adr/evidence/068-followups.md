@@ -42,6 +42,7 @@ Each entry gives:
 | F530 note | M1a | `readJars` without a supported javac checks entry paths only (report and off modes, with a warning) | Revisit when the javac frontend becomes the default (M5) |
 | Elci native shape | M1a | Elci's native-image host smoke was not run (external repo) | M1 exit / M5 gate: Elci release smoke against a local snapshot |
 | Plugin test flake (broader) | M1c integration | `JulcPluginBuildLifecycleTest` failed intermittently under heavy file creation (a corpus recording beside it), not under CPU load alone: `compileJulc` was `UP_TO_DATE` after an output was deleted, or failed `@InputDirectory` validation after the source directory was. Reproduced on #267 without M1c. Controlled A/B under file churn: 3/20 failed with file watching, 0/20 with `--no-watch-fs`; that test now passes `--no-watch-fs` | Other plugin tests that change files between builds use the same runner shape and were not stress-tested; revisit if one flakes |
+| Per-case observation of the `compareTo` rule | M1c (F730) | 5,626 of 7,596 byte-changed cases have no observation attached (`068-m1c-reference-b1.md`). V146 shows the rule is the only byte change, so they rest on the rule's own tests. `compare-evaluations.py` matches 12,826 evaluations only as groups | Pair old and new scripts through the ledger's case keys when M3 compares frontends; the same comparison is M3's gate |
 | wasm smoke flakiness | M1a | `wasmSmokeFull` timed out once at load average ~80 (a VM-only evaluation step) | Monitor; raise the timeout if it recurs |
 | evaluations ledger size | M0 | The evaluations ledger is 6 MB (stored as gzip) and grows each milestone | Consider trimming its columns, or storing only the rows that differ, after M1 |
 | F210 scope | M0 | The class-file rule for implicit `equals` without code is sound only for API stubs (guarded by `ApiRecordEqualsTest`) | Keep the guard; do not reuse the rule for user class files |
@@ -55,3 +56,4 @@ Entries move here, with the commit that resolves them, once they are fixed.
 | ID | Resolved by |
 |---|---|
 | F723 | `7eb301f0`: the release note also covers a single-typed `switch` followed by a method call |
+| F731, F732 | `compare-ledgers.py` reports a run only the reference has as `lost observation`, keeps each part of a difference, and calls a change a fix only if more levels agree with the JVM. The committed diff is unchanged, so no regression was hidden |
