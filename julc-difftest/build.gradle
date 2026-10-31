@@ -37,7 +37,7 @@ tasks.withType(Test).configureEach {
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
-        excludeTags 'nightly', 'rediscovery'
+        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline'
     }
     // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
     def cases = providers.gradleProperty('difftest.cases')
@@ -77,3 +77,42 @@ tasks.register('rediscoveryDiffTest', Test) {
     if (form.isPresent()) systemProperty 'difftest.form', form.get()
     outputs.upToDateWhen { false }
 }
+
+// ADR-068 M0 (adr/evidence/068-javac-frontend-baseline.md). First the G1 fixed-seed corpus is captured with the pull-request
+// campaign's seed, then the baseline compiles the corpus with the reference (JavaParser) frontend and writes the D13
+// ledger, the I2a rejection inventory, the D6 equality scan and the accepted-divergence list under adr/evidence/068/:
+//   ./gradlew test -Pjulc.corpus.record=build/julc-corpus --offline --continue --rerun
+//   ./gradlew :julc-difftest:adr068Baseline -Padr068.corpus=build/julc-corpus [-Padr068.external=../julc-examples] --offline
+tasks.register('adr068G1Capture', Test) {
+    group = 'verification'
+    description = 'ADR-068 M0: capture the G1 fixed-seed corpus'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'jqwik'
+        includeTags 'adr068-g1-capture'
+    }
+    outputs.upToDateWhen { false }
+}
+
+tasks.register('adr068Baseline', Test) {
+    group = 'verification'
+    description = 'ADR-068 M0: the D13 ledger, I2a inventory, D6 equality scan and accepted divergences'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    dependsOn 'adr068G1Capture'
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter'
+        includeTags 'adr068-baseline'
+    }
+    systemProperty 'adr068.repo', rootDir.absolutePath
+    ['adr068.corpus', 'adr068.external', 'adr068.out', 'adr068.threads'].each { key ->
+        def value = providers.gradleProperty(key)
+        if (value.isPresent()) {
+            systemProperty key, key in ['adr068.threads'] ? value.get() : rootProject.file(value.get()).absolutePath
+        }
+    }
+    outputs.upToDateWhen { false }
+}
+// After the root build's Test defaults (1g), which would otherwise apply last.
+tasks.named('adr068Baseline').configure { maxHeapSize = '6g' }

@@ -25,6 +25,11 @@ Security-relevant issues include:
 - **Fund safety**: Any scenario where compiled validators could lead to locked or stolen funds
 - **Supply chain**: Dependency vulnerabilities that affect compiled output
 
+During the preview, divergences between a validator's Java behaviour and its compiled script that are catalogued
+publicly in [ADR-062](adr/062-jvm-uplc-semantic-consistency-programme.md) (the catalogue, its saved `DIVERGE`
+cases and the issues they cite) are tracked as public issues. Only divergences that are not yet disclosed go
+through the private reporting process above ([ADR-068](adr/068-javac-frontend-migration.md) D4).
+
 Out of scope:
 
 - Off-chain stub behavior divergences (documented in the Known Limitations)
