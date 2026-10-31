@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9) and 2026-11-01 (r10)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -250,7 +250,7 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
   - Source types: tags follow the `permits` clause; without one, the records nested in the interface in
     `ClassTree.getMembers()` order (today's rule). If javac's `getPermittedSubclasses()` is not exactly that list
     (any other class of the compilation unit permitted implicitly, such as a top-level or sibling-nested record),
-    the interface is rejected with a diagnostic asking for an explicit `permits` clause.
+    the interface is rejected with `JULC0092` (`SEALED_PERMITS_REQUIRED`), asking for an explicit `permits` clause.
   - Class-file types (the ledger, through the signature blob): tags follow the `PermittedSubclasses` attribute,
     which the stub generator must keep, together with `Record`, `Signature` and runtime-visible annotations. A
     build-time test checks, for every sealed ledger type, that `PermittedSubclasses` order equals the source member
@@ -294,13 +294,16 @@ question 8; the ADR-065 criteria it does not meet yet are gates here (Context).
 The lowering walks javac's attributed `com.sun.source.tree` trees and produces PIR, as it walks JavaParser trees
 today. All access to javac's attribution goes through one JuLC class, `JavacFacts`:
 
-- tree → `Element`, and `Element` → binder name (I13);
+- tree → `Element`;
 - tree → `TypeMirror`, and `TypeMirror` → `PirType`, with nominal identity (the `TypeElement`) kept alongside for
   dispatch and checks (I12);
-- literal values and guard constants (I9);
+- literal values (I9);
 - positions (I7).
 
-`JavacFacts` is a service over javac's own tree, not a representation: no tree is copied or rewritten. Statement
+`JavacFacts` is a service over javac's own tree, not a representation: no tree is copied or rewritten. It is
+stateless, and its registry has no simple-name lookup, so the type system enforces I12. What depends on the point in
+the PIR being built belongs to the lowering: a binder name (I13) is chosen by the lowering's scope, guard constants by
+the lowering, and a bound type-variable environment is passed as an argument. Statement
 lowering keeps today's continuation style; hygiene comes from I13, not from AST renaming. The safeguards a
 separate typed IR would provide are stated as I12 (nominal identity, no fallbacks, no error types) and I13
 (capture-free binders), and I3 makes binding testable; evaluation order is stated per construct in the port (M3)
@@ -363,7 +366,7 @@ Alternatives (ADR-065 OQ9 answered as (a)):
 ### D4. Explicit frontend selection; the JavaParser frontend is frozen
 
 `CompilerOptions.frontend` takes `JAVAPARSER` or `JAVAC` and is marked experimental. The Gradle plugin, CLI and
-testkit expose it. The default is `JAVAPARSER` until M5 and `JAVAC` after it; M6 removes the option.
+testkit expose it from M3, once a compilation can succeed on it; at M2 each would only report `JULC0084`. The default is `JAVAPARSER` until M5 and `JAVAC` after it; M6 removes the option.
 
 - During M2–M4 the javac frontend rejects a construct it has not yet ported with `JULC0084`
   (`FRONTEND_CONSTRUCT_NOT_PORTED`, internal status), naming the construct. It never falls back (I8).
@@ -615,6 +618,11 @@ exceptions D11 lists.
 `TypeElement`s and `TypeMirror`s, under I11. Ledger types come from the signature stubs, so ledger sources are no
 longer parsed on every compile. This closes #284 and #286 by construction.
 
+A type is read by identity, not by spelling, so three things differ from the JavaParser frontend's string matching.
+Each is a named change under I2a and I11, with a test and a D13 row: `@NewType()` and
+`@org.julclang.stdlib.annotation.NewType` are JuLC's annotation; a user annotation named `NewType` is not; and a `@NewType`
+component may spell its type `java.math.BigInteger`.
+
 ### D8. Libraries and the source pool
 
 - **The source pool, per host.** Each host gives `JavacFrontend` its **roots** (the units it compiles) and a
@@ -748,6 +756,7 @@ Each milestone appends the javac frontend's row and, for every difference, one c
 | **Accepted by decision** | The javac frontend accepts a case the reference rejected (escape shapes, javac 25's switch shapes, ADR-067 M2a/M2b record patterns) | The decision; a `.diffcase` per shape on which the javac frontend agrees with the JVM |
 | **Diagnostic change** | Both reject, with a different code, message or position | For a coded JuLC rejection, only a decision this ADR names or I2b's javac-first rejection; for an uncoded one, its new code (I2a) |
 | **Provenance change** | Only source locations differ (I7) | The location pairs, and the rule that explains them |
+| **Schema name change** | A blueprint names a type differently, and its encoding is equal, because D8 reads only the units a program references | The two names, and the unit D8 does not read |
 | **Representation only** | Bytes differ; semantic observations and budgets equal | The PIR diff |
 | **Cost change** | Semantic observations equal; budgets differ | The budget delta; a review decision if any budget grows |
 | **Reference change** | The reference itself changed (D4's exceptions) | The new frozen base, and every reference row re-run |
@@ -860,7 +869,7 @@ milestone's evidence; a skipped check fails the gate.
 |---|---|---|---|---|
 | **M0** | Freeze B0 and the corpus: in-repo `julc-examples` validators, the 16 stdlib libraries, ledger sources, `verification/blaster/fixtures`, `verification/c7/fixtures`, every compiler/stdlib/testkit test source, the `.diffcase` set, G0, the G1 fixed-seed corpus, the external `julc-examples`, Elci's smoke and `custom-library`. Build the D13 ledger's reference rows, the I2a rejection inventory, and D6's scan of `.equals` call sites that `JULC0087` would reject. Freeze D4's accepted-divergence list with each pin's ID. Add this ADR as a step of ADR-062, and D4's preview-tracking sentence to `SECURITY.md` | This ADR accepted; the integration's full run green | `adr/evidence/068-javac-frontend-baseline.md` with B0's SHA, the pinned commands, and the generated ledger and inventory | I1, I2a, I7, I11 baselines |
 | **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's comparison rules in both frontends (D4 exception 1, re-freezing the reference as B1); the JuLC collections' `byte[]` value equality on the JVM (D6). D6's dialect rewrite of every in-repo migration source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every migration case accepted by both is byte-identical to B1 (I1a); every migration case javac rejects is a "javac rejection" row whose rewrite is accepted and costs no more, in size and budget, than the order-correct lowering of its dialect original (D4), except where the rewrite writes out a conversion or library call the dialect made implicitly, each listed with its measured cost; a case D6 removes keeps its original rejection row and needs no accepted replacement; negative fixtures stay rejected; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I1, I2b, I2c, I4, I6, I10 |
-| **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases agree; `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
+| **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases bind to the user's type (their values agree in M3, when they can run); `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
 | **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14); calls (stdlib, library, instance dispatch, D6's comparison rules); records, fields, object creation; locals, `if`/`else`, `return`; `instanceof`; `switch` with ADR-067 M1 guards and the ported `JavaConstants`; lambdas; whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix) | M3 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
 | **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
@@ -1178,3 +1187,11 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - F401 → D3's "compile result's metadata" is `JavacProvenance` on `CompileResult`. The implementation note's
     `preamble.compiler` is withdrawn: CIP-57 closes that object. D3's release-blocking rule names acceptance, rejection
     and script bytes, since recorded provenance differs by patch release by design.
+- **r10** (2026-11-01, after three reviews of M2, on repository evidence):
+  - F842 → `JavacFacts` is stateless: binder names, guard constants and type-variable environments are the lowering's,
+    since they depend on the point in the PIR being built. The structure is in
+    [`068-m3-lowering-structure.md`](evidence/068-m3-lowering-structure.md).
+  - F840 → its registry has no simple-name lookup, so the type system enforces I12.
+  - F824 → M2's #284 and #286 criterion is binding; their values agree in M3, when they can run.
+  - F803, F806, F828 → D7 names the three spellings that differ from the JavaParser frontend.
+  - D13 gains "Schema name change". I11 names `JULC0092`. The hosts expose `frontend` from M3.
