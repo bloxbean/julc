@@ -5,8 +5,8 @@ method: m
 tag: Probe$A Probe$S 0
 tag: Probe$B Probe$S 1
 arg: 22
-expect: REJECT none
-note: ADR-067 R5: not Java 21 (javac 21.0.3 rejects it); the harness's javac 25 accepts it.
+expect: REJECT JULC0085
+note: ADR-067 R5: not Java 21 (javac 21.0.3 rejects it); the harness's javac 25 accepts it. ADR-068 M1b: the javac gate (-source 21) rejects it first (I2b), compiler.err.feature.not.supported.in.source.plural.
 ---
 import java.math.BigInteger;
 

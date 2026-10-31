@@ -45,6 +45,8 @@ class SwitchParityCorpusTest {
      * javac rejects for such a literal carries this code instead (ADR-067, "Integration with T25").
      */
     private static final String INVALID_LITERAL = "JULC0070";
+    /** ADR-068 D5: the javac gate's rejection. */
+    private static final String JAVAC_REJECTION = "JULC0085";
 
     /** A generated program; {@code intended} is the code JuLC must reject it with although javac accepts it. */
     record Program(String name, String source, String intended, boolean run) {
@@ -366,7 +368,9 @@ class SwitchParityCorpusTest {
             boolean julcAccepts = code == null;
             if (PARSE_ERROR.equals(code)) parseErrors++;
             boolean invalidLiteral = INVALID_LITERAL.equals(code) && !verdict.accepted();
-            if (code != null && !D4_CODES.contains(code) && !code.equals(PARSE_ERROR) && !invalidLiteral) {
+            // ADR-068 I2b: javac's rejection comes first, as JULC0085, for a program javac 21.0.3 rejects too.
+            boolean javacFirst = JAVAC_REJECTION.equals(code) && !verdict.accepted();
+            if (code != null && !D4_CODES.contains(code) && !code.equals(PARSE_ERROR) && !invalidLiteral && !javacFirst) {
                 problems.add(program.name() + ": JuLC rejects with " + code + ", not a D4 code");
             }
             if (program.intended() != null && verdict.accepted()) {

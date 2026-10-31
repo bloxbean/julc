@@ -30,18 +30,23 @@ import static org.junit.jupiter.api.Assertions.fail;
 class Javac21ParityTest {
 
     /** What JuLC must do: compile and return {@code value} at every level, or reject with {@code code}. */
-    record Julc(BigInteger value, String code) {
+    record Julc(BigInteger value, String code, String key) {
         static Julc value(long value) {
-            return new Julc(BigInteger.valueOf(value), null);
+            return new Julc(BigInteger.valueOf(value), null, null);
         }
 
         static Julc rejects(String code) {
-            return new Julc(null, code);
+            return new Julc(null, code, null);
+        }
+
+        /** javac rejects it first (ADR-068 I2b): {@code JULC0085} with javac's {@code key}. */
+        static Julc javacRejects(String key) {
+            return new Julc(null, "JULC0085", key);
         }
 
         @Override
         public String toString() {
-            return value != null ? "accepts, " + value : "REJECT " + code;
+            return value != null ? "accepts, " + value : "REJECT " + code + (key == null ? "" : " " + key);
         }
     }
 
@@ -89,17 +94,17 @@ class Javac21ParityTest {
         cases.add(new ParityCase("G6 only a guarded arm for A, no default", "G6", switchOverA("""
                             case A x when x.v().signum() > 0 -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "does not cover all possible input values", "accepts, 1", Julc.rejects("JULC0005")));
+                """), Map.of(), FIVE, "does not cover all possible input values", "accepts, 1", Julc.javacRejects("compiler.err.not.exhaustive")));
         cases.add(new ParityCase("G7 guarded arm after the same unguarded pattern", "G7", switchOverA("""
                             case A x -> BigInteger.ONE;
                             case A x when x.v().signum() > 0 -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "dominated by a preceding case label", "accepts, 1", Julc.rejects("JULC0071")));
+                """), Map.of(), FIVE, "dominated by a preceding case label", "accepts, 1", Julc.javacRejects("compiler.err.pattern.dominated")));
         cases.add(new ParityCase("G8 when false", "G8", switchOverA("""
                             case A x when false -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "constant expression with value 'false'", "accepts, 1", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "constant expression with value 'false'", "accepts, 1", Julc.javacRejects("compiler.err.guard.has.constant.expression.false")));
         cases.add(new ParityCase("H1 guard reads a loop-updated local", "H1", probe(S, """
                     public static BigInteger m(BigInteger a) {
                         BigInteger lim = BigInteger.ZERO;
@@ -113,12 +118,12 @@ class Javac21ParityTest {
                             case B y -> BigInteger.ZERO;
                         };
                     }
-                """), Map.of(), FIVE, "must be final or effectively final", "accepts, 1", Julc.rejects("JULC0073")));
+                """), Map.of(), FIVE, "must be final or effectively final", "accepts, 1", Julc.javacRejects("compiler.err.cant.ref.non.effectively.final.var")));
         cases.add(new ParityCase("F13a when 3", "F13a", switchOverA("""
                             case A x when 3 -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "incompatible types: int cannot be converted to boolean", "accepts, 1", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types: int cannot be converted to boolean", "accepts, 1", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F13b two default labels", "F13b", probe(S, """
                     public static BigInteger m(BigInteger a) {
                         S s = new B(a);
@@ -128,11 +133,11 @@ class Javac21ParityTest {
                             default -> BigInteger.TEN;
                         };
                     }
-                """), Map.of(), FIVE, "duplicate default label", "accepts, 10", Julc.rejects("JULC0082")));
+                """), Map.of(), FIVE, "duplicate default label", "accepts, 10", Julc.javacRejects("compiler.err.duplicate.default.label")));
         cases.add(new ParityCase("F13c binding named like a parameter", "F13c", switchOverA("""
                             case A a -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "variable a is already defined", "accepts, 1", Julc.rejects("JULC0083")));
+                """), Map.of(), FIVE, "variable a is already defined", "accepts, 1", Julc.javacRejects("compiler.err.already.defined")));
         cases.add(new ParityCase("F14b parameterized sealed selector, javac-invalid", "F14b", probe("""
                     sealed interface G<X> permits GC, GD {}
                     record GC(BigInteger c) implements G<String> {}
@@ -145,7 +150,7 @@ class Javac21ParityTest {
                             case GD d -> d.d();
                         };
                     }
-                """), Map.of(), FIVE, "incompatible types", "accepts, 5", Julc.rejects("JULC0007")));
+                """), Map.of(), FIVE, "incompatible types", "accepts, 5", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("javac 21/25 Pair shape", "Pair", probe("""
                     sealed interface T permits C, D {}
                     record C(BigInteger w) implements T {}
@@ -175,7 +180,7 @@ class Javac21ParityTest {
                         return v.x();
                     }
                 }
-                """, Map.of(), FIVE, null, "REJECT JULC0055", Julc.rejects("JULC0055")));
+                """, Map.of(), FIVE, null, "REJECT JULC0055", Julc.rejects("JULC0081")));
         cases.add(new ParityCase("F23 a ledger Rational assigned to a user Rational (#287)", "F23", """
                 import java.math.BigInteger;
 
@@ -194,11 +199,11 @@ class Javac21ParityTest {
 
                 public record Rational(BigInteger numerator, BigInteger denominator) {}
                 """), List.of(PlutusData.integer(5), PlutusData.integer(7)), "incompatible types",
-                "accepts, 7", Julc.value(7)));
+                "accepts, 7", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("R5 unnamed pattern variable", "R5", switchOverA("""
                             case A(var _) -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "unnamed variables are a preview feature", "REJECT none", Julc.rejects("none")));
+                """), Map.of(), FIVE, "unnamed variables are a preview feature", "REJECT none", Julc.javacRejects("compiler.err.feature.not.supported.in.source.plural")));
         // ---- M1 review rows
         var plutusStubs = Map.of(
                 "org/julclang/core/PlutusData.java", "package org.julclang.core;\npublic interface PlutusData {}\n",
@@ -215,33 +220,33 @@ class Javac21ParityTest {
                     }
                 """);
         cases.add(new ParityCase("F28 a PlutusData guard", "F28", plutus, plutusStubs,
-                List.of(PlutusData.integer(5), PlutusData.constr(1)), "incompatible types", "added in the M1 review", Julc.rejects("JULC0072")));
+                List.of(PlutusData.integer(5), PlutusData.constr(1)), "incompatible types", "added in the M1 review", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F28 a Builtins.iData guard", "F28b", switchOverA("""
                             case A x when Builtins.iData(x.v()) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.stdlib.Builtins;"), plutusStubs, FIVE, "incompatible types", "added in the M1 review", Julc.rejects("JULC0072")));
+                """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.stdlib.Builtins;"), plutusStubs, FIVE, "incompatible types", "added in the M1 review", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F52 (Object) true", "F52a", switchOverA("""
                             case A x when (Object) true -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F52 true ? true : 0", "F52b", switchOverA("""
                             case A x when (true ? true : 0) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F52 x.v() > 0 ? true : 0", "F52c", switchOverA("""
                             case A x when (x.v().signum() > 0 ? true : 0) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F54 (boolean) false", "F54a", switchOverA("""
                             case A x when (boolean) false -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "constant expression with value 'false'", "added in the M1 review", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "constant expression with value 'false'", "added in the M1 review", Julc.javacRejects("compiler.err.guard.has.constant.expression.false")));
         cases.add(new ParityCase("F54 \"a\" == \"b\"", "F54b", switchOverA("""
                             case A x when "a" == "b" -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "constant expression with value 'false'", "added in the M1 review", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "constant expression with value 'false'", "added in the M1 review", Julc.javacRejects("compiler.err.guard.has.constant.expression.false")));
         cases.add(new ParityCase("F54 promoted conditional, constant true", "F54c", switchOverA("""
                             case A x when ((true ? 2147483647 : 0L) + 1) > 0 -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
@@ -256,14 +261,14 @@ class Javac21ParityTest {
                         S s = new A(a);
                         return switch (s) { case A x when x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F55 nested pattern variable named like a colon-group local", "F55a", switchOverA("""
                             case A x:
                                 BigInteger y = x.v();
                                 S t = new B(y);
                                 yield switch (t) { case A p -> BigInteger.ONE; case B y -> BigInteger.TWO; };
                             default: yield BigInteger.ZERO;
-                """), Map.of(), FIVE, "already defined", "added in the M1 review", Julc.rejects("JULC0083")));
+                """), Map.of(), FIVE, "already defined", "added in the M1 review", Julc.javacRejects("compiler.err.already.defined")));
         cases.add(new ParityCase("F55 guard reads a reassigned colon-group local", "F55b", switchOverA("""
                             case A x:
                                 BigInteger lim = BigInteger.ZERO;
@@ -271,7 +276,7 @@ class Javac21ParityTest {
                                 S t = new A(lim);
                                 yield switch (t) { case A p when p.v().compareTo(lim) > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
                             default: yield BigInteger.ZERO;
-                """), Map.of(), FIVE, "effectively final", "added in the M1 review", Julc.rejects("JULC0073")));
+                """), Map.of(), FIVE, "effectively final", "added in the M1 review", Julc.javacRejects("compiler.err.cant.ref.non.effectively.final.var")));
         cases.add(new ParityCase("F56 a qualified pattern type of another declaration", "F56", probe(S + """
                     static final class Other {
                         sealed interface U permits A {}
@@ -282,29 +287,29 @@ class Javac21ParityTest {
                         S s = new A(a);
                         return switch (s) { case Other.A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.rejects("JULC0076")));
+                """), Map.of(), FIVE, "incompatible types", "added in the M1 review", Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F57 arrow rule then colon group", "F57a", switchOverA("""
                             case A x when x.v().signum() > 0 -> BigInteger.ONE;
                             default: yield BigInteger.TWO;
-                """), Map.of(), FIVE, "different case kinds", "added in the M1 review", Julc.rejects("JULC0075")));
+                """), Map.of(), FIVE, "different case kinds", "added in the M1 review", Julc.javacRejects("compiler.err.switch.mixing.case.types")));
         cases.add(new ParityCase("F57 colon group then arrow rule", "F57b", switchOverA("""
                             case A x: yield BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "different case kinds", "added in the M1 review", Julc.rejects("JULC0075")));
+                """), Map.of(), FIVE, "different case kinds", "added in the M1 review", Julc.javacRejects("compiler.err.switch.mixing.case.types")));
         // ---- M1 review round 2 rows (javac rejects each; JuLC rejects with a code)
         String round2 = "added in M1 review round 2";
         cases.add(new ParityCase("F60 a conditional whose condition is an int", "F60a", switchOverA("""
                             case A x when (1 ? true : false) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "incompatible types", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", round2, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F60 == on a conditional of boolean and int", "F60b", switchOverA("""
                             case A x when (x.v().signum() > 0 ? true : 0) == true -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "bad operand types", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "bad operand types", round2, Julc.javacRejects("compiler.err.operator.cant.be.applied.1")));
         cases.add(new ParityCase("F62 instanceof a sibling variant", "F62a", switchOverA("""
                             case A x when x instanceof B -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "incompatible types", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", round2, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F62 instanceof a same-named declaration", "F62b", probe(S + """
                     static final class Other {
                         record A(BigInteger v) {}
@@ -315,12 +320,12 @@ class Javac21ParityTest {
                         Other.A o = new Other.A(a);
                         return switch (s) { case A x when o instanceof A -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), Map.of(), FIVE, "incompatible types", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", round2, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F63 a char conditional, constant false", "F63", switchOverA("""
                             case A x when ("x" + (true ? 'a' : 98)) == "x97" -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), Map.of(), FIVE, "constant expression with value 'false'", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "constant expression with value 'false'", round2, Julc.javacRejects("compiler.err.guard.has.constant.expression.false")));
         cases.add(new ParityCase("F64 an unqualified pattern type naming another A", "F64", probe("""
                     static final class Other {
                         sealed interface S permits A {}
@@ -332,30 +337,30 @@ class Javac21ParityTest {
                         Other.S s = new Other.A(a);
                         return switch (s) { case A x -> BigInteger.ONE; };
                     }
-                """), Map.of(), FIVE, "incompatible types", round2, Julc.rejects("JULC0076")));
+                """), Map.of(), FIVE, "incompatible types", round2, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F65 a cast to a user type named Boolean", "F65", probe(S + "    static final class Boolean {}\n", """
                     public static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when (Boolean) true -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), Map.of(), FIVE, "incompatible types", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "incompatible types", round2, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F66 a narrowing constant initializer", "F66a", probe(S + "    static final int N = 4294967296L;\n", """
                     public static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when N > 0 -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "possible lossy conversion from long to int", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "possible lossy conversion from long to int", round2, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F66 an instance field read from a static method", "F66b", probe(S + "    final boolean ON = true;\n", """
                     public static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when ON -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "non-static variable ON cannot be referenced from a static context", round2, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "non-static variable ON cannot be referenced from a static context", round2, Julc.javacRejects("compiler.err.non-static.cant.be.ref")));
         cases.add(new ParityCase("F39 a Data-typed library call inside &&", "F39", switchOverA("""
                             case A x when Builtins.iData(x.v()) && x.v().signum() > 0 -> BigInteger.ONE;
                             default -> BigInteger.TWO;
                 """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.stdlib.Builtins;"),
-                plutusStubs, FIVE, "bad operand types", round2, Julc.rejects("JULC0072")));
+                plutusStubs, FIVE, "bad operand types", round2, Julc.javacRejects("compiler.err.operator.cant.be.applied.1")));
         // ---- M1 review round 3 rows
         String round3 = "added in M1 review round 3";
         cases.add(new ParityCase("F70 a long constant shifted past int width, constant false", "F70", probe(S + "    static final long N = 1;\n", """
@@ -363,37 +368,37 @@ class Javac21ParityTest {
                         S s = new A(a);
                         return switch (s) { case A x when (N << 32) == 1 -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "constant expression with value 'false'", round3, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "constant expression with value 'false'", round3, Julc.javacRejects("compiler.err.guard.has.constant.expression.false")));
         cases.add(new ParityCase("F71 a narrowing declaration read by a non-constant guard", "F71", probe(S + "    static final int N = 4294967296L;\n", """
                     public static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F71 a qualified narrowing declaration read by a non-constant guard", "F71b", probe(S + "    static final int N = 4294967296L;\n", """
                     public static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when Probe.N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F71 a narrowing declaration read through another constant", "F71c",
                 probe(S + "    static final int N = 4294967296L;\n    static final int M = N;\n", """
                     public static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.rejects("JULC0072")));
+                """), Map.of(), FIVE, "possible lossy conversion", round3, Julc.javacRejects("compiler.err.prob.found.req")));
         cases.add(new ParityCase("F74 a guard binding named like a local", "F74a", probe(S, """
                     public static BigInteger m(BigInteger a) {
                         BigInteger v = a;
                         S s = new A(a);
                         return switch (s) { case A x when !(s instanceof B v) -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), Map.of(), FIVE, "already defined", round3, Julc.rejects("JULC0083")));
+                """), Map.of(), FIVE, "already defined", round3, Julc.javacRejects("compiler.err.already.defined")));
         cases.add(new ParityCase("F74 the same binding twice in one guard", "F74b", switchOverA("""
                             case A x when (s instanceof A a2) || (s instanceof A a2) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "illegal attempt to redefine an existing match binding", round3, Julc.rejects("JULC0083")));
+                """), Map.of(), FIVE, "illegal attempt to redefine an existing match binding", round3, Julc.javacRejects("compiler.err.match.binding.exists")));
         // ---- M1 review round 4 rows
         String round4 = "added in M1 review round 4";
         // F82a-d: since T25 (ADR-062) the literal itself is rejected first, JULC0070, before the guard checker's JULC0072.
@@ -403,28 +408,28 @@ class Javac21ParityTest {
                         S s = new A(a);
                         return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0070")));
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.javacRejects("compiler.err.int.number.too.large")));
         cases.add(new ParityCase("F82 an out-of-range long literal in a constant field", "F82b", probe(S + "    static final long L = 9223372036854775808L;\n", """
                     public static BigInteger m(BigInteger a) {
                         
                         S s = new A(a);
                         return switch (s) { case A x when L > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0070")));
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.javacRejects("compiler.err.int.number.too.large")));
         cases.add(new ParityCase("F82 an out-of-range literal in a final local", "F82c", probe(S + "", """
                     public static BigInteger m(BigInteger a) {
                         final int n = 2147483648;
                         S s = new A(a);
                         return switch (s) { case A x when n > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0070")));
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.javacRejects("compiler.err.int.number.too.large")));
         cases.add(new ParityCase("F82 an out-of-range literal read through another constant", "F82d", probe(S + "    static final int N = 2147483648;\n    static final int M = N;\n", """
                     public static BigInteger m(BigInteger a) {
                         
                         S s = new A(a);
                         return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), Map.of(), FIVE, "integer number too large", round4, Julc.rejects("JULC0070")));
+                """), Map.of(), FIVE, "integer number too large", round4, Julc.javacRejects("compiler.err.int.number.too.large")));
         // ---- M1 review round 5 (F85): minimum-value spellings, and the overflows that stay rejected
         String round5 = "added in M1 review round 5";
         cases.add(new ParityCase("F85 minimum values with underscores and a lowercase l, beside a binding", "F85a", switchOverA("""
@@ -439,15 +444,15 @@ class Javac21ParityTest {
         cases.add(new ParityCase("F85 a positive underscored int overflow", "F85c", switchOverA("""
                             case A x when 2_147_483_648 > x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "integer number too large", round5, Julc.rejects("JULC0070")));
+                """), Map.of(), FIVE, "integer number too large", round5, Julc.javacRejects("compiler.err.int.number.too.large")));
         cases.add(new ParityCase("F85 a parenthesised minimum value", "F85d", switchOverA("""
                             case A x when -(2_147_483_648) < x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "integer number too large", round5, Julc.rejects("JULC0070")));
+                """), Map.of(), FIVE, "integer number too large", round5, Julc.javacRejects("compiler.err.int.number.too.large")));
         cases.add(new ParityCase("F85 a positive long overflow with a lowercase l", "F85e", switchOverA("""
                             case A x when 9223372036854775808l > x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), Map.of(), FIVE, "integer number too large", round5, Julc.rejects("JULC0070")));
+                """), Map.of(), FIVE, "integer number too large", round5, Julc.javacRejects("compiler.err.int.number.too.large")));
         return cases;
     }
 
@@ -486,6 +491,9 @@ class Javac21ParityTest {
                     return;
                 }
                 assertEquals(c.julc().code(), r.code() == null ? "none" : r.code(), label + " " + r.message());
+                if (c.julc().key() != null) {
+                    assertTrue(r.message().contains("(" + c.julc().key() + ")"), label + " " + r.message());
+                }
             } else if (observation instanceof Observation.Value v && v.data() instanceof PlutusData.IntData i) {
                 assertEquals(c.julc().value(), i.value(), label);
             } else {
