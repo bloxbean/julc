@@ -15,6 +15,8 @@ dependencies {
     runtimeOnly project(':julc-vm-java')
 
     testImplementation "net.jqwik:jqwik:${jqwikVersion}"
+    testImplementation 'com.github.javaparser:javaparser-core:3.26.3' // ADR-068 M2: the reference registry; gone at M6
+    testImplementation project(':julc-blueprint')
     testImplementation libs.jazzer.junit
 }
 
@@ -37,7 +39,7 @@ tasks.withType(Test).configureEach {
 test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
-        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline', 'adr068-gate-timing'
+        excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline', 'adr068-gate-timing', 'adr068-types'
     }
     // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
     def cases = providers.gradleProperty('difftest.cases')
@@ -142,3 +144,31 @@ tasks.register('adr068GateTiming', Test) {
     outputs.upToDateWhen { false }
 }
 tasks.named('adr068GateTiming').configure { maxHeapSize = '4g' }
+
+// ADR-068 M2 (I11): registry equality between the frontends over the corpus (adr/evidence/068-m2-types.md):
+//   ./gradlew :julc-difftest:adr068Types -Padr068.corpus=<M0 recording> [-Padr068.corpus.external=<dir>]
+//       [-Padr068.corpus.elci=<dir>] [-Padr068.corpus.head=<a recording of this head>] [-Padr068.threads=<n>]
+//       [-Padr068.out=<dir>] [-Padr068.freeze=true] --offline
+// -Padr068.freeze writes the encoding and blueprint reference from the JavaParser frontend instead of reading it.
+tasks.register('adr068Types', Test) {
+    group = 'verification'
+    description = 'ADR-068 M2: the frontends\' type registries over the corpus'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    dependsOn 'adr068G1Capture'
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter'
+        includeTags 'adr068-types'
+    }
+    systemProperty 'adr068.repo', rootDir.absolutePath
+    systemProperty 'julc.javacGate', 'off'
+    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.corpus.head', 'adr068.out', 'adr068.threads', 'adr068.freeze'].each { key ->
+        def value = providers.gradleProperty(key)
+        if (value.isPresent()) {
+            systemProperty key, key in ['adr068.threads', 'adr068.freeze'] ? value.get() : rootProject.file(value.get()).absolutePath
+        }
+    }
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }
+}
+tasks.named('adr068Types').configure { maxHeapSize = '6g' }

@@ -1,0 +1,10 @@
+# ADR-068 M2: every difference between the frontends' types, encodings and blueprints, with its class (D13). The corpus
+# tools fail on a difference that is not here, and on an entry they no longer find.
+# kind	key	reason
+registry	079d0289a29953bcf863089ce0f3aab2b3266f09281a628069f0d3c37f71a7d7	T33, #284: diverge-t33-top-level-user-value-on-local: the reference drops the top-level user record Value for the ledger's; javac registers the user's. Semantic fix, deferred to M3 to observe
+registry	3fd05c4d1441ac4381fe456eacfc050bf5f45997afe5bdd97bb6d567c2bb243f	T33, #284: diverge-t33-top-level-user-value-on-constructor: as above
+registry	548f9534060563fd2b3d0cb42da432323419c073d2d0cb8d4ae59374ea3c6ed0	T33, #284: diverge-t33-packageless-rational: the reference reads the user record in the ledger Rational's layout; javac registers the user's
+registry	be426258732ebfeaa6f5817ead0f0e096142783ca09e1bf684f28d467253894d	T33, #284: diverge-t33-packageless-rational-wildcard: as above
+registry	de6c50ef0af63e262523dc7b0ff40f544e2f677331944f9a72b3fe6e9f75c3a7	T33, #286: diverge-t33-packageless-pubkeyhash-record: the reference makes a user record named PubKeyHash the ledger's bytes; javac registers the user's
+encoding	PubKeyHash|e9867ec185dfe453|PubKeyHash|781084e48474811f	T33, #286: the same case: the reference's Data of the user record is the bytes the ledger hash would be; javac's registry gives Constr 0 [bytes], which is what the JVM's record is
+blueprint	867755f840847cb8c6ba8dd79f65fbdf7862b388c2364775a69aad94c9715424|SPEND	D8: a library unit the root does not reference declares a second Token. The reference registers it, so the blueprint names com.myapp.Token by its stable id; javac does not read the unit, so it stays Token
