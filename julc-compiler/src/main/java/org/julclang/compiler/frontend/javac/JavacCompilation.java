@@ -24,7 +24,9 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.source.SourceLocation;
 
+import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -124,7 +126,7 @@ public final class JavacCompilation {
         private final Map<MethodTree, PirType> methodTypes = new LinkedHashMap<>();
 
         ClassParts(ClassTree type) {
-            owner = facts.identity((javax.lang.model.element.TypeElement) facts.element(type));
+            owner = facts.identity((TypeElement) facts.element(type));
             var rejected = new ArrayList<CompilerDiagnostic>();
             params = discovery.paramFields(type, rejected);
             if (!rejected.isEmpty()) throw new CompilerException(rejected);
@@ -179,7 +181,7 @@ public final class JavacCompilation {
         /** What the assembly needs of this compilation: where terms came from, and I13's check of the result. */
         ValidatorAssembly.Frontend frontend() {
             var terms = lowering.terms();
-            var elements = new LinkedHashMap<String, javax.lang.model.element.Element>();
+            var elements = new LinkedHashMap<String, Element>();
             for (var param : params) elements.put(scope.lookup(param.element()).name(), param.element());
             for (var field : statics) elements.put(scope.lookup(facts.element(field)).name(), facts.element(field));
             return new ValidatorAssembly.Frontend(terms.positions(), null,
@@ -281,6 +283,7 @@ public final class JavacCompilation {
             var function = lowering.method(entry.method(), parts.scope, context.isSourceMapEnabled());
             var parameters = entryParameters(entry.method(), function);
             var transformed = ValidatorAssembly.strictEntrypoint(function, parameters, facts.registry());
+            lowering.terms().rebuiltLambdas(function, transformed.function());
             strictErrors.addAll(transformed.errors());
             boolean hasDatum = parameters.size() == 3 && (autoDispatch ? entry.tag() == 1 : purpose == ScriptPurpose.SPENDING);
             entries.add(new ValidatorAssembly.Entry(entry.tag(), parameters.size(), transformed.function(),

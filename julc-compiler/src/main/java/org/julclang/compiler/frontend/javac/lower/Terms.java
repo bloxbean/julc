@@ -44,6 +44,18 @@ public final class Terms {
         provenance.put(binding, element);
     }
 
+    /**
+     * {@code rebuilt} is {@code function} with its lambdas built again, by the strict record transform, over the same
+     * parameters: they keep their elements. Nothing is renamed, so a later name cannot have changed.
+     */
+    public void rebuiltLambdas(PirTerm function, PirTerm rebuilt) {
+        while (function instanceof PirTerm.Lam original && rebuilt instanceof PirTerm.Lam copy) {
+            provenance.put(copy, provenance.get(original));
+            function = original.body();
+            rebuilt = copy.body();
+        }
+    }
+
     /** Records where {@code term} came from, when this compilation has a source map. */
     <T extends PirTerm> T at(Tree tree, T term) {
         if (sourceMaps) positions.put(term, facts.location(tree));

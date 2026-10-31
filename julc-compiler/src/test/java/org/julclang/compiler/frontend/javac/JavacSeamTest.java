@@ -59,7 +59,7 @@ class JavacSeamTest {
     @Test
     void noFrontendSourceNamesTheResolverOrJavaParser() throws IOException {
         var offenders = new ArrayList<String>();
-        try (Stream<Path> sources = Files.list(MAIN.resolve("frontend/javac"))) {
+        try (Stream<Path> sources = Files.walk(MAIN.resolve("frontend/javac"))) {
             for (Path source : sources.filter(p -> p.toString().endsWith(".java")).toList()) {
                 String text = Files.readString(source);
                 if (text.contains("com.github.javaparser") || text.contains("TypeResolver")) offenders.add(source.toString());
@@ -69,7 +69,8 @@ class JavacSeamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"resolve/TypeRegistry.java", "resolve/TypeGroups.java", "backend/LibraryOperations.java"})
+    @ValueSource(strings = {"resolve/TypeRegistry.java", "resolve/TypeGroups.java", "backend/LibraryOperations.java",
+            "codegen/ValidatorAssembly.java", "OnchainOverloads.java"})
     void theNeutralClassesImportNoJavaParser(String file) throws IOException {
         assertFalse(Files.readString(MAIN.resolve(file)).contains("com.github.javaparser"), file);
     }
