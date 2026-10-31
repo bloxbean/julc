@@ -22,6 +22,7 @@ import java.util.Optional;
 public final class CorpusFiles {
 
     private static final byte[] UTF16_MARK = {0, 'u', 't', 'f', '1', '6', 0};
+    private static final String UTF16_MARK_TEXT = new String(UTF16_MARK, StandardCharsets.US_ASCII);
 
     private CorpusFiles() {
     }
@@ -41,12 +42,18 @@ public final class CorpusFiles {
     }
 
     /**
-     * The stored form of {@code text}: its UTF-8 bytes, or, for a text UTF-8 cannot encode (an unpaired surrogate,
-     * which JuLC's tests compile to check its rejection), a marker followed by its UTF-16 code units, big-endian,
-     * so that every source is stored without loss.
+     * The stored form of {@code text}: its UTF-8 bytes, or a reserved marker followed by its UTF-16 code units,
+     * big-endian. The marker form is used for a text UTF-8 cannot encode (an unpaired surrogate, which JuLC's tests
+     * compile to check its rejection) and for a text that itself begins with the marker's characters, so the
+     * encoding is injective (F314): a UTF-8 form never begins with the marker (the marker is ASCII, so UTF-8 bytes
+     * begin with it only when the text begins with its characters), every marker form does, and each form is
+     * injective on its own. Every ordinary source (UTF-8-encodable, not beginning with a NUL) keeps its UTF-8 bytes
+     * and so its digest.
      */
     public static byte[] bytes(String text) {
-        if (StandardCharsets.UTF_8.newEncoder().canEncode(text)) return text.getBytes(StandardCharsets.UTF_8);
+        if (!text.startsWith(UTF16_MARK_TEXT) && StandardCharsets.UTF_8.newEncoder().canEncode(text)) {
+            return text.getBytes(StandardCharsets.UTF_8);
+        }
         var out = new byte[UTF16_MARK.length + 2 * text.length()];
         System.arraycopy(UTF16_MARK, 0, out, 0, UTF16_MARK.length);
         for (int i = 0; i < text.length(); i++) {
@@ -61,6 +68,9 @@ public final class CorpusFiles {
         if (bytes.length < UTF16_MARK.length
                 || !Arrays.equals(bytes, 0, UTF16_MARK.length, UTF16_MARK, 0, UTF16_MARK.length)) {
             return new String(bytes, StandardCharsets.UTF_8);
+        }
+        if ((bytes.length - UTF16_MARK.length) % 2 != 0) {
+            throw new IllegalArgumentException("stored text: odd UTF-16 length after the marker");
         }
         var chars = new char[(bytes.length - UTF16_MARK.length) / 2];
         for (int i = 0; i < chars.length; i++) {
