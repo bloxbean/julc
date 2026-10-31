@@ -8,6 +8,8 @@ import com.sun.source.util.Trees;
 import org.julclang.compiler.error.DiagnosticCodes;
 
 import javax.lang.model.SourceVersion;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -163,10 +165,17 @@ public final class JavacFrontend {
     }
 
     /**
-     * An analysis with its attributed trees: the result, the roots' trees in order (empty when javac did not run) and
-     * the task's {@link Trees}. For JuLC's own tools that read javac's types, such as the REPL wrapper (D9).
+     * An analysis with its attributed trees: the result, the roots' trees in order (empty when javac did not run), the
+     * pool units javac read, in qualified-name order (I4), and the task's {@link Trees}, {@link Elements} and
+     * {@link Types}. For the javac frontend, and for JuLC's own tools that read javac's types, such as the REPL
+     * wrapper (D9).
      */
-    record Attribution(JavacResult result, List<CompilationUnitTree> roots, Trees trees) {
+    record Attribution(JavacResult result, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
+                       Trees trees, Elements elements, Types types) {
+
+        static Attribution none(JavacResult result) {
+            return new Attribution(result, List.of(), List.of(), null, null, null);
+        }
     }
 
     /** {@link #analyze(List, List)}, keeping the attributed trees. */
@@ -185,8 +194,8 @@ public final class JavacFrontend {
     private Attribution analyze(List<Unit> roots, List<Unit> pool, Consumer<String> opened, boolean checkOwnership,
                                 Consumer<TaskEvent> events) {
         JavaCompiler javac = compiler();
-        if (javac == null) return new Attribution(supported(), List.of(), null);
-        if (roots.isEmpty()) return new Attribution(JavacResult.accepted(platform), List.of(), null);
+        if (javac == null) return Attribution.none(supported());
+        if (roots.isEmpty()) return Attribution.none(JavacResult.accepted(platform));
         var offered = new ArrayList<Unit>(roots);
         offered.addAll(pool);
         for (String text : bundled.texts().values()) offered.add(Unit.jar(text));
@@ -215,10 +224,10 @@ public final class JavacFrontend {
 
         if (checkOwnership) {
             var owned = Ownership.check(platform, bundled, rootFiles, poolFiles);
-            if (!owned.isEmpty()) return new Attribution(JavacResult.rejected(owned, platform), List.of(), null);
+            if (!owned.isEmpty()) return Attribution.none(JavacResult.rejected(owned, platform));
         }
         if (!precedence.duplicates().isEmpty()) {
-            return new Attribution(JavacResult.rejected(precedence.duplicates(), platform), List.of(), null);
+            return Attribution.none(JavacResult.rejected(precedence.duplicates(), platform));
         }
 
         var fileManager = new EmbeddedFileManager(platform, precedence.listed(), opened);
@@ -258,7 +267,15 @@ public final class JavacFrontend {
         if (!diagnostics.isEmpty()) diagnostics.addAll(precedence.notes());
         var result = diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
         var rootTrees = rootFiles.stream().map(f -> parsed.get(f.toUri())).filter(t -> t != null).toList();
-        return new Attribution(result.withDropped(precedence.droppedIdentities()), rootTrees, Trees.instance(task));
+        var rootUris = new HashSet<URI>();
+        for (var file : rootFiles) rootUris.add(file.toUri());
+        var libraries = new TreeMap<String, CompilationUnitTree>();
+        for (var file : precedence.listed()) {
+            var tree = parsed.get(file.toUri());
+            if (tree != null && !rootUris.contains(file.toUri())) libraries.put(file.primaryName(), tree);
+        }
+        return new Attribution(result.withDropped(precedence.droppedIdentities()), rootTrees,
+                List.copyOf(libraries.values()), Trees.instance(task), task.getElements(), task.getTypes());
     }
 
     /**

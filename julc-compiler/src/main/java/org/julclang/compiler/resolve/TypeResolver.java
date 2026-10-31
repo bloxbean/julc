@@ -260,6 +260,103 @@ public class TypeResolver {
         }
     }
 
+    /** One variant of a sealed interface read from javac's model (ADR-068 I11), in tag order. */
+    public record SealedVariant(String name, String fqcn) {}
+
+    /**
+     * Register a record read from javac's model (ADR-068 D7): its components are already resolved, nominally.
+     *
+     * @param name   the record's simple name
+     * @param fqcn   its identity
+     * @param fields its components, in declaration order
+     */
+    public void registerRecord(String name, String fqcn, List<PirType.Field> fields) {
+        if (recordTypes.containsKey(fqcn)) {
+            throw new CompilerException("Duplicate record type: '" + fqcn + "'. "
+                    + "A record with this name is already registered.");
+        }
+        recordTypes.put(fqcn, new PirType.RecordType(name, fields));
+        forwardTypes.remove(fqcn);
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
+    }
+
+    /**
+     * Register a sealed interface read from javac's model (ADR-068 D7, I11). A variant's tag is its position in
+     * {@code variants}; a variant that is not a registered record has no fields, as in the source path.
+     *
+     * @param parameterized whether the interface declares type parameters
+     */
+    public void registerSealed(String name, String fqcn, List<SealedVariant> variants, boolean parameterized) {
+        if (sumTypes.containsKey(fqcn)) {
+            throw new CompilerException("Duplicate sealed interface: '" + fqcn + "'. "
+                    + "A sealed interface with this name is already registered.");
+        }
+        var constructors = new ArrayList<PirType.Constructor>();
+        for (var variant : variants) {
+            var record = recordTypes.get(variant.fqcn());
+            constructors.add(new PirType.Constructor(variant.name(), constructors.size(),
+                    record != null ? record.fields() : List.of()));
+        }
+        var sumType = new PirType.SumType(name, constructors);
+        sumTypes.put(fqcn, sumType);
+        forwardTypes.remove(fqcn);
+        if (parameterized) parameterizedSumTypes.add(fqcn);
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
+        for (var variant : variants) {
+            variantToSumType.put(variant.fqcn(), sumType);
+            variantFamilies.computeIfAbsent(variant.fqcn(), k -> new ArrayList<>()).add(sumType);
+            simpleNameIndex.computeIfAbsent(variant.name(), k -> new LinkedHashSet<>()).add(variant.fqcn());
+        }
+    }
+
+    /**
+     * The registered definition of exactly {@code fqcn} (ADR-068 I12): no import, no simple name, no alias. A ledger
+     * hash type is its underlying bytes (I11); a permitted type that is not a record is its constructor's shape.
+     */
+    public Optional<PirType> lookupNominal(String fqcn) {
+        if (LEDGER_HASH_FQCNS.contains(fqcn)) return Optional.of(new PirType.ByteStringType());
+        if (newTypes.containsKey(fqcn)) return Optional.of(newTypes.get(fqcn));
+        if (recordTypes.containsKey(fqcn)) return Optional.of(recordTypes.get(fqcn));
+        if (sumTypes.containsKey(fqcn)) return Optional.of(sumTypes.get(fqcn));
+        if (forwardTypes.containsKey(fqcn)) return Optional.of(forwardTypes.get(fqcn));
+        var parent = variantToSumType.get(fqcn);
+        if (parent == null) return Optional.empty();
+        var variantName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
+        return parent.constructors().stream().filter(constructor -> constructor.name().equals(variantName)).findFirst()
+                .map(constructor -> new PirType.RecordType(constructor.name(), constructor.fields()));
+    }
+
+    /** The "Unknown type" rejection for a name no registry holds, with this resolver's suggestion. */
+    public CompilerException unknownType(String name, String fqcn) {
+        var suggestion = findSimilarType(name);
+        return new CompilerException("Unknown type: " + name
+                + (fqcn.equals(name) ? "" : " (resolved to " + fqcn + ")")
+                + (suggestion != null ? ". Did you mean: " + suggestion + "?" : ""));
+    }
+
+    /**
+     * What a resolver holds, by identity (ADR-068 I11): the frontends' registries are compared on this. The source
+     * path's flat ledger aliases ({@link #addFlatVariantAliases}) are lookups, not declarations, so they are not in it.
+     *
+     * @param records   record identity -> its type
+     * @param sums      sealed interface identity -> its type
+     * @param variants  variant identity -> the sealed interfaces it was registered under, in order
+     * @param newTypes  {@code @NewType} identity -> its underlying type
+     * @param parameterized the sealed interfaces that declare type parameters
+     */
+    public record Registry(Map<String, PirType.RecordType> records, Map<String, PirType.SumType> sums,
+                           Map<String, List<PirType.SumType>> variants, Map<String, PirType> newTypes,
+                           Set<String> parameterized) {}
+
+    /** A snapshot of this resolver's registries. */
+    public Registry registry() {
+        var variants = new LinkedHashMap<String, List<PirType.SumType>>();
+        variantFamilies.forEach((fqcn, sums) -> variants.put(fqcn, List.copyOf(sums)));
+        return new Registry(Collections.unmodifiableMap(new LinkedHashMap<>(recordTypes)),
+                Collections.unmodifiableMap(new LinkedHashMap<>(sumTypes)), Collections.unmodifiableMap(variants),
+                Collections.unmodifiableMap(new LinkedHashMap<>(newTypes)), Set.copyOf(parameterizedSumTypes));
+    }
+
     /**
      * Add flat-FQCN aliases for inner variant types under a given package.
      * For example, maps "pkg.Credential.PubKeyCredential" also under "pkg.PubKeyCredential".

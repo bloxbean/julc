@@ -27,6 +27,7 @@ public class CompilerOptions {
     private Consumer<String> logger = System.out::println;
     private JavacGateMode javacGate;
     private Set<String> jarLibrarySources = Set.of();
+    private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
 
     /**
      * Select the ledger target for this compilation.
@@ -149,6 +150,21 @@ public class CompilerOptions {
     /** The library sources marked as JAR sources, an identity set ({@link #setJarLibrarySources}). */
     public Set<String> getJarLibrarySources() {
         return jarLibrarySources;
+    }
+
+    /**
+     * Experimental (ADR-068 D4): the Java frontend of this compilation, {@link CompilerFrontend#JAVAPARSER} by default.
+     * {@link CompilerFrontend#JAVAC} has javac read and type the sources and never falls back: until ADR-068 M4 a
+     * construct it has not ported is {@code JULC0084}.
+     */
+    public CompilerOptions setFrontend(CompilerFrontend frontend) {
+        this.frontend = Objects.requireNonNull(frontend, "frontend");
+        return this;
+    }
+
+    /** The Java frontend of this compilation. */
+    public CompilerFrontend getFrontend() {
+        return frontend;
     }
 
     public CompilerOptions setLogger(Consumer<String> logger) {

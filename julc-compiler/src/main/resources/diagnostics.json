@@ -1106,6 +1106,21 @@
         "bad": "record R(JulcArray<BigInteger> arr) {}\nstatic BigInteger f(JulcList<BigInteger> xs) {\n    R r = new R(xs.toArray());\n    return BigInteger.valueOf(r.arr().length());\n}",
         "good": "record R(JulcList<BigInteger> xs) {}\nstatic BigInteger f(JulcList<BigInteger> xs) {\n    R r = new R(xs);\n    JulcArray<BigInteger> arr = r.xs().toArray();\n    return BigInteger.valueOf(arr.length());\n}"
       }
+    },
+    {
+      "code": "JULC0092",
+      "constant": "SEALED_PERMITS_REQUIRED",
+      "status": "emitted",
+      "title": "Sealed interface needs a permits clause",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Sealed interface ''{0}'' has no permits clause, and its permitted subclasses ({1}) are not exactly the records nested in it",
+      "summary": "A variant's Data tag is its position in the permits clause; without one, among the records nested in the interface, in member order. Java also permits other classes of the compilation unit implicitly, such as a top-level or sibling-nested record, and those have no tag under that rule (ADR-068 I11). The javac frontend rejects the interface rather than choose an order.",
+      "fix": "Add a permits clause listing every variant, in tag order.",
+      "example": {
+        "bad": "sealed interface Shape {}\nrecord Circle(BigInteger r) implements Shape {}",
+        "good": "sealed interface Shape permits Circle {}\nrecord Circle(BigInteger r) implements Shape {}"
+      }
     }
   ]
 }

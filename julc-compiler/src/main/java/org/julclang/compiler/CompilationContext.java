@@ -47,6 +47,7 @@ public final class CompilationContext {
     private final OptimizationLevel optimizationLevel;
     private final OptimizationCostProfile optimizationCostProfile;
     private final Set<String> disabledOptimizationRules;
+    private final CompilerFrontend frontend;
     private final Consumer<String> logger;
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
@@ -60,6 +61,7 @@ public final class CompilationContext {
             OptimizationLevel optimizationLevel,
             OptimizationCostProfile optimizationCostProfile,
             Set<String> disabledOptimizationRules,
+            CompilerFrontend frontend,
             Consumer<String> logger) {
         this.resolvedTarget = Objects.requireNonNull(resolvedTarget, "resolvedTarget");
         this.verbose = verbose;
@@ -68,6 +70,7 @@ public final class CompilationContext {
                 optimizationLevel, "optimizationLevel");
         this.optimizationCostProfile = optimizationCostProfile;
         this.disabledOptimizationRules = Set.copyOf(disabledOptimizationRules);
+        this.frontend = Objects.requireNonNull(frontend, "frontend");
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
@@ -95,7 +98,13 @@ public final class CompilationContext {
                 optimizationLevel,
                 costProfile,
                 effectiveOptions.getDisabledOptimizationRules(),
+                effectiveOptions.getFrontend(),
                 effectiveOptions.getLogger());
+    }
+
+    /** The Java frontend of this compilation (ADR-068 D4). */
+    public CompilerFrontend frontend() {
+        return frontend;
     }
 
     /** The rule ids that can be disabled individually, in catalog order. */

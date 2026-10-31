@@ -509,6 +509,14 @@ public final class DiagnosticCodes {
             "'return' is not supported inside while loop body",
             "Exit the loop with break, or keep the result in a variable declared before the loop, and return after the loop.");
 
+    public static final DiagnosticInfo SEALED_PERMITS_REQUIRED = new DiagnosticInfo(
+            "JULC0092",
+            "SEALED_PERMITS_REQUIRED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Sealed interface ''{0}'' has no permits clause, and its permitted subclasses ({1}) are not exactly the records nested in it",
+            "Add a permits clause listing every variant, in tag order.");
+
     public static final DiagnosticInfo SOURCE_PARSE_FAILED = new DiagnosticInfo(
             "JULC0028",
             "SOURCE_PARSE_FAILED",
@@ -774,6 +782,7 @@ public final class DiagnosticCodes {
             RECORD_MULTIPLE_SEALED_PARENTS,
             REFERENCE_EQUALITY_UNSUPPORTED,
             RETURN_INSIDE_WHILE,
+            SEALED_PERMITS_REQUIRED,
             SOURCE_PARSE_FAILED,
             STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,

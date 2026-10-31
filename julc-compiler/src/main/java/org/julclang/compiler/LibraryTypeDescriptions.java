@@ -15,7 +15,7 @@ import org.julclang.compiler.resolve.TypeResolver;
 import java.util.*;
 
 /** Source identity and capabilities derived alongside the existing encoding planner. */
-final class LibraryTypeDescriptions {
+public final class LibraryTypeDescriptions {
     private final TypeResolver resolver;
     private final Map<String, RecordDeclaration> records = new LinkedHashMap<>();
     private final Map<String, LibraryType> types = new LinkedHashMap<>();
@@ -79,11 +79,16 @@ final class LibraryTypeDescriptions {
         for (String identity : TypeResolver.ledgerHashFqcns())
             types.put(identity, new LibraryType(identity, new PirType.ByteStringType(), true,
                     List.of(new LibraryType.Field("hash", ref("Bytes", List.of())))));
+        deriveOperations(types, special, resolver.namedDefinitions());
+    }
+
+    /** Gives each type its {@link #operations}; both frontends' descriptions end here. */
+    public static void deriveOperations(Map<String, LibraryType> types, Set<String> special,
+                                        Map<String, PirType> namedDefinitions) {
         var specialRepresentations = special.stream().map(id -> types.get(id).representation()).toList();
-        var namedDefinitions = resolver.namedDefinitions();
         types.replaceAll((identity, type) -> new LibraryType(type.identity(), type.representation(),
                 type.newType(), type.fields(), type.constructors(),
-                operations(type, specialRepresentations, namedDefinitions)));
+                operations(type, special, specialRepresentations, namedDefinitions)));
     }
 
     /**
@@ -91,8 +96,9 @@ final class LibraryTypeDescriptions {
      * type containing one has no equality or strict codec, because the strict boundary checker
      * and {@code EqualsData} would treat its map encoding as constructor data.
      */
-    private Set<LibraryType.Operation> operations(
-            LibraryType type, List<PirType> specialRepresentations, Map<String, PirType> namedDefinitions) {
+    private static Set<LibraryType.Operation> operations(
+            LibraryType type, Set<String> special, List<PirType> specialRepresentations,
+            Map<String, PirType> namedDefinitions) {
         var representation = type.representation();
         if (special.contains(type.identity()) || PirType.containsNativeOpaque(representation))
             return Set.of();

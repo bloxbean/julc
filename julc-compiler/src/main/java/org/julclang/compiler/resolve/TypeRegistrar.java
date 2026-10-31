@@ -388,7 +388,11 @@ public class TypeRegistrar {
         return result;
     }
 
-    private List<List<String>> dependencyGroups(Map<String, Set<String>> deps) {
+    /**
+     * The strongly connected groups of {@code deps}, dependencies first, ties by declaration order (the map's order).
+     * Both frontends order registration by this, so a recursive group's references come out alike.
+     */
+    public static List<List<String>> dependencyGroups(Map<String, Set<String>> deps) {
         var index = new int[] {0};
         var indexes = new HashMap<String, Integer>();
         var lowLinks = new HashMap<String, Integer>();
@@ -451,7 +455,7 @@ public class TypeRegistrar {
         return result;
     }
 
-    private void strongConnect(
+    private static void strongConnect(
             String node,
             Map<String, Set<String>> deps,
             int[] nextIndex,
@@ -493,6 +497,17 @@ public class TypeRegistrar {
             Map<String, RecordDeclaration> allRecords,
             Map<String, ClassOrInterfaceDeclaration> allSealed,
             TypeResolver typeResolver) {
+        var unproductive = unproductive(group, typeResolver);
+        if (unproductive.isEmpty()) return;
+        String first = unproductive.getFirst();
+        Node declaration = allRecords.containsKey(first)
+                ? allRecords.get(first) : allSealed.get(first);
+        throw errorAt(declaration,
+                "Recursive type dependency has no finite base constructor: " + unproductive);
+    }
+
+    /** The members of a registered recursive {@code group} that have no finite base constructor. */
+    public static List<String> unproductive(List<String> group, TypeResolver typeResolver) {
         var definitions = typeResolver.namedDefinitions();
         var productive = new LinkedHashSet<String>();
         boolean changed;
@@ -506,19 +521,12 @@ public class TypeRegistrar {
                 }
             }
         } while (changed);
-
-        if (productive.containsAll(group)) return;
-        var unproductive = group.stream()
+        return group.stream()
                 .filter(name -> !productive.contains(name))
                 .toList();
-        String first = unproductive.getFirst();
-        Node declaration = allRecords.containsKey(first)
-                ? allRecords.get(first) : allSealed.get(first);
-        throw errorAt(declaration,
-                "Recursive type dependency has no finite base constructor: " + unproductive);
     }
 
-    private boolean isProductive(PirType type, Set<String> productive) {
+    private static boolean isProductive(PirType type, Set<String> productive) {
         if (type == null) return false;
         return switch (type) {
             case PirType.NamedTypeRef ref -> productive.contains(ref.stableId());
@@ -531,7 +539,7 @@ public class TypeRegistrar {
         };
     }
 
-    private boolean isProductiveField(PirType type, Set<String> productive) {
+    private static boolean isProductiveField(PirType type, Set<String> productive) {
         // Empty/None container values are finite regardless of their element type.
         if (type instanceof PirType.ListType
                 || type instanceof PirType.MapType

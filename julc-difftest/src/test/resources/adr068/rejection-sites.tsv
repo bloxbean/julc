@@ -60,6 +60,7 @@ JULC0082	code	JULC0082	SWITCH_DUPLICATE_DEFAULT	source
 JULC0083	code	JULC0083	PATTERN_VARIABLE_CONFLICT	source
 JULC0085	code	JULC0085	JAVAC_ERROR	gate: emitted by the M1 javac gate (D5) only in enforce mode; not a reference-frontend rejection
 JULC0089	code	JULC0089	JAVAC_UNSUPPORTED	gate: emitted by the M1 javac gate when no supported javac is available (D3); not a reference-frontend rejection
+JULC0092	code	JULC0092	SEALED_PERMITS_REQUIRED	javac frontend: emitted with frontend=JAVAC (ADR-068 I11, M2); not a reference-frontend rejection
 JULC0091	code	JULC0091	NATIVE_ARRAY_NOT_DATA_ENCODABLE (ADR-068 M1c, #298)	source
 U-synchronized	uncoded	^synchronized is not supported on-chain	SubsetValidator:184	source
 U-break-outside-loop	uncoded	break is only supported inside for-each or while loops	SubsetValidator:210	source
