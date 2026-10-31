@@ -47,13 +47,21 @@ Each entry gives:
 | Dialect tests with no acceptance value | M1b review | Tests that compile with the gate off exercise the old spelling; they are not migration acceptance. `DialectRemovalAlternativesTest` pins the alternatives under `enforce` | Delete the dialect tests at M5, when the JavaParser frontend stops being default |
 | External `ByteStringLibEvalTest` | M1 close | The test's wrapper source in `julc-examples` needs `import org.julclang.stdlib.annotation.OnchainLibrary;`. With it all 10 tests pass (checked in a scratch clone) | Add it in `julc-examples` before the release that carries the gate |
 | Tasks outside `test` | M1b review | `wasmSmokeFull`, `pairCaseTest` and `onChainHarnessTest` are outside `test`, so a green suite says nothing about them; `wasmSmokeFull` failed under `enforce` while `test` was green | Run them at every milestone close; consider a task that aggregates them |
-| `JulcList.foldl` and `zip` | Maintainer, after r9 | D6 removed the undeclared `ListsLib.foldl` and `zip`. Add them as real instance methods beside `map`: `<A> A foldl(BiFunction<A, T, A> fn, A initial)`, and a `zip` whose result type needs deciding (probably `JulcList<Tuple2<A, B>>`). It needs `BiFunction` in the platform blob (only `Function`, `Predicate` and `Supplier` are there, so the digest changes and the native and Web Image hosts are rebuilt), a JVM implementation, `TypeMethodRegistry` dispatch over the existing on-chain code, and JVM/UPLC agreement tests. Additive | After M2 merges |
 | wasm smoke flakiness | M1a | `wasmSmokeFull` timed out once at load average ~80 (a VM-only evaluation step) | Monitor; raise the timeout if it recurs |
 | evaluations ledger size | M0 | The evaluations ledger is 6 MB (stored as gzip) and grows each milestone | Consider trimming its columns, or storing only the rows that differ, after M1 |
 | F210 scope | M0 | The class-file rule for implicit `equals` without code is sound only for API stubs (guarded by `ApiRecordEqualsTest`) | Keep the guard; do not reuse the rule for user class files |
 | ADR-067 revision | ADR-068 D11 | ADR-067's I9 oracle (javac 25), outcome matrix, M2b gate and the retirement of `Javac21ParityTest` are still to be written | With the M3 switch port |
 | ADR-066 G1 | ADR-066 | M3 part 2 onward (guard and record-pattern generation) waits for the javac frontend's switch port | After M3 |
 | Illustrative doc blocks | M1b | 16 whole-unit doc blocks stay invalid alone on purpose (WRONG/CORRECT pairs, compact source files, cross-file examples, sketches); 408 fragments were scanned only by the BigInteger-operator heuristic | Compile docs' examples in a test (as `ValueOrientedExamplesTest` does) when the docs are next reworked |
+
+## Future stdlib enhancements (after ADR-068 is complete)
+
+Nice-to-have additions, not part of the migration. Pick these up once M6 is done.
+
+| Item | What | Notes |
+|---|---|---|
+| `JulcList.foldl` | A real instance method beside `map`: `<A> A foldl(BiFunction<A, T, A> fn, A initial)` | D6 removed the undeclared `ListsLib.foldl`. Needs `BiFunction` in the platform blob (only `Function`, `Predicate` and `Supplier` are there, so the digest changes and the native and Web Image hosts are rebuilt), a JVM implementation, `TypeMethodRegistry` dispatch over the existing on-chain code, and JVM/UPLC agreement tests. Additive |
+| `JulcList.zip` | The same, for `zip` | Decide its result type first, probably `JulcList<Tuple2<A, B>>` |
 
 ## Closed here
 
