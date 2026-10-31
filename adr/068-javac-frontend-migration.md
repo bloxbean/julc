@@ -1,7 +1,7 @@
 # ADR-068: Replace JavaParser with javac as JuLC's only Java frontend
 
-**Status:** Proposed (r7)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r7)
+**Status:** Proposed (r8)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r8)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -508,8 +508,18 @@ exceptions D11 lists.
       are bounded by **Data encodability**. A `JulcArray` (a native array, not Data-encodable:
       `PirHelpers.wrapEncode`, `:182-214`, and `TypeReferences.dataEncodable`, `:96-104`, have no array case) as an
       element, key or value type of a `JulcList` or `JulcMap` cannot even be constructed on-chain today
-      (`MkCons: element type … ProtoArray … does not match`); the javac frontend rejects that type with `JULC0091`
-      (`NATIVE_ARRAY_NOT_DATA_ENCODABLE`) where it is written, with a regression. For nested lists and maps, the
+      (`MkCons: element type … ProtoArray … does not match`). The same failure occurs in **every Data-encoded
+      position** (#298): a record or sealed-variant component (`record R(JulcArray<BigInteger> arr)`, which fails
+      as soon as `R` is constructed, `UplcGenerator.java:249-267`), an `Optional`, `Tuple2` or `Tuple3` type
+      argument, a `JulcList`/`JulcMap` element, key or value, a `JulcArray` element (ADR-046: array elements are
+      Data-encoded, so `JulcArray<JulcArray<BigInteger>>` fails), and a datum, redeemer or `@Param` boundary type,
+      at any depth. `TypeReferences.dataEncodable` cannot decide this (it accepts every record without looking at
+      its fields), so the check recurses through record and variant components itself. Arrays of Data-encodable
+      types stay supported (`JulcArray<JulcList<BigInteger>>` works today and keeps working). So `JULC0091` (`NATIVE_ARRAY_NOT_DATA_ENCODABLE`) rejects a
+      `JulcArray` type in any such position, checked recursively where the type is written, with regressions for
+      the record, `Optional`, collection and nested-array cases, and a positive control for an array of lists. #298 is a newly found divergence in which the script fails
+      where the Java succeeds, so under D4's exception 2 the rejection goes into **both** frontends at M1 (in the
+      frozen one, over its `PirType`s: an `ArrayType` under a record, sum, list, map or `Optional` encoding). For nested lists and maps, the
       JVM side is safe once M1's change makes every JuLC collection's equality deep, but the on-chain side is
       **not** today: `contains`
       passes a nested-list target to `EqualsData` without encoding it (`PirHelpers.java:271`), and fails at run
@@ -538,32 +548,25 @@ exceptions D11 lists.
     affected call sites (as ADR-067 M4 did; `CfPaymentSplitterValidator.java:51,83,94` calls `.equals` on `byte[]`)
     and lists them. Tests cover direct, nested record, sealed-component, container, `java.util`, type-argument and
     recursive-type paths.
-  - **Generic library methods (Elci, `TypedMapLib`).** Equality on a type variable is checked where the type
-    variable is bound, not at the generic declaration:
-    - **Summaries.** Each generic method gets a summary, computed in M3 over its body: a set of **comparison
-      obligations**, each a pair of the equality operation (`.equals`, or a collection operation from the table
-      above, with its container) and the compared static type as a type expression over the method's type
-      variables (`T`, `Optional<T>`, …). Obligations come from the body directly, from a callee's summary with
-      the call's type arguments substituted (`g<T>` calling `h<Optional<T>>` adds `h`'s obligations at
-      `Optional<T>`), and from lambdas, propagated to a fixed point. So `member(xs, t)` (`xs.contains(t)`) and
-      `direct(xs, t)` (`xs.head().equals(t)`) get different obligations: membership in `JulcList<T>` and
-      `.equals` at `T`.
-    - **Java call sites.** At a call from Java source, javac binds the type variables; every obligation is
-      substituted and checked by the rule above at the resulting type, which is nominal. At `T = byte[]`,
-      `member` is accepted (a JuLC collection's `byte[]` element is safe after M1) and `direct` is rejected; a Java
-      `@NewType record Hash(byte[] hash)` is rejected and `PubKeyHash` accepted, although both are
-      `ByteStringType` in PIR.
-    - **Instantiations requested by a non-Java producer** through `LibraryRequest.Instantiate` (Elci) never run on
-      the JVM, so there is no JVM equality to diverge from: they are exempt, whatever their type arguments
-      (canonical builtins such as `Bytes`, producer-owned types, or Java types), and equality is the producer's,
-      Data equality (`EqualsData`) for Elci. The exemption is decided by who requested the instantiation, kept
-      with the request, not by the erased `Map<String, PirType>` environment (`JavaLibraryProvider.java:288-317`).
-    - Tests: `member` against `direct` at `byte[]`; a two-level generic chain instantiated from Java at `byte[]`
-      (rejected), at `Optional<byte[]>` (rejected) and at `BigInteger` (accepted); a callee that introduces
-      `Optional<T>` (`h<Optional<T>>`, rejected at `T = byte[]`); and a lambda; and, from a producer request,
-      `GenericExportsTest`'s specializations (`items.head().equals(target)` at `Bytes`, and the producer-owned sum,
-      `:147-163`, `:242-263`), which stay accepted, plus requests at the Java `Hash` and `PubKeyHash` types and a
-      foreign sum. ADR-059's provider contract is unchanged.
+  - **Generic library methods (Elci).** ADR-059 rejects Java calls to generic library templates ("cannot be
+    called from Java yet", `LibraryMethodRegistry.java:75-100`) and calls between templates (`JULC0051`), tested
+    in `GenericExportsTest.java:322-360`. Both rejections are unchanged and are permanent entries of I2a's
+    inventory. So the only instantiations of a generic library method are those a non-Java producer requests
+    through `LibraryRequest.Instantiate` (Elci), and those never run on the JVM: there is no JVM equality to
+    diverge from. They are **exempt** from `JULC0087`, whatever their type arguments (canonical builtins such as
+    `Bytes`, producer-owned types, or Java types), and equality is the producer's, Data equality (`EqualsData`) for
+    Elci. The exemption is decided by who requested the instantiation, kept with the request, not by the erased
+    `Map<String, PirType>` environment (`JavaLibraryProvider.java:288-317`). Tests: `GenericExportsTest`'s
+    specializations (`member` and `direct` at `Bytes`, `items.head().equals(target)`, and the producer-owned sum,
+    `:43-46`, `:147-163`, `:242-263`) stay accepted, with requests at the Java `Hash` and `PubKeyHash` types and a
+    foreign sum; Java calls to templates and template-to-template calls stay rejected. ADR-059's provider contract
+    is unchanged.
+    - **For a future change.** An ADR that lets Java code call generic templates must check equality at the
+      javac-bound types through **comparison obligations**: per generic method, a set of pairs of an equality
+      operation (with its container) and a compared type expression over the type variables, taken from the body,
+      from callees with their type arguments substituted (`h<Optional<T>>`) and from lambdas, to a fixed point,
+      then checked by the rule above after substitution (so `member` at `byte[]` is safe after M1 and `direct` is
+      not). This ADR does not implement it.
   - **JuLC's JVM collections compare `byte[]` by value (M1).** On-chain, every JuLC collection compares by Data
     equality, so `JulcList<byte[]>.contains(p)` is true for an equal array. On the JVM, `JulcArrayList`,
     `JulcAssocMap` and `JulcArrayImpl` use `Objects.equals` and `List.equals`, so the same call is `false` for a
@@ -776,8 +779,8 @@ constants for javac either.
   - reference equality (outside D6's narrow constant-string case), and `.equals` that would compare an array by
     identity, through records, sealed variants, containers or type arguments (D6);
   - a constant-variable `@Param` (D14);
-  - string `+` with a non-`String` operand (`JULC0090`, #296), and a `JulcArray` as an element, key or value type
-    of a `JulcList` or `JulcMap` (`JULC0091`); both fail at run time today;
+  - string `+` with a non-`String` operand (`JULC0090`, #296), and a `JulcArray` in any Data-encoded position
+    (`JULC0091`, #298); both fail at run time today;
   - a sealed interface without `permits` whose implicit permitted subclasses are not exactly its nested records
     (I11);
   - annotations outside I10 (for example a third-party annotation on a validator);
@@ -992,3 +995,11 @@ milestone's evidence; a skipped check fails the gate.
   - F132 → nested-collection acceptance is bounded by Data encodability; `JulcArray` inside a `JulcList` or
     `JulcMap` is `JULC0091`.
   - F121 → the metadata-only task is wrapped so `parse()`/`analyze()` cannot be called, with a surface test.
+- **r8** (2026-10-31, responds to the reviews of `a7109518`: the review comment's F125 and Codex's F140–F141):
+  - F125, F141 → `JULC0091` covers every Data-encoded position, checked recursively (record and variant components,
+    `Optional`/tuple arguments, collection elements, keys and values, `JulcArray` elements, boundary types);
+    `dataEncodable` is not relied on; arrays of Data-encodable types stay supported; #298 filed and, as a newly
+    found divergence, fixed in both frontends at M1 (D4 exception 2).
+  - F140 → Java calls to generic templates and template-to-template calls stay rejected as ADR-059 specifies, so
+    only producer requests instantiate templates, and they are exempt; the comparison-obligation summaries become
+    a requirement on a future ADR that lifts ADR-059's restriction, not part of this one.
