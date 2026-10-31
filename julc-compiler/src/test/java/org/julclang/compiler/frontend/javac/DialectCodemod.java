@@ -794,6 +794,14 @@ public final class DialectCodemod {
         var nested = new TreeMap<String, Set<String>>();
         platform.classPath().forEach((pkg, files) -> files.keySet().forEach(simple -> {
             if (simple.equals("package-info") || simple.equals("module-info")) return;
+            // JuLC's implicit imports were the ledger and the stdlib; the core API a validator names is PlutusData
+            // and the collection types. Nested names come from the ledger and PlutusData only.
+            boolean api = pkg.equals("org.julclang.ledger") || (pkg.startsWith("org.julclang.stdlib")
+                    && !pkg.equals("org.julclang.stdlib.test"))
+                    || pkg.equals("org.julclang.core.types") || pkg.equals("org.julclang.verification.annotation")
+                    || (pkg.equals("org.julclang.core") && (simple.equals("PlutusData") || simple.startsWith("PlutusData$")));
+            if (!api) return;
+            if (simple.indexOf('$') >= 0 && !pkg.equals("org.julclang.ledger") && !simple.startsWith("PlutusData$")) return;
             String fqcn = (pkg.isEmpty() ? "" : pkg + ".") + simple.replace('$', '.');
             String last = simple.substring(simple.lastIndexOf('$') + 1);
             if (last.isEmpty() || Character.isDigit(last.charAt(0))) return;
@@ -1105,10 +1113,15 @@ public final class DialectCodemod {
     static void markdown(Path outDir, List<String> files) throws IOException {
         var codemod = new DialectCodemod();
         var tsv = new StringBuilder("file\tline\tstatus\trules\tremaining\n");
+        boolean apply = System.getenv("CODEMOD_APPLY") != null;
         for (String name : files) {
             Path file = Path.of(name);
             String text = Files.readString(file);
-            Matcher m = FENCE.matcher(text);
+            if (name.endsWith(".java")) {
+                javaLiterals(codemod, file, text, tsv, apply);
+                continue;
+            }
+            Matcher m = (name.endsWith(".ts") || name.endsWith(".js") ? TEMPLATE : FENCE).matcher(text);
             var out = new StringBuilder();
             int last = 0;
             while (m.find()) {
@@ -1119,6 +1132,10 @@ public final class DialectCodemod {
                         .reduce("", (x, y) -> x + y + "\n");
                 if (!DECLARATION.matcher(code).find()) {
                     tsv.append(file).append('\t').append(line).append("\tfragment\t\t\n");
+                    continue;
+                }
+                if (!ON_CHAIN.matcher(code).find() || OFF_CHAIN.matcher(code).find()) {
+                    tsv.append(file).append('\t').append(line).append("\toff-chain\t\t\n");
                     continue;
                 }
                 Result r = codemod.rewrite(List.of(code), List.of());
@@ -1136,10 +1153,63 @@ public final class DialectCodemod {
                 }
             }
             out.append(text.substring(last));
-            if (!out.toString().equals(text)) Files.writeString(file, out.toString());
+            if (apply && !out.toString().equals(text)) Files.writeString(file, out.toString());
         }
         Files.createDirectories(outDir);
         Files.writeString(outDir.resolve("markdown.tsv"), tsv.toString());
+    }
+
+    /** A block of on-chain code: a validator, library or newtype; an off-chain test or client is left alone. */
+    private static final Pattern ON_CHAIN = Pattern.compile("@(\\w+Validator|OnchainLibrary|NewType|Entrypoint)\\b");
+    private static final Pattern OFF_CHAIN = Pattern.compile("org\\.junit|@Test\\b|testkit|ContractTest|cardano\\.client");
+
+    /** A JavaScript or TypeScript template literal holding Java source (the playground's examples). */
+    private static final Pattern TEMPLATE = Pattern.compile("()`([^`$]*?(?:class|record|interface) [^`$]*)`", Pattern.DOTALL);
+
+    /** The text-block literals of a Java file (main sources, such as scaffolding templates) holding whole units. */
+    private static void javaLiterals(DialectCodemod codemod, Path file, String text, StringBuilder tsv, boolean apply)
+            throws IOException {
+        var source = new SimpleJavaFileObject(URI.create("string:///" + file.getFileName()), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return text;
+            }
+        };
+        var task = (JavacTask) ToolProvider.getSystemJavaCompiler().getTask(null, null, d -> { }, List.of("-proc:none"),
+                null, List.of(source));
+        var positions = Trees.instance(task).getSourcePositions();
+        var literals = new ArrayList<int[]>();
+        var values = new ArrayList<String>();
+        for (CompilationUnitTree cu : task.parse()) {
+            new TreePathScanner<Void, Void>() {
+                @Override
+                public Void visitLiteral(LiteralTree node, Void unused) {
+                    if (node.getValue() instanceof String value && DECLARATION.matcher(value).find()) {
+                        literals.add(new int[]{(int) positions.getStartPosition(cu, node), (int) positions.getEndPosition(cu, node)});
+                        values.add(value);
+                    }
+                    return null;
+                }
+            }.scan(cu, null);
+        }
+        String updated = text;
+        for (int i = literals.size() - 1; i >= 0; i--) {
+            int s = literals.get(i)[0];
+            int e = literals.get(i)[1];
+            int line = (int) text.substring(0, s).lines().count();
+            Result r = codemod.rewrite(List.of(values.get(i)), List.of());
+            String rewritten = r.roots().getFirst();
+            String status = rewritten.equals(values.get(i)) ? (r.remaining().isEmpty() ? "valid" : "unchanged")
+                    : r.remaining().isEmpty() ? "clean" : "partial";
+            tsv.append(file).append('\t').append(line).append('\t').append(status).append('\t')
+                    .append(String.join(",", r.rules())).append('\t')
+                    .append(String.join(" || ", r.remaining())).append('\n');
+            if (rewritten.equals(values.get(i))) continue;
+            String raw = updated.substring(s, e);
+            String encoded = raw.startsWith("\"\"\"") ? reencodeTextBlock(raw, rewritten) : reencodeString(raw, rewritten);
+            if (encoded != null) updated = updated.substring(0, s) + encoded + updated.substring(e);
+        }
+        if (apply && !updated.equals(text)) Files.writeString(file, updated);
     }
 
     /** Prints each round's diagnostics, with extents, and the final texts of one case. */
