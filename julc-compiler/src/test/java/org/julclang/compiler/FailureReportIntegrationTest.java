@@ -25,6 +25,10 @@ class FailureReportIntegrationTest {
     // Minting validator that checks: 99 == 42 → always fails
     static final String EQUALITY_FAIL_MINT = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class EqualityFailMint {
@@ -40,6 +44,10 @@ class FailureReportIntegrationTest {
     // Minting validator that checks: 5 >= 10 → always fails
     static final String COMPARISON_FAIL_MINT = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class ComparisonFailMint {
@@ -47,13 +55,17 @@ class FailureReportIntegrationTest {
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                     BigInteger amount = BigInteger.valueOf(5);
                     BigInteger threshold = BigInteger.valueOf(10);
-                    return amount >= threshold;
+                    return amount.compareTo(threshold) >= 0;
                 }
             }
             """;
 
     // Minting validator that always succeeds
     static final String ALWAYS_PASS_MINT = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class AlwaysPassMint {
                 @Entrypoint
@@ -82,16 +94,21 @@ class FailureReportIntegrationTest {
         var builtinTrace = result.builtinTrace();
         assertFalse(builtinTrace.isEmpty(), "BuiltinTrace should capture builtins");
 
+        // ADR-068 M1b: the source compares with compareTo(..) >= 0. Until M1c's compareTo rule lowers that to
+        // LessThanEqualsInteger(threshold, amount), compareTo's own LessThanInteger(amount, threshold) carries the
+        // values and the >= 0 test is the failing comparison; with M1c both are one LessThanEqualsInteger → False.
         var compEntry = builtinTrace.stream()
                 .filter(e -> e.fun() == DefaultFun.LessThanEqualsInteger
                         && "False".equals(e.resultSummary()))
                 .findFirst().orElse(null);
         assertNotNull(compEntry,
                 "Should capture LessThanEqualsInteger → False. Got: " + builtinTrace);
-        assertTrue(compEntry.argSummary().contains("10"),
-                "Should contain threshold value 10. Got: " + compEntry.argSummary());
-        assertTrue(compEntry.argSummary().contains("5"),
-                "Should contain amount value 5. Got: " + compEntry.argSummary());
+        var valueEntry = builtinTrace.stream()
+                .filter(e -> (e.fun() == DefaultFun.LessThanEqualsInteger || e.fun() == DefaultFun.LessThanInteger)
+                        && e.argSummary().contains("10") && e.argSummary().contains("5"))
+                .findFirst().orElse(null);
+        assertNotNull(valueEntry,
+                "Should capture the comparison of amount 5 with threshold 10. Got: " + builtinTrace);
 
         // Build and format FailureReport
         var report = FailureReportBuilder.build(result, compiled.sourceMap());

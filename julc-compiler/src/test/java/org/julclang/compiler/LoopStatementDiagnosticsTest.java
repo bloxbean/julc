@@ -72,6 +72,29 @@ class LoopStatementDiagnosticsTest {
         }
     }
 
+    /**
+     * javac rejects {@code m} first (ADR-068 I2b): {@code JULC0085} with javac's {@code key}, located at the first
+     * occurrence of {@code at}, at every level.
+     */
+    private static void javacRejected(String members, String key, String at) {
+        var src = source(members);
+        int offset = src.indexOf(at);
+        assertTrue(offset >= 0, at);
+        int line = (int) src.substring(0, offset).chars().filter(c -> c == '\n').count() + 1;
+        int column = offset - src.lastIndexOf('\n', offset - 1);
+        for (var level : LEVELS) {
+            var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setOptimizationLevel(level)).compileMethod(src, "m"), level + ": " + members);
+            var errors = error.diagnostics().stream().filter(CompilerDiagnostic::isError).toList();
+            assertEquals(1, errors.size(), error.getMessage());
+            var diagnostic = errors.getFirst();
+            assertEquals("JULC0085", diagnostic.code(), error.getMessage());
+            assertTrue(diagnostic.message().endsWith("(" + key + ")"), diagnostic.message());
+            assertEquals(line, diagnostic.line(), "line of " + at);
+            assertEquals(column, diagnostic.column(), "column of " + at);
+        }
+    }
+
     /** JuLC accepts {@code m} and returns {@code expected} at every level on both VMs. */
     private static void evaluates(String members, List<PlutusData> args, Constant expected) {
         for (var level : LEVELS) {
@@ -156,6 +179,10 @@ class LoopStatementDiagnosticsTest {
         var src = """
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class Probe {
@@ -183,7 +210,11 @@ class LoopStatementDiagnosticsTest {
         // the script is the same as without the continue.
         String validator = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class Probe {
@@ -303,13 +334,13 @@ class LoopStatementDiagnosticsTest {
     @Test
     void reassignmentInLambdaIsReportedOnce() {
         // Review r1 F7: a lambda body is generated more than once; the diagnostic is reported once.
-        rejected("""
+        javacRejected("""
                     public static long m(JulcList<BigInteger> xs) {
                         BigInteger k = BigInteger.ZERO;
                         long n = xs.map(v -> k = v).size();
                         return n;
                     }
-                """, DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP, "Reassigning 'k' is not supported outside a loop", "k = v");
+                """, "compiler.err.cant.ref.non.effectively.final.var", "k = v");
     }
 
     @Test
@@ -379,6 +410,7 @@ class LoopStatementDiagnosticsTest {
         var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileMethod("""
                         import java.math.BigInteger;
+                        import org.julclang.core.types.JulcMap;
 
                         public class Probe {
                             public static boolean m(byte[] a) {
@@ -492,7 +524,7 @@ class LoopStatementDiagnosticsTest {
                     }
                 """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
                 "Updating 'c' inside an expression is not supported in this loop", "c = c + 1)");
-        rejected("""
+        javacRejected("""
                     public static long m(JulcList<BigInteger> xs) {
                         BigInteger k = BigInteger.ZERO;
                         for (var x : xs) {
@@ -501,8 +533,7 @@ class LoopStatementDiagnosticsTest {
                         }
                         return 1;
                     }
-                """, DiagnosticCodes.LOOP_UPDATE_POSITION_UNSUPPORTED,
-                "Updating 'k' inside a lambda is not supported in this loop", "k = v");
+                """, "compiler.err.cant.ref.non.effectively.final.var", "k = v");
     }
 
     @Test
@@ -796,13 +827,12 @@ class LoopStatementDiagnosticsTest {
     void labelledBreakWithoutLabelIssue201() {
         // #201: javac rejects this (undefined label outer). JuLC used to compile the break as a
         // plain break of the inner loop and return 3 for [1, 2, 3].
-        rejected(nestedCount("break outer;"), DiagnosticCodes.LABEL_UNSUPPORTED,
-                LABEL_MESSAGE.formatted("break outer"), "break outer;");
+        javacRejected(nestedCount("break outer;"), "compiler.err.undef.label", "break outer;");
     }
 
     @Test
     void labelledBreakInNestedWhile() {
-        rejected("""
+        javacRejected("""
                     public static long m(long n) {
                         long count = 0;
                         long i = 0;
@@ -817,7 +847,7 @@ class LoopStatementDiagnosticsTest {
                         }
                         return count;
                     }
-                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
+                """, "compiler.err.undef.label", "break outer;");
     }
 
     @Test
@@ -845,8 +875,7 @@ class LoopStatementDiagnosticsTest {
     void labelledContinue() {
         // continue is not supported with or without a label; the labelled form reports the label
         // (JULC0066), and its fix says continue is JULC0060 too.
-        rejected(nestedCount("continue outer;"), DiagnosticCodes.LABEL_UNSUPPORTED,
-                LABEL_MESSAGE.formatted("continue outer"), "continue outer;");
+        javacRejected(nestedCount("continue outer;"), "compiler.err.undef.label", "continue outer;");
         rejected("""
                     public static long m(JulcList<BigInteger> xs) {
                         long count = 0;
@@ -867,12 +896,12 @@ class LoopStatementDiagnosticsTest {
     void labelsAtMethodLevel() {
         // A labelled break outside any loop (reported by subset validation), a labelled block and
         // a labelled continue outside any loop (reported where the statement is lowered).
-        rejected("""
+        javacRejected("""
                     public static long m(long n) {
                         if (n > 1) { break outer; }
                         return n;
                     }
-                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
+                """, "compiler.err.undef.label", "break outer;");
         rejected("""
                     public static long m(long n) {
                         done: {
@@ -884,22 +913,22 @@ class LoopStatementDiagnosticsTest {
         rejected("""
                     public static long m(long n) {
                         done: {
-                            Builtins.trace("n");
+                            ContextsLib.trace("n");
                         }
                         return n;
                     }
                 """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("done:"), "done:");
-        rejected("""
+        javacRejected("""
                     public static long m(long n) {
                         if (n > 1) { continue outer; }
                         return n;
                     }
-                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("continue outer"), "continue outer;");
+                """, "compiler.err.undef.label", "continue outer;");
     }
 
     @Test
     void labelledBreakInSwitchArmAndLambda() {
-        rejected("""
+        javacRejected("""
                     public static long m(JulcList<BigInteger> xs) {
                         long count = 0;
                         for (var x : xs) {
@@ -911,8 +940,8 @@ class LoopStatementDiagnosticsTest {
                         }
                         return count;
                     }
-                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
-        rejected("""
+                """, "compiler.err.undef.label", "break outer;");
+        javacRejected("""
                     public static long m(JulcList<BigInteger> xs) {
                         long n = xs.filter(y -> {
                             boolean found = false;
@@ -923,7 +952,7 @@ class LoopStatementDiagnosticsTest {
                         }).size();
                         return n;
                     }
-                """, DiagnosticCodes.LABEL_UNSUPPORTED, LABEL_MESSAGE.formatted("break outer"), "break outer;");
+                """, "compiler.err.undef.label", "break outer;");
     }
 
     @Test

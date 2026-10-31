@@ -121,6 +121,7 @@ public final class DialectCodemod {
         final Map<String, String> declared = new HashMap<>();   // simple name -> FQCN declared by a unit
         Trees javacTrees;
         SourcePositions positions;
+        javax.lang.model.util.Elements elements;
 
         Analysis(List<String> roots, List<String> pool) {
             texts = new ArrayList<>(roots);
@@ -131,23 +132,22 @@ public final class DialectCodemod {
             var poolFiles = new ArrayList<JavacSourceFile>();
             var names = new HashSet<String>();
             for (int i = 0; i < texts.size(); i++) {
-                var file = JavacSourceFile.ofText(texts.get(i), infos.get(i));
+                var file = JavacSourceFile.ofText(texts.get(i), infos.get(i), i);
                 for (String name : file.topLevelNames()) {
                     declared.putIfAbsent(name.substring(name.lastIndexOf('.') + 1), name);
                 }
-                if (i < rootCount) {
+                // Every unit is analyzed as a root, so that javac keeps end positions for the pool's too (the
+                // codemod rewrites a library as well as its caller); a duplicate name is left out.
+                if (i < rootCount || names.add(file.binaryName())) {
+                    if (i < rootCount) names.addAll(file.topLevelNames());
                     rootFiles.add(file);
-                    names.addAll(file.topLevelNames());
-                    unitOf.put(file.toUri(), i);
-                } else if (names.add(file.binaryName())) {
-                    poolFiles.add(file);
                     unitOf.put(file.toUri(), i);
                 }
             }
             var bundledTexts = new ArrayList<>(bundled.texts().values());
             var bundledInfos = JavacUnits.infos(javac, platform, bundledTexts);
             for (int i = 0; i < bundledTexts.size(); i++) {
-                var file = JavacSourceFile.ofText(bundledTexts.get(i), bundledInfos.get(i));
+                var file = JavacSourceFile.ofText(bundledTexts.get(i), bundledInfos.get(i), 1000 + i);
                 if (names.add(file.binaryName())) poolFiles.add(file);
             }
             var fileManager = new EmbeddedFileManager(platform, poolFiles, null);
@@ -172,6 +172,7 @@ public final class DialectCodemod {
             }
             javacTrees = Trees.instance(task);
             positions = javacTrees.getSourcePositions();
+            elements = task.getElements();
             for (var d : collector.getDiagnostics()) {
                 if (d.getKind() == Diagnostic.Kind.ERROR) errors.add(d);
             }
@@ -382,6 +383,10 @@ public final class DialectCodemod {
                 Matcher from = FROM_BIG.matcher(message);
                 Matcher data = DATA_CONVERSION.matcher(message);
                 if (!to.find() && !from.find()) {
+                    if (message.contains("inference variable") && end > start) {
+                        inferenceCast(a, unit, start, end, out);
+                        return;
+                    }
                     Matcher util = TO_UTIL.matcher(message);
                     if (util.find() && end > start) {
                         var p = a.find(unit, start, end, null);
@@ -466,14 +471,36 @@ public final class DialectCodemod {
         boolean toData = data.group(2).equals("org.julclang.core.PlutusData");
         boolean fromData = data.group(1).equals("org.julclang.core.PlutusData")
                 || data.group(1).startsWith("org.julclang.core.PlutusData.");
+        // A JuLC collection retyped to other type arguments (JuLC typed both alike).
+        boolean retyped = data.group(1).equals(data.group(2)) && (data.group(1).equals("org.julclang.core.types.JulcList")
+                || data.group(1).equals("org.julclang.core.types.JulcMap"));
+        if (retyped) fromData = true;
         if (toData == fromData) return;
         if (toData) {
-            TypeMirror type = a.javacTrees.getTypeMirror(path);
-            if (!(type instanceof DeclaredType declared)) return;
-            var kind = declared.asElement().getKind();
+            // The tree's own type is javac's error type after the mismatch: read the message's.
+            TypeElement source = a.elements.getTypeElement(data.group(1).replace('$', '.'));
+            if (source == null) return;
+            var kind = source.getKind();
             if (kind != ElementKind.RECORD && kind != ElementKind.INTERFACE) return;
         }
         Tree parent = path.getParentPath().getLeaf();
+        if (parent instanceof MethodInvocationTree call && call.getArguments().contains(expr)) {
+            // A call argument: the parameter's type, named by the message, as source text.
+            String target = sourceName(a, unit, data.group(2), imports);
+            if (target == null) return;
+            String decoded = decode(a, data.group(1), data.group(2), target, a.text(unit, expr));
+            if (decoded != null) {
+                out.add(new Edit((int) start, (int) end, decoded, "data-decode"));
+                return;
+            }
+            out.add(new Edit((int) start, (int) end, "PlutusData.cast(" + a.text(unit, expr) + ", " + target
+                    + ".class)", "data-cast"));
+            if (!a.texts.get(unit).contains("import org.julclang.core.PlutusData;")) {
+                String fqcn = importFor(a, unit, "PlutusData");
+                if (fqcn != null) imports.computeIfAbsent(unit, k -> new LinkedHashSet<>()).add(fqcn);
+            }
+            return;
+        }
         Tree typeTree = null;
         if (parent instanceof VariableTree variable && variable.getInitializer() == expr) {
             typeTree = variable.getType();
@@ -491,11 +518,86 @@ public final class DialectCodemod {
         if (typeText.equals("var")) return;
         String erased = typeText.replaceAll("<.*>", "").strip();
         String value = a.text(unit, expr);
+        String decoded = decode(a, data.group(1), data.group(2), erased, value);
+        if (decoded != null) {
+            out.add(new Edit((int) start, (int) end, decoded, "data-decode"));
+            return;
+        }
         out.add(new Edit((int) start, (int) end, "PlutusData.cast(" + value + ", " + erased + ".class)", "data-cast"));
         if (!a.texts.get(unit).contains("import org.julclang.core.PlutusData;")) {
             String fqcn = importFor(a, unit, "PlutusData");
             if (fqcn != null) imports.computeIfAbsent(unit, k -> new LinkedHashSet<>()).add(fqcn);
         }
+    }
+
+    /**
+     * A {@code PlutusData} value where bytes, an integer or a byte-string newtype is expected: JuLC decoded it
+     * ({@code UnBData}/{@code UnIData}), so the Java is the explicit decoding; null for any other conversion.
+     */
+    private static String decode(Analysis a, String from, String to, String targetText, String value) {
+        if (!from.equals("org.julclang.core.PlutusData")) return null;
+        if (to.equals("byte[]")) return "Builtins.unBData(" + value + ")";
+        if (to.equals("java.math.BigInteger")) return "Builtins.unIData(" + value + ")";
+        TypeElement type = a.elements.getTypeElement(to.replace('$', '.'));
+        if (type != null && type.getKind() == ElementKind.RECORD) {
+            var components = type.getRecordComponents();
+            if (components.size() == 1 && components.getFirst().asType().toString().equals("byte[]")) {
+                // A ledger hash type has a static of(byte[]); JuLC constructs ledger newtypes only through it.
+                boolean factory = type.getEnclosedElements().stream().anyMatch(e -> e.getKind() == ElementKind.METHOD
+                        && e.getSimpleName().contentEquals("of") && e.getModifiers().contains(Modifier.STATIC));
+                return (factory ? targetText + ".of(" : "new " + targetText + "(") + "Builtins.unBData(" + value + "))";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A type named by its qualified name, as source text in {@code unit}: {@code byte[]}; a top-level or nested type
+     * by its simple (or {@code Outer.Inner}) name, importing the top-level type from another package; null when
+     * javac does not know it.
+     */
+    private String sourceName(Analysis a, int unit, String qualified, Map<Integer, Set<String>> imports) {
+        if (qualified.equals("byte[]")) return "byte[]";
+        TypeElement type = a.elements.getTypeElement(qualified.replace('$', '.'));
+        if (type == null) return null;
+        TypeElement top = type;
+        String text = type.getSimpleName().toString();
+        while (top.getEnclosingElement() instanceof TypeElement outer) {
+            top = outer;
+            text = outer.getSimpleName() + "." + text;
+        }
+        String fqcn = top.getQualifiedName().toString();
+        int dot = fqcn.lastIndexOf('.');
+        var cu = a.trees.get(unit);
+        String pkg = cu.getPackageName() == null ? "" : cu.getPackageName().toString();
+        if (dot > 0 && !fqcn.substring(0, dot).equals(pkg) && !fqcn.startsWith("java.lang.")
+                && !a.texts.get(unit).contains("import " + fqcn + ";")) {
+            String declared = a.declared.get(top.getSimpleName().toString());
+            if (declared != null && !declared.equals(fqcn)) return null;
+            imports.computeIfAbsent(unit, k -> new LinkedHashSet<>()).add(fqcn);
+        }
+        return text;
+    }
+
+    /**
+     * A JuLC collection whose type arguments javac infers differently from JuLC's typing ({@code map} gives Data
+     * elements on-chain): the declared {@code JulcList}/{@code JulcMap} initializer becomes
+     * {@code PlutusData.cast(value, JulcList.class)}; an existing cast with the wrong class literal gets the right one.
+     */
+    private void inferenceCast(Analysis a, int unit, long start, long end, List<Edit> out) {
+        var path = a.find(unit, start, end, null);
+        if (path == null || !(path.getLeaf() instanceof MethodInvocationTree call)) return;
+        if (!(path.getParentPath().getLeaf() instanceof VariableTree variable) || variable.getInitializer() != call) return;
+        String typeText = a.text(unit, variable.getType());
+        String raw = typeText.startsWith("JulcList<") ? "JulcList" : typeText.startsWith("JulcMap<") ? "JulcMap" : null;
+        if (raw == null) return;
+        String value = a.text(unit, call);
+        if (value.startsWith("PlutusData.cast(") && call.getArguments().size() == 2) {
+            Tree literal = call.getArguments().get(1);
+            out.add(new Edit((int) a.start(unit, literal), (int) a.end(unit, literal), raw + ".class", "data-cast"));
+            return;
+        }
+        out.add(new Edit((int) start, (int) end, "PlutusData.cast(" + value + ", " + raw + ".class)", "data-cast"));
     }
 
     /** The declaration of local or parameter {@code name} visible at {@code pos}, retyped to JulcList/JulcMap. */
@@ -806,6 +908,11 @@ public final class DialectCodemod {
         boolean apply = args.length > 3 && args[3].equals("apply");
         Files.createDirectories(outDir);
         var sites = index(repo);
+        // Negative fixtures whose source is deliberately not Java: their digests, one per line.
+        String exclude = System.getenv("CODEMOD_EXCLUDE");
+        if (exclude != null && Files.exists(Path.of(exclude))) {
+            for (String digest : Files.readAllLines(Path.of(exclude))) sites.remove(digest.strip());
+        }
         System.out.println("indexed " + sites.size() + " distinct texts");
         var codemod = new DialectCodemod();
         var rewrites = new TreeMap<String, String>();     // digest -> best rewrite
@@ -891,6 +998,12 @@ public final class DialectCodemod {
             var at = sites.get(e.getKey());
             if (at == null) {
                 unlocated.append(e.getKey()).append('\n');
+                // A generated source: the rewrite, next to the original, for mapping back into its generator.
+                Path dir = outDir.resolve("unlocated");
+                Files.createDirectories(dir);
+                Files.writeString(dir.resolve(e.getKey() + ".java"), e.getValue());
+                Files.copy(report.resolve("sources").resolve(e.getKey() + ".java"), dir.resolve(e.getKey() + ".orig.java"),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 continue;
             }
             for (Site site : at) byFile.computeIfAbsent(site.file(), k -> new ArrayList<>()).add(Map.entry(site, e.getValue()));
@@ -1059,6 +1172,8 @@ public final class DialectCodemod {
             files = walk.filter(p -> p.toString().endsWith(".java"))
                     .filter(p -> !p.toString().contains("/build/") && !p.toString().contains("/.gradle/")
                             && !p.toString().contains("/node_modules/"))
+                    // The gate's own tests compile the dialect on purpose.
+                    .filter(p -> !p.toString().contains("/src/test/java/org/julclang/compiler/frontend/javac/"))
                     .sorted().toList();
         }
         var javacStd = ToolProvider.getSystemJavaCompiler();

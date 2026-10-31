@@ -131,9 +131,10 @@ class CompoundAssignmentTest {
     @Test
     void unsupportedTargetAndOperandTypesAreRejected() {
         var bool = rejected("boolean b = true; for (var x : xs) { b += true; } return BigInteger.ONE;");
-        assertTrue(bool.getMessage().contains("Compound assignment += to 'b'"), bool.getMessage());
+        // javac rejects + on boolean and -= on String first (ADR-068 I2b).
+        assertTrue(bool.getMessage().contains("(compiler.err.operator.cant.be.applied.1)"), bool.getMessage());
         var stringMinus = rejected("String s = \"\"; for (var x : xs) { s -= \"a\"; } return BigInteger.ONE;");
-        assertTrue(stringMinus.getMessage().contains("Compound assignment -= to 's'"), stringMinus.getMessage());
+        assertTrue(stringMinus.getMessage().contains("(compiler.err.operator.cant.be.applied.1)"), stringMinus.getMessage());
         var stringOfInteger = rejected("String s = \"\"; for (var x : xs) { s += x; } return BigInteger.ONE;");
         assertTrue(stringOfInteger.getMessage().contains("needs a String operand"), stringOfInteger.getMessage());
     }

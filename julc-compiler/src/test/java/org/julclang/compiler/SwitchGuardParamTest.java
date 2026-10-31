@@ -70,7 +70,7 @@ class SwitchGuardParamTest {
 
     @Test
     void booleanParamIsReadAsApplied() {
-        String fields = "    @Param static final boolean ENABLED = true;\n";
+        String fields = "    @Param static boolean ENABLED = true;\n";
         agreesWithIf(fields, "ENABLED", PlutusData.constr(0), 5, 2);
         agreesWithIf(fields, "ENABLED", PlutusData.constr(1), 5, 1);
         agreesWithIf(fields, "!ENABLED", PlutusData.constr(0), 5, 1);
@@ -78,7 +78,7 @@ class SwitchGuardParamTest {
 
     @Test
     void longParamIsReadAsApplied() {
-        String fields = "    @Param static final long LIMIT = 5;\n";
+        String fields = "    @Param static long LIMIT = 5;\n";
         agreesWithIf(fields, "x.v().signum() < LIMIT", PlutusData.integer(0), 5, 2);
         agreesWithIf(fields, "x.v().signum() < LIMIT", PlutusData.integer(5), 5, 1);
         agreesWithIf(fields, "LIMIT > 0", PlutusData.integer(0), 5, 2);
@@ -87,7 +87,7 @@ class SwitchGuardParamTest {
     @Test
     void constantReadingAParamIsNotConstant() {
         // M = LIMIT: M's initializer reads the parameter, so M is not folded either.
-        String fields = "    @Param static final long LIMIT = 5;\n    static final long M = LIMIT;\n";
+        String fields = "    @Param static long LIMIT = 5;\n    static final long M = LIMIT;\n";
         agreesWithIf(fields, "x.v().signum() < M", PlutusData.integer(0), 5, 2);
         agreesWithIf(fields, "x.v().signum() < M", PlutusData.integer(5), 5, 1);
     }
@@ -97,7 +97,7 @@ class SwitchGuardParamTest {
         // The folded reading made 'when ENABLED' unguarded: the switch below counted as exhaustive.
         var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileMethod(HEADER + """
-                    @Param static final boolean ENABLED = true;
+                    @Param static boolean ENABLED = true;
                     static BigInteger g(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when ENABLED -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
@@ -106,10 +106,13 @@ class SwitchGuardParamTest {
                 """, "g"));
         var diagnostic = error.diagnostics().stream().filter(d -> d.level() == CompilerDiagnostic.Level.ERROR)
                 .findFirst().orElseThrow();
-        assertEquals("JULC0005", diagnostic.code(), diagnostic.message());
+        // javac rejects the non-exhaustive switch first (ADR-068 I2b), where JuLC gave JULC0005. The @Param is
+        // not final (D14): a constant variable would be folded by javac.
+        assertEquals("JULC0085", diagnostic.code(), diagnostic.message());
+        assertTrue(diagnostic.message().endsWith("(compiler.err.not.exhaustive)"), diagnostic.message());
         // A later unguarded A arm is not dominated by it.
         var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(HEADER + """
-                    @Param static final boolean ENABLED = true;
+                    @Param static boolean ENABLED = true;
                     static BigInteger g(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when ENABLED -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
@@ -124,13 +127,18 @@ class SwitchGuardParamTest {
         // F80's validator shape: with LIMIT applied as 0 the guard is false, so the policy fails, as the if form does.
         String guarded = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
+                import org.julclang.stdlib.annotation.Param;
 
                 @MintingValidator
                 class LimitMint {
                     sealed interface S permits A, B {}
                     record A(BigInteger v) implements S {}
                     record B(BigInteger v) implements S {}
-                    @Param static final long LIMIT = 5;
+                    @Param static long LIMIT = 5;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {

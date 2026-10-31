@@ -127,24 +127,24 @@ class UnicodeEscapeReadingTest {
                             return a;
                         }
                     }
-                    """, "javac rejects", "Illegal character '\\'"},
+                    """, "javac rejects", "(compiler.err.illegal.char)"},
             new String[]{"a Unicode escape with a digit that is not hex, in a comment", """
                     import java.math.BigInteger;
                     public class P { public static BigInteger m(BigInteger a) {
                         return a; // \\u00G1
                     } }
-                    """, "javac rejects", "Illegal Unicode escape"},
+                    """, "javac rejects", "(compiler.err.illegal.unicode.esc)"},
             new String[]{"a Unicode escape cut off by the end of the file", """
                     import java.math.BigInteger;
                     public class P { public static BigInteger m(BigInteger a) {
                         return a;
-                    } } // \\u00""", "javac rejects", "Illegal Unicode escape"},
+                    } } // \\u00""", "javac rejects", "(compiler.err.illegal.unicode.esc)"},
             new String[]{"a backslash and u without digits, in a comment", """
                     import java.math.BigInteger;
                     public class P { public static BigInteger m(BigInteger a) {
                         return a; /* \\u */
                     } }
-                    """, "javac rejects", "Illegal Unicode escape"},
+                    """, "javac rejects", "(compiler.err.illegal.unicode.esc)"},
             new String[]{"a Unicode-escaped backslash before raw backslashes, in a comment", """
                     import java.math.BigInteger;
                     public class P { public static BigInteger m(BigInteger a) {
@@ -226,6 +226,7 @@ class UnicodeEscapeReadingTest {
         String library = """
                 package com.example.lib;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Twice {
                     public static BigInteger of(BigInteger a) {
@@ -309,6 +310,10 @@ class UnicodeEscapeReadingTest {
     @Test
     void debugBindingRangesReferToTheSourceAsWritten() {
         String template = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class V {
                     @Entrypoint

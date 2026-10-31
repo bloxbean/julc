@@ -294,6 +294,8 @@ class SealedInterfaceTest {
         void compilesValidatorWithSealedInterface() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 sealed interface Action permits Mint, Burn {}
                 record Mint(int amt) implements Action {}
@@ -303,7 +305,7 @@ class SealedInterfaceTest {
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return redeemer > 0;
+                        return redeemer.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -316,6 +318,8 @@ class SealedInterfaceTest {
         void constructsVariantInValidator() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 sealed interface Action permits Mint, Burn {}
                 record Mint(int amt) implements Action {}
@@ -338,6 +342,8 @@ class SealedInterfaceTest {
         void differentFieldCountsPerVariant() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 sealed interface Redeemer permits Pay, Refund, Cancel {}
                 record Pay(int amount, int fee) implements Redeemer {}
@@ -360,6 +366,8 @@ class SealedInterfaceTest {
         void variantUsedInHelper() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 sealed interface Action permits Mint, Burn {}
                 record Mint(int amt) implements Action {}

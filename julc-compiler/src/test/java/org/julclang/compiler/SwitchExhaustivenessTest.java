@@ -34,6 +34,9 @@ class SwitchExhaustivenessTest {
         // Switch with 2 of 3 cases — should fail
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Shape permits Circle, Rect, Triangle {}
             record Circle(long radius) implements Shape {}
@@ -44,7 +47,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Shape s = (Shape) redeemer;
+                    Shape s = (Shape) (Object) redeemer;
                     return switch (s) {
                         case Circle c -> c.radius() > 0;
                         case Rect r -> r.w() > 0;
@@ -53,10 +56,9 @@ class SwitchExhaustivenessTest {
             }
             """;
         var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-        assertTrue(ex.getMessage().contains("not exhaustive") || ex.getMessage().contains("Missing"),
-                "Should report missing case. Got: " + ex.getMessage());
-        assertTrue(ex.getMessage().contains("Triangle"),
-                "Should mention Triangle as missing. Got: " + ex.getMessage());
+        // javac rejects it first (ADR-068 I2b); its message does not name the missing variants.
+        assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.not.exhaustive)"),
+                "Should report the non-exhaustive switch. Got: " + ex.getMessage());
     }
 
     @Test
@@ -64,6 +66,9 @@ class SwitchExhaustivenessTest {
         // Switch with all 3 cases — should compile and evaluate correctly
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Action permits Mint, Burn, Transfer {}
             record Mint(long amt) implements Action {}
@@ -74,7 +79,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Action a = (Action) redeemer;
+                    Action a = (Action) (Object) redeemer;
                     return switch (a) {
                         case Mint m -> m.amt() > 0;
                         case Burn b -> b.amt() > 0;
@@ -97,6 +102,9 @@ class SwitchExhaustivenessTest {
         // Switch with default branch — should compile, default covers unmatched variants
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Action permits Mint, Burn, Transfer {}
             record Mint(long amt) implements Action {}
@@ -107,7 +115,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Action a = (Action) redeemer;
+                    Action a = (Action) (Object) redeemer;
                     return switch (a) {
                         case Mint m -> m.amt() > 0;
                         default -> true;
@@ -139,6 +147,9 @@ class SwitchExhaustivenessTest {
         // All cases + default — default is redundant but should still compile
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Action permits Mint, Burn {}
             record Mint(long amt) implements Action {}
@@ -148,7 +159,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Action a = (Action) redeemer;
+                    Action a = (Action) (Object) redeemer;
                     return switch (a) {
                         case Mint m -> m.amt() > 0;
                         case Burn b -> b.amt() > 0;
@@ -176,6 +187,9 @@ class SwitchExhaustivenessTest {
         // Switch with 1 of 3 cases — should report 2 missing
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Shape permits Circle, Rect, Triangle {}
             record Circle(long radius) implements Shape {}
@@ -186,7 +200,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Shape s = (Shape) redeemer;
+                    Shape s = (Shape) (Object) redeemer;
                     return switch (s) {
                         case Circle c -> c.radius() > 0;
                     };
@@ -194,8 +208,9 @@ class SwitchExhaustivenessTest {
             }
             """;
         var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-        assertTrue(ex.getMessage().contains("Rect") && ex.getMessage().contains("Triangle"),
-                "Should list both missing cases. Got: " + ex.getMessage());
+        // javac rejects it first (ADR-068 I2b); its message does not name the missing variants.
+        assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.not.exhaustive)"),
+                "Should report the non-exhaustive switch. Got: " + ex.getMessage());
     }
 
     @Test
@@ -203,6 +218,9 @@ class SwitchExhaustivenessTest {
         // Two-case sealed interface with both cases covered
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Bool permits True, False {}
             record True() implements Bool {}
@@ -212,7 +230,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Bool b = (Bool) redeemer;
+                    Bool b = (Bool) (Object) redeemer;
                     return switch (b) {
                         case True t -> true;
                         case False f -> false;
@@ -234,6 +252,9 @@ class SwitchExhaustivenessTest {
         // Verify the error message format includes the missing case name(s)
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Action permits Mint, Burn {}
             record Mint(long amt) implements Action {}
@@ -243,7 +264,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Action a = (Action) redeemer;
+                    Action a = (Action) (Object) redeemer;
                     return switch (a) {
                         case Mint m -> m.amt() > 0;
                     };
@@ -251,10 +272,10 @@ class SwitchExhaustivenessTest {
             }
             """;
         var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-        assertTrue(ex.getMessage().contains("Burn"),
-                "Error should mention 'Burn' as missing. Got: " + ex.getMessage());
-        assertTrue(ex.getMessage().contains("Action"),
-                "Error should mention the sealed interface name. Got: " + ex.getMessage());
+        // javac rejects it first (ADR-068 I2b); its message does not name the missing variants.
+        assertTrue(ex.getMessage().contains("JULC0085") && ex.getMessage().contains("(compiler.err.not.exhaustive)"),
+                "Should report the non-exhaustive switch. Got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("Action.java"), "Error should locate the switch. Got: " + ex.getMessage());
     }
 
     @Test
@@ -264,6 +285,9 @@ class SwitchExhaustivenessTest {
         // This is a compile-success test for a normal sealed interface with all cases
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Action permits Mint, Burn {}
             record Mint(long amt) implements Action {}
@@ -273,7 +297,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Action a = (Action) redeemer;
+                    Action a = (Action) (Object) redeemer;
                     return switch (a) {
                         case Mint m -> true;
                         case Burn b -> false;
@@ -290,6 +314,9 @@ class SwitchExhaustivenessTest {
         // Exhaustive switch where each case has a proper return value
         var source = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             sealed interface Op permits Add, Sub, Mul {}
             record Add(long a, long b) implements Op {}
@@ -300,7 +327,7 @@ class SwitchExhaustivenessTest {
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    Op op = (Op) redeemer;
+                    Op op = (Op) (Object) redeemer;
                     long result = switch (op) {
                         case Add add -> add.a() + add.b();
                         case Sub sub -> sub.a() - sub.b();

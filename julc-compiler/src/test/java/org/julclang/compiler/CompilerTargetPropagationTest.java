@@ -23,6 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CompilerTargetPropagationTest {
 
     private static final String SIMPLE_VALIDATOR = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class TargetValidator {
                 @Entrypoint

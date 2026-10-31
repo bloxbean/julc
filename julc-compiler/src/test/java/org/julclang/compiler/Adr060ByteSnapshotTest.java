@@ -39,6 +39,10 @@ class Adr060ByteSnapshotTest {
                 EXPLAINED.put(entry.id() + "-" + row,
                         "MapLib.keys/values lower JulcMap keys()/values() with a right fold that keeps map order");
         }
+        // ADR-068 M1b rewrote the dialect's BigInteger comparisons in these programs to compareTo(..) OP 0 (D6),
+        // which lowers through compareTo until M1c's compareTo rule; with that rule the rows return to these bytes.
+        for (var id : List.of("golden-3-", "golden-5-"))
+            EXPLAINED.put(id, "ADR-068 M1b: BigInteger comparison rewritten to compareTo(..) OP 0 (D6), pending M1c");
     }
 
     @Test

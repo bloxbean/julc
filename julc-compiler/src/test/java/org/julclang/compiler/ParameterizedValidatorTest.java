@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.core.PlutusData;
 import org.julclang.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
@@ -66,9 +68,14 @@ class ParameterizedValidatorTest {
     @Test
     void singleByteArrayParam() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class TokenValidator {
-                    @Param byte[] owner;
+                    @Param static byte[] owner;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -98,14 +105,19 @@ class ParameterizedValidatorTest {
     void singleIntegerParam() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ThresholdValidator {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return threshold > 0;
+                        return threshold.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -126,15 +138,20 @@ class ParameterizedValidatorTest {
     void multipleParams() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MultiParamValidator {
                     @Param byte[] tokenPolicyId;
-                    @Param BigInteger minAmount;
+                    @Param static BigInteger minAmount;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return minAmount > 0;
+                        return minAmount.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -161,14 +178,19 @@ class ParameterizedValidatorTest {
         // 3-param spending validator + @Param
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class DatumParamValidator {
-                    @Param BigInteger requiredAmount;
+                    @Param static BigInteger requiredAmount;
 
                     @Entrypoint
                     static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
-                        return requiredAmount > 0;
+                        return requiredAmount.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -197,6 +219,11 @@ class ParameterizedValidatorTest {
     void paramWithMintingPolicy() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
+                import org.julclang.stdlib.annotation.Param;
 
                 @MintingValidator
                 class ParamMint {
@@ -226,15 +253,20 @@ class ParameterizedValidatorTest {
     void paramUsedInArithmetic() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ArithValidator {
-                    @Param BigInteger base;
+                    @Param static BigInteger base;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        var doubled = base + base;
-                        return doubled > 0;
+                        var doubled = base.add(base);
+                        return doubled.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -253,11 +285,16 @@ class ParameterizedValidatorTest {
     @Test
     void customTypeParam() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class CustomParamValidator {
                     record TokenConfig(byte[] policyId, byte[] assetName) {}
 
-                    @Param TokenConfig config;
+                    @Param static TokenConfig config;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -289,15 +326,20 @@ class ParameterizedValidatorTest {
     void wrongParamCount() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TwoParamValidator {
                     @Param byte[] owner;
-                    @Param BigInteger amount;
+                    @Param static BigInteger amount;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return amount > 0;
+                        return amount.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -321,6 +363,10 @@ class ParameterizedValidatorTest {
     void nonParameterizedUnchanged() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class SimpleValidator {
@@ -348,6 +394,11 @@ class ParameterizedValidatorTest {
     void compileResultHasParamInfo() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class InfoValidator {
@@ -374,6 +425,10 @@ class ParameterizedValidatorTest {
     @Test
     void compileResultNonParameterized() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class PlainValidator {
                     @Entrypoint
@@ -390,9 +445,14 @@ class ParameterizedValidatorTest {
     @Test
     void stringParam() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class StringParamValidator {
-                    @Param String msg;
+                    @Param static String msg;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -420,15 +480,20 @@ class ParameterizedValidatorTest {
     void multipleParamsWithString() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MultiStringValidator {
-                    @Param BigInteger no;
+                    @Param static BigInteger no;
                     @Param String msg;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return no > 0;
+                        return no.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -454,6 +519,8 @@ class ParameterizedValidatorTest {
         // @Param byte[] is decoded to ByteStringType. Library method expects PlutusData (DataType).
         // The compiler should insert BData coercion to encode ByteString → Data.
         var libSource = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 class DataLib {
                     static boolean isNonEmpty(PlutusData x) {
@@ -462,9 +529,14 @@ class ParameterizedValidatorTest {
                 }
                 """;
         var validatorSource = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class ParamLibValidator {
-                    @Param byte[] owner;
+                    @Param static byte[] owner;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -472,7 +544,9 @@ class ParameterizedValidatorTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler().compile(validatorSource, java.util.List.of(libSource));
+        // ADR-068 M1b: the implicit bytes-to-Data encoding at the call is the subject, and it is not Java (U4).
+        var result = new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF))
+                .compile(validatorSource, java.util.List.of(libSource));
         assertTrue(result.isParameterized());
 
         var concrete = result.program().applyParams(PlutusData.bytes(new byte[]{1, 2, 3}));
@@ -490,24 +564,30 @@ class ParameterizedValidatorTest {
         // Types match — no coercion needed. This verifies @Param decode + library call round-trip.
         var libSource = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
 
                 @OnchainLibrary
                 class IntLib {
                     static boolean checkThreshold(BigInteger x, BigInteger min) {
-                        return x >= min;
+                        return x.compareTo(min) >= 0;
                     }
                 }
                 """;
         var validatorSource = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ParamLibValidator2 {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return IntLib.checkThreshold(threshold, 10);
+                        return IntLib.checkThreshold(threshold, BigInteger.TEN);
                     }
                 }
                 """;
@@ -529,20 +609,26 @@ class ParameterizedValidatorTest {
         // No coercion needed — types match.
         var libSource = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
 
                 @OnchainLibrary
                 class IntCheckLib {
                     static boolean isPositive(BigInteger x) {
-                        return x > 0;
+                        return x.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
         var validatorSource = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class ParamIntLibValidator {
-                    @Param BigInteger threshold;
+                    @Param static BigInteger threshold;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {

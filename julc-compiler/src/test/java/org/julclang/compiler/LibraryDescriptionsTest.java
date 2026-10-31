@@ -14,6 +14,8 @@ class LibraryDescriptionsTest {
         var p=provider("""
             package sample;
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.NewType;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary public class Money {
                 @NewType public record Price(BigInteger value) {}
                 @NewType public record Quantity(BigInteger value) {}
@@ -32,6 +34,7 @@ class LibraryDescriptionsTest {
         var p=provider("""
             package sample;
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary public class Trees {
                 public sealed interface Tree {
                     record Leaf(BigInteger value) implements Tree {}
@@ -47,7 +50,7 @@ class LibraryDescriptionsTest {
         assertFalse(p.types().containsKey("sample.Trees.Tree.Branch"));
     }
     @Test void specialLedgerLayoutsDoNotAdvertiseRecordProjections() {
-        var p=provider("@OnchainLibrary class Test { public static int identity(int x) { return x; } }");
+        var p=provider("import org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary class Test { public static int identity(int x) { return x; } }");
         var value=p.types().get("org.julclang.ledger.Value");
         assertNotNull(value);
         assertTrue(value.fields().isEmpty());
@@ -55,6 +58,7 @@ class LibraryDescriptionsTest {
     @Test void rawContainersAreDescribedAsUnsupportedRatherThanErased() {
         var p=provider("""
             import java.util.List;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary public class Raw {
                 public static List identity(List list) { return list; }
             }
@@ -63,7 +67,7 @@ class LibraryDescriptionsTest {
         assertTrue(p.unsupportedExports().get("Raw.identity").contains("Raw or invalid container"));
     }
     @Test void duplicateSourceOwnershipRejected() {
-        String source="@OnchainLibrary class Test { public record Item(int x) {} public static int value(int x) { return x; } }";
+        String source="import org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary class Test { public record Item(int x) {} public static int value(int x) { return x; } }";
         assertThrows(Exception.class,()->new JavaLibraryProvider(List.of(source,source),null,new CompilerOptions()));
     }
 }

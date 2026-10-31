@@ -27,6 +27,8 @@ class GenericExportsTest {
             package demo;
             import java.math.BigInteger;
             import org.julclang.core.types.JulcList;
+            import org.julclang.stdlib.annotation.NewType;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary
             public class Seq {
                 public record Quote(BigInteger amount, boolean approved) {}
@@ -184,6 +186,7 @@ class GenericExportsTest {
         String shadowing = """
                 package demo;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Shadow {
                     public record T(BigInteger x) {}
@@ -346,6 +349,9 @@ class GenericExportsTest {
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
                 import demo.Seq;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
                 @MintingValidator
                 class UsesTemplate {
                     @Entrypoint
@@ -362,6 +368,9 @@ class GenericExportsTest {
         var concrete = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile("""
                 import java.math.BigInteger;
                 import demo.Seq;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
                 @MintingValidator
                 class UsesConcrete {
                     @Entrypoint

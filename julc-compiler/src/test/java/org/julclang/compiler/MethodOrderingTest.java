@@ -51,16 +51,18 @@ class MethodOrderingTest {
     void entrypointCallsHelperDefinedAfter() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return double_(redeemer) == 10;
+                    return double_(redeemer).equals(BigInteger.TEN);
                 }
 
                 static BigInteger double_(BigInteger x) {
-                    return x + x;
+                    return x.add(x);
                 }
             }
             """;
@@ -74,20 +76,22 @@ class MethodOrderingTest {
         // Entrypoint calls helperA, helperA calls helperB — both defined after entrypoint
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return quadruple(redeemer) == 20;
+                    return quadruple(redeemer).equals(BigInteger.valueOf(20));
                 }
 
                 static BigInteger quadruple(BigInteger x) {
-                    return double_(x) + double_(x);
+                    return double_(x).add(double_(x));
                 }
 
                 static BigInteger double_(BigInteger x) {
-                    return x + x;
+                    return x.add(x);
                 }
             }
             """;
@@ -101,24 +105,26 @@ class MethodOrderingTest {
         // A→B→C, defined in order C, B, A (reverse dependency)
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return a(redeemer) == 8;
+                    return a(redeemer).equals(BigInteger.valueOf(8));
                 }
 
                 static BigInteger a(BigInteger x) {
-                    return b(x) + 1;
+                    return b(x).add(BigInteger.ONE);
                 }
 
                 static BigInteger b(BigInteger x) {
-                    return c(x) + 1;
+                    return c(x).add(BigInteger.ONE);
                 }
 
                 static BigInteger c(BigInteger x) {
-                    return x + 1;
+                    return x.add(BigInteger.ONE);
                 }
             }
             """;
@@ -132,24 +138,26 @@ class MethodOrderingTest {
         // Entrypoint → A, B; A → C; B → C (diamond pattern)
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return addViaA(redeemer) + addViaB(redeemer) == 10;
+                    return addViaA(redeemer).add(addViaB(redeemer)).equals(BigInteger.TEN);
                 }
 
                 static BigInteger addViaA(BigInteger x) {
-                    return shared(x) + 1;
+                    return shared(x).add(BigInteger.ONE);
                 }
 
                 static BigInteger addViaB(BigInteger x) {
-                    return shared(x) + 2;
+                    return shared(x).add(BigInteger.TWO);
                 }
 
                 static BigInteger shared(BigInteger x) {
-                    return x + 10;
+                    return x.add(BigInteger.TEN);
                 }
             }
             """;
@@ -166,11 +174,11 @@ class MethodOrderingTest {
 
             class MyClass {
                 static BigInteger compute(BigInteger x) {
-                    return helper(x) + 1;
+                    return helper(x).add(BigInteger.ONE);
                 }
 
                 static BigInteger helper(BigInteger x) {
-                    return x * 2;
+                    return x.multiply(BigInteger.TWO);
                 }
             }
             """;
@@ -193,22 +201,24 @@ class MethodOrderingTest {
         // isEven/isOdd: classic mutual recursion
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 static boolean isEven(BigInteger n) {
-                    if (n == 0) {
+                    if (n.equals(BigInteger.ZERO)) {
                         return true;
                     } else {
-                        return isOdd(n - 1);
+                        return isOdd(n.subtract(BigInteger.ONE));
                     }
                 }
 
                 static boolean isOdd(BigInteger n) {
-                    if (n == 0) {
+                    if (n.equals(BigInteger.ZERO)) {
                         return false;
                     } else {
-                        return isEven(n - 1);
+                        return isEven(n.subtract(BigInteger.ONE));
                     }
                 }
 
@@ -231,16 +241,16 @@ class MethodOrderingTest {
             import java.math.BigInteger;
 
             class CaptureProbe {
-                static final BigInteger LIMIT = 1000;
+                static final BigInteger LIMIT = BigInteger.valueOf(1000);
 
                 static BigInteger ping(BigInteger n) {
-                    BigInteger other = 1;
-                    if (n == 0) { return LIMIT + other; } else { return pong(n - 1); }
+                    BigInteger other = BigInteger.ONE;
+                    if (n.equals(BigInteger.ZERO)) { return LIMIT.add(other); } else { return pong(n.subtract(BigInteger.ONE)); }
                 }
 
                 static BigInteger pong(BigInteger n) {
-                    BigInteger LIMIT = 7;
-                    if (n == 0) { return LIMIT; } else { return ping(n - 1); }
+                    BigInteger LIMIT = BigInteger.valueOf(7);
+                    if (n.equals(BigInteger.ZERO)) { return LIMIT; } else { return ping(n.subtract(BigInteger.ONE)); }
                 }
 
                 static BigInteger entry(BigInteger n) {
@@ -264,25 +274,27 @@ class MethodOrderingTest {
         // rename must keep their identity, so `return doubled;` stays mapped.
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 static BigInteger sumA(BigInteger depth, BigInteger acc0) {
                     BigInteger acc = acc0;
-                    BigInteger i = 0;
-                    while (i < depth) { acc = acc + i; i = i + 1; }
-                    if (depth == 0) { return acc; } else { return sumB(depth - 1, acc); }
+                    BigInteger i = BigInteger.ZERO;
+                    while (i.compareTo(depth) < 0) { acc = acc.add(i); i = i.add(BigInteger.ONE); }
+                    if (depth.equals(BigInteger.ZERO)) { return acc; } else { return sumB(depth.subtract(BigInteger.ONE), acc); }
                 }
 
                 static BigInteger sumB(BigInteger depth, BigInteger acc0) {
-                    BigInteger doubled = acc0 * 2;
-                    if (depth == 0) { return doubled; } else { return sumA(depth - 1, doubled + 1); }
+                    BigInteger doubled = acc0.multiply(BigInteger.TWO);
+                    if (depth.equals(BigInteger.ZERO)) { return doubled; } else { return sumA(depth.subtract(BigInteger.ONE), doubled.add(BigInteger.ONE)); }
                 }
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    BigInteger total = sumA(redeemer, 0);
-                    return total > 0;
+                    BigInteger total = sumA(redeemer, BigInteger.ZERO);
+                    return total.compareTo(BigInteger.ZERO) > 0;
                 }
             }
             """;
@@ -302,22 +314,24 @@ class MethodOrderingTest {
         // Three-way mutual recursion should produce a clear error
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 static BigInteger fa(BigInteger n) {
-                    if (n == 0) { return 1; } else { return fb(n - 1); }
+                    if (n.equals(BigInteger.ZERO)) { return BigInteger.ONE; } else { return fb(n.subtract(BigInteger.ONE)); }
                 }
                 static BigInteger fb(BigInteger n) {
-                    if (n == 0) { return 2; } else { return fc(n - 1); }
+                    if (n.equals(BigInteger.ZERO)) { return BigInteger.TWO; } else { return fc(n.subtract(BigInteger.ONE)); }
                 }
                 static BigInteger fc(BigInteger n) {
-                    if (n == 0) { return 3; } else { return fa(n - 1); }
+                    if (n.equals(BigInteger.ZERO)) { return BigInteger.valueOf(3); } else { return fa(n.subtract(BigInteger.ONE)); }
                 }
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return fa(redeemer) > 0;
+                    return fa(redeemer).compareTo(BigInteger.ZERO) > 0;
                 }
             }
             """;
@@ -333,11 +347,13 @@ class MethodOrderingTest {
         // Helpers defined BEFORE callers (existing correct order)
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 static BigInteger double_(BigInteger x) {
-                    return x + x;
+                    return x.add(x);
                 }
 
                 static BigInteger quadruple(BigInteger x) {
@@ -346,7 +362,7 @@ class MethodOrderingTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return quadruple(redeemer) == 40;
+                    return quadruple(redeemer).equals(BigInteger.valueOf(40));
                 }
             }
             """;
@@ -360,19 +376,21 @@ class MethodOrderingTest {
         // Self-recursive helper defined after its caller
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return factorial(redeemer) == 120;
+                    return factorial(redeemer).equals(BigInteger.valueOf(120));
                 }
 
                 static BigInteger factorial(BigInteger n) {
-                    if (n <= 1) {
-                        return 1;
+                    if (n.compareTo(BigInteger.ONE) <= 0) {
+                        return BigInteger.ONE;
                     } else {
-                        return n * factorial(n - 1);
+                        return n.multiply(factorial(n.subtract(BigInteger.ONE)));
                     }
                 }
             }

@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.compiler.pir.PirGenerator;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -134,21 +136,31 @@ class LambdaExpressionTest {
 
     @Nested
     class CompilerIntegrationTests {
+
+        /**
+         * ADR-068 M1b: a lambda bound to a {@code var} local is not Java (javac: cannot infer type), and JuLC does
+         * not accept a functional-interface type for the local; compiled with the javac gate off (M1b's report).
+         */
+        private static JulcCompiler dialectCompiler() {
+            return new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+        }
         @Test
         void lambdaInLetBinding() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        var f = (BigInteger x) -> x + 1;
+                        var f = (BigInteger x) -> x.add(BigInteger.ONE);
                         return true;
                     }
                 }
                 """;
-            var result = new JulcCompiler().compile(source);
+            var result = dialectCompiler().compile(source);
             assertNotNull(result.program());
         }
 
@@ -157,17 +169,19 @@ class LambdaExpressionTest {
             // This tests that lambdas can be passed to helper methods
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        var f = (BigInteger x) -> x + 1;
+                        var f = (BigInteger x) -> x.add(BigInteger.ONE);
                         return true;
                     }
                 }
                 """;
-            var result = new JulcCompiler().compile(source);
+            var result = dialectCompiler().compile(source);
             assertNotNull(result.program());
         }
 
@@ -175,17 +189,19 @@ class LambdaExpressionTest {
         void lambdaWithMultipleParams() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        var add = (BigInteger x, BigInteger y) -> x + y;
+                        var add = (BigInteger x, BigInteger y) -> x.add(y);
                         return true;
                     }
                 }
                 """;
-            var result = new JulcCompiler().compile(source);
+            var result = dialectCompiler().compile(source);
             assertNotNull(result.program());
         }
 
@@ -193,17 +209,19 @@ class LambdaExpressionTest {
         void lambdaWithBoolBody() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        var isPositive = (BigInteger x) -> x > 0;
+                        var isPositive = (BigInteger x) -> x.compareTo(BigInteger.ZERO) > 0;
                         return true;
                     }
                 }
                 """;
-            var result = new JulcCompiler().compile(source);
+            var result = dialectCompiler().compile(source);
             assertNotNull(result.program());
         }
 
@@ -211,20 +229,22 @@ class LambdaExpressionTest {
         void lambdaWithBlockBodyCompiles() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
                         var compute = (BigInteger x) -> {
-                            var doubled = x + x;
+                            var doubled = x.add(x);
                             return doubled;
                         };
                         return true;
                     }
                 }
                 """;
-            var result = new JulcCompiler().compile(source);
+            var result = dialectCompiler().compile(source);
             assertNotNull(result.program());
         }
 
@@ -232,6 +252,8 @@ class LambdaExpressionTest {
         void lambdaWithBooleanParams() {
             var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
@@ -242,7 +264,7 @@ class LambdaExpressionTest {
                     }
                 }
                 """;
-            var result = new JulcCompiler().compile(source);
+            var result = dialectCompiler().compile(source);
             assertNotNull(result.program());
         }
     }

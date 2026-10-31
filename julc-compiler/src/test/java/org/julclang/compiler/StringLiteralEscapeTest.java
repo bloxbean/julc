@@ -177,7 +177,9 @@ class StringLiteralEscapeTest {
         // Unicode escapes are translated before lexing (T24), so the lexer sees the escape for q and rejects it.
         var error = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source("\\u005cq"), "m"));
-        assertTrue(error.getMessage().contains("Lexical error"), error.getMessage());
+        // javac rejects it first (ADR-068 D5, I2b), where JavaParser reported a lexical error.
+        assertTrue(error.getMessage().contains("JULC0085") && error.getMessage().contains("(compiler.err.illegal.esc.char)"),
+                error.getMessage());
     }
 
     @Test
@@ -186,8 +188,9 @@ class StringLiteralEscapeTest {
         // is a backslash and u0041. JavaParser's lexer lets that through; the escape for u is illegal.
         var error = assertThrows(CompilerException.class,
                 () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source("\\u005cu0041"), "m"));
-        assertTrue(error.getMessage().contains("Illegal escape sequence \\u"), error.getMessage());
-        assertTrue(error.getMessage().contains("or an octal escape"), error.getMessage());
+        // javac rejects it first (ADR-068 D5, I2b): the escape for u is illegal.
+        assertTrue(error.getMessage().contains("JULC0085") && error.getMessage().contains("(compiler.err.illegal.esc.char)"),
+                error.getMessage());
     }
 
     @Test

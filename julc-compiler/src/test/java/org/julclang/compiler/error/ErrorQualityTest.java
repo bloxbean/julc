@@ -16,6 +16,10 @@ class ErrorQualityTest {
     @Test
     void unknownTypeIncludesDidYouMean() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     record MyDatum(Strng name) {}
@@ -27,13 +31,18 @@ class ErrorQualityTest {
                 }
                 """;
         var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-        assertTrue(ex.getMessage().contains("Did you mean"),
-                "Error should suggest similar type. Got: " + ex.getMessage());
+        // javac rejects the unknown type first (ADR-068 I2b): JULC0085, naming the symbol, without JuLC's suggestion.
+        assertTrue(ex.getMessage().contains("(compiler.err.cant.resolve.location)") && ex.getMessage().contains("Strng"),
+                "Error should name the unknown type. Got: " + ex.getMessage());
     }
 
     @Test
     void unsupportedPrimitiveIncludesSupportedTypes() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     record BadRecord(float value) {}
@@ -76,6 +85,10 @@ class ErrorQualityTest {
     void multipleSubsetErrorsReportedTogether() {
         // Source with multiple unsupported constructs
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
@@ -99,6 +112,10 @@ class ErrorQualityTest {
     @Test
     void typeResolverErrorUsesCompilerException() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class MyValidator {
                     record BadRecord(UnknownTypeName field) {}
@@ -117,6 +134,8 @@ class ErrorQualityTest {
     void undefinedVariableErrorHasSuggestion() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {
@@ -127,7 +146,8 @@ class ErrorQualityTest {
                 }
                 """;
         var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-        assertTrue(ex.getMessage().contains("Undefined variable") || ex.getMessage().contains("Unknown method"),
+        // javac rejects the undefined variable first (ADR-068 I2b): JULC0085, naming it.
+        assertTrue(ex.getMessage().contains("(compiler.err.cant.resolve.location)") && ex.getMessage().contains("unknownVar"),
                 "Error should mention undefined variable. Got: " + ex.getMessage());
     }
 
@@ -135,6 +155,8 @@ class ErrorQualityTest {
     void unsupportedStatementErrorHasSuggestion() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class MyValidator {

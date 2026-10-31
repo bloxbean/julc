@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.compiler.pir.CompositeStdlibLookup;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.StdlibLookup;
@@ -41,10 +43,12 @@ class LibraryDiscoveryCleanupTest {
         }
         byte[] methodBytes = null;
         byte[] validatorBytes = null;
-        for (var prefix : List.of(imports.toString(),
-                "import org.julclang.stdlib.lib.*;\n", "")) {
+        // ADR-068 D6: the stdlib library packages are no longer imported implicitly, so a source without the
+        // import is rejected by javac (below) where it used to compile to the same bytes.
+        for (var prefix : List.of(imports.toString(), "import org.julclang.stdlib.lib.*;\n")) {
             var method = compiler().compileMethod(prefix + """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.Builtins;
                     class Sample {
                         static BigInteger run(BigInteger x) {
                             return MathLib.abs(x).add(Builtins.unIData(Builtins.iData(x))).add(BigInteger.ONE);
@@ -57,6 +61,11 @@ class LibraryDiscoveryCleanupTest {
             assertEquals(Term.const_(Constant.integer(1)),
                     assertInstanceOf(EvalResult.Success.class, actual).resultTerm());
             var validator = compiler().compile(prefix + """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.Builtins;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class Sample {
                         @Entrypoint
@@ -75,6 +84,14 @@ class LibraryDiscoveryCleanupTest {
             methodBytes = mb;
             validatorBytes = vb;
         }
+        var unimported = assertThrows(CompilerException.class, () -> compiler().compileMethod("""
+                import java.math.BigInteger;
+                class Sample {
+                    static BigInteger run(BigInteger x) { return MathLib.abs(x); }
+                }
+                """, "run"));
+        assertTrue(unimported.getMessage().contains("JULC0085") && unimported.getMessage().contains("MathLib")
+                && unimported.getMessage().contains("(compiler.err.cant.resolve.location)"), unimported.getMessage());
     }
 
     @Test
@@ -82,6 +99,7 @@ class LibraryDiscoveryCleanupTest {
         var library = """
                 package example.cleanup;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class CustomMath {
                     public static BigInteger bump(BigInteger x) { return x.add(BigInteger.ONE); }
@@ -105,11 +123,17 @@ class LibraryDiscoveryCleanupTest {
                 assertInstanceOf(EvalResult.Success.class, evaluated).resultTerm());
         assertCompiled(compiler().compile("""
                 import example.cleanup.CustomMath;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import java.math.BigInteger;
                 @SpendingValidator
                 class Sample {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return CustomMath.bump(Builtins.unIData(redeemer)) > 0;
+                        return CustomMath.bump(Builtins.unIData(redeemer)).compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """, List.of(library)));
@@ -143,11 +167,17 @@ class LibraryDiscoveryCleanupTest {
             assertEquals(Term.const_(Constant.integer(42)),
                     assertInstanceOf(EvalResult.Success.class, evaluated).resultTerm());
             String validator = imports + """
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.Builtins;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class Sample {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return DiscoveryWrapper.twice(Builtins.unIData(redeemer)) > 0;
+                            return DiscoveryWrapper.twice(Builtins.unIData(redeemer)).compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -170,7 +200,8 @@ class LibraryDiscoveryCleanupTest {
         assertTrue(composite.registeredClassNames().containsAll(Set.of(
                 "example.registry.RegistryOnly", "org.julclang.stdlib.Builtins")));
         for (StdlibLookup lookup : List.of(registry, composite)) {
-            var compiler = new JulcCompiler(lookup);
+            // ADR-068 M1b: a name only a custom registry defines has no Java declaration javac could see.
+            var compiler = new JulcCompiler(lookup, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
             String imports = "import example.registry.RegistryOnly;\n";
             var method = compiler.compileMethod(imports
                     + "class Sample { static boolean run() { return RegistryOnly.accept(); } }", "run", List.of());
@@ -178,6 +209,10 @@ class LibraryDiscoveryCleanupTest {
             var evaluated = JulcVm.create("Java").evaluate(method.program(), method.target().ledgerTarget(), null, EvalOptions.DEFAULT);
             assertEquals(Term.const_(Constant.bool(true)), assertInstanceOf(EvalResult.Success.class, evaluated).resultTerm());
             assertCompiled(compiler.compile(imports + """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator class Sample {
                         @Entrypoint static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             return RegistryOnly.accept();
@@ -192,23 +227,37 @@ class LibraryDiscoveryCleanupTest {
             "method-any", "validator-any"})
     void registryOnlyMethodsWorkWithExplicitEmptyLibraryLists(String scenario) {
         String body = switch (scenario.substring(scenario.indexOf('-') + 1)) {
-            case "floor" -> "return MathLib.floorDiv(Builtins.unIData(redeemer), 3) == -3;";
+            case "floor" -> "return MathLib.floorDiv(Builtins.unIData(redeemer), BigInteger.valueOf(3)).equals(BigInteger.valueOf(-3));";
             case "trace" -> "ContextsLib.trace(\"registry\"); return true;";
             case "any" -> "return ListsLib.any(Builtins.unListData(redeemer), x -> Builtins.unIData(x) > 0);";
             default -> throw new IllegalArgumentException(scenario);
         };
         String imports = """
+                import java.math.BigInteger;
                 import org.julclang.stdlib.lib.MathLib;
                 import org.julclang.stdlib.lib.ContextsLib;
                 import org.julclang.stdlib.lib.ListsLib;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 """;
         boolean methodPath = scenario.startsWith("method");
         String source = imports + (methodPath
                 ? "class Sample { static boolean run(PlutusData redeemer) { " + body + " } }"
                 : "@SpendingValidator class Sample { @Entrypoint static boolean validate(PlutusData redeemer, ScriptContext ctx) { "
                         + body + " } }");
-        var compiled = methodPath ? compiler().compileMethod(source, "run", List.of())
-                : compiler().compile(source, List.of());
+        // ADR-068 M1b: ListsLib.any exists only in the stdlib registry, not in Java, so javac rejects it.
+        boolean registryOnly = scenario.endsWith("any");
+        if (registryOnly) DialectGate.off();
+        CompileResult compiled;
+        try {
+            compiled = methodPath ? compiler().compileMethod(source, "run", List.of())
+                    : compiler().compile(source, List.of());
+        } finally {
+            if (registryOnly) DialectGate.restore();
+        }
         assertCompiled(compiled);
         if (methodPath) {
             var input = scenario.endsWith("any")

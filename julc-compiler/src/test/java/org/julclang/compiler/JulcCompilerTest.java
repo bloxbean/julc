@@ -12,6 +12,8 @@ class JulcCompilerTest {
     void compilesSimpleValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class SimpleValidator {
@@ -32,12 +34,14 @@ class JulcCompilerTest {
     void compilesValidatorWithIfElse() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class CheckValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    if (redeemer > 0) {
+                    if (redeemer.compareTo(BigInteger.ZERO) > 0) {
                         return true;
                     } else {
                         return false;
@@ -54,13 +58,15 @@ class JulcCompilerTest {
     void compilesValidatorWithLetBinding() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class LetValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    var sum = redeemer + ctx;
-                    return sum == 100;
+                    var sum = redeemer.add(ctx);
+                    return sum.equals(BigInteger.valueOf(100));
                 }
             }
             """;
@@ -71,6 +77,8 @@ class JulcCompilerTest {
     @Test
     void rejectsInvalidSubset() {
         var source = """
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class BadValidator {
                 @Entrypoint
@@ -85,6 +93,7 @@ class JulcCompilerTest {
     @Test
     void rejectsMissingEntrypoint() {
         var source = """
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class NoEntrypoint {
                 static boolean validate(int a) { return true; }
@@ -96,6 +105,7 @@ class JulcCompilerTest {
     @Test
     void rejectsMissingValidator() {
         var source = """
+            import org.julclang.stdlib.annotation.Entrypoint;
             class NotAValidator {
                 @Entrypoint
                 static boolean validate(int a) { return true; }
@@ -108,6 +118,8 @@ class JulcCompilerTest {
     void compilesBasicMintingValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
 
             @MintingValidator
             class SimpleMint {
@@ -125,6 +137,8 @@ class JulcCompilerTest {
     void compilesSpendingValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class SpendTest {
@@ -143,6 +157,8 @@ class JulcCompilerTest {
     void compilesMintingValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
 
             @MintingValidator
             class MintTest {
@@ -161,6 +177,8 @@ class JulcCompilerTest {
     void compilesWithdrawValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.WithdrawValidator;
 
             @WithdrawValidator
             class WithdrawTest {
@@ -179,6 +197,8 @@ class JulcCompilerTest {
     void compilesCertifyingValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.CertifyingValidator;
+            import org.julclang.stdlib.annotation.Entrypoint;
 
             @CertifyingValidator
             class CertTest {
@@ -197,6 +217,8 @@ class JulcCompilerTest {
     void compilesVotingValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.VotingValidator;
 
             @VotingValidator
             class VoteTest {
@@ -215,6 +237,8 @@ class JulcCompilerTest {
     void compilesProposingValidator() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.ProposingValidator;
 
             @ProposingValidator
             class ProposeTest {
@@ -233,6 +257,7 @@ class JulcCompilerTest {
     void rejectsLegacyValidatorAnnotation() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
 
             @Validator
             class DeprecatedTest {
@@ -250,6 +275,7 @@ class JulcCompilerTest {
     void rejectsLegacyMintingPolicyAnnotation() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
 
             @MintingPolicy
             class DeprecatedMintTest {
@@ -267,6 +293,8 @@ class JulcCompilerTest {
     void rejectsLibraryWithNewValidatorAnnotation() {
         var validatorSource = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MainValidator {
@@ -295,6 +323,9 @@ class JulcCompilerTest {
     void rejectsValidatorThatAlsoDeclaresOnchainLibrary() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @OnchainLibrary
             @SpendingValidator
@@ -316,6 +347,8 @@ class JulcCompilerTest {
     void rejectsLibraryThatCombinesOnchainLibraryAndValidatorAnnotation() {
         var validatorSource = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MainValidator {
@@ -348,6 +381,8 @@ class JulcCompilerTest {
     @Test
     void compilesBooleanLogic() {
         var source = """
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class BoolValidator {
                 @Entrypoint
@@ -364,6 +399,8 @@ class JulcCompilerTest {
     void rejectsMintingValidatorWith3Params() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
 
             @MintingValidator
             class BadMint {
@@ -382,6 +419,8 @@ class JulcCompilerTest {
     void rejectsMintingValidatorWithPolicyNamedClassAnd3Params() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
 
             @MintingValidator
             class BadMintPolicy {
@@ -402,6 +441,8 @@ class JulcCompilerTest {
     void compilesStaticFieldInitializer() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class StaticFieldValidator {
@@ -422,6 +463,8 @@ class JulcCompilerTest {
     void compilesStaticBooleanField() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class StaticBoolValidator {
@@ -442,6 +485,8 @@ class JulcCompilerTest {
     void compilesMultipleStaticFields() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class MultiStaticValidator {
@@ -450,7 +495,7 @@ class JulcCompilerTest {
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    return redeemer >= MIN && redeemer <= MAX;
+                    return redeemer.compareTo(MIN) >= 0 && redeemer.compareTo(MAX) <= 0;
                 }
             }
             """;
@@ -463,13 +508,15 @@ class JulcCompilerTest {
     void staticFieldUsedInHelperMethod() {
         var source = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class HelperStaticValidator {
                 static BigInteger LIMIT = BigInteger.valueOf(50);
 
                 static boolean isWithinLimit(BigInteger x) {
-                    return x <= LIMIT;
+                    return x.compareTo(LIMIT) <= 0;
                 }
 
                 @Entrypoint

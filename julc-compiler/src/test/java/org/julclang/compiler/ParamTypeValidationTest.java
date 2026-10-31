@@ -12,9 +12,15 @@ import static org.junit.jupiter.api.Assertions.*;
 class ParamTypeValidationTest {
 
     private static final String VALIDATOR_TEMPLATE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.core.PlutusData.BytesData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.Param;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class TestValidator {
-                @Param %s x;
+                @Param static %s x;
 
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -82,14 +88,19 @@ class ParamTypeValidationTest {
     void testParamBigIntegerAccepted() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class TestValidator {
-                    @Param BigInteger x;
+                    @Param static BigInteger x;
 
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return x > 0;
+                        return x.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -121,6 +132,11 @@ class ParamTypeValidationTest {
     @Test
     void testMultipleBadParamsReportsAll() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class TestValidator {
                     @Param PlutusData.BytesData a;

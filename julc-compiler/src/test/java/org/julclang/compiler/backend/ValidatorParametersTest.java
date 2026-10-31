@@ -42,10 +42,14 @@ class ValidatorParametersTest {
         static final String JAVA = """
                 import java.math.BigInteger;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
+                import org.julclang.stdlib.annotation.Param;
                 @MintingValidator
                 class Threshold {
-                    @Param BigInteger threshold;
-                    @Param byte[] owner;
+                    @Param static BigInteger threshold;
+                    @Param static byte[] owner;
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, ScriptContext ctx) {
                         return redeemer.compareTo(threshold) >= 0 && Builtins.lengthOfByteString(owner) == 28;

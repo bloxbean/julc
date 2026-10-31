@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.compiler.pir.PirType;
@@ -84,12 +86,16 @@ class StdlibIntegrationTest {
         void compileValidatorWithGetTxInfo() {
             var source = """
                     import org.julclang.stdlib.lib.ContextsLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.ScriptContext;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                            PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
                             return true;
                         }
                     }
@@ -104,12 +110,16 @@ class StdlibIntegrationTest {
         void compileValidatorWithGetRedeemer() {
             var source = """
                     import org.julclang.stdlib.lib.ContextsLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.ScriptContext;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData red = ContextsLib.getRedeemer(ctx);
+                            PlutusData red = ContextsLib.getRedeemer(PlutusData.cast(ctx, ScriptContext.class));
                             return true;
                         }
                     }
@@ -124,12 +134,16 @@ class StdlibIntegrationTest {
             // Validator that always returns true, but exercises getTxInfo path
             var source = """
                     import org.julclang.stdlib.lib.ContextsLib;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.ledger.ScriptContext;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                            PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
                             return true;
                         }
                     }
@@ -150,6 +164,9 @@ class StdlibIntegrationTest {
         void unknownStdlibMethodFallsThrough() {
             // A method on a class name that isn't in the stdlib should fail compilation
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -171,6 +188,9 @@ class StdlibIntegrationTest {
         void compileRecordFieldAccessOnParam() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -179,7 +199,7 @@ class StdlibIntegrationTest {
                         @Entrypoint
                         static boolean validate(MyDatum datum, PlutusData ctx) {
                             BigInteger v = datum.value();
-                            return v > 0;
+                            return v.compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -193,6 +213,9 @@ class StdlibIntegrationTest {
             // Validator that extracts the first field (value) and checks > 0
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -201,7 +224,7 @@ class StdlibIntegrationTest {
                         @Entrypoint
                         static boolean validate(MyDatum datum, PlutusData ctx) {
                             BigInteger v = datum.value();
-                            return v > 0;
+                            return v.compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -227,6 +250,9 @@ class StdlibIntegrationTest {
             // Validator that extracts the second field (deadline)
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -235,7 +261,7 @@ class StdlibIntegrationTest {
                         @Entrypoint
                         static boolean validate(MyDatum datum, PlutusData ctx) {
                             BigInteger d = datum.deadline();
-                            return d == 1000;
+                            return d.equals(BigInteger.valueOf(1000));
                         }
                     }
                     """;
@@ -257,6 +283,9 @@ class StdlibIntegrationTest {
         void evalRecordFieldAccessRejects() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -265,7 +294,7 @@ class StdlibIntegrationTest {
                         @Entrypoint
                         static boolean validate(MyDatum datum, PlutusData ctx) {
                             BigInteger v = datum.value();
-                            return v > 100;
+                            return v.compareTo(BigInteger.valueOf(100)) > 0;
                         }
                     }
                     """;
@@ -290,6 +319,9 @@ class StdlibIntegrationTest {
         @Test
         void compile3ParamSpendingValidator() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -306,6 +338,9 @@ class StdlibIntegrationTest {
         @Test
         void eval3ParamAlwaysTrue() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -337,12 +372,15 @@ class StdlibIntegrationTest {
             // 3-param validator that uses datum value
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(BigInteger datum, PlutusData redeemer, PlutusData ctx) {
-                            return datum == 42;
+                            return datum.equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -374,6 +412,8 @@ class StdlibIntegrationTest {
             // params work only with constants since params receive raw Data)
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -400,6 +440,9 @@ class StdlibIntegrationTest {
         @Test
         void mintingPolicyCompiles() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestMint {
                         @Entrypoint
@@ -416,6 +459,9 @@ class StdlibIntegrationTest {
         @Test
         void mintingPolicyAlwaysTrueAccepts() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestMint {
                         @Entrypoint
@@ -440,7 +486,10 @@ class StdlibIntegrationTest {
     class JavaApiDelegation {
 
         private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
-        private final JulcCompiler stdlibCompiler = new JulcCompiler(STDLIB);
+        // ADR-068 M1b: java.lang.Math on BigInteger is not Java (javac: no suitable method); the delegation is
+        // tested on the JavaParser frontend with the gate off.
+        private final JulcCompiler stdlibCompiler = new JulcCompiler(STDLIB,
+                new CompilerOptions().setJavacGate(JavacGateMode.OFF));
 
         private PlutusData mockCtx(PlutusData redeemer) {
             return PlutusData.constr(0,
@@ -453,6 +502,9 @@ class StdlibIntegrationTest {
         void mathAbsPositive() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -462,7 +514,7 @@ class StdlibIntegrationTest {
                         static boolean validate(Datum datum, PlutusData ctx) {
                             BigInteger v = datum.value();
                             BigInteger result = Math.abs(v);
-                            return result == 5;
+                            return result.equals(BigInteger.valueOf(5));
                         }
                     }
                     """;
@@ -476,6 +528,9 @@ class StdlibIntegrationTest {
         void mathAbsNegative() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -485,7 +540,7 @@ class StdlibIntegrationTest {
                         static boolean validate(Datum datum, PlutusData ctx) {
                             BigInteger v = datum.value();
                             BigInteger result = Math.abs(v);
-                            return result == 7;
+                            return result.equals(BigInteger.valueOf(7));
                         }
                     }
                     """;
@@ -499,6 +554,9 @@ class StdlibIntegrationTest {
         void mathMax() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -509,7 +567,7 @@ class StdlibIntegrationTest {
                             BigInteger a = datum.a();
                             BigInteger b = datum.b();
                             BigInteger result = Math.max(a, b);
-                            return result == 10;
+                            return result.equals(BigInteger.TEN);
                         }
                     }
                     """;
@@ -523,6 +581,9 @@ class StdlibIntegrationTest {
         void mathMin() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class TestValidator {
@@ -533,7 +594,7 @@ class StdlibIntegrationTest {
                             BigInteger a = datum.a();
                             BigInteger b = datum.b();
                             BigInteger result = Math.min(a, b);
-                            return result == 3;
+                            return result.equals(BigInteger.valueOf(3));
                         }
                     }
                     """;

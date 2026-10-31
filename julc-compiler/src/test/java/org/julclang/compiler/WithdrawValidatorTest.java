@@ -86,6 +86,10 @@ class WithdrawValidatorTest {
     @Test
     void compilesAndEvaluatesWithdrawValidator() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.WithdrawValidator;
                 @WithdrawValidator
                 class SimpleWithdraw {
                     @Entrypoint
@@ -108,6 +112,10 @@ class WithdrawValidatorTest {
     @Test
     void withdrawValidatorChecksSigner() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.WithdrawValidator;
                 @WithdrawValidator
                 class SignerWithdraw {
                     @Entrypoint
@@ -140,6 +148,10 @@ class WithdrawValidatorTest {
     @Test
     void withdrawValidatorRejectsThreeParams() {
         var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.WithdrawValidator;
                 @WithdrawValidator
                 class BadWithdraw {
                     @Entrypoint

@@ -42,6 +42,7 @@ class SwitchMalformedDataTest {
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
                 import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.lib.ContextsLib;
 
                 public class Probe {
                 """ + declarations + method + "\n}\n";
@@ -100,7 +101,7 @@ class SwitchMalformedDataTest {
                         return switch (s) {
                             case A x when x.v().signum() > 0 -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
-                            default -> Builtins.trace("default", BigInteger.TEN);
+                            default -> { ContextsLib.trace("default"); yield BigInteger.TEN; }
                         };
                     }
                 """);
@@ -284,12 +285,13 @@ class SwitchMalformedDataTest {
     void ledgerRationalAssignedToUserRational() {
         var source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
 
                 public class Probe {
                     record Rational(BigInteger denominator, BigInteger numerator) {}
 
                     static BigInteger m(BigInteger a, BigInteger b) {
-                        Rational q = new org.julclang.ledger.Rational(a, b);
+                        Rational q = PlutusData.cast(new org.julclang.ledger.Rational(a, b), Rational.class);
                         return q.numerator();
                     }
                 }

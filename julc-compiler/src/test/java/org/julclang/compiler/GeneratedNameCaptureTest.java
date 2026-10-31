@@ -45,6 +45,11 @@ class GeneratedNameCaptureTest {
 
     private static final String SWITCH = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class Dispatch {
                 sealed interface Action permits Pay, Cancel {}
@@ -157,9 +162,15 @@ class GeneratedNameCaptureTest {
     @Test
     void datumParamIsTheParamNotTheSpentDatum() {
         String source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class DatumParam {
-                    @Param PlutusData datum__;
+                    @Param static PlutusData datum__;
                     @Entrypoint
                     static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
                         return Builtins.equalsData(datum__, datum);
@@ -179,11 +190,17 @@ class GeneratedNameCaptureTest {
     void wrapperNamedParamsAreTheParams() {
         String source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class WrapperNames {
-                    @Param BigInteger redeemer__;
-                    @Param PlutusData scriptContextData;
-                    @Param PlutusData ctxFields__;
+                    @Param static BigInteger redeemer__;
+                    @Param static PlutusData scriptContextData;
+                    @Param static PlutusData ctxFields__;
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         return Builtins.unIData(redeemer).equals(redeemer__)
@@ -206,10 +223,16 @@ class GeneratedNameCaptureTest {
     void paramNamedLikeAnotherParamsRawLambdaIsThatParam() {
         String source = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class RawNames {
-                    @Param PlutusData cfg__raw;
-                    @Param PlutusData cfg;
+                    @Param static PlutusData cfg__raw;
+                    @Param static PlutusData cfg;
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                         return Builtins.equalsData(cfg__raw, Builtins.iData(BigInteger.ONE))

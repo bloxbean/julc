@@ -53,7 +53,7 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when x.v().signum() > 0 -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0005", "Missing cases: A");
+                """), "JULC0085", "compiler.err.not.exhaustive");
         accepted(switchOver("""
                             case A x when x.v().signum() > 0 -> BigInteger.ONE;
                             default -> BigInteger.ZERO;
@@ -68,7 +68,7 @@ class SwitchDiagnosticsTest {
     void missingVariantWithoutGuards() {
         rejected(switchOver("""
                             case A x -> BigInteger.ONE;
-                """), "JULC0005", "Missing cases: B");
+                """), "JULC0085", "compiler.err.not.exhaustive");
     }
 
     // ---- JULC0071: dominance
@@ -79,7 +79,7 @@ class SwitchDiagnosticsTest {
                             case A x -> BigInteger.ONE;
                             case A x when x.v().signum() > 0 -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0071", "dominated by 'case A x'");
+                """), "JULC0085", "compiler.err.pattern.dominated");
     }
 
     @Test
@@ -88,7 +88,7 @@ class SwitchDiagnosticsTest {
                             case A x when true -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0071", "dominated");
+                """), "JULC0085", "compiler.err.pattern.dominated");
     }
 
     @Test
@@ -97,7 +97,7 @@ class SwitchDiagnosticsTest {
                             case A x -> BigInteger.ONE;
                             case A y -> BigInteger.TWO;
                             case B z -> BigInteger.ZERO;
-                """), "JULC0071", "dominated");
+                """), "JULC0085", "compiler.err.pattern.dominated");
     }
 
     @Test
@@ -105,7 +105,7 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             default -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0071", "the default label");
+                """), "JULC0085", "compiler.err.pattern.dominated");
     }
 
     @Test
@@ -125,33 +125,33 @@ class SwitchDiagnosticsTest {
                             case A x when false -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0072", "constant expression with value false");
+                """), "JULC0085", "compiler.err.guard.has.constant.expression.false");
         rejected(probe(S + """
                     static final boolean OFF = false;
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when OFF -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "value false");
+                """), "JULC0085", "compiler.err.guard.has.constant.expression.false");
         rejected(probe(S + """
                     static final boolean OFF = false;
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when Probe.OFF -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "value false");
+                """), "JULC0085", "compiler.err.guard.has.constant.expression.false");
         rejected(probe(S + """
                     static BigInteger m(BigInteger a) {
                         final boolean on = false;
                         S s = new A(a);
                         return switch (s) { case A x when on -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "value false");
+                """), "JULC0085", "compiler.err.guard.has.constant.expression.false");
         rejected(switchOver("""
                             case A x when 1 == 2 -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0072", "value false");
+                """), "JULC0085", "compiler.err.guard.has.constant.expression.false");
     }
 
     @Test
@@ -175,12 +175,12 @@ class SwitchDiagnosticsTest {
                             case A x when 3 -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0072", "is numeric");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(switchOver("""
                             case A x when x.v() -> BigInteger.ONE;
                             case A x -> BigInteger.TWO;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0072", "must have type boolean or Boolean");
+                """), "JULC0085", "compiler.err.prob.found.req");
     }
 
     // ---- JULC0072: the guard's Java type, established from the source (F28, F52; M1 decision: fail closed)
@@ -193,23 +193,23 @@ class SwitchDiagnosticsTest {
                         return switch (s) { case A x when d -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
                 """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;"),
-                "JULC0072", "not boolean");
+                "JULC0085", "compiler.err.prob.found.req");
         rejected(switchOver("""
                             case A x when Builtins.iData(x.v()) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "boolean");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(switchOver("""
                             case A x when (Object) true -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "#288");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(switchOver("""
                             case A x when (true ? true : 0) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "not boolean");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(switchOver("""
                             case A x when (x.v().signum() > 0 ? true : 0) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "not boolean");
+                """), "JULC0085", "compiler.err.prob.found.req");
     }
 
     @Test
@@ -242,13 +242,17 @@ class SwitchDiagnosticsTest {
 
     @Test
     void comparisonOperandsAndConditionsAreChecked() {
-        // F60: operands of == and <, and a conditional's condition, must be established as legal.
-        for (String guard : new String[]{"(x.v().signum() > 0 ? true : 0) == true", "(1 ? true : false)",
-                "x.v() < BigInteger.TEN", "x == x"}) {
+        // F60: operands of == and <, and a conditional's condition, must be established as legal. javac rejects the
+        // first three first (ADR-068 I2b); record == is legal Java, so JuLC's rule rejects it.
+        for (String[] row : new String[][]{
+                {"(x.v().signum() > 0 ? true : 0) == true", "JULC0085", "compiler.err.operator.cant.be.applied.1"},
+                {"(1 ? true : false)", "JULC0085", "compiler.err.prob.found.req"},
+                {"x.v() < BigInteger.TEN", "JULC0085", "compiler.err.operator.cant.be.applied.1"},
+                {"x == x", "JULC0072", "a guard must have type boolean or Boolean"}}) {
             rejected(switchOver("""
                                 case A x when %s -> BigInteger.ONE;
                                 default -> BigInteger.TWO;
-                    """.formatted(guard)), "JULC0072", "a guard must have type boolean or Boolean");
+                    """.formatted(row[0])), row[1], row[2]);
         }
     }
 
@@ -260,7 +264,7 @@ class SwitchDiagnosticsTest {
             rejected(switchOver("""
                                 case A x when %s -> BigInteger.ONE;
                                 default -> BigInteger.TWO;
-                    """.formatted(guard)), "JULC0072", "boolean");
+                    """.formatted(guard)), "JULC0085", "compiler.err.operator.cant.be.applied.1");
         }
     }
 
@@ -287,7 +291,7 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when x instanceof B -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "can never be a B");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(probe(S + """
                     static final class Other {
                         record A(BigInteger v) {}
@@ -297,7 +301,7 @@ class SwitchDiagnosticsTest {
                         Other.A o = new Other.A(a);
                         return switch (s) { case A x when o instanceof A -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "can never be a A");
+                """), "JULC0085", "compiler.err.prob.found.req");
         accepted(probe(S + """
                     static BigInteger m(BigInteger a, S t) {
                         S s = new A(a);
@@ -319,7 +323,7 @@ class SwitchDiagnosticsTest {
                         Other.S s = new Other.A(a);
                         return switch (s) { case A x -> BigInteger.ONE; };
                     }
-                """), "JULC0076", "not applicable");
+                """), "JULC0085", "compiler.err.prob.found.req");
     }
 
     @Test
@@ -331,14 +335,14 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when (Boolean) true -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "#288");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(probe(S + """
                     static final class Boolean {}
                     static BigInteger m(BigInteger a, Boolean flag) {
                         S s = new A(a);
                         return switch (s) { case A x when flag -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "not established as legal Java");
+                """), "JULC0085", "compiler.err.prob.found.req");
     }
 
     @Test
@@ -350,14 +354,14 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when N > 0 -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "narrows its initializer");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(probe(S + """
                     final boolean ON = true;
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when ON -> BigInteger.ONE; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "instance field");
+                """), "JULC0085", "compiler.err.non-static.cant.be.ref");
     }
 
     @Test
@@ -384,7 +388,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when (N << 32) == 1 -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "value false");
+                """), "JULC0085", "compiler.err.guard.has.constant.expression.false");
         // long N = 2147483647: N + 1 does not overflow, so the guard is the constant true and covers A.
         accepted(probe(S + """
                     static final long N = 2147483647;
@@ -404,7 +408,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "narrows its initializer");
+                """), "JULC0085", "compiler.err.prob.found.req");
         // Qualified, and through another constant's initializer.
         rejected(probe(S + """
                     static final int N = 4294967296L;
@@ -412,7 +416,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when Probe.N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "narrows its initializer");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(probe(S + """
                     static final int N = 4294967296L;
                     static final int M = N;
@@ -420,7 +424,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "'N = 4294967296L' narrows");
+                """), "JULC0085", "compiler.err.prob.found.req");
         // A legal chain is accepted.
         accepted(probe(S + """
                     static final int N = 4;
@@ -482,21 +486,21 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when N > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         rejected(probe(S + """
                     static final long L = 9223372036854775808L;
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when L > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0070", "Integer literal 9223372036854775808L is invalid: this magnitude is allowed only directly after a unary minus");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         rejected(probe(S + """
                     static BigInteger m(BigInteger a) {
                         final int n = 2147483648;
                         S s = new A(a);
                         return switch (s) { case A x when n > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         rejected(probe(S + """
                     static final int N = 2147483648;
                     static final int M = N;
@@ -504,24 +508,24 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when M > x.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         rejected(switchOver("""
                             case A x when 2147483648L < x.v().signum() || -(2147483648) < x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0070", "Integer literal 2147483648 is invalid: this magnitude is allowed only directly after a unary minus");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         // F85: the same overflows with underscores or a lowercase l stay rejected, positive or parenthesised (by T25, JULC0070).
         rejected(switchOver("""
                             case A x when 2_147_483_648 > x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0070", "Integer literal 2_147_483_648 is invalid");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         rejected(switchOver("""
                             case A x when -(2_147_483_648) < x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0070", "Integer literal 2_147_483_648 is invalid");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         rejected(switchOver("""
                             case A x when 9223372036854775808l > x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0070", "Integer literal 9223372036854775808l is invalid");
+                """), "JULC0085", "compiler.err.int.number.too.large");
         // F85: the minimum values spelled with underscores and a lowercase l are accepted, in a non-constant guard and as
         // a constant true guard that makes the switch exhaustive.
         accepted(switchOver("""
@@ -587,15 +591,15 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when !(s instanceof B v) -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0083", "as a local variable");
+                """), "JULC0085", "compiler.err.already.defined");
         rejected(switchOver("""
                             case A x when (s instanceof A a2) || (s instanceof A a2) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0083", "in this guard");
+                """), "JULC0085", "compiler.err.match.binding.exists");
         rejected(switchOver("""
                             case A x when !(s instanceof A x) -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0083", "as a pattern variable");
+                """), "JULC0085", "compiler.err.match.binding.exists");
     }
 
     @Test
@@ -624,11 +628,11 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when x.v().signum() -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "numeric");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(switchOver("""
                             case A x when x instanceof B -> BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0072", "can never be a B");
+                """), "JULC0085", "compiler.err.prob.found.req");
         // F50: a qualifier that is a local obscures the class (qualifiedConstantNeedsATypeQualifier).
         rejected(probe(S + """
                     record Flags(boolean ON) {}
@@ -649,7 +653,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case Other.A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0076", "not applicable: Other.A");
+                """), "JULC0085", "compiler.err.prob.found.req");
         // F61: a reference cast (referenceCastsInGuards).
         rejected(switchOver("""
                             case A x when ((S) (Object) x) instanceof A -> BigInteger.ONE;
@@ -666,7 +670,7 @@ class SwitchDiagnosticsTest {
                         Other.S s = new Other.A(a);
                         return switch (s) { case A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0076", "not applicable");
+                """), "JULC0085", "compiler.err.prob.found.req");
         // F65: a user type named Boolean (shadowedJavaLangNames).
         rejected(probe(S + """
                     static final class Boolean {}
@@ -674,7 +678,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when flag -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "not established as legal Java");
+                """), "JULC0085", "compiler.err.prob.found.req");
     }
 
     // ---- JULC0072: constant guards by JLS 15.29 (F54, F29)
@@ -695,7 +699,7 @@ class SwitchDiagnosticsTest {
                                 case A x when %s -> BigInteger.ONE;
                                 case A x -> BigInteger.TWO;
                                 case B y -> BigInteger.ZERO;
-                    """.formatted(guard)), "JULC0072", "value false");
+                    """.formatted(guard)), "JULC0085", "compiler.err.guard.has.constant.expression.false");
         }
         // char, byte and short are outside the guard subset (F63; known over-rejection: javac accepts these).
         for (String guard : new String[]{"'a' < 'b'", "(byte) 200 == -56", "(\"x\" + (true ? 'a' : 98)) == \"xa\""}) {
@@ -748,7 +752,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when x.v().compareTo(lim) > 0 -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0073", "'lim'");
+                """), "JULC0085", "compiler.err.cant.ref.non.effectively.final.var");
     }
 
     @Test
@@ -840,14 +844,14 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "incompatible types");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(probe(S + t + """
                     static BigInteger m(BigInteger a, PlutusData d) {
                         S s = new A(a);
                         return switch (s) { case A x when d instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
                 """).replace("import java.math.BigInteger;", "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;"),
-                "JULC0072", "PlutusData can never be a C");
+                "JULC0085", "compiler.err.prob.found.req");
     }
 
     @Test
@@ -883,7 +887,7 @@ class SwitchDiagnosticsTest {
                             case X0 p: case Y0 q: yield BigInteger.valueOf(3);
                         };
                     }
-                """), "JULC0075", "several labels");
+                """), "JULC0085", "compiler.err.flows.through.from.pattern");
     }
 
     @Test
@@ -891,17 +895,15 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x: yield BigInteger.ONE;
                             case B y: y.v();
-                """), "JULC0075", "fall through");
+                """), "JULC0085", "compiler.err.switch.expression.completes.normally");
     }
 
     @Test
     void severalPatternsInOneLabel() {
-        // Not Java 21 (javac: illegal fall-through from a pattern); JavaParser's JAVA_21 grammar rejects it already.
-        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
-                .compileMethod(switchOver("""
+        // Not Java 21: javac rejects it first (ADR-068 I2b), where JavaParser's JAVA_21 grammar gave a parse error.
+        rejected(switchOver("""
                             case A x, B y -> BigInteger.ONE;
-                """), "m"));
-        assertTrue(error.getMessage().contains("Parse error"), error.getMessage());
+                """), "JULC0085", "compiler.err.flows.through.from.pattern");
     }
 
     @Test
@@ -919,11 +921,11 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A x when x.v().signum() > 0 -> BigInteger.ONE;
                             default: yield BigInteger.TWO;
-                """), "JULC0075", "mixes colon groups and arrow rules");
+                """), "JULC0085", "compiler.err.switch.mixing.case.types");
         rejected(switchOver("""
                             case A x: yield BigInteger.ONE;
                             default -> BigInteger.TWO;
-                """), "JULC0075", "mixes colon groups and arrow rules");
+                """), "JULC0085", "compiler.err.switch.mixing.case.types");
     }
 
     @Test
@@ -935,13 +937,13 @@ class SwitchDiagnosticsTest {
                                 S t = new B(y);
                                 yield switch (t) { case A p -> BigInteger.ONE; case B y -> BigInteger.TWO; };
                             default: yield BigInteger.ZERO;
-                """), "JULC0083", "as a local variable");
+                """), "JULC0085", "compiler.err.already.defined");
         rejected(switchOver("""
                             case A x:
                                 BigInteger k = x.v();
                                 yield BigInteger.ONE;
                             case B k: yield BigInteger.TWO;
-                """), "JULC0083", "'k'");
+                """), "JULC0085", "compiler.err.already.defined");
         rejected(switchOver("""
                             case A x:
                                 BigInteger lim = BigInteger.ZERO;
@@ -949,14 +951,14 @@ class SwitchDiagnosticsTest {
                                 S t = new A(lim);
                                 yield switch (t) { case A p when p.v().compareTo(lim) > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
                             default: yield BigInteger.ZERO;
-                """), "JULC0073", "'lim'");
+                """), "JULC0085", "compiler.err.cant.ref.non.effectively.final.var");
         rejected(switchOver("""
                             case A x:
                                 final boolean off = false;
                                 S t = new A(x.v());
                                 yield switch (t) { case A p when off -> BigInteger.ONE; case A p -> BigInteger.TWO; case B q -> BigInteger.ZERO; };
                             default: yield BigInteger.ZERO;
-                """), "JULC0072", "value false");
+                """), "JULC0085", "compiler.err.guard.has.constant.expression.false");
     }
 
     @Test
@@ -973,13 +975,13 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case Other.A x -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0076", "not applicable: Other.A");
+                """), "JULC0085", "compiler.err.prob.found.req");
         rejected(probe(S + other + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case Other.A x when x.v().signum() > 0 -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0076", "not applicable: Other.A");
+                """), "JULC0085", "compiler.err.prob.found.req");
         accepted(probe(S + other + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
@@ -1031,7 +1033,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x -> BigInteger.ONE; case C c -> BigInteger.TWO; default -> BigInteger.ZERO; };
                     }
-                """), "JULC0076", "not applicable: C is not a permitted variant of S");
+                """), "JULC0085", "compiler.err.prob.found.req");
     }
 
     // ---- JULC0082: duplicate default
@@ -1042,7 +1044,7 @@ class SwitchDiagnosticsTest {
                             case A x -> BigInteger.ONE;
                             default -> BigInteger.TWO;
                             default -> BigInteger.TEN;
-                """), "JULC0082", "more than one default");
+                """), "JULC0085", "compiler.err.duplicate.default.label");
     }
 
     // ---- JULC0083: pattern-variable conflicts
@@ -1052,14 +1054,14 @@ class SwitchDiagnosticsTest {
         rejected(switchOver("""
                             case A a -> BigInteger.ONE;
                             case B y -> BigInteger.ZERO;
-                """), "JULC0083", "as a parameter");
+                """), "JULC0085", "compiler.err.already.defined");
         rejected(probe(S + """
                     static BigInteger m(BigInteger a) {
                         BigInteger y = a;
                         S s = new A(a);
                         return switch (s) { case A x -> x.v(); case B y -> y.v(); };
                     }
-                """), "JULC0083", "as a local variable");
+                """), "JULC0085", "compiler.err.already.defined");
         rejected(probe(S + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
@@ -1068,7 +1070,7 @@ class SwitchDiagnosticsTest {
                             case B y -> BigInteger.ZERO;
                         };
                     }
-                """), "JULC0083", "as a pattern variable");
+                """), "JULC0085", "compiler.err.already.defined");
     }
 
     @Test
@@ -1124,6 +1126,8 @@ class SwitchDiagnosticsTest {
                         return t;
                     }
                 """), "m"));
-        assertTrue(error.getMessage().contains("'t'"), error.getMessage());
+        // javac rejects it first (ADR-068 I2b), naming the variable.
+        assertTrue(error.getMessage().contains("cannot assign to t"), error.getMessage());
+        assertTrue(error.getMessage().contains("compiler.err.cannot.assign.not.declared.guard"), error.getMessage());
     }
 }

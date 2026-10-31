@@ -6,6 +6,8 @@ import org.julclang.compiler.fixtures.IntMapOps;
 import org.julclang.core.PlutusData;
 import org.julclang.testkit.JulcEval;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -307,6 +309,17 @@ class JulcMapTest {
     @Nested
     class ForEachMapGet {
 
+        // ADR-068 M1b: iterating a JulcMap (for-each, or head()/tail() entries) has no Java form today.
+        @BeforeEach
+        void dialectGateOff() {
+            DialectGate.off();
+        }
+
+        @AfterEach
+        void dialectGateRestore() {
+            DialectGate.restore();
+        }
+
         static final String SOURCE = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcMap;
@@ -316,22 +329,22 @@ class JulcMapTest {
                     @SuppressWarnings("unchecked")
                     static long sumViaGet(PlutusData m) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         for (var entry : map) {
                             PlutusData key = entry.key();
-                            total = total + map.get(key);
+                            total = total.add(map.get(key));
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
                     static long sumViaDirect(PlutusData m) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         for (var entry : map) {
                             total = total + entry.value();
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
@@ -349,13 +362,13 @@ class JulcMapTest {
                     static long crossMapLookup(PlutusData mPrices, PlutusData mQuantities) {
                         JulcMap<PlutusData, BigInteger> prices = (JulcMap)(Object) mPrices;
                         JulcMap<PlutusData, BigInteger> quantities = (JulcMap)(Object) mQuantities;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         for (var entry : prices) {
                             BigInteger price = entry.value();
                             BigInteger qty = quantities.get(entry.key());
-                            total = total + price * qty;
+                            total = total.add(price.multiply(qty));
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                 }
@@ -417,6 +430,17 @@ class JulcMapTest {
     @Nested
     class WhileLoopMapGet {
 
+        // ADR-068 M1b: iterating a JulcMap (for-each, or head()/tail() entries) has no Java form today.
+        @BeforeEach
+        void dialectGateOff() {
+            DialectGate.off();
+        }
+
+        @AfterEach
+        void dialectGateRestore() {
+            DialectGate.restore();
+        }
+
         static final String SOURCE = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcMap;
@@ -427,27 +451,27 @@ class JulcMapTest {
                     static long sumViaGet(PlutusData m) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         var cursor = map;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             PlutusData key = entry.key();
-                            total = total + map.get(key);
+                            total = total.add(map.get(key));
                             cursor = cursor.tail();
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
                     static long sumViaDirect(PlutusData m) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         var cursor = map;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             total = total + entry.value();
                             cursor = cursor.tail();
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
@@ -469,15 +493,15 @@ class JulcMapTest {
                         JulcMap<PlutusData, BigInteger> prices = (JulcMap)(Object) mPrices;
                         JulcMap<PlutusData, BigInteger> quantities = (JulcMap)(Object) mQuantities;
                         var cursor = prices;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             BigInteger price = entry.value();
                             BigInteger qty = quantities.get(entry.key());
-                            total = total + price * qty;
+                            total = total.add(price.multiply(qty));
                             cursor = cursor.tail();
                         }
-                        return total;
+                        return total.longValue();
                     }
                 }
                 """;
@@ -538,6 +562,17 @@ class JulcMapTest {
     @Nested
     class WhileLoopMultiAcc {
 
+        // ADR-068 M1b: iterating a JulcMap (for-each, or head()/tail() entries) has no Java form today.
+        @BeforeEach
+        void dialectGateOff() {
+            DialectGate.off();
+        }
+
+        @AfterEach
+        void dialectGateRestore() {
+            DialectGate.restore();
+        }
+
         static final String SOURCE = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcMap;
@@ -565,31 +600,31 @@ class JulcMapTest {
                     static long countAndSum(PlutusData m) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         var cursor = map;
-                        BigInteger count = 0;
-                        BigInteger sum = 0;
+                        BigInteger count = BigInteger.ZERO;
+                        BigInteger sum = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
-                            count = count + 1;
+                            count = count.add(BigInteger.ONE);
                             sum = sum + entry.value();
                             cursor = cursor.tail();
                         }
-                        return count * 1000 + sum;
+                        return count.multiply(BigInteger.valueOf(1000)).add(sum).longValue();
                     }
 
                     @SuppressWarnings("unchecked")
                     static long countEven(PlutusData m) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         var cursor = map;
-                        BigInteger count = 0;
+                        BigInteger count = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             BigInteger val = entry.value();
-                            if (val % 2 == 0) {
-                                count = count + 1;
+                            if (val.remainder(BigInteger.TWO).equals(BigInteger.ZERO)) {
+                                count = count.add(BigInteger.ONE);
                             }
                             cursor = cursor.tail();
                         }
-                        return count;
+                        return count.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
@@ -597,16 +632,16 @@ class JulcMapTest {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         BigInteger thresh = Builtins.unIData(threshold);
                         var cursor = map;
-                        BigInteger count = 0;
+                        BigInteger count = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             BigInteger val = entry.value();
-                            if (val >= thresh) {
-                                count = count + 1;
+                            if (val.compareTo(thresh) >= 0) {
+                                count = count.add(BigInteger.ONE);
                             }
                             cursor = cursor.tail();
                         }
-                        return count;
+                        return count.longValue();
                     }
                 }
                 """;
@@ -658,6 +693,17 @@ class JulcMapTest {
     @Nested
     class WhileLoopNestedMap {
 
+        // ADR-068 M1b: iterating a JulcMap (for-each, or head()/tail() entries) has no Java form today.
+        @BeforeEach
+        void dialectGateOff() {
+            DialectGate.off();
+        }
+
+        @AfterEach
+        void dialectGateRestore() {
+            DialectGate.restore();
+        }
+
         static final String SOURCE = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcMap;
@@ -670,7 +716,7 @@ class JulcMapTest {
                         JulcMap<PlutusData, BigInteger> map1 = (JulcMap)(Object) m1;
                         JulcMap<PlutusData, BigInteger> map2 = (JulcMap)(Object) m2;
                         var outer = map1;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         while (!outer.isEmpty()) {
                             var e1 = outer.head();
                             BigInteger v1 = e1.value();
@@ -678,19 +724,19 @@ class JulcMapTest {
                             while (!inner.isEmpty()) {
                                 var e2 = inner.head();
                                 BigInteger v2 = e2.value();
-                                total = total + v1 * v2;
+                                total = total.add(v1.multiply(v2));
                                 inner = inner.tail();
                             }
                             outer = outer.tail();
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
                     static long sumMatchingKeys(PlutusData m, PlutusData keyList) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         var cursor = map;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             PlutusData key = entry.key();
@@ -708,7 +754,7 @@ class JulcMapTest {
                             }
                             cursor = cursor.tail();
                         }
-                        return total;
+                        return total.longValue();
                     }
                 }
                 """;
@@ -743,6 +789,17 @@ class JulcMapTest {
     @Nested
     class WhileLoopMapEdgeCases {
 
+        // ADR-068 M1b: iterating a JulcMap (for-each, or head()/tail() entries) has no Java form today.
+        @BeforeEach
+        void dialectGateOff() {
+            DialectGate.off();
+        }
+
+        @AfterEach
+        void dialectGateRestore() {
+            DialectGate.restore();
+        }
+
         static final String SOURCE = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcMap;
@@ -753,14 +810,14 @@ class JulcMapTest {
                     static long sumViaGet(PlutusData m) {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         var cursor = map;
-                        BigInteger total = 0;
+                        BigInteger total = BigInteger.ZERO;
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             PlutusData key = entry.key();
-                            total = total + map.get(key);
+                            total = total.add(map.get(key));
                             cursor = cursor.tail();
                         }
-                        return total;
+                        return total.longValue();
                     }
 
                     @SuppressWarnings("unchecked")
@@ -775,7 +832,7 @@ class JulcMapTest {
                         JulcMap<PlutusData, BigInteger> map = (JulcMap)(Object) m;
                         BigInteger first = map.head().value();
                         BigInteger second = map.tail().head().value();
-                        return first + second;
+                        return first.add(second).longValue();
                     }
                 }
                 """;

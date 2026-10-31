@@ -29,6 +29,11 @@ class FqcnResolutionTest {
             // Packageless inline code should still work: TxInfo, ScriptContext resolved
             // via implicit ledger import, user records via simple name = FQCN
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     record Bid(java.math.BigInteger amount) {}
                     @SpendingValidator
                     class TestValidator {
@@ -48,12 +53,16 @@ class FqcnResolutionTest {
         void inlineCodeWithUserRecordStillWorks() {
             // User record in inline code (no package) should resolve correctly
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
                     record MyDatum(java.math.BigInteger value) {}
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(MyDatum datum, PlutusData redeemer, PlutusData ctx) {
-                            return datum.value() > 0;
+                            return datum.value().compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -66,6 +75,11 @@ class FqcnResolutionTest {
             // Ledger types (Value, Address, etc.) should resolve without explicit imports
             var source = """
                     package com.myapp;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -87,12 +101,16 @@ class FqcnResolutionTest {
         void packagedValidatorCompiles() {
             var source = """
                     package com.myapp;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
                     record Bid(java.math.BigInteger amount) {}
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Bid datum, PlutusData redeemer, PlutusData ctx) {
-                            return datum.amount() > 0;
+                            return datum.amount().compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -107,11 +125,15 @@ class FqcnResolutionTest {
                     import org.julclang.stdlib.annotation.OnchainLibrary;
                     @OnchainLibrary
                     public class MyUtils {
-                        static boolean isPositive(long x) { return x > 0; }
+                        public static boolean isPositive(long x) { return x > 0; }
                     }
                     """;
             var validator = """
                     package com.myapp;
+                    import com.mylib.MyUtils;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -144,12 +166,16 @@ class FqcnResolutionTest {
                     """;
             var validator = """
                     package com.myapp;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
+                    import java.math.BigInteger;
                     record Token(java.math.BigInteger amount) {}
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Token datum, PlutusData redeemer, PlutusData ctx) {
-                            return datum.amount() > 0;
+                            return datum.amount().compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -166,7 +192,7 @@ class FqcnResolutionTest {
                     import org.julclang.stdlib.annotation.OnchainLibrary;
                     @OnchainLibrary
                     public class Utils {
-                        static boolean check(long x) { return x > 0; }
+                        public static boolean check(long x) { return x > 0; }
                     }
                     """;
             var lib2 = """
@@ -180,6 +206,9 @@ class FqcnResolutionTest {
             var validator = """
                     package com.myapp;
                     import com.a.Utils;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
@@ -201,6 +230,9 @@ class FqcnResolutionTest {
             // Two records with exact same FQCN → error
             var source1 = """
                     package com.myapp;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     record Bid(java.math.BigInteger amount) {}
                     @SpendingValidator
                     class TestValidator {
@@ -234,6 +266,9 @@ class FqcnResolutionTest {
                     """;
             var validator = """
                     package com.myapp;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint

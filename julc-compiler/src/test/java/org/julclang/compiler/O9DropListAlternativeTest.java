@@ -34,16 +34,16 @@ class O9DropListAlternativeTest {
             import java.math.BigInteger;
             class DropListForms {
                 static BigInteger dropHead(JulcList<BigInteger> xs, BigInteger i) {
-                    return xs.drop(i).head();
+                    return xs.drop(i.longValue()).head();
                 }
                 static BigInteger guardedDropHead(JulcList<BigInteger> xs, BigInteger i) {
                     if (i.compareTo(BigInteger.ZERO) < 0) {
                         return Builtins.unIData(Builtins.error());
                     }
-                    return xs.drop(i).head();
+                    return xs.drop(i.longValue()).head();
                 }
                 static BigInteger recursiveGet(JulcList<BigInteger> xs, BigInteger i) {
-                    return xs.get(i);
+                    return xs.get(i.longValue());
                 }
             }
             """;

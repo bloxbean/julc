@@ -201,7 +201,9 @@ class LoopBlockAssignmentTest {
                     return acc;
                 }
                 """));
-        assertTrue(escaped.getMessage().contains("Undefined variable: t"), escaped.getMessage());
+        // javac rejects it first (ADR-068 I2b).
+        assertTrue(escaped.getMessage().contains("(compiler.err.cant.resolve.location)")
+                && escaped.getMessage().contains("variable t"), escaped.getMessage());
         // A block local that shadows the class constant and is itself reassigned inside the block.
         assertEquals(36, evaluate(loop("BigInteger acc = BigInteger.ZERO;", """
                 {
@@ -341,7 +343,9 @@ class LoopBlockAssignmentTest {
                     return acc;
                 }
                 """));
-        assertTrue(undeclared.getMessage().contains("Assignment to undeclared variable 'other'"), undeclared.getMessage());
+        // javac rejects the undeclared variable first (ADR-068 I2b).
+        assertTrue(undeclared.getMessage().contains("(compiler.err.cant.resolve.location)")
+                && undeclared.getMessage().contains("variable other"), undeclared.getMessage());
         var undeclaredInBlock = assertThrows(CompilerException.class, () -> compile("""
                 static BigInteger m(JulcList<BigInteger> xs) {
                     BigInteger acc = BigInteger.ZERO;
@@ -352,7 +356,8 @@ class LoopBlockAssignmentTest {
                     return acc;
                 }
                 """));
-        assertTrue(undeclaredInBlock.getMessage().contains("Assignment to undeclared variable 'other'"), undeclaredInBlock.getMessage());
+        assertTrue(undeclaredInBlock.getMessage().contains("(compiler.err.cant.resolve.location)")
+                && undeclaredInBlock.getMessage().contains("variable other"), undeclaredInBlock.getMessage());
         // Outside a loop the reassignment is rejected with JULC0061 (ADR-062 T20).
         var outside = assertThrows(CompilerException.class, () -> compile("""
                 static BigInteger m(BigInteger a) {

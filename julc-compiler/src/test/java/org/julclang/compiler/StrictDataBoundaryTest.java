@@ -329,7 +329,8 @@ class StrictDataBoundaryTest {
         String annotated = plain.replace("@MintingValidator class Opaque", """
                 @org.julclang.verification.annotation.ControlledMint(
                     authority=\"00000000000000000000000000000000000000000000000000000000\",
-                    tokenName=\"01\", quantity=\"1\")
+                    tokenName=\"01\", quantity=1,
+                    action=org.julclang.verification.annotation.MintAction.MINT)
                 @MintingValidator class Opaque""");
         var compiler = new JulcCompiler(STDLIB);
         var plainProgram = compiler.compile(plain).program();

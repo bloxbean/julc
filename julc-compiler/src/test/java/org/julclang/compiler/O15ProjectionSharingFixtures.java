@@ -252,7 +252,7 @@ final class O15ProjectionSharingFixtures {
             class Cast {
             """ + BOX + """
                 static BigInteger cast(PlutusData d, BigInteger limit) {
-                    Box b = (Box) d;
+                    Box b = (Box) (Object) d;
                     if (b.amount().compareTo(limit) > 0) {
                         return b.amount().subtract(limit);
                     }

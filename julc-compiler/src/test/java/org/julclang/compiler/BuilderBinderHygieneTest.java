@@ -18,19 +18,23 @@ class BuilderBinderHygieneTest {
 
     static final String LISTS = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
             import org.julclang.core.types.JulcList;
             import org.julclang.core.types.JulcMap;
             import org.julclang.ledger.*;
             import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             import org.julclang.stdlib.lib.ListsLib;
             import org.julclang.stdlib.lib.MapLib;
+            import java.util.Optional;
             @SpendingValidator
             class Hygiene {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                    JulcList<PlutusData> pair = Builtins.unListData(redeemer);
-                    JulcList<PlutusData> outer = Builtins.unListData(pair.head());
-                    JulcList<PlutusData> inner = Builtins.unListData(pair.tail().head());
+                    JulcList<PlutusData> pair = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
+                    JulcList<PlutusData> outer = PlutusData.cast(Builtins.unListData(pair.head()), JulcList.class);
+                    JulcList<PlutusData> inner = PlutusData.cast(Builtins.unListData(pair.tail().head()), JulcList.class);
                     %s
                 }
             }
@@ -83,6 +87,16 @@ class BuilderBinderHygieneTest {
 
     @Test
     void staticListsLibHofsDoNotCaptureOuterLambdaParameters() {
+        // ADR-068 M1b: ListsLib's higher-order functions exist only in the stdlib registry, not in Java.
+        DialectGate.off();
+        try {
+            staticListsLibHofs();
+        } finally {
+            DialectGate.restore();
+        }
+    }
+
+    private static void staticListsLibHofs() {
         decides("return ListsLib.any(outer, x -> ListsLib.any(inner, "
                 + "y -> Builtins.equalsData(y, x)));", SHARED, DISJOINT);
         decides("return ListsLib.all(outer, acc -> ListsLib.any(inner, "
@@ -92,8 +106,9 @@ class BuilderBinderHygieneTest {
     @Test
     void findDoesNotCaptureOuterLambdaParameters() {
         for (var name : List.of("h", "lst", "go"))
-            decides("return outer.any(" + name + " -> inner.find(y -> Builtins.equalsData(y, "
-                    + name + ")).isPresent());", SHARED, DISJOINT);
+            // JulcList.find returns T in Java but an Optional on-chain (ADR-068 M1b): the cast keeps the lowering.
+            decides("return outer.any(" + name + " -> PlutusData.cast(inner.find(y -> Builtins.equalsData(y, "
+                    + name + ")), Optional.class).isPresent());", SHARED, DISJOINT);
     }
 
     @Test
@@ -110,10 +125,16 @@ class BuilderBinderHygieneTest {
 
     @Test
     void zipAndSizeDoNotCaptureListVariables() {
-        decides("JulcList<PlutusData> go_zip = outer; "
-                        + "JulcList<PlutusData> zipped = ListsLib.zip(go_zip, inner); "
-                        + "return zipped.size() == 1;",
-                SHARED, DISJOINT);
+        // ADR-068 M1b: ListsLib.zip exists only in the stdlib registry, not in Java.
+        DialectGate.off();
+        try {
+            decides("JulcList<PlutusData> go_zip = outer; "
+                            + "JulcList<PlutusData> zipped = ListsLib.zip(go_zip, inner); "
+                            + "return zipped.size() == 1;",
+                    SHARED, DISJOINT);
+        } finally {
+            DialectGate.restore();
+        }
         decides("JulcList<PlutusData> go__f = outer; return go__f.size() == 1;",
                 SHARED, DISJOINT);
     }
@@ -151,7 +172,7 @@ class BuilderBinderHygieneTest {
         var present = PlutusData.list(integers(10), integers(), map);
         var absent = PlutusData.list(integers(1), integers(), map);
         String read = "JulcMap<PlutusData, PlutusData> m = "
-                + "Builtins.unMapData(pair.tail().tail().head()); ";
+                + "PlutusData.cast(Builtins.unMapData(pair.tail().tail().head()), JulcMap.class); ";
         decides(read + "PlutusData ps_ck = outer.head(); return m.containsKey(ps_ck);",
                 present, absent);
         decides(read + "PlutusData ps_lk = outer.head(); return m.lookup(ps_lk).isPresent();",
@@ -172,11 +193,12 @@ class BuilderBinderHygieneTest {
         var value = PlutusData.map(new PlutusData.Pair(policy,
                 PlutusData.map(new PlutusData.Pair(token, PlutusData.integer(42)))));
         String body = """
-                JulcList<PlutusData> query = Builtins.unListData(pair.tail().head());
+                JulcList<PlutusData> query = PlutusData.cast(Builtins.unListData(pair.tail().head()), JulcList.class);
                 Value v = (Value)(Object) outer.head();
                 PlutusData v__ao = query.head();
                 PlutusData pol__ao = query.tail().head();
-                return v.assetOf(v__ao, pol__ao) == 42;
+                return v.assetOf(PolicyId.of(Builtins.unBData(v__ao)), TokenName.of(Builtins.unBData(pol__ao)))
+                        .equals(BigInteger.valueOf(42));
                 """;
         var found = PlutusData.list(PlutusData.list(value), PlutusData.list(policy, token));
         var missing = PlutusData.list(PlutusData.list(value), PlutusData.list(token, policy));
@@ -202,7 +224,7 @@ class BuilderBinderHygieneTest {
                 long total = 0;
                 for (PlutusData item : inner) {
                     count = count + 1;
-                    total = total + Builtins.unIData(item);
+                    total = total + Builtins.unIData(item).longValue();
                 }
                 return __t == 7 && count == 2 && total == 30 && outer.size() == 1;
                 """, SHARED, DISJOINT);

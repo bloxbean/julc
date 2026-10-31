@@ -118,6 +118,10 @@ class GovernanceTypeTest {
         void rationalFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.Rational;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -125,7 +129,7 @@ class GovernanceTypeTest {
                         static boolean validate(Rational r, ScriptContext ctx) {
                             BigInteger num = r.numerator();
                             BigInteger den = r.denominator();
-                            return num == 3 && den == 4;
+                            return num.equals(BigInteger.valueOf(3)) && den.equals(BigInteger.valueOf(4));
                         }
                     }
                     """;
@@ -140,6 +144,10 @@ class GovernanceTypeTest {
         void protocolVersionFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ProtocolVersion;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -147,7 +155,7 @@ class GovernanceTypeTest {
                         static boolean validate(ProtocolVersion pv, ScriptContext ctx) {
                             BigInteger maj = pv.major();
                             BigInteger min = pv.minor();
-                            return maj == 10 && min == 0;
+                            return maj.equals(BigInteger.TEN) && min.equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -162,14 +170,19 @@ class GovernanceTypeTest {
         void governanceActionIdFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.GovernanceActionId;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(GovernanceActionId gaid, ScriptContext ctx) {
-                            byte[] txId = gaid.txId();
+                            byte[] txId = PlutusData.cast(gaid.txId(), byte[].class);
                             BigInteger ix = gaid.govActionIx();
-                            return ix == 42;
+                            return ix.equals(BigInteger.valueOf(42));
                         }
                     }
                     """;
@@ -192,17 +205,24 @@ class GovernanceTypeTest {
         void voteSwitchAllVariants() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.Vote;
+                    import org.julclang.ledger.Vote.Abstain;
+                    import org.julclang.ledger.Vote.VoteNo;
+                    import org.julclang.ledger.Vote.VoteYes;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Vote vote, ScriptContext ctx) {
                             BigInteger result = switch (vote) {
-                                case VoteNo v -> 0;
-                                case VoteYes v -> 1;
-                                case Abstain v -> 2;
+                                case VoteNo v -> BigInteger.ZERO;
+                                case VoteYes v -> BigInteger.ONE;
+                                case Abstain v -> BigInteger.TWO;
                             };
-                            return result == 1;
+                            return result.equals(BigInteger.ONE);
                         }
                     }
                     """;
@@ -219,17 +239,24 @@ class GovernanceTypeTest {
         void voteNoSwitch() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.Vote;
+                    import org.julclang.ledger.Vote.Abstain;
+                    import org.julclang.ledger.Vote.VoteNo;
+                    import org.julclang.ledger.Vote.VoteYes;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Vote vote, ScriptContext ctx) {
                             BigInteger result = switch (vote) {
-                                case VoteNo v -> 0;
-                                case VoteYes v -> 1;
-                                case Abstain v -> 2;
+                                case VoteNo v -> BigInteger.ZERO;
+                                case VoteYes v -> BigInteger.ONE;
+                                case Abstain v -> BigInteger.TWO;
                             };
-                            return result == 0;
+                            return result.equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -245,6 +272,13 @@ class GovernanceTypeTest {
         @Test
         void dRepSwitchWithFieldAccess() {
             var source = """
+                    import org.julclang.ledger.DRep;
+                    import org.julclang.ledger.DRep.AlwaysAbstain;
+                    import org.julclang.ledger.DRep.AlwaysNoConfidence;
+                    import org.julclang.ledger.DRep.DRepCredential;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
@@ -278,14 +312,22 @@ class GovernanceTypeTest {
         @Test
         void voterSwitchExtractCredential() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.Voter;
+                    import org.julclang.ledger.Voter.CommitteeVoter;
+                    import org.julclang.ledger.Voter.DRepVoter;
+                    import org.julclang.ledger.Voter.StakePoolVoter;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Voter voter, ScriptContext ctx) {
                             PlutusData result = switch (voter) {
-                                case CommitteeVoter cv -> cv.credential();
-                                case DRepVoter dv -> dv.credential();
-                                case StakePoolVoter spv -> spv.pubKeyHash();
+                                case CommitteeVoter cv -> PlutusData.cast(cv.credential(), PlutusData.class);
+                                case DRepVoter dv -> PlutusData.cast(dv.credential(), PlutusData.class);
+                                case StakePoolVoter spv -> PlutusData.cast(spv.pubKeyHash(), PlutusData.class);
                             };
                             return result == result;
                         }
@@ -300,17 +342,24 @@ class GovernanceTypeTest {
         void voterCommitteeVoterEval() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.Voter;
+                    import org.julclang.ledger.Voter.CommitteeVoter;
+                    import org.julclang.ledger.Voter.DRepVoter;
+                    import org.julclang.ledger.Voter.StakePoolVoter;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Voter voter, ScriptContext ctx) {
                             BigInteger tag = switch (voter) {
-                                case CommitteeVoter cv -> 0;
-                                case DRepVoter dv -> 1;
-                                case StakePoolVoter spv -> 2;
+                                case CommitteeVoter cv -> BigInteger.ZERO;
+                                case DRepVoter dv -> BigInteger.ONE;
+                                case StakePoolVoter spv -> BigInteger.TWO;
                             };
-                            return tag == 0;
+                            return tag.equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -328,16 +377,22 @@ class GovernanceTypeTest {
         void stakingCredentialSwitch() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.StakingCredential;
+                    import org.julclang.ledger.StakingCredential.StakingHash;
+                    import org.julclang.ledger.StakingCredential.StakingPtr;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(StakingCredential sc, ScriptContext ctx) {
                             BigInteger result = switch (sc) {
-                                case StakingHash sh -> 0;
+                                case StakingHash sh -> BigInteger.ZERO;
                                 case StakingPtr sp -> sp.slot();
                             };
-                            return result == 100;
+                            return result.equals(BigInteger.valueOf(100));
                         }
                     }
                     """;
@@ -356,17 +411,23 @@ class GovernanceTypeTest {
         void delegateeSwitchPoolId() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.Delegatee;
+                    import org.julclang.ledger.Delegatee.Stake;
+                    import org.julclang.ledger.Delegatee.StakeVote;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Delegatee d, ScriptContext ctx) {
                             BigInteger result = switch (d) {
-                                case Stake s -> 0;
-                                case Delegatee.Vote v -> 1;
-                                case StakeVote sv -> 2;
+                                case Stake s -> BigInteger.ZERO;
+                                case Delegatee.Vote v -> BigInteger.ONE;
+                                case StakeVote sv -> BigInteger.TWO;
                             };
-                            return result == 0;
+                            return result.equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -392,25 +453,40 @@ class GovernanceTypeTest {
         void txCertSwitchAllVariants() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxCert;
+                    import org.julclang.ledger.TxCert.AuthHotCommittee;
+                    import org.julclang.ledger.TxCert.DelegStaking;
+                    import org.julclang.ledger.TxCert.PoolRegister;
+                    import org.julclang.ledger.TxCert.PoolRetire;
+                    import org.julclang.ledger.TxCert.RegDRep;
+                    import org.julclang.ledger.TxCert.RegDeleg;
+                    import org.julclang.ledger.TxCert.RegStaking;
+                    import org.julclang.ledger.TxCert.ResignColdCommittee;
+                    import org.julclang.ledger.TxCert.UnRegDRep;
+                    import org.julclang.ledger.TxCert.UnRegStaking;
+                    import org.julclang.ledger.TxCert.UpdateDRep;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(TxCert cert, ScriptContext ctx) {
                             BigInteger tag = switch (cert) {
-                                case RegStaking rs -> 0;
-                                case UnRegStaking urs -> 1;
-                                case DelegStaking ds -> 2;
-                                case RegDeleg rd -> 3;
-                                case RegDRep rdr -> 4;
-                                case UpdateDRep udr -> 5;
-                                case UnRegDRep urdr -> 6;
-                                case PoolRegister pr -> 7;
-                                case PoolRetire ptr -> 8;
-                                case AuthHotCommittee ahc -> 9;
-                                case ResignColdCommittee rcc -> 10;
+                                case RegStaking rs -> BigInteger.ZERO;
+                                case UnRegStaking urs -> BigInteger.ONE;
+                                case DelegStaking ds -> BigInteger.TWO;
+                                case RegDeleg rd -> BigInteger.valueOf(3);
+                                case RegDRep rdr -> BigInteger.valueOf(4);
+                                case UpdateDRep udr -> BigInteger.valueOf(5);
+                                case UnRegDRep urdr -> BigInteger.valueOf(6);
+                                case PoolRegister pr -> BigInteger.valueOf(7);
+                                case PoolRetire ptr -> BigInteger.valueOf(8);
+                                case AuthHotCommittee ahc -> BigInteger.valueOf(9);
+                                case ResignColdCommittee rcc -> BigInteger.TEN;
                             };
-                            return tag == 7;
+                            return tag.equals(BigInteger.valueOf(7));
                         }
                     }
                     """;
@@ -429,6 +505,21 @@ class GovernanceTypeTest {
         void txCertRegStakingFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxCert;
+                    import org.julclang.ledger.TxCert.AuthHotCommittee;
+                    import org.julclang.ledger.TxCert.DelegStaking;
+                    import org.julclang.ledger.TxCert.PoolRegister;
+                    import org.julclang.ledger.TxCert.PoolRetire;
+                    import org.julclang.ledger.TxCert.RegDRep;
+                    import org.julclang.ledger.TxCert.RegDeleg;
+                    import org.julclang.ledger.TxCert.RegStaking;
+                    import org.julclang.ledger.TxCert.ResignColdCommittee;
+                    import org.julclang.ledger.TxCert.UnRegDRep;
+                    import org.julclang.ledger.TxCert.UnRegStaking;
+                    import org.julclang.ledger.TxCert.UpdateDRep;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -437,20 +528,20 @@ class GovernanceTypeTest {
                             BigInteger tag = switch (cert) {
                                 case RegStaking rs -> {
                                     var dep = rs.deposit();
-                                    yield 0;
+                                    yield BigInteger.ZERO;
                                 }
-                                case UnRegStaking urs -> 1;
-                                case DelegStaking ds -> 2;
-                                case RegDeleg rd -> 3;
-                                case RegDRep rdr -> 4;
-                                case UpdateDRep udr -> 5;
-                                case UnRegDRep urdr -> 6;
-                                case PoolRegister pr -> 7;
-                                case PoolRetire ptr -> 8;
-                                case AuthHotCommittee ahc -> 9;
-                                case ResignColdCommittee rcc -> 10;
+                                case UnRegStaking urs -> BigInteger.ONE;
+                                case DelegStaking ds -> BigInteger.TWO;
+                                case RegDeleg rd -> BigInteger.valueOf(3);
+                                case RegDRep rdr -> BigInteger.valueOf(4);
+                                case UpdateDRep udr -> BigInteger.valueOf(5);
+                                case UnRegDRep urdr -> BigInteger.valueOf(6);
+                                case PoolRegister pr -> BigInteger.valueOf(7);
+                                case PoolRetire ptr -> BigInteger.valueOf(8);
+                                case AuthHotCommittee ahc -> BigInteger.valueOf(9);
+                                case ResignColdCommittee rcc -> BigInteger.TEN;
                             };
-                            return tag == 0;
+                            return tag.equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -470,25 +561,40 @@ class GovernanceTypeTest {
         void txCertPoolRetireFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxCert;
+                    import org.julclang.ledger.TxCert.AuthHotCommittee;
+                    import org.julclang.ledger.TxCert.DelegStaking;
+                    import org.julclang.ledger.TxCert.PoolRegister;
+                    import org.julclang.ledger.TxCert.PoolRetire;
+                    import org.julclang.ledger.TxCert.RegDRep;
+                    import org.julclang.ledger.TxCert.RegDeleg;
+                    import org.julclang.ledger.TxCert.RegStaking;
+                    import org.julclang.ledger.TxCert.ResignColdCommittee;
+                    import org.julclang.ledger.TxCert.UnRegDRep;
+                    import org.julclang.ledger.TxCert.UnRegStaking;
+                    import org.julclang.ledger.TxCert.UpdateDRep;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(TxCert cert, ScriptContext ctx) {
                             BigInteger epochVal = switch (cert) {
-                                case RegStaking rs -> 0;
-                                case UnRegStaking urs -> 0;
-                                case DelegStaking ds -> 0;
-                                case RegDeleg rd -> 0;
-                                case RegDRep rdr -> 0;
-                                case UpdateDRep udr -> 0;
-                                case UnRegDRep urdr -> 0;
-                                case PoolRegister pr -> 0;
+                                case RegStaking rs -> BigInteger.ZERO;
+                                case UnRegStaking urs -> BigInteger.ZERO;
+                                case DelegStaking ds -> BigInteger.ZERO;
+                                case RegDeleg rd -> BigInteger.ZERO;
+                                case RegDRep rdr -> BigInteger.ZERO;
+                                case UpdateDRep udr -> BigInteger.ZERO;
+                                case UnRegDRep urdr -> BigInteger.ZERO;
+                                case PoolRegister pr -> BigInteger.ZERO;
                                 case PoolRetire ptr -> ptr.epoch();
-                                case AuthHotCommittee ahc -> 0;
-                                case ResignColdCommittee rcc -> 0;
+                                case AuthHotCommittee ahc -> BigInteger.ZERO;
+                                case ResignColdCommittee rcc -> BigInteger.ZERO;
                             };
-                            return epochVal == 500;
+                            return epochVal.equals(BigInteger.valueOf(500));
                         }
                     }
                     """;
@@ -515,21 +621,32 @@ class GovernanceTypeTest {
         void governanceActionSwitchAllVariants() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.GovernanceAction;
+                    import org.julclang.ledger.GovernanceAction.HardForkInitiation;
+                    import org.julclang.ledger.GovernanceAction.InfoAction;
+                    import org.julclang.ledger.GovernanceAction.NewConstitution;
+                    import org.julclang.ledger.GovernanceAction.NoConfidence;
+                    import org.julclang.ledger.GovernanceAction.ParameterChange;
+                    import org.julclang.ledger.GovernanceAction.TreasuryWithdrawals;
+                    import org.julclang.ledger.GovernanceAction.UpdateCommittee;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(GovernanceAction ga, ScriptContext ctx) {
                             BigInteger tag = switch (ga) {
-                                case ParameterChange pc -> 0;
-                                case HardForkInitiation hf -> 1;
-                                case TreasuryWithdrawals tw -> 2;
-                                case NoConfidence nc -> 3;
-                                case UpdateCommittee uc -> 4;
-                                case NewConstitution nc2 -> 5;
-                                case InfoAction ia -> 6;
+                                case ParameterChange pc -> BigInteger.ZERO;
+                                case HardForkInitiation hf -> BigInteger.ONE;
+                                case TreasuryWithdrawals tw -> BigInteger.TWO;
+                                case NoConfidence nc -> BigInteger.valueOf(3);
+                                case UpdateCommittee uc -> BigInteger.valueOf(4);
+                                case NewConstitution nc2 -> BigInteger.valueOf(5);
+                                case InfoAction ia -> BigInteger.valueOf(6);
                             };
-                            return tag == 6;
+                            return tag.equals(BigInteger.valueOf(6));
                         }
                     }
                     """;
@@ -546,24 +663,36 @@ class GovernanceTypeTest {
         void hardForkInitiationFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.GovernanceAction;
+                    import org.julclang.ledger.GovernanceAction.HardForkInitiation;
+                    import org.julclang.ledger.GovernanceAction.InfoAction;
+                    import org.julclang.ledger.GovernanceAction.NewConstitution;
+                    import org.julclang.ledger.GovernanceAction.NoConfidence;
+                    import org.julclang.ledger.GovernanceAction.ParameterChange;
+                    import org.julclang.ledger.GovernanceAction.TreasuryWithdrawals;
+                    import org.julclang.ledger.GovernanceAction.UpdateCommittee;
+                    import org.julclang.ledger.ProtocolVersion;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(GovernanceAction ga, ScriptContext ctx) {
                             BigInteger result = switch (ga) {
-                                case ParameterChange pc -> 0;
+                                case ParameterChange pc -> BigInteger.ZERO;
                                 case HardForkInitiation hf -> {
                                     ProtocolVersion pv = hf.protocolVersion();
                                     yield pv.major();
                                 }
-                                case TreasuryWithdrawals tw -> 0;
-                                case NoConfidence nc -> 0;
-                                case UpdateCommittee uc -> 0;
-                                case NewConstitution nc2 -> 0;
-                                case InfoAction ia -> 0;
+                                case TreasuryWithdrawals tw -> BigInteger.ZERO;
+                                case NoConfidence nc -> BigInteger.ZERO;
+                                case UpdateCommittee uc -> BigInteger.ZERO;
+                                case NewConstitution nc2 -> BigInteger.ZERO;
+                                case InfoAction ia -> BigInteger.ZERO;
                             };
-                            return result == 10;
+                            return result.equals(BigInteger.TEN);
                         }
                     }
                     """;
@@ -586,7 +715,7 @@ class GovernanceTypeTest {
             var withoutScript = PlutusData.constr(5, optionalNone(), PlutusData.constr(0, optionalNone()));
 
             var present = compileNewConstitutionCheck(
-                    "c.script().isPresent() && Builtins.lengthOfByteString(c.script().get()) == 28");
+                    "c.script().isPresent() && Builtins.lengthOfByteString(PlutusData.cast(c.script().get(), byte[].class)) == 28");
             var result = vm.evaluateWithArgs(present, List.of(buildCtx(withScript)));
             assertTrue(result.isSuccess(), "Guardrails script should be present. Got: " + result);
 
@@ -601,6 +730,11 @@ class GovernanceTypeTest {
             // The typed-parameter check validates the Constitution wrapper: ledger-shaped data is
             // accepted and the bare Maybe ScriptHash julc used to expect is rejected
             var source = """
+                    import org.julclang.ledger.GovernanceAction;
+                    import org.julclang.ledger.GovernanceAction.NewConstitution;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
@@ -631,7 +765,20 @@ class GovernanceTypeTest {
 
         private Program compileNewConstitutionCheck(String check) {
             var source = """
+                    import org.julclang.core.PlutusData;
                     import org.julclang.stdlib.Builtins;
+                    import org.julclang.ledger.Constitution;
+                    import org.julclang.ledger.GovernanceAction;
+                    import org.julclang.ledger.GovernanceAction.HardForkInitiation;
+                    import org.julclang.ledger.GovernanceAction.InfoAction;
+                    import org.julclang.ledger.GovernanceAction.NewConstitution;
+                    import org.julclang.ledger.GovernanceAction.NoConfidence;
+                    import org.julclang.ledger.GovernanceAction.ParameterChange;
+                    import org.julclang.ledger.GovernanceAction.TreasuryWithdrawals;
+                    import org.julclang.ledger.GovernanceAction.UpdateCommittee;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -667,20 +814,30 @@ class GovernanceTypeTest {
         void scriptPurposeSwitchAllVariants() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.ScriptPurpose;
+                    import org.julclang.ledger.ScriptPurpose.Certifying;
+                    import org.julclang.ledger.ScriptPurpose.Minting;
+                    import org.julclang.ledger.ScriptPurpose.Proposing;
+                    import org.julclang.ledger.ScriptPurpose.Rewarding;
+                    import org.julclang.ledger.ScriptPurpose.Spending;
+                    import org.julclang.ledger.ScriptPurpose.Voting;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(ScriptPurpose sp, ScriptContext ctx) {
                             BigInteger tag = switch (sp) {
-                                case Minting m -> 0;
-                                case Spending s -> 1;
-                                case Rewarding r -> 2;
-                                case Certifying c -> 3;
-                                case Voting v -> 4;
-                                case Proposing p -> 5;
+                                case Minting m -> BigInteger.ZERO;
+                                case Spending s -> BigInteger.ONE;
+                                case Rewarding r -> BigInteger.TWO;
+                                case Certifying c -> BigInteger.valueOf(3);
+                                case Voting v -> BigInteger.valueOf(4);
+                                case Proposing p -> BigInteger.valueOf(5);
                             };
-                            return tag == 0;
+                            return tag.equals(BigInteger.ZERO);
                         }
                     }
                     """;
@@ -697,23 +854,34 @@ class GovernanceTypeTest {
         void scriptPurposeSpendingFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.ScriptPurpose;
+                    import org.julclang.ledger.ScriptPurpose.Certifying;
+                    import org.julclang.ledger.ScriptPurpose.Minting;
+                    import org.julclang.ledger.ScriptPurpose.Proposing;
+                    import org.julclang.ledger.ScriptPurpose.Rewarding;
+                    import org.julclang.ledger.ScriptPurpose.Spending;
+                    import org.julclang.ledger.ScriptPurpose.Voting;
+                    import org.julclang.ledger.TxOutRef;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(ScriptPurpose sp, ScriptContext ctx) {
                             BigInteger result = switch (sp) {
-                                case Minting m -> 0;
+                                case Minting m -> BigInteger.ZERO;
                                 case Spending s -> {
                                     TxOutRef ref = s.txOutRef();
                                     yield ref.index();
                                 }
-                                case Rewarding r -> 0;
-                                case Certifying c -> 0;
-                                case Voting v -> 0;
-                                case Proposing p -> 0;
+                                case Rewarding r -> BigInteger.ZERO;
+                                case Certifying c -> BigInteger.ZERO;
+                                case Voting v -> BigInteger.ZERO;
+                                case Proposing p -> BigInteger.ZERO;
                             };
-                            return result == 3;
+                            return result.equals(BigInteger.valueOf(3));
                         }
                     }
                     """;
@@ -740,13 +908,17 @@ class GovernanceTypeTest {
         void proposalProcedureFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ProposalProcedure;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(ProposalProcedure pp, ScriptContext ctx) {
                             BigInteger dep = pp.deposit();
-                            return dep == 500;
+                            return dep.equals(BigInteger.valueOf(500));
                         }
                     }
                     """;
@@ -765,12 +937,18 @@ class GovernanceTypeTest {
         @Test
         void committeeFieldAccess() {
             var source = """
+                    import org.julclang.ledger.Committee;
+                    import org.julclang.ledger.Rational;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
+                    import java.math.BigInteger;
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Committee c, ScriptContext ctx) {
                             Rational q = c.quorum();
-                            return q.numerator() == 2 && q.denominator() == 3;
+                            return q.numerator().equals(BigInteger.TWO) && q.denominator().equals(BigInteger.valueOf(3));
                         }
                     }
                     """;
@@ -797,6 +975,17 @@ class GovernanceTypeTest {
         void scriptInfoCertifyingFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.ScriptInfo;
+                    import org.julclang.ledger.ScriptInfo.CertifyingScript;
+                    import org.julclang.ledger.ScriptInfo.MintingScript;
+                    import org.julclang.ledger.ScriptInfo.ProposingScript;
+                    import org.julclang.ledger.ScriptInfo.RewardingScript;
+                    import org.julclang.ledger.ScriptInfo.SpendingScript;
+                    import org.julclang.ledger.ScriptInfo.VotingScript;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -804,17 +993,17 @@ class GovernanceTypeTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             ScriptInfo info = ctx.scriptInfo();
                             BigInteger result = switch (info) {
-                                case MintingScript ms -> 0;
-                                case SpendingScript ss -> 0;
-                                case RewardingScript rs -> 0;
+                                case MintingScript ms -> BigInteger.ZERO;
+                                case SpendingScript ss -> BigInteger.ZERO;
+                                case RewardingScript rs -> BigInteger.ZERO;
                                 case CertifyingScript cs -> {
                                     BigInteger idx = cs.index();
                                     yield idx;
                                 }
-                                case VotingScript vs -> 0;
-                                case ProposingScript ps -> 0;
+                                case VotingScript vs -> BigInteger.ZERO;
+                                case ProposingScript ps -> BigInteger.ZERO;
                             };
-                            return result == 5;
+                            return result.equals(BigInteger.valueOf(5));
                         }
                     }
                     """;
@@ -833,6 +1022,17 @@ class GovernanceTypeTest {
         void scriptInfoVotingFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.ScriptInfo;
+                    import org.julclang.ledger.ScriptInfo.CertifyingScript;
+                    import org.julclang.ledger.ScriptInfo.MintingScript;
+                    import org.julclang.ledger.ScriptInfo.ProposingScript;
+                    import org.julclang.ledger.ScriptInfo.RewardingScript;
+                    import org.julclang.ledger.ScriptInfo.SpendingScript;
+                    import org.julclang.ledger.ScriptInfo.VotingScript;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -840,14 +1040,14 @@ class GovernanceTypeTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             ScriptInfo info = ctx.scriptInfo();
                             BigInteger tag = switch (info) {
-                                case MintingScript ms -> 0;
-                                case SpendingScript ss -> 1;
-                                case RewardingScript rs -> 2;
-                                case CertifyingScript cs -> 3;
-                                case VotingScript vs -> 4;
-                                case ProposingScript ps -> 5;
+                                case MintingScript ms -> BigInteger.ZERO;
+                                case SpendingScript ss -> BigInteger.ONE;
+                                case RewardingScript rs -> BigInteger.TWO;
+                                case CertifyingScript cs -> BigInteger.valueOf(3);
+                                case VotingScript vs -> BigInteger.valueOf(4);
+                                case ProposingScript ps -> BigInteger.valueOf(5);
                             };
-                            return tag == 4;
+                            return tag.equals(BigInteger.valueOf(4));
                         }
                     }
                     """;
@@ -873,6 +1073,11 @@ class GovernanceTypeTest {
         @Test
         void txInfoCertificatesIsEmpty() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
@@ -894,6 +1099,11 @@ class GovernanceTypeTest {
         @Test
         void txInfoProposalProceduresIsEmpty() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.TxInfo;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
@@ -924,6 +1134,22 @@ class GovernanceTypeTest {
         void allGovernanceTypesCompile() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -942,6 +1168,18 @@ class GovernanceTypeTest {
         void governanceActionNestedFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.GovernanceAction;
+                    import org.julclang.ledger.GovernanceAction.HardForkInitiation;
+                    import org.julclang.ledger.GovernanceAction.InfoAction;
+                    import org.julclang.ledger.GovernanceAction.NewConstitution;
+                    import org.julclang.ledger.GovernanceAction.NoConfidence;
+                    import org.julclang.ledger.GovernanceAction.ParameterChange;
+                    import org.julclang.ledger.GovernanceAction.TreasuryWithdrawals;
+                    import org.julclang.ledger.GovernanceAction.UpdateCommittee;
+                    import org.julclang.ledger.ProposalProcedure;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -949,15 +1187,15 @@ class GovernanceTypeTest {
                         static boolean validate(ProposalProcedure pp, ScriptContext ctx) {
                             GovernanceAction ga = pp.governanceAction();
                             BigInteger tag = switch (ga) {
-                                case ParameterChange pc -> 0;
-                                case HardForkInitiation hf -> 1;
-                                case TreasuryWithdrawals tw -> 2;
-                                case NoConfidence nc -> 3;
-                                case UpdateCommittee uc -> 4;
-                                case NewConstitution nc2 -> 5;
-                                case InfoAction ia -> 6;
+                                case ParameterChange pc -> BigInteger.ZERO;
+                                case HardForkInitiation hf -> BigInteger.ONE;
+                                case TreasuryWithdrawals tw -> BigInteger.TWO;
+                                case NoConfidence nc -> BigInteger.valueOf(3);
+                                case UpdateCommittee uc -> BigInteger.valueOf(4);
+                                case NewConstitution nc2 -> BigInteger.valueOf(5);
+                                case InfoAction ia -> BigInteger.valueOf(6);
                             };
-                            return tag >= 0;
+                            return tag.compareTo(BigInteger.ZERO) >= 0;
                         }
                     }
                     """;
@@ -971,36 +1209,58 @@ class GovernanceTypeTest {
         void scriptPurposeCertifyingNestedAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.ledger.ScriptPurpose;
+                    import org.julclang.ledger.ScriptPurpose.Certifying;
+                    import org.julclang.ledger.ScriptPurpose.Minting;
+                    import org.julclang.ledger.ScriptPurpose.Proposing;
+                    import org.julclang.ledger.ScriptPurpose.Rewarding;
+                    import org.julclang.ledger.ScriptPurpose.Spending;
+                    import org.julclang.ledger.ScriptPurpose.Voting;
+                    import org.julclang.ledger.TxCert;
+                    import org.julclang.ledger.TxCert.AuthHotCommittee;
+                    import org.julclang.ledger.TxCert.DelegStaking;
+                    import org.julclang.ledger.TxCert.PoolRegister;
+                    import org.julclang.ledger.TxCert.PoolRetire;
+                    import org.julclang.ledger.TxCert.RegDRep;
+                    import org.julclang.ledger.TxCert.RegDeleg;
+                    import org.julclang.ledger.TxCert.RegStaking;
+                    import org.julclang.ledger.TxCert.ResignColdCommittee;
+                    import org.julclang.ledger.TxCert.UnRegDRep;
+                    import org.julclang.ledger.TxCert.UnRegStaking;
+                    import org.julclang.ledger.TxCert.UpdateDRep;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(ScriptPurpose sp, ScriptContext ctx) {
                             BigInteger result = switch (sp) {
-                                case Minting m -> 0;
-                                case Spending s -> 0;
-                                case Rewarding r -> 0;
+                                case Minting m -> BigInteger.ZERO;
+                                case Spending s -> BigInteger.ZERO;
+                                case Rewarding r -> BigInteger.ZERO;
                                 case Certifying c -> {
                                     TxCert cert = c.cert();
                                     BigInteger certTag = switch (cert) {
-                                        case RegStaking rs -> 0;
-                                        case UnRegStaking urs -> 1;
-                                        case DelegStaking ds -> 2;
-                                        case RegDeleg rd -> 3;
-                                        case RegDRep rdr -> 4;
-                                        case UpdateDRep udr -> 5;
-                                        case UnRegDRep urdr -> 6;
-                                        case PoolRegister pr -> 7;
-                                        case PoolRetire ptr -> 8;
-                                        case AuthHotCommittee ahc -> 9;
-                                        case ResignColdCommittee rcc -> 10;
+                                        case RegStaking rs -> BigInteger.ZERO;
+                                        case UnRegStaking urs -> BigInteger.ONE;
+                                        case DelegStaking ds -> BigInteger.TWO;
+                                        case RegDeleg rd -> BigInteger.valueOf(3);
+                                        case RegDRep rdr -> BigInteger.valueOf(4);
+                                        case UpdateDRep udr -> BigInteger.valueOf(5);
+                                        case UnRegDRep urdr -> BigInteger.valueOf(6);
+                                        case PoolRegister pr -> BigInteger.valueOf(7);
+                                        case PoolRetire ptr -> BigInteger.valueOf(8);
+                                        case AuthHotCommittee ahc -> BigInteger.valueOf(9);
+                                        case ResignColdCommittee rcc -> BigInteger.TEN;
                                     };
                                     yield certTag;
                                 }
-                                case Voting v -> 0;
-                                case Proposing p -> 0;
+                                case Voting v -> BigInteger.ZERO;
+                                case Proposing p -> BigInteger.ZERO;
                             };
-                            return result >= 0;
+                            return result.compareTo(BigInteger.ZERO) >= 0;
                         }
                     }
                     """;
@@ -1020,13 +1280,16 @@ class GovernanceTypeTest {
     class MemberTypeShadowing {
 
         private Program compileWithNestedRecord(String typeName, String packageLine) {
-            return compileWithNestedRecord(typeName, packageLine, "c.value() == 42");
+            return compileWithNestedRecord(typeName, packageLine, "c.value().equals(BigInteger.valueOf(42))");
         }
 
         private Program compileWithNestedRecord(String typeName, String packageLine, String check) {
             var source = """
                     %s
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -1075,6 +1338,9 @@ class GovernanceTypeTest {
         void qualifiedTypeNestedInPlainClassBindsToThatType() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     @MintingValidator
                     class TestValidator {
@@ -1088,7 +1354,7 @@ class GovernanceTypeTest {
                         }
                     }
                     """;
-            for (var check : List.of("c.value() == 42", "true")) {
+            for (var check : List.of("c.value().equals(BigInteger.valueOf(42))", "true")) {
                 assertBindsNestedRecord(new JulcCompiler(StdlibRegistry.defaultRegistry())
                         .compile(source.formatted(check)).program());
             }
@@ -1099,6 +1365,10 @@ class GovernanceTypeTest {
             // javac: Helper.Committee is not in scope in TestValidator, so Committee is the ledger type
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.Committee;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
 
                     class Helper {
                         record Committee(BigInteger value) {}
@@ -1124,6 +1394,10 @@ class GovernanceTypeTest {
         @Test
         void withoutNestedTypeConstitutionBindsToLedgerType() {
             var source = """
+                    import org.julclang.ledger.Constitution;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
                     @MintingValidator
                     class TestValidator {
                         @Entrypoint

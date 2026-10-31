@@ -28,6 +28,8 @@ class TypeOperationsTest {
             package demo;
             import java.math.BigInteger;
             import org.julclang.ledger.Value;
+            import org.julclang.stdlib.annotation.NewType;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary
             public class Market {
                 public record Quote(BigInteger amount, boolean approved) {}

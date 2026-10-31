@@ -78,10 +78,16 @@ class BinderNameIndependenceTest {
             new Adr060Corpus.Entry("class-spend", """
                     import java.math.BigInteger;
                     import org.julclang.core.types.JulcList;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.Builtins;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class Vault {
-                        @Param BigInteger limit;
-                        @Param PlutusData owner;
+                        @Param static BigInteger limit;
+                        @Param static PlutusData owner;
                         static final BigInteger fee = BigInteger.TWO;
                         static boolean within(BigInteger amount) { return amount.compareTo(limit) <= 0; }
                         static BigInteger total(JulcList<PlutusData> items) {
@@ -91,7 +97,7 @@ class BinderNameIndependenceTest {
                         }
                         @Entrypoint
                         static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
-                            JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                             BigInteger amount = total(items).add(fee);
                             return within(amount) && Builtins.equalsData(datum, owner)
                                     && items.any(entry -> Builtins.unIData(entry).signum() > 0);
@@ -100,9 +106,13 @@ class BinderNameIndependenceTest {
                     """, null, List.of()),
             new Adr060Corpus.Entry("class-mint", """
                     import java.math.BigInteger;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MintingValidator;
+                    import org.julclang.stdlib.annotation.Param;
                     @MintingValidator
                     class Minter {
-                        @Param BigInteger cap;
+                        @Param static BigInteger cap;
                         sealed interface Action permits Mint, Burn {}
                         record Mint(BigInteger amount) implements Action {}
                         record Burn(BigInteger amount) implements Action {}
@@ -183,7 +193,10 @@ class BinderNameIndependenceTest {
             import org.julclang.core.types.JulcList;
             import org.julclang.stdlib.Builtins;
             import org.julclang.stdlib.lib.ListsLib;
+            import org.julclang.ledger.PolicyId;
+            import org.julclang.ledger.TokenName;
             import org.julclang.ledger.Value;
+            import java.util.Optional;
             class Statements {
                 static BigInteger m(JulcList<BigInteger> items, JulcList<PlutusData> datas, Value value) {
                     BigInteger probe = BigInteger.valueOf(7);
@@ -201,12 +214,13 @@ class BinderNameIndependenceTest {
                     if (items.isEmpty()) { Builtins.error(); }
                     for (var i : items) { if (i.signum() < 0) { Builtins.error(); } }
                     while (k < 0) { Builtins.error(); }
-                    long found = items.find(v -> v.compareTo(probe) < 0).isPresent() ? 1 : 0;
+                    // JulcList.find returns T in Java but Optional on-chain (ADR-068 M1b): the cast keeps the on-chain lowering.
+                    long found = PlutusData.cast(items.find(v -> v.compareTo(probe) < 0), Optional.class).isPresent() ? 1 : 0;
                     long mapped = items.map(v -> v.add(probe)).size();
                     long kept = items.take(probe.longValue() - 5).size() + items.drop(probe.longValue() - 6).size();
                     long listed = ListsLib.contains(datas, Builtins.iData(probe)) ? 1 : 0;
                     long joined = items.concat(items).size();
-                    BigInteger held = value.assetOf(policy, token);
+                    BigInteger held = value.assetOf(new PolicyId(policy), new TokenName(token));
                     return probe.add(BigInteger.valueOf(k + found + mapped + kept + listed + nested + joined)).add(held);
                 }
             }
@@ -217,9 +231,14 @@ class BinderNameIndependenceTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.MultiValidator;
             import org.julclang.stdlib.annotation.Purpose;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.Param;
             @MultiValidator
             class Multi {
-                @Param BigInteger limit;
+                @Param static BigInteger limit;
                 @Entrypoint(purpose = Purpose.MINT)
                 static boolean handleMint(PlutusData redeemer, ScriptContext ctx) {
                     return Builtins.unIData(redeemer).compareTo(limit) <= 0;
@@ -313,9 +332,9 @@ class BinderNameIndependenceTest {
     }
 
     private static CompileResult compile(Adr060Corpus.Entry entry, OptimizationLevel level, boolean maps) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), Adr060Corpus.dialectGate(new CompilerOptions()
                 .setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1));
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1), entry.source()));
         try {
             var result = entry.validator() ? compiler.compileWithDetails(entry.source())
                     : compiler.compileMethod(entry.source(), entry.method());

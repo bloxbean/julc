@@ -195,6 +195,10 @@ class PatternVariableFieldGuardTest {
     void paramFieldIsRejected() {
         String validator = """
                 import java.math.BigInteger;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class Guarded {
                     sealed interface Action permits Pay, Stop {}
@@ -215,7 +219,7 @@ class PatternVariableFieldGuardTest {
         var diagnostic = firstDiagnostic(error);
         assertEquals("JULC0059", diagnostic.code(), error.getMessage());
         assertEquals("Pattern variable 'limit' has the same name as a field of Guarded", diagnostic.message());
-        assertEquals(11, diagnostic.line());
+        assertEquals(15, diagnostic.line()); // the imports M1b added moved it from line 11
     }
 
     @Test
@@ -223,6 +227,7 @@ class PatternVariableFieldGuardTest {
         String library = """
                 package com.example.lib;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Shapes {
                     public sealed interface Shape permits Box, Dot {}
@@ -237,6 +242,11 @@ class PatternVariableFieldGuardTest {
         String validator = """
                 import java.math.BigInteger;
                 import com.example.lib.Shapes;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class UsesShapes {
                     @Entrypoint
@@ -281,6 +291,7 @@ class PatternVariableFieldGuardTest {
         String library = """
                 package com.example.lib;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Fees {
                     public static final BigInteger q = BigInteger.valueOf(40);

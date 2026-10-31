@@ -71,7 +71,7 @@ final class O9ListIndexFixtures {
     static final String TWO = IMPORTS + """
             class Two {
                 static BigInteger two(JulcList<BigInteger> xs, BigInteger i, BigInteger j) {
-                    return xs.get(i).add(xs.get(j));
+                    return xs.get(i.longValue()).add(xs.get(j.longValue()));
                 }
             }
             """;
@@ -81,7 +81,7 @@ final class O9ListIndexFixtures {
             class Manual {
                 static BigInteger manual(JulcList<BigInteger> xs, BigInteger i, BigInteger j) {
                     JulcArray<BigInteger> a = xs.toArray();
-                    return a.get(i).add(a.get(j));
+                    return a.get(i.longValue()).add(a.get(j.longValue()));
                 }
             }
             """;
@@ -92,9 +92,9 @@ final class O9ListIndexFixtures {
                 static BigInteger loop(JulcList<BigInteger> xs, JulcList<BigInteger> idxs) {
                     BigInteger total = BigInteger.ZERO;
                     int i = 0;
-                    int n = idxs.size();
+                    long n = idxs.size();
                     while (i < n) {
-                        total = total.add(xs.get(idxs.get(i)));
+                        total = total.add(xs.get(idxs.get(i).longValue()));
                         i = i + 1;
                     }
                     return total;
@@ -120,7 +120,7 @@ final class O9ListIndexFixtures {
             class Field {
                 record Holder(JulcList<BigInteger> items, BigInteger n) {}
                 static BigInteger field(PlutusData d) {
-                    Holder h = (Holder) d;
+                    Holder h = (Holder) (Object) d;
                     JulcList<BigInteger> items = h.items();
                     return items.get(0).add(items.get(1)).add(h.items().get(2));
                 }
@@ -200,7 +200,7 @@ final class O9ListIndexFixtures {
     static final String NESTED = IMPORTS + """
             class Nested {
                 static BigInteger nested(JulcList<BigInteger> xs) {
-                    return xs.get(xs.get(0));
+                    return xs.get(xs.get(0).longValue());
                 }
             }
             """;
@@ -346,7 +346,7 @@ final class O9ListIndexFixtures {
             class Alias {
                 static BigInteger alias(JulcList<BigInteger> xs, BigInteger i, BigInteger j) {
                     JulcList<BigInteger> ys = xs;
-                    return ys.get(i).add(ys.get(j));
+                    return ys.get(i.longValue()).add(ys.get(j.longValue()));
                 }
             }
             """;
@@ -407,7 +407,7 @@ final class O9ListIndexFixtures {
     static final String HELPER = IMPORTS + """
             class Helper {
                 static BigInteger pick(JulcList<BigInteger> xs, BigInteger k) {
-                    return xs.get(k).add(xs.get(0));
+                    return xs.get(k.longValue()).add(xs.get(0));
                 }
                 static BigInteger helper(JulcList<BigInteger> xs, JulcList<BigInteger> ys, BigInteger k) {
                     return pick(xs, k).add(pick(ys, k));
@@ -419,7 +419,7 @@ final class O9ListIndexFixtures {
     static final String SINGLE = IMPORTS + """
             class Single {
                 static BigInteger single(JulcList<BigInteger> xs, BigInteger i) {
-                    return xs.get(i);
+                    return xs.get(i.longValue());
                 }
             }
             """;

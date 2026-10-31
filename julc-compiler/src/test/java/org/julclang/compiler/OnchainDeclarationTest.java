@@ -78,6 +78,11 @@ class OnchainDeclarationTest {
     void validatorHelperOverloadsAreRejected() {
         String validator = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class OverloadedHelpers {
                     static boolean ok(BigInteger a) { return a.signum() > 0; }
@@ -90,6 +95,11 @@ class OnchainDeclarationTest {
         assertEquals("JULC0054", rejectedCode(() -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(validator)));
         String helperNamedLikeEntrypoint = """
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class SharedName {
                     static boolean validate(BigInteger a) { return a.signum() > 0; }
@@ -107,6 +117,7 @@ class OnchainDeclarationTest {
         String library = """
                 package com.example.lib;
                 import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Limits {
                     public static boolean within(BigInteger a) { return a.compareTo(BigInteger.TEN) < 0; }
@@ -115,6 +126,11 @@ class OnchainDeclarationTest {
         String validator = """
                 import java.math.BigInteger;
                 import com.example.lib.Limits;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class UsesLimits {
                     @Entrypoint
@@ -147,19 +163,26 @@ class OnchainDeclarationTest {
                     static long K = 0;
                     static long readK() { return K; }
                     static long m(JulcList<BigInteger> xs) { for (var x : xs) { %s } return readK(); }""".formatted(update))));
-        assertEquals("JULC0056", rejectedCode(() -> compileMethod("""
+        // Assigning a final field: javac rejects it first (ADR-068 I2b), where JuLC gave JULC0056.
+        assertEquals("JULC0085", rejectedCode(() -> compileMethod("""
                 static final BigInteger LIMIT = BigInteger.TEN;
                 static BigInteger m(JulcList<BigInteger> xs) { for (var x : xs) { LIMIT = LIMIT.add(x); } return LIMIT; }""")));
         String validator = """
                 import java.math.BigInteger;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.Param;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator
                 class ParamUpdate {
-                    @Param BigInteger limit;
+                    @Param static BigInteger limit;
                     static boolean within(BigInteger v) { return v.compareTo(limit) <= 0; }
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                        JulcList<PlutusData> items = PlutusData.cast(Builtins.unListData(redeemer), JulcList.class);
                         for (var item : items) { limit = limit.add(Builtins.unIData(item)); }
                         return within(BigInteger.valueOf(50));
                     }

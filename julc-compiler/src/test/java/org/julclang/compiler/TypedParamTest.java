@@ -76,17 +76,22 @@ class TypedParamTest {
         void recordParamFieldAccess() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class RecordParamValidator {
                         record TokenConfig(byte[] policyId, BigInteger minAmount) {}
 
-                        @Param TokenConfig config;
+                        @Param static TokenConfig config;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             BigInteger min = config.minAmount();
-                            return min > 0;
+                            return min.compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -112,18 +117,23 @@ class TypedParamTest {
             // Access both fields of a record param and use them in logic
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class PolicyValidator {
                         record TokenConfig(byte[] policyId, BigInteger minAmount) {}
 
-                        @Param TokenConfig config;
+                        @Param static TokenConfig config;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             BigInteger min = config.minAmount();
                             byte[] policy = config.policyId();
-                            return min > 10;
+                            return min.compareTo(BigInteger.TEN) > 0;
                         }
                     }
                     """;
@@ -144,16 +154,21 @@ class TypedParamTest {
         void recordParamMinAmountFails() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class ThresholdValidator {
                         record TokenConfig(byte[] policyId, BigInteger minAmount) {}
 
-                        @Param TokenConfig config;
+                        @Param static TokenConfig config;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return config.minAmount() > 0;
+                            return config.minAmount().compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -182,10 +197,15 @@ class TypedParamTest {
             // PubKeyCredential = Constr(0, [hash]), ScriptCredential = Constr(1, [hash])
             var source = """
                     import org.julclang.ledger.Credential;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class CredentialParamValidator {
-                        @Param Credential cred;
+                        @Param static Credential cred;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -213,10 +233,15 @@ class TypedParamTest {
         void sealedInterfaceParamSwitchTag1() {
             var source = """
                     import org.julclang.ledger.Credential;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class CredentialParamValidator2 {
-                        @Param Credential cred;
+                        @Param static Credential cred;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -244,10 +269,15 @@ class TypedParamTest {
             var source = """
                     import org.julclang.ledger.Credential;
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class CredFieldValidator {
-                        @Param Credential cred;
+                        @Param static Credential cred;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -274,6 +304,11 @@ class TypedParamTest {
             // Inline sealed interface (not pre-registered ledger type)
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Action permits Mint, Burn {}
                     record Mint(long amt) implements Action {}
@@ -281,7 +316,7 @@ class TypedParamTest {
 
                     @SpendingValidator
                     class ActionParamValidator {
-                        @Param Action action;
+                        @Param static Action action;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -315,6 +350,11 @@ class TypedParamTest {
         void inlineSealedInterfaceParamFails() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Action permits Mint, Burn {}
                     record Mint(long amt) implements Action {}
@@ -322,7 +362,7 @@ class TypedParamTest {
 
                     @SpendingValidator
                     class ActionFailValidator {
-                        @Param Action action;
+                        @Param static Action action;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -357,6 +397,10 @@ class TypedParamTest {
             // Uses inline sealed interface to avoid Credential.of() factory issues
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Token permits FungibleToken, NFT {}
                     record FungibleToken(long amount) implements Token {}
@@ -369,7 +413,7 @@ class TypedParamTest {
                             Token token = (Token)(Object) redeemer;
                             return switch (token) {
                                 case FungibleToken ft -> ft.amount() > 0;
-                                case NFT nft -> nft.name().length() > 0;
+                                case NFT nft -> nft.name().length > 0;
                             };
                         }
                     }
@@ -392,6 +436,10 @@ class TypedParamTest {
             // Pattern var used in computation — cast to get tag, compare with expected
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Action permits Mint, Burn {}
                     record Mint(long amt) implements Action {}
@@ -428,6 +476,10 @@ class TypedParamTest {
             // Field access on pattern var — accesses fields from different branches
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Coord permits Point2D, Point3D {}
                     record Point2D(long x, long y) implements Coord {}
@@ -473,6 +525,10 @@ class TypedParamTest {
             // Both branches use their pattern variables in expressions
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Action permits Mint, Burn {}
                     record Mint(long amt) implements Action {}
@@ -517,6 +573,10 @@ class TypedParamTest {
             // case Mint m -> true — pattern var never referenced, should still compile
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Action permits Mint, Burn {}
                     record Mint(long amt) implements Action {}
@@ -552,6 +612,10 @@ class TypedParamTest {
             // Equality check using field extracted from pattern var
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Action permits Mint, Burn {}
                     record Mint(long amt) implements Action {}
@@ -596,6 +660,10 @@ class TypedParamTest {
             // Inline sealed interface (not ledger type), pattern var as direct ref
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     sealed interface Shape permits Circle, Square {}
                     record Circle(long radius) implements Shape {}
@@ -646,18 +714,24 @@ class TypedParamTest {
 
         @Test
         void newTypeByteArrayParamLength() {
-            // @NewType byte[] decodes via UnBData. asset.length() uses LengthOfByteString.
+            // @NewType byte[] decodes via UnBData. asset.length uses LengthOfByteString.
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class NewTypeParamValidator {
                         @NewType
                         record AssetName(byte[] name) {}
 
-                        @Param AssetName asset;
+                        @Param static AssetName asset;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return asset.length() > 0;
+                            return PlutusData.cast(asset, byte[].class).length > 0;
                         }
                     }
                     """;
@@ -677,16 +751,22 @@ class TypedParamTest {
         @Test
         void newTypeByteArrayParamEmpty() {
             var source = """
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
                     @SpendingValidator
                     class NewTypeEmptyValidator {
                         @NewType
                         record AssetName(byte[] name) {}
 
-                        @Param AssetName asset;
+                        @Param static AssetName asset;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return asset.length() > 0;
+                            return PlutusData.cast(asset, byte[].class).length > 0;
                         }
                     }
                     """;
@@ -704,17 +784,23 @@ class TypedParamTest {
         void newTypeIntegerParam() {
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class NewTypeIntValidator {
                         @NewType
                         record Amount(BigInteger value) {}
 
-                        @Param Amount amt;
+                        @Param static Amount amt;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            return amt > 0;
+                            return amt.value().compareTo(BigInteger.ZERO) > 0;
                         }
                     }
                     """;
@@ -735,18 +821,24 @@ class TypedParamTest {
             // @NewType BigInteger can be used directly in arithmetic
             var source = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    import org.julclang.ledger.ScriptContext;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.NewType;
+                    import org.julclang.stdlib.annotation.Param;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class NewTypeArithValidator {
                         @NewType
                         record Score(BigInteger value) {}
 
-                        @Param Score threshold;
+                        @Param static Score threshold;
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                            var doubled = threshold + threshold;
-                            return doubled > 10;
+                            var doubled = threshold.value().add(threshold.value());
+                            return doubled.compareTo(BigInteger.TEN) > 0;
                         }
                     }
                     """;

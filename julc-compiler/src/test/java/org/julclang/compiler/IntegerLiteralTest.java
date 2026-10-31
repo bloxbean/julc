@@ -61,8 +61,9 @@ class IntegerLiteralTest {
             var error = assertThrows(CompilerException.class,
                     () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source(List.of(literal)), "m"),
                     literal.toString());
-            var codes = error.diagnostics().stream().map(d -> d.code()).toList();
-            assertTrue(codes.contains("JULC0070"), literal + ": " + error.getMessage());
+            // javac rejects it first (ADR-068 D5, I2b): JULC0085 with javac's key, where JuLC gave JULC0070 (T25).
+            assertTrue(error.diagnostics().stream().anyMatch(d -> "JULC0085".equals(d.code())
+                    && d.message().contains("(compiler.err.")), literal + ": " + error.getMessage());
         }
     }
 
@@ -192,7 +193,9 @@ class IntegerLiteralTest {
                     "-d", dir.toString(), dir.resolve("Lit.java").toString()), "javac accepts " + element);
             var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
                     .compileMethod(BYTES.formatted(element), "m"), element);
-            assertTrue(error.diagnostics().stream().anyMatch(d -> "JULC0070".equals(d.code())), element + ": " + error.getMessage());
+            // javac rejects it first (ADR-068 D5, I2b): JULC0085 with javac's key, where JuLC gave JULC0070 (T25).
+            assertTrue(error.diagnostics().stream().anyMatch(d -> "JULC0085".equals(d.code())
+                    && d.message().contains("(compiler.err.")), element + ": " + error.getMessage());
         }
     }
 }

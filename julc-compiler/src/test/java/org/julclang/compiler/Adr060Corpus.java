@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
+
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.OptimizationCostProfiles;
@@ -70,8 +72,9 @@ final class Adr060Corpus {
             bodies.add("return outer.all(" + name + " -> inner.any(y -> Builtins.equalsData(y, " + name + ")));");
         }
         for (var name : List.of("h", "lst", "go"))
-            bodies.add("return outer.any(" + name + " -> inner.find(y -> Builtins.equalsData(y, " + name
-                    + ")).isPresent());");
+            // JulcList.find returns T in Java but an Optional on-chain (ADR-068 M1b): the cast keeps the lowering.
+            bodies.add("return outer.any(" + name + " -> PlutusData.cast(inner.find(y -> Builtins.equalsData(y, " + name
+                    + ")), Optional.class).isPresent());");
         for (var name : List.of("x_flt", "acc_flt"))
             bodies.add("return outer.any(" + name + " -> inner.filter(y -> Builtins.equalsData(y, " + name
                     + ")).size() > 0);");
@@ -85,15 +88,24 @@ final class Adr060Corpus {
         bodies.add("long _if = 7; if (outer.isEmpty()) { Builtins.error(); } return _if == 7 && outer.size() == 1;");
         bodies.add("long _forEach = 7; for (PlutusData item : outer) { } return _forEach == 7 && outer.size() == 1;");
         bodies.add("long count = 0; long total = 0; for (PlutusData item : inner) { count = count + 1; "
-                + "total = total + Builtins.unIData(item); } return count == 2 && total == 30;");
+                + "total = total + Builtins.unIData(item).longValue(); } return count == 2 && total == 30;");
         bodies.add("return outer.any(a -> inner.any(b -> Builtins.equalsData(b, a)));");
         return bodies.stream().map(BuilderBinderHygieneTest.LISTS::formatted).toList();
     }
 
+    /**
+     * ADR-068 M1b: the hygiene shapes that call ListsLib's registry-only higher-order functions ({@code any},
+     * {@code zip}), which have no Java declaration, are compiled with the javac gate off.
+     */
+    static CompilerOptions dialectGate(CompilerOptions options, String source) {
+        return source.contains("ListsLib.any(") || source.contains("ListsLib.zip(")
+                ? options.setJavacGate(JavacGateMode.OFF) : options;
+    }
+
     static CompileResult compile(Entry entry, OptimizationLevel level, boolean maps) {
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), dialectGate(new CompilerOptions()
                 .setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1));
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1), entry.source()));
         return entry.validator() ? compiler.compile(entry.source()) : compiler.compileMethod(entry.source(), entry.method());
     }
 }
