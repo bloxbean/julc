@@ -43,6 +43,24 @@ would be encoded. Store a `JulcList` and build the array where it is used
 `JulcArray<JulcList<BigInteger>>` in a local, stay supported. A datum or redeemer type that
 holds an array, already rejected by strict boundary validation, now reports `JULC0091`.
 
+## Upcoming preview: diamond tuples encode their components (#299)
+
+`new Tuple2<>(a, b)` and `new Tuple3<>(a, b, c)` resolved to tuples with Data components, so a
+`BigInteger`, `byte[]`, boolean or `String` component was put into the constructor unencoded and
+the script failed on-chain (`MkCons: element type … does not match list element type Data`) where
+the Java code returns ([#299](https://github.com/bloxbean/julc/issues/299)). This happened with and
+without a declared target type (`Tuple2<BigInteger, BigInteger> t = new Tuple2<>(x, y)`, `var t = …`,
+a return, an argument).
+
+- A diamond's component types are now inferred as javac infers them, from the declared target type
+  where there is one, else from the arguments, and each component is encoded by its type, exactly as
+  the explicit `new Tuple2<BigInteger, BigInteger>(x, y)` does. `var t = new Tuple2<>(x, y)` reads its
+  components with those types.
+- A raw tuple (`new Tuple2(a, b)`, or a diamond assigned to `Tuple2 t`) keeps working when its
+  components are already Data (`Builtins.iData(...)`, a record, a sealed value, an `Optional`), as
+  `MathLib.divMod` uses it; any other component is rejected with `JULC0012`: write the type arguments.
+- **Script bytes change** only for programs with such a diamond, which failed on-chain before.
+
 ## Upcoming preview: JuLC collections compare `byte[]` by content on the JVM
 
 On-chain, `JulcList`, `JulcMap` and `JulcArray` compare elements and keys by Data equality, so

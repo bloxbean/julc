@@ -52,6 +52,28 @@ public final class CompilerTypeDiagnostics {
     }
 
     /**
+     * JULC0012 (#299): a diamond {@code new Tuple2<>(...)} whose component types neither a declared
+     * target nor the arguments give. Its components could not be Data-encoded by type.
+     */
+    public static CompilerException diamondTypeArgumentsUnknown(String typeName, SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format("the type arguments of new " + typeName + "<>(...): neither a declared target type nor "
+                + "the arguments give them. Write them, as in new " + typeName + "<BigInteger, byte[]>(a, b)");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
+     * JULC0012 (#299): a non-Data component of a raw {@code Tuple2} or {@code Tuple3}. javac types
+     * its components {@code Object}, so it has no on-chain encoding and its reads no on-chain type.
+     */
+    public static CompilerException rawTupleUnsupported(String typeName, SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var message = info.format("a component of a raw " + typeName + ", which Java types as Object and JuLC cannot encode"
+                + " unless it is already PlutusData. Write the type arguments, as in " + typeName + "<BigInteger, byte[]>");
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
      * JULC0012: {@code var a = JulcArray.of(...)} whose elements have different types. javac
      * would type the local by a common supertype the on-chain subset cannot represent, and the
      * access needs one element type to choose its decode.

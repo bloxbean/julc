@@ -66,6 +66,9 @@ final class TypeInferenceHelper {
             return resolveMethodCallReturnType(mce);
         }
         if (expr instanceof ObjectCreationExpr oce) {
+            // A diamond tuple's component types are inferred while it is generated (#299): the
+            // lowered term carries them, so the caller falls back to the term's type.
+            if (isDiamondTuple(oce)) return new PirType.DataType();
             var resolved = typeResolver.resolve(oce.getType());
             if (!(resolved instanceof PirType.DataType)) return resolved;
         }
@@ -89,6 +92,12 @@ final class TypeInferenceHelper {
             return resolveExpressionType(ce.getExpression());
         }
         return new PirType.DataType();
+    }
+
+    static boolean isDiamondTuple(ObjectCreationExpr oce) {
+        var type = oce.getType();
+        return (type.getNameAsString().equals("Tuple2") || type.getNameAsString().equals("Tuple3"))
+                && type.getTypeArguments().map(List::isEmpty).orElse(false);
     }
 
     /**

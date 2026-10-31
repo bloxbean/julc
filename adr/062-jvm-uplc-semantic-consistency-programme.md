@@ -101,6 +101,7 @@ are never renumbered.
 | T33 | Type names in packageless sources, and user records reaching ledger handlers by simple name | A top-level type of the compilation unit or package shadows an on-demand import (JLS §6.4.1) | In the unnamed package the implicit ledger import wins (F19: JVM 7, UPLC 5); ledger hash names resolve by simple name; a user `record Value` reaches the ledger `Value` handlers (F45: JVM true, UPLC fails) | Reproduced (ADR-067 M0: six saved cases); #284 | S5 / ADR-067 |
 | T34 | `String.equals` with an argument that is not a `String` | `false` | `EqualsString` fails on-chain (`"a".equals(true)`: JVM 2, UPLC fails) | Reproduced (ADR-067 M1 round 3: one saved case); #292. Rejected inside `switch` guards by ADR-067 | S5 |
 | T35 | Operand order of `>` and `>=` | The left operand is evaluated first (JLS §15.7) | `a > b` lowered to `[[lessThanInteger b] a]`, so the right operand ran first: traces came in the wrong order, and of two failing operands the right one's failure was reported, for `int`, `long` and the `BigInteger` operator dialect, at every level | Fixed for #295 by ADR-068 M1 (D6, D4 exception 1, in both frontends): `>` and `>=` bind the left operand once when both operands are non-trivial; `agree-295-*` expect `AGREE` | S6 |
+| T36 | Diamond and raw `Tuple2`/`Tuple3` | A diamond (`new Tuple2<>(a, b)`) takes the component types javac infers; a raw tuple's components are `Object` | A diamond resolved to Data components, so a `BigInteger`, `byte[]` or boolean component was put in the constructor unencoded and the script failed (`MkCons`) where the JVM returns, with or without a declared target, at every level; a raw tuple of such components failed the same way | Fixed for #299 by ADR-068 M1 (D4 exception 2, in both frontends): a diamond's components are inferred from the declared target type, else from the arguments, and encoded by type; a raw tuple keeps working with Data components and is `JULC0012` otherwise; `agree-299-*` expect `AGREE` | S6 |
 
 ## Decision
 
@@ -227,3 +228,5 @@ Adopt a six-step programme. Every step has its own ADR, its own acceptance gate,
   form is fixed by julc-core's content equality for `byte[]`; records with `byte[]` components stay open. T13's
   `compareTo(…) OP 0` form is fixed (#146); its other forms stay open. New T35 for #295 (`>` and `>=` evaluated the
   right operand first), fixed in the same change.
+- **ADR-068 M1c, review round** (2026-10-31): new T36 for #299 (diamond and raw tuples left non-Data components
+  unencoded), found while fixing F700 and fixed in the same milestone under D4 exception 2.
