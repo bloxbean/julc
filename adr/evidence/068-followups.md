@@ -35,13 +35,13 @@ Each entry gives:
 | F720 | M1c (Codex confirmation) | Pre-existing, also at B0: a second `switch` erases the "unknown" result type (`LinkedHashSet` merges the `UNKNOWN` sentinel with `DataType`), so a mixed-type switch value fed through another switch reaches `JulcList.of` / a diamond and fails on-chain (`MkCons`). Fails closed (the script rejects what the JVM accepts) | Resolved by javac types in M3; until then an accepted residual (a mixed-type switch inside a switch, then Data-encoded) |
 | F721 | M1c (Codex confirmation) | Pre-existing: `Optional.of` builds `DataConstr` directly and encodes an `UNKNOWN`-typed value without the `JULC0012` check; fails on-chain at `MkCons` | M3 (javac types); or a one-line `requireDataEncodable` in `StdlibRegistry`'s `Optional.of`, if needed earlier |
 | F722 | M1c (Codex confirmation) | Pre-existing: the raw-destination rule (F711) does not look through `switch` arms, so `Tuple2 t = switch … new Tuple2<>(x, y)` then `(BigInteger) t.second()` fails on-chain (`AddInteger: expected integer`). Fails closed | M3 (javac types); until then an accepted residual |
-| F723 | M1c (Codex confirmation) | The release note says bytes change only for diamonds; a homogeneous integer switch followed by `.equals(x)` also changes bytes (and now evaluates correctly) | Correct the release-note wording at M1 integration |
 | F724 | M1c (Codex confirmation) | An unknown-valued multi-accumulator packing reports `JULC0012` at `0:0` (no position; `LoopBodyGenerator.java:231`) | Position it at M4's loop port |
 | F401 | M1a | The javac version and blob digests are not yet in per-compilation metadata (CLI artifact metadata, blueprint `preamble.compiler`) | M1 exit item, added without breaking I5 |
 | E6 cold start | M1a | Cold compile overhead is +150–300 ms and no threshold has been set yet | Set at the M1 review, with measurements on an idle machine |
 | M1 pool simplification | M1a (F404) | The gate's pool is each entry point's resolved library list plus the bundled stdlib, not D8's per-entry-point scan | M3 replaces it with D8's pools |
 | F530 note | M1a | `readJars` without a supported javac checks entry paths only (report and off modes, with a warning) | Revisit when the javac frontend becomes the default (M5) |
 | Elci native shape | M1a | Elci's native-image host smoke was not run (external repo) | M1 exit / M5 gate: Elci release smoke against a local snapshot |
+| Plugin test flake (broader) | M1c integration | `JulcPluginBuildLifecycleTest` failed intermittently under heavy file creation (a corpus recording beside it), not under CPU load alone: `compileJulc` was `UP_TO_DATE` after an output was deleted, or failed `@InputDirectory` validation after the source directory was. Reproduced on #267 without M1c. Controlled A/B under file churn: 3/20 failed with file watching, 0/20 with `--no-watch-fs`; that test now passes `--no-watch-fs` | Other plugin tests that change files between builds use the same runner shape and were not stress-tested; revisit if one flakes |
 | wasm smoke flakiness | M1a | `wasmSmokeFull` timed out once at load average ~80 (a VM-only evaluation step) | Monitor; raise the timeout if it recurs |
 | evaluations ledger size | M0 | The evaluations ledger is 6 MB (stored as gzip) and grows each milestone | Consider trimming its columns, or storing only the rows that differ, after M1 |
 | F210 scope | M0 | The class-file rule for implicit `equals` without code is sound only for API stubs (guarded by `ApiRecordEqualsTest`) | Keep the guard; do not reuse the rule for user class files |
@@ -51,3 +51,7 @@ Each entry gives:
 ## Closed here
 
 Entries move here, with the commit that resolves them, once they are fixed.
+
+| ID | Resolved by |
+|---|---|
+| F723 | `7eb301f0`: the release note also covers a single-typed `switch` followed by a method call |

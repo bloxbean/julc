@@ -35,6 +35,8 @@ T31	open	record members ignored (#282)
 T32	open	colon-form switch fall-through (#283)
 T33	open	type names in packageless sources, ledger names by simple name (#284)
 T34	open	String.equals with a non-String argument (#292)
+T35	open	operand order of > and >= (#295), found after M0 froze this list; fixed in both frontends at M1c (D6, D4 exception 1)
+T36	open	diamond and raw Tuple2/Tuple3 components (#299), found in M1c review after M0 froze this list; fixed in both frontends at M1c (D4 exception 2)
 #146	open	compareTo operands evaluated more than once, outside D6's OP 0 rule (pins diverge-g1-146-*)
 #280	open	named in ADR-068 D4 (pins diverge-*-280-*)
 #288	open	named in ADR-068 D4
