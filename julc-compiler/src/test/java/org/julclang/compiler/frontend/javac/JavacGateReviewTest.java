@@ -4,6 +4,8 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.LibrarySource;
+import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.LibrarySources;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.core.flat.UplcFlatEncoder;
@@ -20,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.concurrent.Executors;
@@ -554,5 +557,29 @@ class JavacGateReviewTest {
         assertTrue(d.hint().startsWith("If ProjectThing is a JDK type (from import java.util.*), it is not available"
                 + " on-chain"), d.hint());
         assertTrue(d.hint().endsWith("otherwise check the import or the source that declares it"), d.hint());
+    }
+
+    // --- F550: hosts tag by provenance, not by text ---
+
+    @Test
+    void aProjectSourceWithAJarCopysTextStaysAProjectSource() {
+        String one = "package p;\npublic class One { public static int f() { return 1; } }\n";
+        String projectOne = new String(one.toCharArray());   // the same text, read from the project
+        String two = "package p;\npublic class Two {} class One {}\n";
+        var jar = new LinkedHashMap<String, LibrarySource>();
+        jar.put("p.One", LibrarySourceResolver.librarySource(one));
+        var pool = new LinkedHashMap<>(jar);
+        pool.put("p.One", LibrarySourceResolver.librarySource(projectOne));
+        pool.put("p.Two", LibrarySourceResolver.librarySource(two));
+        assertEquals(List.of(), LibrarySourceResolver.jarSourceTexts(pool, jar));
+        String root = "package p;\nclass Main { static int g() { return One.f(); } }\n";
+        // Tagging the JAR copy's own text never tags the project's equal text: they are different sources.
+        for (var tags : List.of(LibrarySourceResolver.jarSourceTexts(pool, jar), List.of(one))) {
+            var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setJavacGate(JavacGateMode.ENFORCE).setJarLibrarySources(tags))
+                    .compileMethod(root, "g", List.of(projectOne, two)));
+            assertTrue(e.diagnostics().getFirst().message().contains("two library sources of equal standing"),
+                    e.diagnostics().toString());
+        }
     }
 }

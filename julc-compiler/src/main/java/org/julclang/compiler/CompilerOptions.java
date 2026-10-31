@@ -5,6 +5,7 @@ import org.julclang.vm.OptimizationCostProfile;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -131,17 +132,21 @@ public class CompilerOptions {
     }
 
     /**
-     * Experimental (ADR-068 M1, D8): the library sources of this compilation that came from JARs, by text. The javac
-     * gate ranks them below same-project sources (a JAR unit declaring a project unit's name is shadowed); every other
-     * library source is a project source. In {@code enforce} mode the JavaParser frontend compiles the same effective
-     * pool; in {@code report} and {@code off} modes it compiles the libraries as given.
+     * Experimental (ADR-068 M1, D8): the library sources of this compilation that came from JARs (a class-path scan),
+     * by provenance: the {@code String} objects the scan returned, compared by identity, never by text, so a project
+     * source whose text equals a JAR copy stays a project source. The javac gate ranks JAR sources below project
+     * sources (a JAR unit declaring a project unit's name is shadowed); every other library source is a project
+     * source. In {@code enforce} mode the JavaParser frontend compiles the same effective pool; in {@code report} and
+     * {@code off} modes it compiles the libraries as given.
      */
-    public CompilerOptions setJarLibrarySources(Collection<String> texts) {
-        this.jarLibrarySources = Set.copyOf(texts);
+    public CompilerOptions setJarLibrarySources(Collection<String> sources) {
+        var identities = Collections.newSetFromMap(new IdentityHashMap<String, Boolean>());
+        identities.addAll(sources);
+        this.jarLibrarySources = Collections.unmodifiableSet(identities);
         return this;
     }
 
-    /** The library sources marked as JAR sources ({@link #setJarLibrarySources}). */
+    /** The library sources marked as JAR sources, an identity set ({@link #setJarLibrarySources}). */
     public Set<String> getJarLibrarySources() {
         return jarLibrarySources;
     }

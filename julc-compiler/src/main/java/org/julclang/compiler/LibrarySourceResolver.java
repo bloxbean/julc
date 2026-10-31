@@ -190,18 +190,24 @@ public final class LibrarySourceResolver {
     }
 
     /**
-     * The texts of a host's merged pool that are JAR sources (ADR-068 D8): the entries of {@code pool} whose source is
-     * still {@code jarSources}' for that key. A host passes them to {@link CompilerOptions#setJarLibrarySources} so
-     * that the javac gate ranks them below same-project sources; it prunes nothing itself.
+     * The sources of a host's merged pool that are JAR sources (ADR-068 D8), by provenance: the entries of
+     * {@code pool} that are still the very {@link LibrarySource} {@code jarSources} has for that key; a project source
+     * put over one is a project source even when its text is the same. A host passes them to
+     * {@link CompilerOptions#setJarLibrarySources}, which compares them by identity; it prunes nothing itself.
      */
-    public static Set<String> jarSourceTexts(Map<String, LibrarySource> pool, Map<String, LibrarySource> jarSources) {
-        var texts = new LinkedHashSet<String>();
+    public static List<String> jarSourceTexts(Map<String, LibrarySource> pool, Map<String, LibrarySource> jarSources) {
+        var sources = new ArrayList<String>();
         pool.forEach((key, source) -> {
-            var jar = jarSources.get(key);
-            if (jar != null && jar.source().equals(source.source())) texts.add(source.source());
+            if (jarSources.get(key) == source) sources.add(source.source());
         });
-        return texts;
+        return sources;
     }
+
+    /** {@code options} with every source of a class-path pool marked as a JAR source (a host with no project pool). */
+    public static CompilerOptions withJarSources(CompilerOptions options, Map<String, LibrarySource> classpathPool) {
+        return options.setJarLibrarySources(classpathPool.values().stream().map(LibrarySource::source).toList());
+    }
+
 
     /**
      * Scan classpath for {@code META-INF/plutus-sources/} entries and collect

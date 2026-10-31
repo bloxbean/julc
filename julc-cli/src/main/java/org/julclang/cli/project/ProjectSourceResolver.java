@@ -4,6 +4,7 @@ import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.LibrarySource;
 import org.julclang.compiler.LibrarySourceResolver;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,8 +32,17 @@ public final class ProjectSourceResolver {
         return pool;
     }
 
+    private static volatile Map<String, LibrarySource> classpath;
+
+    /** The class path's sources, scanned once, so that the pool and its tags share the same source objects. */
     private static Map<String, LibrarySource> classpathSources() {
-        return LibrarySourceResolver.scanClasspathSources(ProjectSourceResolver.class.getClassLoader());
+        var sources = classpath;
+        if (sources == null) {
+            sources = Collections.unmodifiableMap(new LinkedHashMap<>(
+                    LibrarySourceResolver.scanClasspathSources(ProjectSourceResolver.class.getClassLoader())));
+            classpath = sources;
+        }
+        return sources;
     }
 
     /**
