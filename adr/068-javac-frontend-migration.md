@@ -776,6 +776,8 @@ constants for javac either.
   - reference equality (outside D6's narrow constant-string case), and `.equals` that would compare an array by
     identity, through records, sealed variants, containers or type arguments (D6);
   - a constant-variable `@Param` (D14);
+  - string `+` with a non-`String` operand (`JULC0090`, #296), and a `JulcArray` as an element, key or value type
+    of a `JulcList` or `JulcMap` (`JULC0091`); both fail at run time today;
   - a sealed interface without `permits` whose implicit permitted subclasses are not exactly its nested records
     (I11);
   - annotations outside I10 (for example a third-party annotation on a validator);
