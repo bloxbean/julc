@@ -12,6 +12,8 @@ import org.julclang.core.flat.UplcFlatEncoder;
 
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -67,6 +69,15 @@ public final class LoweringFixture {
                 + HexFormat.of().formatHex(expected));
         assertEquals(reference.params(), javac.params(), where);
         assertEquals(reference.diagnostics(), javac.diagnostics(), where);
+        if (reference.sourceMap() != null) assertEquals(positions(reference), positions(javac), where);
+    }
+
+    /** I7: each located UPLC term's line and column. The fragment is M2's rule, and the file name a D13 row. */
+    private static Map<Integer, String> positions(CompileResult result) {
+        var positions = new TreeMap<Integer, String>();
+        result.sourceMap().toIndexed(result.program().term())
+                .forEach((index, location) -> positions.put(index, location.line() + ":" + location.column()));
+        return positions;
     }
 
     /** Both frontends reject with one code and one message, at one line and column. */

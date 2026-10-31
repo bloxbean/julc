@@ -125,12 +125,14 @@ public class JulcCompiler {
 
     /**
      * ADR-068: the one place a compilation leaves for the javac frontend, which never reaches the JavaParser frontend
-     * (I8). What the frontend does not lower yet is {@code JULC0084}, after javac has had its say on the source.
+     * (I8). What the frontend does not lower yet is {@code JULC0084}, after javac has had its say on the source. The call
+     * stays inside {@link JavacGate#onJavacFrontend}, which is what makes a runtime without the compiler API
+     * {@code JULC0089} (I6): {@code JavacCompilation} cannot link there.
      */
     private CompilationOutcome onJavac(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, boolean captureDetails,
                                        boolean captureContractSchema, boolean collectDebugMetadata,
                                        CompilationContext context) {
-        var result = JavacCompilation.validator(root, pool, context, captureDetails);
+        var result = JavacGate.onJavacFrontend(() -> JavacCompilation.validator(root, pool, context, captureDetails));
         if (captureContractSchema) throw NotPorted.of("a contract schema");
         if (collectDebugMetadata) throw NotPorted.of("debug metadata");
         return new CompilationOutcome(result, null, null);
@@ -187,10 +189,18 @@ public class JulcCompiler {
      * This operation is deliberately separate from every normal/source-map compile API.
      */
     public DebugCompileResult compileForDebug(String validatorSource, List<String> librarySources) {
+        requireSourceMap();
+        return compileForDebug(validatorSource, librarySources, beginCompilation());
+    }
+
+    private void requireSourceMap() {
         if (!options.isSourceMapEnabled()) {
             throw new IllegalStateException("Java locals metadata requires source-map compilation");
         }
-        var context = beginCompilation();
+    }
+
+    private DebugCompileResult compileForDebug(String validatorSource, List<String> librarySources,
+                                               CompilationContext context) {
         if (CorpusRecorder.ACTIVE != null) {
             recordCorpus("compileForDebug", null, validatorSource, librarySources, context);
         }
@@ -204,8 +214,10 @@ public class JulcCompiler {
 
     /** Compile a source-debug artifact with classpath-discovered libraries. */
     public DebugCompileResult compileForDebug(String validatorSource) {
-        return compileForDebug(validatorSource, classpathLibraries(validatorSource,
-                JulcCompiler.class.getClassLoader(), beginCompilation()));
+        requireSourceMap();
+        var context = beginCompilation();
+        return compileForDebug(validatorSource,
+                classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader(), context), context);
     }
 
     /**
@@ -807,8 +819,9 @@ public class JulcCompiler {
             CompilationContext context) {
         if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources, context);
         if (context.frontend() == CompilerFrontend.JAVAC) {
-            return JavacCompilation.method(JavacFrontend.Unit.of(javaSource), libraryUnits(librarySources, context),
-                    methodName, context);
+            var pool = libraryUnits(librarySources, context);
+            return JavacGate.onJavacFrontend(() ->
+                    JavacCompilation.method(JavacFrontend.Unit.of(javaSource), pool, methodName, context));
         }
         librarySources = javacGate("compileMethod", JavacFrontend.Unit.of(javaSource), librarySources,
                 this::libraryUnit, context);

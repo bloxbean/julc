@@ -64,19 +64,15 @@ public final class JavacCompilation {
     /** Compiles the validator of {@code root}, with {@code pool} on the source path (D8). */
     public static CompileResult validator(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
                                           CompilationContext context, boolean captureDetails) {
-        return JavacGate.onJavacFrontend(() -> {
-            var program = attributed(root, pool, context);
-            return program.read(facts -> new JavacCompilation(program, facts, context).validator(captureDetails));
-        });
+        var program = attributed(root, pool, context);
+        return program.read(facts -> new JavacCompilation(program, facts, context).validator(captureDetails));
     }
 
     /** Compiles the static method {@code methodName} of the first class of {@code root} ({@code compileMethod}). */
     public static CompileResult method(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, String methodName,
                                        CompilationContext context) {
-        return JavacGate.onJavacFrontend(() -> {
-            var program = attributed(root, pool, context);
-            return program.read(facts -> new JavacCompilation(program, facts, context).method(methodName));
-        });
+        var program = attributed(root, pool, context);
+        return program.read(facts -> new JavacCompilation(program, facts, context).method(methodName));
     }
 
     private static JavacProgram attributed(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
@@ -105,11 +101,11 @@ public final class JavacCompilation {
         var parts = new ClassParts(type);
         var attempts = new ArrayList<MethodAttempt>();
         for (var method : discovery.methods(type)) {
-            if (!JavacDiscovery.isStatic(method) && !discovery.isEntrypoint(method)) continue;
+            boolean entry = methodName == null && discovery.isEntrypoint(method);
+            if (!JavacDiscovery.isStatic(method) && !entry) continue;
             try {
                 // As the program lowers it: an entry point's boolean returns are guarded under a source map.
-                boolean guarded = methodName == null && discovery.isEntrypoint(method) && context.isSourceMapEnabled();
-                var term = lowering.method(method, parts.scope, guarded);
+                var term = lowering.method(method, parts.scope, entry && context.isSourceMapEnabled());
                 if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) {
                     BindingCheck.check(parts.bindAround(term), lowering.terms().provenance());
                 }

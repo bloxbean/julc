@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.subset;
 
+import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
@@ -10,12 +11,13 @@ import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
-import com.sun.source.tree.BlockTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
 
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
 import java.util.EnumSet;
 import java.util.Set;
@@ -76,9 +78,13 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitClass(ClassTree tree, Void unused) {
         boolean inherits = tree.getKind() == Tree.Kind.INTERFACE ? !tree.getImplementsClause().isEmpty()
-                : tree.getExtendsClause() != null && !tree.getExtendsClause().toString().equals("Object");
+                : tree.getExtendsClause() != null && !isObject(tree.getExtendsClause());
         if (tree.getKind() != Tree.Kind.RECORD && inherits) throw NotPorted.at(facts, tree, "inheritance");
         return super.visitClass(tree, unused);
+    }
+
+    private boolean isObject(Tree type) {
+        return facts.element(type) instanceof TypeElement element && facts.identity(element).equals(JavacNames.OBJECT);
     }
 
     /** Floating point is outside the subset. */

@@ -83,6 +83,13 @@ class Adr068LoweringHarnessTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"\"\"", "\" padded \"", "\"a\\tb\\n\"", "\"q\\\"\\\\\"", "\"\\101\\s\\7\"", "\"\u00e9\"", "\"\\uD83D\\uDE00\"",
+            "\"\\u0041\""})
+    void strings(String literal) {
+        assertAgree("public static String m() { return " + literal + "; }", List.of());
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"new byte[]{}", "new byte[]{1, 2, 3}", "new byte[]{-1, 0x7F, -128, 127, -0x10, -0}"})
     void byteArrays(String literal) {
         assertAgree("public static byte[] m() { return " + literal + "; }", List.of());

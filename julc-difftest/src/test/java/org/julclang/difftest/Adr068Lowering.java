@@ -268,7 +268,10 @@ final class Adr068Lowering {
         for (var entry : reference.entrySet()) {
             var attempt = attempted.remove(entry.getKey());
             if (attempt == null || attempt.term() == null) {
-                if (construct.equals("-")) construct = attempt == null ? "a library method" : attempt.construct();
+                // No attempt at all means the source was rejected first, and its row says how; it stopped at no construct.
+                if (construct.equals("-") && !attempts.isEmpty()) {
+                    construct = attempt == null ? "a library method" : attempt.construct();
+                }
                 continue;
             }
             String expected = PirCanonical.of(entry.getValue().body());

@@ -220,6 +220,13 @@ class JavacRejectionsTest {
     @Test
     void aClassExtendingObjectIsNoInheritance() {
         LoweringFixture.assertSameMethodAsReference("class P extends Object { static long m() { return 1; } }", "m");
+        LoweringFixture.assertSameMethodAsReference("class P extends java.lang.Object { static long m() { return 1; } }", "m");
+    }
+
+    /** By identity: a user's class named {@code Object} is inheritance, whatever it is spelled. */
+    @Test
+    void aUsersObjectIsInheritance() {
+        assertMethodNotPorted("class P extends Object { static long m() { return 1; } }\nclass Object { }\n", "m", "inheritance", 1);
     }
 
     @Test

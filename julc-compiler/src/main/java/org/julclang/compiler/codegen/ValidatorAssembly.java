@@ -85,7 +85,15 @@ public final class ValidatorAssembly {
                                 List<ParamField> params) {
     }
 
-    /** What a frontend asks of the backend's input, and what it keeps of the output. */
+    /**
+     * What the frontend that lowered a program adds to its assembly.
+     *
+     * @param positions   the PIR term to source location map, which the assembly adds the wrapper's failures to
+     * @param provenance  debug provenance for the backend, or null
+     * @param paramBound  told each {@code @Param}'s binding as it is built, or null
+     * @param finalCheck  run on the assembled term, before the backend
+     * @param staticBound told each static field's binding as it is built, one per copy, or null
+     */
     public record Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
                            BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
                            BiConsumer<StaticField, PirTerm> staticBound) {

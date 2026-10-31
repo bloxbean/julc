@@ -44,6 +44,7 @@ class Adr068LoweringTest {
     @Test
     void theJavacFrontendAgainstTheReference() throws Exception {
         var corpus = Adr068TypesTest.corpus(REPO);
+        corpus.addFixtures("m3a", "julc-difftest/src/test/resources/adr068/m3a-fixtures");
         var tool = new Adr068Lowering(b1());
         var rows = new ConcurrentHashMap<String, Adr068Lowering.Row>();
         var parts = new ConcurrentHashMap<String, Integer>();

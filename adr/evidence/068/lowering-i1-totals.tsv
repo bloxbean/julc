@@ -1,25 +1,24 @@
-cases	17037
+cases	17041
 DIFFERENT-bytes	2
 DIFFERENT-javac-accepts	18
 DIFFERENT-provenance	2
 DIFFERENT-rejection	8
 both-reject	49
 both-reject-javac-first	1288
-i1a-identical	141
+i1a-identical	145
 javac-rejects	5359
 ledger-source	38
 not-ported	9617
 reference-rejects-not-ported	498
 unreplayable	17
-coverage	programs	141	15121
-coverage	distinct programs	82
-coverage	programs of more than one method	7
-coverage	methods	252	170942
-coverage	distinct methods	117
+coverage	programs	145	15125
+coverage	distinct programs	85
+coverage	programs of more than one method	11
+coverage	methods	307	170997
+coverage	distinct methods	156
 provenance	-	2
-provenance	fragment	53
+provenance	fragment	57
 provenance	same	86
-first-construct	a library method	6385
 first-construct	VARIABLE	5903
 first-construct	LESS_THAN_EQUAL	2172
 first-construct	METHOD_INVOCATION	1074
@@ -56,6 +55,7 @@ first-construct	PRIMITIVE_TYPE	1
 first-construct	SWITCH	1
 first-construct	SYNCHRONIZED	1
 first-construct	THROW	1
+first-construct	a library method	1
 part	blaster	not-ported	7
 part	c7	i1a-identical	4
 part	c7	not-ported	2
@@ -82,6 +82,7 @@ part	ledger	i1a-identical	1
 part	ledger	ledger-source	38
 part	m2	DIFFERENT-bytes	1
 part	m2	DIFFERENT-provenance	2
+part	m3a	i1a-identical	4
 part	recorded	DIFFERENT-javac-accepts	10
 part	recorded	DIFFERENT-rejection	8
 part	recorded	both-reject	15
