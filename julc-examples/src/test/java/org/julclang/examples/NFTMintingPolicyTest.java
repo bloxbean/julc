@@ -23,6 +23,8 @@ class NFTMintingPolicyTest {
      */
     static final String NFT_MINT_SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class NFTMintingPolicy {
@@ -32,16 +34,16 @@ class NFTMintingPolicyTest {
                 }
 
                 static boolean validateMint(BigInteger amount) {
-                    return amount > 0;
+                    return amount.compareTo(BigInteger.ZERO) > 0;
                 }
 
                 static boolean validateBurn(BigInteger amount) {
-                    return amount < 0;
+                    return amount.compareTo(BigInteger.ZERO) < 0;
                 }
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    BigInteger mintAmount = 1;
+                    BigInteger mintAmount = BigInteger.ONE;
                     return validateMint(mintAmount);
                 }
             }
@@ -52,16 +54,18 @@ class NFTMintingPolicyTest {
      */
     static final String NFT_BURN_SOURCE = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class NFTBurnPolicy {
                 static boolean validateBurn(BigInteger amount) {
-                    return amount < 0;
+                    return amount.compareTo(BigInteger.ZERO) < 0;
                 }
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    BigInteger burnAmount = -1;
+                    BigInteger burnAmount = BigInteger.valueOf(-1);
                     return validateBurn(burnAmount);
                 }
             }
@@ -72,16 +76,18 @@ class NFTMintingPolicyTest {
      */
     static final String NFT_INVALID_MINT = """
             import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class NFTInvalidPolicy {
                 static boolean validateMint(BigInteger amount) {
-                    return amount > 0;
+                    return amount.compareTo(BigInteger.ZERO) > 0;
                 }
 
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    BigInteger amount = 0;
+                    BigInteger amount = BigInteger.ZERO;
                     return validateMint(amount);
                 }
             }

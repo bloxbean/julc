@@ -39,6 +39,8 @@ class CompileControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CompileRequest("""
                     import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.SpendingValidator;
 
                     @SpendingValidator
                     class SimpleValidator {
@@ -73,6 +75,8 @@ class CompileControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CompileRequest("""
                     import org.julclang.core.PlutusData;
+                    import org.julclang.stdlib.annotation.Entrypoint;
+                    import org.julclang.stdlib.annotation.MultiValidator;
 
                     @MultiValidator
                     class MultiGate {
@@ -175,6 +179,8 @@ class CompileControllerTest {
                 // We'll test with a source that's valid enough to parse but slow
                 var body = mapper.writeValueAsString(new CompileRequest("""
                         import java.math.BigInteger;
+                        import org.julclang.stdlib.annotation.Entrypoint;
+                        import org.julclang.stdlib.annotation.SpendingValidator;
                         @SpendingValidator
                         class V {
                             @Entrypoint

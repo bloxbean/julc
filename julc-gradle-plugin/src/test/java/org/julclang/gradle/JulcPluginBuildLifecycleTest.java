@@ -182,6 +182,8 @@ class JulcPluginBuildLifecycleTest {
         Files.createDirectories(plutusSrcDir);
         Files.writeString(plutusSrcDir.resolve("AlwaysTrue.java"), """
                 import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class AlwaysTrue {

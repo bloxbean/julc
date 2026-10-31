@@ -77,6 +77,8 @@ class SourceDiscoveryTest {
         Files.createDirectories(pkgDir);
         Files.writeString(pkgDir.resolve("UseLib.java"), """
                 package com.example;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class UseLib {
@@ -106,6 +108,8 @@ class SourceDiscoveryTest {
         Files.createDirectories(pkgDir);
         Files.writeString(pkgDir.resolve("UseLib.java"), """
                 package com.example;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class UseLib {
@@ -162,6 +166,8 @@ class SourceDiscoveryTest {
         Files.createDirectories(pkgDir);
         Files.writeString(pkgDir.resolve("UseLib.java"), """
                 package com.example;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class UseLib {
@@ -191,6 +197,8 @@ class SourceDiscoveryTest {
         Files.createDirectories(pkgDir);
         Files.writeString(pkgDir.resolve("UseLib.java"), """
                 package com.example;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
 
                 @SpendingValidator
                 class UseLib {

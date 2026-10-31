@@ -69,7 +69,7 @@ class JulcAnnotationProcessorTest {
                 class SimpleMinting {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return redeemer > 0;
+                        return redeemer.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;
@@ -95,11 +95,11 @@ class JulcAnnotationProcessorTest {
                 @SpendingValidator
                 class ParamValidator {
                     @Param byte[] owner;
-                    @Param BigInteger deadline;
+                    @Param static BigInteger deadline;
 
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return deadline > 0;
+                        return deadline.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
                 """;

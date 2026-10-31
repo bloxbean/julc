@@ -25,25 +25,26 @@ class MethodEvaluatorTest {
     class IntegerArithmetic {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class MathTest {
                     static BigInteger doubleIt(BigInteger x) {
-                        return x * 2;
+                        return x.multiply(BigInteger.TWO);
                     }
 
                     static BigInteger add(BigInteger x, BigInteger y) {
-                        return x + y;
+                        return x.add(y);
                     }
 
                     static BigInteger negate(BigInteger x) {
-                        return -x;
+                        return x.negate();
                     }
 
                     static BigInteger factorial(BigInteger n) {
-                        BigInteger result = 1;
-                        BigInteger i = 1;
-                        while (i <= n) {
-                            result = result * i;
-                            i = i + 1;
+                        BigInteger result = BigInteger.ONE;
+                        BigInteger i = BigInteger.ONE;
+                        while (i.compareTo(n) <= 0) {
+                            result = result.multiply(i);
+                            i = i.add(BigInteger.ONE);
                         }
                         return result;
                     }
@@ -101,9 +102,10 @@ class MethodEvaluatorTest {
     class BooleanOps {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class BoolTest {
                     static boolean isPositive(BigInteger x) {
-                        return x > 0;
+                        return x.compareTo(BigInteger.ZERO) > 0;
                     }
 
                     static boolean isEqual(BigInteger x, BigInteger y) {
@@ -162,6 +164,7 @@ class MethodEvaluatorTest {
 
         static final String SOURCE = """
                 import org.julclang.stdlib.Builtins;
+                import java.math.BigInteger;
 
                 class BytesTest {
                     static byte[] concat(byte[] a, byte[] b) {
@@ -169,7 +172,7 @@ class MethodEvaluatorTest {
                     }
 
                     static BigInteger len(byte[] bs) {
-                        return Builtins.lengthOfByteString(bs);
+                        return BigInteger.valueOf(Builtins.lengthOfByteString(bs));
                     }
                 }
                 """;
@@ -199,13 +202,14 @@ class MethodEvaluatorTest {
     class HelperMethods {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class HelperTest {
                     static BigInteger square(BigInteger x) {
-                        return x * x;
+                        return x.multiply(x);
                     }
 
                     static BigInteger sumOfSquares(BigInteger a, BigInteger b) {
-                        return square(a) + square(b);
+                        return square(a).add(square(b));
                     }
                 }
                 """;
@@ -233,35 +237,36 @@ class MethodEvaluatorTest {
     class RecursiveHelpers {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class RecursiveTest {
                     static BigInteger factorial(BigInteger n) {
-                        if (n <= 1) {
-                            return 1;
+                        if (n.compareTo(BigInteger.ONE) <= 0) {
+                            return BigInteger.ONE;
                         } else {
-                            return n * factorial(n - 1);
+                            return n.multiply(factorial(n.subtract(BigInteger.ONE)));
                         }
                     }
 
                     static BigInteger fib(BigInteger n) {
-                        if (n <= 0) {
-                            return 0;
-                        } else if (n == 1) {
-                            return 1;
+                        if (n.compareTo(BigInteger.ZERO) <= 0) {
+                            return BigInteger.ZERO;
+                        } else if (n.equals(BigInteger.ONE)) {
+                            return BigInteger.ONE;
                         } else {
-                            return fib(n - 1) + fib(n - 2);
+                            return fib(n.subtract(BigInteger.ONE)).add(fib(n.subtract(BigInteger.TWO)));
                         }
                     }
 
                     static BigInteger sumList(BigInteger n) {
-                        if (n <= 0) {
-                            return 0;
+                        if (n.compareTo(BigInteger.ZERO) <= 0) {
+                            return BigInteger.ZERO;
                         } else {
-                            return n + sumList(n - 1);
+                            return n.add(sumList(n.subtract(BigInteger.ONE)));
                         }
                     }
 
                     static BigInteger callFactorial(BigInteger n) {
-                        return factorial(n) + 1;
+                        return factorial(n).add(BigInteger.ONE);
                     }
                 }
                 """;
@@ -319,16 +324,17 @@ class MethodEvaluatorTest {
     class Conditionals {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class CondTest {
                     static BigInteger abs(BigInteger x) {
-                        if (x < 0) {
-                            return -x;
+                        if (x.compareTo(BigInteger.ZERO) < 0) {
+                            return x.negate();
                         }
                         return x;
                     }
 
                     static BigInteger max(BigInteger a, BigInteger b) {
-                        if (a > b) {
+                        if (a.compareTo(b) > 0) {
                             return a;
                         } else {
                             return b;
@@ -336,9 +342,9 @@ class MethodEvaluatorTest {
                     }
 
                     static BigInteger clamp(BigInteger x, BigInteger lo, BigInteger hi) {
-                        if (x < lo) {
+                        if (x.compareTo(lo) < 0) {
                             return lo;
-                        } else if (x > hi) {
+                        } else if (x.compareTo(hi) > 0) {
                             return hi;
                         } else {
                             return x;
@@ -403,9 +409,10 @@ class MethodEvaluatorTest {
     class NoArgMethods {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class NoArgTest {
                     static BigInteger theAnswer() {
-                        return 42;
+                        return BigInteger.valueOf(42);
                     }
 
                     static boolean alwaysTrue() {
@@ -434,11 +441,13 @@ class MethodEvaluatorTest {
     class RecordConstruction {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 record Point(BigInteger x, BigInteger y) {}
 
                 class RecordTest {
                     static PlutusData makePoint(BigInteger x, BigInteger y) {
-                        return new Point(x, y);
+                        return PlutusData.cast(new Point(x, y), PlutusData.class);
                     }
                 }
                 """;
@@ -463,8 +472,9 @@ class MethodEvaluatorTest {
     class AutoDetection {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class AutoTest {
-                    static BigInteger intResult() { return 42; }
+                    static BigInteger intResult() { return BigInteger.valueOf(42); }
                     static boolean boolResult() { return true; }
                 }
                 """;
@@ -494,8 +504,9 @@ class MethodEvaluatorTest {
         @Test
         void methodNotFound() {
             var source = """
+                    import java.math.BigInteger;
                     class Foo {
-                        static BigInteger bar() { return 1; }
+                        static BigInteger bar() { return BigInteger.ONE; }
                     }
                     """;
             assertThrows(Exception.class, () ->
@@ -505,8 +516,9 @@ class MethodEvaluatorTest {
         @Test
         void extractionTypeMismatch() {
             var source = """
+                    import java.math.BigInteger;
                     class Foo {
-                        static BigInteger getInt() { return 42; }
+                        static BigInteger getInt() { return BigInteger.valueOf(42); }
                     }
                     """;
             assertThrows(TermExtractor.ExtractionException.class, () ->
@@ -522,8 +534,9 @@ class MethodEvaluatorTest {
     class RawEvaluation {
 
         static final String SOURCE = """
+                import java.math.BigInteger;
                 class RawTest {
-                    static BigInteger triple(BigInteger x) { return x * 3; }
+                    static BigInteger triple(BigInteger x) { return x.multiply(BigInteger.valueOf(3)); }
                 }
                 """;
 

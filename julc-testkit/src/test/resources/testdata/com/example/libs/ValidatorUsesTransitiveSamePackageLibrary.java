@@ -1,6 +1,8 @@
 package com.example.libs;
 
 import com.example.libs.A;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 @SpendingValidator
 class ValidatorUsesTransitiveSamePackageLibrary {

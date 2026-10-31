@@ -28,12 +28,19 @@ class RealisticMintingTest {
      * and the policy checks that the tx is signed by that key.
      */
     static final String AUTHORIZED_MINT = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
             @MintingValidator
             class AuthorizedMinting {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                    return ContextsLib.signedBy(txInfo, redeemer);
+                    PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
+                    return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(redeemer));
                 }
             }
             """;
@@ -42,6 +49,9 @@ class RealisticMintingTest {
      * Always-true minting policy (for testing basic flow).
      */
     static final String ALWAYS_TRUE_MINT = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
             @MintingValidator
             class AlwaysTrueMint {
                 @Entrypoint

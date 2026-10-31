@@ -34,6 +34,9 @@ class MapOrderTest {
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcList;
                 import org.julclang.core.types.JulcMap;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
                 @MintingValidator
                 class Ordered {
                     @Entrypoint

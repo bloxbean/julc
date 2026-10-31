@@ -499,8 +499,8 @@ class BlueprintTest {
                     @Entrypoint
                     static boolean validate(Redeemer redeemer, ScriptContext ctx) {
                         byte[] owner = redeemer.owner().get();
-                        return redeemer.values().get(0) == 42
-                                && redeemer.balances().get(owner) == 7
+                        return redeemer.values().get(0).equals(BigInteger.valueOf(42))
+                                && redeemer.balances().get(owner).equals(BigInteger.valueOf(7))
                                 && redeemer.active();
                     }
                 }

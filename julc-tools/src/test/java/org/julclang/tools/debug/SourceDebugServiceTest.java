@@ -24,6 +24,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SourceDebugServiceTest {
     private static final String SOURCE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
             @SpendingValidator
             class SourceDebugExample {
                 @Entrypoint
@@ -36,6 +41,11 @@ class SourceDebugServiceTest {
 
     private static final String PARAMETERIZED = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.Param;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class ParameterizedDebugExample {
@@ -50,6 +60,10 @@ class SourceDebugServiceTest {
 
     private static final String LOCALS = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class LocalsDebugExample {
@@ -62,6 +76,11 @@ class SourceDebugServiceTest {
             """;
 
     private static final String RAW_DATA_LOCAL = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
             @SpendingValidator
             class RawDataLocalsExample {
                 @Entrypoint
@@ -74,6 +93,11 @@ class SourceDebugServiceTest {
 
     private static final String BRANCH_LOCALS = """
             import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
 
             @SpendingValidator
             class BranchLocalsExample {

@@ -23,12 +23,19 @@ import java.util.Arrays;
 class MintingPropertyTest {
 
     static final String MINTING_SOURCE = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.stdlib.lib.ContextsLib;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.ledger.TxInfo;
+            import org.julclang.stdlib.Builtins;
             @SpendingValidator
             class SignedMintPolicy {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                    PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-                    return ContextsLib.signedBy(txInfo, redeemer);
+                    PlutusData txInfo = PlutusData.cast(ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class)), PlutusData.class);
+                    return ContextsLib.signedBy(PlutusData.cast(txInfo, TxInfo.class), Builtins.unBData(redeemer));
                 }
             }
             """;
