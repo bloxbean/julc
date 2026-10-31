@@ -155,7 +155,7 @@ public final class CorpusRecorder {
      * The outermost frame of a test class ({@code Class#method}, a class loaded from a test output directory): the
      * test method itself rather than a helper or lambda it calls. A compilation outside a test is {@code unknown}.
      */
-    static String origin() {
+    public static String origin() {
         Optional<String> frame = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
                 .walk(frames -> frames.filter(f -> isTestClass(f.getDeclaringClass()))
                         .map(f -> f.getDeclaringClass().getName() + "#" + f.getMethodName())

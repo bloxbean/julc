@@ -8,6 +8,8 @@ import com.github.javaparser.ast.body.TypeDeclaration;
 import org.julclang.compiler.backend.*;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.*;
 
@@ -46,6 +48,10 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     sources.stream().map(text -> new CorpusRecorder.Source(text, null)).toList(), lookup,
                     options != null ? options : new CompilerOptions());
         }
+        // ADR-068 M1's javac gate (D8): the supplied units are roots; with none, a metadata-only task over the stubs.
+        if (sources.isEmpty()) JavacGate.metadata(options);
+        else JavacGate.check("JavaLibraryProvider", sources.stream().map(JavacFrontend.Unit::of).toList(), List.of(),
+                options);
         context = CompilationContext.resolve(options);
         this.lookup = lookup;
         contentHash = contentHash(sources);

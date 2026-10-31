@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.vm.OptimizationCostProfile;
 
 import java.util.Collections;
@@ -22,6 +23,7 @@ public class CompilerOptions {
     private OptimizationCostProfile optimizationCostProfile;
     private final Set<String> disabledOptimizationRules = new LinkedHashSet<>();
     private Consumer<String> logger = System.out::println;
+    private JavacGateMode javacGate;
 
     /**
      * Select the ledger target for this compilation.
@@ -108,6 +110,22 @@ public class CompilerOptions {
 
     public boolean isSourceMapEnabled() {
         return sourceMapEnabled;
+    }
+
+    /**
+     * Experimental (ADR-068 M1): how the javac gate acts, which has javac analyze every compilation's sources before
+     * the JavaParser frontend compiles them. {@code null} (the default) defers to the system property
+     * {@code julc.javacGate} ({@code off}, {@code report} or {@code enforce}), and then to {@code report}, which
+     * never fails a compilation.
+     */
+    public CompilerOptions setJavacGate(JavacGateMode javacGate) {
+        this.javacGate = javacGate;
+        return this;
+    }
+
+    /** The javac gate's mode, or {@code null} to use the system property. */
+    public JavacGateMode getJavacGate() {
+        return javacGate;
     }
 
     public CompilerOptions setLogger(Consumer<String> logger) {

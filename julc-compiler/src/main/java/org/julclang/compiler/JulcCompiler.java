@@ -8,6 +8,8 @@ import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
@@ -274,6 +276,8 @@ public class JulcCompiler {
             boolean captureContractSchema,
             CompilationContext context,
             boolean collectDebugMetadata) {
+        javacGate("compile", JavacFrontend.Unit.of(validatorSource),
+                librarySources.stream().map(JavacFrontend.Unit::of).toList(), context);
         // 1. Parse all sources
         context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + librarySources.size(), librarySources.size());
@@ -710,6 +714,21 @@ public class JulcCompiler {
         return new CompilationOutcome(result, contractSchema, completedMetadata);
     }
 
+    /**
+     * ADR-068 M1's javac gate (D3, D5): javac analyzes the root with the libraries on its source path before the
+     * JavaParser frontend runs. In {@code enforce} mode a javac error rejects; in {@code report} mode (the default
+     * until M1's dialect rewrite) it is only recorded. It never changes what is compiled.
+     */
+    private void javacGate(String entry, JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
+                           CompilationContext context) {
+        var result = JavacGate.check(entry, List.of(root), pool, options);
+        if (result != null) {
+            context.logf("javac gate (%s): javac %s, platform %s, stubs %s: %s", JavacGate.mode(options),
+                    result.javacVersion(), result.platformDigest(), result.stubsDigest(),
+                    result.isAccepted() ? "accepted" : result.diagnostics().size() + " rejection(s)");
+        }
+    }
+
     /** Records a string entry point's inputs for the ADR-068 corpus (test-only; see {@link CorpusRecorder}). */
     private void recordCorpus(String entry, String methodName, String source, List<String> librarySources) {
         CorpusRecorder.ACTIVE.record(entry, methodName, new CorpusRecorder.Source(source, null),
@@ -786,11 +805,18 @@ public class JulcCompiler {
             recordCorpusPaths(captureContractSchema ? "compileContractPath" : "compilePath",
                     validatorFile, validatorText, libraryFiles);
         }
+        var libraryTexts = new ArrayList<String>();
+        for (var libFile : libraryFiles) libraryTexts.add(Files.readString(libFile));
+        var pool = new ArrayList<JavacFrontend.Unit>();
+        for (int i = 0; i < libraryFiles.size(); i++) {
+            pool.add(new JavacFrontend.Unit(libraryTexts.get(i), libraryFiles.get(i)));
+        }
+        javacGate(captureContractSchema ? "compileContractPath" : "compilePath",
+                new JavacFrontend.Unit(validatorText, validatorFile), pool, context);
         var validatorCu = parseSource(validatorText, "validator", validatorFile);
         var libraryCus = new ArrayList<CompilationUnit>();
         for (int i = 0; i < libraryFiles.size(); i++) {
-            var libFile = libraryFiles.get(i);
-            libraryCus.add(parseSource(Files.readString(libFile), "library[" + i + "]", libFile));
+            libraryCus.add(parseSource(libraryTexts.get(i), "library[" + i + "]", libraryFiles.get(i)));
         }
 
         return doCompileFromCus(
@@ -879,6 +905,8 @@ public class JulcCompiler {
             List<String> librarySources,
             CompilationContext context) {
         if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources);
+        javacGate("compileMethod", JavacFrontend.Unit.of(javaSource),
+                librarySources.stream().map(JavacFrontend.Unit::of).toList(), context);
         // 1. Parse all sources
         var cu = parseSource(javaSource, "method source");
         var libraryCus = new ArrayList<CompilationUnit>();
