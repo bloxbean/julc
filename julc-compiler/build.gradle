@@ -221,6 +221,7 @@ dependencies {
     javacPlatformImplementation files(sourceSets.main.output.classesDirs)
     javacStubInputs project(':julc-core')
     javacStubInputs project(':julc-ledger-api')
+    testImplementation sourceSets.javacPlatform.output
 }
 
 def javacResources = layout.buildDirectory.dir('generated/javac-resources')
@@ -268,9 +269,11 @@ tasks.register('generateJavacStubs', JavaExec) {
     def stubClasses = tasks.named('compileJavacStubSources').flatMap { it.destinationDirectory }
     inputs.files(configurations.javacStubInputs).withPropertyName('apiJars')
     inputs.dir(stubClasses).withPropertyName('apiClasses')
+    def ledgerSources = rootProject.file('julc-ledger-api/src/main/java')
+    inputs.dir(ledgerSources).withPropertyName('ledgerSources')
     outputs.file(javacStubsBlob)
     argumentProviders.add({
-        ['stubs', javacStubsBlob.get().asFile.path] + configurations.javacStubInputs.files*.path +
+        ['stubs', javacStubsBlob.get().asFile.path, ledgerSources.path] + configurations.javacStubInputs.files*.path +
                 [stubClasses.get().asFile.path]
     } as CommandLineArgumentProvider)
 }

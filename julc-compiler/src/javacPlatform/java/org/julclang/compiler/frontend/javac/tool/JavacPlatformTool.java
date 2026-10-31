@@ -45,7 +45,8 @@ import java.util.zip.ZipFile;
  * Build-time tool for ADR-068 D3's javac environment; it runs on the build JDK (25).
  * <pre>
  *   platform OUT.bin LIST           the java.base blob: the classes in LIST, signature-only, from this JDK's jrt:/
- *   stubs OUT.bin INPUT...          the API stubs: every class of each jar or class directory, signature-only
+ *   stubs OUT.bin LEDGER INPUT...   the API stubs: every class of each jar or class directory, signature-only;
+ *                                   LEDGER is the ledger's source root, for I11's check ({@link StubAttributes})
  *   derive STUBS.bin LIST MODE [--corpus DIR] SOURCES...
  *                                   attribute JuLC's in-repo sources against the whole exported java.base, record
  *                                   the platform classes javac opens, close them under supertypes; MODE "write"
@@ -71,7 +72,8 @@ public final class JavacPlatformTool {
     public static void main(String[] args) throws Exception {
         switch (args[0]) {
             case "platform" -> platform(Path.of(args[1]), Path.of(args[2]));
-            case "stubs" -> stubs(Path.of(args[1]), List.of(args).subList(2, args.length).stream().map(Path::of).toList());
+            case "stubs" -> stubs(Path.of(args[1]), Path.of(args[2]),
+                    List.of(args).subList(3, args.length).stream().map(Path::of).toList());
             case "derive" -> derive(args);
             case "gate-corpus" -> gateCorpus(args);
             default -> throw new IllegalArgumentException("unknown command " + args[0]);
@@ -106,15 +108,22 @@ public final class JavacPlatformTool {
         }), cb -> cb.with(ModulePackagesAttribute.ofNames(descs)));
     }
 
-    static void stubs(Path out, List<Path> inputs) throws IOException {
+    static void stubs(Path out, Path ledgerSources, List<Path> inputs) throws IOException {
+        var originals = new TreeMap<String, byte[]>();
         var entries = new TreeMap<String, byte[]>();
         for (Path input : inputs) {
             for (var e : classFiles(input).entrySet()) {
+                originals.put(e.getKey(), e.getValue());
                 if (entries.put(e.getKey(), strip(e.getValue())) != null) {
                     throw new IllegalStateException("class " + e.getKey() + " is in two stub inputs");
                 }
             }
         }
+        var problems = StubAttributes.check(originals, entries, ledgerSources);
+        if (!problems.isEmpty()) {
+            throw new IllegalStateException("the javac stubs fail ADR-068 I11's check:\n  " + String.join("\n  ", problems));
+        }
+        System.out.println("stubs: I11's attribute and order check passed for " + entries.size() + " classes");
         write(out, entries, "stubs");
     }
 
