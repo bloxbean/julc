@@ -3,10 +3,13 @@
 
     python3 adr/evidence/068/compare-ledgers.py <ref prefix> <new prefix> [--variant <name>=<prefix> ...] > diff.tsv
 
+    [--jvm-label <label>]
+
 A prefix names a ledger's files as Adr068BaselineTest writes them, renamed: <prefix>.tsv, <prefix>-semantic.tsv and
-<prefix>-budget.tsv (for example adr/evidence/068/ledger-b0). A variant is a ledger of the new code with some of its
-changes disabled; a case whose cells differ between the new ledger and a variant is attributed to that variant's name.
-Totals per kind of change go to standard error.
+<prefix>-budget.tsv (for example adr/evidence/068/ledger-b0). A variant is a ledger of the new code with one of its
+changes disabled; a case whose cells differ between the new ledger and a variant is attributed to that variant's label.
+A case whose JVM observation changed is attributed to the --jvm-label (a change to JuLC's off-chain classes). The
+attribution column ends with the case's D13 class, from what differs. Totals per kind of change go to standard error.
 """
 import collections
 import sys
@@ -71,10 +74,31 @@ def run_changes(key, sa, sb, ba, bb):
     return changes
 
 
+def d13_class(kinds, changes):
+    """The D13 class a difference falls in, from what differs (ADR-068 D13)."""
+    observed = [c.rsplit(":", 1)[1] for c in changes if ":" in c]
+    if any(k.startswith("newly rejected") for k in kinds):
+        return "policy rejection"
+    if any(k.startswith("newly accepted") for k in kinds):
+        return "accepted by decision"
+    if any(k.startswith("diagnostic") for k in kinds):
+        return "diagnostic change"
+    if any("uplc" in o or "jvm" in o or "verdict" in o for o in observed):
+        return "semantic fix"
+    if any("budget" in o for o in observed):
+        return "cost change"
+    if "bytes" in kinds:
+        return "semantics not observed"
+    return "provenance change"
+
+
 def main(args):
-    ref, new, variants = args[0], args[1], []
+    ref, new, variants, jvm_label = args[0], args[1], [], None
     for i in range(2, len(args), 2):
-        assert args[i] == "--variant", "usage: <ref prefix> <new prefix> [--variant name=prefix ...]"
+        if args[i] == "--jvm-label":
+            jvm_label = args[i + 1]
+            continue
+        assert args[i] == "--variant", "usage: <ref prefix> <new prefix> [--variant label=prefix ...] [--jvm-label label]"
         name, prefix = args[i + 1].split("=", 1)
         variants.append((name, ledger(prefix)))
     a, b = ledger(ref), ledger(new)
@@ -89,7 +113,7 @@ def main(args):
         if key not in a:
             totals["case added"] += 1
             print("\t".join([key, b[key]["parts"], "added",
-                             " ".join(level + " " + short(c) for level, c in zip(LEVELS, cells(b[key]))), "-", "-", "-"]))
+                             " ".join(level + " " + short(c) for level, c in zip(LEVELS, cells(b[key]))), "-", "new case", "-"]))
             continue
         if key not in b:
             totals["case removed"] += 1
@@ -117,10 +141,13 @@ def main(args):
         if changes and not kinds:
             kinds.add("runs only")
         attribution = [name for name, v in variants if key in v and cells(v[key]) != cb]
+        if jvm_label and any(":" in c and "jvm" in c.rsplit(":", 1)[1] for c in changes):
+            attribution.append(jvm_label)
+        attribution.append(d13_class(kinds, changes))
         change = ",".join(sorted(kinds))
         totals[change] += 1
         levels = " ".join(level + " " + short(x) + ">" + short(y) for level, x, y in zip(LEVELS, ca, cb) if x != y)
-        print("\t".join([key, b[key]["parts"], change, levels or "-", srcmap, ",".join(attribution) or "-",
+        print("\t".join([key, b[key]["parts"], change, levels or "-", srcmap, "; ".join(attribution),
                          ";".join(changes) or "-"]))
     for kind, n in sorted(totals.items()):
         print("total\t" + kind + "\t" + str(n), file=sys.stderr)
