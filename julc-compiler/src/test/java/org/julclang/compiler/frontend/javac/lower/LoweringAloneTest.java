@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
@@ -12,6 +13,8 @@ import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -107,6 +110,27 @@ class LoweringAloneTest {
                 assertEquals("NEW_ARRAY", assertThrows(NotPorted.class, lowered::term).construct()));
         withMethod("class P { static byte[] m(boolean b) { return b ? null : new byte[]{1}; } }", new CompilerOptions(), (facts, lowered) ->
                 assertEquals("CONDITIONAL_EXPRESSION", assertThrows(NotPorted.class, lowered::term).construct()));
+    }
+
+    /** A field's initializer, where a type the subset rejects has not stopped the lowering first. */
+    @ParameterizedTest
+    @ValueSource(strings = {"long[] f = new long[]{1};", "byte[] f = {1};", "byte[][] f = new byte[][]{};"})
+    void anInitializerThatIsNotALiteralByteArrayIsNotPorted(String field) {
+        var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of("class P { static " + field + " }")), List.of());
+        program.read(facts -> {
+            var initializers = new ArrayList<ExpressionTree>();
+            new TreeScanner<Void, Void>() {
+                @Override
+                public Void visitVariable(VariableTree tree, Void unused) {
+                    if (tree.getName().contentEquals("f")) initializers.add(tree.getInitializer());
+                    return null;
+                }
+            }.scan(program.roots().getFirst(), null);
+            var lowering = new Lowering(facts, CompilationContext.pv11Defaults());
+            assertEquals("NEW_ARRAY", assertThrows(NotPorted.class,
+                    () -> lowering.initializer(initializers.getFirst(), Scope.empty())).construct());
+            return null;
+        });
     }
 
     @Test

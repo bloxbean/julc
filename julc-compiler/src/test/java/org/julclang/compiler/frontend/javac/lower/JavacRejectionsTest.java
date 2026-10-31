@@ -150,6 +150,23 @@ class JavacRejectionsTest {
         assertTrue(e.diagnostics().getFirst().message().contains("Return value"), e.getMessage());
     }
 
+    /** {@code compileMethod} decodes its target's arguments from Data, so a native type cannot be one, at any depth. */
+    @ParameterizedTest
+    @ValueSource(strings = {"JulcValue v", "JulcList<JulcG1> xs", "long a, Optional<JulcValue> v"})
+    void aNativeTypeAtTheCompiledMethodsBoundary(String parameters) {
+        String source = """
+                import java.util.Optional;
+                import org.julclang.core.types.*;
+                class P {
+                    static long m(%s) { return 1; }
+                }
+                """.formatted(parameters);
+        assertSameMethodRejectionAsReference(source, "m");
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null,
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+        assertEquals(DiagnosticCodes.NATIVE_TYPE_AT_DATA_BOUNDARY.code(), e.diagnostics().getFirst().code(), e.getMessage());
+    }
+
     @Test
     void anUnpairedSurrogateHasACodeHere() {
         String source = "class P {\n    static String m() { return \"\\uD800\"; }\n}\n";
