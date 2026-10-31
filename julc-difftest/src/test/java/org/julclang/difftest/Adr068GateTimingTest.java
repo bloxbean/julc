@@ -2,6 +2,7 @@ package org.julclang.difftest;
 
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.LedgerTypeProvider;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
@@ -131,6 +132,21 @@ class Adr068GateTimingTest {
                         mode, i, String.join(" ", times)));
             }
         }
+        // F402: the empty provider's metadata-only task, first use in a fresh JVM (LedgerTypeProvider).
+        for (String mode : List.of("off", "report")) {
+            var times = new ArrayList<String>();
+            for (int run = 0; run < 3; run++) {
+                var command = List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                        "-cp", System.getProperty("java.class.path"), "-Djulc.javacGate=" + mode,
+                        ColdProbe.class.getName(), "metadata");
+                var process = new ProcessBuilder(command).redirectErrorStream(true).start();
+                String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+                assertEquals(0, process.waitFor(), output);
+                times.add(output.substring(output.lastIndexOf('\n') + 1));
+            }
+            report.append(String.format(Locale.ROOT, "cold (fresh JVM) new LedgerTypeProvider(), gate %s: %s%n", mode,
+                    String.join(" ", times)));
+        }
         Files.createDirectories(out);
         Files.writeString(out.resolve("gate-timing.txt"), report.toString());
         System.out.print(report);
@@ -139,6 +155,12 @@ class Adr068GateTimingTest {
     /** One compilation in a fresh JVM; prints its milliseconds. */
     public static final class ColdProbe {
         public static void main(String[] args) throws Exception {
+            if (args[0].equals("metadata")) {
+                long t0 = System.nanoTime();
+                new LedgerTypeProvider().types();
+                System.out.printf(Locale.ROOT, "%.0f%n", (System.nanoTime() - t0) / 1e6);
+                return;
+            }
             var libraries = new ArrayList<String>();
             for (int i = 3; i < args.length; i++) libraries.add(Files.readString(Path.of(args[i])));
             var s = new Sample(args[0], args[1], Files.readString(Path.of(args[2])), libraries);
