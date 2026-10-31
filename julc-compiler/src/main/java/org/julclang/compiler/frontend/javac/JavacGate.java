@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * ADR-068 M1's javac gate: before the JavaParser frontend lowers anything, every {@code JulcCompiler} entry point
@@ -108,6 +109,19 @@ public final class JavacGate {
         return new JavacResult(List.of(JavacDiagnostic.of(DiagnosticCodes.JAVAC_UNSUPPORTED, null,
                 DiagnosticCodes.JAVAC_UNSUPPORTED.format(version, "this runtime has no Java compiler (" + e + ")"),
                 null, 0, 0, -1, -1, null)), version, null, null);
+    }
+
+    /**
+     * {@code frontend}'s result on the javac frontend. A runtime whose compiler API cannot link is {@code JULC0089}
+     * there too (I6); {@code frontend} runs only after this class has loaded without that API.
+     */
+    public static <T> T onJavacFrontend(Supplier<T> frontend) {
+        try {
+            return frontend.get();
+        } catch (LinkageError e) {
+            if (!isMissingCompiler(e)) throw e;
+            throw new CompilerException(noCompiler(e).compilerDiagnostics());
+        }
     }
 
     private static volatile JavacMetadata metadata;

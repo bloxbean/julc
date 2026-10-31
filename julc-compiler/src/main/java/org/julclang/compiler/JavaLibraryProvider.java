@@ -60,7 +60,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
         contentHash = contentHash(sources);
         // ADR-068 D7, D8: javac reads the units and the stubs; nothing reaches the JavaParser frontend (I8).
         if (context.frontend() == CompilerFrontend.JAVAC) {
-            var described = JavacLibraryTypes.describe(sources);
+            var described = JavacGate.onJavacFrontend(() -> JavacLibraryTypes.describe(sources));
             types = described.types();
             definitions = described.definitions();
             unportedSources = !sources.isEmpty();

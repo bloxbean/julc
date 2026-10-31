@@ -19,6 +19,7 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -128,7 +129,7 @@ public final class JavacLibraryTypes {
                     List.of(new LibraryType.Field("hash", ref("Bytes")))));
         }
         LibraryTypeDescriptions.deriveOperations(types, special, registry.namedDefinitions());
-        return new Described(java.util.Collections.unmodifiableMap(types), Map.copyOf(registry.namedDefinitions()));
+        return new Described(Collections.unmodifiableMap(types), Map.copyOf(registry.namedDefinitions()));
     }
 
     /**

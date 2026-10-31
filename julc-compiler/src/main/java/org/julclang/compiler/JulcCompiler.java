@@ -131,7 +131,7 @@ public class JulcCompiler {
      * javac's rejection, a rejected type or {@code JULC0084}. It never reaches the JavaParser frontend (I8).
      */
     private static CompilerException javacFrontend(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool) {
-        return JavacProgram.analyze(List.of(root), pool).notPorted();
+        return JavacGate.onJavacFrontend(() -> JavacProgram.analyze(List.of(root), pool).notPorted());
     }
 
     private CompilationContext beginCompilation() {

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
@@ -90,14 +91,14 @@ final class StubAttributes {
         compareElement(path, "", original, stub, problems);
         var recordOriginal = original.findAttribute(Attributes.record()).map(a -> components(a.components())).orElse(null);
         var recordStub = stub.findAttribute(Attributes.record()).map(a -> components(a.components())).orElse(null);
-        if (!java.util.Objects.equals(recordOriginal, recordStub)) {
+        if (!Objects.equals(recordOriginal, recordStub)) {
             problems.add(path + ": Record is " + recordStub + ", expected " + recordOriginal);
         }
         var permittedOriginal = original.findAttribute(Attributes.permittedSubclasses())
                 .map(a -> a.permittedSubclasses().stream().map(c -> c.asInternalName()).toList()).orElse(null);
         var permittedStub = stub.findAttribute(Attributes.permittedSubclasses())
                 .map(a -> a.permittedSubclasses().stream().map(c -> c.asInternalName()).toList()).orElse(null);
-        if (!java.util.Objects.equals(permittedOriginal, permittedStub)) {
+        if (!Objects.equals(permittedOriginal, permittedStub)) {
             problems.add(path + ": PermittedSubclasses is " + permittedStub + ", expected " + permittedOriginal);
         }
         var stubFields = new LinkedHashMap<String, FieldModel>();
@@ -121,7 +122,7 @@ final class StubAttributes {
     private static void compareElement(String path, String where, AttributedElement original, AttributedElement stub,
                                        List<String> problems) {
         var signature = signature(original);
-        if (!java.util.Objects.equals(signature, signature(stub))) {
+        if (!Objects.equals(signature, signature(stub))) {
             problems.add(path + where + ": Signature is " + signature(stub) + ", expected " + signature);
         }
         var annotations = annotations(original);

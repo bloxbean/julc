@@ -9,6 +9,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaLibraryProvider;
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LedgerTypeProvider;
 import org.julclang.compiler.backend.LibraryType;
@@ -19,6 +20,7 @@ import org.julclang.compiler.resolve.TypeRegistrar;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -31,6 +33,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -112,7 +116,7 @@ class JavacTypesTest {
             assertEquals(List.of("inner"), value.fields().stream().map(PirType.Field::name).toList());
             var described = new LedgerTypeProvider(new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                     .types().get("org.julclang.ledger.Value");
-            assertEquals(java.util.Set.of(), described.operations(), "a map-encoded record has no constructor operations");
+            assertEquals(Set.of(), described.operations(), "a map-encoded record has no constructor operations");
         }
     }
 
@@ -386,6 +390,39 @@ class JavacTypesTest {
                     || rejected("record R(" + component + " v) {} class P {}").diagnostics().getFirst().message().contains(message));
         }
 
+        /** I7: a column is a character offset, whatever the tabs before it. */
+        @Test
+        void aComponentsColumnIsACharacterOffset() {
+            var diagnostic = assertThrows(CompilerException.class, () -> read("""
+                    import java.math.BigInteger;
+                    import org.julclang.core.types.JulcArray;
+                    class P {
+                    \trecord R(JulcArray<BigInteger> arr) {}
+                    }
+                    """)).diagnostics().getFirst();
+            assertEquals(4, diagnostic.line());
+            assertEquals(11, diagnostic.column(), "one tab, 'record R(', then the type");
+        }
+
+        /** The subset does not widen: the source path rejects {@code byte...}, and {@code byte[]} is not the same call. */
+        @Test
+        void byteVarargsAreRejectedAsTheSourcePathRejectsThem() {
+            assertTrue(rejected("record R(byte... v) {} class P {}").diagnostics().getFirst().message()
+                    .contains("Unsupported primitive type: byte"));
+        }
+
+        /** Java's type is an array, which the source path misreads as one integer: rejected, not misread. */
+        @Test
+        void anyOtherVarargsComponentIsAnArray() {
+            String source = HEADER + "record R(BigInteger... v) {} class P {}";
+            assertTrue(assertThrows(CompilerException.class, () -> read(source)).diagnostics().getFirst().message()
+                    .contains("Arrays are not supported except byte[]"));
+            var reference = new TypeResolver();
+            new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), reference);
+            new TypeRegistrar().registerAll(List.of(JavaSourceParser.parseCompilationUnit(source)), reference);
+            assertEquals(List.of(field("v", INTEGER)), reference.registry().records().get("R").fields());
+        }
+
         @Test
         void aGenericComponentIsRejected() {
             assertTrue(rejected("record R<T>(T v) {} class P {}").diagnostics().getFirst().message().contains("Unknown type: T"));
@@ -425,7 +462,7 @@ class JavacTypesTest {
                     record B(Optional<A> a) {}
                     class P {}
                     """;
-            var cu = org.julclang.compiler.JavaSourceParser.parseCompilationUnit(source);
+            var cu = JavaSourceParser.parseCompilationUnit(source);
             var reference = new TypeResolver();
             new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), reference);
             new TypeRegistrar().registerAll(List.of(cu), reference);
@@ -463,7 +500,7 @@ class JavacTypesTest {
             assertEquals(CompilerFrontend.JAVAPARSER, new CompilerOptions().getFrontend());
         }
 
-        private static void assertNotPorted(org.junit.jupiter.api.function.Executable compile) {
+        private static void assertNotPorted(Executable compile) {
             var e = assertThrows(CompilerException.class, compile);
             var diagnostic = e.diagnostics().getFirst();
             assertEquals(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code(), diagnostic.code(), e.getMessage());
@@ -587,7 +624,7 @@ class JavacTypesTest {
         @Test
         void whatNeedsLoweringIsNotPorted() {
             var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
-            for (org.junit.jupiter.api.function.Executable call : List.<org.junit.jupiter.api.function.Executable>of(
+            for (Executable call : List.<Executable>of(
                     () -> javac.describe("lib.L"), () -> javac.schemes("lib.L"), javac::unsupportedExports,
                     () -> javac.materialize("lib.L.x"), () -> javac.materialize(List.of()))) {
                 var e = assertThrows(CompilerException.class, call);
@@ -599,7 +636,7 @@ class JavacTypesTest {
         void anEmptyProviderHasNoExports() {
             var javac = new JavaLibraryProvider(List.of(), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
             assertEquals(List.of(), javac.describe("lib.L"));
-            assertEquals(java.util.Map.of(), javac.unsupportedExports());
+            assertEquals(Map.of(), javac.unsupportedExports());
         }
 
         @Test

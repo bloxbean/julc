@@ -121,6 +121,28 @@ class JavacGateEnvironmentTest {
         }
     }
 
+    /** I6: the javac frontend on a runtime without the compiler API is JULC0089, at every door. */
+    @Test
+    void aLoaderWithoutTheCompilerApiIsJulc0089OnTheJavacFrontend() throws Exception {
+        try (var loader = withoutCompilerApi()) {
+            Class<?> frontends = loader.loadClass("org.julclang.compiler.CompilerFrontend");
+            Class<?> optionsClass = loader.loadClass("org.julclang.compiler.CompilerOptions");
+            Class<?> lookup = loader.loadClass("org.julclang.compiler.pir.StdlibLookup");
+            Object options = optionsClass.getConstructor().newInstance();
+            optionsClass.getMethod("setFrontend", frontends).invoke(options, Enum.valueOf(cast(frontends), "JAVAC"));
+            Class<?> compilerClass = loader.loadClass("org.julclang.compiler.JulcCompiler");
+            Object compiler = compilerClass.getConstructor(lookup, optionsClass).newInstance(null, options);
+            var compile = assertThrows(InvocationTargetException.class, () -> compilerClass
+                    .getMethod("compileMethod", String.class, String.class, List.class)
+                    .invoke(compiler, "class A { static int m() { return 1; } }", "m", List.of()));
+            assertEquals("JULC0089", codeOf(compile.getCause().getClass().getMethod("diagnostics").invoke(compile.getCause())));
+            Class<?> providerClass = loader.loadClass("org.julclang.compiler.JavaLibraryProvider");
+            var provider = assertThrows(InvocationTargetException.class, () -> providerClass
+                    .getConstructor(List.class, lookup, optionsClass).newInstance(List.of(), null, options));
+            assertEquals("JULC0089", codeOf(provider.getCause().getClass().getMethod("diagnostics").invoke(provider.getCause())));
+        }
+    }
+
     /** F530: without a javac, readJars fails with JULC0089 when enforced, and keeps B0's path check otherwise. */
     @Test
     void readJarsWithoutJavacFailsWhenEnforcedAndChecksPathsOtherwise(@TempDir Path dir) throws Exception {

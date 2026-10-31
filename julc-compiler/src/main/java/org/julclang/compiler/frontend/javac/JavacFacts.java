@@ -12,6 +12,7 @@ import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
+import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
@@ -98,18 +99,16 @@ public final class JavacFacts {
     }
 
     /**
-     * A type's identity: its qualified name, the key of every registry. A local type has none in Java, so it is its
-     * enclosing type's identity and its simple name, as the source path names it.
+     * A type's identity: its qualified name, the key of every registry. A local type has none in Java, so it, and a
+     * type nested in it, is its enclosing type's identity and its simple name, as the source path names it.
      */
     public static String identity(TypeElement type) {
-        String qualified = type.getQualifiedName().toString();
-        if (!qualified.isEmpty()) return qualified;
+        if (type.getNestingKind() == NestingKind.TOP_LEVEL) return type.getQualifiedName().toString();
         Element enclosing = type.getEnclosingElement();
-        while (enclosing != null && (!(enclosing instanceof TypeElement) || enclosing.getSimpleName().isEmpty())) {
+        while (!(enclosing instanceof TypeElement) || enclosing.getSimpleName().isEmpty()) {
             enclosing = enclosing.getEnclosingElement();
         }
-        String simple = type.getSimpleName().toString();
-        return enclosing == null ? simple : identity((TypeElement) enclosing) + "." + simple;
+        return identity((TypeElement) enclosing) + "." + type.getSimpleName();
     }
 
     /**

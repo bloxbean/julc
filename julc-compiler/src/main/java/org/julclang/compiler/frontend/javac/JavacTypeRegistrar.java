@@ -208,6 +208,7 @@ final class JavacTypeRegistrar {
             registry.registerNewType(name, identity, underlying);
             return;
         }
+        requireNoByteVarargs(element, components);
         var fields = new ArrayList<PirType.Field>();
         for (int i = 0; i < components.size(); i++) {
             String component = components.get(i).getSimpleName().toString();
@@ -221,6 +222,20 @@ final class JavacTypeRegistrar {
             fields.add(new PirType.Field(component, type));
         }
         registry.registerRecord(name, identity, fields);
+    }
+
+    /**
+     * {@code byte...}: javac's type is {@code byte[]}, but a varargs constructor is not a {@code byte[]} component, and
+     * the source path rejects it as a {@code byte}. The subset does not widen (I2). Any other varargs component is an
+     * array, which is rejected as one.
+     */
+    private static void requireNoByteVarargs(TypeElement record, List<? extends RecordComponentElement> components) {
+        boolean varargs = ElementFilter.constructorsIn(record.getEnclosedElements()).stream()
+                .anyMatch(constructor -> constructor.isVarArgs() && constructor.getParameters().size() == components.size());
+        if (varargs && components.getLast().asType() instanceof ArrayType array
+                && array.getComponentType().getKind() == TypeKind.BYTE) {
+            throw new CompilerException("Unsupported primitive type: byte. Supported types: boolean, int, long");
+        }
     }
 
     /** {@code byte[]}, {@code BigInteger}, {@code String} or {@code boolean}, by identity; otherwise null. */
