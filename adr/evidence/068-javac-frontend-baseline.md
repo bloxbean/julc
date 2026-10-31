@@ -262,3 +262,8 @@ passes the five modules' tests (3,320 tests, 0 failures).
 - Two things made early runs differ and are now removed from what is digested: JavaParser appends its own stack
   trace to a parse problem (cut at `Problem stacktrace`), and a PIR term's `toString` prints `byte[]` identities
   (library cases are digested through `PirFormatter`, and an identity hash in a description fails the run).
+- **Revised at M1c:** a third, a JVM `ClassCastException` message naming its class loader with an identity hash
+  (`reject-guard-reference-cast`), made the semantic file depend on allocation order. The ledger tool now drops
+  `@<hex>` from failure details, and `ledger-b0-semantic.tsv` is regenerated at B0's code with that change: one
+  cell differs from the M0 file, and two runs agree (see
+  [`068-m1c-reference-b1.md`](068-m1c-reference-b1.md#ledger-determinism)).

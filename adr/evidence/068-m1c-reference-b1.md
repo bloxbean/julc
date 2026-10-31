@@ -28,7 +28,8 @@ python3 adr/evidence/068/compare-ledgers.py adr/evidence/068/ledger-b0 adr/evide
 ```
 
 The equality scan and the accepted-divergence list are not regenerated: D4's list is frozen at M0, and nothing M1c
-changes is read by the scan. Two B1 runs (14 compile threads, and one) give identical files except one cell, below.
+changes is read by the scan. Two runs each of B0 and B1 (14 compile threads, and one) give identical files, once the
+ledger tool drops identity hashes from failure details (below).
 
 ## Totals
 
@@ -47,7 +48,7 @@ On the frozen 10,960 cases no case enters or leaves the accepted set. The verdic
 ## The B0 → B1 differences, classified (D13)
 
 [`068/ledger-b0-b1-diff.tsv`](068/ledger-b0-b1-diff.tsv) lists every differing case, with its changed levels (FLAT
-sizes, or rejection codes), whether its source-map digest changed, and its changed runs. 7,317 of the 10,960 frozen
+sizes, or rejection codes), whether its source-map digest changed, and its changed runs. 7,316 of the 10,960 frozen
 cases differ:
 
 | Rows | What differs | Cause | D13 class |
@@ -57,7 +58,6 @@ cases differ:
 | 6,845 | bytes (6,840 recorded, 2 Blaster fixtures, 3 stdlib providers) | the `compareTo` rule | Reference change; representation and cost, every FLAT size smaller |
 | 1 | diagnostic: uncoded strict-boundary error → `JULC0091` | `List<JulcArray<BigInteger>>` redeemer (`StrictDataBoundaryTest`) | Reference change (D4 exception 2); diagnostic change, an uncoded rejection gaining a code |
 | 1 | the JVM observation and verdict of `diverge-t10-map-byte-array-key` | `JulcAssocMap` finds an equal `byte[]` key | julc-core off-chain change (D6); semantic fix, JVM side |
-| 1 | the JVM failure detail of `reject-guard-reference-cast` | not M1c: the `ClassCastException` message carries the class loader's identity hash, which differs between runs | none (ledger nondeterminism, below) |
 
 Of the byte changes, 6,149 also change the source-map digest (the comparison's terms change: provenance follows
 the bytes). Levels: 6,441 cases change at every level, 865 only at `NONE` (stdlib methods a program does not call
@@ -74,8 +74,8 @@ Two variant ledgers of the B1 code, each with a temporary, uncommitted switch, o
 
 | Variant | Disabled | Result |
 |---|---|---|
-| V0 | the `compareTo` rule, the operand order of `>`/`>=`, and `JULC0091` (julc-core's change stays) | equal to B0 on all 10,960 frozen cases, except T10's JVM observation and the reference-cast detail |
-| V295 | the operand order of `>`/`>=` only | equal to B1 on all 10,960 frozen cases (the reference-cast detail aside); only the two new #295 pins differ |
+| V0 | the `compareTo` rule, the operand order of `>`/`>=`, and `JULC0091` (julc-core's change stays) | equal to B0 on all 10,960 frozen cases, except T10's JVM observation |
+| V295 | the operand order of `>`/`>=` only | equal to B1 on all 10,960 frozen cases; only the two new #295 pins differ |
 
 So every byte change is the `compareTo` rule; #295's binding changes no frozen case (no corpus program compares two
 non-trivial operands with `>` or `>=`); `JULC0091` changes one diagnostic and rejects no case B0 accepted. The
@@ -91,13 +91,15 @@ switch was:
 +        if (OFF.contains("298")) return;
 ```
 
-### Ledger nondeterminism (not M1c)
+### Ledger determinism
 
 `reject-guard-reference-cast`'s JVM observation is a `ClassCastException` whose message names the class loader with
-its identity hash (`java.net.URLClassLoader @5149f008`). The ledger digests that detail, so the cell changes with the
-order of the JVM's allocations: M0's two runs happened to agree, and B1's two runs (14 threads and one) do not.
-`Adr068Ledger.observation` should drop `@<hex>` from failure details; the case is a `REJECT JULC0072` pin whose
-verdict does not change.
+its identity hash (`java.net.URLClassLoader @5149f008`). The ledger digested that detail, so the cell changed with the
+order of the JVM's allocations: M0's two runs happened to agree, and B1's first two runs did not.
+`Adr068Ledger.observation` now drops `@<hex>` from failure and crash details, and the B0 and B1 semantic files are
+regenerated with it (B0 at its own code, `42e7bd51`, with only that change to the tool). The regeneration changes
+exactly that cell in each, to the same digest; every other B0 file is byte-identical to M0's. The variant ledgers
+above were generated before the change and differ from B0 and B1 in that cell only.
 
 ## Pins
 
@@ -133,9 +135,12 @@ dialect 80/72 bytes (`NONE`/`PV11_SAFE`) at B0 and 85/77 at B1; the `compareTo` 
 ## Outside the ledger
 
 - **Blaster.** Two exact-artifact fixtures (`state-thread`, `state-thread-broken`, `redeemer.nextState().compareTo(…)
-  > 0`) change bytes at `BASELINE` (760 → 733 and 496 → 469). Their artifact lock, counterexample bindings and manifest
-  hash must be refreshed and the proofs re-run (`verification/blaster/scripts/prepare-artifacts.sh --update-lock`,
-  then `verify.sh`) before the Blaster workflow passes; not done in M1c.
+  > 0`) change bytes at `BASELINE` (760 → 733 and 496 → 469). `73cce2ff` refreshes them with
+  `prepare-artifacts.sh --update-lock`: lock SHA-256 `eb6988d5…e4e1b1` → `e283424b…a4ebb1`; `state-thread`
+  compiled code `0c60951d…` → `39e1bb17…` (script hash `8a329573…` → `e6f7580a…`); `state-thread-broken`
+  `b05c728d…` → `5b96f1de…` (script hash `e794a51b…` → `c0c52b8c…`), rebound in its counterexample. `verify.sh`
+  reports `ESTABLISHED` and `julc verify run verification/blaster --backend local` reports `SMT-VALID:
+  all-properties-established`.
 - **Byte goldens in tests** that moved with the rule, each checked by disabling the rule locally (the old values
   return): the ADR-060 byte snapshot (789 rows of 149 programs, now in its explained list), a loop-hygiene hash
   pair in `LoopBreakContinuationTest`, and the library-discovery golden (`MathLib.abs`). The decompiler's

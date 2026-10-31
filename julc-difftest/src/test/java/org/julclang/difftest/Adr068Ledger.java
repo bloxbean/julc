@@ -362,15 +362,26 @@ final class Adr068Ledger {
         return runs;
     }
 
+    /** An object's identity hash, as a JVM exception message prints it ({@code loader java.net.URLClassLoader @5149f008}). */
+    private static final Pattern DETAIL_IDENTITY_HASH = Pattern.compile("@[0-9a-f]{4,}\\b");
+
+    /**
+     * A failure detail without identity hashes: a {@code ClassCastException} names its class loader with one, which
+     * changes with the order of the JVM's allocations, so the digest would differ between runs.
+     */
+    static String withoutIdentityHashes(String detail) {
+        return detail == null ? null : DETAIL_IDENTITY_HASH.matcher(detail).replaceAll("@");
+    }
+
     /** {@code kind:value:traces:detail}, each a short digest ({@code -} when absent). */
     static String observation(Observation o) {
         return switch (o) {
             case Observation.Value v -> "Value:" + short16(HexFormat.of().formatHex(PlutusDataCborEncoder.encode(v.data())))
                     + ":" + v.traces().size() + "/" + short16(String.join("\n", v.traces())) + ":-";
             case Observation.Failure f -> "Failure:-:" + f.traces().size() + "/" + short16(String.join("\n", f.traces()))
-                    + ":" + short16(f.detail() == null ? "" : f.detail());
+                    + ":" + short16(withoutIdentityHashes(f.detail() == null ? "" : f.detail()));
             case Observation.Rejected r -> "Rejected:" + (r.code() == null ? "none" : r.code()) + ":-:" + short16(r.message());
-            case Observation.Crash c -> "Crash:-:-:" + short16(c.detail());
+            case Observation.Crash c -> "Crash:-:-:" + short16(withoutIdentityHashes(c.detail()));
             case Observation.Inconclusive i -> "Inconclusive:-:-:" + short16(i.reason());
         };
     }
