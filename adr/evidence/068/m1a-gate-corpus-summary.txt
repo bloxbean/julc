@@ -1,0 +1,51 @@
+ADR-068 M1 javac gate over corpus (M0 recording at 42e7bd51, 11,196 case keys)
+javac 25.0.2+12-LTS; platform 8e5e498ecf0f9aeefd36284cf89629ee0ac9ec39ab9cc80ff26226866d9dc53f (69 classes); stubs 37b9434d1f0708ccbc2ff03e190f5778ada0e95c67c1fdf7ae88080872616050 (251 classes)
+cases: 11196; rejected: 6385 (distinct root sources: 5929)
+diagnostics differing from the whole exported java.base: 0
+
+javac key (or JuLC code)                                        cases    roots  diagnostics
+JULC0081                                                            1        1            2
+compiler.err.already.defined                                       18       18           18
+compiler.err.annotation.missing.default.value                       1        1            1
+compiler.err.cannot.assign.not.declared.guard                       1        1            1
+compiler.err.cant.apply.symbol                                      3        3            3
+compiler.err.cant.apply.symbols                                     9        9            9
+compiler.err.cant.assign.val.to.var                                 1        1            1
+compiler.err.cant.deref                                            18       18           18
+compiler.err.cant.infer.local.var.type                              6        6            7
+compiler.err.cant.inherit.from.sealed                               2        2            4
+compiler.err.cant.ref.non.effectively.final.var                    10       10           10
+compiler.err.cant.resolve                                        3002     2649         3026
+compiler.err.cant.resolve.location                               3658     3277        27375
+compiler.err.cant.resolve.location.args                          1401     1391         1442
+compiler.err.doesnt.exist                                          43       41           49
+compiler.err.duplicate.class                                        1        1            1
+compiler.err.duplicate.default.label                              143      143          163
+compiler.err.duplicate.unconditional.pattern                        3        3            3
+compiler.err.feature.not.supported.in.source.plural                 2        2            2
+compiler.err.flows.through.from.pattern                             4        4            4
+compiler.err.flows.through.to.pattern                               3        3            3
+compiler.err.foreach.not.applicable.to.type                        10        6           22
+compiler.err.guard.has.constant.expression.false                   44       43           44
+compiler.err.illegal.char                                           1        1            1
+compiler.err.illegal.digit.in.octal.literal                         4        4            4
+compiler.err.illegal.esc.char                                       6        6            6
+compiler.err.illegal.text.block.open                                1        1            1
+compiler.err.illegal.unicode.esc                                    6        6            6
+compiler.err.incomparable.types                                     6        6            6
+compiler.err.int.number.too.large                                  27       27           27
+compiler.err.match.binding.exists                                   6        6            6
+compiler.err.non-static.cant.be.ref                              2220     2211         3905
+compiler.err.not.def.public.cant.access                             3        3           11
+compiler.err.not.exhaustive                                       140      140          140
+compiler.err.not.stmt                                               1        1            1
+compiler.err.operator.cant.be.applied.1                           285      257          556
+compiler.err.pattern.dominated                                    718      718          978
+compiler.err.premature.eof                                          5        5            5
+compiler.err.prob.found.req                                      1706     1633         1950
+compiler.err.rule.completes.normally                                4        4            4
+compiler.err.switch.expression.completes.normally                   2        2            2
+compiler.err.switch.mixing.case.types                               6        6            6
+compiler.err.unclosed.str.lit                                       5        5            7
+compiler.err.undef.label                                            7        7            7
+compiler.err.unreachable.stmt                                       2        1            2
