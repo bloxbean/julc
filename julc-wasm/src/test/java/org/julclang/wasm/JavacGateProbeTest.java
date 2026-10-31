@@ -11,7 +11,7 @@ class JavacGateProbeTest {
     void probeAcceptsJavaAndRejectsDialect() throws Exception {
         var lines = JavacGateProbe.run();
         assertEquals(4, lines.size(), lines.toString());
-        assertTrue(lines.get(0).startsWith("environment supported=true platform=8e5e498e"), lines.get(0));
+        assertTrue(lines.get(0).startsWith("environment supported=true platform=c45dd2df"), lines.get(0));
         assertTrue(lines.get(1).startsWith("accepted FeeGate "), lines.get(1));
         assertTrue(lines.get(2).startsWith("accepted OwnerGate "), lines.get(2));
         assertTrue(lines.get(3).startsWith("rejected JULC0085 FeeGate.java:13:"), lines.get(3));

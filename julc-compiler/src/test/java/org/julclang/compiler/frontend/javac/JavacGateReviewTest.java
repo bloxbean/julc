@@ -518,7 +518,7 @@ class JavacGateReviewTest {
         assertTrue(env.supported());
         assertEquals(Runtime.version().toString(), env.javacVersion());
         assertEquals(JavacPlatform.shared().platformDigest(), env.platformDigest());
-        assertEquals("8e5e498ecf0f9aeefd36284cf89629ee0ac9ec39ab9cc80ff26226866d9dc53f", env.platformDigest());
+        assertEquals("c45dd2df24a5f1bd71cded55ab36bc425d13e4edc284b2f983c88acd5075cf0e", env.platformDigest());
         assertEquals(JavacPlatform.shared().stubsDigest(), env.stubsDigest());
     }
 
