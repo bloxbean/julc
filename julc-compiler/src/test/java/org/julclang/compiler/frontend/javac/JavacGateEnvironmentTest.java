@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.InputStream;
@@ -64,12 +65,11 @@ class JavacGateEnvironmentTest {
         assertTrue(e.getMessage().contains("lists no bundled source"), e.getMessage());
     }
 
-    /** Boundary: a loader that denies the compiler API gives JULC0089, in report mode without an exception. */
-    @Test
-    void aLoaderWithoutTheCompilerApiIsJulc0089() throws Exception {
+    /** A loader over this test's class path that loads JuLC itself and denies the compiler API. */
+    static URLClassLoader withoutCompilerApi() throws Exception {
         var urls = new ArrayList<URL>();
         for (String entry : classPath()) urls.add(Path.of(entry).toUri().toURL());
-        try (var loader = new URLClassLoader(urls.toArray(URL[]::new), ClassLoader.getPlatformClassLoader()) {
+        return new URLClassLoader(urls.toArray(URL[]::new), ClassLoader.getPlatformClassLoader()) {
             @Override
             protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
                 if (name.startsWith("javax.tools.") || name.startsWith("com.sun.source.")
@@ -89,7 +89,13 @@ class JavacGateEnvironmentTest {
                     return c != null ? c : super.loadClass(name, resolve);
                 }
             }
-        }) {
+        };
+    }
+
+    /** Boundary: a loader that denies the compiler API gives JULC0089, in report mode without an exception. */
+    @Test
+    void aLoaderWithoutTheCompilerApiIsJulc0089() throws Exception {
+        try (var loader = withoutCompilerApi()) {
             Class<?> modes = loader.loadClass(JavacGateMode.class.getName());
             Class<?> optionsClass = loader.loadClass("org.julclang.compiler.CompilerOptions");
             Class<?> unit = loader.loadClass(JavacFrontend.Unit.class.getName());
@@ -112,6 +118,33 @@ class JavacGateEnvironmentTest {
                 }
                 assertEquals("JULC0089", code, mode);
             }
+        }
+    }
+
+    /** F530: without a javac, readJars fails with JULC0089 when enforced, and keeps B0's path check otherwise. */
+    @Test
+    void readJarsWithoutJavacFailsWhenEnforcedAndChecksPathsOtherwise(@TempDir Path dir) throws Exception {
+        Path foo = JavacGateReviewTest.jar(dir.resolve("foo.jar"), "app/Foo.java", JavacGateReviewTest.FOO);
+        Path bar = JavacGateReviewTest.jar(dir.resolve("bar.jar"), "app/Bar.java", JavacGateReviewTest.BAR);
+        String saved = System.getProperty(JavacGate.MODE_PROPERTY);
+        try (var loader = withoutCompilerApi()) {
+            var readJars = loader.loadClass("org.julclang.compiler.LibrarySources").getMethod("readJars", List.class);
+            System.setProperty(JavacGate.MODE_PROPERTY, "enforce");
+            var e = assertThrows(InvocationTargetException.class, () -> readJars.invoke(null, List.of(foo, bar)));
+            assertEquals("org.julclang.compiler.CompilerException", e.getCause().getClass().getName());
+            assertEquals("JULC0089", codeOf(e.getCause().getClass().getMethod("diagnostics").invoke(e.getCause())));
+            for (String mode : List.of("report", "off")) {
+                System.setProperty(JavacGate.MODE_PROPERTY, mode);
+                assertEquals(2, ((java.util.Map<?, ?>) readJars.invoke(null, List.of(foo, bar))).size(), mode);
+            }
+            // A clash of entry paths is still B0's error.
+            Path again = JavacGateReviewTest.jar(dir.resolve("again.jar"), "app/Foo.java", JavacGateReviewTest.FOO);
+            var path = assertThrows(InvocationTargetException.class, () -> readJars.invoke(null, List.of(foo, again)));
+            assertTrue(path.getCause().getMessage().startsWith("Duplicate library source ownership"),
+                    path.getCause().getMessage());
+        } finally {
+            if (saved == null) System.clearProperty(JavacGate.MODE_PROPERTY);
+            else System.setProperty(JavacGate.MODE_PROPERTY, saved);
         }
     }
 

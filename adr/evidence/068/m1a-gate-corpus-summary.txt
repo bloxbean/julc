@@ -5,6 +5,7 @@ diagnostics differing from the whole exported java.base: 0
 
 javac key (or JuLC code)                                        cases    roots  diagnostics
 JULC0081                                                            1        1            2
+JULC0085                                                            2        2            2
 compiler.err.already.defined                                       18       18           18
 compiler.err.annotation.missing.default.value                       1        1            1
 compiler.err.cannot.assign.not.declared.guard                       1        1            1

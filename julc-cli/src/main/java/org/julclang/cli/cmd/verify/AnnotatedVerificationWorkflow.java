@@ -2,6 +2,7 @@ package org.julclang.cli.cmd.verify;
 
 import org.julclang.clientlib.JulcScriptAdapter;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.stdlib.StdlibRegistry;
@@ -57,7 +58,8 @@ final class AnnotatedVerificationWorkflow {
             }
             var pool = ProjectSourceResolver.buildPool(scan.libraries());
             var resolvedLibraries = ProjectSourceResolver.resolve(source, pool);
-            var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+            var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    ProjectSourceResolver.options(new CompilerOptions(), pool))
                     .compileContract(source, resolvedLibraries);
             if (compiled.compileResult().hasErrors()) {
                 throw new CompilerException(compiled.compileResult().diagnostics());

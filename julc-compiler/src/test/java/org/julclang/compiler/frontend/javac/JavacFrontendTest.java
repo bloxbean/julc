@@ -263,9 +263,9 @@ class JavacFrontendTest {
         assertTrue(JavacFrontend.shared().analyze(List.of(JavacFrontend.Unit.of(user), JavacFrontend.Unit.of(lib)),
                 List.of(JavacFrontend.Unit.of(broken))).isAccepted());
         assertEquals("compiler.err.prob.found.req", keys(analyze(user, broken)));
-        // Two pool units of one name: whichever javac reads, the compilation fails closed (F511).
+        // Two pool units of one name are an error before javac runs, in either order (D8, F521).
         assertEquals("compiler.err.duplicate.class", keys(analyze(user, lib, broken)));
-        assertTrue(keys(analyze(user, broken, lib)).endsWith("compiler.err.duplicate.class"));
+        assertEquals("compiler.err.duplicate.class", keys(analyze(user, broken, lib)));
         // The same text offered twice is one unit.
         assertTrue(analyze(user, lib, lib).isAccepted());
     }

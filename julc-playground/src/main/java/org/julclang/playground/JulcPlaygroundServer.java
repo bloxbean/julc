@@ -39,13 +39,13 @@ public class JulcPlaygroundServer {
     }
 
     public static Javalin createApp(int port, int maxThreads, long timeoutSeconds) {
-        var stdlib = org.julclang.stdlib.StdlibRegistry.defaultRegistry();
-        var julcCompiler = new JulcCompiler(stdlib);
         var sandbox = new CompilationSandbox(maxThreads, timeoutSeconds);
 
         // Cache stdlib source scan once at startup (classpath doesn't change at runtime)
         var cachedLibSources = org.julclang.compiler.LibrarySourceResolver
                 .scanClasspathSources(JulcCompiler.class.getClassLoader());
+        // Its sources are JAR sources; the editor's are project sources (ADR-068 D8).
+        var julcCompiler = org.julclang.tools.service.ToolsService.compilerFor(cachedLibSources);
 
         boolean behindProxy = "true".equalsIgnoreCase(System.getenv("JULC_BEHIND_PROXY"));
         var checkLimiter = new RateLimiter(300, 60_000, behindProxy);

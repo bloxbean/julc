@@ -10,6 +10,7 @@ import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
@@ -46,6 +47,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -276,8 +278,8 @@ public class JulcCompiler {
             boolean captureContractSchema,
             CompilationContext context,
             boolean collectDebugMetadata) {
-        javacGate("compile", JavacFrontend.Unit.of(validatorSource),
-                librarySources.stream().map(JavacFrontend.Unit::of).toList(), context);
+        librarySources = javacGate("compile", JavacFrontend.Unit.of(validatorSource), librarySources,
+                this::libraryUnit, context);
         // 1. Parse all sources
         context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + librarySources.size(), librarySources.size());
@@ -716,17 +718,27 @@ public class JulcCompiler {
 
     /**
      * ADR-068 M1's javac gate (D3, D5): javac analyzes the root with the libraries on its source path before the
-     * JavaParser frontend runs. In {@code enforce} mode a javac error rejects; in {@code report} mode (the default
-     * until M1's dialect rewrite) it is only recorded. It never changes what is compiled.
+     * JavaParser frontend runs; libraries in {@link CompilerOptions#getJarLibrarySources()} are JAR sources (D8). In
+     * {@code enforce} mode a javac error rejects, and the JavaParser frontend compiles the gate's effective pool (the
+     * libraries without those D8's precedence left out); in {@code report} mode (the default until M1's dialect
+     * rewrite) and {@code off} it compiles the libraries as given, B0's pool.
+     *
+     * @return the libraries the JavaParser frontend compiles
      */
-    private void javacGate(String entry, JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
-                           CompilationContext context) {
-        var result = JavacGate.check(entry, List.of(root), pool, options);
-        if (result != null) {
-            context.logf("javac gate (%s): javac %s, platform %s, stubs %s: %s", JavacGate.mode(options),
-                    result.javacVersion(), result.platformDigest(), result.stubsDigest(),
-                    result.isAccepted() ? "accepted" : result.diagnostics().size() + " rejection(s)");
-        }
+    private <T> List<T> javacGate(String entry, JavacFrontend.Unit root, List<T> libraries,
+                                  Function<T, JavacFrontend.Unit> unit, CompilationContext context) {
+        var result = JavacGate.check(entry, List.of(root), libraries.stream().map(unit).toList(), options);
+        if (result == null) return libraries;
+        context.logf("javac gate (%s): javac %s, platform %s, stubs %s: %s", JavacGate.mode(options),
+                result.javacVersion(), result.platformDigest(), result.stubsDigest(),
+                result.isAccepted() ? "accepted" : result.diagnostics().size() + " rejection(s)");
+        return JavacGate.mode(options) == JavacGateMode.ENFORCE
+                ? result.effective(libraries, library -> unit.apply(library).text()) : libraries;
+    }
+
+    private JavacFrontend.Unit libraryUnit(String text) {
+        return new JavacFrontend.Unit(text, null, options.getJarLibrarySources().contains(text)
+                ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT);
     }
 
     /** Records a string entry point's inputs for the ADR-068 corpus (test-only; see {@link CorpusRecorder}). */
@@ -805,18 +817,18 @@ public class JulcCompiler {
             recordCorpusPaths(captureContractSchema ? "compileContractPath" : "compilePath",
                     validatorFile, validatorText, libraryFiles);
         }
-        var libraryTexts = new ArrayList<String>();
-        for (var libFile : libraryFiles) libraryTexts.add(Files.readString(libFile));
         var pool = new ArrayList<JavacFrontend.Unit>();
-        for (int i = 0; i < libraryFiles.size(); i++) {
-            pool.add(new JavacFrontend.Unit(libraryTexts.get(i), libraryFiles.get(i)));
+        for (var libFile : libraryFiles) {
+            var text = Files.readString(libFile);
+            pool.add(new JavacFrontend.Unit(text, libFile, options.getJarLibrarySources().contains(text)
+                    ? JavacFrontend.Origin.JAR : JavacFrontend.Origin.PROJECT));
         }
-        javacGate(captureContractSchema ? "compileContractPath" : "compilePath",
-                new JavacFrontend.Unit(validatorText, validatorFile), pool, context);
+        var libraries = javacGate(captureContractSchema ? "compileContractPath" : "compilePath",
+                new JavacFrontend.Unit(validatorText, validatorFile), pool, unit -> unit, context);
         var validatorCu = parseSource(validatorText, "validator", validatorFile);
         var libraryCus = new ArrayList<CompilationUnit>();
-        for (int i = 0; i < libraryFiles.size(); i++) {
-            libraryCus.add(parseSource(libraryTexts.get(i), "library[" + i + "]", libraryFiles.get(i)));
+        for (int i = 0; i < libraries.size(); i++) {
+            libraryCus.add(parseSource(libraries.get(i).text(), "library[" + i + "]", libraries.get(i).path()));
         }
 
         return doCompileFromCus(
@@ -905,8 +917,8 @@ public class JulcCompiler {
             List<String> librarySources,
             CompilationContext context) {
         if (CorpusRecorder.ACTIVE != null) recordCorpus("compileMethod", methodName, javaSource, librarySources);
-        javacGate("compileMethod", JavacFrontend.Unit.of(javaSource),
-                librarySources.stream().map(JavacFrontend.Unit::of).toList(), context);
+        librarySources = javacGate("compileMethod", JavacFrontend.Unit.of(javaSource), librarySources,
+                this::libraryUnit, context);
         // 1. Parse all sources
         var cu = parseSource(javaSource, "method source");
         var libraryCus = new ArrayList<CompilationUnit>();

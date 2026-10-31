@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Consumer;
@@ -64,9 +65,29 @@ public final class JavacFrontend {
     private static final int CACHE_LIMIT = 512;
 
     /** A source given to javac: its text and, for the path entry points, its file. */
-    public record Unit(String text, Path path) {
+    /**
+     * Where a pool unit comes from (D8: roots, then same-project sources, then JAR sources). A host that merges a
+     * class-path pool with project sources tags the JAR ones; every other unit is a project unit, so untagged units
+     * are of equal standing.
+     */
+    public enum Origin { PROJECT, JAR }
+
+    /** A source given to javac: its text, for the path entry points its file, and its origin. */
+    public record Unit(String text, Path path, Origin origin) {
+        public Unit {
+            origin = origin == null ? Origin.PROJECT : origin;
+        }
+
+        public Unit(String text, Path path) {
+            this(text, path, Origin.PROJECT);
+        }
+
         public static Unit of(String text) {
             return new Unit(text, null);
+        }
+
+        public static Unit jar(String text) {
+            return new Unit(text, null, Origin.JAR);
         }
     }
 
@@ -126,13 +147,19 @@ public final class JavacFrontend {
 
     /**
      * Analyzes {@code roots} with {@code pool}, then the bundled sources, on the source path (D8): javac attributes
-     * the roots and the pool units they reference, through any of their top-level declarations. Precedence is per
-     * qualified name ({@link Precedence}): a root's name wins over the pool's, and a name two pool units declare is
-     * listed once; every other declaration stays visible. javac cannot read part of a unit, so a compilation that
-     * reads a unit with a contested name fails closed with {@code duplicate class}, naming it.
+     * the roots and the pool units they reference, through any of their top-level declarations. Precedence selects
+     * whole units ({@link Precedence}): roots, then project units, then JAR units; a shadowed unit is not read, and
+     * if javac then rejects, a note names it and the declaration that takes precedence; two units of equal standing
+     * declaring one name are rejected before javac runs. The result says which pool units were left out
+     * ({@link JavacResult#effective}).
      */
     public JavacResult analyze(List<Unit> roots, List<Unit> pool) {
-        return analyze(roots, pool, null, true).result();
+        return analyze(roots, pool, null, true, null).result();
+    }
+
+    /** {@link #analyze(List, List)}, also reporting javac's task events to {@code events} (tests). */
+    JavacResult analyze(List<Unit> roots, List<Unit> pool, Consumer<TaskEvent> events) {
+        return analyze(roots, pool, null, true, events).result();
     }
 
     /**
@@ -144,7 +171,7 @@ public final class JavacFrontend {
 
     /** {@link #analyze(List, List)}, keeping the attributed trees. */
     Attribution attribute(List<Unit> roots, List<Unit> pool) {
-        return analyze(roots, pool, null, true);
+        return analyze(roots, pool, null, true, null);
     }
 
     /**
@@ -152,30 +179,46 @@ public final class JavacFrontend {
      * attributes JuLC's own ledger sources), reporting each class file javac opens to {@code opened}.
      */
     public JavacResult observe(List<Unit> roots, List<Unit> pool, Consumer<String> opened) {
-        return analyze(roots, pool, opened, false).result();
+        return analyze(roots, pool, opened, false, null).result();
     }
 
-    private Attribution analyze(List<Unit> roots, List<Unit> pool, Consumer<String> opened, boolean checkOwnership) {
+    private Attribution analyze(List<Unit> roots, List<Unit> pool, Consumer<String> opened, boolean checkOwnership,
+                                Consumer<TaskEvent> events) {
         JavaCompiler javac = compiler();
         if (javac == null) return new Attribution(supported(), List.of(), null);
         if (roots.isEmpty()) return new Attribution(JavacResult.accepted(platform), List.of(), null);
         var offered = new ArrayList<Unit>(roots);
         offered.addAll(pool);
-        for (String text : bundled.texts().values()) offered.add(Unit.of(text));
+        for (String text : bundled.texts().values()) offered.add(Unit.jar(text));
         var all = files(javac, offered);
         var rootFiles = all.subList(0, roots.size());
-        // A pool unit with a root's text, or an earlier pool unit's, is that unit (a host may offer it twice).
+        // A pool unit with a root's text, or an earlier pool unit's, is that unit (a host may offer it twice); it is
+        // a project unit if any of its offers is.
         var texts = new HashSet<String>();
         for (var root : rootFiles) texts.add(JavacPlatform.identity(root.text()));
         var poolFiles = new ArrayList<JavacSourceFile>();
-        for (var file : all.subList(roots.size(), all.size())) {
-            if (texts.add(JavacPlatform.identity(file.text()))) poolFiles.add(file);
+        var origins = new ArrayList<Origin>();
+        var positions = new HashMap<String, Integer>();
+        for (int i = roots.size(); i < all.size(); i++) {
+            var file = all.get(i);
+            String identity = JavacPlatform.identity(file.text());
+            Origin origin = offered.get(i).origin();
+            if (texts.add(identity)) {
+                positions.put(identity, poolFiles.size());
+                poolFiles.add(file);
+                origins.add(origin);
+            } else if (origin == Origin.PROJECT && positions.containsKey(identity)) {
+                origins.set(positions.get(identity), Origin.PROJECT);
+            }
         }
-        var precedence = Precedence.of(rootFiles, poolFiles);
+        var precedence = Precedence.of(rootFiles, poolFiles, origins);
 
         if (checkOwnership) {
             var owned = Ownership.check(platform, bundled, rootFiles, poolFiles);
             if (!owned.isEmpty()) return new Attribution(JavacResult.rejected(owned, platform), List.of(), null);
+        }
+        if (!precedence.duplicates().isEmpty()) {
+            return new Attribution(JavacResult.rejected(precedence.duplicates(), platform), List.of(), null);
         }
 
         var fileManager = new EmbeddedFileManager(platform, precedence.listed(), opened);
@@ -187,6 +230,7 @@ public final class JavacFrontend {
         task.addTaskListener(new TaskListener() {
             @Override
             public void finished(TaskEvent e) {
+                if (events != null) events.accept(e);
                 if (e.getKind() == TaskEvent.Kind.PARSE && e.getSourceFile() != null) {
                     parsed.putIfAbsent(e.getSourceFile().toUri(), e.getCompilationUnit());
                 }
@@ -210,10 +254,11 @@ public final class JavacFrontend {
                             Trees.instance(task).getSourcePositions()));
             diagnostics.add(JavacHints.diagnostic(d, uri == null ? null : byUri.get(uri), context));
         }
-        diagnostics.addAll(precedence.conflicts(parsed.keySet(), diagnostics));
+        // javac's diagnostics stay as they are; a shadowed unit javac did not read is named in a note (D8).
+        if (!diagnostics.isEmpty()) diagnostics.addAll(precedence.notes());
         var result = diagnostics.isEmpty() ? JavacResult.accepted(platform) : JavacResult.rejected(diagnostics, platform);
         var rootTrees = rootFiles.stream().map(f -> parsed.get(f.toUri())).filter(t -> t != null).toList();
-        return new Attribution(result, rootTrees, Trees.instance(task));
+        return new Attribution(result.withDropped(precedence.droppedIdentities()), rootTrees, Trees.instance(task));
     }
 
     /**
@@ -227,6 +272,17 @@ public final class JavacFrontend {
                 diagnostic -> { }, OPTIONS, null, List.of());
         task.setLocale(Locale.ENGLISH);
         return new JavacMetadata(task.getElements(), task.getTypes());
+    }
+
+    /**
+     * The qualified names of every top-level type each text declares, read by javac's parser as the gate reads them;
+     * empty when the host's javac is not supported (the gate then rejects with {@code JULC0089}).
+     */
+    public Optional<List<List<String>>> declaredNames(List<String> texts) {
+        JavaCompiler javac = compiler();
+        if (javac == null) return Optional.empty();
+        return Optional.of(files(javac, texts.stream().map(Unit::of).toList()).stream()
+                .map(JavacSourceFile::topLevelNames).toList());
     }
 
     /** Accepted when the host's javac is supported (D3); otherwise rejected with {@code JULC0089}. */
