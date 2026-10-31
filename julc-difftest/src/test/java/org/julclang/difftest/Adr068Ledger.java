@@ -15,6 +15,7 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.pir.PirFormatter;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.PlutusData;
@@ -137,8 +138,9 @@ final class Adr068Ledger {
     }
 
     private static CompilerOptions options(Adr068Corpus.Case c, OptimizationLevel level, boolean sourceMap) {
+        // The reference rows are the JavaParser frontend's: the javac gate, enforcing by default since M1b, stays off.
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMap)
-                .setLogger(message -> { });
+                .setJavacGate(JavacGateMode.OFF).setLogger(message -> { });
         c.disabledRules.forEach(options::disableOptimizationRule);
         return options;
     }
