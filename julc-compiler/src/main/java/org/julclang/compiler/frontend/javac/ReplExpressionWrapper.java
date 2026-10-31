@@ -28,10 +28,12 @@ import java.util.Set;
  * evaluator. JuLC's dialect typed integer literals as {@code BigInteger}; this wrapper asks javac for the types
  * instead:
  * <ol>
- *   <li>it attributes the input in a probe method {@code static Object __eval() { return (expr); }} (a block of
- *       statements is used as the body as written), so that javac types every returned expression;</li>
- *   <li>it then generates {@code static R __eval() { ... }} with {@code R} the returned type, or, when every return
- *       is an {@code int} or {@code long}, {@code R = BigInteger} with each returned expression wrapped in
+ *   <li>it attributes an expression as {@code var v = (expr);} in a probe method, so that javac gives it its
+ *       standalone type: a {@code return} to {@code Object} would be a target type, and a conditional would take it.
+ *       A block of statements has no such form, so it is the body of a probe returning {@code Object}, and javac
+ *       types each returned expression; one with no type of its own there, such as a conditional, is rejected;</li>
+ *   <li>it then generates {@code static R __eval() { ... }} with {@code R} the input's type, or, when that is
+ *       {@code int} or {@code long}, {@code R = BigInteger} with each returned expression wrapped in
  *       {@code BigInteger.valueOf(...)};</li>
  *   <li>a javac rejection of the probe is the REPL's error, its lines counted from the input's first line.</li>
  * </ol>
@@ -75,8 +77,11 @@ public final class ReplExpressionWrapper {
         String trimmed = input.strip();
         boolean block = trimmed.contains(";");
         String header = header(imports);
-        String body = block ? trimmed : "return (" + trimmed + ");";
-        String opening = "class " + CLASS_NAME + " {\n    static Object " + METHOD_NAME + "() {\n";
+        String variable = unusedName(trimmed);
+        String prefix = "var " + variable + " = (";
+        String body = block ? trimmed : prefix + trimmed + ");";
+        String opening = "class " + CLASS_NAME + " {\n    static " + (block ? "Object" : "void") + " " + METHOD_NAME
+                + "() {\n";
         String probe = header + opening + body + "\n    }\n}\n";
         int bodyStart = header.length() + opening.length();
         int bodyLine = (int) header.lines().count() + 3;
@@ -84,14 +89,23 @@ public final class ReplExpressionWrapper {
                 pool.stream().map(JavacFrontend.Unit::of).toList());
         if (!attribution.result().isAccepted()) {
             return new Wrapped(null, null, attribution.result().diagnostics().stream()
-                    .map(d -> relocate(d, bodyLine, block ? 0 : "return (".length())).toList());
+                    .map(d -> relocate(d, bodyLine, block ? 0 : prefix.length())).toList());
         }
         CompilationUnitTree unit = attribution.roots().getFirst();
-        var returns = returns(attribution, unit);
+        if (!isOnlyTheProbeMethod(unit)) return rejected("the input must be one expression or one block of statements");
+        var returns = block ? returns(attribution, unit) : List.<TreePath>of();
+        var inputTypes = block
+                ? returns.stream().map(attribution.trees()::getTypeMirror).toList()
+                : List.of(attribution.trees().getElement(probeVariable(unit)).asType());
         var types = new LinkedHashSet<String>();
-        boolean integral = !returns.isEmpty();
-        for (var r : returns) {
-            TypeMirror type = attribution.trees().getTypeMirror(r);
+        boolean integral = !inputTypes.isEmpty();
+        for (TypeMirror type : inputTypes) {
+            if (type.toString().equals("java.lang.Object")) {
+                return rejected(block
+                        ? "a returned expression has no type of its own here (a conditional, for example);"
+                                + " assign it to a local of its type and return that"
+                        : "the input's type Object is not an on-chain type");
+            }
             switch (type.getKind()) {
                 case INT, LONG, SHORT, BYTE -> types.add("BigInteger");
                 default -> {
@@ -107,8 +121,10 @@ public final class ReplExpressionWrapper {
                     : "the input's return statements have different types: " + String.join(", ", types));
         }
         String returnType = types.iterator().next();
-        String finalBody = body;
-        if (integral) {
+        String finalBody = block ? body : "return (" + trimmed + ");";
+        if (integral && !block) {
+            finalBody = "return BigInteger.valueOf((" + trimmed + "));";
+        } else if (integral) {
             // Wrap each returned integer, from the last, by its offsets in the probe.
             var positions = attribution.trees().getSourcePositions();
             var sorted = new ArrayList<>(returns);
@@ -134,6 +150,30 @@ public final class ReplExpressionWrapper {
         }
         if (!seen.contains("java.math.BigInteger")) sb.append("import java.math.BigInteger;\n");
         return sb.append('\n').toString();
+    }
+
+    /** An identifier that does not occur in {@code input} (D9). */
+    private static String unusedName(String input) {
+        String name = "__v";
+        while (input.contains(name)) name += "_";
+        return name;
+    }
+
+    /** Whether the unit declares only the wrapper's class and its probe method, so the input did not close them. */
+    private static boolean isOnlyTheProbeMethod(CompilationUnitTree unit) {
+        if (unit.getTypeDecls().size() != 1 || !(unit.getTypeDecls().getFirst() instanceof ClassTree wrapper)) return false;
+        return wrapper.getMembers().stream()
+                .filter(member -> !(member instanceof MethodTree method && method.getName().contentEquals("<init>")))
+                .count() == 1;
+    }
+
+    /** The path of the probe method's {@code var}, the first statement of an expression's probe. */
+    private static TreePath probeVariable(CompilationUnitTree unit) {
+        var wrapper = (ClassTree) unit.getTypeDecls().getFirst();
+        var method = wrapper.getMembers().stream().filter(member -> member instanceof MethodTree m
+                && m.getName().contentEquals(METHOD_NAME)).map(MethodTree.class::cast).findFirst().orElseThrow();
+        var path = new TreePath(new TreePath(new TreePath(new TreePath(unit), wrapper), method), method.getBody());
+        return new TreePath(path, method.getBody().getStatements().getFirst());
     }
 
     /** The returned expressions of the probe method, outside lambdas and local classes. */

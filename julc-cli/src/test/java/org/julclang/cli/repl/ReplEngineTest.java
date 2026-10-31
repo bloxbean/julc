@@ -235,6 +235,13 @@ class ReplEngineTest {
     }
 
     @Test
+    void conditional_evaluatesAndReportsItsStandaloneType() {
+        assertEquals("1", ((ReplResult.Success) engine.evaluate("true ? BigInteger.ONE : BigInteger.TWO")).formattedValue());
+        var type = engine.evaluate(":type true ? BigInteger.ONE : BigInteger.TWO");
+        assertEquals("Type: BigInteger", ((ReplResult.MetaOutput) type).text());
+    }
+
+    @Test
     void pirCommand_showsThePir() {
         var result = engine.evaluate(":pir 1 + 2");
         assertInstanceOf(ReplResult.MetaOutput.class, result);

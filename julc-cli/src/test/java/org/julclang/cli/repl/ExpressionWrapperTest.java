@@ -109,6 +109,70 @@ class ExpressionWrapperTest {
     }
 
     @Test
+    void conditional_keepsItsStandaloneType() {
+        var wrapped = wrap("true ? BigInteger.ONE : BigInteger.TWO");
+        assertTrue(wrapped.isAccepted(), () -> wrapped.errors().toString());
+        assertEquals("BigInteger", wrapped.returnType());
+        assertTrue(wrapped.source().contains("return (true ? BigInteger.ONE : BigInteger.TWO);"), wrapped.source());
+    }
+
+    @Test
+    void genericConditional_keepsItsTypeArguments() {
+        assertEquals("JulcList<BigInteger>", type("true ? JulcList.of(BigInteger.ONE) : JulcList.of(BigInteger.TWO)"));
+    }
+
+    @Test
+    void integerConditional_isReturnedAsBigInteger() {
+        var wrapped = wrap("true ? 1 : 2");
+        assertEquals("BigInteger", wrapped.returnType());
+        assertTrue(wrapped.source().contains("return BigInteger.valueOf((true ? 1 : 2));"), wrapped.source());
+    }
+
+    @Test
+    void conditionalOfUnrelatedTypes_isRejected() {
+        var wrapped = wrap("true ? BigInteger.ONE : \"x\"");
+        assertFalse(wrapped.isAccepted());
+        assertTrue(wrapped.errors().getFirst().message().contains("not an on-chain type"), wrapped.errors().toString());
+    }
+
+    @Test
+    void objectExpression_isRejected() {
+        var wrapped = wrap("(Object) BigInteger.ONE");
+        assertFalse(wrapped.isAccepted());
+        assertTrue(wrapped.errors().getFirst().message().contains("Object is not an on-chain type"),
+                wrapped.errors().toString());
+    }
+
+    @Test
+    void blockReturningAConditional_isRejectedWithItsRemedy() {
+        var wrapped = wrap("boolean b = true; return b ? BigInteger.ONE : BigInteger.TWO;");
+        assertFalse(wrapped.isAccepted());
+        assertTrue(wrapped.errors().getFirst().message().contains("assign it to a local of its type"),
+                wrapped.errors().toString());
+    }
+
+    @Test
+    void blockReturningALocalOfAConditional_keepsItsType() {
+        assertEquals("BigInteger", type("BigInteger x = true ? BigInteger.ONE : BigInteger.TWO; return x;"));
+    }
+
+    @Test
+    void inputClosingTheWrapper_isRejected() {
+        for (String input : List.of("return 1; } static int other() { return 2;",
+                "return 1; } } class Other { static Object __eval() { return \"x\";")) {
+            var wrapped = wrap(input);
+            assertFalse(wrapped.isAccepted(), input);
+            assertTrue(wrapped.errors().getFirst().message().contains("one expression or one block"),
+                    wrapped.errors().toString());
+        }
+    }
+
+    @Test
+    void probeVariable_doesNotCaptureANameInTheInput() {
+        assertEquals("BigInteger", type("JulcList.of(BigInteger.ONE).map(__v -> __v).size()"));
+    }
+
+    @Test
     void unknownName_isRejectedByJavacAtItsInputPosition() {
         var wrapped = wrap("undefinedName + 1");
         assertFalse(wrapped.isAccepted());
