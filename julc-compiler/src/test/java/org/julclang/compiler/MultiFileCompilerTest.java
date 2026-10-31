@@ -320,8 +320,17 @@ class MultiFileCompilerTest {
                     }
                     """;
 
-            assertThrows(CompilerException.class,
-                    () -> compiler.compile(validator, List.of(lib)));
+            // JuLC's own rule, as a host without the gate sees it.
+            var off = new JulcCompiler(null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
+            assertThrows(CompilerException.class, () -> off.compile(validator, List.of(lib)));
+            // With the gate, ADR-068 D8 decides first: the root's Datum takes precedence and the library unit that
+            // redeclares it is left out, so the validator, which does not use it, compiles.
+            var enforced = compiler.compileWithDetails(validator, List.of(lib));
+            assertFalse(enforced.hasErrors(), enforced.diagnostics().toString());
+            // A validator that uses the shadowed unit is rejected, and the note names the declaration that won.
+            var user = validator.replace("return true;", "return LibUtils.extract(new Datum(r)).signum() >= 0;");
+            var shadowed = assertThrows(CompilerException.class, () -> compiler.compile(user, List.of(lib)));
+            assertTrue(shadowed.getMessage().contains("(compiler.err.cant.resolve.location)"), shadowed.getMessage());
         }
     }
 

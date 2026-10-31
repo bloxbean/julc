@@ -1,8 +1,10 @@
 package org.julclang.compiler.resolve;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -246,10 +248,24 @@ class FqcnResolutionTest {
                     package com.myapp;
                     record Bid(byte[] hash) {}
                     """;
+            // JuLC's own rule, as a host without the gate sees it.
+            var off = new CompilerOptions().setJavacGate(JavacGateMode.OFF);
             var ex = assertThrows(CompilerException.class,
-                    () -> new JulcCompiler(STDLIB).compile(source1, List.of(source2)));
+                    () -> new JulcCompiler(STDLIB, off).compile(source1, List.of(source2)));
             assertTrue(ex.getMessage().contains("Duplicate record type"),
                     "Should detect duplicate FQCN. Got: " + ex.getMessage());
+            // With the gate, ADR-068 D8 gives the root's com.myapp.Bid precedence and leaves the library unit out.
+            var enforced = new JulcCompiler(STDLIB).compileWithDetails(source1, List.of(source2));
+            assertFalse(enforced.hasErrors(), enforced.diagnostics().toString());
+            // Two library units of equal standing that declare com.myapp.Bid are rejected before javac runs.
+            var source3 = """
+                    package com.myapp;
+                    record Bid(java.math.BigInteger price) {}
+                    """;
+            var noBid = source1.replace("record Bid(java.math.BigInteger amount) {}\n", "");
+            var twice = assertThrows(CompilerException.class,
+                    () -> new JulcCompiler(STDLIB).compile(noBid, List.of(source2, source3)));
+            assertTrue(twice.getMessage().contains("(compiler.err.duplicate.class)"), twice.getMessage());
         }
 
         @Test
