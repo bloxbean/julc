@@ -4,6 +4,8 @@ import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacProvenance;
 import org.julclang.compiler.pir.ArrayLiteralFoldPass;
 import org.julclang.compiler.pir.ListIndexPromotionPass;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.ValueConversionSharingPass;
 import org.julclang.compiler.pir.ValueLiteralFoldPass;
 import org.julclang.vm.OptimizationCostProfile;
@@ -48,6 +50,7 @@ public final class CompilationContext {
     private final OptimizationCostProfile optimizationCostProfile;
     private final Set<String> disabledOptimizationRules;
     private final CompilerFrontend frontend;
+    private final LoweredMethodObserver methodObserver;
     private final Consumer<String> logger;
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
@@ -62,6 +65,7 @@ public final class CompilationContext {
             OptimizationCostProfile optimizationCostProfile,
             Set<String> disabledOptimizationRules,
             CompilerFrontend frontend,
+            LoweredMethodObserver methodObserver,
             Consumer<String> logger) {
         this.resolvedTarget = Objects.requireNonNull(resolvedTarget, "resolvedTarget");
         this.verbose = verbose;
@@ -71,6 +75,7 @@ public final class CompilationContext {
         this.optimizationCostProfile = optimizationCostProfile;
         this.disabledOptimizationRules = Set.copyOf(disabledOptimizationRules);
         this.frontend = Objects.requireNonNull(frontend, "frontend");
+        this.methodObserver = methodObserver;
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
@@ -99,12 +104,23 @@ public final class CompilationContext {
                 costProfile,
                 effectiveOptions.getDisabledOptimizationRules(),
                 effectiveOptions.getFrontend(),
+                effectiveOptions.getMethodObserver(),
                 effectiveOptions.getLogger());
     }
 
     /** The Java frontend of this compilation (ADR-068 D4). */
     public CompilerFrontend frontend() {
         return frontend;
+    }
+
+    /** Whether evidence tooling observes this compilation's lowered methods (ADR-068 I1b). */
+    public boolean observesMethods() {
+        return methodObserver != null;
+    }
+
+    /** Reports a lowered method to the evidence observer, if there is one. */
+    public void observeMethod(String binder, PirType type, PirTerm body) {
+        if (methodObserver != null) methodObserver.lowered(binder, type, body);
     }
 
     /** The rule ids that can be disabled individually, in catalog order. */

@@ -28,6 +28,7 @@ public class CompilerOptions {
     private JavacGateMode javacGate;
     private Set<String> jarLibrarySources = Set.of();
     private CompilerFrontend frontend = CompilerFrontend.JAVAPARSER;
+    private LoweredMethodObserver methodObserver;
 
     /**
      * Select the ledger target for this compilation.
@@ -160,6 +161,20 @@ public class CompilerOptions {
     public CompilerOptions setFrontend(CompilerFrontend frontend) {
         this.frontend = Objects.requireNonNull(frontend, "frontend");
         return this;
+    }
+
+    /**
+     * Experimental, evidence tooling only (ADR-068 I1b): told each method a compilation lowers. It sees PIR and changes
+     * nothing, so a compilation's bytes do not depend on it. Removed with the option at M6.
+     */
+    public CompilerOptions setMethodObserver(LoweredMethodObserver methodObserver) {
+        this.methodObserver = methodObserver;
+        return this;
+    }
+
+    /** The evidence observer, or null. */
+    LoweredMethodObserver getMethodObserver() {
+        return methodObserver;
     }
 
     /** The Java frontend of this compilation. */

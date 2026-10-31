@@ -117,7 +117,7 @@ final class LibraryCompiler {
                         pirBody = new PirTerm.Let(sf.name(), sf.initPir(), pirBody);
                     }
                     var mType = computeMethodType(method, typeResolver);
-                    overloads.check(method, mType, pirBody);
+                    overloads.check(method.getNameAsString(), mType, pirBody, () -> JulcCompiler.overloadLocation(method));
                     registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
                 }
             }

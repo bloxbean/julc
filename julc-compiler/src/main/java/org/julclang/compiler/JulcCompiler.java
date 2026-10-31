@@ -1,9 +1,6 @@
 package org.julclang.compiler;
 
-import org.julclang.compiler.backend.PirBackend;
-import org.julclang.compiler.codegen.ValidatorWrapper;
-import org.julclang.compiler.codegen.StrictBoundaryGenerator;
-import org.julclang.compiler.codegen.StrictRecordEntrypoint;
+import org.julclang.compiler.codegen.ValidatorAssembly;
 import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
@@ -23,14 +20,11 @@ import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.compiler.schema.ContractCompileResult;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.compiler.uplc.UplcGenerator;
-import org.julclang.compiler.uplc.UplcOptimizer;
 import org.julclang.compiler.uplc.UplcTargetValidator;
-import org.julclang.compiler.util.MethodDependencyResolver;
 import org.julclang.compiler.validate.SubsetValidator;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.source.SourceLocation;
-import org.julclang.core.source.SourceMap;
 import org.julclang.core.debug.DebugMetadata;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
@@ -507,8 +501,9 @@ public class JulcCompiler {
             if (method.isStatic() && method.getAnnotationByName("Entrypoint").isEmpty()) {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
-                overloads.check(method, mType, helperPir);
+                overloads.check(method.getNameAsString(), mType, helperPir, () -> overloadLocation(method));
                 symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
+                observeMethod(context, methodOwner, method, helperPir, typeResolver);
             }
         }
 
@@ -518,45 +513,36 @@ public class JulcCompiler {
         }
 
         // 12. Generate PIR for entrypoint(s)
-        PirTerm validateFn = null;
-        Map<Integer, PirTerm> multiHandlers = null;
-        Map<Integer, Integer> multiParamCounts = null;
-        boolean isMultiAutoDispatch = false;
+        var entries = new ArrayList<ValidatorAssembly.Entry>();
         var strictRecordErrors = new ArrayList<PirTerm.Error>();
 
         boolean isExplicitPurpose = !entrypointInfos.isEmpty()
                 && entrypointInfos.stream().noneMatch(e -> e.purposeName().equals("DEFAULT"));
-        if (scriptPurpose == ScriptPurpose.MULTI && isExplicitPurpose) {
+        boolean isMultiAutoDispatch = scriptPurpose == ScriptPurpose.MULTI && isExplicitPurpose;
+        if (isMultiAutoDispatch) {
             // Mode 1: Auto-dispatch — entrypoints with explicit purposes
-            isMultiAutoDispatch = true;
-            multiHandlers = new LinkedHashMap<>();
-            multiParamCounts = new LinkedHashMap<>();
             for (var ei : entrypointInfos) {
                 var handlerPir = pirGenerator.generateMethod(ei.method());
-                var transformed = transformStrictRecordEntrypoint(
-                        handlerPir, ei.method(), typeResolver);
-                handlerPir = transformed.function();
+                observeMethod(context, methodOwner, ei.method(), handlerPir, typeResolver);
+                var transformed = ValidatorAssembly.strictEntrypoint(
+                        handlerPir, entryParameters(ei.method(), typeResolver), typeResolver);
                 strictRecordErrors.addAll(transformed.errors());
-                multiHandlers.put(ei.tag(), handlerPir);
-                multiParamCounts.put(ei.tag(), ei.method().getParameters().size());
+                entries.add(autoDispatchEntry(ei, transformed.function(), typeResolver));
             }
             context.logf("PIR generation complete (%d auto-dispatch entrypoints)", entrypointInfos.size());
-        } else if (scriptPurpose == ScriptPurpose.MULTI) {
-            // Mode 2: Manual dispatch — single DEFAULT entrypoint
-            entrypointMethod = entrypointInfos.get(0).method();
-            validateFn = pirGenerator.generateMethod(entrypointMethod);
-            var transformed = transformStrictRecordEntrypoint(
-                    validateFn, entrypointMethod, typeResolver);
-            validateFn = transformed.function();
-            strictRecordErrors.addAll(transformed.errors());
-            context.log("PIR generation complete (manual dispatch)");
         } else {
-            validateFn = pirGenerator.generateMethod(entrypointMethod);
-            var transformed = transformStrictRecordEntrypoint(
-                    validateFn, entrypointMethod, typeResolver);
-            validateFn = transformed.function();
+            if (scriptPurpose == ScriptPurpose.MULTI) {
+                // Mode 2: Manual dispatch — single DEFAULT entrypoint
+                entrypointMethod = entrypointInfos.get(0).method();
+            }
+            var validateFn = pirGenerator.generateMethod(entrypointMethod);
+            observeMethod(context, methodOwner, entrypointMethod, validateFn, typeResolver);
+            var transformed = ValidatorAssembly.strictEntrypoint(
+                    validateFn, entryParameters(entrypointMethod, typeResolver), typeResolver);
             strictRecordErrors.addAll(transformed.errors());
-            context.log("PIR generation complete");
+            entries.add(singleEntry(entrypointMethod, scriptPurpose, transformed.function(), typeResolver));
+            context.log(scriptPurpose == ScriptPurpose.MULTI
+                    ? "PIR generation complete (manual dispatch)" : "PIR generation complete");
         }
 
         // Disable guard after entrypoint generation
@@ -568,164 +554,25 @@ public class JulcCompiler {
             throw new CompilerException(diagnostics);
         }
 
-        // 13. Wrap helper methods as Let bindings
-        // For auto-dispatch, wrap each handler; for single entrypoint, wrap the single body
-        PirTerm body;
-        if (isMultiAutoDispatch) {
-            // Wrap helper methods around each handler (dependency-ordered)
-            for (var entry : multiHandlers.entrySet()) {
-                PirTerm handlerBody = wrapMethodBindings(symbolTable.allMethods(), entry.getValue());
-                // Wrap static field initializers
-                for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
-                    var sf = compiledStaticFields.get(i);
-                    handlerBody = new PirTerm.Let(sf.name(), sf.initPir(), handlerBody);
-                }
-                multiHandlers.put(entry.getKey(), handlerBody);
-            }
-            body = null; // Not used; wrapper handles it
-        } else {
-            body = wrapMethodBindings(symbolTable.allMethods(), validateFn);
+        // 13-22. Everything from here on takes PIR and resolved types (ADR-068 F846).
+        var failureMethod = entrypointMethod != null ? entrypointMethod : entrypointInfos.getFirst().method();
+        var declarations = new HashMap<String, Node>();
+        for (var pf : paramFields) declarations.put(pf.name(), pf.declaration());
+        var assembled = ValidatorAssembly.validator(
+                new ValidatorAssembly.Validator(scriptPurpose, isMultiAutoDispatch, entries,
+                        helperMethods(symbolTable), assemblyStatics(compiledStaticFields),
+                        libraryRegistry.allMethods(), assemblyParams(paramFields),
+                        failureLocation(failureMethod), strictRecordErrors),
+                typeResolver, context,
+                new ValidatorAssembly.Frontend(pirGenerator.getPirPositions(),
+                        debugMetadata == null ? null : debugMetadata.provenance(),
+                        debugMetadata == null ? null : (param, binding) ->
+                                debugMetadata.associate(declarations.get(param.name()), binding, param.type()),
+                        pirGenerator::rejectUnresolvedMembers, null),
+                captureDetails);
+        var result = assembled.result();
+        var lowered = assembled.lowered();
 
-            // 13b. Wrap static field initializers as Let bindings (reverse order for correct scoping)
-            for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
-                var sf = compiledStaticFields.get(i);
-                body = new PirTerm.Let(sf.name(), sf.initPir(), body);
-            }
-        }
-
-        // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
-        var sortedLibMethods = topoSortLibraryMethods(libraryRegistry.allMethods());
-        if (isMultiAutoDispatch) {
-            for (var entry : multiHandlers.entrySet()) {
-                PirTerm handlerBody = entry.getValue();
-                for (var libMethod : sortedLibMethods) {
-                    if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
-                        handlerBody = new PirTerm.LetRec(
-                                List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
-                                handlerBody);
-                    } else {
-                        handlerBody = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), handlerBody);
-                    }
-                }
-                multiHandlers.put(entry.getKey(), handlerBody);
-            }
-        } else {
-            for (var libMethod : sortedLibMethods) {
-                if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
-                    body = new PirTerm.LetRec(
-                            List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
-                            body);
-                } else {
-                    body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
-                }
-            }
-        }
-
-        // 15. Resolve typed transaction-time roots and wrap the entrypoint for on-chain.
-        // ScriptContext and deployer-applied @Param fields are intentionally not boundary roots.
-        var namedDefinitions = typeResolver.namedDefinitions();
-        var wrapper = new ValidatorWrapper(namedDefinitions);
-        PirTerm wrappedTerm;
-        if (isMultiAutoDispatch) {
-            // Build datumOptional flags for auto-dispatch handlers
-            Map<Integer, Boolean> multiDatumOptional = new LinkedHashMap<>();
-            Map<Integer, PirType> multiDatumTypes = new LinkedHashMap<>();
-            Map<Integer, PirType> multiRedeemerTypes = new LinkedHashMap<>();
-            for (var ei : entrypointInfos) {
-                boolean datumOpt = false;
-                if (ei.tag() == 1 && ei.method().getParameters().size() == 3) {
-                    var firstParamType = ei.method().getParameter(0).getTypeAsString();
-                    datumOpt = firstParamType.startsWith("Optional");
-                    var datumParam = ei.method().getParameter(0);
-                    var datumType = typeResolver.resolve(datumParam.getType());
-                    ensureStrictBoundarySupported(datumParam, datumType, typeResolver);
-                    multiDatumTypes.put(ei.tag(), wrapperBoundaryType(datumType, typeResolver));
-                }
-                var redeemerParam = ei.method().getParameter(
-                        ei.tag() == 1 && ei.method().getParameters().size() == 3 ? 1 : 0);
-                var redeemerType = typeResolver.resolve(redeemerParam.getType());
-                ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
-                multiRedeemerTypes.put(ei.tag(), wrapperBoundaryType(redeemerType, typeResolver));
-                multiDatumOptional.put(ei.tag(), datumOpt);
-            }
-            wrappedTerm = wrapper.wrapMultiValidator(multiHandlers, multiParamCounts,
-                    multiDatumOptional, multiDatumTypes, multiRedeemerTypes);
-        } else if (scriptPurpose == ScriptPurpose.SPENDING) {
-            int paramCount = entrypointMethod.getParameters().size();
-            boolean datumIsOptional = false;
-            PirType datumType = null;
-            if (paramCount == 3) {
-                var datumParam = entrypointMethod.getParameter(0);
-                var firstParamType = datumParam.getTypeAsString();
-                datumIsOptional = firstParamType.startsWith("Optional");
-                datumType = typeResolver.resolve(datumParam.getType());
-                ensureStrictBoundarySupported(datumParam, datumType, typeResolver);
-            }
-            var redeemerParam = entrypointMethod.getParameter(paramCount == 3 ? 1 : 0);
-            var redeemerType = typeResolver.resolve(redeemerParam.getType());
-            ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
-            wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount, datumIsOptional,
-                    wrapperBoundaryType(datumType, typeResolver),
-                    wrapperBoundaryType(redeemerType, typeResolver));
-        } else {
-            // Minting, Withdraw, Certifying, Voting, Proposing, Multi(manual) all use 2-param wrapper
-            var redeemerParam = entrypointMethod.getParameter(0);
-            var redeemerType = typeResolver.resolve(redeemerParam.getType());
-            ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
-            wrappedTerm = wrapper.wrapMintingPolicy(body,
-                    wrapperBoundaryType(redeemerType, typeResolver));
-        }
-
-        // 15b. Register wrapper Error terms in source map (points to @Entrypoint method)
-        if (context.isSourceMapEnabled() && !wrapper.getErrorTerms().isEmpty()) {
-            var pirPositions = pirGenerator.getPirPositions();
-            // For multi-dispatch, use the first entrypoint; for single, use the entrypoint method
-            var epMethod = entrypointMethod != null ? entrypointMethod : entrypointInfos.getFirst().method();
-            epMethod.getRange().ifPresent(range -> {
-                var fileName = epMethod.findCompilationUnit()
-                        .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
-                        .orElse(null);
-                var loc = new SourceLocation(fileName, range.begin.line, range.begin.column,
-                        "validator returned false");
-                for (var errorTerm : wrapper.getErrorTerms()) {
-                    pirPositions.put(errorTerm, loc);
-                }
-                for (var errorTerm : strictRecordErrors) {
-                    pirPositions.put(errorTerm, loc);
-                }
-            });
-        }
-
-        // 16. Wrap with outer param lambdas
-        for (int i = paramFields.size() - 1; i >= 0; i--) {
-            var pf = paramFields.get(i);
-            var rawName = "#" + pf.name + "__raw";
-            var decoded = PirHelpers.wrapDecode(
-                    new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
-            var decodedBinding = new PirTerm.Let(pf.name, decoded, wrappedTerm);
-            if (debugMetadata != null) {
-                debugMetadata.associate(pf.declaration(), decodedBinding, pf.pirType());
-            }
-            wrappedTerm = new PirTerm.Lam(rawName, new PirType.DataType(), decodedBinding);
-        }
-
-        var provenance = debugMetadata == null ? null : debugMetadata.provenance();
-        pirGenerator.rejectUnresolvedMembers(wrappedTerm);
-        var lowered = PirBackend.lower(
-                wrappedTerm, context, pirGenerator.getPirPositions(), true, provenance);
-        var program = lowered.program();
-        PirTerm capturedPir = captureDetails ? lowered.pir() : null;
-        Term capturedUplc = captureDetails ? program.term() : null;
-        SourceMap sourceMap = lowered.sourceMap();
-
-        // 22. Build ParamInfo list
-        var paramInfos = paramFields.stream()
-                .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
-                .toList();
-
-        var result = new CompileResult(
-                program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap,
-                context.target(), context.optimizationReport(), context.javacProvenance());
         ContractSchema contractSchema = captureContractSchema
                 ? buildContractSchema(scriptPurpose, entrypointMethod, entrypointInfos,
                         paramFields, typeResolver, validatorClass)
@@ -1085,8 +932,9 @@ public class JulcCompiler {
             if (method.isStatic()) {
                 var helperPir = pirGenerator.generateMethod(method);
                 var mType = computeMethodType(method, typeResolver);
-                overloads.check(method, mType, helperPir);
+                overloads.check(method.getNameAsString(), mType, helperPir, () -> overloadLocation(method));
                 symbolTable.defineMethod(methodBinder(methodOwner, method), mType, helperPir);
+                observeMethod(context, methodOwner, method, helperPir, typeResolver);
             }
         }
 
@@ -1095,95 +943,93 @@ public class JulcCompiler {
             throw new CompilerException(diagnostics);
         }
 
-        // 11. Build body: Data-accepting lambda that calls target method by Var reference
-        // Build application: Var("method") applied to decoded args
-        PirTerm application = new PirTerm.Var(methodBinder(methodOwner, targetMethod),
-                computeMethodType(targetMethod, typeResolver));
+        // 11-17. Everything from here on takes PIR and resolved types (ADR-068 F846).
+        var parameters = new ArrayList<ValidatorAssembly.Parameter>();
         for (int i = 0; i < paramTypes.size(); i++) {
-            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
-            application = new PirTerm.App(application,
-                    new PirTerm.Var(decodedName, paramTypes.get(i)));
+            var param = targetMethod.getParameter(i);
+            parameters.add(new ValidatorAssembly.Parameter(param.getNameAsString(), param.getNameAsString(),
+                    paramTypes.get(i), null));
         }
-
-        // Wrap with outer Lam + decode for each param (inside-out)
-        PirTerm body = application;
-        for (int i = paramTypes.size() - 1; i >= 0; i--) {
-            var decodedName = "#" + targetMethod.getParameter(i).getNameAsString() + "__dec";
-            var rawName = "#" + targetMethod.getParameter(i).getNameAsString() + "__raw";
-            var decoded = PirHelpers.wrapDecode(
-                    new PirTerm.Var(rawName, new PirType.DataType()), paramTypes.get(i));
-            body = new PirTerm.Let(decodedName, decoded, body);
-            body = new PirTerm.Lam(rawName, new PirType.DataType(), body);
-        }
-
-        // 12. Wrap ALL methods as Let/LetRec bindings (target + helpers, dependency-ordered)
-        body = wrapMethodBindings(symbolTable.allMethods(), body);
-
-        // 14. Wrap static field initializers
-        for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
-            var sf = compiledStaticFields.get(i);
-            body = new PirTerm.Let(sf.name(), sf.initPir(), body);
-        }
-
-        // 15. Wrap library methods as Let bindings
-        var sortedLibMethods = topoSortLibraryMethods(libraryRegistry.allMethods());
-        for (var libMethod : sortedLibMethods) {
-            if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
-                body = new PirTerm.LetRec(
-                        List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
-                        body);
-            } else {
-                body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
-            }
-        }
-
-        // 16. Wrap with outer @Param lambdas
-        for (int i = paramFields.size() - 1; i >= 0; i--) {
-            var pf = paramFields.get(i);
-            var rawName = "#" + pf.name + "__raw";
-            var decoded = PirHelpers.wrapDecode(
-                    new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
-            body = new PirTerm.Lam(rawName, new PirType.DataType(),
-                    new PirTerm.Let(pf.name, decoded, body));
-        }
-
-        pirGenerator.rejectUnresolvedMembers(body);
-        var values = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(body);
-        var folding = new ArrayLiteralFoldPass(context, values.positions()).lower(values.term());
-        var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
-        var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
-        var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
-        body = pairLowering.term();
-
-        // 17. Lower to UPLC (with source map support)
-        var uplcGenerator = context.isSourceMapEnabled()
-                ? new UplcGenerator(context, pairLowering.positions())
-                : new UplcGenerator(context, null);
-        var uplcTerm = uplcGenerator.generate(body);
-
-        SourceMap sourceMap = null;
-        var producingStage = "UPLC lowering";
-        if (context.isSourceMapEnabled()) {
-            sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
-        } else {
-            var optimizer = new UplcOptimizer(context);
-            var optimization = optimizer.optimizeWithReport(uplcTerm);
-            uplcTerm = optimization.term();
-            context.recordOptimizationRules(optimization.appliedPasses());
-            producingStage = optimizerStage(optimization);
-        }
-
-        var paramInfos = paramFields.stream()
-                .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
-                .toList();
-        var program = createProgram(context, uplcTerm);
-        UplcTargetValidator.validate(
-                program,
+        return ValidatorAssembly.method(
+                new ValidatorAssembly.MethodProgram(methodBinder(methodOwner, targetMethod),
+                        computeMethodType(targetMethod, typeResolver), parameters, helperMethods(symbolTable),
+                        assemblyStatics(compiledStaticFields), libraryRegistry.allMethods(),
+                        assemblyParams(paramFields)),
                 context,
-                producingStage);
-        return new CompileResult(
-                program, diagnostics, paramInfos, body, uplcTerm, sourceMap,
-                context.target(), context.optimizationReport(), context.javacProvenance());
+                new ValidatorAssembly.Frontend(pirGenerator.getPirPositions(), null, null,
+                        pirGenerator::rejectUnresolvedMembers, null));
+    }
+
+    // --- What the assembly takes (ADR-068 F846) ---
+
+    private static List<ValidatorAssembly.Method> helperMethods(SymbolTable symbolTable) {
+        return symbolTable.allMethods().stream()
+                .map(method -> new ValidatorAssembly.Method(method.name(), method.body())).toList();
+    }
+
+    private static List<ValidatorAssembly.StaticField> assemblyStatics(List<CompiledStaticField> fields) {
+        return fields.stream().map(field -> new ValidatorAssembly.StaticField(field.name(), field.initPir())).toList();
+    }
+
+    private static List<ValidatorAssembly.ParamField> assemblyParams(List<ParamField> fields) {
+        return fields.stream().map(field -> new ValidatorAssembly.ParamField(
+                field.name(), field.pirType(), field.javaType(), field.sourceLocation())).toList();
+    }
+
+    private List<ValidatorAssembly.Parameter> entryParameters(MethodDeclaration method, TypeResolver typeResolver) {
+        var parameters = new ArrayList<ValidatorAssembly.Parameter>();
+        for (var parameter : method.getParameters()) {
+            parameters.add(new ValidatorAssembly.Parameter(parameter.getNameAsString(), parameter.getNameAsString(),
+                    typeResolver.resolve(parameter.getType()), sourceLocation(parameter)));
+        }
+        return parameters;
+    }
+
+    private ValidatorAssembly.Entry autoDispatchEntry(EntrypointInfo info, PirTerm function, TypeResolver typeResolver) {
+        boolean hasDatum = info.tag() == 1 && info.method().getParameters().size() == 3;
+        return entry(info.tag(), info.method(), function, hasDatum, typeResolver);
+    }
+
+    private ValidatorAssembly.Entry singleEntry(MethodDeclaration method, ScriptPurpose purpose, PirTerm function,
+                                                TypeResolver typeResolver) {
+        boolean hasDatum = purpose == ScriptPurpose.SPENDING && method.getParameters().size() == 3;
+        return entry(-1, method, function, hasDatum, typeResolver);
+    }
+
+    private ValidatorAssembly.Entry entry(int tag, MethodDeclaration method, PirTerm function, boolean hasDatum,
+                                          TypeResolver typeResolver) {
+        var parameters = entryParameters(method, typeResolver);
+        return new ValidatorAssembly.Entry(tag, parameters.size(), function, hasDatum ? parameters.get(0) : null,
+                parameters.get(hasDatum ? 1 : 0),
+                hasDatum && method.getParameter(0).getTypeAsString().startsWith("Optional"));
+    }
+
+    static SourceLocation overloadLocation(MethodDeclaration method) {
+        var begin = method.getBegin();
+        var fileName = method.findCompilationUnit()
+                .flatMap(cu -> cu.getStorage().map(storage -> storage.getFileName()))
+                .orElse("<source>");
+        return new SourceLocation(fileName, begin.map(p -> p.line).orElse(0),
+                begin.map(p -> p.column).orElse(0), method.getDeclarationAsString());
+    }
+
+    /** Where a validator that returned false is reported: its {@code @Entrypoint} method. */
+    private static SourceLocation failureLocation(MethodDeclaration method) {
+        var range = method.getRange();
+        if (range.isEmpty()) return null;
+        var fileName = method.findCompilationUnit()
+                .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
+                .orElse(null);
+        return new SourceLocation(fileName, range.get().begin.line, range.get().begin.column,
+                "validator returned false");
+    }
+
+    /** ADR-068 I1b: reports a lowered method to the compilation's evidence observer, if it has one. */
+    private void observeMethod(CompilationContext context, String owner, MethodDeclaration method, PirTerm body,
+                               TypeResolver typeResolver) {
+        if (context.observesMethods()) {
+            context.observeMethod(methodBinder(owner, method), computeMethodType(method, typeResolver), body);
+        }
     }
 
     // --- Library compilation ---
@@ -1193,125 +1039,15 @@ public class JulcCompiler {
                                        Set<String> knownFqcns, CompilationContext context) {
         new LibraryCompiler(context).compile(
                 libCus, typeResolver, registry, effectiveLookup, knownFqcns);
+        if (context.observesMethods()) {
+            registry.allMethods().forEach(method ->
+                    context.observeMethod(method.qualifiedName(), method.type(), method.body()));
+        }
     }
 
     private static Program createProgram(CompilationContext context, Term term) {
         var version = context.target().uplcVersion();
         return new Program(version.major(), version.minor(), version.patch(), term);
-    }
-
-    private static String optimizerStage(UplcOptimizer.OptimizationResult result) {
-        return result.appliedPasses().isEmpty()
-                ? "UPLC optimizer (no rewrites)"
-                : "UPLC optimizer passes " + result.appliedPasses();
-    }
-
-    /** Delegate to PirHelpers for self-recursion detection. */
-    private static boolean containsVarRef(PirTerm term, String name) {
-        return PirHelpers.containsVarRef(term, name);
-    }
-
-    /**
-     * Wrap class/validator methods as Let/LetRec bindings in dependency order.
-     * Uses Tarjan's SCC to handle forward references and mutual recursion.
-     */
-    private static PirTerm wrapMethodBindings(java.util.Collection<SymbolTable.MethodInfo> methods, PirTerm body) {
-        if (methods.isEmpty()) return body;
-
-        var bindings = new ArrayList<MethodDependencyResolver.NamedBinding>();
-        for (var mi : methods) {
-            bindings.add(new MethodDependencyResolver.NamedBinding(mi.name(), mi.body()));
-        }
-
-        var groups = MethodDependencyResolver.resolveDependencyOrder(
-                bindings, JulcCompiler::containsVarRef);
-
-        // Wrap from first (innermost) to last (outermost)
-        for (var group : groups) {
-            if (group.isSingle()) {
-                var b = group.bindings().get(0);
-                if (containsVarRef(b.body(), b.name())) {
-                    body = new PirTerm.LetRec(
-                            List.of(new PirTerm.Binding(b.name(), b.body())), body);
-                } else {
-                    body = new PirTerm.Let(b.name(), b.body(), body);
-                }
-            } else if (group.bindings().size() == 2) {
-                // Mutual recursion — multi-binding LetRec (Bekic's theorem in UplcGenerator)
-                var pirBindings = new ArrayList<PirTerm.Binding>();
-                for (var b : group.bindings()) {
-                    pirBindings.add(new PirTerm.Binding(b.name(), b.body()));
-                }
-                body = new PirTerm.LetRec(pirBindings, body);
-            } else {
-                var names = group.bindings().stream()
-                        .map(MethodDependencyResolver.NamedBinding::name)
-                        .toList();
-                throw new CompilerException(
-                        "Mutual recursion with more than 2 methods is not supported: " + names);
-            }
-        }
-
-        return body;
-    }
-
-    /**
-     * Topologically sort library methods so dependencies are outermost in the Let chain.
-     * Methods with no library dependencies come last (outermost); dependent methods come first (innermost).
-     * The iteration order of the result is suitable for direct use in the Let wrapping loop:
-     * first item = innermost, last item = outermost.
-     */
-    private static List<LibraryMethodRegistry.LibraryMethod> topoSortLibraryMethods(
-            java.util.Collection<LibraryMethodRegistry.LibraryMethod> methods) {
-        var methodList = new ArrayList<>(methods);
-        var methodMap = new java.util.LinkedHashMap<String, LibraryMethodRegistry.LibraryMethod>();
-        for (var m : methodList) methodMap.put(m.qualifiedName(), m);
-
-        // Build dependency graph: name -> set of library method names referenced in body
-        var deps = new java.util.LinkedHashMap<String, java.util.Set<String>>();
-        for (var m : methodList) {
-            var myDeps = new java.util.LinkedHashSet<String>();
-            for (var other : methodList) {
-                if (!other.qualifiedName().equals(m.qualifiedName())
-                        && containsVarRef(m.body(), other.qualifiedName())) {
-                    myDeps.add(other.qualifiedName());
-                }
-            }
-            deps.put(m.qualifiedName(), myDeps);
-        }
-
-        // Kahn's algorithm: emit methods whose dependencies are already emitted
-        var emitted = new java.util.LinkedHashSet<String>();
-        var result = new ArrayList<LibraryMethodRegistry.LibraryMethod>();
-        var remaining = new java.util.LinkedHashSet<>(deps.keySet());
-        while (!remaining.isEmpty()) {
-            String next = null;
-            for (String name : remaining) {
-                var d = new java.util.LinkedHashSet<>(deps.get(name));
-                d.removeAll(emitted);
-                if (d.isEmpty()) {
-                    next = name;
-                    break;
-                }
-            }
-            if (next == null) {
-                // Cycle — add remaining in original order
-                for (var m : methodList) {
-                    if (remaining.contains(m.qualifiedName())) {
-                        result.add(m);
-                    }
-                }
-                break;
-            }
-            remaining.remove(next);
-            emitted.add(next);
-            result.add(methodMap.get(next));
-        }
-
-        // Kahn's produces dependencies-first order (leaves first).
-        // For Let wrapping, we need dependents first (innermost), dependencies last (outermost).
-        java.util.Collections.reverse(result);
-        return result;
     }
 
     // --- Helper methods ---
@@ -1811,51 +1547,6 @@ public class JulcCompiler {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Unknown schema purpose: " + purposeName, ex);
         }
-    }
-
-    private void ensureStrictBoundarySupported(
-            com.github.javaparser.ast.body.Parameter parameter,
-            PirType type,
-            TypeResolver typeResolver) {
-        if (typeResolver.containsNativeOpaque(type)) {
-            throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
-                    parameter.getNameAsString(), type, sourceLocation(parameter));
-        }
-        try {
-            typeResolver.findStandaloneVariantRecord(type).ifPresent(description -> {
-                throw new IllegalArgumentException(
-                        "Unsupported strict boundary " + description
-                                + "; declare the sealed interface type instead");
-            });
-            new StrictBoundaryGenerator(typeResolver.namedDefinitions()).ensureSupported(type);
-        } catch (IllegalArgumentException ex) {
-            throw schemaError(parameter, ex.getMessage());
-        }
-    }
-
-    private StrictRecordEntrypoint.Result transformStrictRecordEntrypoint(
-            PirTerm function,
-            MethodDeclaration method,
-            TypeResolver typeResolver) {
-        var params = method.getParameters();
-        var roots = new ArrayList<StrictRecordEntrypoint.Root>();
-        int rootCount = Math.max(0, params.size() - 1); // ScriptContext is always last
-        for (int i = 0; i < rootCount; i++) {
-            var parameter = params.get(i);
-            var type = typeResolver.resolve(parameter.getType());
-            ensureStrictBoundarySupported(parameter, type, typeResolver);
-            roots.add(new StrictRecordEntrypoint.Root(
-                    parameter.getNameAsString(), type));
-        }
-        return StrictRecordEntrypoint.transform(
-                function, roots, typeResolver.namedDefinitions());
-    }
-
-    private PirType wrapperBoundaryType(PirType type, TypeResolver typeResolver) {
-        if (type == null) return null;
-        return typeResolver.resolveNamed(type) instanceof PirType.RecordType
-                ? new PirType.DataType()
-                : type;
     }
 
     private ContractSchema.Argument schemaArgument(
