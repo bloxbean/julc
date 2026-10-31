@@ -91,7 +91,8 @@ public final class FactTranslator {
         String value = translateExpr(tp.value());
         return switch (tp.field()) {
             case SIGNED_BY ->
-                    "ListsLib.contains(txInfo.signatories(), " + value + ")";
+                    // The signer is a byte[] (TypeMapper); the signatories are PubKeyHash values.
+                    "txInfo.signatories().contains(PubKeyHash.of(" + value + "))";
             case VALID_AFTER ->
                     "IntervalLib.finiteLowerBound(txInfo.validRange()).compareTo(" + value + ") >= 0";
             case VALID_BEFORE ->

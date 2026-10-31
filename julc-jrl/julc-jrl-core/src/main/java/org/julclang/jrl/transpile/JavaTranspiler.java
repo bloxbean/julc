@@ -75,7 +75,8 @@ public final class JavaTranspiler {
 
     private void emitParams(List<ParamNode> params) {
         for (var param : params) {
-            emitLine("@Param static " + TypeMapper.toJavaType(param.type())
+            // Qualified: the contract's own class may be named Param, which would shadow the annotation (javac).
+            emitLine("@org.julclang.stdlib.annotation.Param static " + TypeMapper.toJavaType(param.type())
                     + " " + param.name() + ";");
         }
     }
@@ -294,7 +295,7 @@ public final class JavaTranspiler {
         if (op.datum() != null) {
             String datumVar = "_outDatum" + (varCounter++);
             emitLine("var " + datumVar + " = (" + op.datum().typeName()
-                    + ") OutputLib.getInlineDatum(OutputLib.uniqueOutputAt(txInfo.outputs(), " + toExpr + "));");
+                    + ") (Object) OutputLib.getInlineDatum(OutputLib.uniqueOutputAt(txInfo.outputs(), " + toExpr + "));");
             for (String cond : FactTranslator.translateDatumConstraint(op.datum(), datumVar)) {
                 conditionExprs.add(cond);
             }
@@ -350,7 +351,7 @@ public final class JavaTranspiler {
         if (cop.datum() != null) {
             String datumVar = "_coDatum" + (varCounter++);
             emitLine("var " + datumVar + " = (" + cop.datum().typeName()
-                    + ") OutputLib.getInlineDatum(" + continuingVar + ".head());");
+                    + ") (Object) OutputLib.getInlineDatum(" + continuingVar + ".head());");
             for (String cond : FactTranslator.translateDatumConstraint(cop.datum(), datumVar)) {
                 conditionExprs.add(cond);
             }
@@ -378,7 +379,8 @@ public final class JavaTranspiler {
         String localVar = "_" + varName.charAt(0) + (varCounter++);
 
         if (!match.fields().isEmpty()) {
-            emitLine("var " + localVar + " = (" + typeName + ") " + varName + ";");
+            // Through Object: a record is not a PlutusData in Java, and JuLC lowers both casts to the value.
+            emitLine("var " + localVar + " = (" + typeName + ") (Object) " + varName + ";");
             for (var fm : match.fields()) {
                 if (fm.value() instanceof MatchValue.Binding binding) {
                     emitLine("var " + binding.varName() + " = " + localVar

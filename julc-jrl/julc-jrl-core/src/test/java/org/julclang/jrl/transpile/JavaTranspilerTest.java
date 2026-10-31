@@ -115,8 +115,8 @@ class JavaTranspilerTest {
                     rule "r" when Condition( true ) then allow
                     default: deny
                     """);
-            assertTrue(java.contains("@Param static byte[] beneficiary;"));
-            assertTrue(java.contains("@Param static BigInteger cliff;"));
+            assertTrue(java.contains("@org.julclang.stdlib.annotation.Param static byte[] beneficiary;"));
+            assertTrue(java.contains("@org.julclang.stdlib.annotation.Param static BigInteger cliff;"));
         }
     }
 
@@ -183,7 +183,7 @@ class JavaTranspilerTest {
                     then allow
                     default: deny
                     """);
-            assertTrue(java.contains("ListsLib.contains(txInfo.signatories(), owner)"));
+            assertTrue(java.contains("txInfo.signatories().contains(PubKeyHash.of(owner))"));
         }
 
         @Test
@@ -239,9 +239,9 @@ class JavaTranspilerTest {
                     then allow
                     default: deny
                     """);
-            assertTrue(java.contains("var _d0 = (D) datum;"));
+            assertTrue(java.contains("var _d0 = (D) (Object) datum;"));
             assertTrue(java.contains("var o = _d0.owner();"));
-            assertTrue(java.contains("ListsLib.contains(txInfo.signatories(), o)"));
+            assertTrue(java.contains("txInfo.signatories().contains(PubKeyHash.of(o))"));
         }
 
         @Test
@@ -385,8 +385,8 @@ class JavaTranspilerTest {
         // Verify key elements
         assertTrue(java.contains("@SpendingValidator"));
         assertTrue(java.contains("record VestingDatum(BigInteger lockUntil, byte[] owner, byte[] beneficiary) {}"));
-        assertTrue(java.contains("(VestingDatum) datum"));
-        assertTrue(java.contains("ListsLib.contains(txInfo.signatories(),"));
+        assertTrue(java.contains("(VestingDatum) (Object) datum"));
+        assertTrue(java.contains("txInfo.signatories().contains(PubKeyHash.of("));
         assertTrue(java.contains("IntervalLib.finiteLowerBound(txInfo.validRange())"));
         assertTrue(java.contains("return false;"));
     }
