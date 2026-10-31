@@ -3,7 +3,7 @@ package org.julclang.difftest;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LedgerTypeProvider;
-import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.stdlib.StdlibRegistry;
@@ -62,7 +62,7 @@ class Adr068GateTimingTest {
     }
 
     static String text(Path corpus, String ref) throws Exception {
-        return CorpusRecorder.text(Files.readAllBytes(corpus.resolve("sources").resolve(ref.split(" ")[0] + ".java")));
+        return CorpusFiles.text(Files.readAllBytes(corpus.resolve("sources").resolve(ref.split(" ")[0] + ".java")));
     }
 
     static void compile(Sample s) {

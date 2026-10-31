@@ -1,27 +1,47 @@
 # ADR-068 M0 totals. Generated; do not edit.
-cases	10960
+cases	11402
 cases.blaster	7
 cases.c7	6
 cases.diffcase	182
+cases.elci	4
+cases.external	102
 cases.g0	376
 cases.g1	123
 cases.ledger	39
-cases.recorded	10896
+cases.recorded	11234
 cases.stdlib	17
 stdlib.sources	16
 g1.tries	150
 g1.cases.also-recorded	123/123
 g0.cases.also-recorded	376/376
 excluded.nondeterministic	org.julclang.compiler.IntegerLiteralTest#generatedLiteralsHaveJavacsValue	300
-ledger.NONE	accepted 9319	rejected 1634	unreplayable 7
-ledger.BASELINE	accepted 9319	rejected 1634	unreplayable 7
-ledger.PV11_SAFE	accepted 9319	rejected 1634	unreplayable 7
-ledger.PV11_COSTED	accepted 9319	rejected 1634	unreplayable 7
-inventory	permanent 1613	scheduled 21
+ledger.NONE	accepted 9663	rejected 1729	unreplayable 10
+ledger.BASELINE	accepted 9663	rejected 1729	unreplayable 10
+ledger.PV11_SAFE	accepted 9663	rejected 1729	unreplayable 10
+ledger.PV11_COSTED	accepted 9663	rejected 1729	unreplayable 10
+instantiations.NONE	accepted 33	rejected 14	unreplayable 0
+instantiations.BASELINE	accepted 33	rejected 14	unreplayable 0
+instantiations.PV11_SAFE	accepted 33	rejected 14	unreplayable 0
+instantiations.PV11_COSTED	accepted 33	rejected 14	unreplayable 0
+inventory.rows	permanent 1803	scheduled 21
+inventory.cases	1739
+coverage	sites 142	covered 116	not-source 26	uncovered 0	uncatalogued 0	contradicted 0
 runs	1854
 runs.verdicts.AGREE	7012
 runs.verdicts.INCONCLUSIVE	8
 runs.verdicts.MISMATCH	208
 runs.verdicts.REJECTED	188
-unreplayable	custom stdlib lookup org.julclang.compiler.StdlibIntegrationTest$1	5
-unreplayable	custom stdlib lookup org.julclang.compiler.pir.CompositeStdlibLookup	2
+evaluations	22997
+evaluations.external.excluded.nondeterministic-tests	170
+evaluations.external.replay.matched-not-replayed	137
+evaluations.external.replay.unmatched	19
+evaluations.recorded.excluded.harness	6231
+evaluations.recorded.excluded.nondeterministic-tests	21
+evaluations.recorded.replay.agree	2017
+evaluations.recorded.replay.matched-not-replayed	14089
+evaluations.recorded.replay.unmatched	6735
+sha256	ledger-b0-evaluations-external.tsv	6020fa5adb205eb8a0eb4b1144373d5f22e6975d154ad5afe3f481ae2ff51d6a
+sha256	ledger-b0-evaluations.tsv	70c38cfad0634f27d2e6f4863fc9314a32a64acc694be8e5e9f89239bda60ad6
+unreplayable	custom stdlib lookup custom:org.julclang.compiler.StdlibIntegrationTest$1	5
+unreplayable	custom stdlib lookup custom:org.julclang.compiler.pir.CompositeStdlibLookup	2
+unreplayable	custom stdlib lookup custom:org.julclang.stdlib.StdlibRegistry	3

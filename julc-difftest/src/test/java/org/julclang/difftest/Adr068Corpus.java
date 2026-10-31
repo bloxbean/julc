@@ -5,6 +5,7 @@ import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySourceResolver;
 import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.core.corpus.CorpusFiles;
 import org.julclang.difftest.gen.G0Enumeration;
 import org.julclang.difftest.gen.G1;
 
@@ -27,8 +28,9 @@ import java.util.stream.Stream;
  * <p>
  * The parts, each named by the tag prefix it gives its cases:
  * <ul>
- *   <li>{@code recorded}: the corpus {@link CorpusRecorder} wrote during the julc-compiler, julc-stdlib,
- *       julc-testkit, julc-difftest and julc-examples test runs;</li>
+ *   <li>{@code recorded}: the corpus {@link CorpusRecorder} wrote during the julc-compiler (with {@code pairCaseTest}),
+ *       julc-stdlib, julc-testkit, julc-difftest and julc-examples test runs; {@code external} and {@code elci}: the
+ *       corpora recorded from the external julc-examples tests and from Elci's smoke and custom library;</li>
  *   <li>{@code stdlib}: each bundled {@code @OnchainLibrary} source (the {@code META-INF/plutus-sources} index), as a
  *       {@code JavaLibraryProvider} case, and all of them as one;</li>
  *   <li>{@code ledger}: the ledger type metadata ({@code LedgerTypeProvider}, an empty {@code JavaLibraryProvider}),
@@ -41,12 +43,13 @@ import java.util.stream.Stream;
  */
 final class Adr068Corpus {
 
-    static final String STDLIB_LOOKUP = "org.julclang.stdlib.StdlibRegistry";
+    /** The recorded identity of {@code StdlibRegistry.defaultRegistry()} ({@code FileCorpusRecorder.identity}). */
+    static final String STDLIB_LOOKUP = "default:org.julclang.stdlib.StdlibRegistry";
 
     /** One source: its digest, its text, and its file name for the path entry points. */
     record Source(String digest, String text, String fileName) {
         static Source of(String text, String fileName) {
-            return new Source(CorpusRecorder.sha256(text), text, fileName);
+            return new Source(CorpusFiles.sha256(text), text, fileName);
         }
 
         String ref() {
@@ -64,6 +67,8 @@ final class Adr068Corpus {
         final String entry;
         final String method;
         final String lookup;
+        final String target;
+        final String costProfile;
         final boolean sourceMap;
         final List<String> disabledRules;
         final Source main;
@@ -72,13 +77,22 @@ final class Adr068Corpus {
         final TreeSet<String> origins = new TreeSet<>();
         final TreeSet<String> recordedLevels = new TreeSet<>();
         final List<Run> runs = new ArrayList<>();
+        /** The specialization requests made of this provider case, by digest of their text ({@code RequestText}). */
+        final TreeMap<String, String> instantiations = new TreeMap<>();
+        /**
+         * Why an instantiation the case's inputs would not replay is unreplayable, by digest: a request made of the
+         * provider after its lookup changed (F320), when no provider with the case's inputs made it too.
+         */
+        final TreeMap<String, String> unreplayableInstantiations = new TreeMap<>();
 
-        Case(String key, String entry, String method, String lookup, boolean sourceMap, List<String> disabledRules,
-             Source main, List<Source> libraries) {
+        Case(String key, String entry, String method, String lookup, String target, String costProfile,
+             boolean sourceMap, List<String> disabledRules, Source main, List<Source> libraries) {
             this.key = key;
             this.entry = entry;
             this.method = method;
             this.lookup = lookup;
+            this.target = target;
+            this.costProfile = costProfile;
             this.sourceMap = sourceMap;
             this.disabledRules = List.copyOf(disabledRules);
             this.main = main;
@@ -113,7 +127,8 @@ final class Adr068Corpus {
 
     // --- Recorded corpus ---
 
-    void addRecorded(Path dir) throws IOException {
+    /** Adds a recorded corpus under {@code tag} ({@code recorded}, {@code external}, {@code elci}). */
+    void addRecorded(Path dir, String tag) throws IOException {
         Path casesDir = dir.resolve("cases");
         if (!Files.isDirectory(casesDir)) throw new IllegalStateException("no recorded corpus at " + dir);
         try (Stream<Path> list = Files.list(casesDir)) {
@@ -121,11 +136,21 @@ final class Adr068Corpus {
                 String text = Files.readString(caseDir.resolve("case.txt"));
                 var origins = new TreeSet<String>();
                 var levels = new TreeSet<String>();
+                var instantiations = new TreeMap<String, String>();
+                var unreplayable = new TreeMap<String, String[]>();
                 try (Stream<Path> files = Files.list(caseDir)) {
                     for (Path file : files.sorted().toList()) {
                         String name = file.getFileName().toString();
                         if (name.startsWith("origin-")) origins.add(Files.readString(file).strip());
                         if (name.startsWith("level-")) levels.add(name.substring("level-".length()));
+                        if (name.startsWith("instantiate-")) {
+                            String request = Files.readString(file).strip();
+                            instantiations.put(CorpusFiles.sha256(request).substring(0, 16), request);
+                        }
+                        if (name.startsWith("unreplayable-instantiate-")) {
+                            String[] reasonAndRequest = Files.readString(file).strip().split("\n", 2);
+                            unreplayable.put(CorpusFiles.sha256(reasonAndRequest[1]).substring(0, 16), reasonAndRequest);
+                        }
                     }
                 }
                 var deterministic = new TreeSet<>(origins);
@@ -135,9 +160,16 @@ final class Adr068Corpus {
                     continue;
                 }
                 var c = parse(canonicalFileNames(text), dir);
-                c.tags.add("recorded");
+                c.tags.add(tag);
                 c.origins.addAll(deterministic);
                 c.recordedLevels.addAll(levels);
+                c.instantiations.putAll(instantiations);
+                c.unreplayableInstantiations.keySet().removeAll(instantiations.keySet());
+                unreplayable.forEach((digest, reasonAndRequest) -> {
+                    if (c.instantiations.containsKey(digest) && !c.unreplayableInstantiations.containsKey(digest)) return;
+                    c.instantiations.put(digest, reasonAndRequest[1]);
+                    c.unreplayableInstantiations.put(digest, reasonAndRequest[0]);
+                });
             }
         }
     }
@@ -155,7 +187,7 @@ final class Adr068Corpus {
     }
 
     private Case parse(String text, Path dir) throws IOException {
-        String entry = null, method = null, lookup = null;
+        String entry = null, method = null, lookup = null, target = null, costProfile = null;
         boolean sourceMap = false;
         List<String> disabled = List.of();
         Source main = null;
@@ -167,6 +199,8 @@ final class Adr068Corpus {
                 case "entry" -> entry = value;
                 case "method" -> method = value;
                 case "lookup" -> lookup = value;
+                case "target" -> target = value;
+                case "costProfile" -> costProfile = value;
                 case "sourceMap" -> sourceMap = Boolean.parseBoolean(value);
                 case "disabledRules" -> disabled = List.of(value.split(","));
                 case "source" -> main = readSource(dir, value);
@@ -175,10 +209,10 @@ final class Adr068Corpus {
                 }
             }
         }
-        String key = CorpusRecorder.sha256(text);
+        String key = CorpusFiles.sha256(text);
         Case existing = cases.get(key);
         if (existing != null) return existing;
-        var c = new Case(key, entry, method, lookup, sourceMap, disabled, main, libraries);
+        var c = new Case(key, entry, method, lookup, target, costProfile, sourceMap, disabled, main, libraries);
         cases.put(key, c);
         return c;
     }
@@ -187,8 +221,8 @@ final class Adr068Corpus {
         int space = ref.indexOf(' ');
         String digest = space < 0 ? ref : ref.substring(0, space);
         String fileName = space < 0 ? null : ref.substring(space + 1);
-        String text = CorpusRecorder.text(Files.readAllBytes(dir.resolve("sources").resolve(digest + ".java")));
-        if (!CorpusRecorder.sha256(text).equals(digest)) throw new IllegalStateException("corrupt source " + digest);
+        String text = CorpusFiles.text(Files.readAllBytes(dir.resolve("sources").resolve(digest + ".java")));
+        if (!CorpusFiles.sha256(text).equals(digest)) throw new IllegalStateException("corrupt source " + digest);
         return new Source(digest, text, fileName);
     }
 
@@ -197,10 +231,12 @@ final class Adr068Corpus {
     /** Adds (or tags) a case built the way the entry point would record it. */
     Case add(String tag, String entry, String method, String lookup, Source main, List<Source> libraries) {
         var options = new CompilerOptions();
-        String text = CorpusRecorder.caseText(entry, method, lookup, options, main == null ? null : main.ref(),
+        String text = CorpusRecorder.caseText(entry, method, lookup, CorpusRecorder.Options.of(options),
+                main == null ? null : main.ref(),
                 libraries.stream().map(Source::ref).toList());
-        String key = CorpusRecorder.sha256(text);
-        Case c = cases.computeIfAbsent(key, k -> new Case(k, entry, method, lookup, false, List.of(), main, libraries));
+        String key = CorpusFiles.sha256(text);
+        Case c = cases.computeIfAbsent(key, k -> new Case(k, entry, method, lookup, options.getTarget().profileId(), null,
+                false, List.of(), main, libraries));
         c.tags.add(tag);
         return c;
     }

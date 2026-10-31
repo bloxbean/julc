@@ -1,16 +1,14 @@
 package org.julclang.compiler.frontend.javac;
 
-import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.core.corpus.CorpusFiles;
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +22,7 @@ import java.util.stream.Stream;
  * The javac gate's report (ADR-068 M1): every compilation the gate would reject in {@code enforce} mode, written
  * under the directory {@value JavacGate#REPORT_PROPERTY} names. Layout, every name a SHA-256 digest:
  * <ul>
- *   <li>{@code sources/<digest>.java}: one source text, as {@link CorpusRecorder} stores it;</li>
+ *   <li>{@code sources/<digest>.java}: one source text, as {@link CorpusFiles} stores it;</li>
  *   <li>{@code cases/<key>/case.txt}: the javac environment, the roots and pool (digest and file name) and the
  *       diagnostics, one per line; {@code key} is the digest of the inputs;</li>
  *   <li>{@code cases/<key>/entry-<name>} and {@code origin-<digest>}: each entry point and test that compiled it;</li>
@@ -80,10 +78,10 @@ public final class JavacGateReport {
             }
             Path dir = root.resolve("cases").resolve(JavacGate.key(roots, pool));
             Files.createDirectories(dir);
-            writeOnce(dir.resolve("case.txt"), text.toString());
-            touch(dir.resolve("entry-" + entry));
-            String origin = CorpusRecorder.origin();
-            writeOnce(dir.resolve("origin-" + CorpusRecorder.sha256(origin).substring(0, 16)), origin + "\n");
+            CorpusFiles.writeOnce(dir.resolve("case.txt"), text.toString());
+            CorpusFiles.touch(dir.resolve("entry-" + entry));
+            String origin = CorpusFiles.origin();
+            CorpusFiles.writeOnce(dir.resolve("origin-" + CorpusFiles.sha256(origin).substring(0, 16)), origin + "\n");
         } catch (IOException | RuntimeException e) {
             warn(root, e);
         }
@@ -103,47 +101,22 @@ public final class JavacGateReport {
             text.append(trace);
             Path dir = root.resolve("failures").resolve(JavacGate.key(roots, pool));
             Files.createDirectories(dir);
-            writeOnce(dir.resolve("failure.txt"), text.toString());
+            CorpusFiles.writeOnce(dir.resolve("failure.txt"), text.toString());
         } catch (IOException | RuntimeException e) {
             warn(root, e);
         }
     }
 
     private static String write(Path root, JavacFrontend.Unit unit) throws IOException {
-        String digest = CorpusRecorder.sha256(unit.text());
+        String digest = CorpusFiles.sha256(unit.text());
         Path sources = root.resolve("sources");
         Files.createDirectories(sources);
-        writeOnce(sources.resolve(digest + ".java"), CorpusRecorder.bytes(unit.text()));
+        CorpusFiles.writeOnce(sources.resolve(digest + ".java"), unit.text());
         return unit.path() == null ? digest : digest + " " + unit.path().getFileName();
     }
 
     private static String oneLine(String message) {
         return message.replace("\r", "").replace("\n", " | ");
-    }
-
-    private static void writeOnce(Path file, String content) throws IOException {
-        writeOnce(file, content.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static void writeOnce(Path file, byte[] content) throws IOException {
-        if (Files.exists(file)) return;
-        Path temp = Files.createTempFile(file.getParent(), ".tmp-", "");
-        try {
-            Files.write(temp, content);
-            Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE);
-        } catch (FileAlreadyExistsException e) {
-            // Another JVM wrote it first.
-        } finally {
-            Files.deleteIfExists(temp);
-        }
-    }
-
-    private static void touch(Path file) throws IOException {
-        try {
-            Files.createFile(file);
-        } catch (FileAlreadyExistsException e) {
-            // Already recorded.
-        }
     }
 
     /**
