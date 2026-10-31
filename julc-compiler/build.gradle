@@ -406,3 +406,51 @@ tasks.register('javacGateCorpus', JavaExec) {
     } as CommandLineArgumentProvider)
     outputs.upToDateWhen { false }
 }
+
+// ADR-068 M1b: the dialect codemod (test tooling) over a javac gate report; writes rewrites back with -Pcodemod.apply:
+//   ./gradlew :julc-compiler:dialectCodemod -Pjulc.javacGate.report=build/javac-gate -Pcodemod.out=build/codemod [-Pcodemod.apply]
+tasks.register('dialectCodemod', JavaExec) {
+    description = 'Rewrite JuLC dialect sources into Java from a javac gate report (ADR-068 M1b).'
+    group = 'verification'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
+    javaLauncher = javacToolLauncher
+    maxHeapSize = '4g'
+    argumentProviders.add({
+        def dir = providers.gradleProperty('julc.javacGate.report')
+        if (!dir.present) throw new GradleException('Pass -Pjulc.javacGate.report=<dir>')
+        def out = providers.gradleProperty('codemod.out').orElse('build/codemod')
+        [rootProject.file(dir.get()).absolutePath, rootDir.absolutePath, rootProject.file(out.get()).absolutePath] +
+                (providers.gradleProperty('codemod.apply').present ? ['apply'] : [])
+    } as CommandLineArgumentProvider)
+    outputs.upToDateWhen { false }
+}
+tasks.register('dialectCodemodDebug', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
+    javaLauncher = javacToolLauncher
+    argumentProviders.add({
+        ['debug', rootProject.file(providers.gradleProperty('julc.javacGate.report').get()).absolutePath,
+         providers.gradleProperty('codemod.case').get()]
+    } as CommandLineArgumentProvider)
+    outputs.upToDateWhen { false }
+}
+// ./gradlew :julc-compiler:dialectCodemodMarkdown -Pcodemod.out=<dir> -Pcodemod.files=<a.md,b.md>
+tasks.register('dialectCodemodMarkdown', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
+    javaLauncher = javacToolLauncher
+    argumentProviders.add({
+        ['markdown', rootProject.file(providers.gradleProperty('codemod.out').get()).absolutePath] +
+                providers.gradleProperty('codemod.files').get().split(',').collect { rootProject.file(it).absolutePath }
+    } as CommandLineArgumentProvider)
+    outputs.upToDateWhen { false }
+}
+// ./gradlew :julc-compiler:dialectCompare -Pcodemod.args=<old.java>,<new.java>[,method]
+tasks.register('dialectCompare', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.julclang.compiler.frontend.javac.DialectCodemod'
+    javaLauncher = javacToolLauncher
+    argumentProviders.add({ ['compare'] + providers.gradleProperty('codemod.args').get().split(',').toList() } as CommandLineArgumentProvider)
+    outputs.upToDateWhen { false }
+}
