@@ -23,7 +23,7 @@ import com.sun.source.util.TaskListener;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
-import org.julclang.compiler.corpus.CorpusRecorder;
+import org.julclang.core.corpus.CorpusFiles;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
@@ -1254,7 +1254,7 @@ public final class DialectCodemod {
             } catch (IOException e) {
                 continue;
             }
-            sites.computeIfAbsent(CorpusRecorder.sha256(text), k -> new ArrayList<>())
+            sites.computeIfAbsent(CorpusFiles.sha256(text), k -> new ArrayList<>())
                     .add(new Site(file, 0, text.length(), true, false));
             if (!text.contains("\"")) continue;
             var source = new SimpleJavaFileObject(URI.create("string:///" + file.getFileName()), JavaFileObject.Kind.SOURCE) {
@@ -1274,7 +1274,7 @@ public final class DialectCodemod {
                                 int s = (int) positions.getStartPosition(cu, node);
                                 int e = (int) positions.getEndPosition(cu, node);
                                 boolean block = text.startsWith("\"\"\"", s);
-                                sites.computeIfAbsent(CorpusRecorder.sha256(value), k -> new ArrayList<>())
+                                sites.computeIfAbsent(CorpusFiles.sha256(value), k -> new ArrayList<>())
                                         .add(new Site(file, s, e, false, block));
                             }
                             return null;

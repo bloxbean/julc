@@ -22,6 +22,7 @@ public final class Adr068LookupMutationProbe {
     static final String LIBRARY = """
             package probe;
             import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary public class Bytes {
                 public static <T> boolean same(T ignored) {
                     byte[] a = new byte[]{1};
