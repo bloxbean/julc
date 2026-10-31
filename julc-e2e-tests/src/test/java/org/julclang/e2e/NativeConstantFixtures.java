@@ -54,11 +54,11 @@ final class NativeConstantFixtures {
     static String source(Kind kind) {
         String body = switch (kind) {
             case VALUE -> """
-                    return NativeValueLib.contains(Builtins.lovelaceValue(7), Builtins.lovelaceValue(redeemer));
+                    return NativeValueLib.contains(Builtins.lovelaceValue(BigInteger.valueOf(7)), Builtins.lovelaceValue(redeemer));
                     """;
             case ARRAY -> """
                     JulcArray<BigInteger> table = JulcArray.of(BigInteger.TWO, BigInteger.valueOf(3), BigInteger.valueOf(5));
-                    return table.get(redeemer).equals(datum);
+                    return table.get(redeemer.longValue()).equals(datum);
                     """;
             case G1, G2 -> """
                     var p = BlsLib.GROUPHashToGroup(new byte[]{1}, new byte[]{});
@@ -75,6 +75,8 @@ final class NativeConstantFixtures {
                 import org.julclang.stdlib.Builtins;
                 import org.julclang.stdlib.lib.NativeValueLib;
                 import org.julclang.stdlib.lib.BlsLib;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
                 @SpendingValidator class NativeConstantGate {
                     @Entrypoint static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
                 """ + body + "\n}}";

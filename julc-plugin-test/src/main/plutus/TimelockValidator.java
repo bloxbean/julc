@@ -1,4 +1,12 @@
 import org.julclang.core.PlutusData;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.Interval;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.lib.ContextsLib;
+import org.julclang.stdlib.lib.IntervalLib;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 /**
  * Timelock spending validator: checks that a deadline falls within
@@ -12,8 +20,8 @@ import org.julclang.core.PlutusData;
 class TimelockValidator {
     @Entrypoint
     static boolean validate(PlutusData redeemer, PlutusData ctx) {
-        PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-        PlutusData validRange = ContextsLib.txInfoValidRange(txInfo);
-        return IntervalLib.contains(validRange, redeemer);
+        TxInfo txInfo = ContextsLib.getTxInfo(PlutusData.cast(ctx, ScriptContext.class));
+        Interval validRange = ContextsLib.txInfoValidRange(txInfo);
+        return IntervalLib.contains(validRange, Builtins.unIData(redeemer));
     }
 }
