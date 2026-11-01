@@ -359,6 +359,45 @@ public final class PirHelpers {
     }
 
     /**
+     * {@code String.length()}: the UTF-16 code units of {@code string}, which a script holds as Unicode scalars. Counted from
+     * its UTF-8 bytes: a continuation byte ({@code 0x80..0xBF}) counts 0, a lead byte of a supplementary character
+     * ({@code 0xF0} and up) counts 2, and any other byte counts 1. A constant folds to Java's value. No term is in the scope
+     * of the binders here but {@code string}, in the first one's value, which that binder does not reach.
+     */
+    static PirTerm utf16Length(PirTerm string) {
+        if (string instanceof PirTerm.Const constant && constant.value() instanceof Constant.StringConst text) {
+            return new PirTerm.Const(Constant.integer(BigInteger.valueOf(text.value().length())));
+        }
+        var integer = new PirType.IntegerType();
+        var utf8 = new PirTerm.Var("#utf8", new PirType.ByteStringType());
+        var size = new PirTerm.Var("#utf8_size", integer);
+        var index = new PirTerm.Var("#utf8_index", integer);
+        var count = new PirTerm.Var("#utf8_count", integer);
+        var unit = new PirTerm.Var("#utf8_byte", integer);
+        var go = new PirTerm.Var("#utf8_go", new PirType.FunType(integer, new PirType.FunType(integer, integer)));
+        var units = new PirTerm.IfThenElse(below(unit, 0xC0),
+                new PirTerm.IfThenElse(below(unit, 0x80), integerConstant(1), integerConstant(0)),
+                new PirTerm.IfThenElse(below(unit, 0xF0), integerConstant(1), integerConstant(2)));
+        var step = new PirTerm.Let(unit.name(), builtinApp2(DefaultFun.IndexByteString, utf8, index),
+                new PirTerm.App(new PirTerm.App(go, builtinApp2(DefaultFun.AddInteger, index, integerConstant(1))),
+                        builtinApp2(DefaultFun.AddInteger, count, units)));
+        var body = new PirTerm.IfThenElse(builtinApp2(DefaultFun.EqualsInteger, index, size), count, step);
+        var function = new PirTerm.Lam(index.name(), integer, new PirTerm.Lam(count.name(), integer, body));
+        var loop = new PirTerm.LetRec(List.of(new PirTerm.Binding(go.name(), function)),
+                new PirTerm.App(new PirTerm.App(go, integerConstant(0)), integerConstant(0)));
+        return new PirTerm.Let(utf8.name(), new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), string),
+                new PirTerm.Let(size.name(), new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString), utf8), loop));
+    }
+
+    private static PirTerm below(PirTerm term, int bound) {
+        return builtinApp2(DefaultFun.LessThanInteger, term, integerConstant(bound));
+    }
+
+    private static PirTerm integerConstant(long value) {
+        return new PirTerm.Const(Constant.integer(BigInteger.valueOf(value)));
+    }
+
+    /**
      * Generate PIR for list.contains(target) — recursive search with typed equality.
      */
     static PirTerm generateListContains(PirTerm list, PirTerm target,
