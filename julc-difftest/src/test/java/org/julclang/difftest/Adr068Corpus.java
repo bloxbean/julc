@@ -222,12 +222,23 @@ final class Adr068Corpus {
         return c;
     }
 
-    private static Source readSource(Path dir, String ref) throws IOException {
+    /**
+     * Recorded texts of a bundled stdlib source that a reference change replaced, by digest, with the file that holds it
+     * now. A recording holds the library text it was made with, but the reference is the stdlib as it stands, and javac's
+     * ownership check compares a pool unit with the bundled text. The case keeps its key.
+     */
+    private static final Map<String, String> REPLACED_SOURCES = Map.of(
+            "e286bdbf4780206ef70ed5316ce1c41b720829c89678af54dc25b330024ab182",
+            "julc-stdlib/src/main/java/org/julclang/stdlib/lib/ValuesLib.java");
+
+    private Source readSource(Path dir, String ref) throws IOException {
         int space = ref.indexOf(' ');
         String digest = space < 0 ? ref : ref.substring(0, space);
         String fileName = space < 0 ? null : ref.substring(space + 1);
         String text = CorpusFiles.text(Files.readAllBytes(dir.resolve("sources").resolve(digest + ".java")));
         if (!CorpusFiles.sha256(text).equals(digest)) throw new IllegalStateException("corrupt source " + digest);
+        var replacement = REPLACED_SOURCES.get(digest);
+        if (replacement != null) return Source.of(Files.readString(repository.resolve(replacement)), fileName);
         return new Source(digest, text, fileName);
     }
 
