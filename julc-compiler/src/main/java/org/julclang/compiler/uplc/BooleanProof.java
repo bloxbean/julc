@@ -26,8 +26,9 @@ import java.util.Set;
  *   <li>{@link Unknown}: every value;</li>
  *   <li>{@link Never}: no value, the term fails or does not terminate;</li>
  *   <li>{@code Yields(0)}: the booleans;</li>
- *   <li>{@code Yields(n)}, {@code n > 0}: functions which, given one argument, either produce a
- *       value of {@code Yields(n - 1)} or fail or do not terminate.</li>
+ *   <li>{@code Yields(n)}, {@code n > 0}: values which, applied to {@code n} arguments one at a
+ *       time, produce a boolean or fail or do not terminate. A value that is not a function is one,
+ *       since applying it fails.</li>
  * </ul>
  * If every binder's value is in its fact's set, then a term that produces a value produces one in
  * the set of its {@code Fact}. {@link #proves} accepts {@code Yields(0)} and {@code Never}, so a proven
@@ -44,9 +45,10 @@ import java.util.Set;
  *       its failure is allowed. Applying a value of {@code Yields(n)} gives {@code Yields(n - 1)}.</li>
  *   <li>A conditional produces the value of one arm, in either lowering, so it joins the arms. Its
  *       own condition plays no part: that condition is either proven, or lowered to the builtin,
- *       which fails on anything else. The same reasoning covers {@code IntegerCase}, whose selected
- *       branch runs with no argument, and {@code DataMatch}, which runs a branch only after
- *       {@code UnConstrData} succeeds.</li>
+ *       which fails on anything else. The same reasoning covers {@code DataMatch}, which runs a
+ *       branch only after {@code UnConstrData} succeeds, and {@code IntegerCase}: its scrutinee
+ *       selects a branch and may apply it to a list's head and tail, which leaves a value of the
+ *       same fact, because arguments past {@code n} fail.</li>
  *   <li>{@code PairMatch} and {@code ListMatch} bind arguments through {@code Case}, which applies
  *       its branch only for a real pair or list. Given a boolean or an integer it can select the
  *       branch and produce the binding lambda instead of running the body. So {@code PairMatch}
