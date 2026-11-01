@@ -9,6 +9,7 @@ import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalOptions;
+import org.julclang.vm.ExBudget;
 import org.julclang.vm.JulcVm;
 import org.julclang.vm.TermExtractor;
 import org.junit.jupiter.api.Test;
@@ -122,6 +123,24 @@ class ValuesLibByKeyTest {
         assertLovelace(5, level, value(lovelace(5), policy(P, token(T1, 7))));
         assertLovelace(5, level, value(policy(P, token(T1, 7)), lovelace(5)));
         assertLovelace(5, level, value(policy(P, token(T1, 7)), policy(Q, token(T1, 9)), lovelace(5)));
+    }
+
+    /** One implementation: the library method is a call of the Value method, and costs that call. */
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void theLibraryLovelaceOfCallsTheValueMethod(OptimizationLevel level) {
+        var value = value(policy(P, token(T1, 7)), policy(Q, token(T1, 9)), lovelace(5));
+        var method = budget(level, "lovelaceMethod", value);
+        var library = budget(level, "lovelaceLibrary", value);
+        assertTrue(library.cpuSteps() - method.cpuSteps() <= 100_000, () -> method + " / " + library);
+        assertTrue(library.memoryUnits() - method.memoryUnits() <= 1_000, () -> method + " / " + library);
+    }
+
+    private static ExBudget budget(OptimizationLevel level, String method, PlutusData... args) {
+        var compiled = COMPILED.computeIfAbsent(level + "." + method, key -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setOptimizationLevel(level)).compileMethod(SOURCE, method));
+        return JulcVm.create().evaluateWithArgs(compiled.program(), compiled.target().ledgerTarget(), List.of(args), null,
+                EvalOptions.DEFAULT).budgetConsumed();
     }
 
     @ParameterizedTest

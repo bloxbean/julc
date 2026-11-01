@@ -29,8 +29,7 @@ public class ValuesLib {
      * that entry is. Returns 0 if there is none.
      */
     public static BigInteger lovelaceOf(Value value) {
-        var ada = Builtins.bData(Builtins.emptyByteString());
-        return _assetOf(value, ada, ada);
+        return value.lovelaceOf();
     }
 
     /** Check if a policy ID (as bytes) exists in a Value. */
