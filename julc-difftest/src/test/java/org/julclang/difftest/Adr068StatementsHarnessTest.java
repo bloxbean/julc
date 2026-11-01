@@ -400,6 +400,28 @@ class Adr068StatementsHarnessTest {
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
     }
 
+    /**
+     * Two variants of one simple name, which the reference tells apart by that name, so it compares the first one's tag.
+     * Here each has its own (F807).
+     */
+    @Test
+    void twoVariantsOfOneSimpleNameHaveTwoTags() {
+        String sum = "public sealed interface W permits Q.N, R.N { } public static final class Q { public record N(BigInteger a) implements W { } } "
+                + "public static final class R { public record N(BigInteger a) implements W { } } ";
+        var tags = new TagTable(concat(TAGS, new TagTable.Entry("Case$Q$N", "Case$W", 0), new TagTable.Entry("Case$R$N", "Case$W", 1)));
+        var report = RUNNER.run(new DiffCase("m3c", program(sum + "public static BigInteger m(W w) { if (w instanceof R.N n) { return n.a(); } return BigInteger.ZERO; }"),
+                "Case", "m", List.of(constr(1, integer(5))), tags, null));
+        boolean referenceDiverges = false;
+        for (var entry : report.results().entrySet()) {
+            if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
+                assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
+            } else {
+                referenceDiverges |= entry.getValue().verdict().kind() != Verdict.Kind.AGREE;
+            }
+        }
+        assertTrue(referenceDiverges, report::describe);
+    }
+
     private static List<TagTable.Entry> concat(TagTable table, TagTable.Entry... entries) {
         return Stream.concat(table.entries().stream(), Stream.of(entries)).toList();
     }

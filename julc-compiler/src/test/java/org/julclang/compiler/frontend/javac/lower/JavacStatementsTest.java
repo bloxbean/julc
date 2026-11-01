@@ -31,6 +31,8 @@ class JavacStatementsTest {
             import org.julclang.core.PlutusData;
             import org.julclang.core.types.JulcArray;
             import org.julclang.core.types.JulcList;
+            import org.julclang.ledger.Credential;
+            import org.julclang.ledger.OutputDatum;
             import org.julclang.ledger.Value;
             import org.julclang.stdlib.Builtins;
             """;
@@ -198,7 +200,7 @@ class JavacStatementsTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                 .compileMethod(source("static long m() { " + body + " }"), "m", List.of()));
         assertFalse(failure instanceof NotPorted, failure::getMessage);
-        assertEquals(9, failure.diagnostics().getFirst().line());
+        assertEquals(11, failure.diagnostics().getFirst().line());
     }
 
     @Test
@@ -311,6 +313,18 @@ class JavacStatementsTest {
     })
     void aTypeTestOutsideOneSum(String members) {
         assertInstanceOf(NotPorted.class, javac(SUM + members));
+    }
+
+    /** The ledger's sums, whose variants come from class files, in their fixed order. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean m(Credential c) { return c instanceof Credential.ScriptCredential s; }",
+            "static boolean m(Credential c) { return c instanceof Credential.PubKeyCredential s; }",
+            "static boolean m(OutputDatum d) { return d instanceof OutputDatum.NoOutputDatum n; }",
+            "static boolean m(OutputDatum d) { return d instanceof OutputDatum.OutputDatumHash n; }",
+    })
+    void ledgerSums(String members) {
+        same(members);
     }
 
     // --- Validators: the entry point's own path, with a guarded return under a source map ---
