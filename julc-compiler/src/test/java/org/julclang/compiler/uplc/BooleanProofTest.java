@@ -242,6 +242,10 @@ class BooleanProofTest {
             assertTrue(proven(let("f", lam("x", TRUE), let("g", var("f"), app(var("g"), ONE)))));
         }
 
+        @Test void aFunctionThatOnlyFailsProducesNoValue() {
+            assertTrue(proven(let("f", lam("x", ERROR), app(var("f"), ONE))));
+        }
+
         @Test void anArgumentHasNoEffect() {
             assertTrue(proven(let("f", lam("x", TRUE), app(var("f"), ERROR))));
         }
@@ -308,6 +312,14 @@ class BooleanProofTest {
             }
             var nested = term;
             assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(proven(nested)));
+        }
+
+        @Test void parametersAreReadThroughLetsAndRecursiveBindingsBetweenThem() {
+            var call = app(var("f"), var("x"), var("y"));
+            var throughLet = lam("x", let("d", ONE, lam("y", ifThenElse(var("c"), TRUE, call))));
+            assertTrue(proven(letRec("f", throughLet, app(var("f"), ONE, ONE))));
+            var throughRec = lam("x", letRec("go", lam("z", ONE), lam("y", ifThenElse(var("c"), TRUE, call))));
+            assertTrue(proven(letRec("f", throughRec, app(var("f"), ONE, ONE))));
         }
 
         @Test void aRepeatedNameHoldsWhatEveryBindingHolds() {
@@ -456,6 +468,20 @@ class BooleanProofTest {
                     ifThenElse(var("flag"), ONE, ZERO));
             var term = lower(lam("d", new PirTerm.DataMatch(new PirTerm.Var("d", DATA), List.of(branch))), safe);
             assertEquals(1, builtinCount(term));
+        }
+
+        @Test void pairBindersHoldNothing() {
+            var first = new PirTerm.PairMatch(unConstr(var("d")), PAIR, "t", "fs", ifThenElse(var("t"), ONE, ZERO));
+            var second = new PirTerm.PairMatch(unConstr(var("d")), PAIR, "t", "fs", ifThenElse(var("fs"), ONE, ZERO));
+            assertEquals(1, builtinCount(lower(lam("d", first), safe)));
+            assertEquals(1, builtinCount(lower(lam("d", second), safe)));
+        }
+
+        @Test void listBindersHoldNothing() {
+            var head = new PirTerm.ListMatch(var("xs"), "h", "t", ZERO, ifThenElse(var("h"), ONE, ZERO));
+            var tail = new PirTerm.ListMatch(var("xs"), "h", "t", ZERO, ifThenElse(var("t"), ONE, ZERO));
+            assertEquals(1, builtinCount(lower(lam("xs", head), safe)));
+            assertEquals(1, builtinCount(lower(lam("xs", tail), safe)));
         }
 
         @Test void theGeneratorSeesShadowingByALambda() {

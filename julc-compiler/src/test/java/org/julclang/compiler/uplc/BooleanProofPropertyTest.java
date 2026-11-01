@@ -116,6 +116,64 @@ class BooleanProofPropertyTest {
     }
 
     /**
+     * The same question for every form, including those the baseline profile cannot lower: a term has
+     * the outcome of itself with each condition passed through the strict builtin first, which fails
+     * on anything that is not a boolean. So a {@code Case} emitted on any other value disagrees here,
+     * wherever the condition sits.
+     */
+    @Property(tries = 30_000)
+    void aTermAgreesWithItselfUnderStrictConditions(@ForAll("terms") PirTerm term) {
+        var reference = strictConditions(term);
+        for (var optimize : List.of(false, true)) {
+            var expected = evaluate(reference, OptimizationLevel.PV11_SAFE, optimize);
+            var actual = evaluate(term, OptimizationLevel.PV11_SAFE, optimize);
+            if (outcome(expected) == Outcome.EXHAUSTED || outcome(actual) == Outcome.EXHAUSTED) continue;
+            assertEquals(expected.isSuccess(), actual.isSuccess(),
+                    () -> "term: " + term + "\n  reference: " + expected + "\n  actual: " + actual);
+            if (expected instanceof EvalResult.Success e && actual instanceof EvalResult.Success a) {
+                // Functions print their bodies, which differ by the conditions; only constants compare.
+                if (e.resultTerm() instanceof Term.Const || a.resultTerm() instanceof Term.Const) {
+                    assertEquals(e.resultTerm(), a.resultTerm(), () -> "term: " + term);
+                }
+            }
+        }
+    }
+
+    private static PirTerm strictConditions(PirTerm term) {
+        return switch (term) {
+            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> term;
+            case PirTerm.Lam(var param, var type, var body) -> new PirTerm.Lam(param, type, strictConditions(body));
+            case PirTerm.Let(var name, var value, var body) ->
+                    new PirTerm.Let(name, strictConditions(value), strictConditions(body));
+            case PirTerm.LetRec(var bindings, var body) -> new PirTerm.LetRec(bindings.stream()
+                    .map(b -> new PirTerm.Binding(b.name(), strictConditions(b.value()))).toList(), strictConditions(body));
+            case PirTerm.App(var function, var argument) ->
+                    new PirTerm.App(strictConditions(function), strictConditions(argument));
+            case PirTerm.IfThenElse(var cond, var thenBranch, var elseBranch) -> new PirTerm.IfThenElse(
+                    strict(strictConditions(cond)), strictConditions(thenBranch), strictConditions(elseBranch));
+            case PirTerm.IntegerCase(var scrutinee, var branches) -> new PirTerm.IntegerCase(
+                    strictConditions(scrutinee), branches.stream().map(BooleanProofPropertyTest::strictConditions).toList());
+            case PirTerm.PairMatch(var scrutinee, var type, var first, var second, var body) ->
+                    new PirTerm.PairMatch(strictConditions(scrutinee), type, first, second, strictConditions(body));
+            case PirTerm.ListMatch(var scrutinee, var head, var tail, var nil, var cons) -> new PirTerm.ListMatch(
+                    strictConditions(scrutinee), head, tail, strictConditions(nil), strictConditions(cons));
+            case PirTerm.DataMatch(var scrutinee, var branches) -> new PirTerm.DataMatch(strictConditions(scrutinee),
+                    branches.stream().map(b -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(), b.bindingTypes(),
+                            strictConditions(b.body()), b.patternVar())).toList());
+            case PirTerm.DataConstr(var tag, var type, var fields) -> new PirTerm.DataConstr(tag, type,
+                    fields.stream().map(BooleanProofPropertyTest::strictConditions).toList());
+            case PirTerm.Trace(var message, var body) ->
+                    new PirTerm.Trace(strictConditions(message), strictConditions(body));
+        };
+    }
+
+    /** {@code condition} through builtin IfThenElse, whose result the proof cannot read, so it stays strict. */
+    private static PirTerm strict(PirTerm condition) {
+        return new PirTerm.App(new PirTerm.App(new PirTerm.App(new PirTerm.Builtin(DefaultFun.IfThenElse), condition),
+                new PirTerm.Const(Constant.bool(true))), new PirTerm.Const(Constant.bool(false)));
+    }
+
+    /**
      * The control: with a fixed seed, the terms the oracle sees reach every outcome, including proven
      * terms that succeed, and unproven ones that produce the very values a proof must rule out.
      */
@@ -173,7 +231,7 @@ class BooleanProofPropertyTest {
         PirTerm term(int depth, List<String> scope) {
             if (depth <= 0 || random.nextInt(6) == 0) return leaf(scope);
             int next = depth - 1;
-            return switch (random.nextInt(20)) {
+            return switch (random.nextInt(23)) {
                 case 0, 1, 2 -> {
                     var name = name();
                     yield new PirTerm.Let(name, term(next, scope), term(next, with(scope, name)));
@@ -188,12 +246,28 @@ class BooleanProofPropertyTest {
                 case 10, 11 -> builtin(next, scope);
                 case 12, 13 -> letRec(next, scope);
                 case 14 -> mutual(next, scope);
+                case 21 -> shadowing(next, scope);
+                case 22 -> {
+                    // A known function called on an argument that is often not a boolean.
+                    var function = name();
+                    var param = name();
+                    yield new PirTerm.Let(function, new PirTerm.Lam(param, TYPE, term(next, with(scope, param))),
+                            new PirTerm.App(var(function), term(next, scope)));
+                }
+                case 20 -> {
+                    // A recursive binding that may not be a function: its reference is an eta-expansion.
+                    var name = name();
+                    yield new PirTerm.LetRec(List.of(new PirTerm.Binding(name, term(next, with(scope, name)))),
+                            term(next, with(scope, name)));
+                }
                 case 15 -> dataMatch(next, scope);
                 case 16 -> pairMatch(next, scope);
                 case 17 -> {
                     var head = name();
                     var tail = other(head);
-                    yield new PirTerm.ListMatch(list(next, scope), head, tail, term(next, scope),
+                    // A scrutinee that is no list makes Case select a branch without applying it.
+                    PirTerm scrutinee = random.nextInt(3) == 0 ? leafNonList() : list(next, scope);
+                    yield new PirTerm.ListMatch(scrutinee, head, tail, term(next, scope),
                             term(next, with(with(scope, head), tail)));
                 }
                 case 18 -> new PirTerm.IntegerCase(term(next, scope),
@@ -202,8 +276,49 @@ class BooleanProofPropertyTest {
             };
         }
 
+        /**
+         * A proven name, rebound by each kind of binder to something that is no boolean, then read: the
+         * shape a proof that misses a binder gets wrong. Random terms rarely line these three up.
+         */
+        private PirTerm shadowing(int depth, List<String> scope) {
+            var name = name();
+            var other = other(name);
+            PirTerm value = integer(random.nextInt(3));
+            PirTerm yes = new PirTerm.Const(Constant.bool(true));
+            PirTerm rebound = switch (random.nextInt(9)) {
+                case 0 -> new PirTerm.Let(name, value, var(name));
+                case 1 -> new PirTerm.App(new PirTerm.Lam(name, TYPE, var(name)), value);
+                case 2 -> new PirTerm.LetRec(List.of(new PirTerm.Binding(name, new PirTerm.Lam(other, TYPE, value))),
+                        new PirTerm.App(var(name), value));
+                case 3 -> new PirTerm.PairMatch(new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), data()),
+                        PAIR, name, other, var(name));
+                case 4 -> new PirTerm.PairMatch(new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), data()),
+                        PAIR, other, name, var(name));
+                // Tag 1 is the constructor data() gives a field. The other branches are proven, so the
+                // rebinding decides.
+                case 5 -> new PirTerm.DataMatch(data(), List.of(
+                        new PirTerm.MatchBranch("A", List.of(), List.of(), yes),
+                        new PirTerm.MatchBranch("B", List.of(name), List.of(new PirType.DataType()), var(name)),
+                        new PirTerm.MatchBranch("C", List.of(), List.of(), yes)));
+                case 8 -> new PirTerm.DataMatch(data(), List.of(
+                        new PirTerm.MatchBranch("A", List.of(), List.of(), var(name), name),
+                        new PirTerm.MatchBranch("B", List.of(), List.of(), yes),
+                        new PirTerm.MatchBranch("C", List.of(), List.of(), yes)));
+                case 6 -> new PirTerm.ListMatch(leafList(), name, other, value, var(other));
+                default -> new PirTerm.ListMatch(leafList(), other, name, value, var(name));
+            };
+            // Under a conditional the generator's own scope reads the outer proof; bare, the term is the answer.
+            PirTerm body = random.nextBoolean() ? rebound : new PirTerm.IfThenElse(rebound, integer(1), integer(2));
+            return new PirTerm.Let(name, new PirTerm.Const(Constant.bool(random.nextBoolean())), body);
+        }
+
+        private PirTerm leafNonList() {
+            return random.nextBoolean() ? integer(0) : new PirTerm.Const(Constant.bool(false));
+        }
+
         private PirTerm leaf(List<String> scope) {
             if (!scope.isEmpty() && random.nextInt(3) != 0) return var(scope.get(random.nextInt(scope.size())));
+            if (random.nextInt(16) == 0) return new PirTerm.DataConstr(1, new PirType.RecordType("R", List.of()), List.of());
             return switch (random.nextInt(14)) {
                 case 0, 1, 2 -> new PirTerm.Const(Constant.bool(true));
                 case 3, 4 -> new PirTerm.Const(Constant.bool(false));
