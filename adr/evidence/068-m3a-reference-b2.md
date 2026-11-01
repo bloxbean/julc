@@ -54,9 +54,9 @@ the rejection-site catalogue and grows with the javac frontend.
 
 No other cell moves: no FLAT digest, budget, semantic observation, specialization or diagnostic of any other of the 11,410 shared cases.
 
-## Measured first
+## What the rules reach
 
-Before either rule was fixed, a prototype ran over every corpus and over the static sources:
+The rules were measured over every corpus and over the static sources before they went in:
 
 | What | Result |
 |---|---|
