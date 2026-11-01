@@ -77,7 +77,6 @@ final class TypeTests {
     }
 
     private CompilerException unsupported(InstanceOfTree tree) {
-        return facts.locatedRejection("Unsupported instanceof pattern: " + facts.location(tree).fragment(),
-                "instanceof is supported only with sealed interface variants: if (x instanceof Variant v) { ... }", tree);
+        return facts.rejection("Unsupported instanceof pattern: " + tree, tree);
     }
 }

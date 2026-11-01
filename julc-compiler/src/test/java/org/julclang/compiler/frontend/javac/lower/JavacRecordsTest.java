@@ -12,7 +12,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -284,13 +283,5 @@ class JavacRecordsTest {
         var read = assertThrows(CompilerException.class,
                 () -> compiler.compile(source.formatted("return Nested.P.signum() > 0;"), List.of()));
         assertTrue(read.getMessage().contains("Undefined variable: Nested"), read::getMessage);
-    }
-
-    /** A constructor of an API record that is not its canonical one builds nothing the record's Data has. */
-    @Test
-    void theCanonicalConstructorIsTheOneThatLowers() {
-        same("static TxOutRef m(TxId a, BigInteger n) { return new TxOutRef(a, n); }");
-        var failure = javac("static boolean m(PlutusData.ConstrData d) { var e = new PlutusData.ConstrData(0, JulcList.empty()); return true; }");
-        assertFalse(failure instanceof NotPorted, failure::getMessage);
     }
 }

@@ -17,7 +17,6 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.ElementKind;
-import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
@@ -30,7 +29,8 @@ import java.util.Set;
 /**
  * Object creation and member reads (ADR-068 I11, I12). What {@code new} builds is decided by the {@link TypeElement} of the
  * constructor javac bound: a variant's tag, field types and encoding are that element's, and a simple name decides nothing,
- * so two variants of one simple name each have their own tag.
+ * so two variants of one simple name each have their own tag. A record's constructor is its canonical one: {@code JULC0099}
+ * rejects any other, which must hold a {@code this(...)}, and no API record that lowers has one.
  * <p>
  * <b>Evaluation order.</b> Each argument once, from left to right, and then the value: a {@code DataConstr} applies
  * {@code MkCons} to its fields in order, so a failing argument stops the ones after it, and the fields are encoded where
@@ -60,10 +60,8 @@ final class Records {
     }
 
     PirTerm creation(NewClassTree tree, Frame frame) {
-        var constructor = (ExecutableElement) facts.element(tree);
-        var type = (TypeElement) constructor.getEnclosingElement();
+        var type = (TypeElement) facts.element(tree).getEnclosingElement();
         boolean record = type.getKind() == ElementKind.RECORD;
-        if (record && !isCanonical(constructor, type)) throw NotPorted.at(facts, tree, "a constructor that is not canonical");
         String identity = facts.identity(type);
         var nominal = facts.registry().lookupNominal(facts.identity(type)).orElse(null);
         var arguments = tree.getArguments();
@@ -87,18 +85,6 @@ final class Records {
         String name = name(type);
         throw facts.locatedRejection("Cannot construct non-record type: " + name,
                 "Only record types can be constructed on-chain. Define " + name + " as a record.", tree);
-    }
-
-    /** Whether {@code constructor} takes {@code record}'s components. {@code Elements} answers this only from a source. */
-    private boolean isCanonical(ExecutableElement constructor, TypeElement record) {
-        var components = facts.components(record);
-        var parameters = constructor.getParameters();
-        if (components.size() != parameters.size()) return false;
-        var types = facts.types();
-        for (int i = 0; i < components.size(); i++) {
-            if (!types.isSameType(types.erasure(components.get(i).asType()), types.erasure(parameters.get(i).asType()))) return false;
-        }
-        return true;
     }
 
     private static String name(TypeElement type) {
