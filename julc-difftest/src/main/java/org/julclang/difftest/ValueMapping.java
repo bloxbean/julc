@@ -5,6 +5,9 @@ import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
 import org.julclang.core.types.JulcList;
 import org.julclang.core.types.JulcMap;
+import org.julclang.core.types.Tuple2;
+import org.julclang.core.types.Tuple3;
+import org.julclang.ledger.PlutusDataConvertible;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -14,7 +17,9 @@ import java.lang.reflect.Type;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -44,6 +49,8 @@ import java.util.Optional;
  * programs never use. Ledger records get a mapping, and the result check of ADR-066 D4, only with ADR-063 M4.
  */
 public final class ValueMapping {
+
+    private static final String LEDGER_PACKAGE = "org.julclang.ledger.";
 
     /**
      * The denylist of packages whose records and sealed interfaces are not user types: JuLC's ledger and library
@@ -113,6 +120,7 @@ public final class ValueMapping {
         return switch (value) {
             case null -> throw new HarnessException("null has no Data mapping");
             case PlutusData data -> data;
+            case PlutusDataConvertible convertible -> convertible.toPlutusData();
             case BigInteger i -> new PlutusData.IntData(i);
             case Long l -> new PlutusData.IntData(BigInteger.valueOf(l));
             case Integer i -> new PlutusData.IntData(BigInteger.valueOf(i));
@@ -136,6 +144,9 @@ public final class ValueMapping {
                 for (Object item : list) items.add(toData(item, tags));
                 yield new PlutusData.ListData(items);
             }
+            case Tuple2<?, ?> tuple -> new PlutusData.ConstrData(0, List.of(toData(tuple.first(), tags), toData(tuple.second(), tags)));
+            case Tuple3<?, ?, ?> tuple -> new PlutusData.ConstrData(0,
+                    List.of(toData(tuple.first(), tags), toData(tuple.second(), tags), toData(tuple.third(), tags)));
             case Record record when isUserType(record.getClass()) -> recordToData(record, useSite, tags);
             default -> throw new HarnessException("No Data mapping for " + value.getClass().getName());
         };
@@ -200,9 +211,37 @@ public final class ValueMapping {
             }
             throw new HarnessException("Not an Optional: " + data);
         }
-        if (raw == JulcList.class) {
+        if (raw == List.class) {
             if (!(data instanceof PlutusData.ListData list)) throw new HarnessException("Not a list: " + data);
             var element = typeArgument(type);
+            var items = new ArrayList<Object>();
+            for (var item : list.items()) items.add(fromData(item, element, tags));
+            return List.copyOf(items);
+        }
+        if (raw == Map.class) {
+            if (!(data instanceof PlutusData.MapData map)) throw new HarnessException("Not a map: " + data);
+            var arguments = ((ParameterizedType) type).getActualTypeArguments();
+            var entries = new LinkedHashMap<Object, Object>();
+            for (var entry : map.entries()) entries.put(fromData(entry.key(), arguments[0], tags), fromData(entry.value(), arguments[1], tags));
+            return entries;
+        }
+        if (raw == Tuple2.class || raw == Tuple3.class) {
+            if (!(data instanceof PlutusData.ConstrData constr)) throw new HarnessException("Not a tuple: " + data);
+            var arguments = ((ParameterizedType) type).getActualTypeArguments();
+            var fields = constr.fields();
+            if (raw == Tuple2.class) return new Tuple2<>(fromData(fields.get(0), arguments[0], tags), fromData(fields.get(1), arguments[1], tags));
+            return new Tuple3<>(fromData(fields.get(0), arguments[0], tags), fromData(fields.get(1), arguments[1], tags), fromData(fields.get(2), arguments[2], tags));
+        }
+        if (raw.getName().startsWith(LEDGER_PACKAGE)) {
+            try {
+                return raw.getMethod("fromPlutusData", PlutusData.class).invoke(null, data);
+            } catch (ReflectiveOperationException e) {
+                throw new HarnessException("No ledger decoder for " + raw.getName() + ": " + e);
+            }
+        }
+        if (raw == JulcList.class) {
+            if (!(data instanceof PlutusData.ListData list)) throw new HarnessException("Not a list: " + data);
+            var element = type instanceof ParameterizedType ? typeArgument(type) : PlutusData.class;
             return JulcList.of(list.items().stream().map(item -> fromData(item, element, tags)).toArray());
         }
         if (raw == JulcMap.class) {
