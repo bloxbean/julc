@@ -186,10 +186,9 @@ final class Calls {
     private PirTerm accessor(CallTarget.Accessor target, MethodInvocationTree tree, Frame frame) {
         var receiver = receiver(tree);
         var scope = lowering.expr(receiver, frame);
-        if (!(dispatchType(receiver, scope) instanceof PirType.RecordType)) {
+        if (!(dispatchType(receiver, scope) instanceof PirType.RecordType record)) {
             throw CompilerTypeDiagnostics.unresolvedMember(target.component(), facts.location(tree));
         }
-        var record = (PirType.RecordType) typing.of(receiver);
         var fields = record.fields();
         for (int i = 0; i < fields.size(); i++) {
             if (fields.get(i).name().equals(target.component())) {

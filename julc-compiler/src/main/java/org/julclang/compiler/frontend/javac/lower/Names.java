@@ -44,7 +44,8 @@ final class Names {
     /**
      * The API constants the reference knows, written as a class name, a dot and the field: {@code BigInteger.ZERO},
      * {@code ONE}, {@code TWO}, {@code TEN} and {@code PlutusData.UNIT}. The field is the one javac resolved, so a user's
-     * {@code BigInteger} is not this; any other spelling, such as a qualified class name, the reference rejects.
+     * {@code BigInteger} is not this; any other spelling, such as a qualified class name, the reference rejects. Null if
+     * {@code tree} is none of these.
      */
     PirTerm constant(MemberSelectTree tree) {
         if (tree.getExpression() instanceof IdentifierTree qualifier
@@ -69,7 +70,7 @@ final class Names {
                 }
             }
         }
-        throw NotPorted.at(facts, tree);
+        return null;
     }
 
     /** {@code Constr(0, [])}. */
