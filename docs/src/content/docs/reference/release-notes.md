@@ -3,6 +3,18 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: a conditional lowers to `Case` on a proven boolean
+
+A conditional lowers to `Case` when the compiler proves its condition produces a real boolean: a
+boolean constant, a comparison or another builtin with a boolean result, a decoded boolean field, a
+local bound to one of these, or a call of a function whose result is one of these. Any other
+condition, such as a method parameter or a loop's accumulator, lowers to builtin `ifThenElse`. The
+two agree on every boolean.
+
+Recompiling can change script bytes and budgets at `pv11-safe` and `pv11-costed`, so a script hash
+can change: about 4 bytes at each conditional on the builtin, and 188,049 CPU and 701 memory each
+time it runs.
+
 ## Upcoming preview: sources must be Java that javac accepts (ADR-068 M1)
 
 Every compilation now has javac analyze its sources first, on every host (the compiler API,

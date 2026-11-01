@@ -970,7 +970,9 @@ See [O2–O6 evidence](evidence/032-o2-o6-case-builtins.md) and child issues
   the pinned PV11 cost model on Java and Truffle.
 - Enabled O2 as legality-only `pv11.o2.case-bool` at `PV11_SAFE`; false/true
   branch order, condition-once, selected-branch-only, failures, traces, source
-  maps, size, budgets, and hashes are pinned.
+  maps, size, budgets, and hashes are pinned. (Narrowed 2026-11-01: `Case` needs
+  a condition `BooleanProof` proves to be a real boolean, and any other condition
+  lowers to the builtin; see the O2 evidence.)
 - Deferred O3 and O4 despite favorable raw measurements: safe compiler rules
   require typed list/pair destructuring and local use analysis.
 - Deferred O5 because Case changes negative/out-of-range failure text, has no
