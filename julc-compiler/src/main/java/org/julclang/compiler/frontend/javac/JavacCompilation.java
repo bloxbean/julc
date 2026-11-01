@@ -293,6 +293,7 @@ public final class JavacCompilation {
         var unit = program.roots().getFirst();
         // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
         SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
+        SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
         SubsetScan.check(facts, unit, discovery.lowered(discovery.validatorClassOrNull(unit)));
         verifyBinderNamespace(unit);
@@ -393,6 +394,7 @@ public final class JavacCompilation {
         var unit = program.roots().getFirst();
         // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
         SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
+        SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
         SubsetScan.check(facts, unit, discovery.lowered(discovery.firstClassOrNull(unit)));
         verifyBinderNamespace(unit);

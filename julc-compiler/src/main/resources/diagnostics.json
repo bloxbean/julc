@@ -1164,6 +1164,21 @@
       }
     },
     {
+      "code": "JULC0102",
+      "constant": "CONSTANT_STRING_JOIN",
+      "status": "emitted",
+      "title": "A + of string constants is joined when the script runs",
+      "category": "SYNTAX",
+      "severity": "warning",
+      "template": "These string constants are joined when the script runs: Java joins them when it compiles, and JuLC keeps the + as written",
+      "summary": "Java joins string constants when it compiles. JuLC keeps a + as written, so the script joins them each time it runs. A constant is a string literal, a String variable that javac gives a constant value, or a + of constants, through parentheses. One warning covers a whole expression of constants. The warning comes from the rule that reads javac's trees, so it needs the javac gate on the JavaParser frontend, and it rejects nothing.",
+      "fix": "Write one string literal.",
+      "example": {
+        "bad": "static String greeting() { return \"hello \" + \"world\"; }",
+        "good": "static String greeting() { return \"hello world\"; }"
+      }
+    },
+    {
       "code": "JULC0101",
       "constant": "METHOD_NAME_READ_BY_SPELLING",
       "status": "emitted",

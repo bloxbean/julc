@@ -3,13 +3,16 @@ package org.julclang.compiler.frontend.javac;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.subset.BooleanCasts;
+import org.julclang.compiler.frontend.javac.subset.ConstantStringJoins;
 import org.julclang.compiler.frontend.javac.subset.ConstructorBodies;
 import org.julclang.compiler.frontend.javac.subset.SpelledMethods;
 import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 
 import javax.lang.model.element.ExecutableElement;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -27,6 +30,8 @@ import java.util.List;
  *   <li>A constructor holds no statement ({@link ConstructorBodies}, {@code JULC0099}).</li>
  * </ul>
  * An API type comes in as a class file, so these rules never read one.
+ * <p>
+ * {@link #warnings} rejects nothing: a {@code +} of string constants ({@link ConstantStringJoins}, {@code JULC0102}).
  * <p>
  * Two more rules are about how the JavaParser frontend reads a name, so only the gate has them
  * ({@link #checkSpellings}): the javac frontend binds a name to its element, and has no such reading.
@@ -57,6 +62,13 @@ final class SubsetRules {
             ConstructorBodies.check(facts, unit);
         }
         for (var unit : libraries) library(facts, unit);
+    }
+
+    /** What the rules warn of in {@code roots}, in order: the same on both frontends, since they read the same trees. */
+    static List<CompilerDiagnostic> warnings(JavacFacts facts, List<CompilationUnitTree> roots) {
+        var warnings = new ArrayList<CompilerDiagnostic>();
+        for (var unit : roots) warnings.addAll(ConstantStringJoins.in(facts, unit));
+        return warnings;
     }
 
     /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */

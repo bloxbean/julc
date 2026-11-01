@@ -3,6 +3,13 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: a `+` of string constants warns (`JULC0102`)
+
+`"a" + "b"` of string constants now warns on both frontends: Java joins them when it compiles, and
+JuLC keeps the `+` as written, so the script joins them when it runs. The warning rejects nothing,
+and script bytes do not change. Write one literal. On the JavaParser frontend the warning comes
+from the javac gate, so a compilation with the gate off does not report it.
+
 ## Upcoming preview: a conditional lowers to `Case` on a proven boolean
 
 A conditional lowers to `Case` when the compiler proves its condition produces a real boolean: a

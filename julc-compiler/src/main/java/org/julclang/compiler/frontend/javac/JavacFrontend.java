@@ -205,7 +205,7 @@ public final class JavacFrontend {
             var facts = JavacFacts.of(attribution, new TypeRegistry());
             SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), compiled, reading(roots, pool, compiled, attribution.result().dropped()));
             SubsetRules.check(facts, attribution.roots(), attribution.libraries(), compiled);
-            return attribution.result();
+            return attribution.result().withWarnings(SubsetRules.warnings(facts, attribution.roots()));
         } catch (CompilerException e) {
             var rejected = e.diagnostics().stream().map(diagnostic -> new JavacDiagnostic(diagnostic.code(), null,
                     diagnostic.message(), diagnostic.fileName(), diagnostic.line(), diagnostic.column(), -1, -1,

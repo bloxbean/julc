@@ -1393,6 +1393,23 @@ those names.
 **Fix:** Give the method or component another name. `value`, and on a `BigInteger` `intValue` and `longValue`, are
 names of the value itself. Name a `@NewType` of `byte[]`'s component `value`.
 
+### `JULC0102` `These string constants are joined when the script runs`
+
+A warning; the program still compiles. Java joins string constants when it compiles, and JuLC
+keeps a `+` as written, so the script joins them each time it runs.
+
+```java
+// Warns:
+return "hello " + "world";
+
+// Write one literal:
+return "hello world";
+```
+
+A constant is a string literal, a `String` variable javac gives a constant value, or a `+` of
+constants, through parentheses. One warning covers a whole expression of constants. A `+` with a
+parameter or a local that is not constant does not warn.
+
 ### `JULC0099` `The body of constructor <constructor> does not run on-chain, so a constructor holds no statement`
 
 **Cause:** A constructor the source declares, on a record or a class, holds a statement. A value is

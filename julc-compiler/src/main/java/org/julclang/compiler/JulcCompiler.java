@@ -632,6 +632,7 @@ public class JulcCompiler {
             return libraries;
         }
         context.setJavacProvenance(JavacProvenance.of(JavacGate.mode(options), result));
+        result.warnings().forEach(context::report);
         context.logf("javac gate (%s): javac %s, platform %s, stubs %s: %s", JavacGate.mode(options),
                 result.javacVersion(), result.platformDigest(), result.stubsDigest(),
                 result.isAccepted() ? "accepted" : result.diagnostics().size() + " rejection(s)");

@@ -247,6 +247,12 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(method), location);
     }
 
+    /** JULC0102, a warning: a {@code +} of string constants. */
+    public static CompilerDiagnostic constantStringJoin(SourceLocation location) {
+        var info = DiagnosticCodes.CONSTANT_STRING_JOIN;
+        return new CompilerDiagnostic(info.level(), info.format(), location.fileName(), location.line(), location.column(), info.fix(), info.code());
+    }
+
     /** JULC0092: a sealed interface with no permits clause whose permitted subclasses are not the records nested in it. */
     public static CompilerException sealedPermitsRequired(String sealed, List<String> permitted, SourceLocation location) {
         var info = DiagnosticCodes.SEALED_PERMITS_REQUIRED;

@@ -9,14 +9,20 @@ import java.util.function.Function;
 /**
  * The outcome of a javac analysis: its rejections, in emission order; the environment that produced them, which
  * D3 records with every result: the host's javac version and the platform and stub digests; and the identities of
- * the pool units D8's precedence left out.
+ * the pool units D8's precedence left out; and the subset's warnings, which reject nothing.
  */
 public record JavacResult(List<JavacDiagnostic> diagnostics, String javacVersion, String platformDigest,
-                          String stubsDigest, Set<String> dropped) {
+                          String stubsDigest, Set<String> dropped, List<CompilerDiagnostic> warnings) {
 
     public JavacResult {
         diagnostics = List.copyOf(diagnostics);
         dropped = dropped == null ? Set.of() : Set.copyOf(dropped);
+        warnings = List.copyOf(warnings);
+    }
+
+    public JavacResult(List<JavacDiagnostic> diagnostics, String javacVersion, String platformDigest,
+                       String stubsDigest, Set<String> dropped) {
+        this(diagnostics, javacVersion, platformDigest, stubsDigest, dropped, List.of());
     }
 
     public JavacResult(List<JavacDiagnostic> diagnostics, String javacVersion, String platformDigest,
@@ -25,7 +31,11 @@ public record JavacResult(List<JavacDiagnostic> diagnostics, String javacVersion
     }
 
     JavacResult withDropped(Set<String> identities) {
-        return new JavacResult(diagnostics, javacVersion, platformDigest, stubsDigest, identities);
+        return new JavacResult(diagnostics, javacVersion, platformDigest, stubsDigest, identities, warnings);
+    }
+
+    JavacResult withWarnings(List<CompilerDiagnostic> found) {
+        return new JavacResult(diagnostics, javacVersion, platformDigest, stubsDigest, dropped, found);
     }
 
     /**

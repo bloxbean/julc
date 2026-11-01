@@ -227,6 +227,11 @@ public final class CompilationContext {
         return resolvedTarget.featureProfile().supports(capability);
     }
 
+    /** Records {@code diagnostic} on this compilation. */
+    public void report(CompilerDiagnostic diagnostic) {
+        diagnostics.add(diagnostic);
+    }
+
     /** Return an immutable snapshot of diagnostics reported in this compilation. */
     public List<CompilerDiagnostic> diagnostics() {
         return List.copyOf(diagnostics);
