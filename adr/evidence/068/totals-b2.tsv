@@ -35,15 +35,15 @@ runs.verdicts.MISMATCH	184
 runs.verdicts.REJECTED	220
 evaluations	22997
 evaluations.external.excluded.nondeterministic-tests	170
-evaluations.external.replay.matched-not-replayed	124
-evaluations.external.replay.unmatched	32
+evaluations.external.replay.matched-not-replayed	119
+evaluations.external.replay.unmatched	37
 evaluations.recorded.excluded.harness	6231
 evaluations.recorded.excluded.nondeterministic-tests	21
-evaluations.recorded.replay.agree	1197
-evaluations.recorded.replay.matched-not-replayed	5966
-evaluations.recorded.replay.unmatched	15678
-sha256	ledger-b0-evaluations-external.tsv	1c94b83dbfca5c6ed68fbfdb3eb236aecb8f5bf4f4e245cc63143cf65fa02fb9
-sha256	ledger-b0-evaluations.tsv	d52592df52a9d800d6c8f3b2687d9c3aa0b063d6577b4773a7be28d7eefb6f19
+evaluations.recorded.replay.agree	1161
+evaluations.recorded.replay.matched-not-replayed	5790
+evaluations.recorded.replay.unmatched	15890
+sha256	ledger-b0-evaluations-external.tsv	18db22d98263c0e7c39a6759d229d5fca4648bf951d2c4c3806d24bcde4fb495
+sha256	ledger-b0-evaluations.tsv	f119c30c1da3470baf581dbbeb53a268a490bddbb37b32375b91a31b6b074951
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.StdlibIntegrationTest$1	5
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.pir.CompositeStdlibLookup	2
 unreplayable	custom stdlib lookup custom:org.julclang.stdlib.StdlibRegistry	3
