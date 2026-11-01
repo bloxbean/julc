@@ -11,6 +11,7 @@ import java.math.BigInteger;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BinaryOperator;
 import java.util.function.UnaryOperator;
 
 /**
@@ -147,6 +148,40 @@ public final class PirHelpers {
         if (isTrivialOperand(x) || isTrivialOperand(y)) return builtinApp2(fun, y, x);
         var name = hygienicName("#lhs", freeVariables(y));
         return new PirTerm.Let(name, x, builtinApp2(fun, y, new PirTerm.Var(name, new PirType.IntegerType())));
+    }
+
+    /**
+     * {@code operation(receiver, argument)} for a Java method that throws when {@code argument} is below {@code least}: the
+     * script fails there too (ADR-068 B3). A constant that passes needs no check, and the operation takes the terms as they
+     * are. Otherwise the receiver is evaluated, then the argument, then the check, as in Java, each bound once unless
+     * evaluating it has no effect.
+     *
+     * @param resultType the type of the operation's result, which the failing branch takes
+     */
+    public static PirTerm failingBelow(long least, PirTerm receiver, PirType receiverType, PirTerm argument, PirType resultType,
+                                       BinaryOperator<PirTerm> operation) {
+        if (isConstantAtLeast(argument, least)) return operation.apply(receiver, argument);
+        boolean bindArgument = !isTrivialOperand(argument);
+        boolean bindReceiver = !isTrivialOperand(receiver);
+        var avoid = freeVariables(receiver, argument);
+        PirTerm receiverRead = bindReceiver ? new PirTerm.Var(hygienicName("#receiver", avoid), receiverType) : receiver;
+        PirTerm argumentRead = bindArgument ? new PirTerm.Var(hygienicName("#argument", avoid), new PirType.IntegerType()) : argument;
+        PirTerm result = failIfBelow(least, argumentRead, resultType, operation.apply(receiverRead, argumentRead));
+        if (bindArgument) result = new PirTerm.Let(((PirTerm.Var) argumentRead).name(), argument, result);
+        if (bindReceiver) result = new PirTerm.Let(((PirTerm.Var) receiverRead).name(), receiver, result);
+        return result;
+    }
+
+    /** {@code body}, or a failure if {@code argument}, which has no effect to evaluate, is below {@code least}. */
+    public static PirTerm failIfBelow(long least, PirTerm argument, PirType type, PirTerm body) {
+        var below = builtinApp2(DefaultFun.LessThanInteger, argument, new PirTerm.Const(Constant.integer(least)));
+        return new PirTerm.IfThenElse(below, new PirTerm.Error(type), body);
+    }
+
+    /** Whether {@code term} is an integer constant of at least {@code least}, which no check can fail. */
+    public static boolean isConstantAtLeast(PirTerm term, long least) {
+        return term instanceof PirTerm.Const constant && constant.value() instanceof Constant.IntegerConst integer
+                && integer.value().compareTo(BigInteger.valueOf(least)) >= 0;
     }
 
     private static boolean isTrivialOperand(PirTerm term) {

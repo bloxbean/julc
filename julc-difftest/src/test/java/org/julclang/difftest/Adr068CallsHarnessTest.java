@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Adr068CallsHarnessTest {
 
-    private static final DiffRunner RUNNER = new DiffRunner(configs(), 10_000);
+    static final DiffRunner RUNNER = new DiffRunner(configs(), 10_000);
     private static final List<long[]> ORDERS = List.of(new long[]{3, 1}, new long[]{2, 2}, new long[]{1, 3});
 
     private static List<DiffConfig> configs() {
@@ -32,7 +32,7 @@ class Adr068CallsHarnessTest {
         return configs;
     }
 
-    private static String program(String members) {
+    static String program(String members) {
         return """
                 import java.math.BigInteger;
                 import java.util.Optional;
@@ -52,7 +52,7 @@ class Adr068CallsHarnessTest {
                 """.formatted(members);
     }
 
-    private static PlutusData integer(long value) {
+    static PlutusData integer(long value) {
         return new PlutusData.IntData(BigInteger.valueOf(value));
     }
 
@@ -64,22 +64,27 @@ class Adr068CallsHarnessTest {
         return new PlutusData.BytesData(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static PlutusData bytes(int... values) {
+    static PlutusData bytes(int... values) {
         var bytes = new byte[values.length];
         for (int i = 0; i < values.length; i++) bytes[i] = (byte) values[i];
         return new PlutusData.BytesData(bytes);
     }
 
-    private static PlutusData list(PlutusData... items) {
+    static PlutusData list(PlutusData... items) {
         return new PlutusData.ListData(List.of(items));
     }
 
-    private static DiffRunner.Report run(String members, List<PlutusData> args) {
+    static DiffRunner.Report run(String members, List<PlutusData> args) {
         return RUNNER.run(new DiffCase("m3b", program(members), "Case", "m", args));
     }
 
+    /** {@link #run} of a program that imports {@code imports}, which the javac frontend stops at if it is a library. */
+    static DiffRunner.Report run(String imports, String members, List<PlutusData> args) {
+        return RUNNER.run(new DiffCase("m3b", imports + "\n" + program(members), "Case", "m", args));
+    }
+
     /** Every frontend at every level agrees with the JVM, and the frontends with each other on value, cost and size. */
-    private static void assertAgree(String members, PlutusData... args) {
+    static void assertAgree(String members, PlutusData... args) {
         var report = run(members, List.of(args));
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
         assertEquals(8, report.results().size());
@@ -266,18 +271,6 @@ class Adr068CallsHarnessTest {
         assertBothDivergeAlike(method + "said(\"T\", a).max(b); }", integer(3), integer(1));
         assertBothDivergeAlike(method + "said(\"T\", a).min(b); }", integer(1), integer(3));
         assertBothDivergeAlike("public static int m(BigInteger a) { return said(\"T\", a).signum(); }", integer(3));
-    }
-
-    /**
-     * The JVM and the reference disagree on these inputs, and the frontends agree with each other. Only a value at run time
-     * shows it, so they are ported, not stopped; a fix goes in the shared handler. Each is reported in the M3b evidence.
-     */
-    @Test
-    void handlersThatDisagreeWithTheJvmOnSomeInputs() {
-        String method = "public static BigInteger m(BigInteger a, BigInteger b) { return a.mod(b); }";
-        assertBothDivergeAlike(method, integer(7), integer(-3));
-        assertBothDivergeAlike("public static long m(JulcList<BigInteger> a) { return a.take(-1).size(); }", list(integer(1), integer(2)));
-        assertBothDivergeAlike("public static long m(JulcList<BigInteger> a) { return a.drop(-1).size(); }", list(integer(1), integer(2)));
     }
 
     /** {@code lovelaceOf} looks ADA up by key on both frontends and on the JVM: with no ADA, or nothing at all, it is 0. */

@@ -295,9 +295,10 @@ public final class TypeMethodRegistry {
                         PirHelpers.builtinApp2(DefaultFun.RemainderInteger, scope, args.get(0)),
                 scopeType -> new PirType.IntegerType());
 
+        // mod: BigInteger.mod throws unless the modulus is positive, and ModInteger takes a negative one
         reg.register("IntegerType", "mod",
-                (scope, args, scopeType, argTypes) ->
-                        PirHelpers.builtinApp2(DefaultFun.ModInteger, scope, args.get(0)),
+                (scope, args, scopeType, argTypes) -> PirHelpers.failingBelow(1, scope, new PirType.IntegerType(), args.get(0),
+                        new PirType.IntegerType(), (a, b) -> PirHelpers.builtinApp2(DefaultFun.ModInteger, a, b)),
                 scopeType -> new PirType.IntegerType());
 
         // signum: if x < 0 then -1 else if x == 0 then 0 else 1
@@ -560,37 +561,8 @@ public final class TypeMethodRegistry {
         reg.register("ListType", "take",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("take() requires a count argument. Usage: list.take(n)");
-                    var lstVar = new PirTerm.Var("#lst_take", new PirType.ListType(new PirType.DataType()));
-                    var nVar = new PirTerm.Var("#n_take", new PirType.IntegerType());
-                    // The receiver and count are applied under go_take.
-                    var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_take",
-                            PirHelpers.freeVariables(scope, args.get(0))), new PirType.FunType(
-                            new PirType.ListType(new PirType.DataType()),
-                            new PirType.FunType(new PirType.IntegerType(),
-                                    new PirType.ListType(new PirType.DataType()))));
-
-                    var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
-                    var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
-                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
-                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
-                            new PirTerm.Const(Constant.unit()));
-
-                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-                    var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
-                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
-                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, headExpr, recurse);
-
-                    // if n<=0 then nil else if null(lst) then nil else mkCons(head, go(tail, n-1))
-                    var body = new PirTerm.IfThenElse(nIsZero, nilData,
-                            new PirTerm.IfThenElse(nullCheck, nilData, consExpr));
-                    var goBody = new PirTerm.Lam("#lst_take", new PirType.ListType(new PirType.DataType()),
-                            new PirTerm.Lam("#n_take", new PirType.IntegerType(), body));
-                    var binding = new PirTerm.Binding(goVar.name(), goBody);
-
-                    return new PirTerm.LetRec(List.of(binding),
-                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                    // JulcList.take throws on a negative count.
+                    return PirHelpers.failingBelow(0, scope, scopeType, args.get(0), scopeType, TypeMethodRegistry::takeLoop);
                 },
                 scopeType -> scopeType);
 
@@ -608,33 +580,13 @@ public final class TypeMethodRegistry {
                         var countVar = new PirTerm.Var(countName, new PirType.IntegerType());
                         var nativeDrop = PirHelpers.builtinApp2(
                                 DefaultFun.DropList, countVar, listVar);
+                        // JulcList.drop throws on a negative count, and DropList takes one.
+                        var checked = PirHelpers.isConstantAtLeast(args.get(0), 0) ? nativeDrop
+                                : PirHelpers.failIfBelow(0, countVar, scopeType, nativeDrop);
                         return new PirTerm.Let(listName, scope,
-                                new PirTerm.Let(countName, args.get(0), nativeDrop));
+                                new PirTerm.Let(countName, args.get(0), checked));
                     }
-                    var lstVar = new PirTerm.Var("#lst_drop", new PirType.ListType(new PirType.DataType()));
-                    var nVar = new PirTerm.Var("#n_drop", new PirType.IntegerType());
-                    // The receiver and count are applied under go_drop.
-                    var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_drop",
-                            PirHelpers.freeVariables(scope, args.get(0))), new PirType.FunType(
-                            new PirType.ListType(new PirType.DataType()),
-                            new PirType.FunType(new PirType.IntegerType(),
-                                    new PirType.ListType(new PirType.DataType()))));
-
-                    var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
-                    var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
-                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
-                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-                    var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
-                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
-
-                    var body = new PirTerm.IfThenElse(nIsZero, lstVar,
-                            new PirTerm.IfThenElse(nullCheck, lstVar, recurse));
-                    var goBody = new PirTerm.Lam("#lst_drop", new PirType.ListType(new PirType.DataType()),
-                            new PirTerm.Lam("#n_drop", new PirType.IntegerType(), body));
-                    var binding = new PirTerm.Binding(goVar.name(), goBody);
-                    return new PirTerm.LetRec(List.of(binding),
-                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                    return PirHelpers.failingBelow(0, scope, scopeType, args.get(0), scopeType, TypeMethodRegistry::dropLoop);
                 },
                 scopeType -> scopeType,
                 context -> context.optimizationLevel().pv11SafeRulesEnabled()
@@ -669,6 +621,69 @@ public final class TypeMethodRegistry {
                 },
                 scopeType -> ((PirType.ArrayType) scopeType).elemType(),
                 LoweringRequirements.builtin(DefaultFun.IndexArray));
+    }
+
+    /** {@code take} over a count that passed: {@code go(lst, n) = if n<=0 || null(lst) then nil else mkCons(head(lst), go(tail(lst), n-1))}. */
+    private static PirTerm takeLoop(PirTerm scope, PirTerm count) {
+        var lstVar = new PirTerm.Var("#lst_take", new PirType.ListType(new PirType.DataType()));
+        var nVar = new PirTerm.Var("#n_take", new PirType.IntegerType());
+        // The receiver and count are applied under go_take.
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_take",
+                PirHelpers.freeVariables(scope, count)), new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(),
+                        new PirType.ListType(new PirType.DataType()))));
+
+        var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
+        var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
+        var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, headExpr, recurse);
+
+        // if n<=0 then nil else if null(lst) then nil else mkCons(head, go(tail, n-1))
+        var body = new PirTerm.IfThenElse(nIsZero, nilData,
+                new PirTerm.IfThenElse(nullCheck, nilData, consExpr));
+        var goBody = new PirTerm.Lam("#lst_take", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("#n_take", new PirType.IntegerType(), body));
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
+
+        return new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(goVar, scope), count));
+    }
+
+    /** {@code drop} over a count that passed: {@code go(lst, n) = if n<=0 then lst else if null(lst) then lst else go(tail(lst), n-1)}. */
+    private static PirTerm dropLoop(PirTerm scope, PirTerm count) {
+        var lstVar = new PirTerm.Var("#lst_drop", new PirType.ListType(new PirType.DataType()));
+        var nVar = new PirTerm.Var("#n_drop", new PirType.IntegerType());
+        // The receiver and count are applied under go_drop.
+        var goVar = new PirTerm.Var(PirHelpers.hygienicName("#go_drop",
+                PirHelpers.freeVariables(scope, count)), new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(),
+                        new PirType.ListType(new PirType.DataType()))));
+
+        var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
+        var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
+
+        var body = new PirTerm.IfThenElse(nIsZero, lstVar,
+                new PirTerm.IfThenElse(nullCheck, lstVar, recurse));
+        var goBody = new PirTerm.Lam("#lst_drop", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("#n_drop", new PirType.IntegerType(), body));
+        var binding = new PirTerm.Binding(goVar.name(), goBody);
+        return new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(goVar, scope), count));
     }
 
     // --- List HOF instance methods (5): map, filter, any, all, find ---
