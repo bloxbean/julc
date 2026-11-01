@@ -53,6 +53,16 @@ class Adr060ByteSnapshotTest {
             for (var row : List.of("NONE-false", "NONE-true", "BASELINE-true", "PV11_SAFE-true", "PV11_COSTED-true"))
                 EXPLAINED.putIfAbsent(entry.id() + "-" + row, compareTo + " in the stdlib's unused methods");
         }
+        // ADR-032 O2: a condition the proof does not establish, such as a lambda parameter, lowers to builtin
+        // IfThenElse at the levels that have Case. Source-map rows of these programs are explained above.
+        String condition = "ADR-032 O2: a condition not proven boolean lowers to builtin IfThenElse";
+        var conditions = new ArrayList<>(List.of("o8-4", "o8-5", "o9-5", "o9-11", "o10-17", "o11-10", "o11-16",
+                "o14-25", "o15-4", "o15-20"));
+        for (int hygiene : List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 21)) conditions.add("hygiene-" + hygiene);
+        for (var id : conditions) {
+            EXPLAINED.put(id + "-PV11_SAFE-false", condition);
+            EXPLAINED.put(id + "-PV11_COSTED-false", condition);
+        }
     }
 
     @Test
