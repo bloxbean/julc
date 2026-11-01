@@ -274,6 +274,14 @@ class JavacCallsTest {
         assertEquals(reference.message(), failure.message());
     }
 
+    /** The reference takes this for a ledger type's identity and ignores the method; it is the user's, and does not lower. */
+    @Test
+    void aUsersFromPlutusDataIsNoIdentity() {
+        var failure = rejected("record R(BigInteger a) { static R EMPTY; static R fromPlutusData(PlutusData d) { return EMPTY; } }\n"
+                + "static R m(PlutusData d) { return R.fromPlutusData(d); }");
+        assertEquals("Undefined variable: R", failure.message());
+    }
+
     /** {@code PlutusData.cast}'s class must be a literal: nothing else says what the view is. */
     @Test
     void aCastToAClassThatIsNoLiteralIsRejected() {

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
 
@@ -630,10 +631,16 @@ class JulcPluginTest {
                 """);
     }
 
+    /**
+     * {@code --no-watch-fs}: these tests change files between builds, and under file churn file watching can miss the
+     * change, so a task reports up to date (see {@code JulcPluginBuildLifecycleTest}).
+     */
     private GradleRunner createRunner(String... args) {
+        var arguments = new ArrayList<>(List.of(args));
+        arguments.add("--no-watch-fs");
         return GradleRunner.create()
                 .withProjectDir(testProjectDir.toFile())
-                .withArguments(args)
+                .withArguments(arguments)
                 .withPluginClasspath()
                 .forwardOutput();
     }
