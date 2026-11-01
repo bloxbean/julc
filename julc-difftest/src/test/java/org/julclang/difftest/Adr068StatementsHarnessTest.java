@@ -131,6 +131,7 @@ class Adr068StatementsHarnessTest {
             if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
             } else {
+                assertTrue(entry.getValue().verdict().kind() != Verdict.Kind.REJECTED, () -> "a rejection is no fix, it is a decision: " + report.describe());
                 referenceDiverges |= entry.getValue().verdict().kind() != Verdict.Kind.AGREE;
             }
         }

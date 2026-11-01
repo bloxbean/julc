@@ -48,19 +48,23 @@ class JavacStopsTest {
             new Stop("a wrapper's component read as Data", "static byte[] m(TokenName t) { return t.name(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "@NewType record H(byte[] v) { } static byte[] m(H h) { return h.v(); }", "JULC0101"),
             new Stop("fromPlutusData on a ledger hash", "static PubKeyHash m(PlutusData d) { return PubKeyHash.fromPlutusData(d); }", "accepted"),
+            new Stop("an argument of lengthOfByteString that is Data", "static long m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.lengthOfByteString(b); }", "accepted"),
+            new Stop("an argument of appendByteString that is Data", "static PlutusData m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.appendByteString(b, b); }", "accepted"),
+            new Stop("an argument of equalsByteString that is Data", "static boolean m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.equalsByteString(a, b); }", "accepted"),
+            new Stop("an argument of indexByteString that is Data", "static long m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.indexByteString(b, 0); }", "accepted"),
+            new Stop("an argument of bData that is Data", "static PlutusData m(byte[] a) { PlutusData.BytesData b = Builtins.bData(a); return Builtins.bData(b); }", "accepted"),
+            new Stop("a component of a ledger type whose Data is no constructor", "static long m(Value v) { return v.inner().size(); }", "accepted"),
             new Stop("the method toString of a byte string", "static String m(PubKeyHash p) { return p.toString(); }", "JULC0101"),
             new Stop("the method hashCode of a byte string", "static int m(PubKeyHash p) { return p.hashCode(); }", "JULC0101"),
             new Stop("a wrapper's component named like a method of its value", "@NewType record A(BigInteger abs) { } record R(A a) { } static BigInteger m(R r) { return r.a().abs(); }", "JULC0101"),
             new Stop("a wrapper's component named like a method of its value", "@NewType record A(byte[] length) { } record R(A a) { } static byte[] m(R r) { return r.a().length(); }", "JULC0101"),
-            new Stop("a declared accessor", "record R(BigInteger a) { public BigInteger a() { return a; } } static BigInteger m(R r) { return r.a(); }", "JULC0101"),
-            new Stop("a declared toPlutusData", "record R(PlutusData d) { PlutusData toPlutusData() { return d; } } static PlutusData m(R r) { return r.toPlutusData(); }", "JULC0101"),
             new Stop("the negation of a type's minimum value", "static int m() { return -0x80000000; }", "accepted"),
             new Stop("the negation of a type's minimum value", "static int m() { return -(-2147483648); }", "accepted"),
             new Stop("the negation of a type's minimum value", "static long m() { return -0x8000000000000000L; }", "accepted"),
             new Stop("an equals between unrelated types", "static boolean m(PubKeyHash a, BigInteger b) { return a.equals(b); }", "accepted"),
             new Stop("an equals between unrelated types", "static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }", "accepted"),
             new Stop("a static call not qualified by a simple class name", "static BigInteger m() { return java.math.BigInteger.valueOf(1); }", "uncoded"),
-            new Stop("a method with no stdlib lowering", "static long m(long a) { return Math.floorMod(a, 2L); }", "uncoded"),
+            new Stop("a method with no stdlib lowering", "static long m(long a) { return Math.absExact(a); }", "uncoded"),
             new Stop("a text block", "static String m() { return \"\"\"\n  a\"\"\"; }", "uncoded"),
             new Stop("an instanceof of a variant of two sealed interfaces",
                     "sealed interface P1 permits R { } sealed interface P2 permits R { } record R() implements P1, P2 { } static boolean m(P1 p) { return p instanceof R r; }", "accepted"),
@@ -85,10 +89,16 @@ class JavacStopsTest {
                     "static boolean m(PlutusData l) { var t = new Tuple2<PlutusData, BigInteger>(Builtins.unListData(l), BigInteger.ONE); return true; }", "accepted"),
             new Stop("a Data component given a native list",
                     "record R(PlutusData d) { } static boolean m(PlutusData v) { var r = new R(Builtins.unMapData(v)); return true; }", "accepted"),
+            new Stop("a Data component given a native list", "record R(PlutusData d) { } static R m(PlutusData z) { return new R(Builtins.constrFields(z)); }", "accepted"),
+            new Stop("a Data component given a native list", "record R(PlutusData d) { } static R m(PlutusData z) { return new R(Builtins.unConstrData(z)); }", "accepted"),
+            new Stop("a Data component given a native list", "record R(PlutusData d) { } static R m(PlutusData z) { return new R(Builtins.mkPairData(z, z)); }", "accepted"),
+            new Stop("a Data component given a native list", "record R(PlutusData.ListData d) { } static R m(PlutusData z) { return new R(Builtins.constrFields(z)); }", "accepted"),
+            new Stop("an expression of type java.lang.Record&C.S", "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static boolean m(boolean c, BigInteger a) { var t = new Tuple2<>(c ? new S.A(a) : new S.B(), a); return true; }", "accepted"),
+            new Stop("an instanceof of an operand outside the variant's sealed interface",
+                    "sealed interface S { record A() implements S { } record B() implements S { } } static boolean m(boolean c, S.A a, S.B b) { return (c ? a : b) instanceof S.B x; }", "JULC0100"),
+            new Stop("IDENTIFIER", "static final boolean J = false; static boolean m() { boolean J = (true || J); return J; }", "accepted"),
             new Stop("a wrapper's component read as Data", "static byte[] m(byte[] a) { return new PubKeyHash(a).hash(); }", "accepted"),
-            new Stop("MEMBER_SELECT", "static boolean m() { var c = String.class; return true; }", "uncoded"),
-            new Stop("an expression of type java.lang.Record&C.S",
-                    "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static boolean m(boolean c, BigInteger a) { var s = c ? new S.A(a) : new S.B(); return true; }", "accepted"));
+            new Stop("MEMBER_SELECT", "static boolean m() { var c = String.class; return true; }", "uncoded"));
 
     static Stream<Stop> stops() {
         return STOPS.stream();
@@ -101,7 +111,7 @@ class JavacStopsTest {
     @ParameterizedTest
     @MethodSource("stops")
     void aStopFailsClosed(Stop stop) {
-        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib(stop.members()), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                 .compileMethod(source(stop.members()), "m", List.of()));
         assertEquals(stop.construct(), assertInstanceOf(NotPorted.class, failure, failure::getMessage).construct());
     }
@@ -112,14 +122,14 @@ class JavacStopsTest {
         assertEquals(stop.onDefault(), onDefault(stop.members()), stop.members());
     }
 
-    /** A stop on a method the stdlib would lower is one with no stdlib; these need its builtins to reach what they stop at. */
-    private static StdlibLookup stdlib(String members) {
-        return members.contains("Builtins.") || members.contains("JulcMap.") ? StdlibRegistry.defaultRegistry() : null;
+    /** A program compiles with the stdlib, so a stop is the shape's and not a missing lookup's. */
+    private static StdlibLookup stdlib() {
+        return StdlibRegistry.defaultRegistry();
     }
 
     private static String onDefault(String members) {
         try {
-            new JulcCompiler(stdlib(members), new CompilerOptions()).compileMethod(source(members), "m", List.of());
+            new JulcCompiler(stdlib(), new CompilerOptions()).compileMethod(source(members), "m", List.of());
             return "accepted";
         } catch (CompilerException e) {
             var code = e.diagnostics().isEmpty() ? null : e.diagnostics().getFirst().code();

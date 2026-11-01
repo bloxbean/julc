@@ -33,11 +33,6 @@ public final class TermTypes {
         termTypes.put(term, type);
     }
 
-    /** The type {@link #record} kept with {@code term}, if any. */
-    public Optional<PirType> recorded(PirTerm term) {
-        return Optional.ofNullable(termTypes.get(term));
-    }
-
     /** Record the source element types of a lowered {@code JulcArray.of(...)} term (identity). */
     public void recordArrayLiteral(PirTerm term, List<PirType> elementTypes) {
         arrayLiterals.put(term, List.copyOf(elementTypes));

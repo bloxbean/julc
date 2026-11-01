@@ -13,10 +13,8 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.ElementKind;
-import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import java.math.BigInteger;
-import java.util.ArrayList;
 
 /**
  * {@code instanceof} (ADR-068 I12): a comparison of constructor tags. The variant and its tag are what javac bound, by
@@ -54,14 +52,7 @@ final class TypeTests {
                 && facts.types().asElement(facts.type(pattern.getVariable())) instanceof TypeElement variant)) {
             throw unsupported(tree);
         }
-        var parents = new ArrayList<TypeElement>();
-        for (var type : variant.getInterfaces()) {
-            var parent = facts.typeElement(type);
-            boolean sealed = parent.getKind() == ElementKind.INTERFACE && parent.getModifiers().contains(Modifier.SEALED);
-            if (sealed && facts.registry().lookupNominal(facts.identity(parent)).orElse(null) instanceof PirType.SumType) {
-                parents.add(parent);
-            }
-        }
+        var parents = facts.sealedParents(variant);
         if (parents.isEmpty()) throw unsupported(tree);
         if (variant.getKind() != ElementKind.RECORD || facts.hasAnnotation(variant, JavacNames.NEW_TYPE)) {
             throw NotPorted.at(facts, tree, "an instanceof of a variant that is not a plain record");

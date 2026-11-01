@@ -27,8 +27,8 @@ sealed interface CallTarget {
         String method();
     }
 
-    /** A static method of an API class, lowered by the stdlib lookup. */
-    record Stdlib(String className, String method) implements Keyed {
+    /** A static method of an API class, lowered by the stdlib lookup, and the overload javac chose. */
+    record Stdlib(String className, String method, ExecutableElement element) implements Keyed {
     }
 
     /** A static method of a library unit: the stdlib lookup first, as in the reference, then a call of its binder. */

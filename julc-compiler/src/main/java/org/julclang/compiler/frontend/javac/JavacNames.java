@@ -22,6 +22,7 @@ public final class JavacNames {
     public static final String STRING = "java.lang.String";
     public static final String PLUTUS_DATA = "org.julclang.core.PlutusData";
     public static final String CONSTR_DATA = PLUTUS_DATA + ".ConstrData";
+    public static final String BYTES_DATA = PLUTUS_DATA + ".BytesData";
     public static final String TYPES = "org.julclang.core.types.";
     public static final String JULC_LIST = TYPES + "JulcList";
     public static final String JULC_MAP = TYPES + "JulcMap";

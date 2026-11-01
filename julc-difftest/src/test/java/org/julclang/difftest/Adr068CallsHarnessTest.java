@@ -276,7 +276,7 @@ class Adr068CallsHarnessTest {
     /** {@code lovelaceOf} looks ADA up by key on both frontends and on the JVM: with no ADA, or nothing at all, it is 0. */
     @Test
     void lovelaceOfIsALookupByKey() {
-        String lovelace = "public static BigInteger m(PlutusData a) { return Value.fromPlutusData(a).lovelaceOf(); }";
+        String lovelace = "public static BigInteger m(Value a) { return a.lovelaceOf(); }";
         var ada = new PlutusData.Pair(new PlutusData.BytesData(new byte[0]), new PlutusData.MapData(List.of(
                 new PlutusData.Pair(new PlutusData.BytesData(new byte[0]), integer(5)))));
         var token = new PlutusData.Pair(bytes(1), new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(2), integer(7)))));
@@ -521,6 +521,7 @@ class Adr068CallsHarnessTest {
             if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
                 assertEquals(Verdict.Kind.AGREE, entry.getValue().verdict().kind(), report::describe);
             } else {
+                assertTrue(entry.getValue().verdict().kind() != Verdict.Kind.REJECTED, () -> "a rejection is no fix, it is a decision: " + report.describe());
                 referenceDiverges |= entry.getValue().verdict().kind() != Verdict.Kind.AGREE;
             }
         }
@@ -549,7 +550,7 @@ class Adr068CallsHarnessTest {
     void aListLiteralIsTypedByItsElements() {
         assertFixedOnJavac("public static BigInteger m() { return JulcList.of(BigInteger.ONE, BigInteger.TWO).head(); }");
         assertFixedOnJavac("public static boolean m() { return JulcList.of(BigInteger.ONE, BigInteger.TWO).contains(BigInteger.TWO); }");
-        assertFixedOnJavac("public static BigInteger m() { return JulcList.of(BigInteger.ONE).head().add(BigInteger.ONE); }");
+        assertStopsOnJavac("public static BigInteger m() { return JulcList.of(BigInteger.ONE).head().add(BigInteger.ONE); }", "JULC0055");
         assertFixedOnJavac("public static long m() { return JulcList.of(1, 2).head() + 1; }");
         assertFixedOnJavac("public static boolean m() { return JulcList.of(1, 2).contains(2); }");
     }
@@ -577,6 +578,6 @@ class Adr068CallsHarnessTest {
     @Test
     void aDeclaredAccessorIsNotAComponent() {
         assertStopsOnJavac("public record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } } public static BigInteger m(R r) { return r.a(); }",
-                "JULC0084", new PlutusData.ConstrData(0, List.of(integer(7))));
+                "JULC0101", new PlutusData.ConstrData(0, List.of(integer(7))));
     }
 }

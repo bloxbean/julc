@@ -4,6 +4,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
@@ -17,7 +18,7 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.ElementKind;
-import javax.lang.model.element.Modifier;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
@@ -45,6 +46,9 @@ final class Records {
     /** The reference takes these two qualifiers for the API's by their spelling, so a type of the name elsewhere is not its rejection. */
     private static final Set<String> API_CONSTANT_OWNERS = Set.of("BigInteger", "PlutusData");
 
+    /** The {@code Builtins} methods declared to return a Data subtype, whose term is a builtin pair or list no type says. */
+    private static final Set<String> NATIVE_RESULTS = Set.of("constrFields", "unConstrData", "mkPairData");
+
     private final JavacFacts facts;
     private final Typing typing;
     private final Lowering lowering;
@@ -66,14 +70,14 @@ final class Records {
         var nominal = facts.registry().lookupNominal(facts.identity(type)).orElse(null);
         var arguments = tree.getArguments();
         if (record && facts.hasAnnotation(type, JavacNames.NEW_TYPE)) {
-            if (!sealedParents(type).isEmpty()) throw NotPorted.at(facts, tree, "a new of a @NewType that is a variant");
+            if (!facts.sealedParents(type).isEmpty()) throw NotPorted.at(facts, tree, "a new of a @NewType that is a variant");
             return lowering.expr(arguments.getFirst(), frame);
         }
         if (nominal instanceof PirType.ByteStringType && arguments.size() == 1) {
             return lowering.expr(arguments.getFirst(), frame);
         }
         if (identity.equals(JavacNames.BIG_INTEGER) && arguments.size() == 1) return integer(tree);
-        if (!sealedParents(type).isEmpty()) return variant(tree, type, frame);
+        if (!facts.sealedParents(type).isEmpty()) return variant(tree, type, frame);
         if (Tuples.isTuple(identity)) return tuple(tree, type, frame);
         if (LedgerLayouts.NOT_CONSTRUCTOR_DATA.contains(identity)) {
             // On the JVM its Data is a map; the reference builds a constructor, which every reader of a Value fails on.
@@ -109,24 +113,11 @@ final class Records {
     /** The tag is the variant's place in what javac says the interface permits, which is the order the registry took. */
     private PirTerm variant(NewClassTree tree, TypeElement variant, Frame frame) {
         if (variant.getKind() != ElementKind.RECORD) throw NotPorted.at(facts, tree, "a new of a variant that is not a record");
-        var parents = sealedParents(variant);
+        var parents = facts.sealedParents(variant);
         if (parents.size() > 1) throw NotPorted.at(facts, tree, "a new of a variant of two sealed interfaces");
         var parent = parents.getFirst();
         var sum = (PirType.SumType) facts.registry().lookupNominal(facts.identity(parent)).orElseThrow();
         return constructed(tree, variant, sum, facts.permitted(parent).indexOf(variant), frame);
-    }
-
-    /** The sealed interfaces of {@code variant} the registry holds as sums, in declaration order. */
-    private List<TypeElement> sealedParents(TypeElement variant) {
-        var parents = new ArrayList<TypeElement>();
-        for (var type : variant.getInterfaces()) {
-            var parent = facts.typeElement(type);
-            if (parent.getKind() == ElementKind.INTERFACE && parent.getModifiers().contains(Modifier.SEALED)
-                    && facts.registry().lookupNominal(facts.identity(parent)).orElse(null) instanceof PirType.SumType) {
-                parents.add(parent);
-            }
-        }
-        return parents;
     }
 
     private PirTerm tuple(NewClassTree tree, TypeElement type, Frame frame) {
@@ -137,7 +128,8 @@ final class Records {
         var tuple = tuples.type(name, written, tree, fields, frame);
         requireNoNativePart(name, tuple, tree);
         requireEncodable(tree, tuple.fields(), fields);
-        return typing.keep(new PirTerm.DataConstr(0, tuple, fields), tuple);
+        var term = new PirTerm.DataConstr(0, tuple, fields);
+        return tuples.isDiamond(tree) ? typing.keep(term, tuple) : term;
     }
 
     private PirTerm constructed(NewClassTree tree, TypeElement type, PirType dataType, int tag, Frame frame) {
@@ -151,16 +143,24 @@ final class Records {
 
     /**
      * A component of type Data is not encoded, and {@code Builtins.tailList} and {@code unListData} leave a list where Java
-     * has a {@code ListData}: the reference puts it in the field as it is, which fails where Java goes on.
+     * has a {@code ListData}: the reference puts it in the field as it is, which fails where Java goes on. A pair is the same,
+     * and the term does not say one, so those calls go by the method.
      */
     private void requireEncodable(NewClassTree tree, List<PirType.Field> components, List<PirTerm> fields) {
         for (int i = 0; i < fields.size(); i++) {
             var argument = tree.getArguments().get(i);
+            var term = typing.ofTerm(fields.get(i));
             if (components.get(i).type() instanceof PirType.DataType
-                    && (typing.ofTerm(fields.get(i)) instanceof PirType.ListType || typing.ofTerm(fields.get(i)) instanceof PirType.MapType)) {
+                    && (term instanceof PirType.ListType || term instanceof PirType.MapType || leavesAPair(argument))) {
                 throw NotPorted.at(facts, argument, "a Data component given a native list");
             }
         }
+    }
+
+    private boolean leavesAPair(ExpressionTree argument) {
+        return argument instanceof MethodInvocationTree call && facts.element(call.getMethodSelect()) instanceof ExecutableElement method
+                && method.getEnclosingElement() instanceof TypeElement owner && facts.identity(owner).equals(JavacNames.BUILTINS)
+                && NATIVE_RESULTS.contains(method.getSimpleName().toString());
     }
 
     /** {@code JULC0091} for an argument holding a native array: the declared type does not show one under a diamond. */

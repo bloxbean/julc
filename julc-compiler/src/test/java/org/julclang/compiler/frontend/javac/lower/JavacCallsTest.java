@@ -163,14 +163,14 @@ class JavacCallsTest {
 
     @Test
     void aDeclaredAccessorIsARecordMember() {
-        assertEquals("a declared accessor", notPorted(
-                "record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } } static BigInteger m(R r) { return r.a(); }"));
+        assertEquals("JULC0101", rejected(
+                "record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } } static BigInteger m(R r) { return r.a(); }").code());
     }
 
     @Test
     void aDeclaredToPlutusDataIsARecordMember() {
-        assertEquals("a declared toPlutusData", notPorted(
-                "record R(BigInteger a) { PlutusData toPlutusData() { return PlutusData.UNIT; } } static PlutusData m(R r) { return r.toPlutusData(); }"));
+        assertEquals("JULC0101", rejected(
+                "record R(BigInteger a) { PlutusData toPlutusData() { return PlutusData.UNIT; } } static PlutusData m(R r) { return r.toPlutusData(); }").code());
     }
 
     @Test

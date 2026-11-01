@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.ExpressionTree;
-import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import org.julclang.compiler.CompilationContext;
@@ -10,6 +9,7 @@ import org.julclang.compiler.CompilerTargetDiagnostics;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.LoweringRequirements;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -19,6 +19,7 @@ import org.julclang.compiler.pir.TypeMethodRegistry;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.DefaultFun;
 
+import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -136,6 +137,7 @@ final class Calls {
 
     private PirTerm stdlib(CallTarget.Stdlib target, MethodInvocationTree tree, Frame frame) {
         var arguments = arguments(tree, frame);
+        requireRepresentation(target, tree, arguments);
         var result = lookup(target, arguments, tree);
         if (result != null) {
             // A var of a literal is typed by its elements, so keep them with it, as the reference does (ADR-046).
@@ -146,6 +148,24 @@ final class Calls {
             throw CompilerTypeDiagnostics.julcMapOfOffChainOnly(facts.location(tree));
         }
         throw NotPorted.at(facts, tree, "a method with no stdlib lowering");
+    }
+
+    /**
+     * The lookup is keyed by name, and a name's handler applies its builtin to the term. So the overload that takes
+     * {@code PlutusData.BytesData} where the builtin takes bytes needs a term that holds bytes: {@code Builtins.bData(a)} is
+     * Data, and the builtin fails on it where Java goes on. {@code PlutusData} has no such check, since a term of that type
+     * can hold a list or a text, and the stdlib's own bodies pass it so.
+     */
+    private void requireRepresentation(CallTarget.Stdlib target, MethodInvocationTree tree, Arguments arguments) {
+        var parameters = target.element().getParameters();
+        for (int i = 0; i < arguments.terms().size() && i < parameters.size(); i++) {
+            var parameter = parameters.get(i).asType();
+            boolean bytesData = parameter.getKind() == TypeKind.DECLARED
+                    && facts.identity(facts.typeElement(parameter)).equals(JavacNames.BYTES_DATA);
+            if (bytesData && !(arguments.types().get(i) instanceof PirType.ByteStringType)) {
+                throw NotPorted.at(facts, tree.getArguments().get(i), "an argument of " + target.method() + " that is Data");
+            }
+        }
     }
 
     private PirTerm lookup(CallTarget.Keyed target, Arguments arguments, MethodInvocationTree tree) {
@@ -186,7 +206,7 @@ final class Calls {
     private PirTerm accessor(CallTarget.Accessor target, MethodInvocationTree tree, Frame frame) {
         var receiver = receiver(tree);
         var scope = lowering.expr(receiver, frame);
-        if (!(dispatchType(receiver, scope) instanceof PirType.RecordType record)) {
+        if (!(targets.seen(receiver, scope) instanceof PirType.RecordType record)) {
             throw CompilerTypeDiagnostics.unresolvedMember(target.component(), facts.location(tree));
         }
         var fields = record.fields();
@@ -221,13 +241,16 @@ final class Calls {
         var type = typing.of(receiver, scope);
         var arguments = arguments(tree, frame);
         if (!TypeKeys.accepts(target.key(), type)) throw NotPorted.at(facts, tree, "a method of a subtype of an API type");
-        if (!TypeKeys.accepts(target.key(), dispatchType(receiver, scope))) {
+        var seen = targets.seen(receiver, scope);
+        if (!TypeKeys.accepts(target.key(), seen)) {
             throw CompilerTypeDiagnostics.unresolvedMember(target.method(), facts.location(tree));
         }
         if (type instanceof PirType.ListType list && target.method().equals("contains")) {
             arguments = encodedTarget(list, arguments);
         }
-        return dispatch(target.key(), target.method(), scope, type, arguments, tree);
+        var result = dispatch(target.key(), target.method(), scope, type, arguments, tree);
+        typeMethods.resolveReturnType(seen, target.method()).ifPresent(declared -> typing.recordRead(result, declared));
+        return result;
     }
 
     /**
@@ -244,21 +267,17 @@ final class Calls {
     }
 
     /**
-     * The type the reference dispatches a member on. It knows no stdlib method's return type, so a member of one's result
-     * is looked up on what the term says: {@code Optional.of(a).isPresent()} is {@code JULC0055}, and javac's type does not
-     * widen the subset (I2). A list literal's term says it is a list, so its reads go on, typed by javac. A variable's term
-     * says its binder's type, which for a {@code var} of such a call is the same thing ({@link Statements}).
+     * {@code equals} is the receiver's: the key is what the receiver is, not the class that declares the method. A read
+     * through what the reference does not type is seen as Data, and holds what javac's element type decoded it to.
      */
-    private PirType dispatchType(ExpressionTree receiver, PirTerm scope) {
-        if (targets.isStdlibCall(receiver)) return typing.ofTerm(scope);
-        return receiver instanceof IdentifierTree ? typing.ofVariable(scope) : typing.of(receiver, scope);
-    }
-
-    /** {@code equals} is the receiver's: the key is what the receiver is, not the class that declares the method. */
     private PirTerm equality(MethodInvocationTree tree, Frame frame) {
         var receiver = receiver(tree);
         var scope = lowering.expr(receiver, frame);
-        var type = dispatchType(receiver, scope);
+        var seen = targets.seen(receiver, scope);
+        var held = typing.of(receiver, scope);
+        boolean decoded = seen instanceof PirType.DataType && !targets.isStdlibCall(receiver)
+                && typeMethods.contains(TypeKeys.of(held), "equals");
+        var type = decoded ? held : seen;
         var arguments = arguments(tree, frame);
         String key = TypeKeys.of(type);
         if (!typeMethods.contains(key, "equals")) throw CompilerTypeDiagnostics.unresolvedMember("equals", facts.location(tree));

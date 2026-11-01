@@ -54,6 +54,11 @@ final class Tuples {
         return tree.getIdentifier() instanceof ParameterizedTypeTree type && !type.getTypeArguments().isEmpty();
     }
 
+    /** Whether a diamond leaves {@code tree}'s type to be worked out here, so that only its term can say it. */
+    boolean isDiamond(NewClassTree tree) {
+        return tree.getIdentifier() instanceof ParameterizedTypeTree && !isExplicit(tree);
+    }
+
     /** The tuple's type, given its lowered arguments. */
     PirType.RecordType type(String name, PirType.RecordType written, NewClassTree tree, List<PirTerm> fields, Frame frame) {
         var arguments = tree.getArguments();
@@ -70,20 +75,11 @@ final class Tuples {
                 type = target.fields().get(i).type();
                 if (type instanceof PirType.DataType) requireData(name, arguments.get(i), fields.get(i));
             } else {
-                type = component(name, tree, arguments.get(i), fields.get(i));
+                type = typing.of(arguments.get(i), fields.get(i));
             }
             components.add(new PirType.Field(written.fields().get(i).name(), type));
         }
         return new PirType.RecordType(written.name(), components);
-    }
-
-    /** A diamond's component from its argument. */
-    private PirType component(String name, NewClassTree tree, ExpressionTree argument, PirTerm field) {
-        try {
-            return typing.of(argument, field);
-        } catch (NotPorted e) {
-            throw CompilerTypeDiagnostics.diamondTypeArgumentsUnknown(name, facts.location(tree));
-        }
     }
 
     /** {@code JULC0012} unless a component read back as Data already is Data: a record, sum or {@code Optional} is. */

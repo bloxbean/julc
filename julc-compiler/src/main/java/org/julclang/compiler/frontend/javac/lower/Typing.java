@@ -1,17 +1,26 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TermTypes;
 
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The PIR types of expressions, in the two steps the reference reads them: javac's static type, and where that says only
@@ -23,25 +32,40 @@ final class Typing {
 
     private final JavacFacts facts;
     private final TermTypes termTypes = new TermTypes();
+    /** Terms whose type no tree says: a diamond's, worked out here. */
+    private final Set<PirTerm> kept = Collections.newSetFromMap(new IdentityHashMap<>());
 
     Typing(JavacFacts facts) {
         this.facts = facts;
     }
 
-    /** {@code tree}'s static type. A type JuLC has no representation for stops here: nothing can be decided on it. */
+    /**
+     * {@code tree}'s static type. A type JuLC has no representation for stops here: nothing can be decided on it. javac types
+     * a conditional in an argument by its parameter, so one that reaches {@code Object} is typed by its operands.
+     */
     PirType of(ExpressionTree tree) {
         var type = facts.type(tree);
+        if (isObject(type)) {
+            if (tree instanceof ParenthesizedTree parenthesized) return of(parenthesized.getExpression());
+            if (tree instanceof ConditionalExpressionTree conditional) {
+                var operand = of(conditional.getTrueExpression());
+                if (operand.equals(of(conditional.getFalseExpression()))) return operand;
+            }
+        }
         try {
             return facts.registry().resolveNamed(facts.valueType(type, tree));
         } catch (CompilerException e) {
-            throw NotPorted.at(facts, tree, "an expression of type " + type);
+            throw NotPorted.at(facts, tree, "an expression of type " + ArrayIdentityEquality.text(type));
         }
+    }
+
+    private boolean isObject(TypeMirror type) {
+        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.OBJECT);
     }
 
     /** {@code lowered}'s type, for the expression {@code tree}: the one kept with it, or see the class's comment. */
     PirType of(ExpressionTree tree, PirTerm lowered) {
-        var kept = termTypes.recorded(lowered);
-        if (kept.isPresent()) return facts.registry().resolveNamed(kept.get());
+        if (kept.contains(lowered)) return ofVariable(lowered);
         var type = of(tree);
         return facts.registry().resolveNamed(type instanceof PirType.DataType ? termTypes.infer(lowered) : type);
     }
@@ -58,8 +82,18 @@ final class Typing {
 
     /** Keeps {@code type} with {@code term} (identity): a diamond's type is worked out here, and no tree says it. */
     PirTerm keep(PirTerm term, PirType type) {
+        kept.add(term);
         termTypes.record(term, type);
         return term;
+    }
+
+    /**
+     * What {@code read}, the result of a registry method, says of itself: the type the registry declares on the receiver
+     * the reference sees, as the reference records it. A read's value is still decoded by javac's type, which is
+     * {@link #of(ExpressionTree, PirTerm)}'s.
+     */
+    void recordRead(PirTerm read, PirType declared) {
+        termTypes.record(read, declared);
     }
 
     /** Keeps the source types of a lowered {@code JulcArray.of(...)}'s elements with its term (identity). */

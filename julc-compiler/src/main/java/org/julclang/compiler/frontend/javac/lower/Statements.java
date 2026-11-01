@@ -1,13 +1,11 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.BlockTree;
-import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IfTree;
 import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.MethodTree;
-import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
@@ -170,23 +168,16 @@ final class Statements {
     }
 
     /**
-     * The binder's type of a {@code var}: javac's, except of a stdlib call. The reference does not know that type, so it
-     * binds what the term says, and a read of a member is {@code JULC0055} there, as on the call itself: javac knowing the
-     * type does not widen the subset (I2). What a list's reads decode to is still javac's, which is {@link Typing#of}'s.
-     * Elements of different types have no one type for an array's reads to decode, and that is a rejection. Around
-     * parentheses or a conditional the reference reads the term too, so a record or a sum there is one only if the term
-     * says so: a {@code new} says Data, and a read of a component is {@code JULC0055}, as on the {@code new} itself.
+     * The binder's type of a {@code var}: what the reference gives it ({@link CallTargets#seen}), so a read of a member stays
+     * what it is on the initializer itself. Elements of different types have no one type for an array's reads to decode, and
+     * that is a rejection.
      */
     private PirType varType(ExpressionTree initializer, PirTerm value) {
         var elements = typing.arrayLiteralElementTypes(value);
         if (elements.isPresent() && new LinkedHashSet<>(elements.get()).size() > 1) {
             throw CompilerTypeDiagnostics.arrayLiteralElementTypesDiffer(elements.get(), facts.location(initializer));
         }
-        if (targets.isStdlibCall(initializer)) return typing.ofTerm(value);
-        var type = typing.of(initializer, value);
-        boolean wrapped = initializer instanceof ParenthesizedTree || initializer instanceof ConditionalExpressionTree;
-        boolean named = type instanceof PirType.RecordType || type instanceof PirType.SumType;
-        return wrapped && named ? typing.ofTerm(value) : type;
+        return targets.seen(initializer, value);
     }
 
     private PirTerm ret(ReturnTree tree, Frame frame) {

@@ -4,10 +4,12 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
+import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TypeMethodRegistry;
 
@@ -15,7 +17,6 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.PrimitiveType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.util.Map;
@@ -114,7 +115,7 @@ final class CallTargets {
                 || facts.declaredInSource(method)) {
             return new CallTarget.Rejected("Undefined variable: " + qualifier.getName());
         }
-        return new CallTarget.Stdlib(SIMPLE_STDLIB_KEYS.getOrDefault(identity, identity), name);
+        return new CallTarget.Stdlib(SIMPLE_STDLIB_KEYS.getOrDefault(identity, identity), name, method);
     }
 
     private static boolean inLedger(String identity) {
@@ -136,13 +137,19 @@ final class CallTargets {
                                 TypeElement owner) {
         String name = name(method);
         var receiver = select.getExpression();
-        if (isObjectEquals(method)) return equalsTarget(tree, receiver);
+        if (isObjectEquals(method)) return equalsTarget(receiver);
         String identity = facts.identity(owner);
         if (name.equals("toPlutusData") && tree.getArguments().isEmpty()) {
             // The reference encodes the value and ignores what a record declares: T31 again.
             return isApi(identity) ? CallTarget.Intrinsic.TO_DATA : new CallTarget.NotLowered("a declared toPlutusData");
         }
-        if (isAccessor(method, owner)) return accessor(method, name, receiver);
+        if (isAccessor(method, owner)) {
+            // A record reads a component from a constructor, and this Data has none.
+            if (LedgerLayouts.NOT_CONSTRUCTOR_DATA.contains(identity)) {
+                return new CallTarget.NotLowered("a component of a ledger type whose Data is no constructor");
+            }
+            return accessor(name, receiver);
+        }
         String key = TypeKeys.of(identity);
         if (key == null) return notInRegistry(tree, name, receiver);
         if (key.equals("ListType") && HOF_METHODS.contains(name)) return new CallTarget.Hof(name);
@@ -162,19 +169,10 @@ final class CallTargets {
         return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.OBJECT);
     }
 
-    /**
-     * Java's {@code a.equals(b)} between unrelated classes is false, while on-chain it compares representations: ADR-067's
-     * cross-type {@code equals} (T29). {@code JULC0078} comes with the subset port; until then it does not lower. On an
-     * array {@code equals} is identity, which the subset rejects ({@code JULC0087}), so this never reaches a term either.
-     */
-    private CallTarget equalsTarget(MethodInvocationTree tree, ExpressionTree receiver) {
-        var types = facts.types();
-        var left = types.erasure(facts.type(receiver));
-        var right = types.erasure(facts.type(tree.getArguments().getFirst()));
-        if (left.getKind() == TypeKind.ARRAY) return new CallTarget.NotLowered("an equals on an array");
-        var boxed = right instanceof PrimitiveType primitive ? types.boxedClass(primitive).asType() : right;
-        boolean related = types.isSubtype(left, boxed) || types.isSubtype(boxed, left);
-        return related ? new CallTarget.Equals() : new CallTarget.NotLowered("an equals between unrelated types");
+    /** On an array {@code equals} is identity, which the subset rejects ({@code JULC0087}), so this reaches no term either. */
+    private CallTarget equalsTarget(ExpressionTree receiver) {
+        boolean array = facts.types().erasure(facts.type(receiver)).getKind() == TypeKind.ARRAY;
+        return array ? new CallTarget.NotLowered("an equals on an array") : new CallTarget.Equals();
     }
 
     /** A record's accessor has the name of a component and no parameter, so nothing else can be one. */
@@ -183,9 +181,7 @@ final class CallTargets {
         return facts.components(owner).stream().anyMatch(component -> component.getSimpleName().equals(method.getSimpleName()));
     }
 
-    private CallTarget accessor(ExecutableElement method, String name, ExpressionTree receiver) {
-        // JuLC compiles a record as its components, so the reference ignores a declared accessor: T31, JULC0080 to come.
-        if (facts.declaredInSource(method)) return new CallTarget.NotLowered("a declared accessor");
+    private CallTarget accessor(String name, ExpressionTree receiver) {
         var type = typing.of(receiver);
         if (!(type instanceof PirType.RecordType)) return wrapper(name, type, receiver);
         boolean visible = receiver instanceof IdentifierTree || receiver instanceof MethodInvocationTree call && typedCall(call);
@@ -222,6 +218,20 @@ final class CallTargets {
     /** Whether {@code tree} is a call of an API static method, whose result's type the reference does not know. */
     boolean isStdlibCall(ExpressionTree tree) {
         return tree instanceof MethodInvocationTree call && classify(call) instanceof CallTarget.Stdlib;
+    }
+
+    /**
+     * The type the reference gives {@code tree}, whose lowered term is {@code term}: what a member is looked up on and what a
+     * {@code var} binds. It knows a {@code new} and the result of a helper, a library method or an accessor; of anything
+     * else it reads the term, which says what a variable was bound with, and what a registry method declares on the
+     * receiver the reference saw. So {@code Optional.of(a).isPresent()} and {@code JulcList.of(x).head().add(y)} are
+     * {@code JULC0055}, and so are they through a {@code var}, parentheses or a conditional: javac knowing the type does not
+     * widen the subset (I2). What a read decodes to is still javac's, which is {@link Typing#of}'s.
+     */
+    PirType seen(ExpressionTree tree, PirTerm term) {
+        boolean known = tree instanceof NewClassTree || tree instanceof MethodInvocationTree call
+                && !(classify(call) instanceof CallTarget.Stdlib || classify(call) instanceof CallTarget.TypeMethod);
+        return known ? typing.of(tree, term) : typing.ofVariable(term);
     }
 
     /**
