@@ -86,7 +86,7 @@ class JavacStopsTest {
             new Stop("a Data component given a native list",
                     "record R(PlutusData d) { } static boolean m(PlutusData v) { var r = new R(Builtins.unMapData(v)); return true; }", "accepted"),
             new Stop("a wrapper's component read as Data", "static byte[] m(byte[] a) { return new PubKeyHash(a).hash(); }", "accepted"),
-            new Stop("MEMBER_SELECT", "static boolean m() { var c = BigInteger.class; return true; }", "uncoded"),
+            new Stop("MEMBER_SELECT", "static boolean m() { var c = String.class; return true; }", "uncoded"),
             new Stop("an expression of type java.lang.Record&C.S",
                     "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static boolean m(boolean c, BigInteger a) { var s = c ? new S.A(a) : new S.B(); return true; }", "accepted"));
 
