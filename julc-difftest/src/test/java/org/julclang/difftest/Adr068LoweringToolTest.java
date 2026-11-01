@@ -105,10 +105,10 @@ class Adr068LoweringToolTest {
     /** I1b: a method is compared though the program stops at another. */
     @Test
     void aProgramPartlyCovered() {
-        assertRow("not-ported", 1, 2, "VARIABLE", row("""
+        assertRow("not-ported", 1, 2, "TYPE_CAST", row("""
                 class P {
                     static long helper(long a) { return a; }
-                    static long m(long a) { long b = a; return b; }
+                    static long m(long a) { return (long) a; }
                 }
                 """));
     }
@@ -496,7 +496,7 @@ class Adr068LoweringToolTest {
     /** A row the javac frontend does not reach is held still all the same. */
     @Test
     void aReferenceThatMovedIsReportedOnARowJavacDoesNotReach() {
-        var c = method("class P { static long m(long a) { long b = a; return b; } }");
+        var c = method("class P { static long m(long a) { return (long) a; } }");
         var frozen = committed(c);
         assertEquals("not-ported", new Adr068Lowering(frozen).classify(c).row().kind());
         var changed = Map.of(c.key, tampered(frozen.get(c.key), 2));

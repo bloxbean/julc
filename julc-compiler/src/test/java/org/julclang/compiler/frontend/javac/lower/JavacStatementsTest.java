@@ -30,6 +30,7 @@ class JavacStatementsTest {
             import java.util.Optional;
             import org.julclang.core.PlutusData;
             import org.julclang.core.types.JulcArray;
+            import org.julclang.core.types.JulcG1;
             import org.julclang.core.types.JulcList;
             import org.julclang.ledger.Credential;
             import org.julclang.ledger.OutputDatum;
@@ -141,6 +142,7 @@ class JavacStatementsTest {
             "static long m(long a) { x: return a; }",
             "static long m(boolean c) { if (c) y: { return 1; } return 2; }",
             "static long m(boolean c) { if (c) y: Builtins.error(); return 2; }",
+            "static long m(JulcList b) { JulcList<JulcG1> x = b; return 1; }",
     })
     void rejections(String members) {
         rejected(members);
@@ -200,7 +202,7 @@ class JavacStatementsTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                 .compileMethod(source("static long m() { " + body + " }"), "m", List.of()));
         assertFalse(failure instanceof NotPorted, failure::getMessage);
-        assertEquals(11, failure.diagnostics().getFirst().line());
+        assertEquals(12, failure.diagnostics().getFirst().line());
     }
 
     @Test
