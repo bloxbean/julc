@@ -11,6 +11,7 @@ import org.julclang.core.source.SourceMap;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /** Shared post-wrapper pipeline. The caller owns frontend diagnostics and metadata. */
 public final class PirBackend {
@@ -42,15 +43,35 @@ public final class PirBackend {
             Map<PirTerm, SourceLocation> positions,
             boolean optimize,
             PirDebugProvenance provenance) {
-        return lower(term, context, positions, optimize, provenance, true);
+        return lower(term, context, positions, optimize, provenance, Bindings.NONE, true);
+    }
+
+    /** {@link #lower} of a program whose methods and fields are {@code bindings}. */
+    public static Result lower(
+            PirTerm term,
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> positions,
+            boolean optimize,
+            PirDebugProvenance provenance,
+            Bindings bindings) {
+        return lower(term, context, positions, optimize, provenance, bindings, true);
+    }
+
+    /**
+     * The binders of a program's methods and static fields, which {@link DelayedMethodPass} reads. A term that comes
+     * with none, as a linked program does, has no method to delay.
+     */
+    public record Bindings(Set<String> methods, Set<String> fields) {
+        static final Bindings NONE = new Bindings(Set.of(), Set.of());
     }
 
     /** {@link #lower} without the stage log lines: {@code compileMethod} has never written them. */
     public static Result lowerQuietly(
             PirTerm term,
             CompilationContext context,
-            Map<PirTerm, SourceLocation> positions) {
-        return lower(term, context, positions, true, null, false);
+            Map<PirTerm, SourceLocation> positions,
+            Bindings bindings) {
+        return lower(term, context, positions, true, null, bindings, false);
     }
 
     private static Result lower(
@@ -59,14 +80,21 @@ public final class PirBackend {
             Map<PirTerm, SourceLocation> positions,
             boolean optimize,
             PirDebugProvenance provenance,
+            Bindings bindings,
             boolean logStages) {
         var values = new ValueLiteralFoldPass(context, positions, provenance).lower(term);
         var folding =
                 new ArrayLiteralFoldPass(context, values.positions(), provenance)
                         .lower(values.term());
-        var sharing =
-                new ValueConversionSharingPass(context, folding.positions(), provenance)
+        // After the folds, whose constants need no delay, and before the passes that move a
+        // conversion, which must see each delayed read as the call it is.
+        var delayed =
+                new DelayedMethodPass(
+                                bindings.methods(), bindings.fields(), folding.positions(), provenance)
                         .lower(folding.term());
+        var sharing =
+                new ValueConversionSharingPass(context, delayed.positions(), provenance)
+                        .lower(delayed.term());
         var promotion =
                 new ListIndexPromotionPass(context, sharing.positions(), provenance)
                         .lower(sharing.term());

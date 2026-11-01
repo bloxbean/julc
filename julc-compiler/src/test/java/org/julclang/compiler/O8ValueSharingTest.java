@@ -398,7 +398,8 @@ class O8ValueSharingTest {
                     .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1))
                     .compileWithDetails(validator);
             assertFalse(compiled.hasErrors(), level + " " + compiled.diagnostics());
-            assertEquals(level.pv11SafeRulesEnabled() ? 1 : 2, countConversions(compiled.pirTerm()), level.toString());
+            // The helper's conversion may fail, so it runs at each call (ADR-068 B4), and no sharing reaches into it.
+            assertEquals(2, countConversions(compiled.pirTerm()), level.toString());
             assertEquals(java.util.Set.of(), org.julclang.compiler.pir.PirSubstitution.collectFreeVarNames(compiled.pirTerm()), level.toString());
         }
         for (var data : List.of(VALID, NOT_A_MAP, ZERO_QUANTITY)) {

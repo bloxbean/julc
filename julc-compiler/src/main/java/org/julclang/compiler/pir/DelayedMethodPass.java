@@ -27,7 +27,8 @@ import java.util.function.ToLongFunction;
  * <b>Why this runs on the assembled term.</b> Both frontends lower a call of such a method to a read of its binder, and
  * a call site can come before the method's body is lowered, so no call site knows yet whether the body may fail. By
  * assembly every body exists. A read stays a {@code Var} until here, so a handler that takes one must not treat it as
- * having no effect: {@link PirHelpers#isMethodRead}.
+ * having no effect: {@link PirHelpers#isMethodRead}. {@code PirBackend} runs this after the literal folds, so a body they
+ * reduce to a constant stays shared, and before the passes that move a conversion, which must see a delayed read as a call.
  * <p>
  * <b>{@link #mayFail} decides, and it is conservative:</b> only what it can show is total is total. A call of a bound,
  * non-recursive function is read through its body, with what is known of each argument in scope, so
@@ -313,6 +314,7 @@ public final class DelayedMethodPass {
     }
 
     public Result lower(PirTerm term) {
+        if (methods.isEmpty()) return new Result(term, positions);
         return new Result(walk(term, Map.of(), Set.of()), positions);
     }
 
