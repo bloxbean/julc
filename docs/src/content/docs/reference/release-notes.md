@@ -13,10 +13,11 @@ Any other string is now counted byte by byte, so `length` costs in proportion to
 A method with no parameters whose body may fail, or traces, now runs at each call, and only if it is
 called, as in Java. It ran once at script start, whether or not it was called, so
 `c ? boom() : 2` failed with `c` false. Such a method now costs a call each time, and a trace in it
-shows at each call. A body the compiler can show cannot fail stays one shared value: constants, the
-listed builtins that cannot fail, and calls of non-recursive functions whose bodies it can read. Any
-other body, including a read of a `@Param` field, is delayed. A library reached through a provider
-import stays as it was: its method with no parameters runs once when the program starts.
+shows at each call. A body the compiler can show cannot fail stays one shared value: constants, what
+the literal folds reduce to one, the listed builtins that cannot fail, and calls of non-recursive
+functions whose bodies it can read. Any other body, including a read of a `@Param` field, is delayed.
+A library reached through a provider import stays as it was: its method with no parameters runs once
+when the program starts. A conversion in a helper that may fail is no longer shared with its callers.
 
 Both changes apply on both frontends. A script that uses `length` on a string that is not a constant, or
 has such a method, changes its bytes and its script hash.

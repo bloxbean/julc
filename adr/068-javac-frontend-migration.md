@@ -981,7 +981,8 @@ milestone's evidence; a skipped check fails the gate.
    target's variants take, a partial builtin only where constants show its range, and a call of a bound, non-recursive
    function, read through its body with what is known of each argument. A recursive function, an unknown one, a parameter,
    a trace and anything else may fail. The pass runs on the assembled term, because a call site can come before the
-   method's body is lowered. A library reached through a provider import stays strict. See
+   method's body is lowered, after the literal folds, so a body they reduce to a constant stays shared. A library reached
+   through a provider import stays strict. See
    [`068-m3-reference-b4.md`](evidence/068-m3-reference-b4.md).
 
 ## Implementation results
