@@ -1,5 +1,9 @@
 package org.julclang.difftest;
 
+import java.util.List;
+import org.julclang.compiler.frontend.javac.JavacEvidence;
+import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.OptimizationLevel;
 import org.junit.jupiter.api.Test;
 
@@ -102,5 +106,24 @@ class Adr068LoweringToolTest {
         var c = corpus.add("tool", "JavaLibraryProvider", null, "none", null, java.util.List.of());
         var row = new Adr068Lowering(Map.of()).classify(c);
         assertEquals("i1a-identical", row.kind(), row::line);
+    }
+
+    /** A program with a library stops at the unit, so what a call site does shows only in the method's own attempt (I1b). */
+    private static String construct(String library, String caller) {
+        var root = "import lib.L;\nclass P {\n    " + caller + "\n}\n";
+        var unit = "package lib;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class L {\n    " + library + "\n}\n";
+        return JavacEvidence.attempts(root, List.of(unit), "m", null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                .getFirst().construct();
+    }
+
+    @Test
+    void aVarargsLibraryMethodDoesNotLower() {
+        assertEquals("a call of a varargs method", construct("public static long f(long a, byte... rest) { return a; }",
+                "static long m() { return L.f(1); }"));
+    }
+
+    @Test
+    void aFixedLibraryMethodLowersAtItsCallSite() {
+        assertEquals(null, construct("public static long f(long a) { return a; }", "static long m() { return L.f(1); }"));
     }
 }

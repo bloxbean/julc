@@ -27,9 +27,12 @@ class JavacOperatorsTest {
         return """
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
+                import org.julclang.core.types.JulcG1;
+                import org.julclang.core.types.JulcG2;
                 import org.julclang.core.types.JulcList;
                 import org.julclang.core.types.JulcMap;
                 import org.julclang.ledger.PubKeyHash;
+                import org.julclang.stdlib.Builtins;
                 class C {
                 """ + members + "\n}\n";
     }
@@ -90,6 +93,17 @@ class JavacOperatorsTest {
         assertSame("static String m(boolean c) { return c ? \"a\" : \"b\"; }");
     }
 
+    /** ADR-047: a branch of another native type does not pass through a conditional, and the words are the reference's. */
+    @Test
+    void aConditionalKeepsNativeTypesApart() {
+        var members = "static PlutusData h(boolean c, JulcG1 a, JulcG2 b) { return Builtins.listData(JulcList.of(c ? a : b)); }\n"
+                + "static boolean m() { return true; }";
+        var source = source(members);
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m", List.of()));
+        assertTrue(javac.getMessage().contains("Conditional else branch"), javac::getMessage);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"a.compareTo(b) < 0", "a.compareTo(b) <= 0", "a.compareTo(b) > 0", "a.compareTo(b) >= 0", "a.compareTo(b) == 0",
             "a.compareTo(b) != 0", "0 > a.compareTo(b)", "0 >= a.compareTo(b)", "0 < a.compareTo(b)", "0 <= a.compareTo(b)", "0 == a.compareTo(b)",
@@ -143,7 +157,7 @@ class JavacOperatorsTest {
     void theRejectionSaysWhatAndWhere() {
         var failure = rejected("static boolean m(BigInteger a, BigInteger b) { return a == b; }");
         assertEquals("a == b compares java.math.BigInteger by reference; use equals", failure.message());
-        assertEquals(7, failure.line());
+        assertEquals(10, failure.line());
         assertEquals(55, failure.column());
     }
 

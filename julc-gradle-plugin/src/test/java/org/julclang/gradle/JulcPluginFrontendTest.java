@@ -92,6 +92,23 @@ class JulcPluginFrontendTest {
         assertTrue(result.getOutput().contains("JULC0084"), result.getOutput());
     }
 
+    /** Validators under src/main/java go through the processor, which must compile on the frontend the project chose. */
+    @Test
+    void theProcessorIsToldTheFrontend() throws IOException {
+        write("return true;");
+        configure("javac");
+        Files.writeString(project.resolve("build.gradle"), Files.readString(project.resolve("build.gradle")) + """
+
+                tasks.register('printArguments') {
+                    def arguments = provider { tasks.named('compileJava').get().options.compilerArgs }
+                    doLast { println arguments.get() }
+                }
+                """);
+        var result = GradleRunner.create().withProjectDir(project.toFile()).withPluginClasspath()
+                .withArguments("printArguments", "--no-configuration-cache", "--no-watch-fs").build();
+        assertTrue(result.getOutput().contains("-Ajulc.frontend=javac"), result.getOutput());
+    }
+
     @Test
     void anUnknownFrontendFailsTheBuild() throws IOException {
         write("return true;");

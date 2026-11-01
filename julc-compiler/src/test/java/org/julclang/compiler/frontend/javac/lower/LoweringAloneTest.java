@@ -14,6 +14,7 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
@@ -110,6 +111,18 @@ class LoweringAloneTest {
                 assertEquals("NEW_ARRAY", assertThrows(NotPorted.class, lowered::term).construct()));
         withMethod("class P { static byte[] m(boolean b) { return b ? new byte[2] : new byte[]{1}; } }", new CompilerOptions(), (facts, lowered) ->
                 assertEquals("NEW_ARRAY", assertThrows(NotPorted.class, lowered::term).construct()));
+    }
+
+    /** Each of these is the subset's rule in a compilation; lowering must still build no term on what the rule stops. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "static String m(String a) { return a + 1; }                         | a string + with another type",
+            "static String m(String a) { return 1 + a; }                         | a string + with another type",
+            "static boolean m(java.math.BigInteger a) { return a == a; }         | reference equality",
+            "static boolean m(byte[] a, byte[] b) { return a.equals(b); }        | an equals on an array"})
+    void whatTheSubsetRejectsIsNotLoweredHereToo(String method, String construct) {
+        withMethod("class P { " + method + " }", new CompilerOptions(), (facts, lowered) ->
+                assertEquals(construct, assertThrows(NotPorted.class, lowered::term).construct()));
     }
 
     /** A field's initializer, where a type the subset rejects has not stopped the lowering first. */

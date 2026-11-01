@@ -38,6 +38,7 @@ class Adr068CallsHarnessTest {
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcList;
                 import org.julclang.core.types.JulcMap;
+                import org.julclang.ledger.Interval;
                 import org.julclang.ledger.Value;
                 import org.julclang.stdlib.Builtins;
 
@@ -434,11 +435,25 @@ class Adr068CallsHarnessTest {
     /** I2: the reference does not know a stdlib method's return type, so javac's knowing it widens nothing. */
     @Test
     void aMemberOfAStdlibCallStaysRejected() {
-        var report = run("public static boolean m(BigInteger a) { return Optional.of(a).isPresent(); }", List.of(integer(1)));
-        report.results().forEach((config, result) -> {
-            assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
-            assertTrue(result.uplc().toString().contains("JULC0055"), report::describe);
-        });
+        for (var report : List.of(run("public static boolean m(BigInteger a) { return Optional.of(a).isPresent(); }", List.of(integer(1))),
+                run("public static boolean m() { return Interval.always().from().isInclusive(); }", List.of()))) {
+            report.results().forEach((config, result) -> {
+                assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+                assertTrue(result.uplc().toString().contains("JULC0055"), report::describe);
+            });
+        }
+    }
+
+    /**
+     * javac says Data, and the term is a list or a map on the stack, which only a re-encoding makes Data again: what
+     * {@code Typing} reads from the term, as the reference does. Without it {@code MkCons} meets a list.
+     */
+    @Test
+    void aDataTypeDoesNotSayWhatABuiltinLeft() {
+        String method = "public static PlutusData m(JulcList<PlutusData> l, PlutusData d) { return ";
+        assertAgree(method + "l.prepend(Builtins.unListData(d)).head(); }", list(), list(integer(1)));
+        assertAgree(method + "l.prepend(Builtins.unMapData(d)).head(); }", list(),
+                new PlutusData.MapData(List.of(new PlutusData.Pair(integer(1), integer(2)))));
     }
 
     @Test
