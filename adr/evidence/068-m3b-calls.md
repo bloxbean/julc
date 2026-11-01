@@ -17,7 +17,7 @@ a test's runner. Later commits change documentation only. M3a's review fixes are
 | Piece | Where |
 |---|---|
 | Resolve, then lower: a call becomes a sealed target by a function of the tree, then a family lowers the target | `lower/CallTarget`, `lower/CallTargets`, `lower/Calls` |
-| The exact key of a method's owner, in place of `dispatch`'s `rt.name() + "." + method` | `lower/TypeKeys`; `TypeMethodRegistry.dispatchExact`, `returnTypeExact`, `requirementsExact` |
+| The exact key of a method's owner, in place of `dispatch`'s `rt.name() + "." + method` | `lower/TypeKeys`; `TypeMethodRegistry.dispatchExact`, `requirementsExact` |
 | Operators, with D6's `compareTo` forms and minimal binding in one place, and each family's evaluation order in its Javadoc | `lower/Operators` |
 | Types of expressions: javac's, then what the term says where javac says only Data | `lower/Typing`, `pir/TermTypes` (moved from `TypeInferenceHelper`) |
 | D6's rules: `JULC0086`, `JULC0087`, `JULC0090`, all now emitted | `subset/EqualityRules`, run by `SubsetScan` |
