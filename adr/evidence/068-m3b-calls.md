@@ -188,20 +188,20 @@ Counted from JUnit XML.
 
 | Task | Result |
 |---|---|
-| `./gradlew test --offline --continue --rerun --no-watch-fs` | 15,776 tests, 0 failures, 0 errors, 530 skipped, 27 modules |
-| `:julc-compiler:test` | 5,100 tests, 0 failures, before the rejection-sites row; no compiler source has changed since |
-| `:julc-stdlib:test` | 527 tests, 0 failures |
-| `:julc-difftest:test` | 735 tests, 0 failures |
-| `:julc-compiler:pairCaseTest --rerun` | 71 tests, 0 failures |
-| `:julc-e2e-tests:onChainHarnessTest --rerun` | 16 tests, 0 failures |
-| `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1) | `BUILD SUCCESSFUL`; 56 `ok` lines, no `not ok`. It runs the default frontend |
-| `:julc-difftest:adr068Lowering` | `BUILD SUCCESSFUL`; 0 rows moved, 0 shrunk, after the freeze |
-| `:julc-difftest:adr068Types` | `BUILD SUCCESSFUL` |
-| `:julc-difftest:adr068Baseline`, gate off | `BUILD SUCCESSFUL`: as below |
+| `./gradlew test --offline --continue --rerun --no-watch-fs` | 15,832 tests, 0 failures, 0 errors, 530 skipped, 27 modules, at `008c66e6` |
+| Of those, `:julc-compiler:test` | 5,061 tests, 0 failures |
+| Of those, `:julc-stdlib:test` | 527 tests, 0 failures |
+| Of those, `:julc-difftest:test` | 752 tests, 0 failures |
+| `:julc-compiler:pairCaseTest --rerun` | 71 tests, 0 failures, at `008c66e6` |
+| `:julc-e2e-tests:onChainHarnessTest --rerun` | 16 tests, 0 failures, at `f604409d` |
+| `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1) | `BUILD SUCCESSFUL`; 56 `ok` lines, no `not ok`, at `f604409d`. It runs the default frontend |
+| `:julc-difftest:adr068Lowering` | `BUILD SUCCESSFUL`; 0 rows moved, 0 shrunk, at `f604409d`, equal to the committed table byte for byte |
+| `:julc-difftest:adr068Types` | `BUILD SUCCESSFUL`, with B3's 2 pins added to `types-m2.tsv`, each an `equal` row |
+| `:julc-difftest:adr068Baseline`, gate off | `BUILD SUCCESSFUL`, at `f604409d`: as below |
 
-On the first run after the merge, `:julc-difftest:test` failed in `Adr068RejectionSitesTest`, since `JULC0102` had no row in the catalogue,
-and `adr068Lowering` failed on the 9 fixtures with no reference row. Both are closed at `9f3a71d1`. The `JulcPluginTest` failure and the two
-`wasmSmokeFull` timeouts of the pre-merge runs were at a load of 200, and did not recur.
+The commits between `f604409d` and `008c66e6` change two tests and no main source. On the way to B3, three tests that held the old behaviour
+moved: `O9DropListAlternativeTest`, `O3ListCaseBenchmarkTest` and `PairCaseLoweringTest` each had a negative `drop` read as 0, and
+`Adr060ByteSnapshotTest` lists the one program whose `drop` takes a local count. T11's pin agrees now.
 
 **The default path against B3.** `adr068Baseline` compares what it writes with the B3 tables, byte for byte, with the gate off, and passed:
 ledger, semantic, budget, instantiations, rejection inventory and corpus. The one exception it allows is the totals' `coverage` line,
