@@ -172,9 +172,22 @@ public final class Builtins {
         return PlutusDataConversions.listToPlutusData(list);
     }
 
-    /** Wrap a map as MapData. */
+    /**
+     * Wrap a list of pairs as MapData, as the builtin does. {@code unMapData} gives a MapData here, while {@code tailList},
+     * {@code mkCons} and {@code mkNilPairData} give a ListData of pairs, so both are lists of pairs.
+     */
     public static PlutusData.MapData mapData(PlutusData map) {
-        return (PlutusData.MapData) map; // already a MapData
+        if (map instanceof PlutusData.MapData md) {
+            return md;
+        }
+        if (map instanceof PlutusData.ListData list) {
+            var entries = new ArrayList<PlutusData.Pair>();
+            for (var pair : list.items()) {
+                entries.add(new PlutusData.Pair(fstPair(pair), sndPair(pair)));
+            }
+            return new PlutusData.MapData(entries);
+        }
+        throw new IllegalArgumentException("mapData: expected a list of pairs, got " + map);
     }
 
     // =========================================================================

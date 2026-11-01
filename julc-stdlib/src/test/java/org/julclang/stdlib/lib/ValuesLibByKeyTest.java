@@ -7,6 +7,7 @@ import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
+import org.julclang.ledger.Value;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalOptions;
 import org.julclang.vm.ExBudget;
@@ -290,6 +291,17 @@ class ValuesLibByKeyTest {
         assertTrue(bool(level, "leqEveryKey", value(), positive));
     }
 
+    /** A policy one side lacks is an empty map, which on the JVM comes from the tail of a list of pairs. */
+    @Test
+    void aPolicyOneSideLacksCanBeComparedOnTheJvm() {
+        var out = Value.fromPlutusData(value(lovelace(10), policy(P, token(T1, 1))));
+        var five = Value.fromPlutusData(value(lovelace(5)));
+        var zeroToken = Value.fromPlutusData(value(lovelace(5), policy(P, token(T1, 0))));
+        assertTrue(ValuesLib.geqMultiAsset(out, five));
+        assertTrue(ValuesLib.leq(five, out));
+        assertTrue(ValuesLib.eq(zeroToken, five));
+    }
+
     @ParameterizedTest
     @EnumSource(OptimizationLevel.class)
     void aZeroAmountEqualsAMissingKey(OptimizationLevel level) {
@@ -467,6 +479,11 @@ class ValuesLibByKeyTest {
             assertEquals(geq(model(a), model(b)), bool(level, "geqEveryKey", a, b), () -> "geqMultiAsset " + input);
             assertEquals(geq(model(b), model(a)), bool(level, "leqEveryKey", a, b), () -> "leq " + input);
             assertEquals(geq(model(a), model(b)) && geq(model(b), model(a)), bool(level, "equal", a, b), () -> "eq " + input);
+            var jvmA = Value.fromPlutusData(a);
+            var jvmB = Value.fromPlutusData(b);
+            assertEquals(geq(model(a), model(b)), ValuesLib.geqMultiAsset(jvmA, jvmB), () -> "geqMultiAsset on the JVM " + input);
+            assertEquals(geq(model(b), model(a)), ValuesLib.leq(jvmA, jvmB), () -> "leq on the JVM " + input);
+            assertEquals(geq(model(a), model(b)) && geq(model(b), model(a)), ValuesLib.eq(jvmA, jvmB), () -> "eq on the JVM " + input);
             assertTrue(bool(level, "equal", a, a), () -> "eq itself " + input);
             assertTrue(bool(level, "differenceEquals", a, b, difference), () -> "eq of a difference " + input);
             assertEquals(model(difference).values().stream().allMatch(amount -> amount.signum() == 0),

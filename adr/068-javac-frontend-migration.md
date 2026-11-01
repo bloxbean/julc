@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9) and 2026-11-01 (r10)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9) and 2026-11-01 (r10, r11)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -217,7 +217,8 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
   needs them at run time (the spike's reflection entry for `com.sun.tools.javac.api.JavacTrees.instance` and the
   `com.sun.tools.javac.resources.*` bundles); those entries are listed in one file, and a build check verifies
   each against the JDK the image is built with. A runtime without `jdk.compiler` (`ToolProvider` returns null)
-  fails with `JULC0089` (D5).
+  fails with `JULC0089` (D5). One hidden compiler option is used, D3's `-XDallowStringFolding=false`, and a check at
+  start stands behind it.
 - **I7. Source provenance.** Source-map and debug-metadata locations are attached while the term is built
   (ADR-060). Lines come from javac's `LineMap`; **columns are character offsets** (offset − line start + 1), not
   `LineMap.getColumnNumber`, which expands tabs (9 where JavaParser gives 2 in a tab-indented method). Remaining
@@ -339,6 +340,9 @@ Alternatives (ADR-065 OQ9 answered as (a)):
     **only** sources, never stubs.
 - **Options.** `-proc:none`, `-source 21` (open question 2 decided: today's level, `JavaSourceParser`'s
   `JAVA_21`), `-implicit:none`, `-Xlint:none`, locale `en`. No `--release`: the blob is the platform.
+  - **String folding (r11).** `-XDallowStringFolding=false` keeps `"a" + "b"` as a `PLUS` tree, so a source's `+`
+    reaches lowering as written. It is a hidden option, so `JavacFrontend` parses `"a" + "b"` once per compiler and
+    requires `PLUS`, otherwise `JULC0089`.
 - **Supported javac.** On JVM hosts, `ToolProvider` returns the host JDK's javac, which reads a blob built from
   JuLC's build JDK. The supported range is **javac feature release 25**, the release JuLC is built and tested
   with. `JavacFrontend` checks the host compiler's `JavaCompiler.getSourceVersions()` (its highest version must
@@ -419,6 +423,11 @@ testkit expose it from M3, once a compilation can succeed on it; at M2 each woul
   A new shape of an accepted row (another form of T29, say) belongs to that row, unless the maintainers classify
   it as a separate defect. Releases between M1 and M5 are therefore
   allowed; their notes list the open DIVERGE pins of the default frontend.
+- **Gate rules (r11).** Where a difference comes from how the JavaParser frontend reads a shape, a subset rule at the
+  gate (D15) may close it in place of a change to that frontend. This narrows exception 2 on purpose. The reference
+  runs with the gate off, so it keeps its reading, and the rule is not a reference change. Under `report` or `off`
+  the rule does not hold. T33, and T31's explicit accessors and `equals`, close this way: their `.diffcase`s expect
+  the rule, and they stay on the accepted list only for a compile with the gate off. T5 stays open.
 
 ### D5. javac's diagnostics are JuLC's diagnostics for invalid Java
 
@@ -625,6 +634,11 @@ Each is a named change under I2a and I11, with a test and a D13 row: `@NewType()
 `@org.julclang.stdlib.annotation.NewType` are JuLC's annotation; a user annotation named `NewType` is not; and a `@NewType`
 component may spell its type `java.math.BigInteger`.
 
+`@Entrypoint`, `@Param` and the validator annotations are read by identity too (r11). An `Optional` datum is
+`PirType.OptionalType`, not a spelling, so a user's `OptionalThing` is a record and a qualified `java.util.Optional` is
+optional. A `@Param` rule on `BytesData` is about the API's type, so a user's record of that name is accepted. Each is
+a D13 row in [M3a's evidence](evidence/068-m3a-lowering-foundation.md).
+
 ### D8. Libraries and the source pool
 
 - **The source pool, per host.** Each host gives `JavacFrontend` its **roots** (the units it compiles) and a
@@ -671,6 +685,12 @@ component may spell its type `java.math.BigInteger`.
     user's own build (`duplicate class`); with separately compiled JARs the JVM would pick by class-path order,
     which JuLC must not guess. A declaration is never silently hidden, and the outcome never depends on pool
     order.
+- **An unreferenced unit (r11).** javac reads what a program references, so on `frontend=JAVAC` a pool unit nothing
+  references is not compiled, and a rejection inside it does not happen (`Library source must not contain validator
+  annotation`, the role conflict). On the default frontend every pool unit is lowered, read or not, until M5. So D15's
+  rules say nothing of an unread unit, except that `JULC0100` takes the names every offered unit declares, read or
+  not, because that frontend registers them. An unused library costs a `let` at `NONE` on the reference and nothing
+  on javac (a Cost change row).
 - **Lowering.** `LibraryCompiler` lowers every included non-generic static method, as today.
 - **Generic library methods (Elci).** `JavaLibraryProvider` keeps its schemes and `Instantiate` specialization.
   Specialization stays an explicit PIR-type environment: `JavacFacts` maps a method's type variables to that
@@ -753,7 +773,7 @@ Each milestone appends the javac frontend's row and, for every difference, one c
 |---|---|---|
 | **Semantic fix** | Semantic observations differ, and the javac frontend agrees with the JVM where the reference did not | An issue; a saved `.diffcase` on which the javac frontend agrees and the reference diverges |
 | **UPLC-only semantic fix** | Semantic observations differ on a case with no JVM counterpart (malformed Data, ADR-067's UPLC-only checks) | The decision that defines the outcome; the UPLC-only test asserting it |
-| **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, I11) | The decision; a rejection test with the code; docs and release notes |
+| **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, D15, I11) | The decision; a rejection test with the code; docs and release notes |
 | **javac rejection** | javac rejects a migration case (dialect, D6) | The rewritten Java source, which gets its own row; a case D6 removes keeps its rejection row and has none |
 | **Accepted by decision** | The javac frontend accepts a case the reference rejected (escape shapes, javac 25's switch shapes, ADR-067 M2a/M2b record patterns) | The decision; a `.diffcase` per shape on which the javac frontend agrees with the JVM |
 | **Diagnostic change** | Both reject, with a different code, message or position | For a coded JuLC rejection, only a decision this ADR names or I2b's javac-first rejection; for an uncoded one, its new code (I2a) |
@@ -769,7 +789,11 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   must stay rejections, and a changed diagnostic is a "diagnostic change") or **scheduled for acceptance** (a
   frontend limitation a decision lifts, such as `reject-javac-21-25-pair-shape` under D11 or ADR-067 M2a/M2b's
   record patterns: its source and historical rows stay, and it gains an "Accepted by decision" row with that
-  class's evidence). Only migration cases (sources meant to compile) are rewritten for javac.
+  class's evidence). Only migration cases (sources meant to compile) are rewritten for javac. A row marked permanent
+  takes an "Accepted by decision" row only when a decision here names it. r11 names D8's precedence and unreferenced
+  units, D7's `@Param` on `BytesData`, and a lone surrogate in a comment, which cannot reach a script: `JULC0093` is a
+  rule on literals. `reject-record-static-field` and `reject-record-canonical-constructor` are "Diagnostic change"
+  rows, to `JULC0095` and `JULC0099` (D15).
 - A case may move between classes only by a new row; rows are never edited. The one exception is a **tool
   correction**: when a frozen value is shown to be an artifact of the ledger tool itself (not of the compiler,
   for example a class-loader identity hash in a JVM failure message), the frozen file may be regenerated at its
@@ -777,6 +801,10 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   commit. The ledger is a checked-in,
   generated file per milestone, and its totals (accepted, rejected, each class) appear in the milestone's
   evidence.
+- **A freeze may only gain (r11).** The row tables are generated. `Adr068LoweringTest.shrinks` says what a loss is: a
+  case, a covered method, a comparison, a class's rank, or another digest or provenance in the same class. A freeze
+  that loses one is refused unless `-Padr068.allowShrink=true` says so, and the evidence names why. A row newer than the
+  frozen table compares with the run's own reference.
 
 ### D14. `@Param` fields are never constant variables
 
@@ -788,6 +816,34 @@ initialize from a non-constant expression (`Boolean.valueOf(true)`). `BigInteger
 than `String` are never constant variables, so their `@Param` fields are unaffected. This closes #293;
 ADR-067's `@Param` guard tests move to the accepted spellings. Constants depending on a `@Param` are then not
 constants for javac either.
+
+### D15. Subset rules run once, on javac's trees, at the gate
+
+A rule that depends on what javac resolved runs on javac's trees after `analyze()` succeeds
+(`frontend/javac/SubsetRules.java`): from `JavacGate.check` on the default frontend, and first of all from
+`JavacCompilation` on `frontend=JAVAC`. So each has one code, one message and one position. M3a adds:
+
+| Code | Rule | Applies on |
+|---|---|---|
+| `JULC0093` | A literal holds no unpaired surrogate | `frontend=JAVAC`; the reference's reader rejects it, uncoded |
+| `JULC0094` | An entry point returns `boolean` or `java.lang.Boolean`, by identity | Both |
+| `JULC0095` | A field nothing lowers holds only a literal, a `new byte[]{...}` of literals, an API constant, a constant variable, or `Boolean.valueOf` of a literal; an initializer block is empty | Both |
+| `JULC0096`, `JULC0097` | One entry point of a purpose in a validator; an entry point is static | `frontend=JAVAC`; the reference has its own rejections |
+| `JULC0098` | The operand of a cast to `boolean` or `Boolean` is a boolean, including `PlutusData.cast` and the other calls lowered to their argument | Both |
+| `JULC0099` | A constructor holds no statement | Both |
+| `JULC0100` | A name the JavaParser frontend reads by spelling binds, at every use, to what it reads | The gate only |
+| `JULC0101` | A method does not take a name that frontend reads in place of the method's body | The gate only |
+
+- **Modes.** A rule follows the gate's mode on the default frontend: `enforce`, the default, rejects; `report` writes it
+  down; `off` turns it off. The first group has no gate to turn off on `frontend=JAVAC`.
+- **`JULC0100` and `JULC0101`** describe the JavaParser frontend, since javac binds a name to its element. So they have
+  no place on `frontend=JAVAC`, and they leave with that frontend at M6. Their lists are derived or held to the code by
+  `SpelledNameLintTest`. They cover a `@NewType`'s component too: it does not take a name `TypeMethodRegistry` serves on
+  the type it lowers to, a `@NewType` of `byte[]` names its component `value`, no record component is named `equals` or
+  `toPlutusData`, and a `@NewType` does not declare `of`, even where a given declaration would have been harmless.
+  Over-rejection is the accepted cost until M6.
+- **Evidence.** The ten policy rows are in [M3a's evidence](evidence/068-m3a-lowering-foundation.md), and the rules, their
+  migration notes and the release notes name each remedy.
 
 ## Options and alternatives
 
@@ -864,7 +920,8 @@ constants for javac either.
 ## Implementation milestones
 
 Each milestone is one or more commits on PR #267's branch, reviewed (Claude reviewer and Codex) before the next
-starts. "Harness gate" is D10's set. Every gate's commands, toolchains, counts and seeds are pinned in the
+starts. If Codex cannot run, a milestone closes on independent Claude reviewers and its head goes on the "Codex read
+owed" list in the follow-ups, for a later pass (maintainer decision, 2026-11-01). "Harness gate" is D10's set. Every gate's commands, toolchains, counts and seeds are pinned in the
 milestone's evidence; a skipped check fails the gate.
 
 | ID | Scope | Entry gate | Exit criteria | Invariants / tests |
@@ -875,7 +932,7 @@ milestone's evidence; a skipped check fails the gate.
 | **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14); calls (stdlib, library, instance dispatch, D6's comparison rules); records, fields, object creation; locals, `if`/`else`, `return`; `instanceof`; `switch` with ADR-067 M1 guards and the ported `JavaConstants`; lambdas; whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix) | M3 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
 | **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
-| **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; full build; harness gate; Elci coordinated | I8 |
+| **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; `JULC0100` and `JULC0101` removed, with a release note (D15); full build; harness gate; Elci coordinated | I8 |
 
 ## Verification strategy
 
@@ -901,6 +958,10 @@ milestone's evidence; a skipped check fails the gate.
 3. **Hosted lowering in the user's javac** (ADR-065 option B). Lean: defer; reconsider after M6.
 4. **When ADR-061 decides its representation,** is it inserted between javac trees and PIR for statements (D2)?
    Lean: yes, as ADR-061's own migration.
+5. **Methods with no parameters.** Such a method is bound with a strict `let`, so its body evaluates once at script
+   start whether or not it is called. `MerklePatriciaForestry.nullHash*` and `IntervalLib.always` rest on that sharing.
+   Lean: delay only a body that may fail, after measuring those libraries. It would be a reference change. To decide
+   before M3's Group 1 closes.
 
 ## Implementation results
 
@@ -1229,3 +1290,14 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     offered to a compilation, a class or a record `Value` is a type key like any other, and no top-level type of the
     unnamed package takes a name of the ledger. The lowering, which the gate's rule stops short of, is unchanged, and
     the rule is the gate's alone: the javac frontend binds by identity.
+  - D3, I6: `-XDallowStringFolding=false`, with its check at start. D7, D8: identity for annotations and `Optional`, and what
+    an unreferenced unit means on each frontend. D13: which permanent rows take an "Accepted by decision" row, two
+    "Diagnostic change" rows, and "a freeze may only gain".
+  - D4, D15: the subset's rules run once, at the gate, and are not reference changes. That narrows exception 2 on purpose,
+    and under `report` or `off` they do not hold. T31's explicit accessors and `equals` close the same way. T5 stays open.
+    `JULC0100` and `JULC0101` leave at M6.
+  - Milestones: a milestone closes on independent Claude reviewers when Codex cannot run, and the head goes on the
+    "Codex read owed" list. Open question 5 records the decision owed on methods with no parameters.
+  - B2: the key-based Value methods are the second reference change (`068-m3a-reference-b2.md`).
+  - The tool correction in `50f3a18e` stands, as M3a's evidence records it. `julc-cli`'s detection of constant string `+`
+    stays a later item.
