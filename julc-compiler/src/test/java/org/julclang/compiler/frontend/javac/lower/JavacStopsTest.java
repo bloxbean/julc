@@ -5,6 +5,8 @@ import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.pir.StdlibLookup;
+import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -25,8 +27,12 @@ class JavacStopsTest {
     private static final String IMPORTS = """
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcMap;
+            import org.julclang.core.types.Tuple2;
             import org.julclang.ledger.PubKeyHash;
             import org.julclang.ledger.TokenName;
+            import org.julclang.ledger.Value;
+            import org.julclang.stdlib.Builtins;
             import org.julclang.stdlib.annotation.NewType;
             import org.julclang.stdlib.annotation.Param;
             """;
@@ -61,7 +67,25 @@ class JavacStopsTest {
             new Stop("an instanceof of a variant that is not a plain record",
                     "sealed interface O permits W { } static final class W implements O { } static boolean m(O o) { return o instanceof W v; }", "accepted"),
             new Stop("an instanceof of a variant that is not a plain record",
-                    "sealed interface N permits W { } @NewType record W(BigInteger value) implements N { } static boolean m(N n) { return n instanceof W v; }", "accepted"));
+                    "sealed interface N permits W { } @NewType record W(BigInteger value) implements N { } static boolean m(N n) { return n instanceof W v; }", "accepted"),
+            new Stop("a new of a ledger type whose Data is no constructor", "static Value m() { return new Value(JulcMap.empty()); }", "accepted"),
+            new Stop("a new of a variant of two sealed interfaces",
+                    "sealed interface U { record I(BigInteger a) implements U, W { } } sealed interface W permits U.I { } static U m(BigInteger a) { return new U.I(a); }", "accepted"),
+            new Stop("a new of a variant that is not a record",
+                    "sealed interface W permits K { } static final class K implements W { } static W m() { return new K(); }", "accepted"),
+            new Stop("a new of a @NewType that is a variant",
+                    "sealed interface W permits V { } @NewType record V(BigInteger value) implements W { } static W m(BigInteger a) { return new V(a); }", "accepted"),
+            new Stop("a new with a class body", "static boolean m() { var o = new BigInteger(\"5\") { }; return true; }", "JULC0100"),
+            new Stop("a new BigInteger of a string that is no integer", "static BigInteger m() { return new BigInteger(\"abc\"); }", "NumberFormatException"),
+            new Stop("a Data component given a native list",
+                    "record R(PlutusData d) { } static boolean m(PlutusData l) { var r = new R(Builtins.tailList(Builtins.unListData(l))); return true; }", "accepted"),
+            new Stop("a Data component given a native list",
+                    "sealed interface W { record I(PlutusData d) implements W { } } static W m(PlutusData l) { return new W.I(Builtins.unListData(l)); }", "accepted"),
+            new Stop("a Data component given a native list",
+                    "static boolean m(PlutusData l) { var t = new Tuple2<PlutusData, BigInteger>(Builtins.unListData(l), BigInteger.ONE); return true; }", "accepted"),
+            new Stop("a wrapper's component read as Data", "static byte[] m(byte[] a) { return new PubKeyHash(a).hash(); }", "accepted"),
+            new Stop("an expression of type java.lang.Record&C.S",
+                    "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static boolean m(boolean c, BigInteger a) { var s = c ? new S.A(a) : new S.B(); return true; }", "accepted"));
 
     static Stream<Stop> stops() {
         return STOPS.stream();
@@ -74,7 +98,7 @@ class JavacStopsTest {
     @ParameterizedTest
     @MethodSource("stops")
     void aStopFailsClosed(Stop stop) {
-        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib(stop.members()), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                 .compileMethod(source(stop.members()), "m", List.of()));
         assertEquals(stop.construct(), assertInstanceOf(NotPorted.class, failure, failure::getMessage).construct());
     }
@@ -85,13 +109,20 @@ class JavacStopsTest {
         assertEquals(stop.onDefault(), onDefault(stop.members()), stop.members());
     }
 
+    /** A stop on a method the stdlib would lower is one with no stdlib; these need its builtins to reach what they stop at. */
+    private static StdlibLookup stdlib(String members) {
+        return members.contains("Builtins.") || members.contains("JulcMap.") ? StdlibRegistry.defaultRegistry() : null;
+    }
+
     private static String onDefault(String members) {
         try {
-            new JulcCompiler().compileMethod(source(members), "m", List.of());
+            new JulcCompiler(stdlib(members), new CompilerOptions()).compileMethod(source(members), "m", List.of());
             return "accepted";
         } catch (CompilerException e) {
             var code = e.diagnostics().isEmpty() ? null : e.diagnostics().getFirst().code();
             return code == null ? "uncoded" : code;
+        } catch (NumberFormatException e) {
+            return "NumberFormatException";
         }
     }
 }

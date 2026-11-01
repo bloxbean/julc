@@ -12,16 +12,14 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Object creation and member reads: each program compiles to the reference's bytes at every level, with and without a source
  * map, and a rejection is the reference's. What these evaluate to against the JVM is {@code Adr068RecordsHarnessTest}'s; this
- * is I1 and I2a on one screen, and the shapes that stop are {@link #stops}.
+ * is I1 and I2a on one screen. What stops is {@code JavacStopsTest}'s.
  */
 class JavacRecordsTest {
 
@@ -253,31 +251,6 @@ class JavacRecordsTest {
         rejected(members);
     }
 
-    /** The JVM and the reference disagree on each, or the reference has no meaning for it, and the tree shows that: each stops. */
-    private record Stop(String construct, String members) {
-    }
-
-    private static final List<Stop> STOPS = List.of(
-            new Stop("a new of a ledger type whose Data is no constructor", "static Value m() { return new Value(JulcMap.empty()); }"),
-            new Stop("a new of a variant of two sealed interfaces", "sealed interface U { record I(BigInteger a) implements U, W { } } sealed interface W permits U.I { } static U m(BigInteger a) { return new U.I(a); }"),
-            new Stop("a new of a variant that is not a record", "sealed interface W permits K { } static final class K implements W { } static W m() { return new K(); }"),
-            new Stop("a new of a @NewType that is a variant", "sealed interface W permits V { } @NewType record V(BigInteger value) implements W { } static W m(BigInteger a) { return new V(a); }"),
-            new Stop("a new with a class body", "static boolean m() { var o = new BigInteger(\"5\") { }; return true; }"),
-            new Stop("a new BigInteger of a string that is no integer", "static BigInteger m() { return new BigInteger(\"abc\"); }"),
-            new Stop("a Data component given a native list", "record R(PlutusData d) { } static boolean m(PlutusData l) { var r = new R(Builtins.tailList(Builtins.unListData(l))); return true; }"),
-            new Stop("a Data component given a native list", "sealed interface W { record I(PlutusData d) implements W { } } static W m(PlutusData l) { return new W.I(Builtins.unListData(l)); }"),
-            new Stop("a Data component given a native list", "static boolean m(PlutusData l) { var t = new Tuple2<PlutusData, BigInteger>(Builtins.unListData(l), BigInteger.ONE); return true; }"),
-            new Stop("a wrapper's component read as Data", "static byte[] m(byte[] a) { return new PubKeyHash(a).hash(); }"),
-            new Stop("an expression of type java.lang.Record&Main.S", "static boolean m(boolean c, BigInteger a) { var s = c ? new S.A(a) : new S.C(); return true; }"));
-
-    @Test
-    void stops() {
-        for (var stop : STOPS) {
-            var failure = assertInstanceOf(NotPorted.class, javac(stop.members()), stop.members());
-            assertEquals(stop.construct(), failure.construct(), failure::getMessage);
-        }
-    }
-
     /**
      * A varargs component's Java type is an array. The reference ignores the {@code ...}: it registers one integer, and
      * the same word for {@code byte...} is its rejection. On javac each is the array or the {@code byte} it is.
@@ -288,6 +261,29 @@ class JavacRecordsTest {
         assertTrue(javac("record R(BigInteger... a) { } static long m() { return 1; }").getMessage().contains("Arrays are not supported"));
         assertTrue(javac("record R(long a, byte... b) { } static long m() { return 1; }").getMessage().contains("Unsupported primitive type: byte"));
         assertTrue(javac("@NewType record V(byte... b) { } static long m() { return 1; }").getMessage().contains("field type 'byte' is not supported"));
+    }
+
+    /**
+     * F909: {@code @Param} is read on the compiled class alone. On a nested type it is no parameter, and nothing can read it:
+     * a read through the type is {@code Undefined variable}, as in the reference, so the field has no value to be wrong about.
+     */
+    @Test
+    void aParamOutsideTheCompiledClassIsInert() {
+        String source = """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.*;
+                @SpendingValidator
+                class V {
+                    static class Nested { @Param static BigInteger P; }
+                    @Entrypoint static boolean validate(PlutusData d, PlutusData r, PlutusData c) { %s }
+                }
+                """;
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        assertTrue(compiler.compile(source.formatted("return true;"), List.of()).params().isEmpty());
+        var read = assertThrows(CompilerException.class,
+                () -> compiler.compile(source.formatted("return Nested.P.signum() > 0;"), List.of()));
+        assertTrue(read.getMessage().contains("Undefined variable: Nested"), read::getMessage);
     }
 
     /** A constructor of an API record that is not its canonical one builds nothing the record's Data has. */

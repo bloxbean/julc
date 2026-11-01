@@ -27,8 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * ADR-068 D7's rows that are observed on a script: a type is what javac resolved. A datum is decoded as its declared type,
  * so these evaluate each frontend's script on datums of each shape, at every level, against the Data the JVM's mapping
- * gives that type. The records are not ported yet, so there is no {@code .diffcase} of these. The fixtures are in
- * {@code adr068/m3a-fixtures}.
+ * gives that type. A {@code .diffcase} compiles a method, so it cannot show a validator's datum: {@code Adr068SavedCasesOnJavacTest}
+ * runs the same types through a method. The fixtures are in {@code adr068/m3a-fixtures}.
  */
 class Adr068TypeIdentityTest {
 
