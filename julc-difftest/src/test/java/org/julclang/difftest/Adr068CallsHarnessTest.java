@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -237,7 +238,7 @@ class Adr068CallsHarnessTest {
     /** The frontends agree with each other and not with the JVM: the reference's shape, ported, and reported. */
     private static void assertBothDivergeAlike(String members, PlutusData... args) {
         var report = run(members, List.of(args));
-        var observations = new java.util.HashSet<>();
+        var observations = new HashSet<>();
         report.results().forEach((config, result) -> {
             assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
             observations.add(result.uplc());
