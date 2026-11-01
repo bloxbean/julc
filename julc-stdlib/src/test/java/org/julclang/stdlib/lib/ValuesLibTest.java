@@ -41,8 +41,7 @@ class ValuesLibTest {
 
     /**
      * Multi-asset value: lovelace + one native token.
-     * Built manually to ensure ADA (empty policy) is the FIRST map entry,
-     * matching the on-chain ledger invariant that lovelaceOf() relies on.
+     * Built manually, with the ADA (empty policy) entry first.
      */
     static Value multiAssetValue(long lovelace, byte[] policy, byte[] token, long qty) {
         var adaInner = new PlutusData.MapData(List.of(

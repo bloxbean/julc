@@ -45,6 +45,12 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
 - **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
   initializer that nothing lowers holds only a constant, and an initializer block is empty
   (`JULC0095`). See [Compiler Limitations](/getting-started/#16-compiler-limitations).
+- **Value operations are key-based.** `ValuesLib.lovelaceOf` and `Value.lovelaceOf()` look up the
+  empty policy and token name, as `assetOf` does, and give 0 for a Value without them.
+  `ValuesLib.add`, `subtract` and `negate` keep each (policy, token) once with its amounts summed,
+  keep sorted inputs sorted, and keep an amount of 0 as an entry. The helpers
+  `adjustOuterForAdd`, `adjustInnerForAdd`, `extraOuterEntries` and `extraInnerEntries` are gone;
+  use `add`.
 - **`PlutusData.cast`** views Data as a type on-chain. It is an unchecked cast, not a decoder: on
   the JVM it throws `ClassCastException` for a `ConstrData`.
 - **`CompileResult`** has a new component, `javacProvenance()`: the javac version, the platform

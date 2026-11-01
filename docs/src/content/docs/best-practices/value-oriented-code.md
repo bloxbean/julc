@@ -511,7 +511,7 @@ void staysWithinBudget() {
     var outputs = List.of(pay(PAYEE, 2_000_000), pay(OTHER, 9_000_000), pay(PAYEE, 3_000_000));
     EvalResult result = ValidatorTest.evaluate(compiled, context(CLAIM, outputs));
     BudgetAssertions.assertSuccess(result);
-    BudgetAssertions.assertBudgetUnder(result, 35_000_000, 140_000);
+    BudgetAssertions.assertBudgetUnder(result, 45_000_000, 170_000);
     BudgetAssertions.assertScriptSizeUnder(compiled, 1_000);
 }
 ```

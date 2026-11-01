@@ -609,7 +609,7 @@ class StdlibCompileEvalTest {
         @Test
         void addTwoValues() {
             // Test ValuesLib.add with two singleton values for different policies.
-            // This exercises adjustOuterForAdd + extraOuterEntries which have mkNilPairData+mkCons patterns.
+            // This exercises the merge of the two pair lists.
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;

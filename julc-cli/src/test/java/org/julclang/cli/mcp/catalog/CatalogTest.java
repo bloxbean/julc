@@ -59,8 +59,7 @@ class CatalogTest {
         var names = methods.stream().map(m -> (String) m.get("name")).toList();
         for (var helper : List.of(
                 "checkPolicyGeq", "flattenStep", "flattenPolicy",
-                "adjustOuterForAdd", "adjustInnerForAdd",
-                "extraOuterEntries", "extraInnerEntries")) {
+                "_addPolicies", "_addAmounts", "_entriesNotIn", "_mergeByKey")) {
             assertFalse(names.contains(helper),
                     "internal helper '" + helper + "' must not appear in catalog: " + names);
         }
