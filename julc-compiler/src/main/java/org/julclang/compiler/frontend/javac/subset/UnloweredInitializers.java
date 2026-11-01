@@ -13,6 +13,7 @@ import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
@@ -46,27 +47,31 @@ public final class UnloweredInitializers {
         this.facts = facts;
     }
 
-    /** Checks {@code unit}, where {@code lowered} says which fields the compilation lowers. */
+    /**
+     * Checks {@code unit}, where {@code lowered} says which fields the compilation lowers. Every type of it counts, however
+     * deep, a local one included, so this stays true as lowering learns statements.
+     */
     public static void check(JavacFacts facts, CompilationUnitTree unit, Predicate<VariableTree> lowered) {
         var rule = new UnloweredInitializers(facts);
-        for (Tree type : unit.getTypeDecls()) {
-            if (type instanceof ClassTree declared) rule.check(declared, lowered);
-        }
-    }
-
-    private void check(ClassTree type, Predicate<VariableTree> lowered) {
-        for (Tree member : type.getMembers()) {
-            switch (member) {
-                case VariableTree field when field.getInitializer() != null && !lowered.test(field)
-                        && !holdsAConstant(field) -> throw CompilerTypeDiagnostics.initializerNotLowered(
-                        "The initializer of field '" + field.getName() + "'", facts.location(field.getInitializer()));
-                case BlockTree block when !block.getStatements().isEmpty() ->
-                        throw CompilerTypeDiagnostics.initializerNotLowered("An initializer block", facts.location(block));
-                case ClassTree nested -> check(nested, lowered);
-                default -> {
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitVariable(VariableTree tree, Void unused) {
+                if (facts.parent(tree) instanceof ClassTree && tree.getInitializer() != null && !lowered.test(tree)
+                        && !rule.holdsAConstant(tree)) {
+                    throw CompilerTypeDiagnostics.initializerNotLowered("The initializer of field '" + tree.getName() + "'",
+                            facts.location(tree.getInitializer()));
                 }
+                return super.visitVariable(tree, unused);
             }
-        }
+
+            @Override
+            public Void visitBlock(BlockTree tree, Void unused) {
+                if (facts.parent(tree) instanceof ClassTree && !tree.getStatements().isEmpty()) {
+                    throw CompilerTypeDiagnostics.initializerNotLowered("An initializer block", facts.location(tree));
+                }
+                return super.visitBlock(tree, unused);
+            }
+        }.scan(unit, null);
     }
 
     private boolean holdsAConstant(VariableTree field) {

@@ -5,6 +5,9 @@ import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacProgram;
+import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -296,6 +299,26 @@ class SubsetRulesTest {
                     static long m() { return 1; }
                 }
                 """.formatted(member));
+    }
+
+    /** A local type's field: a method body stops at the scan today, so the rule is asked directly, as lowering will reach it. */
+    @Test
+    void aFieldOfALocalTypeHoldsOnlyAConstant() {
+        var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of("""
+                class P {
+                    static long helper() { return 1; }
+                    static long m() {
+                        class Local { static long f = helper(); }
+                        return 1;
+                    }
+                }
+                """)), List.of());
+        program.read(facts -> {
+            var thrown = assertThrows(CompilerException.class,
+                    () -> UnloweredInitializers.check(facts, program.roots().getFirst(), field -> false));
+            assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
+            return null;
+        });
     }
 
     /** A library's static fields lower too, and the same rule holds for the rest. The javac frontend reads no library yet. */
