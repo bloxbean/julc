@@ -1,5 +1,5 @@
 # ADR-068 M0 totals. Generated; do not edit.
-cases	11424
+cases	11425
 cases.blaster	7
 cases.c7	6
 cases.diffcase	201
@@ -9,24 +9,24 @@ cases.g0	376
 cases.g1	123
 cases.ledger	39
 cases.recorded	11234
-cases.rules	3
+cases.rules	4
 cases.stdlib	17
 stdlib.sources	16
 g1.tries	150
 g1.cases.also-recorded	123/123
 g0.cases.also-recorded	376/376
 excluded.nondeterministic	org.julclang.compiler.IntegerLiteralTest#generatedLiteralsHaveJavacsValue	300
-ledger.NONE	accepted 9677	rejected 1737	unreplayable 10
-ledger.BASELINE	accepted 9677	rejected 1737	unreplayable 10
-ledger.PV11_SAFE	accepted 9677	rejected 1737	unreplayable 10
-ledger.PV11_COSTED	accepted 9677	rejected 1737	unreplayable 10
+ledger.NONE	accepted 9678	rejected 1737	unreplayable 10
+ledger.BASELINE	accepted 9678	rejected 1737	unreplayable 10
+ledger.PV11_SAFE	accepted 9678	rejected 1737	unreplayable 10
+ledger.PV11_COSTED	accepted 9678	rejected 1737	unreplayable 10
 instantiations.NONE	accepted 33	rejected 14	unreplayable 0
 instantiations.BASELINE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_SAFE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_COSTED	accepted 33	rejected 14	unreplayable 0
 inventory.rows	permanent 1812	scheduled 21
 inventory.cases	1747
-coverage	sites 154	covered 117	not-source 37	uncovered 0	uncatalogued 0	contradicted 0
+coverage	sites 155	covered 117	not-source 38	uncovered 0	uncatalogued 0	contradicted 0
 runs	1873
 runs.verdicts.AGREE	7076
 runs.verdicts.CRASH	4

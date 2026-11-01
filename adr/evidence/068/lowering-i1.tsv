@@ -977,7 +977,7 @@
 0f34e309cf7c32175a112b2180feae93979d418cb3c4c63484d7230c4bf11e08	not-ported	0/18	VARIABLE	-	-	
 0f354ad2b0ff454b9e292d6b7e80dd85e4d188212dd5f2062a64e050deacaf78	not-ported	1/4	METHOD_INVOCATION	-	-	
 0f3d36622c7a02a64f07ca475981db84ce8cb302e24ef448900df89e04efe89a	not-ported	0/3	LESS_THAN_EQUAL	-	-	
-0f3d5e84003a9d204cdea78faee1b88873d3414f6cb03d9fcb6033f0b48bdc79	reference-rejects-not-ported	0/0	EXPRESSION_STATEMENT	-	fa0442aa62b5e9d7	null@6:13 'this' is not supported on-chain
+0f3d5e84003a9d204cdea78faee1b88873d3414f6cb03d9fcb6033f0b48bdc79	DIFFERENT-rejection	0/0	-	-	fd9cc192038cd997	null@6:13 'this' is not supported on-chain / JULC0099@5:9 The body of constructor R(java.math.BigInteger) does not run on-chain, so a constructor holds no state...
 0f425fd289cbff01b7849c4b1b0784a24e8a8d73c5f254567e0804f9a2108ce2	not-ported	0/1	VARIABLE	-	-	
 0f431ed54f1eeae5976708a387ec263c9ca128038aedd65867a2a5dd5a32db1f	javac-rejects	0/1	-	-	285bf17158a31d1f	JULC0085@11:75 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 0f47e3999c6c810a97adb3214e6a91055f2952e58c24f7b0939f674b7f70332b	not-ported	0/1	SWITCH_EXPRESSION	-	-	
@@ -4124,7 +4124,7 @@
 3d67cd209266c618ac7e53564a157d628c975e7f8fff4bfe36d7bac8cf573285	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 3d6b99ddbc0592944725bbcbf4b7a8b1dbdbea5b09edad44372248bbd047246d	not-ported	0/48	VARIABLE	-	-	
 3d6ddec9ece584cfb7a5b3a0e679c770874b7e3e9a1703c1dae99cc84548f106	both-reject-javac-first	0/0	-	-	e04c5bfbfb3755a2	JULC0085@8:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-3d71a62ad2477f6ebe4d5877a0f01eb642d051f073340f4bcef60b310defd3e4	not-ported	0/1	EXPRESSION_STATEMENT	-	-	
+3d71a62ad2477f6ebe4d5877a0f01eb642d051f073340f4bcef60b310defd3e4	DIFFERENT-javac-rejects	0/1	VARIABLE	-	11fe7347d2452a1e	JULC0099@5:9 The body of constructor R(java.math.BigInteger) does not run on-chain, so a constructor holds no statement
 3d745b9a2c5dda1a89ea2482e00da1a470260a4331939399c57bde3791e8ee1c	not-ported	0/18	VARIABLE	-	-	
 3d79d16ea51ab8b1b08a0b13dd5a5c0c3506f3808cb4796ab4cb44079c13070b	not-ported	0/1	VARIABLE	-	-	
 3d7b3da9991658a475386678c797bb1561ee78cb266e57d6dd032b7b74cbf9f7	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
@@ -12291,6 +12291,7 @@ b83078d2fbb1924d6a3ca3b8a9430923d8d1c8e2fd1640e5b23f1f1cb69faab0	not-ported	0/1	
 b8324618b20cf21a8d92bc91f21f64ea35922713dd6e46e2a4b18298a68acb18	not-ported	0/1	VARIABLE	-	-	
 b8330a31e4096be9aa4b83903f072dee4df6d8fc9f13c19f61ad65e1ed751e33	javac-rejects	0/2	-	-	ed29c0d2325c7a8b	JULC0085@8:35 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 b8352db26b306208ce68558a465bcb06aef8bb6cfb4e2981f472e93392faee0a	not-ported	0/3	LESS_THAN_EQUAL	-	-	
+b83762e1be03534f6097d35dc106bd32f646b42ac0c1cb86b4212e963d1cf572	DIFFERENT-javac-rejects	0/1	LESS_THAN	-	a7eece72627648f5	JULC0099@12:9 The body of constructor Amount(java.math.BigInteger) does not run on-chain, so a constructor holds no statement
 b83a247540c7f44e791cb9daecf06c8da1513c04a4d780d723f199b1e2d1d8cd	not-ported	0/3	LESS_THAN_EQUAL	-	-	
 b8435198e4d8bfc9fbc435d6b4e12bfa0850b67b7950d710fbde0e2178da60d2	not-ported	0/1	VARIABLE	-	-	
 b846ae3d16917e86ea68938ac0c83d488b07df4e333e4261ef612ea0133d687c	not-ported	0/28	VARIABLE	-	-	
@@ -13264,7 +13265,7 @@ c7068bb04e587cf1937a4428b27743396e6301d231f969e8819a8ea104e95564	javac-rejects	0
 c7072a4726a992b196bb91e450be5c0f68bbd4f2738dd214acc702ec01938765	not-ported	0/2	VARIABLE	-	-	
 c70a04c33a99041dc58b78f050c71f3f37d96198d4e9cc267514e183fd2d7e27	not-ported	0/1	VARIABLE	-	-	
 c70c02a637489ea89a353e59fb2c489803bc14502bf4a68de706fbb6a076e202	not-ported	1/28	METHOD_INVOCATION	-	-	
-c70c4195f3e1cc31e48f6936c0919ca6d04edf6fb99be0bbd6dd13c1aa27f245	not-ported	0/1	EXPRESSION_STATEMENT	-	-	
+c70c4195f3e1cc31e48f6936c0919ca6d04edf6fb99be0bbd6dd13c1aa27f245	DIFFERENT-javac-rejects	0/1	VARIABLE	-	11fe7347d2452a1e	JULC0099@5:9 The body of constructor R(java.math.BigInteger) does not run on-chain, so a constructor holds no statement
 c70e8a2f494b00e39239824ae0e353a47a685fa3deccae507c1641339c478b3f	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 c7172b4132d6500863b9e47fc180a625e8e4ca22cc3b85cb4d1ea5b1268c2583	not-ported	0/28	VARIABLE	-	-	
 c7181ea2651568ac21c4142b7c1a609567c1ee352ab14abbb28cae6fc99e3798	not-ported	0/18	VARIABLE	-	-	
