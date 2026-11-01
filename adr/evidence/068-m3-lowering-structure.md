@@ -64,7 +64,7 @@ PirTerm expr(ExpressionTree tree, Frame f) {
 - `Library` needs no retry loop: signatures come from elements up front.
 
 **Shared until M6:**
-- Unchanged, JavaParser-free: `TypeMethodRegistry` (plus the exact-key entry), `StdlibLookup`, `LibraryMethodRegistry`, `PirHelpers`, `PirHofBuilders`, `PirSubstitution`, `LoopDesugarer`, `PatternMatchDesugarer`, `ValidatorWrapper`, `StrictBoundaryGenerator`, `StrictRecordEntrypoint`, `PirBackend`, the diagnostics classes.
+- Unchanged, JavaParser-free: `TypeMethodRegistry` (plus the exact-key entry), `StdlibLookup`, `LibraryMethodRegistry`, `PirHofBuilders`, `PirSubstitution`, `LoopDesugarer`, `PatternMatchDesugarer`, `ValidatorWrapper`, `StrictBoundaryGenerator`, `StrictRecordEntrypoint`, `PirBackend`, the diagnostics classes.
 - Moved mechanically: the `TypeRegistry` split, the neutral algorithms, assembly, and `swappedInOrder`/`isTrivialOperand`.
 - Not shared: `SymbolTable`, `TypeInferenceHelper`, `AccumulatorTypeAnalyzer`.
 - Ported: `JavaConstants`, the rule parts of `SwitchPatternChecker`, `SubsetValidator`, and the scan side of `DebugMetadataCollector` (split it; `Terms` is its hook).
@@ -74,10 +74,12 @@ PirTerm expr(ExpressionTree tree, Frame f) {
 **What could go wrong:**
 - **Byte parity.** Cleaner structure tempts "improvements". Port the shape first, including the `#_` and `#_if` lets; every deviation is a D13 row.
 - **Rejection order.** Moving rejections into `subset/` can change which error comes first in a multi-error source, which I2a does not allow without a named decision. Preserve the reference's order, or leave those checks in place.
+- `PirHelpers` is not JavaParser-free: `blockStmts` takes a `BlockStmt`, and it is the one JavaParser edge reachable from the javac path. It stays until the statement families replace it; a caller must not reach it.
 - **javac tree shapes (verified by probe):**
   - `if`, `while` and `switch` conditions are `PARENTHESIZED`, so a port of `getCondition() instanceof InstanceOfExpr` silently takes the wrong path. Strip exactly one level, because D6 must not unwrap user parentheses.
   - `int a = 1, b = 2;` is two `VariableTree`s with the same start position.
-  - `- 5` is folded to literal `-5`.
+  - `- 5` is folded to literal `-5`. `-0`, `-0x10` and `-017` stay `UNARY_MINUS`.
+  - `"a" + "b"` stays `PLUS` under `-XDallowStringFolding=false` (D3), and `x + "c" + "d"` stays two `PLUS` nodes; the parser would otherwise join the literals, and no tree would show it. The check in `JavacFrontend.compiler()` fails closed if a javac stops honouring the flag.
   - Synthesized `<init>` is prepended to `getMembers()`.
 - **Fragmentation.** Mutual recursion through a mediator means more jumps; the one-page dispatch and named families are the mitigation.
 - **Coverage gaps.** A gap in `CallTargets` fails closed with `JULC0084`, which M5's zero-count gate exposes. An owner-to-key map cannot express an overload with different lowering; add an explicit entry there.

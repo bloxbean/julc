@@ -124,6 +124,13 @@ class JavacLiteralsTest {
                 4);
     }
 
+    /** {@code "a" + "b"} joins at run time: the tree keeps the {@code +}, however the text around it looks. */
+    @ParameterizedTest
+    @ValueSource(strings = {"\"a\" + \"b\"", "\"\\uD83D\" + \"\\uDE00\"", "\"a\" + \"\"\"\n    b\"\"\""})
+    void aConcatenationOfLiteralsIsAnOperator(String expression) {
+        assertMethodNotPorted(returning("String", expression), "m", "PLUS", 4);
+    }
+
     @Test
     void aTextBlockIsNotAStringLiteralOfTheSubset() {
         assertMethodNotPorted("""

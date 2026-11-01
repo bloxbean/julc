@@ -1,6 +1,9 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
@@ -14,6 +17,7 @@ import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -40,14 +44,21 @@ import java.util.function.Supplier;
  * {@link #OPTIONS} and the English locale, and uses only exported APIs ({@code javax.tools}, {@code javax.lang.model},
  * {@code com.sun.source}; I6). It never reads the host's {@code jrt:/}, {@code ct.sym} or class path.
  * <p>
- * {@link #analyze} runs, in order: the supported-javac check ({@code JULC0089}), the ownership check by provenance
+ * {@link #analyze} runs, in order: the supported-javac check, of the feature release and of the options' effect
+ * ({@code JULC0089}), the ownership check by provenance
  * ({@code JULC0081}), then javac's {@code parse()} and {@code analyze()}, whose errors become {@code JULC0085}
  * (D5). Diagnostics follow javac's emission order, which depends only on the inputs (I4).
  */
 public final class JavacFrontend {
 
-    /** javac's options (D3). No {@code --release}: the platform blob is the platform. */
-    public static final List<String> OPTIONS = List.of("-proc:none", "-source", "21", "-implicit:none", "-Xlint:none");
+    /**
+     * javac's options (D3). No {@code --release}: the platform blob is the platform. {@code -XDallowStringFolding=false}
+     * keeps a {@code +} of string literals in the tree as written, so that lowering decides what it means; the parser
+     * would otherwise join the literals and no tree would show it. It is a hidden option, so {@link #compiler()} checks
+     * that this javac honours it.
+     */
+    public static final List<String> OPTIONS = List.of("-proc:none", "-source", "21", "-implicit:none", "-Xlint:none",
+            "-XDallowStringFolding=false");
 
     /** The javac feature release JuLC supports (D3). */
     public static final String SUPPORTED_RELEASE = "RELEASE_25";
@@ -66,7 +77,6 @@ public final class JavacFrontend {
     };
     private static final int CACHE_LIMIT = 512;
 
-    /** A source given to javac: its text and, for the path entry points, its file. */
     /**
      * Where a pool unit comes from (D8: roots, then same-project sources, then JAR sources). A host that merges a
      * class-path pool with project sources tags the JAR ones; every other unit is a project unit, so untagged units
@@ -333,8 +343,40 @@ public final class JavacFrontend {
                         "its highest source version is " + highest + ", and JuLC supports javac feature release 25");
                 return null;
             }
+            String folding = foldingProblem(found);
+            if (folding != null) {
+                unsupported = DiagnosticCodes.JAVAC_UNSUPPORTED.format(javacVersion(), folding);
+                return null;
+            }
             compiler = found;
             return found;
+        }
+    }
+
+    /**
+     * Whether {@code javac} keeps a {@code +} of string literals as written, read from a parse with {@link #OPTIONS}:
+     * null when it does, otherwise why it is not supported. Nothing else would notice a javac that stopped honouring the
+     * hidden option, since the joined literal is a valid tree.
+     */
+    private String foldingProblem(JavaCompiler javac) {
+        var probe = new SimpleJavaFileObject(URI.create("string:///FoldingProbe.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return "class FoldingProbe { String s = \"a\" + \"b\"; }";
+            }
+        };
+        try {
+            var task = (JavacTask) javac.getTask(null, new EmbeddedFileManager(platform, List.of(), null),
+                    diagnostic -> { }, OPTIONS, null, List.of(probe));
+            var unit = task.parse().iterator().next();
+            var type = (ClassTree) unit.getTypeDecls().getFirst();
+            var field = (VariableTree) type.getMembers().getFirst();
+            var read = field.getInitializer().getKind();
+            if (read == Tree.Kind.PLUS) return null;
+            return "with " + OPTIONS.getLast() + " it reads a + of string literals as " + read
+                    + ", and JuLC needs the + as written";
+        } catch (IOException | RuntimeException e) {
+            return "it could not parse with " + OPTIONS + ": " + e;
         }
     }
 
