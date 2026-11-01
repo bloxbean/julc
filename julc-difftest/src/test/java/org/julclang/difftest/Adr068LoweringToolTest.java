@@ -193,7 +193,7 @@ class Adr068LoweringToolTest {
         injected.compilation = c -> new Adr068Lowering.Compilation(Adr068Ledger.Outcome.accepted(c.outcome().digest(), c.outcome().size(),
                 List.of(new Adr068Ledger.Diagnostic("WARNING", "JULC9999", "injected", "", 1, 1))), c.result(), null);
         var row = injected.row(method("class P { static long m() { return 1; } }"));
-        assertEquals("DIFFERENT-bytes", row.kind(), row::line);
+        assertEquals("DIFFERENT-diagnostics", row.kind(), row::line);
         assertTrue(row.detail().startsWith("diagnostics"), row.detail());
     }
 
@@ -417,7 +417,7 @@ class Adr068LoweringToolTest {
     }
 
     /**
-     * On a whole row {@code byteDifference} meets this first, as a cell that differs, so the comparison is asked directly: a
+     * On a whole row {@code differences} meets this first, as a cell that differs, so the comparison is asked directly: a
      * program one side rejects with a map has no positions to compare, and that is no agreement.
      */
     @Test
@@ -485,7 +485,7 @@ class Adr068LoweringToolTest {
     /** A row the javac frontend does not reach is held still all the same. */
     @Test
     void aReferenceThatMovedIsReportedOnARowJavacDoesNotReach() {
-        var c = method("class P { static long m(long a) { return a + a; } }");
+        var c = method("class P { static long m(long a) { long b = a; return b; } }");
         var frozen = committed(c);
         assertEquals("not-ported", new Adr068Lowering(frozen).classify(c).row().kind());
         var changed = Map.of(c.key, tampered(frozen.get(c.key), 2));

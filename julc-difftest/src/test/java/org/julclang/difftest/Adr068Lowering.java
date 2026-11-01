@@ -168,7 +168,7 @@ final class Adr068Lowering {
     static int rank(String kind) {
         return switch (kind) {
             case "i1a-identical" -> 5;
-            case "both-reject", "DIFFERENT-bytes", "DIFFERENT-pir", "DIFFERENT-coverage", "DIFFERENT-provenance",
+            case "both-reject", "DIFFERENT-bytes", "DIFFERENT-diagnostics", "DIFFERENT-pir", "DIFFERENT-coverage", "DIFFERENT-provenance",
                  "DIFFERENT-rejection", "DIFFERENT-javac-rejects", "DIFFERENT-javac-accepts", "DIFFERENT-root-alone" -> 4;
             case "both-reject-javac-first" -> 3;
             case "not-ported", "reference-rejects-not-ported" -> 2;
@@ -178,13 +178,15 @@ final class Adr068Lowering {
         };
     }
 
+    private static final String DIAGNOSTICS = "diagnostics ";
+
     /** D13's classes, each with the rows it can explain. A row class not listed under one cannot be accepted. */
     private static final Map<String, Set<String>> D13 = Map.of(
             "Semantic fix", Set.of("DIFFERENT-bytes"),
             "UPLC-only semantic fix", Set.of("DIFFERENT-bytes"),
             "Policy rejection", Set.of("DIFFERENT-javac-rejects"),
             "Accepted by decision", Set.of("DIFFERENT-javac-accepts"),
-            "Diagnostic change", Set.of("DIFFERENT-rejection"),
+            "Diagnostic change", Set.of("DIFFERENT-rejection", "DIFFERENT-diagnostics"),
             "Provenance change", Set.of("DIFFERENT-provenance"),
             "Representation only", Set.of("DIFFERENT-bytes"),
             "Cost change", Set.of("DIFFERENT-bytes"));
@@ -326,8 +328,12 @@ final class Adr068Lowering {
         var coverage = coverage(c, methods, reference.accepted());
         String construct = javac.construct() != null ? javac.construct() : coverage.construct();
         if (reference.accepted() && javac.accepted()) {
-            String bytes = byteDifference(c, reference, javac);
-            if (bytes != null) return row(c, "DIFFERENT-bytes", coverage, construct, "-", bytes);
+            var differences = differences(c, reference, javac);
+            if (!differences.isEmpty()) {
+                boolean diagnosticsOnly = differences.size() == 1 && differences.getFirst().startsWith(DIAGNOSTICS);
+                return row(c, diagnosticsOnly ? "DIFFERENT-diagnostics" : "DIFFERENT-bytes", coverage, construct, "-",
+                        String.join("; ", differences));
+            }
             if (coverage.mismatch() != null) return row(c, "DIFFERENT-pir", coverage, construct, "-", coverage.mismatch());
             if (coverage.covered() != coverage.total()) {
                 return row(c, "DIFFERENT-coverage", coverage, construct, "-", "accepted, with methods not lowered");
@@ -418,10 +424,10 @@ final class Adr068Lowering {
 
     /**
      * Every level, with and without a source map, against the reference, then the diagnostics and {@code @Param} infos at
-     * the default level. The cells come first, so that a row with another difference still pins the bytes. Null when all are
+     * the default level. The cells come first, so that a row with another difference still pins the bytes. Empty when all are
      * equal.
      */
-    private String byteDifference(Adr068Corpus.Case c, Compilation reference, Compilation javac) {
+    private List<String> differences(Adr068Corpus.Case c, Compilation reference, Compilation javac) {
         var differences = new ArrayList<String>();
         for (boolean sourceMap : sourceMapSettings(c)) {
             for (var level : Adr068Ledger.LEVELS) {
@@ -433,12 +439,12 @@ final class Adr068Lowering {
             }
         }
         if (!reference.outcome().diagnosticsCell().equals(javac.outcome().diagnosticsCell())) {
-            differences.add("diagnostics " + reference.outcome().diagnosticsCell() + " / " + javac.outcome().diagnosticsCell());
+            differences.add(DIAGNOSTICS + reference.outcome().diagnosticsCell() + " / " + javac.outcome().diagnosticsCell());
         }
         if (reference.result() != null && !reference.result().params().equals(javac.result().params())) {
             differences.add("params " + reference.result().params() + " / " + javac.result().params());
         }
-        return differences.isEmpty() ? null : String.join("; ", differences);
+        return differences;
     }
 
     /** What the frontends' source maps say of the same program, at every level: {@code location ...} if one moved (I7). */

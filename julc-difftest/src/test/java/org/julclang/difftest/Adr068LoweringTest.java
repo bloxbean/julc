@@ -267,5 +267,5 @@ class Adr068LoweringTest {
 
     /** The classes of a case the reference accepts: coverage's denominator. */
     private static final java.util.Set<String> Set_ACCEPTED = java.util.Set.of("i1a-identical", "not-ported", "javac-rejects",
-            "DIFFERENT-bytes", "DIFFERENT-javac-rejects", "DIFFERENT-coverage", "DIFFERENT-provenance");
+            "DIFFERENT-bytes", "DIFFERENT-diagnostics", "DIFFERENT-javac-rejects", "DIFFERENT-coverage", "DIFFERENT-provenance");
 }
