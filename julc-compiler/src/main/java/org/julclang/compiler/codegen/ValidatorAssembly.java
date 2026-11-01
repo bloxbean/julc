@@ -314,7 +314,7 @@ public final class ValidatorAssembly {
 
         frontend.finalCheck().accept(body);
         // 17. Lower to UPLC (with source map support)
-        var lowered = PirBackend.lower(body, context, frontend.positions(), true);
+        var lowered = PirBackend.lowerQuietly(body, context, frontend.positions());
         return new CompileResult(
                 lowered.program(), context.diagnostics(), paramInfos(program.params()), lowered.pir(),
                 lowered.program().term(), lowered.sourceMap(),

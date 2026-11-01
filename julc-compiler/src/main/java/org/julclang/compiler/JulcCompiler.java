@@ -117,11 +117,15 @@ public class JulcCompiler {
      * references (ADR-068 D8).
      */
     private List<String> classpathLibraries(String source, ClassLoader classLoader, CompilationContext context) {
+        var libraries = classpathLibraries(source, classLoader, context.frontend());
+        context.markJarSources(libraries);
+        return libraries;
+    }
+
+    private static List<String> classpathLibraries(String source, ClassLoader classLoader, CompilerFrontend frontend) {
         var available = LibrarySourceResolver.scanClasspathSources(classLoader);
-        if (context.frontend() == CompilerFrontend.JAVAC) {
-            var scanned = available.values().stream().map(library -> library.source()).toList();
-            context.markJarSources(scanned);
-            return scanned;
+        if (frontend == CompilerFrontend.JAVAC) {
+            return available.values().stream().map(library -> library.source()).toList();
         }
         return available.isEmpty() ? List.of() : LibrarySourceResolver.resolve(source, available);
     }
@@ -217,10 +221,16 @@ public class JulcCompiler {
 
     /** Compile a source-debug artifact with classpath-discovered libraries. */
     public DebugCompileResult compileForDebug(String validatorSource) {
+        return compileForDebug(validatorSource, JulcCompiler.class.getClassLoader());
+    }
+
+    /** {@link #compileForDebug(String)}, with the libraries of {@code classLoader}: they are found before anything else. */
+    DebugCompileResult compileForDebug(String validatorSource, ClassLoader classLoader) {
+        var libraries = classpathLibraries(validatorSource, classLoader, options.getFrontend());
         requireSourceMap();
         var context = beginCompilation();
-        return compileForDebug(validatorSource,
-                classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader(), context), context);
+        context.markJarSources(libraries);
+        return compileForDebug(validatorSource, libraries, context);
     }
 
     /**

@@ -42,6 +42,24 @@ public final class PirBackend {
             Map<PirTerm, SourceLocation> positions,
             boolean optimize,
             PirDebugProvenance provenance) {
+        return lower(term, context, positions, optimize, provenance, true);
+    }
+
+    /** {@link #lower} without the stage log lines: {@code compileMethod} has never written them. */
+    public static Result lowerQuietly(
+            PirTerm term,
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> positions) {
+        return lower(term, context, positions, true, null, false);
+    }
+
+    private static Result lower(
+            PirTerm term,
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> positions,
+            boolean optimize,
+            PirDebugProvenance provenance,
+            boolean logStages) {
         var values = new ValueLiteralFoldPass(context, positions, provenance).lower(term);
         var folding =
                 new ArrayLiteralFoldPass(context, values.positions(), provenance)
@@ -64,8 +82,9 @@ public final class PirBackend {
         String stage = "UPLC lowering";
         if (context.isSourceMapEnabled()) {
             sourceMap = SourceMap.of(generator.getUplcPositions());
-            context.logf(
-                    "Source map generated: %d entries (optimization skipped)", sourceMap.size());
+            if (logStages) {
+                context.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
+            }
         } else if (optimize) {
             var optimized = new UplcOptimizer(context).optimizeWithReport(uplc);
             uplc = optimized.term();
@@ -74,7 +93,7 @@ public final class PirBackend {
                     optimized.appliedPasses().isEmpty()
                             ? "UPLC optimizer (no rewrites)"
                             : "UPLC optimizer passes " + optimized.appliedPasses();
-            context.log("UPLC optimization complete");
+            if (logStages) context.log("UPLC optimization complete");
         }
         var version = context.target().uplcVersion();
         var program = new Program(version.major(), version.minor(), version.patch(), uplc);
