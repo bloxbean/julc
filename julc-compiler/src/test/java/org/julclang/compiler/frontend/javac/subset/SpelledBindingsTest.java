@@ -1132,6 +1132,69 @@ class SpelledBindingsTest {
         assertEquals("accepted", code("class P { record R(long a) { } static boolean f(Object o) { return o instanceof R; } static long m() { return 1; } }", List.of()));
     }
 
+    /** Precedence leaves out a pool unit that redeclares a root's type, and the frontend compiles what is left. */
+    @Test
+    void aUnitPrecedenceDropsIsNotOffered() {
+        var library = JavacFrontend.Unit.of("record Datum(long a) { }\nclass LibUtils { static long f(Datum d) { return d.a(); } }");
+        String source = "record Datum(long a) { }\nclass P { static long m() { return 1; } }";
+        assertEquals("accepted", code(source, List.of(library)));
+    }
+
+    /** A pool unit with a root's text is that unit, so its types are not repeated. */
+    @Test
+    void aRootOfferedTwiceIsOneUnit() {
+        String source = "record Foo(long a) { }\nclass P { static long m() { return 1; } }";
+        assertEquals("accepted", code(source, List.of(JavacFrontend.Unit.of(source))));
+    }
+
+    /** A class joins a package's name at its first name, whatever follows. */
+    @Test
+    void aClassOfTheUnnamedPackageTakesNoFirstNameOfAPackage() {
+        var library = JavacFrontend.Unit.of("package demo.sub;\npublic class Foo { }");
+        String source = "class demo { static long m() { return 1; } }";
+        assertTrue(code(source, List.of(library)).startsWith("JULC0100 "), () -> code(source, List.of(library)));
+    }
+
+    /** An inherited type in a guard, with no other rule in reach: in a package, under a name nothing else takes. */
+    @Test
+    void aGuardDoesNotReadAnInheritedType() {
+        String source = """
+                package demo;
+                class P implements B {
+                    sealed interface S { record A(long v) implements S { } record C(long v) implements S { } }
+                    static long m(S s) { return switch (s) { case S.A a when Q.K > 1 && a.v() > 0 -> 1; case S.A a -> 2; case S.C c -> 3; }; }
+                }
+                interface B { class Q { static final int K = 5; } }
+                """;
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
+    }
+
+    /** What the rules of a call leave alone: a static member is no receiver's, and these are the accessor's and {@code toPlutusData}'s. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "@org.julclang.stdlib.annotation.NewType record N(java.math.BigInteger value) { static long f() { return 1; } } static long g() { return N.f(); }",
+            "static long[] g(long[] a) { return a.clone(); }",
+            "static org.julclang.core.PlutusData g(org.julclang.ledger.PubKeyHash k) { return k.toPlutusData(); }",
+            "static byte[] g(org.julclang.ledger.PubKeyHash k) { return k.hash(); }"})
+    void aCallTheGateLeavesAlone(String member) {
+        String source = "class P { " + member + " static long m() { return 1; } }";
+        assertEquals("accepted", code(source, List.of()), source);
+    }
+
+    @Test
+    void aNewTypesInheritedCallOfItsAccessorsNameIsNoAccessor() {
+        String source = """
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.NewType;
+                class P {
+                    interface I { default long value(long x) { return x; } }
+                    @NewType record N(BigInteger value) implements I { }
+                    static long m(N n) { return n.value(1); }
+                }
+                """;
+        assertTrue(code(source, List.of()).startsWith("JULC0101 "), () -> code(source, List.of()));
+    }
+
     /** A library in the pool runs with the gate off, so the rule is what stops the wrong method. */
     @Test
     void aWholeCompilationThroughAVariableOfALibrarysName() {

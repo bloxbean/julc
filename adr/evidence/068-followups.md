@@ -95,6 +95,8 @@ Each entry gives:
 | `.diffcase` for the identity rows | M3a (F953) | The two `Semantic fix` rows of `OptionalThing` and a qualified `Optional`, and `M2Sealed`, are observed by evaluating the scripts (`Adr068TypeIdentityTest`) against the JVM's Data mapping. A `.diffcase` cannot run until records are ported | Save them with the records slice, with the D8 and escape-shape rows' |
 | Zero amounts in a Value | M3a | `ValuesLib.add`, `subtract` and `negate` keep an amount of 0 as an entry, so `subtract(v, v)` is a Value of zeros and not an empty one | Decide whether computed Values are normalized, against the ledger's own treatment |
 | Data that is no ledger Value | M3a | `add` reads the policy maps it merges and compares keys as bytes, so `add({}, {P:1})` and `add({Q:{T:1}}, {P:1})` evaluate, with `{P:1}` kept as an entry, while `add({1:{T:5}}, {Q:{T:1}})` and `add({P:{1:10}}, {P:{T:1}})` fail on `unBData`, and `add({1:{T:5}}, {})` evaluates. `lovelaceOf({P:1})` is 0. `geqMultiAsset({P:1}, {})` fails on `unMapData`: a comparison reads the map of every key it walks. `ValuesLibByKeyTest` pins each. A ledger Value has none of these shapes | Decide whether a Value read from Data is checked where it is read |
+| Repeated keys in a Value | M3a external review | `ValuesLib._holdsOverTokens` compares each entry with a first-entry lookup, so with a repeated key `eq(x, x)` is false in a script and true on the JVM, and `isZero` disagrees with `assetOf`. A ledger Value holds no repeated key: this needs a Value read from Data or built with `JulcMap.insert` | Decide it with the row above: document it, or check a Value read from Data |
+| `ValuesLib.geq` | M3a external review | It compares lovelace only, as documented and pinned, so `leq(a, b)` and `geq(b, a)` differ in general, and code ported from `PlutusTx` `geq`, which compares every key, checks less | A warning in the docs, naming `geqMultiAsset` |
 | Value lookups written as loops | M3a | `_assetOf` and `findTokenAmount` are `while` loops. A recursive form or a native lookup would be cheaper, as the recursive `add` was | Measure with the other stdlib costs; `lovelaceOf` does not go through them |
 | Order of the output list builders | M3a | `ContextsLib.getContinuingOutputs`, `valueSpent`, `valuePaid` and `scriptOutputsAt`, and `OutputLib.outputsAt` and `outputsWithToken`, return lists in reverse order, on the JVM too. Their Javadoc promises no order | A doc line |
 | `verification/e3` evidence | M3a | The `authorized` and `multi-satisfaction` fixtures call `ValuesLib.lovelaceOf`, so their scripts differ from the ones proved. The README's table records, for the 2026-08-16 refresh, each fixture's artifact SHA-256, script hash and size, and the expected classifications: `SMT-VALID` for those two at fuel 1,500, under the reviewed property that exact UPLC succeeding implies an output paying the seller at least the price. Workspaces and certificates are generated and gitignored, so nothing else is stored. `unpaid` and `vacuous` do not call it | Run `verification/e3/scripts/verify.sh`, which needs the Lean and Blaster toolchain. Fuel may need raising, since the lookup now walks the Value. Then add the new hashes and sizes to the README's table as a dated row |
@@ -115,6 +117,22 @@ Each entry gives:
 | `Adr060ByteSnapshotTest` pins less | M3a review (F1047) | Its `EXPLAINED` list excuses a row, so 50 rows that are deployable output no longer catch a change, and 4 moved rows sit under the `compareTo` reason | Take a second pinned capture at M3 close, in place of the list |
 | Goldens under `o8` and `o9` | M3a review (F1048) | 21 rows reproduce from neither side of the change that last touched them. Nothing compares them today | Regenerate them from one commit when M3 closes, and record it |
 | Illustrative doc blocks | M1b | 16 whole-unit doc blocks stay invalid alone on purpose (WRONG/CORRECT pairs, compact source files, cross-file examples, sketches); 408 fragments were scanned only by the BigInteger-operator heuristic | Compile docs' examples in a test (as `ValueOrientedExamplesTest` does) when the docs are next reworked |
+
+## Closed by M5
+
+From M3a's close, a misreading in the JavaParser frontend alone is listed here, not fixed there (ADR-068 D4, r11). Its program becomes a required test of the javac slice that lowers the construct. This list holds only while nothing from this work is released before M5.
+
+| Program | Found | Required test in |
+|---|---|---|
+| None yet | | |
+
+## Codex read owed
+
+If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).
+
+| Head | What it needs | Why it went without |
+|---|---|---|
+| `558c5f58` and M3a's final head | The spelled-name rules (`JULC0100`, `JULC0101`), with the last closures | Codex's safety filter stopped the task after 1m28s. No findings came back |
 
 ## Future stdlib enhancements (after ADR-068 is complete)
 
