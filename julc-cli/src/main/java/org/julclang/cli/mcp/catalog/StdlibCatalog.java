@@ -64,7 +64,7 @@ public final class StdlibCatalog {
      */
     private static final Set<String> SKIP_STDLIB_HELPERS = Set.of(
             // ValuesLib internal flatten/geq helpers
-            "checkPolicyGeq", "flattenStep", "flattenPolicy"
+            "flattenStep", "flattenPolicy"
     );
 
     private StdlibCatalog() {}

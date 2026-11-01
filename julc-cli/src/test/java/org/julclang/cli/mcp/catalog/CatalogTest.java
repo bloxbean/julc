@@ -51,15 +51,15 @@ class CatalogTest {
     void stdlib_filters_known_internal_helpers() {
         // Codex review finding 2: ValuesLib internal flatten/geq helpers
         // were leaking into the catalog and teaching agents to call
-        // checkPolicyGeq / flattenStep instead of geqMultiAsset / flatten.
+        // flattenStep instead of geqMultiAsset / flatten.
         var info = StdlibCatalog.describeLibrary("ValuesLib", null);
         if (info == null) return; // ValuesLib not on test classpath — skip.
         @SuppressWarnings("unchecked")
         var methods = (List<Map<String, Object>>) info.get("methods");
         var names = methods.stream().map(m -> (String) m.get("name")).toList();
         for (var helper : List.of(
-                "checkPolicyGeq", "flattenStep", "flattenPolicy",
-                "_addPolicies", "_addAmounts", "_entriesNotIn", "_mergeByKey")) {
+                "flattenStep", "flattenPolicy",
+                "_addPolicies", "_addAmounts", "_entriesNotIn", "_mergeByKey", "_geqOverPolicies")) {
             assertFalse(names.contains(helper),
                     "internal helper '" + helper + "' must not appear in catalog: " + names);
         }

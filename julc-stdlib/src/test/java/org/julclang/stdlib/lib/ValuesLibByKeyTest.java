@@ -30,9 +30,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code lovelaceOf}, {@code add}, {@code subtract} and {@code negate} go by key: a computed Value is read on-chain with
- * {@code lovelaceOf} and {@code assetOf}, and compared whole, at every level. On-chain is the point: a Value carried back
- * to the JVM is read through a map, by key, which shows neither the order of its entries nor a repeated key.
+ * {@code lovelaceOf}, {@code add}, {@code subtract}, {@code negate}, {@code geqMultiAsset}, {@code leq} and {@code eq} go by
+ * key: a computed Value is read on-chain with {@code lovelaceOf} and {@code assetOf}, and compared whole, at every level.
+ * On-chain is the point: a Value carried back to the JVM is read through a map, by key, which shows neither the order of its
+ * entries nor a repeated key.
  */
 class ValuesLibByKeyTest {
 
@@ -56,6 +57,10 @@ class ValuesLibByKeyTest {
                 static Value sum(Value a, Value b) { return ValuesLib.add(a, b); }
                 static Value difference(Value a, Value b) { return ValuesLib.subtract(a, b); }
                 static Value negated(Value a) { return ValuesLib.negate(a); }
+                static boolean geqEveryKey(Value a, Value b) { return ValuesLib.geqMultiAsset(a, b); }
+                static boolean leqEveryKey(Value a, Value b) { return ValuesLib.leq(a, b); }
+                static boolean equal(Value a, Value b) { return ValuesLib.eq(a, b); }
+                static boolean differenceEquals(Value a, Value b, Value want) { return ValuesLib.eq(ValuesLib.subtract(a, b), want); }
             }
             """;
 
@@ -259,6 +264,109 @@ class ValuesLibByKeyTest {
         assertEquals(v, run(level, "difference", v, value()));
     }
 
+    // --- Comparing by key: a key one side does not hold is 0 there ---
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void aNegativeAmountOneSideHoldsIsBelowZero(OptimizationLevel level) {
+        var negative = value(policy(P, token(T1, -5)));
+        assertEquals(false, bool(level, "equal", negative, value()));
+        assertEquals(false, bool(level, "equal", value(), negative));
+        assertEquals(false, bool(level, "equal", negative, value(policy(Q, token(T1, -7)))));
+        assertEquals(false, bool(level, "geqEveryKey", value(lovelace(10), policy(P, token(T1, -5))), value(lovelace(10))));
+        assertEquals(false, bool(level, "leqEveryKey", value(), negative));
+        assertTrue(bool(level, "leqEveryKey", negative, value()));
+        assertTrue(bool(level, "geqEveryKey", value(), negative));
+    }
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void aPositiveAmountOneSideHoldsIsAboveZero(OptimizationLevel level) {
+        var positive = value(policy(P, token(T1, 5)));
+        assertEquals(false, bool(level, "equal", positive, value()));
+        assertEquals(false, bool(level, "equal", value(), positive));
+        assertEquals(false, bool(level, "geqEveryKey", value(), positive));
+        assertTrue(bool(level, "geqEveryKey", positive, value()));
+        assertTrue(bool(level, "leqEveryKey", value(), positive));
+    }
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void aZeroAmountEqualsAMissingKey(OptimizationLevel level) {
+        assertTrue(bool(level, "equal", value(policy(P, token(T1, 0))), value()));
+        assertTrue(bool(level, "equal", value(), value(policy(P, token(T1, 0)))));
+        assertTrue(bool(level, "equal", value(lovelace(5), policy(P, token(T1, 0))), value(policy(Q, token(T2, 0)), lovelace(5))));
+    }
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void aKeyMissingFromOnePolicyOfBothIsZero(OptimizationLevel level) {
+        var a = value(policy(P, token(T1, 1), token(T2, -1)));
+        var b = value(policy(P, token(T1, 1)));
+        assertEquals(false, bool(level, "equal", a, b));
+        assertEquals(false, bool(level, "geqEveryKey", a, b));
+        assertTrue(bool(level, "geqEveryKey", b, a));
+    }
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void theOrderOfTheEntriesDoesNotDecide(OptimizationLevel level) {
+        var a = value(lovelace(5), policy(P, token(T1, 1), token(T2, 2)), policy(Q, token(T3, 3)));
+        var b = value(policy(Q, token(T3, 3)), policy(P, token(T2, 2), token(T1, 1)), lovelace(5));
+        assertTrue(bool(level, "equal", a, b));
+        assertTrue(bool(level, "equal", b, a));
+    }
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void aDifferenceComparesByEveryKey(OptimizationLevel level) {
+        var before = value(lovelace(1000), policy(P, token(T1, 500)));
+        assertTrue(bool(level, "differenceEquals", before, before, value()));
+        assertEquals(false, bool(level, "differenceEquals", value(lovelace(900), policy(P, token(T1, 500))), before, value()));
+        assertEquals(false, bool(level, "differenceEquals", value(lovelace(700)), before, value()));
+        assertEquals(false, bool(level, "differenceEquals", value(lovelace(1010)), before, value(lovelace(10))));
+    }
+
+    // --- Data that is no ledger Value: a key that is no bytes, an amount that is no map ---
+
+    private static boolean evaluates(OptimizationLevel level, String method, PlutusData... args) {
+        var compiled = COMPILED.computeIfAbsent(level + "." + method, key -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setOptimizationLevel(level)).compileMethod(SOURCE, method));
+        return JulcVm.create().evaluateWithArgs(compiled.program(), compiled.target().ledgerTarget(), List.of(args), null,
+                EvalOptions.DEFAULT).isSuccess();
+    }
+
+    private static PlutusData.Pair entry(PlutusData key, PlutusData held) {
+        return new PlutusData.Pair(key, held);
+    }
+
+    private static final PlutusData ONE = PlutusData.integer(1);
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void addOnlyReadsThePolicyMapsOfBothSides(OptimizationLevel level) {
+        var notAMap = entry(P, ONE);
+        assertEquals(value(notAMap), run(level, "sum", value(), value(notAMap)));
+        assertEquals(value(notAMap, policy(Q, token(T1, 1))), run(level, "sum", value(policy(Q, token(T1, 1))), value(notAMap)));
+    }
+
+    /** The two lists are ordered by key, so what compares two keys reads them as bytes. */
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void addComparesKeysAsBytes(OptimizationLevel level) {
+        var integerPolicy = value(entry(ONE, new PlutusData.MapData(List.of(token(T1, 5)))));
+        var integerToken = value(entry(P, new PlutusData.MapData(List.of(entry(ONE, PlutusData.integer(10))))));
+        assertEquals(false, evaluates(level, "sum", integerPolicy, value(policy(Q, token(T1, 1)))));
+        assertEquals(false, evaluates(level, "sum", integerToken, value(policy(P, token(T1, 1)))));
+        assertEquals(integerPolicy, run(level, "sum", integerPolicy, value()));
+    }
+
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void lovelaceOfReadsOnlyTheEmptyPolicy(OptimizationLevel level) {
+        assertLovelace(0, level, value(entry(P, ONE)));
+    }
+
     // --- Against a map model ---
 
     /** A Value as a map: what a result must hold, whatever the order. */
@@ -289,6 +397,14 @@ class ValuesLibByKeyTest {
         var result = new TreeMap<String, BigInteger>();
         a.forEach((key, amount) -> result.put(key, amount.negate()));
         return result;
+    }
+
+    /** {@code a >= b} at every key of either, where a key one of them does not hold is 0 there. */
+    private static boolean geq(Map<String, BigInteger> a, Map<String, BigInteger> b) {
+        var keys = new TreeMap<>(a);
+        keys.putAll(b);
+        return keys.keySet().stream().allMatch(key ->
+                a.getOrDefault(key, BigInteger.ZERO).compareTo(b.getOrDefault(key, BigInteger.ZERO)) >= 0);
     }
 
     private static boolean isSorted(PlutusData value) {
@@ -340,6 +456,13 @@ class ValuesLibByKeyTest {
             assertEquals(plus(model(a), model(b)), model(sum), () -> "add " + input);
             assertEquals(plus(model(a), negated(model(b))), model(difference), () -> "subtract " + input);
             assertEquals(negated(model(a)), model(negative), () -> "negate " + input);
+            assertEquals(geq(model(a), model(b)), bool(level, "geqEveryKey", a, b), () -> "geqMultiAsset " + input);
+            assertEquals(geq(model(b), model(a)), bool(level, "leqEveryKey", a, b), () -> "leq " + input);
+            assertEquals(geq(model(a), model(b)) && geq(model(b), model(a)), bool(level, "equal", a, b), () -> "eq " + input);
+            assertTrue(bool(level, "equal", a, a), () -> "eq itself " + input);
+            assertTrue(bool(level, "differenceEquals", a, b, difference), () -> "eq of a difference " + input);
+            assertEquals(model(difference).values().stream().allMatch(amount -> amount.signum() == 0),
+                    bool(level, "differenceEquals", a, b, value()), () -> "eq of a difference with nothing " + input);
             if (sorted) {
                 assertTrue(isSorted(sum), () -> "add " + input + " -> " + sum);
                 assertTrue(isSorted(difference), () -> "subtract " + input + " -> " + difference);

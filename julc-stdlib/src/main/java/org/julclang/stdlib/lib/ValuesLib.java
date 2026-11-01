@@ -92,42 +92,41 @@ public class ValuesLib {
         return result;
     }
 
-    /** Checks if value a >= value b for ALL policy/token pairs (multi-asset). */
+    /**
+     * Checks if value a >= value b for ALL policy/token pairs (multi-asset): over the keys of both Values, where a key one
+     * of them does not hold is 0 there.
+     */
     public static boolean geqMultiAsset(Value a, Value b) {
-        var result = true;
-        var outerPairs = Builtins.unMapData(b);
-        PlutusData outerCurrent = outerPairs;
-        while (!Builtins.nullList(outerCurrent)) {
-            var outerPair = Builtins.headList(outerCurrent);
-            if (checkPolicyGeq(a, outerPair)) {
-                outerCurrent = Builtins.tailList(outerCurrent);
-            } else {
-                result = false;
-                outerCurrent = Builtins.mkNilPairData();
-            }
+        if (!_geqOverPolicies(Builtins.unMapData(a), a, b)) {
+            return false;
         }
-        return result;
+        return _geqOverPolicies(Builtins.unMapData(b), a, b);
     }
 
-    /** Check all tokens under a policy pair have sufficient amounts in value a. */
-    public static boolean checkPolicyGeq(Value a, PlutusData outerPair) {
-        var policyKey = Builtins.fstPair(outerPair);
-        var innerPairs = Builtins.unMapData(Builtins.sndPair(outerPair));
-        var result = true;
-        PlutusData current = innerPairs;
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            var tokenKey = Builtins.fstPair(pair);
-            var bAmount = Builtins.unIData(Builtins.sndPair(pair));
-            var aAmount = _assetOf(a, (PlutusData.BytesData) policyKey, (PlutusData.BytesData) tokenKey);
-            if (aAmount.compareTo(bAmount) >= 0) {
-                current = Builtins.tailList(current);
-            } else {
-                result = false;
-                current = Builtins.mkNilPairData();
-            }
+    /** Whether a >= b at every (policy, token) of a pair list of policies. */
+    public static boolean _geqOverPolicies(PlutusData policies, Value a, Value b) {
+        if (Builtins.nullList(policies)) {
+            return true;
         }
-        return result;
+        var pair = Builtins.headList(policies);
+        if (!_geqOverTokens(Builtins.fstPair(pair), Builtins.unMapData(Builtins.sndPair(pair)), a, b)) {
+            return false;
+        }
+        return _geqOverPolicies(Builtins.tailList(policies), a, b);
+    }
+
+    /** Whether a >= b at every token of a pair list, under one policy. */
+    public static boolean _geqOverTokens(PlutusData policy, PlutusData tokens, Value a, Value b) {
+        if (Builtins.nullList(tokens)) {
+            return true;
+        }
+        var token = Builtins.fstPair(Builtins.headList(tokens));
+        var aAmount = _assetOf(a, (PlutusData.BytesData) policy, (PlutusData.BytesData) token);
+        var bAmount = _assetOf(b, (PlutusData.BytesData) policy, (PlutusData.BytesData) token);
+        if (aAmount.compareTo(bAmount) < 0) {
+            return false;
+        }
+        return _geqOverTokens(policy, Builtins.tailList(tokens), a, b);
     }
 
     /** Checks if value a <= value b (multi-asset). */
@@ -294,6 +293,9 @@ public class ValuesLib {
      * Adds two Values by key: each (policy, token) appears once, with the sum of its amounts, and a policy in both has one
      * entry, with their tokens merged. An amount of 0 stays an entry. Inputs sorted by key at both levels give a result
      * sorted at both levels; for any other input, every entry is still there once.
+     * <p>
+     * An input holds no repeated key, as a ledger Value does not. A Value cast from Data can; then the first entry of a
+     * key is the one this reads, and what happens to the others is not defined.
      * <p>
      * Complexity: O(P * P + T * T) for P policies and T tokens under a policy, since each key is looked up in the other
      * Value. Suitable for typical on-chain Values, but may be expensive for Values with many distinct policies.
