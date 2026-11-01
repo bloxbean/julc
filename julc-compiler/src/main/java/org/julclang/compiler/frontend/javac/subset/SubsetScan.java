@@ -258,15 +258,24 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return super.visitCompoundAssignment(tree, unused);
     }
 
-    /** {@code JULC0059}: the reference binds a pattern variable only where it is a whole condition, so one does not take a field's name. */
+    /**
+     * {@code JULC0059}: the reference binds a pattern variable only where it is a whole condition, so one does not take a
+     * field's name, at any depth of a pattern. It is anchored at the type, as a modifier is no part of what the reference reads.
+     */
     @Override
     public Void visitInstanceOf(InstanceOfTree tree, Void unused) {
-        if (tree.getPattern() instanceof BindingPatternTree pattern) {
-            var owner = enclosingWithField(tree, pattern.getVariable().getName());
-            if (owner != null) {
-                throw facts.rejection(DiagnosticCodes.PATTERN_VARIABLE_SHADOWS_FIELD, pattern, pattern.getVariable().getName(), owner);
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitBindingPattern(BindingPatternTree pattern, Void ignored) {
+                var variable = pattern.getVariable();
+                var owner = enclosingWithField(tree, variable.getName());
+                if (owner != null) {
+                    throw facts.rejection(DiagnosticCodes.PATTERN_VARIABLE_SHADOWS_FIELD,
+                            facts.isGenerated(variable.getType()) ? pattern : variable.getType(), variable.getName(), owner);
+                }
+                return null;
             }
-        }
+        }.scan(tree.getPattern(), null);
         return super.visitInstanceOf(tree, unused);
     }
 

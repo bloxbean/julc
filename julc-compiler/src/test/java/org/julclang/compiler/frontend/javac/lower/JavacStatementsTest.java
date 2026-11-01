@@ -268,6 +268,22 @@ class JavacStatementsTest {
     }
 
     /** The reference's words; it says them with no diagnostic, and the javac frontend at the construct. */
+    /** {@code JULC0059} at any depth of a pattern, and at the type, as on the reference; two rejections there are one code. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static final long v = 1; record W(S i) { } static boolean m(W w) { if (w instanceof W(S.A(BigInteger v))) { return true; } return false; }",
+            "static final long a = 1; record W(S i) { } static boolean m(W w) { if (w instanceof W(S.A a)) { return true; } return false; }",
+    })
+    void aPatternVariableTakesNoFieldsNameAtAnyDepth(String members) {
+        assertEquals("JULC0059", javac(SUM + members).diagnostics().getFirst().code());
+    }
+
+    @Test
+    void aPatternVariableIsAnchoredAtItsTypeUnderAModifier() {
+        String members = "static final long a = 1; static boolean m(S s) { if (s instanceof final S.A a) { return true; } return false; }";
+        rejected(SUM + members);
+    }
+
     private static void rejectedWith(String members, String message) {
         var reference = assertThrows(CompilerException.class, () -> new JulcCompiler().compileMethod(source(SUM + members), "m", List.of()));
         assertTrue(reference.getMessage().contains(message), reference::getMessage);
