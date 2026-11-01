@@ -637,6 +637,13 @@ class SpelledBindingsTest {
                     static long m() { H h = new H(1); return h.Helper(); }
                 }
                 """, List.of()));
+        assertEquals("accepted", code("""
+                class P {
+                    static class Helper { }
+                    record H(long Helper) { }
+                    static long m() { H h = new H(1); return h.Helper; }
+                }
+                """, List.of()));
     }
 
     @Test
@@ -1002,6 +1009,24 @@ class SpelledBindingsTest {
         }
         var wrong = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m"));
         assertEquals("JULC0100", wrong.diagnostics().getFirst().code());
+    }
+
+    /** {@code JavaLibraryProvider}'s roots are libraries, so a variable there meets the names of their classes too. */
+    @Test
+    void aVariableOfAClassOfALibraryRoot() {
+        String source = """
+                package lib;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public class Lib {
+                    record H(long v) { }
+                    static class Helper { }
+                    public static long f() { H Helper = new H(1); return Helper.v(); }
+                }
+                """;
+        var result = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of(source)), List.of(),
+                new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
+        assertEquals("JULC0100", result.compilerDiagnostics().getFirst().code());
     }
 
     /** A library in the pool runs with the gate off, so the rule is what stops the wrong method. */
