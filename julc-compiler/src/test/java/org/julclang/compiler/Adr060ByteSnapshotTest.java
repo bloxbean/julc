@@ -53,6 +53,8 @@ class Adr060ByteSnapshotTest {
             for (var row : List.of("NONE-false", "NONE-true", "BASELINE-true", "PV11_SAFE-true", "PV11_COSTED-true"))
                 EXPLAINED.putIfAbsent(entry.id() + "-" + row, compareTo + " in the stdlib's unused methods");
         }
+        // ADR-068 B3: this program's drop takes a local count, which takes the check a negative count fails.
+        EXPLAINED.put("hygiene-17-", "ADR-068 B3: JulcList.drop fails on a negative count");
         // ADR-032 O2: a condition the proof does not establish, such as a lambda parameter, lowers to builtin
         // IfThenElse at the levels that have Case. Source-map rows of these programs are explained above.
         String condition = "ADR-032 O2: a condition not proven boolean lowers to builtin IfThenElse";

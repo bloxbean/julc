@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 
 /**
  * ADR-068 I1 over one corpus case: the case compiled on {@code frontend=JAVAC} and classified against the reference (the
- * JavaParser frontend at B2, gate off) and against the reference's PIR, method by method.
+ * JavaParser frontend at B3, gate off) and against the reference's PIR, method by method.
  * <p>
  * The classes are deliberately not tolerant. A row states what happened, a digest of everything it compared stands in
  * the row whatever is shown of it, and every row is compared with a committed table in {@link Adr068LoweringTest}, so a

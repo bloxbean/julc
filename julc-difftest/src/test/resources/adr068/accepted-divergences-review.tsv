@@ -11,7 +11,7 @@ T7	open	any/all do not short-circuit on-chain
 T8	open	builtins that throw off-chain (S2)
 T9	open	on-chain-only casts fail off-chain (S2)
 T10	open	JulcAssocMap key equality off-chain (D6: deep byte[] equality in M1)
-T11	open	BigInteger.mod with a negative modulus
+T11	closed	fixed at B3: the script fails where BigInteger.mod throws, on both frontends
 T12	open	failure and trace model
 T13	open	budget and size limits; also #146's remaining compareTo forms (the harness's T13 rule)
 T14	open	target profiles (to confirm)

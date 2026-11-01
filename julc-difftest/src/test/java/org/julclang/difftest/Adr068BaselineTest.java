@@ -172,16 +172,16 @@ class Adr068BaselineTest {
 
     /** What the run wrote, under the names M0 gave it, and the frozen reference's file for each. */
     private static final Map<String, String> REFERENCE_FILES = Map.of(
-            "ledger-b0.tsv", "ledger-b2.tsv",
-            "ledger-b0-semantic.tsv", "ledger-b2-semantic.tsv",
-            "ledger-b0-budget.tsv", "ledger-b2-budget.tsv",
-            "ledger-b0-instantiations.tsv", "ledger-b2-instantiations.tsv",
-            "rejection-inventory-b0.tsv", "rejection-inventory-b2.tsv",
-            "corpus-b0.tsv", "corpus-b2.tsv",
-            "totals-b0.tsv", "totals-b2.tsv");
+            "ledger-b0.tsv", "ledger-b3.tsv",
+            "ledger-b0-semantic.tsv", "ledger-b3-semantic.tsv",
+            "ledger-b0-budget.tsv", "ledger-b3-budget.tsv",
+            "ledger-b0-instantiations.tsv", "ledger-b3-instantiations.tsv",
+            "rejection-inventory-b0.tsv", "rejection-inventory-b3.tsv",
+            "corpus-b0.tsv", "corpus-b3.tsv",
+            "totals-b0.tsv", "totals-b3.tsv");
 
     /**
-     * The reference must still be B2: every frozen file, byte for byte, so this run fails rather than leaving a person to
+     * The reference must still be B3: every frozen file, byte for byte, so this run fails rather than leaving a person to
      * compare. The totals' {@code coverage} line counts the rejection-site catalogue, which grows with the javac frontend.
      * {@code -Padr068.freeze=true} writes the files instead, at a reference change (D4).
      */
@@ -199,7 +199,7 @@ class Adr068BaselineTest {
                 differences.add(file.getValue() + " differs from " + written);
             }
         }
-        assertTrue(differences.isEmpty(), "the reference is not B2, so the frozen frontend changed: " + differences);
+        assertTrue(differences.isEmpty(), "the reference is not B3, so the frozen frontend changed: " + differences);
     }
 
     private static List<String> withoutCatalogue(Path file) throws IOException {

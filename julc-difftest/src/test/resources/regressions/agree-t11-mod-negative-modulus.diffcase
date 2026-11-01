@@ -1,13 +1,11 @@
 format: 2
-name: BigInteger.mod with a negative modulus (T11)
+name: BigInteger.mod with a negative modulus fails on both sides (T11, fixed)
 class: Probe
 method: m
 arg: 07
 arg: 21
-expect: DIVERGE T11 Failure/Value
-jvm: Failure []
-uplc: Value 20 []
-note: The JVM throws ArithmeticException; ModInteger returns -1.
+expect: AGREE
+note: The JVM throws ArithmeticException, and the script fails on the same input (ADR-068 B3).
 ---
 import java.math.BigInteger;
 import org.julclang.core.types.JulcList;
