@@ -6,12 +6,16 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.RandomDistribution;
+import net.jqwik.api.lifecycle.AfterProperty;
+import net.jqwik.api.lifecycle.BeforeProperty;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -44,9 +48,34 @@ class Adr068StatementsPropertyTest {
         return Arbitraries.integers().between(0, 1000).list().ofSize(4);
     }
 
-    @Property(tries = 150, seed = "20261102")
+    /** What the tries held, so a generator that stopped reaching a shape fails rather than passes by saying less. */
+    private static final Map<String, Integer> SEEN = new TreeMap<>();
+
+    @BeforeProperty
+    void clear() {
+        SEEN.clear();
+    }
+
+    @AfterProperty
+    void everyShapeWasRun() {
+        System.out.println("statement programs " + SEEN);
+        for (String shape : List.of("if (", "else {", "instanceof", "long ", "fail(0)", "saidL(\"", "long K =")) {
+            assertTrue(SEEN.getOrDefault(shape, 0) >= 15, () -> shape + " in too few tries: " + SEEN);
+        }
+        assertTrue(SEEN.getOrDefault("failed", 0) >= 5, SEEN::toString);
+        assertTrue(SEEN.getOrDefault("traced", 0) >= 15, SEEN::toString);
+    }
+
+    @Property(tries = 250, seed = "20261102")
     void theModelTheJvmAndBothFrontendsAgree(@ForAll("plans") List<Integer> plan, @ForAll("inputs") List<Integer> inputs) {
-        verify(StatementPrograms.decode(plan, inputs));
+        var program = StatementPrograms.decode(plan, inputs);
+        verify(program);
+        String body = program.source().substring(program.source().indexOf("public static long m"));
+        for (String shape : List.of("if (", "else {", "instanceof", "long ", "fail(0)", "saidL(\"", "long K =")) {
+            if (body.indexOf(shape, body.indexOf('{')) >= 0) SEEN.merge(shape, 1, Integer::sum);
+        }
+        if (program.expected().failed()) SEEN.merge("failed", 1, Integer::sum);
+        if (!program.expected().traces().isEmpty()) SEEN.merge("traced", 1, Integer::sum);
     }
 
     static void verify(StatementPrograms.Program program) {

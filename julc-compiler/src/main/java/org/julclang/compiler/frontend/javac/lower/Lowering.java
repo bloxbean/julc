@@ -61,11 +61,11 @@ public final class Lowering {
         this.typing = new Typing(facts);
         this.literals = new Literals(facts, terms);
         this.names = new Names(facts, terms);
-        this.typeTests = new TypeTests(facts, this);
-        this.statements = new Statements(facts, terms, typing, this, typeTests);
-        this.operators = new Operators(facts, typing, this);
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
+        this.typeTests = new TypeTests(facts, this);
+        this.statements = new Statements(facts, terms, typing, this, targets, typeTests);
+        this.operators = new Operators(facts, typing, this);
         this.calls = new Calls(facts, terms, typing, targets, this, context, stdlib, typeMethods);
     }
 

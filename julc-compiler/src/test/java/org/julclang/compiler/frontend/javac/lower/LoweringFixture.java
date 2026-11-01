@@ -106,6 +106,11 @@ public final class LoweringFixture {
         assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend));
     }
 
+    /** {@link #assertSameMethodRejectionAsReference(String, String)} with a stdlib. */
+    public static void assertSameMethodRejectionAsReference(String source, String name, StdlibLookup stdlib) {
+        assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend, stdlib));
+    }
+
     static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile) {
         var reference = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAPARSER));
         var javac = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAC));

@@ -27,7 +27,9 @@ class JavacStatementsTest {
 
     private static final String IMPORTS = """
             import java.math.BigInteger;
+            import java.util.Optional;
             import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcArray;
             import org.julclang.core.types.JulcList;
             import org.julclang.ledger.Value;
             import org.julclang.stdlib.Builtins;
@@ -42,7 +44,7 @@ class JavacStatementsTest {
     }
 
     private static void rejected(String members) {
-        LoweringFixture.assertSameMethodRejectionAsReference(source(members), "m");
+        LoweringFixture.assertSameMethodRejectionAsReference(source(members), "m", StdlibRegistry.defaultRegistry());
     }
 
     @ParameterizedTest
@@ -142,6 +144,22 @@ class JavacStatementsTest {
         rejected(members);
     }
 
+    /** I2: the reference does not know what a stdlib call returns, so neither its call nor a var of it has members. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean m(BigInteger a) { var o = Optional.of(a); return o.isPresent(); }",
+            "static BigInteger m(BigInteger a) { var o = Optional.of(a); return o.get(); }",
+    })
+    void aVarOfAStdlibCallHasNoMembers(String members) {
+        var failure = javac(members);
+        assertEquals("JULC0055", failure.diagnostics().getFirst().code(), failure::getMessage);
+    }
+
+    @Test
+    void aVarOfAnArrayOfTwoTypesIsRejected() {
+        rejected("static long m() { var a = JulcArray.of(BigInteger.ONE, \"x\"); return 1; }");
+    }
+
     /** The reference says the same with no position, and qualifies nothing: the type rejections of M2. */
     @ParameterizedTest
     @ValueSource(strings = {"byte b = 1; return b;", "short b = 1; return b;", "Integer b = 1; return b;", "Object b = 1; return 1;"})
@@ -149,7 +167,7 @@ class JavacStatementsTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                 .compileMethod(source("static long m() { " + body + " }"), "m", List.of()));
         assertFalse(failure instanceof NotPorted, failure::getMessage);
-        assertEquals(7, failure.diagnostics().getFirst().line());
+        assertEquals(9, failure.diagnostics().getFirst().line());
     }
 
     @Test
@@ -255,17 +273,40 @@ class JavacStatementsTest {
     /** What the JVM tests by class and a tag cannot: each stops, and never compiles to another answer. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "interface I { } sealed interface V extends I permits V1 { } record V1(BigInteger a) implements V { } "
-                    + "static boolean m(I i) { return i instanceof V1 v; }",
-            "sealed interface O permits M1, M2 { } sealed interface M1 extends O permits M3 { } record M2() implements O { } record M3() implements M1 { } "
-                    + "static boolean m(O o) { return o instanceof M3 v; }",
             "sealed interface P1 permits R { } sealed interface P2 permits R { } record R() implements P1, P2 { } static boolean m(P1 p) { return p instanceof R r; }",
-            "sealed interface O permits M1, M2 { } sealed interface M1 extends O permits M3 { } record M2() implements O { } record M3() implements M1 { } "
-                    + "static boolean m(O o) { return o instanceof M1 v; }",
-            "sealed interface N permits N1 { } @org.julclang.stdlib.annotation.NewType record N1(BigInteger value) implements N { } "
-                    + "static boolean m(N n) { return n instanceof N1 v; }",
+            "sealed interface O permits W { } static final class W implements O { } static boolean m(O o) { return o instanceof W v; }",
+            "sealed interface N permits W { } @org.julclang.stdlib.annotation.NewType record W(BigInteger value) implements N { } "
+                    + "static boolean m(N n) { return n instanceof W v; }",
     })
     void aTypeTestOutsideOneSum(String members) {
         assertInstanceOf(NotPorted.class, javac(SUM + members));
+    }
+
+    // --- Validators: the entry point's own path, with a guarded return under a source map ---
+
+    private static final String VALIDATOR = """
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.*;
+            %s
+            class V {
+                sealed interface R { record A(BigInteger v) implements R { } record B() implements R { } }
+                %s
+            }
+            """;
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "@Entrypoint static boolean validate(BigInteger r, PlutusData c) { BigInteger b = r.add(BigInteger.ONE); return b.signum() > 0; }",
+            "@Entrypoint static boolean validate(BigInteger r, PlutusData c) { if (r.signum() > 0) { return true; } return false; }",
+            "@Entrypoint static boolean validate(BigInteger r, PlutusData c) { if (r.signum() > 0) { return true; } else { return r.signum() == 0; } }",
+            "@Entrypoint static boolean validate(BigInteger r, PlutusData c) { if (r.signum() > 0) { if (r.signum() < 5) { return true; } } var x = r; return x.signum() < 0; }",
+            "@Entrypoint static boolean validate(R r, ScriptContext c) { if (r instanceof R.A a) { return a.v().signum() > 0; } return false; }",
+            "@Entrypoint static boolean validate(R r, ScriptContext c) { if (r instanceof R.B b) { return true; } else { return false; } }",
+            "static BigInteger h(BigInteger x) { BigInteger y = x.add(x); return y; } @Entrypoint static boolean validate(BigInteger r, PlutusData c) { var z = h(r); return z.signum() > 0; }",
+    })
+    void validators(String members) {
+        LoweringFixture.assertSameAsReference(VALIDATOR.formatted("@MintingValidator", members));
     }
 }

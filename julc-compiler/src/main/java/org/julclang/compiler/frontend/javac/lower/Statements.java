@@ -22,6 +22,7 @@ import org.julclang.core.Constant;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -45,16 +46,18 @@ final class Statements {
     private final Terms terms;
     private final Typing typing;
     private final Lowering lowering;
+    private final CallTargets targets;
     private final Ifs ifs;
 
     private static final String SUPPORTED_STATEMENTS =
             "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.";
 
-    Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering, TypeTests typeTests) {
+    Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering, CallTargets targets, TypeTests typeTests) {
         this.facts = facts;
         this.terms = terms;
         this.typing = typing;
         this.lowering = lowering;
+        this.targets = targets;
         this.ifs = new Ifs(facts, terms, this, typeTests, lowering);
     }
 
@@ -152,11 +155,30 @@ final class Statements {
         }
         var value = lowering.expr(initializer, frame);
         var element = facts.element(tree);
-        var type = facts.isGenerated(tree.getType()) ? typing.of(initializer, value) : facts.pirType(element.asType(), tree.getType());
-        typing.requireNativeBoundary("Variable '" + name + "' initializer", typing.of(initializer, value), type, initializer);
+        PirType type;
+        if (facts.isGenerated(tree.getType())) {
+            type = varType(initializer, value);
+        } else {
+            type = facts.pirType(element.asType(), tree.getType());
+            typing.requireNativeBoundary("Variable '" + name + "' initializer", typing.of(initializer, value), type, initializer);
+        }
         var scope = frame.scope().bind(element, type);
         var body = sequence(statements, index + 1, frame.in(scope), cont);
         return terms.let(scope.lookup(element), value, body);
+    }
+
+    /**
+     * The binder's type of a {@code var}: javac's, except of a stdlib call. The reference does not know that type, so it
+     * binds what the term says, and a read of a member is {@code JULC0055} there, as on the call itself: javac knowing the
+     * type does not widen the subset (I2). What a list's reads decode to is still javac's, which is {@link Typing#of}'s.
+     * Elements of different types have no one type for an array's reads to decode, and that is a rejection.
+     */
+    private PirType varType(ExpressionTree initializer, PirTerm value) {
+        var elements = typing.arrayLiteralElementTypes(value);
+        if (elements.isPresent() && new LinkedHashSet<>(elements.get()).size() > 1) {
+            throw CompilerTypeDiagnostics.arrayLiteralElementTypesDiffer(elements.get(), facts.location(initializer));
+        }
+        return targets.isStdlibCall(initializer) ? typing.ofTerm(value) : typing.of(initializer, value);
     }
 
     private PirTerm ret(ReturnTree tree, Frame frame) {
