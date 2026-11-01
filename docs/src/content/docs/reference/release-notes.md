@@ -3,6 +3,21 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: `mod`, `take` and `drop` fail where Java throws
+
+`a.mod(b)` with `b` below 1, and `take(n)` and `drop(n)` with `n` below 0, throw in Java. They now
+fail in the script too, on both frontends. Before this change `mod` took a negative modulus and
+`take` and `drop` took a negative count.
+
+An argument that is a constant that cannot fail, such as `x.mod(BigInteger.TEN)` or `take(3)`,
+compiles as before. Any other argument takes a check, so a script that calls one of these methods
+that way changes its bytes and costs slightly more, and its script hash changes.
+
+Two differences from Java stay. Neither changes what a script accepts, since both sides still run:
+`prepend`, `contains` and `insert` evaluate their argument before their receiver, and `abs`, `min`,
+`max`, `signum` and `compareTo` outside `compareTo(...) OP 0` can evaluate an operand twice. Only the
+order of traces, which failure shows, and cost differ.
+
 ## Upcoming preview: a `+` of string constants warns (`JULC0102`)
 
 `"a" + "b"` of string constants now warns on both frontends: Java joins them when it compiles, and

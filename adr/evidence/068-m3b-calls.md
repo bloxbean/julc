@@ -8,8 +8,8 @@ The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md); the 
 [`068-m3a-lowering-foundation.md`](068-m3a-lowering-foundation.md). Machine and toolchain as in M0's evidence. Branch `wip/068-m3b`,
 based at `f3752147`, which is M3a.
 
-This file states the code at `9f3a71d1`, which merges M3a's final head `3bcd0dc9`. Every task in the results ran there. `5b1a6c8d` and
-`7767cfe1` then add tests only, and the mutants of the merge ran on them.
+This file states the code at B3, [`068-m3-reference-b3.md`](068-m3-reference-b3.md), which is this slice's reference change, on M3a's final
+head `3bcd0dc9`. The results below are that head's run.
 
 ## What was delivered
 
@@ -69,17 +69,15 @@ This file states the code at `9f3a71d1`, which merges M3a's final head `3bcd0dc9
 
 ### Where the JVM and the reference disagree
 
-The rule of this slice: **where the shape of the tree shows the disagreement, `JAVAC` stops at `JULC0084`, with a pin, and the frozen
-frontend does not change. Where it takes a run-time value or an analysis of what a body does, it is ported as it is and pinned.** The
-second kind is a row for the calls slice.
+The rule of this slice: **where the shape of the tree shows the disagreement, `JAVAC` stops at `JULC0084`, with a pin, and the frozen frontend
+does not change. A method that takes what Java throws on is fixed in the shared handler, on both frontends, as a reference change (B3).**
+Where only traces or cost differ it is ported as it is, and pinned.
 
 | Shape | JVM | Reference | `JAVAC` |
 |---|---|---|---|
 | `p.hash()` on a parameter, static or `@Param`; a byte `@NewType`'s accessor there; `(r.p()).hash()` | The bytes | Fails: `UnBData` on bytes | Stops |
 | `PubKeyHash.fromPlutusData(d)`, used as bytes | The bytes | Fails: Data where bytes are expected | Stops |
 | `-0x80000000`, `-(-2147483648)`, `-0x8000000000000000L` | The same negative value | The positive one | Stops |
-| `a.mod(b)` with `b < 0` | Throws | A value | Ported, pinned |
-| `take(-1)`, `drop(-1)` | Throws | A list | Ported, pinned |
 | A helper with no parameter, whose body fails or traces | Runs when called, each time | Runs once, first, called or not | Ported, pinned |
 | `intValue()`, `longValue()` past their width | Truncated | The whole value | Ported: T6 |
 | `String.length()` beyond ASCII | UTF-16 units | UTF-8 bytes | Ported: T17 |
@@ -90,11 +88,12 @@ second kind is a row for the calls slice.
 `PirHelpers.swappedInOrder`), `compareTo`'s twelve forms, a helper's arguments, and a registry method that applies its receiver
 first. `&&`, `||` and `?:` run what Java runs. `Adr068CallsHarnessTest` traces each one against the JVM.
 
-Two families do not hold it, on the reference too, and are ported as they are. The tests pin them, so a change shows:
+Two families do not hold it, on the reference too, and stay as known issues. Both sides still run, so the script accepts and rejects what
+Java does, and only traces and cost differ. The tests pin them, so a change shows, and the release notes list them:
 
 | Family | Java | UPLC | Catalogued |
 |---|---|---|---|
-| `prepend`, `contains`, `insert` | receiver, argument | argument, receiver | No. New here; see the follow-ups |
+| `prepend`, `contains`, `insert` | receiver, argument | argument, receiver | T13's family; see the follow-ups |
 | `abs`, `min`, `max`, `signum`, `compareTo` outside D6 | each operand once | an operand twice | `compareTo` is T13. The rest are its family |
 
 ## The I1 gate
@@ -104,7 +103,7 @@ in a program that can compile yet. A freeze ran against M3a's table without `all
 
 | Class | M3a | M3b |
 |---|---:|---:|
-| `i1a-identical` | 145 | 1,105 |
+| `i1a-identical` | 145 | 1,107 |
 | `not-ported` | 9,617 | 8,634 |
 | `reference-rejects-not-ported` | 496 | 484 |
 | `javac-rejects` | 5,359 | 5,359 |
@@ -118,28 +117,28 @@ in a program that can compile yet. A freeze ran against M3a's table without `all
 | `DIFFERENT-bytes` | 4 | 6 |
 | `DIFFERENT-provenance` | 2 | 4 |
 | `DIFFERENT-diagnostics` | | 2 |
-| Total | 17,054 | 17,063 |
+| Total | 17,054 | 17,065 |
 
 The M3a column is its final head, `3bcd0dc9`. 3,721 rows moved against it, and none lost coverage, a total or its place in the corpus.
 Of the 17,054 recorded rows, 3,712 moved: 956 from `not-ported` to `i1a-identical`, 25 to a policy rejection, 12 from
 `reference-rejects-not-ported` to `both-reject`, 2 to a provenance row, 1 to a bytes row, 1 to a diagnostics row, and 2,715 that kept their
-class and covered more methods or stopped at a later construct. The 9 rows new to the table are M3b's fixtures. `lowering-reference.tsv`
-gained those 9 rows and changed none, and the freeze needed no `allowShrink`. Two fixtures changed a key when their component became
+class and covered more methods or stopped at a later construct. The 9 rows new to the table are M3b's fixtures, and 2 more are B3's pins. At that first freeze `lowering-reference.tsv`
+gained those 9 rows and changed none, and it needed no `allowShrink`; B3 then re-froze it. Two fixtures changed a key when their component became
 `value`, before any table held them.
 
 ### Coverage
 
 | | Covered | Of | | M3a |
 |---|---:|---:|---|---:|
-| Programs the reference accepts | 1,105 | 15,145 | 7.3% | 145 |
-| Their distinct scripts | 330 | | | 85 |
+| Programs the reference accepts | 1,107 | 15,147 | 7.3% | 145 |
+| Their distinct scripts | 332 | | | 85 |
 | Programs of more than one method | 808 | | | 11 |
-| Methods the reference lowers, library methods included | 6,663 | 172,424 | 3.9% | 320 |
-| Distinct covered methods | 1,133 | | | 160 |
+| Methods the reference lowers, library methods included | 6,665 | 172,426 | 3.9% | 320 |
+| Distinct covered methods | 1,136 | | | 160 |
 
-**What a number means.** Most of the 1,105 are small: the ADR-060 families compile one small validator under many names, so distinct
-scripts is the fairer count. 172,424 counts library bodies, which this slice does not lower. Of the 1,105, source maps have equal
-fragments in 745 and differ only in a fragment's text in 358; every line and column is equal.
+**What a number means.** Most of the 1,107 are small: the ADR-060 families compile one small validator under many names, so distinct
+scripts is the fairer count. 172,426 counts library bodies, which this slice does not lower. Of the 1,107, source maps have equal
+fragments in 745 and differ only in a fragment's text in 360; every line and column is equal.
 
 ### The worklist
 
@@ -204,15 +203,15 @@ On the first run after the merge, `:julc-difftest:test` failed in `Adr068Rejecti
 and `adr068Lowering` failed on the 9 fixtures with no reference row. Both are closed at `9f3a71d1`. The `JulcPluginTest` failure and the two
 `wasmSmokeFull` timeouts of the pre-merge runs were at a load of 200, and did not recur.
 
-**The default path against B2.** `adr068Baseline` compares what it writes with M3a's B2 tables, byte for byte, with the gate off, and passed:
+**The default path against B3.** `adr068Baseline` compares what it writes with the B3 tables, byte for byte, with the gate off, and passed:
 ledger, semantic, budget, instantiations, rejection inventory and corpus. The one exception it allows is the totals' `coverage` line,
 which counts the rejection catalogue: 161 sites, not 157, of which 44 are not source rejections, not 40. Those four are `JULC0086`,
 `JULC0087`, `JULC0090` and `JULC0102`, none a rejection of the frozen frontend.
 
 | Check | Result |
 |---|---|
-| Byte identity against the reference | 1,105 programs, at all four levels, with and without a source map |
-| I1b | 6,663 methods equal the reference's term and type up to alpha-equivalence, 1,133 of them distinct |
+| Byte identity against the reference | 1,107 programs, at all four levels, with and without a source map |
+| I1b | 6,665 methods equal the reference's term and type up to alpha-equivalence, 1,136 of them distinct |
 | I13's binding check | On, on every compilation in tests and each method lowered on its own. No violation. A read of a class's static method carries its element and is checked as a variable's is. A library call site's read is still exempt, as the follow-ups say |
 | ADR-060 | `GeneratedBinderNameLintTest`, `BinderNameIndependenceTest` and `julc.verifyBinderNamespace` stay green |
 | The three lints | Green. `lower/` looks nothing up by a made-up name: `facts.identity` is the only way to a registry |
@@ -465,7 +464,7 @@ and `find`, `a library unit`, `a contract schema` and `debug metadata`. These ar
 
 - **Programs with locals.** A covered program is a set of single `return`s. No element is bound twice, and no continuation is
   duplicated, so I13 is still on easy terms.
-- **The rows of the table above.** The ported ones are pinned, and go to the calls slice. The stops are `JULC0084`, and M5's zero-count
+- **The rows of the table above.** The ported ones are pinned. The stops are `JULC0084`, and M5's zero-count
   gate does not accept that code, so each is listed in [the stops](#the-stops-for-m5) for its decision.
 - **Library bodies.** Call sites are compared by I1b. No program that reads a library unit compiles, so no library call has run on
   this frontend.

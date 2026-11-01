@@ -785,7 +785,7 @@ Each milestone appends the javac frontend's row and, for every difference, one c
 | **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, D15, I11) | The decision; a rejection test with the code; docs and release notes |
 | **javac rejection** | javac rejects a migration case (dialect, D6) | The rewritten Java source, which gets its own row; a case D6 removes keeps its rejection row and has none |
 | **Accepted by decision** | The javac frontend accepts a case the reference rejected (escape shapes, javac 25's switch shapes, ADR-067 M2a/M2b record patterns) | The decision; a `.diffcase` per shape on which the javac frontend agrees with the JVM |
-| **Diagnostic change** | Both reject, with a different code, message or position | For a coded JuLC rejection, only a decision this ADR names or I2b's javac-first rejection; for an uncoded one, its new code (I2a) |
+| **Diagnostic change** | Both reject, with a different code, message or position | For a coded JuLC rejection, only a decision this ADR names or I2b's javac-first rejection; for an uncoded one, its new code (I2a) A row that differs only in its diagnostics, such as a warning one frontend reports with the gate off, is `DIFFERENT-diagnostics`, and this class explains it; a row that also differs in bytes or params stays `DIFFERENT-bytes`. |
 | **Provenance change** | Only source locations differ (I7) | The location pairs, and the rule that explains them |
 | **Schema name change** | A blueprint names a type differently, and its encoding is equal, because D8 reads only the units a program references | The two names, and the unit D8 does not read |
 | **Representation only** | Bytes differ; semantic observations and budgets equal | The PIR diff |
@@ -1336,3 +1336,7 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     table equal to its last version under the renames.
   - The tool correction in `50f3a18e` stands, as M3a's evidence records it. `julc-cli`'s detection of constant string `+`
     stays a later item.
+  - D13: a row that differs only in its diagnostics is `DIFFERENT-diagnostics`, which "Diagnostic change" explains.
+    `JULC0102`, a warning on both frontends that comes from the gate on the JavaParser frontend, is the first such row.
+  - B3: `mod`, `take` and `drop` fail where Java throws, on both frontends, under exception 2. This is the third reference
+    change (`068-m3-reference-b3.md`).
