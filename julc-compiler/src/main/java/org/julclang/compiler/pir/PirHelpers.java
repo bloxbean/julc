@@ -185,7 +185,17 @@ public final class PirHelpers {
     }
 
     private static boolean isTrivialOperand(PirTerm term) {
-        return term instanceof PirTerm.Var || term instanceof PirTerm.Const;
+        return term instanceof PirTerm.Var && !isMethodRead(term) || term instanceof PirTerm.Const;
+    }
+
+    /**
+     * Whether {@code term} reads a method's binder: a method with no parameters, called. A method is bound under a qualified
+     * name, in the namespace {@link org.julclang.compiler.resolve.SymbolTable#declareMethod} describes, which no variable
+     * can have. Such a read is no variable: if its body may fail, {@link DelayedMethodPass} makes it a call, so evaluating
+     * it has an effect, and a term that reads it twice runs the body twice.
+     */
+    public static boolean isMethodRead(PirTerm term) {
+        return term instanceof PirTerm.Var variable && variable.name().indexOf('.') >= 0;
     }
 
     /**

@@ -187,7 +187,7 @@ class G1GatesTest {
         assertTrue(G1.Profile.REDISCOVER_209.text().endsWith("+SHADOW_IN_LOOP_BRANCH +LOOP_BREAK_SHAPES -TRACE_IN_COMPARISON "
                         + "+DEFAULT_BLOCK_SCOPE steer=209"),
                 G1.Profile.REDISCOVER_209.text());
-        // A steer needs its gate: ZERO_ARG_HELPERS is off in the default profile (#280 is open).
+        // A steer needs its gate: ZERO_ARG_HELPERS is off in the default profile.
         assertThrows(HarnessException.class, () -> G1.Profile.DEFAULT.steered(G1.Steer.ISSUE_280));
         for (String bad : List.of("G0 r2 -GUARDS", text.replace("G1 r9", "G1 r8"), text + " steer=999", text + " steer=280", text.replace("-GUARDS ", ""), text + " -GUARDS",
                 text.replace("-GUARDS", "-WHATEVER"), text.replace("-GUARDS", "GUARDS"), "G1 r1")) {

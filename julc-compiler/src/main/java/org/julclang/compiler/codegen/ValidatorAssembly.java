@@ -8,6 +8,7 @@ import org.julclang.compiler.JulcCompiler.ScriptPurpose;
 import org.julclang.compiler.backend.PirBackend;
 import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.pir.DelayedMethodPass;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -161,7 +162,8 @@ public final class ValidatorAssembly {
         PirTerm wrapped = wrap(validator, types, context, frontend);
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
-        var lowered = PirBackend.lower(wrapped, context, frontend.positions(), true, frontend.provenance());
+        var delayed = delayMethods(wrapped, validator.helpers(), validator.statics(), validator.libraries(), frontend);
+        var lowered = PirBackend.lower(delayed.term(), context, delayed.positions(), true, frontend.provenance());
         var program = lowered.program();
         var result = new CompileResult(
                 program, context.diagnostics(), paramInfos(validator.params()),
@@ -322,8 +324,9 @@ public final class ValidatorAssembly {
         body = bindParams(program.params(), body, frontend);
 
         frontend.finalCheck().accept(body);
+        var delayed = delayMethods(body, program.methods(), program.statics(), program.libraries(), frontend);
         // 17. Lower to UPLC (with source map support)
-        var lowered = PirBackend.lowerQuietly(body, context, frontend.positions());
+        var lowered = PirBackend.lowerQuietly(delayed.term(), context, delayed.positions());
         return new CompileResult(
                 lowered.program(), context.diagnostics(), paramInfos(program.params()), lowered.pir(),
                 lowered.program().term(), lowered.sourceMap(),
@@ -331,6 +334,17 @@ public final class ValidatorAssembly {
     }
 
     // --- Bindings ---
+
+    /** A method with no parameters that may fail runs at each call ({@link DelayedMethodPass}). */
+    private static DelayedMethodPass.Result delayMethods(PirTerm term, List<Method> methods, List<StaticField> statics,
+                                                         Collection<LibraryMethod> libraries, Frontend frontend) {
+        var binders = new LinkedHashSet<String>();
+        methods.forEach(method -> binders.add(method.name()));
+        libraries.forEach(method -> binders.add(method.qualifiedName()));
+        var fields = new LinkedHashSet<String>();
+        statics.forEach(field -> fields.add(field.name()));
+        return new DelayedMethodPass(binders, fields, frontend.positions(), frontend.provenance()).lower(term);
+    }
 
     private static boolean containsVarRef(PirTerm term, String name) {
         return PirHelpers.containsVarRef(term, name);

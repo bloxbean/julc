@@ -55,6 +55,9 @@ class Adr060ByteSnapshotTest {
         }
         // ADR-068 B3: this program's drop takes a local count, which takes the check a negative count fails.
         EXPLAINED.put("hygiene-17-", "ADR-068 B3: JulcList.drop fails on a negative count");
+        // ADR-068 B4: each of these compiles a method with no parameters that may fail, which is a function of a unit now.
+        for (int id : List.of(0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 19, 21, 22, 23, 25)) delayed("o10-" + id);
+        for (int id : List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 28, 30)) delayed("o14-" + id);
         // ADR-032 O2: a condition the proof does not establish, such as a lambda parameter, lowers to builtin
         // IfThenElse at the levels that have Case. Source-map rows of these programs are explained above.
         String condition = "ADR-032 O2: a condition not proven boolean lowers to builtin IfThenElse";
@@ -65,6 +68,11 @@ class Adr060ByteSnapshotTest {
             EXPLAINED.put(id + "-PV11_SAFE-false", condition);
             EXPLAINED.put(id + "-PV11_COSTED-false", condition);
         }
+    }
+
+    private static void delayed(String id) {
+        for (var row : List.of("BASELINE-false", "PV11_SAFE-false", "PV11_COSTED-false"))
+            EXPLAINED.put(id + "-" + row, "ADR-068 B4: a method with no parameters that may fail runs at each call");
     }
 
     @Test

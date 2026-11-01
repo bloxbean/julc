@@ -71,10 +71,10 @@ class G1DecodeTest {
     }
 
     /**
-     * The profile and the inputs are part of the recorded case (G1-I5; review of M2, F73). A case that fails under a
-     * historical profile, with inputs, goes through the real failure-record path ({@link G1PropertyTest#verify},
-     * {@link CampaignVerifier}, {@link RegressionStore}); its record names the profile, the plan and the inputs, and
-     * regenerating from them gives back its source, tags and arguments.
+     * The profile and the inputs are part of the recorded case (G1-I5; review of M2, F73). A case under a historical
+     * profile, with inputs, is written as {@link CampaignVerifier} writes a failure ({@link RegressionStore}); its record
+     * names the profile, the plan and the inputs, and regenerating from them gives back its source, tags and arguments.
+     * No defect a profile steers to is open now, so no generated case fails on its own.
      */
     @Test
     void aFailureRecordRegeneratesItsCase() {
@@ -84,12 +84,10 @@ class G1DecodeTest {
             var plan = random(random, 200);
             var program = G1.decode(plan, G1.Profile.REDISCOVER_280);
             if (!program.features().contains(G1.Feature.ZERO_ARG_HELPER)) continue;
-            try {
-                G1PropertyTest.verify("G1DecodeTest", plan, inputs, program);
-                continue;
-            } catch (AssertionError expected) {
-                // The case diverges (#280) and is written to the failure record.
-            }
+            var diffCase = new DiffCase("g1 " + plan, program.source(), "Probe", "m", program.arguments(inputs), program.tags(),
+                    program.profile().text());
+            RegressionStore.write(CampaignVerifier.LAST_FAILURE, diffCase, RegressionStore.Expectation.AGREE, null,
+                    CampaignVerifier.provenance("G1DecodeTest", G1.VERSION, plan, inputs), CampaignVerifier.RUNNER.run(diffCase));
             var saved = RegressionStore.read(CampaignVerifier.LAST_FAILURE);
             try {
                 assertEquals(G1.Profile.REDISCOVER_280.text(), saved.diffCase().profile());
@@ -106,7 +104,7 @@ class G1DecodeTest {
                 CampaignVerifier.LAST_FAILURE.toFile().delete();
             }
         }
-        fail("no #280 case found to record");
+        fail("no case with a zero-parameter helper found to record");
     }
 
     /**

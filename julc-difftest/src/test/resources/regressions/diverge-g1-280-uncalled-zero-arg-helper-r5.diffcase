@@ -6,12 +6,12 @@ profile: G1 r5 -GUARDS -RECORD_PATTERNS -CROSS_TYPE_EQUALS -SHARED_VARIANT -ASSI
 arg: 06
 arg: 03
 arg: 9f02ff
-expect: DIVERGE #280 Value/Value
-jvm: Value 24 []
-uplc: Value 24 ["k0"]
+expect: AGREE
 note: Rediscovered by the G1 r5 campaign under REDISCOVER_280 (ADR-066 D10.1), the shrunk reproducer as found.
 note: UPLC evaluates the body of a zero-parameter helper at script start, so its trace appears although Java never
 note: calls it. Provisional until #280 is fixed.
+note: ADR-068 B4 fixed #280: a method with no parameters whose body may fail or trace runs at each call, so
+note: one that is not called does not trace, and the case agrees at every level. Its expectation is AGREE.
 found.by: G1PropertyTest rediscovery
 found.generator: G1 r5
 found.plan: 0,0,2,0,0,0,0,0,0,0,0,0,0,0,1,0,3,0,0,0,0,0,2,0,0,0,0,0,1,0,0,0,2,0,0,101,19,26,13,799,48,11,49,679,567,13,2,287,13,64,11
