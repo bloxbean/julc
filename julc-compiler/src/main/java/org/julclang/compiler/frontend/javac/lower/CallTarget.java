@@ -12,7 +12,7 @@ sealed interface CallTarget {
 
     /** The compiler's own meaning of an API method. */
     enum Intrinsic implements CallTarget {
-        /** {@code BigInteger.valueOf(n)} and a ledger type's {@code fromPlutusData(d)}: the argument. */
+        /** {@code BigInteger.valueOf(n)}: the argument. */
         IDENTITY,
         /** {@code PlutusData.cast(d, T.class)}: a view of the value, decoded only into a map. */
         CAST,

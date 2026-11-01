@@ -122,7 +122,22 @@ class Adr068EqualityHarnessTest {
         rows.add(refused("Y8", "JULC0078", "public static boolean m(Map<R, BigInteger> a, Q q) { return a.containsKey(q); }", FALSE, m(c(0, i(1)), i(1)), c(0, i(1))));
         rows.add(refused("Y14", "JULC0078", "public static boolean m(List<String> a, PubKeyHash q) { return a.contains(q); }", FALSE, l(s("x")), s("x")));
         rows.add(refused("get", "JULC0078", M_INT + ") { return a.get(5L) == null; }", TRUE, m(i(5), i(1))));
+        rows.add(refused("value", "JULC0078", M_INT + ") { return a.containsValue(1L); }", FALSE, m(i(5), i(1))));
+        rows.add(refused("default", "JULC0078", M_INT + ") { return a.getOrDefault(5L, BigInteger.ONE).signum() > 0; }", TRUE, m(i(5), i(1))));
         rows.add(refused("cond", "JULC0078", L_INT + ", boolean c, BigInteger b) { return a.contains(c ? b : \"x\"); }", FALSE, l(i(5)), FALSE, i(5)));
+        // Containers compare by their type arguments.
+        rows.add(refused("B12", "JULC0078", "public static boolean m(BigInteger a) { return Optional.of(a).equals(Optional.of(1)); }", FALSE, i(1)));
+        rows.add(refused("B13", "JULC0078", "public static boolean m() { return Optional.of(1).equals(Optional.of(1L)); }", FALSE));
+        rows.add(refused("T44", "JULC0078", "public static boolean m(R a, Q b) { return Optional.of(a).equals(Optional.of(b)); }", FALSE, c(0, i(1)), c(0, i(1))));
+        rows.add(refused("T45", "JULC0078", "public static boolean m(String a, byte[] b) { return Optional.of(a).equals(Optional.of(b)); }", FALSE, s("x"), s("x")));
+        rows.add(refused("T46", "JULC0078", "public static boolean m(PubKeyHash a, TokenName b) { return Optional.of(a).equals(Optional.of(b)); }", FALSE, s("x"), s("x")));
+        rows.add(refused("E12", "JULC0078", "public static boolean m(Tuple2<BigInteger, BigInteger> a, Tuple2<PlutusData, PlutusData> b) { return a.equals(b); }", FALSE, c(0, i(1), i(2)), c(0, i(1), i(2))));
+        rows.add(refused("T43", "JULC0078", "public static boolean m(Tuple2<R, R> a, Tuple2<PlutusData, PlutusData> b) { return a.equals(b); }", FALSE, c(0, c(0, i(1)), c(0, i(1))), c(0, c(0, i(1)), c(0, i(1)))));
+        rows.add(refused("T47", "JULC0078", "public static boolean m(Tuple2<PubKeyHash, BigInteger> a, Tuple2<TokenName, BigInteger> b) { return a.equals(b); }", FALSE, c(0, s("x"), i(1)), c(0, s("x"), i(1))));
+        rows.add(refused("T48", "JULC0078", "public static boolean m(Tuple2<String, BigInteger> a, Tuple2<PubKeyHash, BigInteger> b) { return a.equals(b); }", FALSE, c(0, s("x"), i(1)), c(0, s("x"), i(1))));
+        rows.add(refused("T3", "JULC0078", "public static boolean m(Tuple3<BigInteger, BigInteger, String> a, Tuple3<BigInteger, BigInteger, byte[]> b) { return a.equals(b); }", FALSE, c(0, i(1), i(2), s("x")), c(0, i(1), i(2), s("x"))));
+        rows.add(refused("nested", "JULC0078", "public static boolean m(Optional<JulcList<BigInteger>> a, Optional<JulcList<String>> b) { return a.equals(b); }", FALSE, c(0, l(i(1))), c(0, l(s("x")))));
+        rows.add(refused("lists", "JULC0078", "public static boolean m(List<JulcList<String>> a, JulcList<byte[]> b) { return a.contains(b); }", FALSE, l(l(s("x"))), l(s("x"))));
         return rows.stream();
     }
 

@@ -129,6 +129,14 @@ class JavacCallsTest {
         assertSame("sealed interface S { record A(BigInteger x) implements S { } } static boolean m(S a, S b) { return a.equals(b); }");
     }
 
+    /** What {@code EqualityRelation} reads past: a wildcard by its bound, a type variable and a raw argument not at all. */
+    @Test
+    void aWildcardIsReadByItsBound() {
+        assertEquals("JULC0078", rejected("record R(BigInteger x) { } record Q(BigInteger x) { }\n"
+                + "static boolean m(java.util.List<? extends R> a, Q b) { return a.contains(b); }").code());
+        assertEquals("JULC0087", rejected("static boolean m(java.util.Optional<BigInteger> a, java.util.Optional b) { return java.util.Objects.equals(a, b); }").code());
+    }
+
     @Test
     void equalsBetweenUnrelatedTypesDoesNotLower() {
         assertEquals("an equals between unrelated types", notPorted("static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }"));

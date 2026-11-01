@@ -100,11 +100,12 @@ final class CallTargets {
             return CallTarget.Intrinsic.IDENTITY;
         }
         if (name.equals("fromPlutusData") && arguments == 1 && inLedger(identity)) {
+            // The reference's identity checks nothing where the JVM decodes or throws, and leaves a hash undecoded. The
+            // entry points' slice brings the strict boundary check, which is what can lower this.
             var type = facts.registry().lookupNominal(facts.identity(owner));
-            // A ledger record is Data, and stays Data. A hash is bytes, which the reference's identity leaves undecoded.
             if (type.isPresent()) {
-                return type.get() instanceof PirType.ByteStringType
-                        ? new CallTarget.NotLowered("fromPlutusData on a ledger hash") : CallTarget.Intrinsic.IDENTITY;
+                return new CallTarget.NotLowered(type.get() instanceof PirType.ByteStringType
+                        ? "fromPlutusData on a ledger hash" : "fromPlutusData on a ledger type");
             }
         }
         if (identity.equals(JavacNames.PLUTUS_DATA) && name.equals("cast") && arguments == 2) {

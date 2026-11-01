@@ -155,8 +155,7 @@ final class EqualityRules {
                         ArrayIdentityEquality.text(result.left()) + " against " + ArrayIdentityEquality.text(result.right())
                                 + ", which cannot be decided", facts.location(tree));
                 case UNRELATED -> {
-                    if (!site.collectionOperation()) {
-                        if (result.inArgument()) continue;
+                    if (!site.collectionOperation() && !result.inArgument()) {
                         throw NotPorted.at(facts, tree, "an equals between unrelated types");
                     }
                     throw CompilerTypeDiagnostics.equalsAlwaysFalse(site.operation(), ArrayIdentityEquality.text(result.left()),
