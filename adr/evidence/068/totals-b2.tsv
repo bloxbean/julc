@@ -24,7 +24,7 @@ instantiations.NONE	accepted 33	rejected 14	unreplayable 0
 instantiations.BASELINE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_SAFE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_COSTED	accepted 33	rejected 14	unreplayable 0
-inventory.rows	permanent 1817	scheduled 21
+inventory.rows	permanent 1818	scheduled 21
 inventory.cases	1753
 coverage	sites 153	covered 119	not-source 34	uncovered 0	uncatalogued 0	contradicted 0
 runs	1873
@@ -38,11 +38,11 @@ evaluations.external.replay.matched-not-replayed	124
 evaluations.external.replay.unmatched	32
 evaluations.recorded.excluded.harness	6231
 evaluations.recorded.excluded.nondeterministic-tests	21
-evaluations.recorded.replay.agree	1202
-evaluations.recorded.replay.matched-not-replayed	5982
-evaluations.recorded.replay.unmatched	15657
+evaluations.recorded.replay.agree	1197
+evaluations.recorded.replay.matched-not-replayed	5966
+evaluations.recorded.replay.unmatched	15678
 sha256	ledger-b0-evaluations-external.tsv	1c94b83dbfca5c6ed68fbfdb3eb236aecb8f5bf4f4e245cc63143cf65fa02fb9
-sha256	ledger-b0-evaluations.tsv	6e45f15da25fac66f241bd0a866ab65df1a1fb59603895059faf0fb47c7cf705
+sha256	ledger-b0-evaluations.tsv	047ad46742081c685161fbf21ba7b1eaf9b248540c5aacfa9a8f251a4559fb59
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.StdlibIntegrationTest$1	5
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.pir.CompositeStdlibLookup	2
 unreplayable	custom stdlib lookup custom:org.julclang.stdlib.StdlibRegistry	3
