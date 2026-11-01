@@ -136,6 +136,7 @@ class Adr068EqualityHarnessTest {
         rows.add(refused("T47", "JULC0078", "public static boolean m(Tuple2<PubKeyHash, BigInteger> a, Tuple2<TokenName, BigInteger> b) { return a.equals(b); }", FALSE, c(0, s("x"), i(1)), c(0, s("x"), i(1))));
         rows.add(refused("T48", "JULC0078", "public static boolean m(Tuple2<String, BigInteger> a, Tuple2<PubKeyHash, BigInteger> b) { return a.equals(b); }", FALSE, c(0, s("x"), i(1)), c(0, s("x"), i(1))));
         rows.add(refused("T3", "JULC0078", "public static boolean m(Tuple3<BigInteger, BigInteger, String> a, Tuple3<BigInteger, BigInteger, byte[]> b) { return a.equals(b); }", FALSE, c(0, i(1), i(2), s("x")), c(0, i(1), i(2), s("x"))));
+        rows.add(refused("intersection", "JULC0078", "public static boolean m(boolean c, R r, S.A a, S.B b) { return Optional.of(r).equals(Optional.of(c ? a : b)); }", FALSE, TRUE, c(0, i(1)), c(0, i(1)), c(1, i(1))));
         rows.add(refused("nested", "JULC0078", "public static boolean m(Optional<JulcList<BigInteger>> a, Optional<JulcList<String>> b) { return a.equals(b); }", FALSE, c(0, l(i(1))), c(0, l(s("x")))));
         rows.add(refused("lists", "JULC0078", "public static boolean m(List<JulcList<String>> a, JulcList<byte[]> b) { return a.contains(b); }", FALSE, l(l(s("x"))), l(s("x"))));
         return rows.stream();

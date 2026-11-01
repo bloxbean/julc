@@ -137,6 +137,12 @@ class JavacCallsTest {
         assertEquals("JULC0087", rejected("static boolean m(java.util.Optional<BigInteger> a, java.util.Optional b) { return java.util.Objects.equals(a, b); }").code());
     }
 
+    /** Only one array type is in the subset, so two arrays of different types are read through a list of each. */
+    @Test
+    void twoArraysAreRelatedAtOneType() {
+        assertEquals("JULC0078", rejected("static boolean m(JulcList<byte[]> a, java.util.List<long[]> b) { return java.util.Optional.of(a).equals(java.util.Optional.of(b)); }").code());
+    }
+
     @Test
     void equalsBetweenUnrelatedTypesDoesNotLower() {
         assertEquals("an equals between unrelated types", notPorted("static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }"));
