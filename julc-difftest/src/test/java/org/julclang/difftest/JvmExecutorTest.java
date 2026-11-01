@@ -127,11 +127,12 @@ class JvmExecutorTest {
     /**
      * javac 21.0.3 and 25.0.2 accept this program and emit a class the JVM's verifier rejects (a pattern switch used as
      * an {@code if} test, then a pattern switch passed as an argument): an oracle fault, not an observation (ADR-063
-     * H6, ADR-066 M3). G1 keeps switches out of tests. If a later javac emits a valid class, this case runs, and the
-     * test needs another class the JVM rejects.
+     * H6, ADR-066 M3). G1 keeps switches out of tests. javac 25.0.5 emits a valid class, so these tests run on the older
+     * javacs that do not, and they need another class the JVM rejects (ADR-068 follow-ups).
      */
     @Test
     void aClassTheJvmRejectsIsAHarnessError() {
+        assumeUnverifiableClasses();
         String source = """
                 import java.math.BigInteger;
 
@@ -277,6 +278,11 @@ class JvmExecutorTest {
                 }
                 """;
 
+    /** By version and not by a probe: a probe would also skip these tests if the harness stopped seeing a rejected class. */
+    private static void assumeUnverifiableClasses() {
+        assumeTrue(Runtime.version().compareTo(Runtime.Version.parse("25.0.5")) < 0, "javac 25.0.5 and later emit a valid class");
+    }
+
     private static DiffCase localUnverifiable() {
         var tags = TagTable.of(new TagTable.Entry("Probe$C0", "Probe$S0", 0), new TagTable.Entry("Probe$B0", "Probe$S0", 1),
                 new TagTable.Entry("Probe$A0", "Probe$S0", 2));
@@ -285,6 +291,7 @@ class JvmExecutorTest {
 
     @Test
     void aLocalClassTheJvmRejectsIsAHarnessError() {
+        assumeUnverifiableClasses();
         var e = assertThrows(HarnessException.class, () -> new JvmExecutor(5_000).run(localUnverifiable()));
         assertTrue(e.getMessage().contains("the JVM rejects javac's class") && e.getMessage().contains("VerifyError")
                 && e.getMessage().contains("Probe$1Local"), e.getMessage());
@@ -317,6 +324,7 @@ class JvmExecutorTest {
      */
     @Test
     void aBatchKeepsEachSourcesClassesApart() {
+        assumeUnverifiableClasses();
         for (var names : List.of(List.of("Probe", "Probe$Other"), List.of("Probe$", "Probe$$Lambda"))) {
             var executor = new JvmExecutor(5_000);
             var sound = new DiffCase("sound", "public class " + names.get(0) + " {\n    public static long m(long n) { return n + 1; }\n}\n",
@@ -335,6 +343,7 @@ class JvmExecutorTest {
      */
     @Test
     void aWorkDirectoryWithDotSegmentsStillVerifiesEveryClass(@TempDir Path temp) throws IOException {
+        assumeUnverifiableClasses();
         Files.createDirectories(temp.resolve("a"));
         Files.createDirectories(temp.resolve("b"));
         var executor = new JvmExecutor(5_000, temp.resolve("a").resolve("..").resolve("b"));
@@ -353,6 +362,7 @@ class JvmExecutorTest {
      */
     @Test
     void aWorkDirectoryThroughASymlinkAndDotDotStillVerifiesEveryClass(@TempDir Path temp) throws IOException {
+        assumeUnverifiableClasses();
         Files.createDirectories(temp.resolve("real").resolve("b"));
         try {
             Files.createSymbolicLink(temp.resolve("link"), temp.resolve("real").resolve("x"));
