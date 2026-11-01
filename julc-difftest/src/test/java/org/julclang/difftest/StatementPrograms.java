@@ -18,8 +18,8 @@ import java.util.Set;
  * written out, so three independent answers meet in {@code Adr068StatementsPropertyTest}.
  * <p>
  * A plan is a list of choices, so jqwik shrinks it and Jazzer drives it. Every plan decodes to a valid Java program: a
- * local's name is not one an enclosing block holds, a statement after a {@code return} is not written, and a block that
- * can complete is the method's last only if a {@code return} follows. Arithmetic stays small, so no {@code int} wraps.
+ * local's name is not one in scope, a pattern variable's after its {@code if} included, a statement after a {@code return}
+ * is not written, and a block that can complete is the method's last only if a {@code return} follows. Arithmetic stays small, so no {@code int} wraps.
  */
 final class StatementPrograms {
 
@@ -142,9 +142,9 @@ final class StatementPrograms {
     }
 
     /** What a point in a method can read. */
-    private record Visible(Set<String> locals, Map<String, Integer> patterns) {
+    private record Visible(Set<String> locals, Map<String, Integer> patterns, Set<String> introduced) {
         Visible copy() {
-            return new Visible(new HashSet<>(locals), new HashMap<>(patterns));
+            return new Visible(new HashSet<>(locals), new HashMap<>(patterns), new HashSet<>(introduced));
         }
 
         List<String> numbers() {
@@ -155,13 +155,13 @@ final class StatementPrograms {
         }
 
         boolean taken(String name) {
-            return locals.contains(name) || patterns.containsKey(name);
+            return locals.contains(name) || patterns.containsKey(name) || introduced.contains(name);
         }
     }
 
     static Program decode(List<Integer> plan, List<Integer> inputs) {
         var choices = new Choices(plan);
-        var visible = new Visible(new HashSet<>(), new HashMap<>());
+        var visible = new Visible(new HashSet<>(), new HashMap<>(), new HashSet<>());
         var body = block(choices, visible, 0, true);
         var input = new Choices(inputs);
         long a = input.next(9) - 4;
@@ -180,6 +180,12 @@ final class StatementPrograms {
             statements.add(statement);
             if (!completes(statement)) return statements;
             if (statement instanceof Local local) visible.locals().add(local.name());
+            // JLS 6.3.2.2: when the else cannot complete, a pattern variable is in scope after the if. No program reads it,
+            // since the subset does not, but its name is taken.
+            if (statement instanceof Branch branch && branch.condition() instanceof TestOf test
+                    && branch.otherwise() != null && !completes(branch.otherwise())) {
+                visible.introduced().add(test.name());
+            }
         }
         if (last) statements.add(new Return(expression(choices, visible, 1)));
         return statements;
