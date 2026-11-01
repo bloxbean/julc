@@ -427,7 +427,16 @@ testkit expose it from M3, once a compilation can succeed on it; at M2 each woul
   gate (D15) may close it in place of a change to that frontend. This narrows exception 2 on purpose. The reference
   runs with the gate off, so it keeps its reading, and the rule is not a reference change. Under `report` or `off`
   the rule does not hold. T33, and T31's explicit accessors and `equals`, close this way: their `.diffcase`s expect
-  the rule, and they stay on the accepted list only for a compile with the gate off. T5 stays open.
+  the rule, and they stay on the accepted list only for a compile with the gate off. So does T29's `equals` between
+  two `@NewType`s. T5 stays open.
+- **Two fixes in that frontend (r11).** Where a rule would be more code than the fix, exception 2 applies as written:
+  `generateInstanceOf` resolves its type as the guard path does, and a library unit raises the errors its generator
+  collected, as a root does. Neither moved a row of B2 or of I1's reference, so B2 stands.
+- **After M3a (r11).** No sweep can exhaust what the JavaParser frontend reads, and M5 closes that class by
+  construction. So from M3a's close, a further misreading in that frontend alone goes on the "Closed by M5" list in
+  the follow-ups, and its program becomes a required test of the javac slice that lowers the construct. A defect in code
+  both frontends use (`TypeMethodRegistry`, the stdlib, assembly) is still fixed at once. This narrows exception 2
+  further, and it holds only while nothing from this work is released before M5. A release before M5 reopens it.
 
 ### D5. javac's diagnostics are JuLC's diagnostics for invalid Java
 
@@ -827,12 +836,13 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 |---|---|---|
 | `JULC0093` | A literal holds no unpaired surrogate | `frontend=JAVAC`; the reference's reader rejects it, uncoded |
 | `JULC0094` | An entry point returns `boolean` or `java.lang.Boolean`, by identity | Both |
-| `JULC0095` | A field nothing lowers holds only a literal, a `new byte[]{...}` of literals, an API constant, a constant variable, or `Boolean.valueOf` of a literal; an initializer block is empty | Both |
+| `JULC0095` | A field nothing lowers holds only a literal, a `new byte[]{...}` of literals, an API constant, a constant variable, or `Boolean.valueOf` of a literal; an initializer block is empty. A library's static field holds the same list at the gate, because it runs at script start whether or not Java initializes the class | Both; a library's static field, the gate only until the library slice ports it |
 | `JULC0096`, `JULC0097` | One entry point of a purpose in a validator; an entry point is static | `frontend=JAVAC`; the reference has its own rejections |
 | `JULC0098` | The operand of a cast to `boolean` or `Boolean` is a boolean, including `PlutusData.cast` and the other calls lowered to their argument | Both |
 | `JULC0099` | A constructor holds no statement | Both |
 | `JULC0100` | A name the JavaParser frontend reads by spelling binds, at every use, to what it reads | The gate only |
-| `JULC0101` | A method does not take a name that frontend reads in place of the method's body | The gate only |
+| `JULC0101` | A method does not take a name that frontend reads in place of the method's body, and a call on a `@NewType` or on what lowers to bytes is its accessor | The gate only |
+| `JULC0092` | Existing (I11). The gate also applies it where a sealed interface's variants, read as `TypeRegistrar` reads them, differ from javac's list | Both |
 
 - **Modes.** A rule follows the gate's mode on the default frontend: `enforce`, the default, rejects; `report` writes it
   down; `off` turns it off. The first group has no gate to turn off on `frontend=JAVAC`.
@@ -842,6 +852,11 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
   the type it lowers to, a `@NewType` of `byte[]` names its component `value`, no record component is named `equals` or
   `toPlutusData`, and a `@NewType` does not declare `of`, even where a given declaration would have been harmless.
   Over-rejection is the accepted cost until M6.
+- **What else the gate reads.** `JULC0100` also rejects `new` with a class body, an `instanceof` whose operand's static
+  type is not the variant or its sealed interface, and a name in a guard that javac binds to an inherited member. It
+  takes every class offered to a compilation, annotated or not, at any depth, as `LibraryCompiler` compiles it. A
+  variable does not take the name of one, and a type of the unnamed package does not take the name of another type
+  or of a package of the compilation.
 - **Evidence.** The ten policy rows are in [M3a's evidence](evidence/068-m3a-lowering-foundation.md), and the rules, their
   migration notes and the release notes name each remedy.
 
@@ -1285,7 +1300,7 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     `JULC0081` (D3), which extends D3's ownership check beyond top-level types: calls dispatch on these names in M3. It
     is a new rejection the JavaParser frontend does not make; no corpus case is affected.
   - F860 → a variant's constructor is held by identity, not found by simple name.
-- **r11** (2026-11-01, M3a, on repository evidence and the coordinator's decisions):
+- **r11** (2026-11-01, M3a, on repository evidence and the coordinator's decisions; two independent reviews):
   - D4: `JULC0100` rejects T33's shapes and the `Shadow` shape at the gate. A variable does not take the name of a type
     offered to a compilation, a class or a record `Value` is a type key like any other, and no top-level type of the
     unnamed package takes a name of the ledger. The lowering, which the gate's rule stops short of, is unchanged, and
@@ -1298,6 +1313,10 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     `JULC0100` and `JULC0101` leave at M6.
   - Milestones: a milestone closes on independent Claude reviewers when Codex cannot run, and the head goes on the
     "Codex read owed" list. Open question 5 records the decision owed on methods with no parameters.
-  - B2: the key-based Value methods are the second reference change (`068-m3a-reference-b2.md`).
+  - B2: the key-based Value methods are the second reference change (`068-m3a-reference-b2.md`). `Builtins.mapData` on the
+    JVM takes a list of pairs, as the builtin does, which moves no script.
+  - D4: the two fixes in the frozen frontend, and the rule for what is found after M3a. D15: what else the gate reads, and
+    `JULC0092` at the gate. Seven pins are renamed to `reject-*`: T33's six and T29's `equals` between `@NewType`s, each
+    table equal to its last version under the renames.
   - The tool correction in `50f3a18e` stands, as M3a's evidence records it. `julc-cli`'s detection of constant string `+`
     stays a later item.

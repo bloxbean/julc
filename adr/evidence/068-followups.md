@@ -114,6 +114,14 @@ Each entry gives:
 | Goldens under `o8` and `o9` | M3a review (F1048) | 21 rows reproduce from neither side of the change that last touched them. Nothing compares them today | Regenerate them from one commit when M3 closes, and record it |
 | Illustrative doc blocks | M1b | 16 whole-unit doc blocks stay invalid alone on purpose (WRONG/CORRECT pairs, compact source files, cross-file examples, sketches); 408 fragments were scanned only by the BigInteger-operator heuristic | Compile docs' examples in a test (as `ValueOrientedExamplesTest` does) when the docs are next reworked |
 
+## Closed by M5
+
+From M3a's close, a misreading in the JavaParser frontend alone is listed here, not fixed there (ADR-068 D4, r11). Its program becomes a required test of the javac slice that lowers the construct. This list holds only while nothing from this work is released before M5.
+
+| Program | Found | Required test in |
+|---|---|---|
+| None yet | | |
+
 ## Codex read owed
 
 If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).
