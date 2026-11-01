@@ -1,89 +1,94 @@
 cases	17065
-DIFFERENT-bytes	6
+DIFFERENT-bytes	7
 DIFFERENT-diagnostics	2
 DIFFERENT-javac-accepts	19
-DIFFERENT-javac-rejects	35
-DIFFERENT-provenance	4
-DIFFERENT-rejection	10
-both-reject	62
+DIFFERENT-javac-rejects	60
+DIFFERENT-provenance	6
+DIFFERENT-rejection	12
+both-reject	81
 both-reject-javac-first	1288
-i1a-identical	1107
+i1a-identical	1416
 javac-rejects	5359
 ledger-source	38
-not-ported	8634
-reference-rejects-not-ported	484
+not-ported	8297
+reference-rejects-not-ported	463
 unreplayable	17
-coverage	programs	1107	15147
-coverage	distinct programs	332
-coverage	programs of more than one method	808
-coverage	methods	6665	172426
-coverage	distinct methods	1136
+coverage	programs	1416	15147
+coverage	distinct programs	612
+coverage	programs of more than one method	885
+coverage	methods	8847	172426
+coverage	distinct methods	1728
 provenance	-	2
-provenance	fragment	360
-provenance	same	745
-first-construct	VARIABLE	7375
-first-construct	SWITCH_EXPRESSION	688
-first-construct	a library unit	317
-first-construct	IF	249
-first-construct	EXPRESSION_STATEMENT	181
-first-construct	NEW_CLASS	163
+provenance	fragment	553
+provenance	same	861
+first-construct	ENHANCED_FOR_LOOP	3459
+first-construct	WHILE_LOOP	1914
+first-construct	a library unit	1177
+first-construct	SWITCH_EXPRESSION	792
+first-construct	NEW_CLASS	738
+first-construct	LAMBDA_EXPRESSION	379
+first-construct	TYPE_CAST	210
+first-construct	reference equality	37
 first-construct	the exports of library sources	35
-first-construct	TYPE_CAST	28
-first-construct	reference equality	21
-first-construct	LAMBDA_EXPRESSION	17
-first-construct	ENHANCED_FOR_LOOP	15
-first-construct	a contract schema	10
+first-construct	a contract schema	12
+first-construct	a library method	11
 first-construct	METHOD_INVOCATION	9
-first-construct	WHILE_LOOP	7
-first-construct	MEMBER_SELECT	6
+first-construct	MEMBER_SELECT	7
+first-construct	(rejected)	3
 first-construct	TRY	3
+first-construct	an equals between unrelated types	3
+first-construct	debug metadata	3
 first-construct	inheritance	3
-first-construct	LABELED_STATEMENT	2
-first-construct	a library method	2
-first-construct	an equals between unrelated types	2
-first-construct	debug metadata	2
+first-construct	PRIMITIVE_TYPE	2
+first-construct	SWITCH	2
+first-construct	VARIABLE	2
 first-construct	ARRAY_ACCESS	1
 first-construct	BITWISE_COMPLEMENT	1
+first-construct	CHAR_LITERAL	1
 first-construct	CONDITIONAL_AND	1
+first-construct	DO_WHILE_LOOP	1
 first-construct	FOR_LOOP	1
 first-construct	IDENTIFIER	1
 first-construct	LEFT_SHIFT	1
-first-construct	PRIMITIVE_TYPE	1
-first-construct	SWITCH	1
+first-construct	MEMBER_REFERENCE	1
+first-construct	NEW_ARRAY	1
+first-construct	NULL_LITERAL	1
 first-construct	SYNCHRONIZED	1
 first-construct	THROW	1
 first-construct	a wrapper's component read as Data	1
 first-construct	an equals on an array	1
-part	blaster	i1a-identical	2
-part	blaster	not-ported	5
+first-construct	fromPlutusData on a ledger hash	1
+part	blaster	i1a-identical	5
+part	blaster	not-ported	2
 part	c7	i1a-identical	4
 part	c7	not-ported	2
-part	diffcase	DIFFERENT-javac-rejects	9
+part	diffcase	DIFFERENT-javac-rejects	10
 part	diffcase	DIFFERENT-rejection	2
-part	diffcase	both-reject	1
+part	diffcase	both-reject	7
 part	diffcase	both-reject-javac-first	1
-part	diffcase	i1a-identical	22
-part	diffcase	not-ported	117
-part	diffcase	reference-rejects-not-ported	51
+part	diffcase	i1a-identical	34
+part	diffcase	not-ported	104
+part	diffcase	reference-rejects-not-ported	45
 part	elci	i1a-identical	2
 part	elci	not-ported	2
+part	external	DIFFERENT-javac-rejects	2
 part	external	i1a-identical	3
 part	external	javac-rejects	2
-part	external	not-ported	97
+part	external	not-ported	95
 part	g0	not-ported	376
-part	g1	i1a-identical	9
-part	g1	not-ported	114
-part	head	DIFFERENT-bytes	2
+part	g1	i1a-identical	22
+part	g1	not-ported	101
+part	head	DIFFERENT-bytes	3
 part	head	DIFFERENT-javac-accepts	18
-part	head	DIFFERENT-javac-rejects	27
-part	head	DIFFERENT-provenance	2
-part	head	DIFFERENT-rejection	10
-part	head	both-reject	61
+part	head	DIFFERENT-javac-rejects	50
+part	head	DIFFERENT-provenance	4
+part	head	DIFFERENT-rejection	12
+part	head	both-reject	80
 part	head	both-reject-javac-first	1288
-part	head	i1a-identical	1085
+part	head	i1a-identical	1390
 part	head	javac-rejects	121
-part	head	not-ported	8477
-part	head	reference-rejects-not-ported	480
+part	head	not-ported	8146
+part	head	reference-rejects-not-ported	459
 part	head	unreplayable	10
 part	ledger	i1a-identical	1
 part	ledger	ledger-source	38
@@ -99,14 +104,14 @@ part	m3b	both-reject	1
 part	m3b	i1a-identical	4
 part	m3b	not-ported	2
 part	recorded	DIFFERENT-javac-accepts	10
-part	recorded	DIFFERENT-javac-rejects	5
-part	recorded	DIFFERENT-rejection	10
-part	recorded	both-reject	19
+part	recorded	DIFFERENT-javac-rejects	6
+part	recorded	DIFFERENT-rejection	12
+part	recorded	both-reject	24
 part	recorded	both-reject-javac-first	1266
-part	recorded	i1a-identical	182
+part	recorded	i1a-identical	310
 part	recorded	javac-rejects	5241
-part	recorded	not-ported	4071
-part	recorded	reference-rejects-not-ported	420
+part	recorded	not-ported	3942
+part	recorded	reference-rejects-not-ported	413
 part	recorded	unreplayable	10
 part	rules	DIFFERENT-javac-rejects	4
 part	stdlib	not-ported	13
