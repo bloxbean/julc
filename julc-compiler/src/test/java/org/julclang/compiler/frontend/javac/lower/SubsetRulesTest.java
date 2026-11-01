@@ -341,6 +341,23 @@ class SubsetRulesTest {
         });
     }
 
+    /** And a type declared in a lowered field's initializer. */
+    @Test
+    void aFieldOfAnAnonymousTypeHoldsOnlyAConstant() {
+        var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of("""
+                class P {
+                    static long helper() { return 1; }
+                    static Object lowered = new Object() { long f = helper(); };
+                }
+                """)), List.of());
+        program.read(facts -> {
+            var thrown = assertThrows(CompilerException.class, () -> UnloweredInitializers.check(facts,
+                    program.roots().getFirst(), field -> field.getName().contentEquals("lowered")));
+            assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
+            return null;
+        });
+    }
+
     /** A library's static fields lower too, and the same rule holds for the rest. The javac frontend reads no library yet. */
     @Test
     void aLibraryFieldNothingLowersHoldsOnlyAConstant() {
