@@ -144,6 +144,37 @@ class JavacStatementsTest {
         rejected(members);
     }
 
+    /**
+     * Which of two rejections comes first is the reference's order of generation (I2a), and it differs by shape. Each
+     * program breaks two rules, and what the rejection says shows which ran first.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(boolean c, long a) { if (c) { a = 1; return 1; } a = 2; return 2; }",
+            "static long m(boolean c, long a) { if (c) { a = 1; } a = 2; return 2; }",
+            "static long m(S s, long a) { if (s instanceof S.A x) { a = 1; return 1; } else { a = 2; return 2; } }",
+            "static long m(S s, long a) { if (s instanceof S.A x) { a = 1; } else { a = 2; } return 3; }",
+            "static long m(boolean c, long a) { if (c) { a = 1; } else { a = 2; } return 3; }",
+            "static long m(boolean c, long a) { if (c) { a = 1; return 1; } else { a = 2; return 2; } }",
+    })
+    void theFirstOfTwoRejections(String members) {
+        rejected(SUM + members);
+    }
+
+    /** A record's component is no field to the reference, so a pattern variable may take its name: only a field's is {@code JULC0059}. */
+    @Test
+    void aPatternVariableMayTakeAComponentsName() {
+        LoweringFixture.assertSameMethodAsReference("""
+                import java.math.BigInteger;
+                record O(BigInteger a) {
+                    static class C {
+                        sealed interface S { record A(BigInteger v) implements S { } }
+                        static boolean m(S s) { return s instanceof S.A a; }
+                    }
+                }
+                """, "m");
+    }
+
     /** I2: the reference does not know what a stdlib call returns, so neither its call nor a var of it has members. */
     @ParameterizedTest
     @ValueSource(strings = {
