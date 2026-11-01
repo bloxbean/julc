@@ -1441,6 +1441,7 @@ case	parts	change	levels (ref>new: FLAT size, or rejection code)	srcmap	attribut
 6e7e534dcccfbd09ec5ecd812cba7781322551c6eae154ef0f74828d40c3c885	recorded	bytes,srcmap	PV11_SAFE 238>242 PV11_COSTED 238>242	changed	semantics not observed	-
 6e825ba4dadafdc74803a70888a7f9788322c53a8ae9598a0bc46069dc879a37	external	bytes,srcmap	NONE 19014>17054 PV11_SAFE 2064>2076 PV11_COSTED 2064>2076	changed	semantics not observed	-
 6e8c1bc96b37ed74438c8fa117bb439e5bfc3227b58cf7b971d21addb8c11edb	recorded	bytes,srcmap	PV11_SAFE 967>971 PV11_COSTED 967>971	changed	semantics not observed	-
+6e93734d8e41a2975466903208c8c153e70537da6a5972bad7ab1a9605344a74	diffcase,recorded	runs only	-	same	lost observation	diffcase:regressions/diverge-t29-equals-newtypes.diffcase:removed;diffcase:regressions/reject-equals-newtypes.diffcase:new
 6e946e41d7d3ec9dcdaafbe03f0db0feea5f8bf38ab10ced5e64d948ea5294bc	recorded	bytes,srcmap	PV11_SAFE 967>971 PV11_COSTED 967>971	changed	semantics not observed	-
 6eb785dad3527eae82a7b68a3de84f2b59dfce7287902260a45c5c6d8c2569aa	recorded	bytes,srcmap	PV11_SAFE 967>971 PV11_COSTED 967>971	changed	semantics not observed	-
 6eb993691b3f04f5ccfbb65f7c814cf19ae6cff58e7259b0e2aeb44627a080f8	recorded	bytes,srcmap	PV11_SAFE 1602>1610 PV11_COSTED 1602>1610	changed	semantics not observed	-

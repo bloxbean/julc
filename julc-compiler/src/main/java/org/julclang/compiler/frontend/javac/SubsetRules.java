@@ -51,7 +51,7 @@ final class SubsetRules {
         var discovery = new JavacDiscovery(facts);
         for (var unit : roots) {
             if (compiled == JavacGate.Compiled.LIBRARY) {
-                library(facts, unit);
+                library(facts, discovery, unit);
                 continue;
             }
             var type = discovery.compiledClass(unit, compiled);
@@ -61,7 +61,7 @@ final class SubsetRules {
             BooleanCasts.check(facts, unit);
             ConstructorBodies.check(facts, unit);
         }
-        for (var unit : libraries) library(facts, unit);
+        for (var unit : libraries) library(facts, discovery, unit);
     }
 
     /** What the rules warn of in {@code roots}, in order: the same on both frontends, since they read the same trees. */
@@ -74,8 +74,9 @@ final class SubsetRules {
     /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */
     static void checkSpellings(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
                                JavacGate.Compiled compiled, SpelledTypes.Reading reading) {
-        var compiledAsLibraries = new HashSet<>(libraries);
-        if (compiled == JavacGate.Compiled.LIBRARY) compiledAsLibraries.addAll(roots);
+        var libraryUnits = new ArrayList<>(libraries);
+        if (compiled == JavacGate.Compiled.LIBRARY) libraryUnits.addAll(roots);
+        var compiledAsLibraries = new HashSet<>(libraryUnits);
         for (var units : List.of(roots, libraries)) {
             for (var unit : units) {
                 SpelledTypes.check(facts, unit, reading, compiledAsLibraries);
@@ -83,11 +84,12 @@ final class SubsetRules {
             }
         }
         SpelledTypes.checkUnreadUnits(reading);
+        // The JavaParser frontend binds a library's static fields at script start, whether or not Java initializes the class.
+        for (var unit : libraryUnits) UnloweredInitializers.check(facts, unit, field -> false);
     }
 
-    /** A library's static fields run at script start, whether or not Java initializes the class, so none of its fields is lowered in the rule's sense. */
-    private static void library(JavacFacts facts, CompilationUnitTree unit) {
-        UnloweredInitializers.check(facts, unit, field -> false);
+    private static void library(JavacFacts facts, JavacDiscovery discovery, CompilationUnitTree unit) {
+        UnloweredInitializers.check(facts, unit, discovery::isLoweredInALibrary);
         BooleanCasts.check(facts, unit);
         ConstructorBodies.check(facts, unit);
     }
