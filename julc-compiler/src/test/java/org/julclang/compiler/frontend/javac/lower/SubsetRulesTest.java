@@ -202,7 +202,10 @@ class SubsetRulesTest {
             "@Param static BigInteger p = BigInteger.valueOf(1);",
             "@Param static BigInteger p = other;",
             "long instance = helper2();",
-            "static final long K = 1; BigInteger instance = BigInteger.valueOf(K);"})
+            "static final long K = 1; BigInteger instance = BigInteger.valueOf(K);",
+            "BigInteger instance = new BigInteger(\"5\");",
+            "long instance = 1 + 1;",
+            "long instance = helper2() > 0 ? 1 : 2;"})
     void aFieldNothingLowersHoldsOnlyAConstant(String field) {
         assertMethodRule("JULC0095", IMPORTS + """
                 class P {
@@ -213,6 +216,19 @@ class SubsetRulesTest {
                     static long m() { return 1; }
                 }
                 """.formatted(field));
+    }
+
+    /** The one array is {@code byte[]}. The reference has an older word for this; both reject it. */
+    @Test
+    void anArrayInAnInitializerIsNoConstant() {
+        String source = """
+                class P {
+                    long[] instance = new long[]{1};
+                    static long m() { return 1; }
+                }
+                """;
+        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
+        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
     }
 
     @ParameterizedTest
@@ -251,7 +267,11 @@ class SubsetRulesTest {
             "static final long K = 1; long instance = K;",
             "long instance = 5;",
             "long instance = -5;",
-            "String instance = \"s\";"})
+            "String instance = \"s\";",
+            "final long instance = 1 + 1;",
+            "static final long K = 1; final long instance = K * 2;",
+            "final String instance = \"a\" + \"b\";",
+            "static class Nested { static final long K = 1 + 1; }"})
     void aConstantIsWhatAFieldNothingLowersMayHold(String field) {
         assertSameMethodAsReference(IMPORTS + """
                 class P {
