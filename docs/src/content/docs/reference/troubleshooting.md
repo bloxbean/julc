@@ -1317,7 +1317,8 @@ A type of your own named `Boolean` is not `java.lang.Boolean`.
 
 **Cause:** A `static` field of the class being compiled is lowered. Nothing lowers any other
 field (a `@Param`, an instance field, a field of a nested type or a record), and nothing lowers
-an initializer block.
+an initializer block. A library's `static` field binds at script start, whether or not Java
+initializes the class, so it counts as one of these.
 
 **Fix:** Such a field holds only a literal, a `new byte[]{...}` of literals,
 `BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, `PlutusData.UNIT`, a constant variable, or
@@ -1347,8 +1348,7 @@ variable, a type parameter, or an inherited member. The names are:
   `TokenName`, `DatumHash`, `TxId`, `Builtins`, `CryptoProvider`, and the classes of `org.julclang.stdlib.lib`, such as
   `ListsLib`.
 - **The ledger's types, such as `Interval`, `TxOut`, `Rational` or `PubKeyCredential`:** a simple name binds to that type,
-  or to a nested or packaged record or sealed interface, or a library of another unit. No top-level type of the unnamed
-  package takes such a name, of any kind.
+  or to a nested or packaged record or sealed interface, or a library of another unit.
 - **JuLC's annotations, where they stand as annotations:** `Entrypoint`, `Param`, `NewType`, `OnchainLibrary` and the
   validator annotations.
 
@@ -1360,12 +1360,19 @@ More forms read a name:
 - A class, or an interface that is not sealed, does not share its name with a record, a sealed interface or a class of a
   library offered to the compilation, read or not. The same goes for an API or a platform type JuLC does not lower, such
   as `java.util.Set`, and for a type parameter outside a library.
-- A record, a sealed interface or a library class reached by inheritance or a static import is written with its qualifier.
-- Two variants of one sealed interface do not share a simple name.
+- A top-level type of the unnamed package takes no name of the ledger, of another type of the compilation, or of a package
+  of the compilation, of any kind.
+- A record, a sealed interface or a library class reached by inheritance or a static import, or through a qualifier that is
+  not its owner, is written with its owner. A name in a guard does not bind to such a member.
+- Two variants of one sealed interface do not share a simple name. With no `permits` clause, the variants are the records
+  nested in the interface: any other list is `JULC0092`.
 - A class or a record does not take a type key of JuLC's lowering: `IntegerType`, `ByteStringType`, `StringType`,
   `DataType`, `RecordType`, `SumType`, `ListType`, `ArrayType`, `OptionalType`, `MapType`, `PairType` or `Value`.
 - The datum of a three-parameter entry point is written `Optional<...>` exactly when it is one. A type named
   `OptionalThing`, and a qualified `java.util.Optional<T>`, are rejected there.
+- `new` has no class body.
+- The operand of `instanceof` on a variant has the variant's type or its sealed interface's as its static type. A cast to
+  `Object` is rejected there.
 
 **Fix:** Rename the declaration, or write the type JuLC reads.
 
@@ -1376,7 +1383,10 @@ More forms read a name:
 accessor or `equals` on a record, and `equals` on a sealed interface. The same goes for a `@NewType`'s component named like a method of
 the type it lowers to, such as `abs` on a `BigInteger` or `length` on a `byte[]` or `String`, for a component
 named `toPlutusData`, and for a `@NewType` of `byte[]` whose component is not `value`, or a call of an inherited
-method such as `hashCode` on one. A call named `headList`, `tailList`, `mkCons`, `mkNilData`, `mkNilPairData`,
+method such as `hashCode` on one. A `@NewType` takes no instance call but its accessor, an inherited default method or
+`equals` included, and no field read. A `byte[]` takes no no-argument call, and a ledger hash none but its accessor and
+`toPlutusData`. A no-argument call on an `Optional` of a record does not take the name of one of its components, such as
+`isPresent`. A call named `headList`, `tailList`, `mkCons`, `mkNilData`, `mkNilPairData`,
 `mkPairData`, `unMapData`, `fstPair` or `sndPair` is `Builtins`' own: a method or component of a program does not take
 those names.
 

@@ -1614,7 +1614,8 @@ following limitations apply:
   `@MultiValidator` does too (`JULC0094`).
 - **A field initializer that nothing lowers holds only a constant** (`JULC0095`).
   A `static` field of the class being compiled is lowered. Any other field (a
-  `@Param`, an instance field, a field of a nested type or a record) holds only:
+  `@Param`, an instance field, a field of a nested type or a record, a field of a
+  library) holds only:
   - a literal, or a negated one;
   - a `new byte[]{...}` of literals;
   - `BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, or `PlutusData.UNIT`;
@@ -1635,9 +1636,11 @@ following limitations apply:
   `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to
   the type JuLC reads, not to a variable, a type parameter or another type
   (`JULC0100`). A name of the ledger, such as `Rational`, may also be a nested or
-  packaged record or sealed interface, and no top-level type of the unnamed package
-  takes one. A variable does not take the name of a type of the compilation, and a
-  plain class does not share its name with a record or a library class of it.
+  packaged record or sealed interface. A top-level type of the unnamed package takes
+  no name of the ledger, of another type of the compilation or of a package of it. A
+  variable does not take the name of a type of the compilation, and a plain class does
+  not share its name with a record or a library class of it. `new` has no class body,
+  and the operand of `instanceof` has the variant's type or its sealed interface's.
   A method does not take a name JuLC reads in place of its body (`JULC0101`):
   `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a
   `@NewType`, an explicit accessor or `equals` on a record. A `@NewType`'s component

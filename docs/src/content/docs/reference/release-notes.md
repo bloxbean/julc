@@ -59,9 +59,14 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   (`JULC0095`). A value reaches `boolean` or `Boolean` through a cast only from a boolean
   (`JULC0098`). A constructor holds no statement (`JULC0099`). A name JuLC reads by its spelling
   binds at every use to the type JuLC reads, not to a variable, a type parameter or another type,
-  a variable does not take the name of a type of the compilation, no top-level type of the unnamed
-  package takes a name of the ledger, and no class or record is named `Value` (`JULC0100`). A method
-  does not take a name JuLC reads in place of its body (`JULC0101`). The same rule covers a record component: a `@NewType` of `byte[]` names its
+  a variable does not take the name of a type of the compilation, a top-level type of the unnamed
+  package takes no name of the ledger, of another type or of a package of the compilation, no class
+  or record is named `Value`, `new` has no class body, and `instanceof` tests a variant of its
+  operand's sealed interface (`JULC0100`). A sealed interface with no `permits` clause holds its
+  variants (`JULC0092`). A method does not take a name JuLC reads in place of its body, and a
+  `@NewType` takes no instance call but its accessor and no field read (`JULC0101`).
+- **Two fixes in the JavaParser frontend.** `instanceof` on a qualified variant reads that variant,
+  and a library's unsupported statement or unknown method is a compile error, as in a root. The same rule covers a record component: a `@NewType` of `byte[]` names its
   component `value`, so rename `record MyHash(byte[] hash)` to `record MyHash(byte[] value)`.
   They run on javac's trees, so they follow the gate's mode, and `off` turns them off with it.
   See [Compiler Limitations](/getting-started/#16-compiler-limitations).
