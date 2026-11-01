@@ -63,6 +63,24 @@ class ConstantStringJoinsTest {
     }
 
     @Test
+    void aValidatorWarnsOnBothFrontends() {
+        var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                @SpendingValidator
+                class V {
+                    static String joined() { return "a" + "b"; }
+                    @Entrypoint static boolean validate(PlutusData r, ScriptContext c) { return true; }
+                }
+                """;
+        var onDefault = joins(new JulcCompiler(null, new CompilerOptions()).compile(source, List.of()));
+        assertEquals(1, onDefault.size());
+        assertEquals(onDefault, joins(new JulcCompiler(null, javac()).compile(source, List.of())));
+    }
+
+    @Test
     void itSaysWhereAndWhatToWrite() {
         var warning = joins(compile("\"a\" + \"b\"", new CompilerOptions())).getFirst();
         assertEquals(CompilerDiagnostic.Level.WARNING, warning.level());

@@ -64,6 +64,16 @@ class LoweringAloneTest {
         }
     }
 
+    /** A read of a class's method is recorded too, or the check would pass it by its dot. */
+    @Test
+    void aMethodReadIsRecordedForItsMethod() {
+        withMethod("class P { static long h(long a) { return a; } static long m(long a) { return h(a); } }", new CompilerOptions(), (facts, lowered) -> {
+            var body = ((PirTerm.Lam) lowered.term()).body();
+            var read = (PirTerm.Var) ((PirTerm.App) body).function();
+            assertEquals("h", lowered.lowering().terms().provenance().readOf(read).getSimpleName().toString());
+        });
+    }
+
     /** If nothing were recorded, I13's check would pass every term: it reads this table and nothing else. */
     @Test
     void everyVarAndBinderOfASourceElementIsRecorded() {

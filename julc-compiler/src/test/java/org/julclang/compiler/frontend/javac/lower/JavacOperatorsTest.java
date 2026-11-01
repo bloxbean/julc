@@ -264,6 +264,13 @@ class JavacOperatorsTest {
         assertInstanceOf(NotPorted.class, javac(member + "\nstatic boolean m() { return true; }"));
     }
 
+    /** A field the compilation lowers is read as a method is, so D6's rules reach its initializer. */
+    @Test
+    void aLoweredFieldMeetsTheEqualityRules() {
+        assertEquals("JULC0086", javac("static BigInteger x = BigInteger.ONE; static boolean b = x == BigInteger.TWO;\n"
+                + "static boolean m() { return b; }").diagnostics().getFirst().code());
+    }
+
     /** A field nothing lowers holds a constant: {@code JULC0095}'s rule, whatever lowering has learned. */
     @ParameterizedTest
     @ValueSource(strings = {"long f = 1 + 1;", "BigInteger f = BigInteger.valueOf(1);", "boolean f = !true;", "long f = true ? 1 : 2;",

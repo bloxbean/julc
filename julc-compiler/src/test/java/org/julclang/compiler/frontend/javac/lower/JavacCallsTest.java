@@ -233,6 +233,12 @@ class JavacCallsTest {
 
     // --- Static calls ---
 
+    /** Interchangeable overloads share a binder, so a read of either resolves under I13's check. */
+    @Test
+    void aReadOfEitherInterchangeableOverloadResolves() {
+        assertSame("static long h(long a) { return a; } static long h(int a) { return a; } static long m() { return h(1) + h(1L); }");
+    }
+
     @Test
     void aLocalCallOfEachShape() {
         assertSame("static long h(long a, long b) { return a + b; } static long m(long a) { return h(a, 1); }");

@@ -278,6 +278,17 @@ class Adr068LoweringToolTest {
         assertTrue(two.detail().contains("diagnostics"), two.detail());
     }
 
+    /** A diagnostics row says nothing else differs: with params too, it is a row a Diagnostic change cannot explain. */
+    @Test
+    void aRowThatAlsoDiffersInParamsIsNotADiagnosticsRow() {
+        var injected = new Injected();
+        injected.compilation = c -> new Adr068Lowering.Compilation(Adr068Ledger.Outcome.accepted(c.outcome().digest(), c.outcome().size(),
+                List.of(new Adr068Ledger.Diagnostic("WARNING", "JULC9999", "injected", "", 1, 1))), withoutParams(c.result()), null);
+        var row = injected.row(validator(VALIDATOR));
+        assertEquals("DIFFERENT-bytes", row.kind(), row::line);
+        assertTrue(row.detail().contains("params"), row.detail());
+    }
+
     @Test
     void aRowWithAParamDifferencePinsTheBytes() {
         var same = new Injected();
