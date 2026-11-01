@@ -112,6 +112,36 @@ class JulcAnnotationProcessorJavacGateTest {
         assertTrue(errors.getFirst().contains("JULC0098"), errors.getFirst());
     }
 
+    static final List<String> CONSTRUCTORS = List.of(
+            "record R(java.math.BigInteger a) { R { a = a.abs(); } }",
+            "record R(java.math.BigInteger a) { R { a = java.math.BigInteger.ONE; } }",
+            "record R(java.math.BigInteger a) { R() { this(java.math.BigInteger.ONE); } }",
+            "static boolean OPEN = true; record R(java.math.BigInteger a) { R { OPEN = false; } }",
+            "record R(java.math.BigInteger a) { R { a = a.max(java.math.BigInteger.ONE); } }");
+
+    static String withMember(String source, String member) {
+        return source.replace("    @Entrypoint", "    " + member + "\n    @Entrypoint");
+    }
+
+    @Test
+    void aConstructorsStatementFailsTheValidator() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        for (String member : CONSTRUCTORS) {
+            var diagnostics = process(Map.of("FeeGate", withMember(validator("true"), member)));
+            var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                    .map(d -> d.getMessage(null)).toList();
+            assertEquals(1, errors.size(), diagnostics.toString());
+            assertTrue(errors.getFirst().contains("JULC0099"), errors.getFirst());
+        }
+    }
+
+    @Test
+    void anEmptyConstructorCompiles() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var diagnostics = process(Map.of("FeeGate", withMember(validator("true"), "record R(java.math.BigInteger a) { R { } }")));
+        assertTrue(diagnostics.stream().noneMatch(d -> d.getKind() == Diagnostic.Kind.ERROR), diagnostics.toString());
+    }
+
     @Test
     void aLibrarysSubsetRuleFailsTheValidator() throws Exception {
         var library = FEES.replace("public static BigInteger minimum()", "long instance = 1 / 0;\n    public static BigInteger minimum()");

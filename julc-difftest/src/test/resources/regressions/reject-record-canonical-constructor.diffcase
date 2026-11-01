@@ -3,8 +3,8 @@ name: #282 an explicit canonical constructor (N4)
 class: Probe
 method: m
 arg: 05
-expect: REJECT none
-note: ADR-067 N4: legal Java (6).
+expect: REJECT JULC0099
+note: ADR-067 N4: legal Java (6). A subset rule: a constructor holds no statement.
 ---
 import java.math.BigInteger;
 

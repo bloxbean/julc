@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -127,6 +128,45 @@ class JavacGateSourceDiscoveryTest {
                         }
                         """, "m"));
         assertEquals("JULC0095", e.diagnostics().getFirst().code(), e.diagnostics().toString());
+    }
+
+    private static final List<String> CONSTRUCTORS = List.of(
+            "record R(BigInteger a) { R { a = a.abs(); } }",
+            "record R(BigInteger a) { R { a = BigInteger.ONE; } }",
+            "record R(BigInteger a) { R() { this(BigInteger.ONE); } }",
+            "static boolean OPEN = true; record R(BigInteger a) { R { OPEN = false; } }",
+            "record R(BigInteger a) { R { a = a.max(BigInteger.ONE); } }");
+
+    @Test
+    void aConstructorsStatementRejectsAtEveryHostEntry() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        for (String member : CONSTRUCTORS) {
+            write("""
+                    package com.example;
+
+                    import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.OnchainLibrary;
+
+                    @OnchainLibrary
+                    public class Fees {
+                        %s
+                        public static BigInteger minimum() { return BigInteger.TWO; }
+                    }
+                    """.formatted(member));
+            var pool = assertThrows(CompilerException.class, () -> SourceDiscovery.compile("com.example.FeeGate", root));
+            assertEquals("JULC0099", pool.diagnostics().getFirst().code(), pool.diagnostics().toString());
+            var validator = assertThrows(CompilerException.class,
+                    () -> ValidatorTest.compile(CAST.replace("(boolean) (Object) redeemer", "true").replace("    @Entrypoint", "    " + member + "\n    @Entrypoint")));
+            assertEquals("JULC0099", validator.diagnostics().getFirst().code(), validator.diagnostics().toString());
+            var method = assertThrows(CompilerException.class, () -> MethodEvaluator.evaluateBoolean("""
+                    import java.math.BigInteger;
+                    class P {
+                        %s
+                        static boolean m() { return true; }
+                    }
+                    """.formatted(member), "m"));
+            assertEquals("JULC0099", method.diagnostics().getFirst().code(), method.diagnostics().toString());
+        }
     }
 
     @Test

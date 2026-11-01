@@ -1330,6 +1330,13 @@ the class being compiled, or to a method. Keep an initializer block empty.
 
 **Fix:** Compute the boolean with a comparison.
 
+### `JULC0099` `The body of constructor <constructor> does not run on-chain, so a constructor holds no statement`
+
+**Cause:** A constructor the source declares, on a record or a class, holds a statement. A value is
+built from its components alone, so the statement would not run on-chain.
+
+**Fix:** Move the statement to a static method that returns the value. An empty `R { }` is allowed.
+
 ### `JULC0096` `<source or class> declares more than one <validator class or @Entrypoint method>`
 
 **Cause:** With `frontend=JAVAC`: a source declares two validator classes, or a single-purpose

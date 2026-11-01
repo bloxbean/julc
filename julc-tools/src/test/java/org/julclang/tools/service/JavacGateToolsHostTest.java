@@ -117,6 +117,25 @@ class JavacGateToolsHostTest {
     }
 
     @Test
+    void theToolsMeetTheConstructorRule() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
+        for (String member : List.of(
+                "record R(BigInteger a) { R { a = a.abs(); } }",
+                "record R(BigInteger a) { R { a = BigInteger.ONE; } }",
+                "record R(BigInteger a) { R() { this(BigInteger.ONE); } }",
+                "static boolean OPEN = true; record R(BigInteger a) { R { OPEN = false; } }",
+                "record R(BigInteger a) { R { a = a.max(BigInteger.ONE); } }")) {
+            String source = VALIDATOR.replace("    @Entrypoint", "    " + member + "\n    @Entrypoint");
+            var compiled = tools.compile(new CompileRequest(source, "java", EDITOR_LIBRARY)).body();
+            assertTrue(String.valueOf(compiled).contains("JULC0099"), String.valueOf(compiled));
+            var opened = new SourceDebugService(classpath).open(new OpenRequest(source, EDITOR_LIBRARY, List.of(),
+                    spendTransaction(), 11, null, null, null, null, false)).body();
+            assertTrue(String.valueOf(opened).contains("JULC0099"), String.valueOf(opened));
+        }
+    }
+
+    @Test
     void sourceDebugRanksTheClassPathBelowTheEditor() {
         var opened = new SourceDebugService(classpath).open(new OpenRequest(VALIDATOR, EDITOR_LIBRARY, List.of(),
                 spendTransaction(), 11, null, null, null, null, false)).body();

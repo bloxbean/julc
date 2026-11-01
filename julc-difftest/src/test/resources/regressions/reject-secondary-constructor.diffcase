@@ -1,12 +1,10 @@
 format: 2
-name: #282 a secondary constructor delegating to the canonical one (N5, T31)
+name: #282 a secondary constructor delegating to the canonical one (N5)
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T31 Value/Failure
-jvm: Value 0a []
-uplc: Failure []
-note: ADR-067 N5.
+expect: REJECT JULC0099
+note: ADR-067 N5. A subset rule: a constructor holds no statement.
 ---
 import java.math.BigInteger;
 

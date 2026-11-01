@@ -1164,6 +1164,21 @@
       }
     },
     {
+      "code": "JULC0099",
+      "constant": "CONSTRUCTOR_BODY",
+      "status": "emitted",
+      "title": "A constructor holds no statement",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "The body of constructor {0} does not run on-chain, so a constructor holds no statement",
+      "summary": "A value is built from its components alone, so a constructor's body never runs on-chain. Any constructor a source declares, on a record or a class, holds no statement.",
+      "fix": "Move the statement to a method, and call the method where the value is made.",
+      "example": {
+        "bad": "record Amount(BigInteger v) { Amount { v = v.abs(); } }",
+        "good": "record Amount(BigInteger v) { static Amount of(BigInteger v) { return new Amount(v.abs()); } }"
+      }
+    },
+    {
       "code": "JULC0098",
       "constant": "BOOLEAN_CAST_OPERAND",
       "status": "emitted",

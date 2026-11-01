@@ -241,6 +241,12 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(owner, what), location);
     }
 
+    /** JULC0099: a constructor that holds a statement. */
+    public static CompilerException constructorBody(String constructor, SourceLocation location) {
+        var info = DiagnosticCodes.CONSTRUCTOR_BODY;
+        return exception(info.code(), info.level(), info.fix(), info.format(constructor), location);
+    }
+
     /** JULC0098: a cast to {@code boolean} or {@code Boolean} of what is neither of them nor Data. */
     public static CompilerException booleanCastOperand(String target, String operand, SourceLocation location) {
         var info = DiagnosticCodes.BOOLEAN_CAST_OPERAND;

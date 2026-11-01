@@ -6,6 +6,8 @@ import org.julclang.compiler.frontend.javac.JavacGate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
@@ -81,7 +83,35 @@ class BuildCommandJavacGateTest {
     @Test
     void aSubsetRuleFailsTheBuild(@TempDir Path dir) throws Exception {
         System.clearProperty(JavacGate.MODE_PROPERTY);
-        Path project = project(dir, "(boolean) (Object) ctx.txInfo().fee()");
+        assertBuildFails("JULC0098", project(dir, "(boolean) (Object) ctx.txInfo().fee()"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record R(java.math.BigInteger a) { R { a = a.abs(); } }",
+            "record R(java.math.BigInteger a) { R { a = java.math.BigInteger.ONE; } }",
+            "record R(java.math.BigInteger a) { R() { this(java.math.BigInteger.ONE); } }",
+            "static boolean OPEN = true; record R(java.math.BigInteger a) { R { OPEN = false; } }",
+            "record R(java.math.BigInteger a) { R { a = a.max(java.math.BigInteger.ONE); } }"})
+    void aConstructorsStatementFailsTheBuild(String member, @TempDir Path dir) throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        assertBuildFails("JULC0099", withMember(project(dir, "true"), member));
+    }
+
+    @Test
+    void anEmptyConstructorBuilds(@TempDir Path dir) throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        Path project = withMember(project(dir, "true"), "record R(java.math.BigInteger a) { R { } }");
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString()));
+    }
+
+    private static Path withMember(Path project, String member) throws Exception {
+        Path validator = ProjectLayout.srcDir(project).resolve("AlwaysSucceeds.java");
+        Files.writeString(validator, Files.readString(validator).replace("    @Entrypoint", "    " + member + "\n    @Entrypoint"));
+        return project;
+    }
+
+    private static void assertBuildFails(String code, Path project) {
         var err = System.err;
         var written = new ByteArrayOutputStream();
         System.setErr(new PrintStream(written, true));
@@ -90,7 +120,7 @@ class BuildCommandJavacGateTest {
         } finally {
             System.setErr(err);
         }
-        assertTrue(written.toString().contains("JULC0098"), written.toString());
+        assertTrue(written.toString().contains(code), written.toString());
     }
 
     @Test

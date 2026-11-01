@@ -45,6 +45,7 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
 - **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
   initializer that nothing lowers holds only a constant, and an initializer block is empty
   (`JULC0095`). A cast to `boolean` or `Boolean` takes a boolean or a `PlutusData` (`JULC0098`).
+  A constructor holds no statement (`JULC0099`).
   They run on javac's trees, so they follow the gate's mode, and `off` turns them off with it.
   See [Compiler Limitations](/getting-started/#16-compiler-limitations).
 - **Value operations are key-based.** `ValuesLib.lovelaceOf` and `Value.lovelaceOf()` look up the

@@ -557,8 +557,8 @@ PubKeyHash pkh = PubKeyHash.of(beneficiaryBytes);
 ```
 
 On-chain, `.of()` is identity (the bytes pass through). Off-chain, it delegates to
-the record constructor with validation (e.g., `PubKeyHash` checks for exactly 28
-bytes).
+the record constructor, which checks for null and copies the bytes. Length is a
+ledger rule, not a type invariant.
 
 For casting `PlutusData` to typed records (e.g., datums, redeemers), use `PlutusData.cast()`:
 
@@ -1626,6 +1626,10 @@ following limitations apply:
 - **A cast to `boolean` or `Boolean`** takes an operand whose type, through
   parentheses and other casts, is `boolean`, `Boolean`, or `PlutusData` and its
   subtypes (`JULC0098`).
+- **A constructor holds no statement** (`JULC0099`), on a record or a class: a value
+  is built from its components alone, so a constructor's body does not run on-chain.
+  That goes for a compact, canonical or other constructor; `R { }` holds nothing, and
+  is allowed. Put the statement in a static method that returns the value.
 
 ### Strings
 

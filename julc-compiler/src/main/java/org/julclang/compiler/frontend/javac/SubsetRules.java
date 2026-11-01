@@ -4,6 +4,7 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.subset.BooleanCasts;
+import org.julclang.compiler.frontend.javac.subset.ConstructorBodies;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 
 import javax.lang.model.element.ExecutableElement;
@@ -18,7 +19,9 @@ import java.util.List;
  *   <li>An entry point returns {@code boolean} or {@code java.lang.Boolean} ({@code JULC0094}).</li>
  *   <li>What is not lowered holds only a constant ({@link UnloweredInitializers}, {@code JULC0095}).</li>
  *   <li>A cast to {@code boolean} takes a boolean or Data ({@link BooleanCasts}, {@code JULC0098}).</li>
+ *   <li>A constructor holds no statement ({@link ConstructorBodies}, {@code JULC0099}).</li>
  * </ul>
+ * An API type comes in as a class file, so these rules never read one.
  */
 final class SubsetRules {
 
@@ -39,6 +42,7 @@ final class SubsetRules {
             UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
             if (compiled == JavacGate.Compiled.VALIDATOR) requireBooleanResults(facts, discovery, type);
             BooleanCasts.check(facts, unit);
+            ConstructorBodies.check(facts, unit);
         }
         for (var unit : libraries) library(facts, discovery, unit);
     }
@@ -46,6 +50,7 @@ final class SubsetRules {
     private static void library(JavacFacts facts, JavacDiscovery discovery, CompilationUnitTree unit) {
         UnloweredInitializers.check(facts, unit, discovery::isLoweredInALibrary);
         BooleanCasts.check(facts, unit);
+        ConstructorBodies.check(facts, unit);
     }
 
     private static void requireBooleanResults(JavacFacts facts, JavacDiscovery discovery, ClassTree type) {

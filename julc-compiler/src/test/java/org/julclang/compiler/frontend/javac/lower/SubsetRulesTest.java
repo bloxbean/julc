@@ -12,10 +12,13 @@ import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -668,6 +671,156 @@ class SubsetRulesTest {
     @Test
     void aCastOfNullIsNull() {
         assertEquals("JULC0017", code(compiler -> compiler.compile(validator("return (Boolean) null;")), CompilerFrontend.JAVAPARSER));
+    }
+
+    // --- A constructor holds no statement ---
+
+    private static Stream<Arguments> constructors() {
+        return Stream.of(
+                Arguments.of("record R(BigInteger a) { R { a = a.abs(); } }", "R", "redeemer.a().compareTo(BigInteger.ZERO) > 0"),
+                Arguments.of("record R(BigInteger a) { R { a = BigInteger.ONE; } }", "PlutusData", "new R(BigInteger.TEN).a().equals(BigInteger.ONE)"),
+                Arguments.of("record R(BigInteger a) { R() { this(BigInteger.ONE); } }", "PlutusData", "new R().a().equals(BigInteger.ONE)"),
+                Arguments.of("static boolean OPEN = true; record R(BigInteger a) { R { OPEN = false; } }", "R", "OPEN"),
+                Arguments.of("record R(BigInteger a) { R { a = a.max(BigInteger.ONE); } }", "R", "redeemer.a().compareTo(BigInteger.ONE) < 0"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("constructors")
+    void aValidatorsConstructorHoldsNoStatement(String member, String redeemer, String result) {
+        assertRule("JULC0099", IMPORTS + """
+                @SpendingValidator
+                class V {
+                    %s
+                    @Entrypoint
+                    static boolean validate(%s redeemer, ScriptContext ctx) { return %s; }
+                }
+                """.formatted(member, redeemer, result));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record R(long a) { R(long a) { this.a = a; } }",
+            "record R(long a) { R(long a) { this.a = a + 1; } }",
+            "record R(long a) { record Q(long b) { Q { b = 1; } } }",
+            "static class C { final long x; C() { x = 1; } }",
+            "static class C { C() { super(); } }",
+            "static class C { C(long a) { } C() { this(1); } }",
+            "static class Outer { static class C { C() { long x = 1; } } }"})
+    void aConstructorOfAnyKindHoldsNoStatement(String member) {
+        assertMethodRule("JULC0099", """
+                class P {
+                    %s
+                    static long m() { return 1; }
+                }
+                """.formatted(member));
+    }
+
+    @Test
+    void aLocalTypesConstructorHoldsNoStatement() {
+        assertMethodRule("JULC0099", """
+                class P {
+                    static long m() {
+                        class C { C() { long x = 1; } }
+                        return 1;
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void aTopLevelTypesConstructorHoldsNoStatement() {
+        assertMethodRule("JULC0099", """
+                record R(long a) { R { a = 1; } }
+                class P {
+                    static long m() { return 1; }
+                }
+                """);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record R(long a) { R { a = 1; } }",
+            "record R(long a) { R() { this(1); } }",
+            "static class C { C() { long x = 1; } }"})
+    void aLibrarysConstructorHoldsNoStatement(String member) {
+        var libraries = List.of(library(member));
+        LoweringFixture.assertSameRejection(frontend -> new JulcCompiler(null, new CompilerOptions().setFrontend(frontend))
+                .compile(LIBRARY_CALLER, libraries));
+        assertEquals("JULC0099", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+    }
+
+    @Test
+    void theRuleNamesTheConstructor() {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import java.math.BigInteger;
+                class P {
+                    record R(BigInteger a) { R { a = a.abs(); } }
+                    static long m() { return 1; }
+                }
+                """, "m"));
+        var diagnostic = thrown.diagnostics().getFirst();
+        assertTrue(diagnostic.message().contains("R(java.math.BigInteger)"), diagnostic.message());
+        assertTrue(diagnostic.message().contains("does not run on-chain"), diagnostic.message());
+        assertEquals(3, diagnostic.line());
+        assertEquals(30, diagnostic.column());
+    }
+
+    /** What javac wrote into a body has no source text: a {@code super();} and a compact constructor's assignments. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record R(long a) { R { } }",
+            "record R(long a) { R { /* nothing */ } }",
+            "static class C { C() { } }",
+            "static class C { private C() { } C(long a) { } }"})
+    void anEmptyConstructorHoldsNothing(String member) {
+        String with = "class P { %s static long m() { return 1; } }".formatted(member);
+        String without = "class P { static long m() { return 1; } }";
+        for (var level : OptimizationLevel.values()) {
+            var options = new CompilerOptions().setOptimizationLevel(level);
+            assertArrayEquals(UplcFlatEncoder.encodeProgram(new JulcCompiler(null, options).compileMethod(without, "m").program()),
+                    UplcFlatEncoder.encodeProgram(new JulcCompiler(null, options).compileMethod(with, "m").program()), level.name());
+        }
+    }
+
+    /** A type with no constructor of its own has one javac generated, with a body javac wrote. */
+    @Test
+    void aGeneratedConstructorHoldsNothing() {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                class P {
+                    record R(long a) { }
+                    static class C { }
+                    static long m() { return 1; }
+                }
+                """, "m");
+    }
+
+    /** An API type is a class file here, so its constructors are not read: nothing of them runs on-chain either way. */
+    @Test
+    void anApiTypesConstructorIsNotRead() {
+        new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+                import org.julclang.ledger.PubKeyHash;
+                import org.julclang.ledger.TokenName;
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(PubKeyHash redeemer, ScriptContext ctx) {
+                        return new TokenName(redeemer.hash()).name().length > 0;
+                    }
+                }
+                """);
+    }
+
+    /** A method's statements are its own: the rule is about constructors. */
+    @Test
+    void aMethodHoldsStatements() {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                class P {
+                    static long m() {
+                        long x = 1;
+                        return x;
+                    }
+                }
+                """, "m");
     }
 
     // --- A declaration of several variables ---

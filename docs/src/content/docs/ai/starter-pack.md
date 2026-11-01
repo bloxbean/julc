@@ -343,6 +343,10 @@ A `+` of strings is an `appendString` at run time, of literals too. For one stri
 
 A cast to `boolean` or `Boolean` takes an operand whose type, through parentheses and other casts, is `boolean`, `Boolean`, or `PlutusData` and its subtypes. Anything else is `JULC0098`.
 
+### 6.18 A constructor holds no statement
+
+A value is built from its components alone, so a constructor's body does not run on-chain. Any constructor a source declares, compact, canonical or other, on a record or a class, holds no statement: `JULC0099`. An empty `R { }` is allowed. Write a static method that returns the value instead.
+
 ## 7. Common errors — root cause and fix
 
 | Error message | Likely cause | Fix |

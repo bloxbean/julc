@@ -157,6 +157,14 @@ public final class DiagnosticCodes {
             "Compound assignment operator {0} is not supported on-chain",
             "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;");
 
+    public static final DiagnosticInfo CONSTRUCTOR_BODY = new DiagnosticInfo(
+            "JULC0099",
+            "CONSTRUCTOR_BODY",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "The body of constructor {0} does not run on-chain, so a constructor holds no statement",
+            "Move the statement to a method, and call the method where the value is made.");
+
     public static final DiagnosticInfo CONTINUE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0060",
             "CONTINUE_UNSUPPORTED",
@@ -786,6 +794,7 @@ public final class DiagnosticCodes {
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,
             COMPOUND_ASSIGNMENT_UNSUPPORTED,
+            CONSTRUCTOR_BODY,
             CONTINUE_UNSUPPORTED,
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,

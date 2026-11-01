@@ -69,6 +69,51 @@ class SubsetRulesAtEveryEntryTest {
             }
             """;
 
+    private record Constructor(String member, String redeemer, String result) {
+        String validator() {
+            return IMPORTS + """
+                    @SpendingValidator
+                    public class V {
+                        %s
+                        @Entrypoint
+                        public static boolean validate(%s redeemer, ScriptContext ctx) { return %s; }
+                    }
+                    """.formatted(member, redeemer, result);
+        }
+
+        String method() {
+            return """
+                    import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
+                    class P {
+                        %s
+                        static boolean m(%s redeemer) { return %s; }
+                    }
+                    """.formatted(member, redeemer, result);
+        }
+
+        String library() {
+            return """
+                    import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.OnchainLibrary;
+                    @OnchainLibrary
+                    public class L {
+                        %s
+                        public static long helper() { return 1; }
+                    }
+                    """.formatted(member);
+        }
+    }
+
+    private static final List<Constructor> CONSTRUCTORS = List.of(
+            new Constructor("record R(BigInteger a) { R { a = a.abs(); } }", "R", "redeemer.a().compareTo(BigInteger.ZERO) > 0"),
+            new Constructor("record R(BigInteger a) { R { a = BigInteger.ONE; } }", "PlutusData", "new R(BigInteger.TEN).a().equals(BigInteger.ONE)"),
+            new Constructor("record R(BigInteger a) { R() { this(BigInteger.ONE); } }", "PlutusData", "new R().a().equals(BigInteger.ONE)"),
+            new Constructor("static boolean OPEN = true; record R(BigInteger a) { R { OPEN = false; } }", "R", "OPEN"),
+            new Constructor("record R(BigInteger a) { R { a = a.max(BigInteger.ONE); } }", "R", "redeemer.a().compareTo(BigInteger.ONE) < 0"));
+
+    private static final Constructor EMPTY = new Constructor("record R(BigInteger a) { R { } }", "R", "redeemer.a().signum() > 0");
+
     private static final String CALLS_THE_LIBRARY = IMPORTS + """
             @SpendingValidator
             public class V {
@@ -163,6 +208,13 @@ class SubsetRulesAtEveryEntryTest {
         assertRejected("JULC0095", entry, HOLDS_A_DIVISION);
         assertRejected("JULC0095", entry, RUNS_A_BLOCK);
         assertRejected("JULC0098", entry, CASTS_A_NUMBER);
+        for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.validator());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("validatorEntries")
+    void aValidatorEntryCompilesAnEmptyConstructor(String name, Entry entry) {
+        assertDoesNotThrow(() -> entry.compile(compiler(), EMPTY.validator()));
     }
 
     static Stream<Arguments> methodEntries() {
@@ -176,6 +228,13 @@ class SubsetRulesAtEveryEntryTest {
     void aMethodEntryMeetsTheRulesOnAClass(String name, Entry entry) {
         assertRejected("JULC0095", entry, METHOD_HOLDS_A_DIVISION);
         assertRejected("JULC0098", entry, METHOD_CASTS_A_NUMBER);
+        for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.method());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("methodEntries")
+    void aMethodEntryCompilesAnEmptyConstructor(String name, Entry entry) {
+        assertDoesNotThrow(() -> entry.compile(compiler(), EMPTY.method()));
     }
 
     @Test
@@ -224,6 +283,13 @@ class SubsetRulesAtEveryEntryTest {
     void aLibraryAtEveryEntryMeetsTheRulesOnAClass(String name, Entry entry) {
         assertRejected("JULC0095", entry, LIBRARY);
         assertRejected("JULC0098", entry, CASTING_LIBRARY);
+        for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.library());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("libraryEntries")
+    void aLibraryAtEveryEntryCompilesAnEmptyConstructor(String name, Entry entry) {
+        assertDoesNotThrow(() -> entry.compile(compiler(), EMPTY.library()));
     }
 
     private static Executable compiling(JavacGateMode mode, String source) {
@@ -246,6 +312,7 @@ class SubsetRulesAtEveryEntryTest {
         for (var mode : List.of(JavacGateMode.REPORT, JavacGateMode.OFF)) {
             assertDoesNotThrow(compiling(mode, HOLDS_A_DIVISION));
             assertDoesNotThrow(compiling(mode, RUNS_A_BLOCK));
+            assertDoesNotThrow(compiling(mode, CONSTRUCTORS.getFirst().validator()));
         }
     }
 
@@ -280,6 +347,10 @@ class SubsetRulesAtEveryEntryTest {
             var options = new CompilerOptions().setJavacGate(mode).setFrontend(CompilerFrontend.JAVAC);
             var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(HOLDS_A_DIVISION));
             assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
+            var options2 = new CompilerOptions().setJavacGate(mode).setFrontend(CompilerFrontend.JAVAC);
+            var constructor = assertThrows(CompilerException.class,
+                    () -> new JulcCompiler(null, options2).compile(CONSTRUCTORS.getFirst().validator()));
+            assertEquals("JULC0099", constructor.diagnostics().getFirst().code());
         }
     }
 
@@ -288,5 +359,8 @@ class SubsetRulesAtEveryEntryTest {
         var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
         var thrown = assertThrows(CompilerException.class, () -> new JavaLibraryProvider(List.of(LIBRARY), null, options));
         assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
+        var constructor = assertThrows(CompilerException.class,
+                () -> new JavaLibraryProvider(List.of(CONSTRUCTORS.getFirst().library()), null, options));
+        assertEquals("JULC0099", constructor.diagnostics().getFirst().code());
     }
 }
