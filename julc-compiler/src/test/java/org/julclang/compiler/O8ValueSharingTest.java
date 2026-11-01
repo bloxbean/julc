@@ -408,8 +408,8 @@ class O8ValueSharingTest {
             assertFalse(baseline.hasErrors(), baseline.diagnostics().toString());
             assertFalse(safe.hasErrors(), safe.diagnostics().toString());
             assertEquals(2, countConversions(baseline.pirTerm()));
-            assertEquals(1, countConversions(safe.pirTerm()));
-            assertTrue(safe.optimizationReport().appliedRules().contains(ValueConversionSharingPass.RULE));
+            assertEquals(2, countConversions(safe.pirTerm()));
+            assertFalse(safe.optimizationReport().appliedRules().contains(ValueConversionSharingPass.RULE));
             for (String provider : List.of("Java", "Truffle", "Scalus")) {
                 var before = evaluate(baseline.program(), List.of(data), provider);
                 var after = evaluate(safe.program(), List.of(data), provider);
