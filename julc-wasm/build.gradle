@@ -238,6 +238,8 @@ tasks.register('wasmGateProbe', Exec) {
     group = 'verification'
     description = 'ADR-068 M1: the javac gate, enforced, inside a Web Image built from this module\'s class path'
     dependsOn 'testClasses', 'jar'
+    // The image's class path: without the jars built, a missing one drops its metadata with nothing said.
+    inputs.files(sourceSets.main.runtimeClasspath)
     def dir = layout.buildDirectory.dir('wasm-gate-probe')
     outputs.upToDateWhen { false }
     doFirst {
