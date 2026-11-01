@@ -1620,12 +1620,22 @@ following limitations apply:
   - `BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, or `PlutusData.UNIT`;
   - a constant variable, as Java defines one, named directly or through a type;
   - for a `Boolean` `@Param`, `Boolean.valueOf(true)` or `Boolean.valueOf(false)`.
+
+  A `@Param` takes these forms as they stand: `BigInteger.ONE` written qualified, not
+  `ONE` by a static import, and `Boolean.valueOf(true)`, not `Boolean.TRUE`.
 - **An initializer block is empty** (`JULC0095`). Give the field its value where it
   is declared.
 - **No varargs**: declare a `byte[]`, a `List<T>` or a `JulcList<T>` parameter.
-- **A cast to `boolean` or `Boolean`** takes an operand whose type, through
-  parentheses and other casts, is `boolean`, `Boolean`, or `PlutusData` and its
-  subtypes (`JULC0098`).
+- **A value reaches `boolean` through a cast only from a boolean** (`JULC0098`). A
+  cast to `boolean` or `Boolean`, or `PlutusData.cast` to either, takes an operand
+  whose type, through parentheses and other casts, is `boolean` or `Boolean`. Read a
+  boolean out of Data by a typed field. A `@NewType` of a boolean
+  is one too.
+- **Some names are JuLC's.** A type or type parameter does not take a name JuLC reads
+  as its own type, such as `Boolean`, `BigInteger`, `JulcList` or `PubKeyHash`
+  (`JULC0100`). A method does not take a name JuLC reads in place of its body (`JULC0101`):
+  `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a
+  `@NewType`, an explicit accessor or `equals` on a record.
 - **A constructor holds no statement** (`JULC0099`), on a record or a class: a value
   is built from its components alone, so a constructor's body does not run on-chain.
   That goes for a compact, canonical or other constructor; `R { }` holds nothing, and

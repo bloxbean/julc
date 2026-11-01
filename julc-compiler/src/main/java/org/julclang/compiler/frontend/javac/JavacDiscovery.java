@@ -207,8 +207,8 @@ final class JavacDiscovery {
 
     /** Whether compiling a library lowers {@code field}: a static field of a class, other than a {@code @Param}. */
     boolean isLoweredInALibrary(VariableTree field) {
-        return facts.parent(field) instanceof ClassTree owner && owner.getKind() == Tree.Kind.CLASS && isStatic(field)
-                && !carries(field, simpleName(JavacNames.PARAM));
+        return facts.parent(field) instanceof ClassTree owner && owner.getKind() == Tree.Kind.CLASS
+                && !owner.getSimpleName().isEmpty() && isStatic(field) && !carries(field, simpleName(JavacNames.PARAM));
     }
 
     boolean isParam(VariableTree field) {

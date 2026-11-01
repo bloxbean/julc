@@ -66,7 +66,7 @@ public final class DiagnosticCodes {
             "BOOLEAN_CAST_OPERAND",
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
-            "A cast to {0} takes a boolean, a Boolean or a PlutusData, not {1}",
+            "A cast to {0} takes a boolean or a Boolean, not {1}",
             "Compare the value to get a boolean.");
 
     public static final DiagnosticInfo BREAK_IN_LOOP_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
@@ -372,6 +372,14 @@ public final class DiagnosticCodes {
             "CONTROL_FLOW",
             "Method {0} may not return a value on all execution paths",
             "Ensure every if/else branch returns, or add a fallthrough return at the end of the method.");
+
+    public static final DiagnosticInfo METHOD_NAME_READ_BY_SPELLING = new DiagnosticInfo(
+            "JULC0101",
+            "METHOD_NAME_READ_BY_SPELLING",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "The method {0} has a name JuLC reads in place of its body, so a program does not declare it",
+            "Give the method another name.");
 
     public static final DiagnosticInfo METHOD_OVERLOAD_UNSUPPORTED = new DiagnosticInfo(
             "JULC0054",
@@ -693,6 +701,14 @@ public final class DiagnosticCodes {
             "try/catch is not supported on-chain",
             "Use if/else checks instead of exception handling");
 
+    public static final DiagnosticInfo TYPE_NAME_READ_BY_SPELLING = new DiagnosticInfo(
+            "JULC0100",
+            "TYPE_NAME_READ_BY_SPELLING",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "The type {0} has a name JuLC reads as its own type, so a program does not declare it",
+            "Give the type another name.");
+
     public static final DiagnosticInfo TYPE_RESOLUTION_FAILED = new DiagnosticInfo(
             "JULC0012",
             "TYPE_RESOLUTION_FAILED",
@@ -821,6 +837,7 @@ public final class DiagnosticCodes {
             LOOP_UPDATE_POSITION_UNSUPPORTED,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
+            METHOD_NAME_READ_BY_SPELLING,
             METHOD_OVERLOAD_UNSUPPORTED,
             MISSING_OPTIMIZATION_COST_PROFILE,
             MULTIPLE_DECLARATORS_UNSUPPORTED,
@@ -861,6 +878,7 @@ public final class DiagnosticCodes {
             SWITCH_REQUIRES_SEALED_INTERFACE,
             THROW_UNSUPPORTED,
             TRY_CATCH_UNSUPPORTED,
+            TYPE_NAME_READ_BY_SPELLING,
             TYPE_RESOLUTION_FAILED,
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,

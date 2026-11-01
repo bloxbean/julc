@@ -32,7 +32,7 @@ import java.util.function.Predicate;
  * <p>
  * This list is closed, and it is deliberately not {@link SubsetScan}'s: that list grows as lowering learns a construct,
  * and a construct lowering has learned says nothing here, where lowering never looks. A field Java itself treats as a
- * constant is left alone, so that {@code JULC0088} still reports a {@code @Param} one.
+ * constant is left alone, so that the javac frontend's {@code JULC0088} still reports a {@code @Param} one.
  */
 public final class UnloweredInitializers {
 

@@ -3,10 +3,8 @@ name: #282 an explicit equals that is always true (T31)
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T31 Value/Value
-jvm: Value 01 []
-uplc: Value 00 []
-note: ADR-067 #282.
+expect: REJECT JULC0101
+note: ADR-067 #282. A subset rule: a method does not take a name read in place of its body.
 ---
 import java.math.BigInteger;
 

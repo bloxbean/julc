@@ -1324,11 +1324,32 @@ an initializer block.
 `Boolean.valueOf(true)` or `Boolean.valueOf(false)`. Move anything else to a `static` field of
 the class being compiled, or to a method. Keep an initializer block empty.
 
-### `JULC0098` `A cast to <type> takes a boolean, a Boolean or a PlutusData, not <type>`
+### `JULC0098` `A cast to <type> takes a boolean or a Boolean, not <type>`
 
-**Cause:** A cast to `boolean` or `Boolean` of something else, through parentheses and other casts.
+**Cause:** A cast to `boolean` or `Boolean`, or a call that lowers to its argument with that result, such
+as `PlutusData.cast(x, Boolean.class)`, of something else, through parentheses and other casts. Data is
+something else: a cast does not decode it.
 
 **Fix:** Compute the boolean with a comparison.
+
+### `JULC0100` `The type <name> has a name JuLC reads as its own type, so a program does not declare it`
+
+**Cause:** A type or a type parameter takes a name JuLC reads by its spelling, ahead of any type a program
+declares: `BigInteger`, `String`, `Boolean`, `PlutusData`, `ConstrData`, `MapData`, `ListData`, `IntData`,
+`BytesData`, `JulcValue`, `JulcG1`, `JulcG2`, `JulcMlResult`, `JulcScalars`, `JulcG1Points`, `JulcG2Points`,
+`List`, `JulcList`, `JulcArray`, `Map`, `JulcMap`, `Tuple2`, `Tuple3`, `AssetEntry`, `Optional`, `PubKeyHash`,
+`ScriptHash`, `ValidatorHash`, `PolicyId`, `TokenName`, `DatumHash`, `TxId`.
+
+**Fix:** Give the type another name.
+
+### `JULC0101` `The method <method> has a name JuLC reads in place of its body, so a program does not declare it`
+
+**Cause:** JuLC lowers some calls by their spelling, so a body under that name would not run:
+`fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit
+accessor or `equals` on a record, `equals` on a sealed interface, and `assetOf`, `containsPolicy`, `isEmpty`
+and `lovelaceOf` on a record named `Value`.
+
+**Fix:** Give the method another name, or make it a static method of another name.
 
 ### `JULC0099` `The body of constructor <constructor> does not run on-chain, so a constructor holds no statement`
 

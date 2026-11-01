@@ -200,7 +200,9 @@ public final class JavacFrontend {
         var attribution = attribute(roots, pool);
         if (!attribution.result().isAccepted() || attribution.trees() == null) return attribution.result();
         try {
-            SubsetRules.check(JavacFacts.of(attribution, new TypeRegistry()), attribution.roots(), attribution.libraries(), compiled);
+            var facts = JavacFacts.of(attribution, new TypeRegistry());
+            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries());
+            SubsetRules.check(facts, attribution.roots(), attribution.libraries(), compiled);
             return attribution.result();
         } catch (CompilerException e) {
             var rejected = e.diagnostics().stream().map(diagnostic -> new JavacDiagnostic(diagnostic.code(), null,

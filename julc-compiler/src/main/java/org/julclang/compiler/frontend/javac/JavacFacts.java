@@ -342,6 +342,11 @@ public final class JavacFacts {
         return text.length() > FRAGMENT_LIMIT ? text.substring(0, FRAGMENT_LIMIT - 3) + "..." : text;
     }
 
+    /** Whether a unit declares {@code element}. An API type comes in as a class file, so its members are not. */
+    public boolean isDeclaredInSource(Element element) {
+        return trees.getTree(element) != null;
+    }
+
     /** Whether javac generated {@code tree}: it has no source text, as a default constructor has none. */
     public boolean isGenerated(Tree tree) {
         return end(tree) < 0;

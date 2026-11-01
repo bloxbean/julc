@@ -111,6 +111,18 @@ class JavacGateSourceDiscoveryTest {
             """;
 
     @Test
+    void theHostsMeetTheCastAndNameRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        for (String[] rule : List.of(
+                new String[]{"JULC0098", CAST.replace("(boolean) (Object) redeemer", "org.julclang.core.PlutusData.cast(redeemer, Boolean.class)")},
+                new String[]{"JULC0100", CAST.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")},
+                new String[]{"JULC0101", CAST.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")})) {
+            var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(rule[1]));
+            assertEquals(rule[0], e.diagnostics().getFirst().code(), e.diagnostics().toString());
+        }
+    }
+
+    @Test
     void validatorTestMeetsTheSubsetsRules() {
         System.clearProperty(JavacGate.MODE_PROPERTY);
         var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(CAST));

@@ -8,7 +8,9 @@ import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
+import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
+import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,8 +18,13 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -144,7 +151,7 @@ class SubsetRulesTest {
             "@NewType record Boolean(BigInteger value) { }",
             "class Boolean { }"})
     void aUsersBooleanIsNotABooleanResult(String declaration) {
-        assertRule("JULC0094", IMPORTS + """
+        assertUsersType(IMPORTS + """
                 @SpendingValidator
                 class V {
                     %s
@@ -154,12 +161,18 @@ class SubsetRulesTest {
                 """.formatted(declaration));
     }
 
+    /** On javac the type is the user's, so the entry-point rule reads it; the gate stops at the name first. */
+    private static void assertUsersType(String source) {
+        assertJavacRule("JULC0094", source);
+        assertEquals("JULC0100", code(compiler -> compiler.compile(source), CompilerFrontend.JAVAPARSER));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "@NewType record Boolean(BigInteger value) { }",
             "record Boolean(long value) { }"})
     void aTopLevelUsersBooleanIsNotABooleanResult(String declaration) {
-        assertRule("JULC0094", IMPORTS + """
+        assertUsersType(IMPORTS + """
                 %s
                 @SpendingValidator
                 class V {
@@ -373,9 +386,7 @@ class SubsetRulesTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "static P BigInteger; long ZERO; @Param static long p = BigInteger.ZERO;",
-            "static P PlutusData; long UNIT; @Param static long p = PlutusData.UNIT;",
-            "static class BigInteger { static final Object ZERO = new Object(); } Object instance = BigInteger.ZERO;",
-            "static class PlutusData { static final Object UNIT = new Object(); } Object instance = PlutusData.UNIT;"})
+            "static P PlutusData; long UNIT; @Param static long p = PlutusData.UNIT;"})
     void anApiConstantIsTheApis(String field) {
         assertMethodRule("JULC0095", """
                 import org.julclang.stdlib.annotation.*;
@@ -386,26 +397,30 @@ class SubsetRulesTest {
                 """.formatted(field));
     }
 
-    /** The one call is the JDK's: a user's {@code Boolean} has no {@code valueOf} this rule knows. */
+    /** The one call is the JDK's: a user's {@code Boolean} has no {@code valueOf} this rule knows. The gate stops at its name. */
     @ParameterizedTest
     @ValueSource(strings = {
             "static class Boolean { static long valueOf(boolean b) { return 1; } } long instance = Boolean.valueOf(true);",
             "static class Boolean { static boolean valueOf(boolean b) { return 1 / 0 == 0; } } @Param static boolean p = Boolean.valueOf(true);",
-            "static class Boolean { static boolean valueOf(boolean b) { OPEN = false; return b; } } @Param static boolean p = Boolean.valueOf(true);"})
-    void aUsersValueOfIsACall(String field) {
-        assertMethodRule("JULC0095", """
+            "static class Boolean { static boolean valueOf(boolean b) { OPEN = false; return b; } } @Param static boolean p = Boolean.valueOf(true);",
+            "static class BigInteger { static final Object ZERO = new Object(); } Object instance = BigInteger.ZERO;",
+            "static class PlutusData { static final Object UNIT = new Object(); } Object instance = PlutusData.UNIT;"})
+    void aUsersApiNameIsNoApi(String field) {
+        String source = """
                 import org.julclang.stdlib.annotation.*;
                 class P {
                     static boolean OPEN = true;
                     %s
                     static long m() { return 1; }
                 }
-                """.formatted(field));
+                """.formatted(field);
+        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
+        assertEquals("JULC0100", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAPARSER));
     }
 
     @Test
     void aTopLevelUsersValueOfIsACall() {
-        assertMethodRule("JULC0095", """
+        String source = """
                 import org.julclang.stdlib.annotation.*;
                 class P {
                     static boolean OPEN = true;
@@ -415,7 +430,9 @@ class SubsetRulesTest {
                 class Boolean {
                     static boolean valueOf(boolean b) { P.OPEN = false; return b; }
                 }
-                """);
+                """;
+        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
+        assertEquals("JULC0100", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAPARSER));
     }
 
     @ParameterizedTest
@@ -546,6 +563,13 @@ class SubsetRulesTest {
         assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
     }
 
+    /** An anonymous class is no class {@code LibraryCompiler} reads, so nothing lowers its static field. */
+    @Test
+    void aLibrarysAnonymousClassLowersNothing() {
+        var libraries = List.of(library("boolean instance() { return new Object() { static int x = 1 / 0; }.hashCode() == 0; }"));
+        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+    }
+
     @Test
     void aLibrarysStaticFieldLowers() {
         new JulcCompiler(null, new CompilerOptions()).compile(LIBRARY_CALLER, List.of(library("static long lowered = helper();")));
@@ -635,7 +659,7 @@ class SubsetRulesTest {
         assertEquals("JULC0098", code(compiler -> compiler.compile(LIBRARY_CALLER, List.of(library)), CompilerFrontend.JAVAC));
     }
 
-    /** What is allowed is left as it was: boolean stays boolean, and Data is read at the cast. */
+    /** What is allowed is left as it was: boolean stays boolean. */
     @ParameterizedTest
     @ValueSource(strings = {
             "return (boolean) true;",
@@ -652,8 +676,8 @@ class SubsetRulesTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"PlutusData", "PlutusData.ConstrData"})
-    void aCastToBooleanOfDataCompiles(String type) {
-        new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+    void aCastToBooleanOfDataIsNoBoolean(String type) {
+        assertRule("JULC0098", IMPORTS + """
                 @SpendingValidator
                 class V {
                     @Entrypoint
@@ -662,15 +686,376 @@ class SubsetRulesTest {
                 """.formatted(type));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "PlutusData d = (PlutusData) (Object) r; return (boolean) (Object) d;",
+            "PlutusData d = (PlutusData) (Object) r; if ((boolean) (Object) d) { return false; } return true;",
+            "PlutusData.IntData d = (PlutusData.IntData) (Object) r; return (Boolean) (Object) d;",
+            "return (boolean) (Object) helper(r);",
+            "return (boolean) (Object) Builtins.fstPair(Builtins.unConstrData((PlutusData) (Object) r));",
+            "return (boolean) (Object) Builtins.sndPair(Builtins.unConstrData((PlutusData) (Object) r));"})
+    void dataReachesNoBooleanThroughACast(String body) {
+        assertRule("JULC0098", IMPORTS + """
+                import org.julclang.stdlib.Builtins;
+                @SpendingValidator
+                class V {
+                    static PlutusData helper(BigInteger r) { return (PlutusData) (Object) r; }
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) { %s }
+                }
+                """.formatted(body));
+    }
+
+    /** {@code PlutusData.cast} is a cast with no cast tree. The target is what the call resolved to, however it is written. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "return PlutusData.cast(r, Boolean.class);",
+            "return PlutusData.cast(r, boolean.class);",
+            "return PlutusData.cast(r, java.lang.Boolean.class);",
+            "return org.julclang.core.PlutusData.cast(r, Boolean.class);",
+            "if (PlutusData.cast(r, Boolean.class)) { return false; } return true;",
+            "boolean b = PlutusData.cast(r, Boolean.class); return !b;",
+            "Class<Boolean> k = Boolean.class; return PlutusData.cast(r, k);",
+            "return (boolean) PlutusData.cast(r, Object.class);",
+            "return (Boolean) (Object) PlutusData.cast(r, BigInteger.class);",
+            "return PlutusData.cast(PlutusData.cast(r, Object.class), Boolean.class);"})
+    void plutusDataCastIsACast(String body) {
+        assertRule("JULC0098", validator(body));
+    }
+
+    @Test
+    void plutusDataCastIsKnownByIdentity() {
+        assertRule("JULC0098", IMPORTS + """
+                import static org.julclang.core.PlutusData.cast;
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) { return cast(r, Boolean.class); }
+                }
+                """);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "boolean flag = r.signum() > 0; return PlutusData.cast(flag, Boolean.class);",
+            "boolean flag = r.signum() > 0; return (boolean) PlutusData.cast(flag, Object.class);",
+            "boolean flag = r.signum() > 0; return PlutusData.cast(PlutusData.cast(flag, Object.class), Boolean.class);"})
+    void plutusDataCastOfABooleanCompiles(String body) {
+        new JulcCompiler(null, new CompilerOptions()).compile(validator(body));
+    }
+
+    @Test
+    void plutusDataCastToAnotherTypeIsLeftAlone() {
+        new JulcCompiler(null, new CompilerOptions()).compile(validator("BigInteger same = PlutusData.cast(r, BigInteger.class); return same.signum() > 0;"));
+    }
+
+    /** A target holds a boolean through a bound too, and a {@code @NewType} of one is one on-chain. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static <T extends Boolean> T f(BigInteger x) { return (T) (Object) x; }",
+            "@NewType record F(boolean v) { } static F f(BigInteger x) { return (F) (Object) x; }",
+            "@NewType record F(boolean v) { } static F f(BigInteger x) { return PlutusData.cast(x, F.class); }"})
+    void aTargetThatHoldsABooleanIsACastToBoolean(String member) {
+        assertRule("JULC0098", IMPORTS + """
+                @SpendingValidator
+                class V {
+                    %s
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) { return true; }
+                }
+                """.formatted(member));
+    }
+
+    @Test
+    void aNewTypeOfABooleanKeepsItsOwnCast() {
+        new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @NewType record F(boolean v) { }
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) {
+                        F a = new F(r.signum() > 0);
+                        F b = (F) (Object) a;
+                        return a == b;
+                    }
+                }
+                """);
+    }
+
+    /** With the platform's stubs an intersection with {@code Boolean} does not get past javac, as a cast or as a bound. */
+    @Test
+    void anIntersectionWithBooleanStopsAtJavac() {
+        assertEquals("JULC0085", code(compiler -> compiler.compile(validator("return (Boolean & java.io.Serializable) (Object) r;")),
+                CompilerFrontend.JAVAPARSER));
+        assertEquals("JULC0085", code(compiler -> compiler.compileMethod("""
+                class P {
+                    static <T extends Boolean & Comparable<Boolean>> T f(long x) { return (T) (Object) x; }
+                    static long m() { return 1; }
+                }
+                """, "m"), CompilerFrontend.JAVAPARSER));
+    }
+
+    @Test
+    void aFromPlutusDataIsACastOnJavac() {
+        assertJavacRule("JULC0098", IMPORTS + """
+                @SpendingValidator
+                class V {
+                    record R(BigInteger a) { static boolean fromPlutusData(BigInteger x) { return false; } }
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) { return R.fromPlutusData(r); }
+                }
+                """);
+    }
+
+    @Test
+    void aValueOfThroughAFieldIsACastOnJavac() {
+        assertJavacRule("JULC0098", IMPORTS + """
+                @SpendingValidator
+                class V {
+                    static class H { boolean valueOf(java.math.BigInteger x) { return false; } }
+                    static H BigInteger;
+                    @Entrypoint
+                    static boolean validate(java.math.BigInteger r, ScriptContext ctx) { return BigInteger.valueOf(r); }
+                }
+                """);
+    }
+
+    @Test
+    void aCastThroughAFieldIsACastOnJavac() {
+        assertJavacRule("JULC0098", """
+                import java.math.BigInteger;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+                @SpendingValidator
+                class V {
+                    static class H { boolean cast(BigInteger x, Class<?> c) { return false; } }
+                    static H PlutusData;
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) { return PlutusData.cast(r, Object.class); }
+                }
+                """);
+    }
+
+    // --- A name the compiler reads by spelling: a type ---
+
+    /** The set is {@code TypeResolver}'s, so a name it learns must come here. */
+    @Test
+    void theSpelledNamesAreTypeResolversOwn() throws IOException {
+        var source = Files.readString(Path.of("src/main/java/org/julclang/compiler/resolve/TypeResolver.java"));
+        var body = source.substring(source.indexOf("private PirType resolveClassType"));
+        body = body.substring(0, body.indexOf("default -> {"));
+        var names = new TreeSet<String>(TypeRegistry.ledgerHashNames());
+        var cases = Pattern.compile("(?m)^\\s+case ([^-]+) ->").matcher(body);
+        while (cases.find()) {
+            for (String name : cases.group(1).split(",")) names.add(name.strip().replace("\"", ""));
+        }
+        assertEquals(names, new TreeSet<>(SpelledTypes.NAMES));
+    }
+
+    private static Stream<String> spelledNames() {
+        return SpelledTypes.NAMES.stream().sorted();
+    }
+
+    @ParameterizedTest
+    @MethodSource("spelledNames")
+    void noTypeTakesASpelledName(String name) {
+        assertSpelling("JULC0100", "class P { record %s(long a) { } static long m() { return 1; } }".formatted(name));
+        assertSpelling("JULC0100", "class P { static class %s { } static long m() { return 1; } }".formatted(name));
+        assertSpelling("JULC0100", "record %s(long a) { } class P { static long m() { return 1; } }".formatted(name));
+    }
+
+    @ParameterizedTest
+    @MethodSource("spelledNames")
+    void noTypeParameterTakesASpelledName(String name) {
+        assertSpelling("JULC0100", "class P { static <%s> long f() { return 1; } static long m() { return 1; } }".formatted(name));
+        assertSpelling("JULC0100", "class P { record R<%s>(long a) { } static long m() { return 1; } }".formatted(name));
+    }
+
+    @Test
+    void aTypeParameterNamedBooleanIsNoEscapeFromTheCastRule() {
+        assertSpelling("JULC0100", """
+                class P {
+                    static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; }
+                    static long m() { return 1; }
+                }
+                """);
+    }
+
+    @Test
+    void aTypeInALocalScopeIsReadToo() {
+        assertSpelling("JULC0100", "class P { static long m() { record Boolean(long a) { } return 1; } }");
+    }
+
+    /** {@code BigInteger.valueOf} goes by the scope's spelling, so a user type of that name closes with this rule. */
+    @Test
+    void aUsersBigIntegerHasNoValueOf() {
+        assertSpelling("JULC0100", """
+                class P {
+                    record BigInteger(long a) { static boolean valueOf(long x) { return false; } }
+                    static long m() { return BigInteger.valueOf(1) ? 1 : 0; }
+                }
+                """);
+    }
+
+    @Test
+    void aLibraryTakesNoSpelledName() {
+        var libraries = List.of(library("record Boolean(long a) { }"));
+        assertEquals("JULC0100", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+    }
+
+    @Test
+    void anotherNameIsAName() {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("class P { record Bool(long a) { } static <T> long f() { return 1; } static long m() { return 1; } }", "m");
+    }
+
+    /** The gate's rule is about how the default frontend reads a name. On javac the type is the user's. */
+    @Test
+    void javacReadsAUsersTypeByIdentity() {
+        assertSameMethodAsReferenceOrItsOwnRow("class P { record Boolean(long a) { } static long m() { return 1; } }");
+    }
+
+    private static void assertSameMethodAsReferenceOrItsOwnRow(String source) {
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        new JulcCompiler(null, options).compileMethod(source, "m");
+    }
+
+    private static void assertSpelling(String expected, String source) {
+        assertEquals(expected, code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAPARSER));
+    }
+
+    // --- A name the compiler reads by spelling: a method ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record R(BigInteger a) { static boolean fromPlutusData(long x) { return false; } }",
+            "record R(BigInteger a) { static BigInteger fromPlutusData(long x) { return BigInteger.TEN; } }",
+            "static class C { static boolean fromPlutusData(long x) { return false; } }",
+            "record R(BigInteger a) { PlutusData toPlutusData() { return PlutusData.UNIT; } }",
+            "@NewType record N(BigInteger value) { static BigInteger of(BigInteger x) { return x.add(BigInteger.ONE); } }",
+            "@NewType record N(boolean value) { static boolean of(long x) { return false; } }",
+            "@NewType record N(BigInteger v) { static N of(BigInteger v) { return new N(v); } }",
+            "@NewType record N(BigInteger v) { boolean intValue() { return true; } }",
+            "@NewType record N(BigInteger v) { boolean abs() { return true; } }",
+            "@NewType record N(BigInteger v) { BigInteger plusOne() { return v.add(BigInteger.ONE); } }",
+            "@NewType record N(BigInteger v) { public BigInteger v() { return BigInteger.ONE; } }",
+            "@NewType record H(byte[] b) { boolean length() { return true; } }",
+            "@NewType record H(byte[] b) { boolean hash() { return true; } }",
+            "@NewType record H(byte[] b) { boolean nonEmpty() { return true; } }",
+            "@NewType record H(String s) { boolean length() { return true; } }",
+            "record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } }",
+            "record R(BigInteger a) { public boolean equals(Object o) { return true; } }",
+            "sealed interface S permits A { boolean equals(Object o); } record A(long a) implements S { }",
+            "record Value(BigInteger a) { boolean isEmpty() { return true; } }",
+            "record Value(BigInteger a) { boolean lovelaceOf() { return true; } }"})
+    void noMethodTakesAnIntrinsicsName(String member) {
+        assertSpelling("JULC0101", """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    %s
+                    static long m() { return 1; }
+                }
+                """.formatted(member));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static class H { long valueOf(long x) { return x + 1; } } static H BigInteger; static long m() { return BigInteger.valueOf(1); }",
+            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H PlutusData; static long m() { return PlutusData.cast(1, Object.class); }",
+            "@NewType record N(long a) { } static class H { long of(long x) { return x + 1; } } static H N; static long m() { return N.of(1); }"})
+    void noMethodIsCalledThroughASpelledVariable(String members) {
+        assertSpelling("JULC0101", """
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    %s
+                }
+                """.formatted(members));
+    }
+
+    @Test
+    void aSpelledNameIsAMethodsOwnElsewhere() {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    record R(BigInteger a) {
+                        static long of(long x) { return x; }
+                        static long valueOf(long x) { return x; }
+                        public String toString() { return "r"; }
+                        public int hashCode() { return 1; }
+                        boolean fromPlutusData() { return true; }
+                        boolean toPlutusData(long x) { return true; }
+                        boolean other() { return true; }
+                    }
+                    @NewType record N(BigInteger a) {
+                        static long helper(long x) { return x; }
+                    }
+                    static long m() { return 1; }
+                }
+                """, "m");
+    }
+
+    @Test
+    void aGeneratedMethodIsExempt() {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    record R(BigInteger a) { }
+                    @NewType record N(BigInteger v) { }
+                    static long m() { return 1; }
+                }
+                """, "m");
+    }
+
+    @Test
+    void anApiCallIsNoSpelledCall() {
+        new JulcCompiler(null, new CompilerOptions()).compile(validator("BigInteger two = BigInteger.valueOf(2); return PlutusData.cast(two, BigInteger.class).signum() > 0;"));
+    }
+
+    @Test
+    void aLibrarysMethodTakesNoIntrinsicsName() {
+        var libraries = List.of(library("record R(long a) { static boolean fromPlutusData(long x) { return false; } }"));
+        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+    }
+
+    @Test
+    void theMethodRuleNamesTheMethod() {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                class P {
+                    record R(long a) { static boolean fromPlutusData(long x) { return false; } }
+                    static long m() { return 1; }
+                }
+                """, "m"));
+        var diagnostic = thrown.diagnostics().getFirst();
+        assertTrue(diagnostic.message().contains("R.fromPlutusData(long)"), diagnostic.message());
+        assertEquals(2, diagnostic.line());
+        assertEquals(24, diagnostic.column());
+    }
+
+    @Test
+    void theTypeRuleNamesTheType() {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                class P {
+                    record Boolean(long a) { }
+                    static long m() { return 1; }
+                }
+                """, "m"));
+        var diagnostic = thrown.diagnostics().getFirst();
+        assertTrue(diagnostic.message().contains("Boolean"), diagnostic.message());
+        assertEquals(2, diagnostic.line());
+        assertEquals(5, diagnostic.column());
+    }
+
     @Test
     void aCastToAnotherTypeIsLeftAlone() {
         new JulcCompiler(null, new CompilerOptions()).compile(validator("BigInteger same = (BigInteger) (Object) r; return same.signum() > 0;"));
     }
 
-    /** {@code null} has no type this rule reads, and no meaning on-chain: that is its own rejection. */
     @Test
-    void aCastOfNullIsNull() {
-        assertEquals("JULC0017", code(compiler -> compiler.compile(validator("return (Boolean) null;")), CompilerFrontend.JAVAPARSER));
+    void aCastOfNullIsNoBoolean() {
+        assertEquals("JULC0098", code(compiler -> compiler.compile(validator("return (Boolean) null;")), CompilerFrontend.JAVAPARSER));
     }
 
     // --- A constructor holds no statement ---

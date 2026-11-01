@@ -106,6 +106,25 @@ class JulcPluginJavacGateTest {
         }
     }
 
+    private void assertBuildFails(String code) {
+        var result = GradleRunner.create().withProjectDir(project.toFile()).withPluginClasspath()
+                .withArguments("compileJulc", "--stacktrace").buildAndFail();
+        assertTrue(result.getOutput().contains(code), result.getOutput());
+    }
+
+    @Test
+    void theCastAndNameRulesFailTheBuild() throws IOException {
+        writeValidator("PlutusData.cast(ctx.txInfo().fee(), Boolean.class)");
+        assertBuildFails("JULC0098");
+        for (String[] rule : List.of(new String[]{"JULC0100", "record Boolean(java.math.BigInteger a) { }"},
+                new String[]{"JULC0101", "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"})) {
+            writeValidator("true");
+            Path validator = sources.resolve("FeeGate.java");
+            Files.writeString(validator, Files.readString(validator).replace("    @Entrypoint", "    " + rule[1] + "\n    @Entrypoint"));
+            assertBuildFails(rule[0]);
+        }
+    }
+
     @Test
     void javacErrorFailsTheBuild() throws IOException {
         writeValidator("ctx.txInfo().fee() > Fees.minimum()");

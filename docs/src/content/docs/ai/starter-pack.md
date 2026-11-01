@@ -339,13 +339,17 @@ Declare a `byte[]`, `List<T>` or `JulcList<T>` parameter.
 
 A `+` of strings is an `appendString` at run time, of literals too. For one string, write one literal.
 
-### 6.17 A cast to `boolean` takes a boolean or Data
+### 6.17 A value reaches `boolean` through a cast only from a boolean
 
-A cast to `boolean` or `Boolean` takes an operand whose type, through parentheses and other casts, is `boolean`, `Boolean`, or `PlutusData` and its subtypes. Anything else is `JULC0098`.
+A cast to `boolean` or `Boolean`, or `PlutusData.cast` to either, takes an operand whose type, through parentheses and other casts, is `boolean` or `Boolean`. Anything else is `JULC0098`, Data included.
 
 ### 6.18 A constructor holds no statement
 
 A value is built from its components alone, so a constructor's body does not run on-chain. Any constructor a source declares, compact, canonical or other, on a record or a class, holds no statement: `JULC0099`. An empty `R { }` is allowed. Write a static method that returns the value instead.
+
+### 6.19 Some names are JuLC's
+
+A type or type parameter does not take a name JuLC reads as its own type, such as `Boolean`, `BigInteger`, `JulcList` or `PubKeyHash`: `JULC0100`. A method does not take a name JuLC reads in place of its body: `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit accessor or `equals` on a record: `JULC0101`.
 
 ## 7. Common errors — root cause and fix
 

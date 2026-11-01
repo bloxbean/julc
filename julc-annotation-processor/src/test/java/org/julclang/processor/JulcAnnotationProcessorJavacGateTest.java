@@ -135,6 +135,24 @@ class JulcAnnotationProcessorJavacGateTest {
         }
     }
 
+    private void assertFails(String code, String source) throws Exception {
+        var diagnostics = process(Map.of("FeeGate", source));
+        var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                .map(d -> d.getMessage(null)).toList();
+        assertEquals(1, errors.size(), diagnostics.toString());
+        assertTrue(errors.getFirst().contains(code), errors.getFirst());
+    }
+
+    @Test
+    void theCastAndNameRulesFailTheValidator() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        assertFails("JULC0098", validator("PlutusData.cast(ctx.txInfo().fee(), Boolean.class)"));
+        assertFails("JULC0098", validator("(boolean) (Object) (PlutusData) (Object) ctx.txInfo().fee()"));
+        assertFails("JULC0100", withMember(validator("true"), "record Boolean(java.math.BigInteger a) { }"));
+        assertFails("JULC0100", withMember(validator("true"), "static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; }"));
+        assertFails("JULC0101", withMember(validator("true"), "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"));
+    }
+
     @Test
     void anEmptyConstructorCompiles() throws Exception {
         System.clearProperty(JavacGate.MODE_PROPERTY);

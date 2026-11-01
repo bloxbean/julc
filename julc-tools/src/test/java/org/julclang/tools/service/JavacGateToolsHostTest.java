@@ -117,6 +117,22 @@ class JavacGateToolsHostTest {
     }
 
     @Test
+    void theToolsMeetTheCastAndNameRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
+        for (String[] rule : List.of(
+                new String[]{"JULC0098", VALIDATOR.replace("Rates.rate().add(Fees.fee()).signum() > 0", "PlutusData.cast(ctx.txInfo().fee(), Boolean.class)")},
+                new String[]{"JULC0100", VALIDATOR.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint")},
+                new String[]{"JULC0101", VALIDATOR.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint")})) {
+            var compiled = tools.compile(new CompileRequest(rule[1], "java", EDITOR_LIBRARY)).body();
+            assertTrue(String.valueOf(compiled).contains(rule[0]), String.valueOf(compiled));
+            var opened = new SourceDebugService(classpath).open(new OpenRequest(rule[1], EDITOR_LIBRARY, List.of(),
+                    spendTransaction(), 11, null, null, null, null, false)).body();
+            assertTrue(String.valueOf(opened).contains(rule[0]), String.valueOf(opened));
+        }
+    }
+
+    @Test
     void theToolsMeetTheConstructorRule() {
         System.clearProperty(JavacGate.MODE_PROPERTY);
         var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);

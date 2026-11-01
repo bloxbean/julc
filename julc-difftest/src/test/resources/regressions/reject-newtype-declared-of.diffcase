@@ -3,7 +3,7 @@ name: #282 a @NewType declaring a static of (N6)
 class: Probe
 method: m
 arg: 05
-expect: REJECT JULC0055
+expect: REJECT JULC0101
 note: ADR-067 N6: legal Java (5).
 ---
 import java.math.BigInteger;

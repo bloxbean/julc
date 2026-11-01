@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
+import org.julclang.stdlib.StdlibRegistry;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -112,6 +113,88 @@ class SubsetRulesAtEveryEntryTest {
             new Constructor("static boolean OPEN = true; record R(BigInteger a) { R { OPEN = false; } }", "R", "OPEN"),
             new Constructor("record R(BigInteger a) { R { a = a.max(BigInteger.ONE); } }", "R", "redeemer.a().compareTo(BigInteger.ONE) < 0"));
 
+    /** Each is a way a value of another type could reach a boolean: a test per source, on each entry. */
+    private static final List<String> CAST_BODIES = List.of(
+            "return (boolean) (Object) r;",
+            "PlutusData d = (PlutusData) (Object) r; return (boolean) (Object) d;",
+            "return PlutusData.cast(r, Boolean.class);",
+            "return PlutusData.cast(r, boolean.class);",
+            "Class<Boolean> k = Boolean.class; return PlutusData.cast(r, k);",
+            "return (boolean) PlutusData.cast(r, Object.class);");
+
+    private static String casting(String body) {
+        return IMPORTS + """
+                @SpendingValidator
+                public class V {
+                    @Entrypoint
+                    public static boolean validate(BigInteger r, ScriptContext ctx) { %s }
+                }
+                """.formatted(body);
+    }
+
+    private static final List<String> CARRIERS = List.of(
+            "JulcList<BigInteger> xs = JulcList.of(r); JulcList<Boolean> l = (JulcList<Boolean>) (Object) xs; return l.head();",
+            "Optional<BigInteger> o = Optional.of(r); Optional<Boolean> p = (Optional<Boolean>) (Object) o; return p.get();",
+            "JulcMap<BigInteger, Boolean> n = (JulcMap<BigInteger, Boolean>) (Object) r; return n.get(r);",
+            "Tuple2<BigInteger, BigInteger> t = new Tuple2<>(r, r); Tuple2<Boolean, BigInteger> u = (Tuple2<Boolean, BigInteger>) (Object) t; return u.first();",
+            "F x = (F) (Object) new Q(r); return x.flag();");
+
+    private static String carrying(String body) {
+        return """
+                import java.math.BigInteger;
+                import java.util.Optional;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.core.types.JulcMap;
+                import org.julclang.core.types.Tuple2;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.*;
+                @SpendingValidator
+                public class V {
+                    record Q(BigInteger a) { }
+                    record F(boolean flag) { }
+                    @Entrypoint
+                    public static boolean validate(BigInteger r, ScriptContext ctx) { %s }
+                }
+                """.formatted(body);
+    }
+
+    private static String declaring(String member) {
+        return IMPORTS + """
+                @SpendingValidator
+                public class V {
+                    %s
+                    @Entrypoint
+                    public static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """.formatted(member);
+    }
+
+    private static final List<String> SPELLED_TYPES = List.of(
+            "record Boolean(BigInteger a) { }",
+            "@NewType record Boolean(BigInteger a) { }",
+            "record BigInteger(long a) { static boolean valueOf(long x) { return false; } }",
+            "static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; }");
+
+    private static final List<String> SPELLED_METHODS = List.of(
+            "record R(BigInteger a) { static boolean fromPlutusData(long x) { return false; } }",
+            "@NewType record N(BigInteger value) { static BigInteger of(BigInteger x) { return x.add(BigInteger.ONE); } }",
+            "@NewType record N(BigInteger v) { boolean abs() { return true; } }",
+            "record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } }",
+            "record R(BigInteger a) { public boolean equals(Object o) { return true; } }");
+
+    private static String libraryOf(String member) {
+        return """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.*;
+                @OnchainLibrary
+                public class L {
+                    %s
+                    public static long helper() { return 1; }
+                }
+                """.formatted(member);
+    }
+
     private static final Constructor EMPTY = new Constructor("record R(BigInteger a) { R { } }", "R", "redeemer.a().signum() > 0");
 
     private static final String CALLS_THE_LIBRARY = IMPORTS + """
@@ -158,7 +241,7 @@ class SubsetRulesAtEveryEntryTest {
     }
 
     private static JulcCompiler compiler() {
-        return new JulcCompiler(null, new CompilerOptions().setSourceMapEnabled(true));
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setSourceMapEnabled(true));
     }
 
     private static int files;
@@ -209,6 +292,24 @@ class SubsetRulesAtEveryEntryTest {
         assertRejected("JULC0095", entry, RUNS_A_BLOCK);
         assertRejected("JULC0098", entry, CASTS_A_NUMBER);
         for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.validator());
+        for (var body : CAST_BODIES) assertRejected("JULC0098", entry, casting(body));
+        for (var member : SPELLED_TYPES) assertRejected("JULC0100", entry, declaring(member));
+        for (var member : SPELLED_METHODS) assertRejected("JULC0101", entry, declaring(member));
+    }
+
+    /** A carrier's read of a boolean is a decode, which {@code BooleanCarriersTest} evaluates: every entry compiles it. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("validatorEntries")
+    void aValidatorEntryCompilesACarrier(String name, Entry entry) {
+        for (var body : CARRIERS) assertDoesNotThrow(() -> entry.compile(compiler(), carrying(body)), body);
+    }
+
+    /** A type variable of a validator's own method has no type to read. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("validatorEntries")
+    void aValidatorEntryDoesNotCompileAHelpersTypeVariable(String name, Entry entry) {
+        assertThrows(CompilerException.class, () -> entry.compile(compiler(), declaring(
+                "static <T> T f(BigInteger x) { return (T) (Object) x; } static boolean g(BigInteger r) { boolean b = f(r); return b; }")));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -229,6 +330,20 @@ class SubsetRulesAtEveryEntryTest {
         assertRejected("JULC0095", entry, METHOD_HOLDS_A_DIVISION);
         assertRejected("JULC0098", entry, METHOD_CASTS_A_NUMBER);
         for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.method());
+        for (var member : SPELLED_TYPES) {
+            assertRejected("JULC0100", entry, """
+                    import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.*;
+                    class P { %s static long m() { return 1; } }
+                    """.formatted(member));
+        }
+        for (var member : SPELLED_METHODS) {
+            assertRejected("JULC0101", entry, """
+                    import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.*;
+                    class P { %s static long m() { return 1; } }
+                    """.formatted(member));
+        }
     }
 
     @ParameterizedTest(name = "{0}")
@@ -284,6 +399,9 @@ class SubsetRulesAtEveryEntryTest {
         assertRejected("JULC0095", entry, LIBRARY);
         assertRejected("JULC0098", entry, CASTING_LIBRARY);
         for (var constructor : CONSTRUCTORS) assertRejected("JULC0099", entry, constructor.library());
+        for (var member : SPELLED_METHODS) assertRejected("JULC0101", entry, libraryOf(member));
+        assertRejected("JULC0100", entry, libraryOf("record Boolean(long a) { }"));
+        assertRejected("JULC0098", entry, libraryOf("static boolean flag(BigInteger r) { return PlutusData.cast(r, Boolean.class); }"));
     }
 
     @ParameterizedTest(name = "{0}")

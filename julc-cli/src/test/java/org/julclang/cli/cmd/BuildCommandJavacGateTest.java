@@ -99,6 +99,15 @@ class BuildCommandJavacGateTest {
     }
 
     @Test
+    void theCastAndNameRulesFailTheBuild(@TempDir Path dir) throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        assertBuildFails("JULC0098", project(dir.resolve("cast"), "org.julclang.core.PlutusData.cast(ctx.txInfo().fee(), Boolean.class)"));
+        assertBuildFails("JULC0100", withMember(project(dir.resolve("type"), "true"), "record Boolean(java.math.BigInteger a) { }"));
+        assertBuildFails("JULC0101", withMember(project(dir.resolve("method"), "true"),
+                "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"));
+    }
+
+    @Test
     void anEmptyConstructorBuilds(@TempDir Path dir) throws Exception {
         System.clearProperty(JavacGate.MODE_PROPERTY);
         Path project = withMember(project(dir, "true"), "record R(java.math.BigInteger a) { R { } }");

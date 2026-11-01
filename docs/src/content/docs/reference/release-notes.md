@@ -44,15 +44,18 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   default is `enforce`.
 - **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
   initializer that nothing lowers holds only a constant, and an initializer block is empty
-  (`JULC0095`). A cast to `boolean` or `Boolean` takes a boolean or a `PlutusData` (`JULC0098`).
-  A constructor holds no statement (`JULC0099`).
+  (`JULC0095`). A value reaches `boolean` or `Boolean` through a cast only from a boolean
+  (`JULC0098`). A constructor holds no statement (`JULC0099`). A type does not take a name JuLC
+  reads as its own type (`JULC0100`), and a method does not take a name JuLC reads in place of its
+  body (`JULC0101`).
   They run on javac's trees, so they follow the gate's mode, and `off` turns them off with it.
   See [Compiler Limitations](/getting-started/#16-compiler-limitations).
 - **Value operations are key-based.** `ValuesLib.lovelaceOf` and `Value.lovelaceOf()` look up the
   empty policy and token name, as `assetOf` does, and give 0 for a Value without them.
   `ValuesLib.add`, `subtract` and `negate` keep each (policy, token) once with its amounts summed,
   keep sorted inputs sorted, and keep an amount of 0 as an entry; an input holds no repeated key.
-  `geqMultiAsset`, `leq` and `eq` compare over the keys of both Values, with a missing key as 0.
+  `geqMultiAsset`, `leq` and `eq` compare over the keys of both Values, with a missing key as 0,
+  and each key takes one lookup, so `eq` costs about what `geqMultiAsset` costs.
   The helpers `adjustOuterForAdd`, `adjustInnerForAdd`, `extraOuterEntries`, `extraInnerEntries` and
   `checkPolicyGeq` are gone; use `add` and `geqMultiAsset`.
 - **`PlutusData.cast`** views Data as a type on-chain. It is an unchecked cast, not a decoder: on

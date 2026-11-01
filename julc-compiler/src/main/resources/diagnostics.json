@@ -1164,6 +1164,36 @@
       }
     },
     {
+      "code": "JULC0101",
+      "constant": "METHOD_NAME_READ_BY_SPELLING",
+      "status": "emitted",
+      "title": "A method does not take a name JuLC reads in place of its body",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "The method {0} has a name JuLC reads in place of its body, so a program does not declare it",
+      "summary": "JuLC lowers some calls by their spelling, so a body declared under that name would not run: fromPlutusData and toPlutusData on any type, of and instance methods on a @NewType record, an explicit accessor or equals on a record, and equals on a sealed interface.",
+      "fix": "Give the method another name.",
+      "example": {
+        "bad": "record Amount(BigInteger v) { public BigInteger v() { return v.abs(); } }",
+        "good": "record Amount(BigInteger v) { static BigInteger size(Amount a) { return a.v().abs(); } }"
+      }
+    },
+    {
+      "code": "JULC0100",
+      "constant": "TYPE_NAME_READ_BY_SPELLING",
+      "status": "emitted",
+      "title": "A type does not take a name JuLC reads as its own type",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "The type {0} has a name JuLC reads as its own type, so a program does not declare it",
+      "summary": "JuLC reads some type names by their spelling, ahead of any type a program declares, so a program does not declare a type or a type parameter of that name.",
+      "fix": "Give the type another name.",
+      "example": {
+        "bad": "@NewType record Boolean(BigInteger v) { }",
+        "good": "@NewType record Flag(BigInteger v) { }"
+      }
+    },
+    {
       "code": "JULC0099",
       "constant": "CONSTRUCTOR_BODY",
       "status": "emitted",
@@ -1182,11 +1212,11 @@
       "code": "JULC0098",
       "constant": "BOOLEAN_CAST_OPERAND",
       "status": "emitted",
-      "title": "A cast to boolean takes a boolean or a PlutusData",
+      "title": "A value reaches boolean through a cast only from a boolean",
       "category": "SYNTAX",
       "severity": "error",
-      "template": "A cast to {0} takes a boolean, a Boolean or a PlutusData, not {1}",
-      "summary": "A cast to boolean or Boolean takes an operand whose type, through parentheses and other casts, is boolean, Boolean, or PlutusData and its subtypes.",
+      "template": "A cast to {0} takes a boolean or a Boolean, not {1}",
+      "summary": "A cast to boolean or Boolean, or a call JuLC lowers to its argument with that result, such as PlutusData.cast, takes an operand whose type, through parentheses and other casts, is boolean or Boolean.",
       "fix": "Compare the value to get a boolean.",
       "example": {
         "bad": "boolean b = (boolean)(Object) amount;",

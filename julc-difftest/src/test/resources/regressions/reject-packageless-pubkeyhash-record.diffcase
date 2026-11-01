@@ -1,12 +1,10 @@
 format: 2
-name: a packageless user record named like a ledger hash type (T33)
+name: a packageless user record named like a ledger hash type
 class: Probe
 method: m
 arg: 420102
-expect: DIVERGE T33 Value/Failure
-jvm: Value 420102 []
-uplc: Failure []
-note: ADR-067 D9: rejected with JULC0081 in M3b. Baseline as found in M0: TypeResolver resolves ledger hash names by simple name.
+expect: REJECT JULC0100
+note: ADR-067 D9: rejected with JULC0081 in M3b. Baseline as found in M0: TypeResolver resolves ledger hash names by simple name. A subset rule: a type does not take a name read as a type of JuLC's.
 ---
 import java.math.BigInteger;
 record PubKeyHash(byte[] h) {}

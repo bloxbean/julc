@@ -38,7 +38,7 @@ class Adr068NameCasesTest {
     @CsvSource(delimiter = '|', value = {
             "diverge-t33-packageless-rational|Rational|denominator,numerator|numerator",
             "diverge-t33-packageless-rational-wildcard|Rational|denominator,numerator|numerator",
-            "diverge-t33-packageless-pubkeyhash-record|PubKeyHash|h|h",
+            "reject-packageless-pubkeyhash-record|PubKeyHash|h|h",
             "diverge-t33-top-level-user-value-on-constructor|Value|isEmpty|isEmpty",
             "diverge-t33-top-level-user-value-on-local|Value|isEmpty|isEmpty",
             "diverge-t33-user-value-accessor-on-constructor|Probe.Value|isEmpty|isEmpty",
