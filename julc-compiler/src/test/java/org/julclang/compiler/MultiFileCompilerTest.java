@@ -949,7 +949,7 @@ class MultiFileCompilerTest {
 
                 @OnchainLibrary
                 class ConfigLib {
-                    static BigInteger THRESHOLD = BigInteger.valueOf(42);
+                    static BigInteger THRESHOLD = BigInteger.TEN;
 
                     static boolean isAboveThreshold(BigInteger x) {
                         return x.compareTo(THRESHOLD) > 0;
@@ -986,7 +986,7 @@ class MultiFileCompilerTest {
 
                     @OnchainLibrary
                     class ConfigLib2 {
-                        static BigInteger ANSWER = BigInteger.valueOf(42);
+                        static BigInteger ANSWER = BigInteger.TEN;
 
                         static BigInteger getAnswer() {
                             return ANSWER;
@@ -1007,7 +1007,7 @@ class MultiFileCompilerTest {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
                             var answer = ConfigLib2.getAnswer();
-                            return answer.equals(BigInteger.valueOf(42));
+                            return answer.equals(BigInteger.TEN);
                         }
                     }
                     """;

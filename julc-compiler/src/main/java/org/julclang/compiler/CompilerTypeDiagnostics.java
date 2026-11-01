@@ -247,6 +247,12 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(method), location);
     }
 
+    /** JULC0092: a sealed interface with no permits clause whose permitted subclasses are not the records nested in it. */
+    public static CompilerException sealedPermitsRequired(String sealed, List<String> permitted, SourceLocation location) {
+        var info = DiagnosticCodes.SEALED_PERMITS_REQUIRED;
+        return exception(info.code(), info.level(), info.fix(), info.format(sealed, String.join(", ", permitted)), location);
+    }
+
     /** JULC0100: {@code name}, which the JavaParser frontend reads as {@code read}, is {@code here} in this program. */
     public static CompilerException typeNameReadBySpelling(String name, String read, String here, SourceLocation location) {
         var info = DiagnosticCodes.TYPE_NAME_READ_BY_SPELLING;

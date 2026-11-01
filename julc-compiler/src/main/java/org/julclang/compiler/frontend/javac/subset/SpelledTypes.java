@@ -1,12 +1,15 @@
 package org.julclang.compiler.frontend.javac.subset;
 
 import com.sun.source.tree.AnnotationTree;
+import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.ImportTree;
+import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.util.TreeScanner;
@@ -44,20 +47,26 @@ import java.util.stream.Stream;
  *       read as well.</li>
  *   <li>A name of the ledger, at any depth, is reached by an implicit import unless a record or a sealed interface of a
  *       program takes it, which that frontend registers ({@link Reading#ledger}). So a simple name binds to the ledger's type,
- *       or to a record, a sealed interface or a library of another unit. A qualified name goes through the qualifier. In the
- *       unnamed package the implicit import wins, so no top-level type there takes such a name.</li>
+ *       or to a record, a sealed interface or a library of another unit. A qualified name goes through the qualifier.</li>
+ *   <li>A top-level type of the unnamed package has its bare name as its key, so the implicit import wins, another type of
+ *       that name takes it, and a package's name joins it. It takes no name of the ledger, of another type of the compilation,
+ *       or of a package of the compilation.</li>
  *   <li>A variable does not take the name of a type offered to a compilation ({@link Reading#offered}): that frontend reads
  *       {@code name.method()} as a static call first, on every class of a library unit, whatever the program bound.</li>
  *   <li>A plain class or interface is not registered, so its simple name is read as a record, a sealed interface or a
  *       class of a library unit of that name anywhere in a compilation, whichever scope that is in
  *       ({@link Reading#registered}). A type parameter of such a name is read the same way.</li>
  *   <li>That frontend's resolver has no inherited member and no static import, so a type of a program reached by one of
- *       those is written with its qualifier.</li>
- *   <li>A sealed interface's variant is read by its simple name, so two variants of one interface do not share it.</li>
+ *       those, or through a qualifier that is not its owner, is written with its owner. A guard's constants are read the same
+ *       way, so a name in a guard does not bind to such a member.</li>
+ *   <li>A sealed interface's variant is read by its simple name, so two variants of one interface do not share it. With no
+ *       permits clause its variants are the records nested in it, and a different list of javac's is {@code JULC0092}.</li>
  *   <li>A class or a record does not take a type key of {@code TypeMethodRegistry}, which reads the name of a record, or of a
  *       variant that is a class, ahead of its members. A sealed interface is no such reading: its rows are {@code SumType}'s.</li>
  *   <li>The datum of a three-parameter entry point is read as an {@code Optional} when its type's text starts with that word,
  *       so the text and the type agree.</li>
+ *   <li>{@code new} is read by the type's last name, and never its body, so it has no class body. {@code instanceof} on a
+ *       variant compares a constructor tag, so its operand's static type is that variant or its sealed interface.</li>
  * </ul>
  * A declaration of a name of the first group is rejected where it stands, used or not, which also says where to rename. The
  * lists are held to the code: {@code SpelledNameLintTest} fails on a name the frontend compares that is on no list, and
@@ -85,12 +94,16 @@ public final class SpelledTypes {
      * @param registered the simple names of the records and sealed interfaces offered to a compilation, read or not, and of
      *                   every class of a unit it compiles as a library
      * @param offered    those, and the simple names of the classes of the units it compiles as roots
+     * @param repeated   the names of {@code offered} that more than one declaration takes
+     * @param packages   the first name of every package offered
+     * @param unnamed    the names of the top-level types of the unnamed package offered
      */
     public record Reading(Map<String, String> libraries, Map<String, Set<String>> ledger, Set<String> registered,
-                          Set<String> offered) {
+                          Set<String> offered, Set<String> repeated, Set<String> packages, Set<String> unnamed) {
 
         /** {@code identities} is every API class's qualified name. */
-        public static Reading of(Collection<String> identities, Set<String> registered, Set<String> offered) {
+        public static Reading of(Collection<String> identities, Set<String> registered, Set<String> offered,
+                                 Set<String> repeated, Set<String> packages, Set<String> unnamed) {
             var libraries = new HashMap<String, String>();
             var ledger = new HashMap<String, Set<String>>();
             for (String identity : identities) {
@@ -100,7 +113,15 @@ public final class SpelledTypes {
                 if (owner.equals(STDLIB) || owner.equals(STDLIB_LIBRARIES)) libraries.put(name, identity);
                 if (identity.startsWith(LEDGER)) ledger.computeIfAbsent(name, k -> new TreeSet<>()).add(identity);
             }
-            return new Reading(Map.copyOf(libraries), Map.copyOf(ledger), Set.copyOf(registered), Set.copyOf(offered));
+            return new Reading(Map.copyOf(libraries), Map.copyOf(ledger), Set.copyOf(registered), Set.copyOf(offered),
+                    Set.copyOf(repeated), Set.copyOf(packages), Set.copyOf(unnamed));
+        }
+
+        /** What the frontend reads a top-level type of the unnamed package of this name as, ahead of it, or null. */
+        String readAhead(String name) {
+            if (ledger.containsKey(name)) return String.join(" or ", ledger.get(name));
+            if (repeated.contains(name)) return "the other type of that name in this compilation";
+            return packages.contains(name) ? "the package of that name in this compilation" : null;
         }
     }
 
@@ -132,6 +153,14 @@ public final class SpelledTypes {
         return Map.copyOf(annotations);
     }
 
+    /** The top-level types of the unnamed package in the units javac did not read, which {@link #check} cannot place. */
+    public static void checkUnreadUnits(Reading reading) {
+        for (String name : reading.unnamed()) {
+            String read = reading.readAhead(name);
+            if (read != null) throw CompilerTypeDiagnostics.typeNameReadBySpelling(name, read, "a top-level type of the unnamed package", null);
+        }
+    }
+
     /** @param compiledAsLibraries the units read by javac that the frontend compiles as libraries */
     public static void check(JavacFacts facts, CompilationUnitTree unit, Reading reading, Set<CompilationUnitTree> compiledAsLibraries) {
         new Scan(facts, unit, reading, compiledAsLibraries).scan(unit, null);
@@ -143,6 +172,8 @@ public final class SpelledTypes {
         private final CompilationUnitTree unit;
         private final Reading reading;
         private final Set<CompilationUnitTree> compiledAsLibraries;
+        /** The name of the annotation being read, which is the one place an annotation type's name is not a type's. */
+        private Tree annotationName;
 
         Scan(JavacFacts facts, CompilationUnitTree unit, Reading reading, Set<CompilationUnitTree> compiledAsLibraries) {
             this.facts = facts;
@@ -173,12 +204,25 @@ public final class SpelledTypes {
             if (classOrRecord && TYPE_KEYS.contains(name)) {
                 throw reject(name, "a type key of its lowering", describe(facts.element(tree)), tree);
             }
-            if (facts.element(tree).getEnclosingElement() instanceof PackageElement owner && owner.isUnnamed()
-                    && reading.ledger().containsKey(name)) {
-                throw reject(name, String.join(" or ", reading.ledger().get(name)), describe(facts.element(tree)), tree);
+            if (facts.element(tree).getEnclosingElement() instanceof PackageElement owner && owner.isUnnamed()) {
+                String ahead = reading.readAhead(name);
+                if (ahead != null) throw reject(name, ahead, describe(facts.element(tree)), tree);
             }
-            if (facts.element(tree) instanceof TypeElement type && isSealedInterface(type)) requireVariantNames(type, tree);
+            if (facts.element(tree) instanceof TypeElement type && isSealedInterface(type)) {
+                requireVariantNames(type, tree);
+                requirePermits(type, tree);
+            }
             return super.visitClass(tree, unused);
+        }
+
+        /** With no permits clause the frontend reads the records nested in the interface, whatever javac permits. */
+        private void requirePermits(TypeElement sealed, ClassTree tree) {
+            if (!tree.getPermitsClause().isEmpty()) return;
+            var permitted = facts.permitted(sealed);
+            if (!facts.nestedVariants(tree, sealed).equals(permitted)) {
+                throw CompilerTypeDiagnostics.sealedPermitsRequired(sealed.getSimpleName().toString(),
+                        permitted.stream().map(variant -> variant.getSimpleName().toString()).toList(), facts.location(tree));
+            }
         }
 
         private void requireVariantNames(TypeElement sealed, ClassTree tree) {
@@ -201,6 +245,7 @@ public final class SpelledTypes {
         @Override
         public Void visitAnnotation(AnnotationTree tree, Void unused) {
             var type = tree.getAnnotationType();
+            annotationName = type;
             String name = type instanceof MemberSelectTree select ? select.getIdentifier().toString() : type.toString();
             String read = ANNOTATIONS.get(name);
             if (read != null && !read.equals(facts.identity((TypeElement) facts.element(type)))) {
@@ -224,6 +269,48 @@ public final class SpelledTypes {
             if (text.startsWith("Optional") != optional) {
                 throw reject(text, optional ? "a datum that is always present" : "an optional datum", "the type " + facts.type(type), type);
             }
+        }
+
+        /** The frontend reads the type's last name and never the body. */
+        @Override
+        public Void visitNewClass(NewClassTree tree, Void unused) {
+            if (tree.getClassBody() != null) {
+                throw reject("new " + tree.getIdentifier(), "a new " + tree.getIdentifier() + " with no body", "a class body", tree);
+            }
+            return super.visitNewClass(tree, unused);
+        }
+
+        /** Constructor tags mean something only within one sealed interface, and a lowered cast leaves nothing else to read. */
+        @Override
+        public Void visitInstanceOf(InstanceOfTree tree, Void unused) {
+            if (tree.getType() != null && facts.types().asElement(facts.type(tree.getType())) instanceof TypeElement tested) {
+                var sealedParents = tested.getInterfaces().stream().map(facts::typeElement).filter(Scan::isSealedInterface).toList();
+                var operand = facts.types().asElement(facts.type(tree.getExpression()));
+                if (!sealedParents.isEmpty() && !tested.equals(operand) && !sealedParents.contains(operand)) {
+                    throw reject(tree.toString(), "a comparison of constructor tags of " + tested.getSimpleName() + "'s sealed interface",
+                            "the type " + facts.type(tree.getExpression()), tree);
+                }
+            }
+            return super.visitInstanceOf(tree, unused);
+        }
+
+        /** A guard's constants are read through enclosing declarations, past what a class inherits. */
+        @Override
+        public Void visitCase(CaseTree tree, Void unused) {
+            if (tree.getGuard() != null) {
+                new TreeScanner<Void, Void>() {
+                    @Override
+                    public Void visitIdentifier(IdentifierTree name, Void ignored) {
+                        var element = facts.elementOrNull(name);
+                        boolean member = element instanceof TypeElement || element != null && element.getKind() == ElementKind.FIELD;
+                        if (member && isOutsideTheResolver(element, name)) {
+                            throw reject(name.getName().toString(), "a member of an enclosing class", describe(element), name);
+                        }
+                        return null;
+                    }
+                }.scan(tree.getGuard(), null);
+            }
+            return super.visitCase(tree, unused);
         }
 
         @Override
@@ -257,8 +344,8 @@ public final class SpelledTypes {
             String expected = readInTheLedger ? String.join(" or ", ledger) : "the type of that name this compilation is offered";
             if (element instanceof TypeElement type) {
                 if (ledger != null && ledger.contains(facts.identity(type))) return;
-                boolean readAsAnother = isPlain(type) && (readInTheLedger || registered && !compiledAsLibraries.contains(facts.unitOf(type)));
-                if (readAsAnother || simple && registered && isOutsideTheResolver(type, tree)) {
+                boolean readAsAnother = isPlain(type, tree) && (readInTheLedger || registered && !compiledAsLibraries.contains(facts.unitOf(type)));
+                if (readAsAnother || registered && isOutsideTheResolver(type, tree)) {
                     throw reject(name, expected, describe(element), tree);
                 }
             } else if (readInTheLedger || offered && element instanceof VariableElement
@@ -267,42 +354,43 @@ public final class SpelledTypes {
             }
         }
 
-        /** A library's generic method is specialized (ADR-059), which binds its type parameter ahead of any type of that name. */
+        /** Specialization binds a generic method of a library ahead of any type of that name (ADR-059), and nothing else. */
         private boolean isSpecialized(TypeParameterElement parameter) {
-            for (Element e = parameter.getGenericElement(); e != null; e = e.getEnclosingElement()) {
-                if (e instanceof TypeElement && facts.hasAnnotation(e, JavacNames.ONCHAIN_LIBRARY)) return true;
-            }
-            return false;
+            return parameter.getGenericElement() instanceof ExecutableElement method && compiledAsLibraries.contains(facts.unitOf(method));
         }
 
         /**
          * Whether the frontend has no registration of {@code type}, so that it reads the name as something else: a class or an
          * interface of a source that is not sealed, or any type of the API or the platform, whose registered types were read
-         * before this. A library of another unit is registered; the frontend's list of libraries does not hold the units it
-         * compiles as roots. An annotation's name is not read as a type.
+         * before this. A library is registered in a unit the frontend compiles as one, and an annotation's name is a type's
+         * everywhere but where it stands as the annotation.
          */
-        private boolean isPlain(TypeElement type) {
-            if (type.getKind() == ElementKind.ANNOTATION_TYPE) return false;
+        private boolean isPlain(TypeElement type, Tree use) {
+            if (type.getKind() == ElementKind.ANNOTATION_TYPE) return use != annotationName;
             if (!facts.isDeclaredInSource(type)) return true;
             boolean classOrInterface = type.getKind() == ElementKind.CLASS || type.getKind() == ElementKind.INTERFACE;
             if (!classOrInterface || isSealedInterface(type)) return false;
-            return !facts.hasAnnotation(type, JavacNames.ONCHAIN_LIBRARY) || facts.unitOf(type) == unit;
+            return !facts.hasAnnotation(type, JavacNames.ONCHAIN_LIBRARY) || !compiledAsLibraries.contains(facts.unitOf(type));
         }
 
         private static boolean isSealedInterface(TypeElement type) {
             return type.getKind() == ElementKind.INTERFACE && type.getModifiers().contains(Modifier.SEALED);
         }
 
-        /** Whether a member type came in by inheritance or a static import: no enclosing class holds it, and no plain import names it. */
-        private boolean isOutsideTheResolver(TypeElement type, Tree use) {
-            if (!(type.getEnclosingElement() instanceof TypeElement owner)) return false;
+        /**
+         * Whether a member came in by inheritance or a static import: no enclosing class holds it and no plain import names it,
+         * or a qualifier that is not its owner reaches it.
+         */
+        private boolean isOutsideTheResolver(Element member, Tree use) {
+            if (!(member.getEnclosingElement() instanceof TypeElement owner)) return false;
+            if (use instanceof MemberSelectTree select) return !owner.equals(facts.elementOrNull(select.getExpression()));
             for (Tree scope = enclosingType(use); scope != null; scope = enclosingType(scope)) {
                 if (owner.equals(facts.element(scope))) return false;
             }
-            String identity = facts.identity(type);
+            String imported = facts.identity(owner) + "." + member.getSimpleName();
             String onDemand = facts.identity(owner) + ".*";
             return unit.getImports().stream().noneMatch(declared -> !declared.isStatic()
-                    && (declared.getQualifiedIdentifier().toString().equals(identity)
+                    && (declared.getQualifiedIdentifier().toString().equals(imported)
                     || declared.getQualifiedIdentifier().toString().equals(onDemand)));
         }
 

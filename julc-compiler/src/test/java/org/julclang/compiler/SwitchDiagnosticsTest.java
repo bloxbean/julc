@@ -846,12 +846,15 @@ class SwitchDiagnosticsTest {
                     record C(BigInteger w) implements T {}
                     record D(BigInteger w) implements T {}
                 """;
-        rejected(probe(S + t + """
+        String throughAWideningCast = probe(S + t + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);
                         return switch (s) { case A x when (Object) x instanceof C -> BigInteger.ONE; default -> BigInteger.TWO; };
                     }
-                """), "JULC0072", "#288");
+                """);
+        rejectedWithTheGateOff(throughAWideningCast, "JULC0072", "#288");
+        // The gate reads the operand's static type first, in every position.
+        rejected(throughAWideningCast, "JULC0100", "java.lang.Object");
         rejected(probe(S + t + """
                     static BigInteger m(BigInteger a) {
                         S s = new A(a);

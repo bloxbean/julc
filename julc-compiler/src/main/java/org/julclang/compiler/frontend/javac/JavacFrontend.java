@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -202,7 +203,7 @@ public final class JavacFrontend {
         if (!attribution.result().isAccepted() || attribution.trees() == null) return attribution.result();
         try {
             var facts = JavacFacts.of(attribution, new TypeRegistry());
-            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), compiled, reading(roots, pool, compiled));
+            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), compiled, reading(roots, pool, compiled, attribution.result().dropped()));
             SubsetRules.check(facts, attribution.roots(), attribution.libraries(), compiled);
             return attribution.result();
         } catch (CompilerException e) {
@@ -214,26 +215,46 @@ public final class JavacFrontend {
         }
     }
 
-    /** What the JavaParser frontend reads in this environment, for these units: every one it is given, read by javac or not. */
-    private SpelledTypes.Reading reading(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled) {
-        var libraries = new ArrayList<String>(bundled.texts().values());
+    /** What the JavaParser frontend reads in this environment, for these units: every one it compiles, read by javac or not. */
+    private SpelledTypes.Reading reading(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled, Set<String> dropped) {
+        var rootTexts = new LinkedHashSet<String>();
+        roots.forEach(unit -> rootTexts.add(unit.text()));
+        var libraries = new LinkedHashSet<>(bundled.texts().values());
         pool.forEach(unit -> libraries.add(unit.text()));
-        var others = new ArrayList<String>();
-        (compiled == JavacGate.Compiled.LIBRARY ? libraries : others).addAll(roots.stream().map(Unit::text).toList());
+        libraries.removeAll(rootTexts);
+        libraries.removeIf(text -> dropped.contains(JavacPlatform.identity(text)));
+        if (compiled == JavacGate.Compiled.LIBRARY) {
+            libraries.addAll(rootTexts);
+            rootTexts.clear();
+        }
+        var libraryInfos = JavacUnits.infos(compiler(), platform, List.copyOf(libraries));
+        var rootInfos = JavacUnits.infos(compiler(), platform, List.copyOf(rootTexts));
         var registered = new HashSet<String>();
+        libraryInfos.forEach(info -> registered.addAll(info.classes()));
+        var packages = new HashSet<String>();
+        var unnamed = new HashSet<String>();
         var offered = new HashSet<String>();
-        for (var info : JavacUnits.infos(compiler(), platform, libraries)) {
-            registered.addAll(info.dataTypes());
-            registered.addAll(info.classes());
+        var repeated = new HashSet<String>();
+        for (var infos : List.of(libraryInfos, rootInfos)) {
+            for (var info : infos) {
+                registered.addAll(info.dataTypes());
+                packages.add(firstName(info.packageName()));
+                if (info.packageName().isEmpty()) unnamed.addAll(info.topLevelNames());
+                for (var names : List.of(info.dataTypes(), info.classes())) {
+                    for (String name : names) {
+                        if (!offered.add(name)) repeated.add(name);
+                    }
+                }
+            }
         }
-        for (var info : JavacUnits.infos(compiler(), platform, others)) {
-            registered.addAll(info.dataTypes());
-            offered.addAll(info.classes());
-        }
-        offered.addAll(registered);
         var identities = new HashSet<>(platform.stubIdentities());
         identities.addAll(bundled.digests().keySet());
-        return SpelledTypes.Reading.of(identities, registered, offered);
+        return SpelledTypes.Reading.of(identities, registered, offered, repeated, packages, unnamed);
+    }
+
+    private static String firstName(String packageName) {
+        int dot = packageName.indexOf('.');
+        return dot < 0 ? packageName : packageName.substring(0, dot);
     }
 
     /**

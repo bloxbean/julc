@@ -15,11 +15,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -32,9 +30,9 @@ final class JavacUnits {
 
     /**
      * The package, the top-level type names in source order, the primary one (public, else first), and the simple names at
-     * any depth of the unit's records and sealed interfaces, and of its classes.
+     * any depth of the unit's records and sealed interfaces, and of its classes, once per declaration.
      */
-    record UnitInfo(String packageName, List<String> topLevelNames, String primary, Set<String> dataTypes, Set<String> classes) {
+    record UnitInfo(String packageName, List<String> topLevelNames, String primary, List<String> dataTypes, List<String> classes) {
     }
 
     private static final int CACHE_LIMIT = 8192;
@@ -108,8 +106,8 @@ final class JavacUnits {
             if (primary == null && type.getModifiers().getFlags().contains(Modifier.PUBLIC)) primary = name;
         }
         if (primary == null) primary = names.isEmpty() ? "Unit_" + digest.substring(0, 12) : names.getFirst();
-        var dataTypes = new HashSet<String>();
-        var classes = new HashSet<String>();
+        var dataTypes = new ArrayList<String>();
+        var classes = new ArrayList<String>();
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
@@ -120,6 +118,6 @@ final class JavacUnits {
                 return super.visitClass(tree, unused);
             }
         }.scan(unit, null);
-        return new UnitInfo(pkg, List.copyOf(names), primary, Set.copyOf(dataTypes), Set.copyOf(classes));
+        return new UnitInfo(pkg, List.copyOf(names), primary, List.copyOf(dataTypes), List.copyOf(classes));
     }
 }

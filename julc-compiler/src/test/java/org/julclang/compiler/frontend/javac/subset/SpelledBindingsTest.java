@@ -127,7 +127,7 @@ class SpelledBindingsTest {
         return identities;
     }
 
-    private static final SpelledTypes.Reading READING = SpelledTypes.Reading.of(identities(), Set.of(), Set.of());
+    private static final SpelledTypes.Reading READING = SpelledTypes.Reading.of(identities(), Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
 
     /** Every name read as one type, and every name of the ledger. */
     private static Stream<String> spelledNames() {
@@ -697,9 +697,35 @@ class SpelledBindingsTest {
         assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
     }
 
+    /** Specialization binds a library's generic method, and a compilation of libraries is what specializes it. */
     @Test
-    void aLibrarysTypeParameterIsBoundWhenItIsSpecialized() {
-        assertEquals("accepted", code("""
+    void aLibrarysMethodTypeParameterIsBoundWhenItIsSpecialized() {
+        var result = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of("""
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                class L {
+                    record T(long a) { }
+                    static <T> boolean g(T ignored) { return true; }
+                }
+                """)), List.of(), new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
+        assertTrue(result.isAccepted(), () -> result.compilerDiagnostics().toString());
+    }
+
+    /** Nothing specializes a record's type parameter, or a method of a library that is compiled as a root. */
+    @Test
+    void noOtherTypeParameterIsBound() {
+        var library = JavacFrontend.Unit.of("""
+                package lib;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public class L {
+                    public record T(long a) { }
+                    public record Box<T>(T v) { }
+                }
+                """);
+        String box = "import lib.L;\nclass P { static long m(L.Box<Long> b) { return 1; } }";
+        assertTrue(code(box, List.of(library)).startsWith("JULC0100 "), () -> code(box, List.of(library)));
+        String root = """
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 class P {
@@ -707,7 +733,8 @@ class SpelledBindingsTest {
                     static <T> boolean g(T ignored) { return true; }
                     static long m() { return 1; }
                 }
-                """, List.of()));
+                """;
+        assertTrue(code(root, List.of()).startsWith("JULC0100 "), () -> code(root, List.of()));
     }
 
     @Test
@@ -1027,6 +1054,82 @@ class SpelledBindingsTest {
         var result = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of(source)), List.of(),
                 new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
         assertEquals("JULC0100", result.compilerDiagnostics().getFirst().code());
+    }
+
+    /** Every class of a library root is registered, so a type parameter does not take its name. */
+    @Test
+    void aTypeParameterOfAClassOfALibraryRoot() {
+        var result = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of("""
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                class L {
+                    static class Helper { }
+                    record Box<Helper>(Helper v) { }
+                }
+                """)), List.of(), new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
+        assertEquals("JULC0100", result.compilerDiagnostics().getFirst().code());
+    }
+
+    /** The bundled sources are offered with the pool, though no name of theirs outside the implicit imports is on a list. */
+    @Test
+    void aVariableDoesNotTakeTheNameOfABundledUnit() {
+        String source = "class P { record H(long v) { } static long m() { H TestContextLib = new H(1); return TestContextLib.v(); } }";
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
+    }
+
+    /** A constant the class itself declares, read in a guard, is the frontend's reading too. */
+    @Test
+    void aGuardReadsAConstantOfAnEnclosingClass() {
+        assertEquals("accepted", code("""
+                class Outer {
+                    static final int K = 5;
+                    sealed interface S { record A(long v) implements S { } record C(long v) implements S { } }
+                    static class V {
+                        static final int L = 5;
+                        static long m(S s) { return switch (s) { case S.A a when K > L || a.v() > 0 -> 1; case S.A a -> 2; case S.C c -> 3; }; }
+                    }
+                }
+                """, List.of()));
+    }
+
+    @Test
+    void aGuardReadsAnImportedMemberType() {
+        var holder = JavacFrontend.Unit.of("package lib;\npublic class Holder { public static class Q { public static final int K = 5; } }");
+        assertEquals("accepted", code("""
+                import lib.Holder.Q;
+                class P {
+                    sealed interface S { record A(long v) implements S { } record C(long v) implements S { } }
+                    static long m(S s) { return switch (s) { case S.A a when Q.K > 1 && a.v() > 0 -> 1; case S.A a -> 2; case S.C c -> 3; }; }
+                }
+                """, List.of(holder)));
+    }
+
+    /** The operand of {@code instanceof}, in every position. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean f(S s) { return s instanceof S.A; }",
+            "static boolean f(S s) { return s instanceof S.A a; }",
+            "static boolean f(S.A a) { return a instanceof S.A; }",
+            "static boolean f(S s) { var t = s; return t instanceof S.C c; }"})
+    void anOperandOfTheVariantOrItsInterface(String member) {
+        String source = "class P { sealed interface S { record A(long v) implements S { } record C(long v) implements S { } } " + member + " static long m() { return 1; } }";
+        assertEquals("accepted", code(source, List.of()), source);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean f(Object o) { return o instanceof S.A; }",
+            "static boolean f(Object o) { return o instanceof S.A a; }",
+            "static <T> boolean f(T t) { return t instanceof S.A; }",
+            "static boolean f(Record r) { return r instanceof S.A; }"})
+    void anyOtherOperandOfAVariant(String member) {
+        String source = "class P { sealed interface S { record A(long v) implements S { } record C(long v) implements S { } } " + member + " static long m() { return 1; } }";
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> source + ": " + code(source, List.of()));
+    }
+
+    @Test
+    void instanceofOfWhatIsNoVariantIsNotThisRule() {
+        assertEquals("accepted", code("class P { record R(long a) { } static boolean f(Object o) { return o instanceof R; } static long m() { return 1; } }", List.of()));
     }
 
     /** A library in the pool runs with the gate off, so the rule is what stops the wrong method. */

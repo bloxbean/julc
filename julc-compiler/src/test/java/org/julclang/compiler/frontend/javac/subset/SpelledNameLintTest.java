@@ -57,6 +57,9 @@ class SpelledNameLintTest {
     private static final Set<String> ANNOTATION_LOOKUPS = Set.of("getAnnotationByName", "hasAnnotation", "mightContainAnnotation");
     private static final Set<String> CONSTANTS = Set.of("of", "asList");
 
+    /** The field names the frontend compares: the lint reads no other lower-case literal. */
+    private static final Set<String> REVIEWED_LOWER_CASE = Set.of("length");
+
     /** A literal that is no name read in place of a declaration, with the reason. */
     private static final Map<String, String> REVIEWED = reviewed();
 
@@ -72,6 +75,7 @@ class SpelledNameLintTest {
         for (String constant : List.of("ZERO", "ONE", "TWO", "TEN", "UNIT")) {
             reviewed.put(constant, "read only under the qualifier BigInteger or PlutusData, which the rule binds");
         }
+        reviewed.put("length", "read on a receiver that lowers to bytes: a @NewType's field read is JULC0101, and a byte[]'s is the array's");
         for (String scheme : List.of("Array", "JulcOptional")) {
             reviewed.put(scheme, "a type of LibraryTypeDescriptions' scheme, compared after a Java type was mapped to it");
         }
@@ -122,7 +126,8 @@ class SpelledNameLintTest {
                 }
 
                 private void record(ExpressionTree tree) {
-                    if (tree instanceof LiteralTree literal && literal.getValue() instanceof String text && NAME.matcher(text).matches()) {
+                    if (tree instanceof LiteralTree literal && literal.getValue() instanceof String text
+                            && (NAME.matcher(text).matches() || REVIEWED_LOWER_CASE.contains(text))) {
                         long line = unit.getLineMap().getLineNumber(positions.getStartPosition(unit, tree));
                         found.add(new Comparison(text, unit.getSourceFile().getName() + ":" + line));
                     }
@@ -149,7 +154,7 @@ class SpelledNameLintTest {
     private static Set<String> spelled() {
         var identities = new HashSet<>(JavacPlatform.shared().stubIdentities());
         identities.addAll(JavacFrontend.shared().bundled().digests().keySet());
-        var reading = SpelledTypes.Reading.of(identities, Set.of(), Set.of());
+        var reading = SpelledTypes.Reading.of(identities, Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
         var names = new HashSet<>(SpelledTypes.NAMES.keySet());
         names.addAll(SpelledTypes.ANNOTATIONS.keySet());
         names.addAll(reading.libraries().keySet());

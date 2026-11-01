@@ -12,6 +12,7 @@ import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TypeMethodRegistry;
+import org.julclang.compiler.resolve.TypeRegistry;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
@@ -43,14 +44,16 @@ import java.util.Set;
  *   <tr><td>{@code AccumulatorTypeAnalyzer}, which types a loop's accumulator by the names of the calls assigned to it, on any receiver</td><td>a call of a method of a name of {@link #ACCUMULATOR_CALLS} that is not {@code Builtins}' own</td></tr>
  *   <tr><td>{@code TypeMethodRegistry} on the type a {@code @NewType} lowers to</td><td>a component of that name, other than a row that lowers to the receiver</td></tr>
  *   <tr><td>{@code TypeMethodRegistry}'s {@code equals} and the {@code toPlutusData} fallback</td><td>a component of that name, on any record</td></tr>
- *   <tr><td>the no-argument fallback on bytes</td><td>any other component of a {@code @NewType} of {@code byte[]}, and a call of the generated {@code hashCode} or {@code toString}, or an inherited method, on one</td></tr>
+ *   <tr><td>the no-argument fallback on bytes</td><td>any other component of a {@code @NewType} of {@code byte[]}, and any no-argument call on a {@code byte[]}, or on a ledger hash that is not its accessor or {@code toPlutusData}</td></tr>
+ *   <tr><td>{@code TypeMethodRegistry} on the type a {@code @NewType} lowers to, and {@code .length} on bytes</td><td>any instance call on a {@code @NewType} that is not its accessor, an inherited default method included, and a field read on one</td></tr>
+ *   <tr><td>{@code resolveRecordFieldAccess}, which reads through an {@code Optional}</td><td>a no-argument call on an {@code Optional} of a record that has a component of that name</td></tr>
  * </table>
  * A {@code @NewType} lowers to bytes, an integer, a string or a boolean. The rows are {@code TypeMethodRegistry}'s, read when
  * a component is checked, so this list cannot drift from them. The other matchers of {@code PirGenerator} and
  * {@code TypeInferenceHelper} read a name after a type: {@code compareTo}, {@code hash}, {@code length}, {@code tail}, the list
  * higher-order methods and the methods of an API type. That type comes from a type name, which {@code JULC0100} binds, and
- * a {@code @NewType} that lowers to it has no instance method and no component of those names here. {@code TypeMethodRegistry}'s
- * named rows go by a record's name, which is {@code JULC0100}'s. {@code equals} in a guard
+ * a {@code @NewType} that lowers to it has no instance call here but its accessor. {@code TypeMethodRegistry}'s named rows go
+ * by a record's name, which is {@code JULC0100}'s. {@code equals} in a guard
  * and {@code apply}, {@code test}, {@code accept}, {@code get} and {@code run} on a functional variable are read to reject.
  */
 public final class SpelledMethods {
@@ -60,6 +63,7 @@ public final class SpelledMethods {
     public static final Set<String> ACCUMULATOR_CALLS = Set.of("mkNilPairData", "unMapData", "tailList", "mkNilData",
             "mkCons", "mkPairData", "headList", "fstPair", "sndPair");
     private static final String BUILTINS = "org.julclang.stdlib.Builtins";
+    private static final String OPTIONAL = "java.util.Optional";
     private static final Set<String> ANY_RECORD_COMPONENTS = Set.of("equals", "toPlutusData");
     static final TypeMethodRegistry REGISTRY = TypeMethodRegistry.defaultRegistry();
 
@@ -91,10 +95,23 @@ public final class SpelledMethods {
             }
 
             @Override
+            public Void visitMemberSelect(MemberSelectTree tree, Void unused) {
+                if (facts.elementOrNull(tree) instanceof VariableElement field && field.getKind() == ElementKind.FIELD
+                        && !tree.getIdentifier().contentEquals("class") && newTypeOf(facts, tree) != null) {
+                    throw CompilerTypeDiagnostics.methodNameReadBySpelling(
+                            "The field " + field.getEnclosingElement().getSimpleName() + "." + field, facts.location(tree));
+                }
+                return super.visitMemberSelect(tree, unused);
+            }
+
+            @Override
             public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
-                if (tree.getMethodSelect() instanceof MemberSelectTree select && tree.getArguments().isEmpty()
-                        && isOtherCallOnBytes(facts, select)) {
-                    throw reject(facts, facts.element(select), tree);
+                if (tree.getMethodSelect() instanceof MemberSelectTree select) {
+                    boolean noArguments = tree.getArguments().isEmpty();
+                    if (isOtherCallOnANewType(facts, select, noArguments)
+                            || noArguments && (isOtherCallOnBytes(facts, select) || isComponentThroughAnOptional(facts, select))) {
+                        throw reject(facts, facts.element(select), tree);
+                    }
                 }
                 if (tree.getMethodSelect() instanceof MemberSelectTree select
                         && SPELLED_CALLS.contains(select.getIdentifier().toString())
@@ -160,15 +177,38 @@ public final class SpelledMethods {
         return type instanceof PirType.ByteStringType || REGISTRY.serves(type, name);
     }
 
+    /** The {@code @NewType} a selection reads from, or null. */
+    private static TypeElement newTypeOf(JavacFacts facts, MemberSelectTree select) {
+        return facts.type(select.getExpression()) instanceof DeclaredType receiver && receiver.asElement() instanceof TypeElement type
+                && type.getKind() == ElementKind.RECORD && isNewType(type) ? type : null;
+    }
+
+    /** An instance call on a {@code @NewType} of anything but its accessor: a row of the type it lowers to takes the call. */
+    private static boolean isOtherCallOnANewType(JavacFacts facts, MemberSelectTree select, boolean noArguments) {
+        var type = newTypeOf(facts, select);
+        return type != null && !facts.element(select).getModifiers().contains(Modifier.STATIC)
+                && !(noArguments && isComponent(facts, type, select.getIdentifier().toString()));
+    }
+
     /**
-     * A no-argument call on a {@code @NewType} of bytes of anything but its accessor, such as the generated {@code hashCode}
-     * and {@code toString}: the no-argument fallback on bytes takes it.
+     * A no-argument call on what lowers to bytes that is no accessor: the fallback on bytes takes it. {@code @NewType}s are
+     * {@link #isOtherCallOnANewType}'s; these are a {@code byte[]} and a ledger hash, whose {@code toPlutusData} has its own row.
      */
     private static boolean isOtherCallOnBytes(JavacFacts facts, MemberSelectTree select) {
-        return facts.type(select.getExpression()) instanceof DeclaredType receiver && receiver.asElement() instanceof TypeElement type
-                && type.getKind() == ElementKind.RECORD && isNewType(type)
-                && facts.components(type).stream().anyMatch(component -> component.asType() instanceof ArrayType)
-                && !isComponent(facts, type, select.getIdentifier().toString());
+        var receiver = facts.type(select.getExpression());
+        if (receiver instanceof ArrayType array) return array.getComponentType().getKind() == TypeKind.BYTE;
+        String name = select.getIdentifier().toString();
+        return receiver instanceof DeclaredType declared && declared.asElement() instanceof TypeElement type
+                && TypeRegistry.ledgerHashFqcns().contains(facts.identity(type))
+                && !name.equals("toPlutusData") && !isComponent(facts, type, name);
+    }
+
+    /** A variable's record field is read through an {@code Optional}, so a method of that name reads the component. */
+    private static boolean isComponentThroughAnOptional(JavacFacts facts, MemberSelectTree select) {
+        return facts.type(select.getExpression()) instanceof DeclaredType receiver && facts.identity(receiver).equals(OPTIONAL)
+                && receiver.getTypeArguments().size() == 1 && receiver.getTypeArguments().getFirst() instanceof DeclaredType element
+                && element.asElement() instanceof TypeElement record && record.getKind() == ElementKind.RECORD
+                && isComponent(facts, record, select.getIdentifier().toString());
     }
 
     private static boolean isComponent(JavacFacts facts, TypeElement record, String name) {

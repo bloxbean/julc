@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.LineMap;
 import com.sun.source.tree.ParameterizedTypeTree;
@@ -175,6 +176,25 @@ public final class JavacFacts {
             permitted.add(typeElement(type));
         }
         return permitted;
+    }
+
+    /**
+     * The records nested in {@code tree} that a sealed interface with no permits clause takes as its variants, in member
+     * order, as the JavaParser frontend reads them. A record implementing another type of the interface's simple name is
+     * one too: it has a tag there, so it must not drop out here and shift the others silently. It makes this list differ
+     * from {@link #permitted}, which is {@code JULC0092}.
+     */
+    public List<TypeElement> nestedVariants(ClassTree tree, TypeElement sealed) {
+        var nested = new ArrayList<TypeElement>();
+        for (Tree member : tree.getMembers()) {
+            if (member instanceof ClassTree nestedTree && nestedTree.getKind() == Tree.Kind.RECORD) {
+                var record = (TypeElement) element(nestedTree);
+                if (record.getInterfaces().stream().anyMatch(i -> typeElement(i).getSimpleName().contentEquals(sealed.getSimpleName()))) {
+                    nested.add(record);
+                }
+            }
+        }
+        return nested;
     }
 
     /** Whether {@code element} carries the annotation named {@code annotation}, by identity. */

@@ -233,7 +233,7 @@ class PatternVariableFieldGuardTest {
                     public sealed interface Shape permits Box, Dot {}
                     public record Box(BigInteger side) implements Shape {}
                     public record Dot() implements Shape {}
-                    static final Box unit = new Box(BigInteger.ONE);
+                    static final BigInteger unit = BigInteger.ONE;
                     public static BigInteger side(Shape shape) {
                         if (shape instanceof Box unit && unit.side().signum() > 0) { return unit.side(); }
                         return BigInteger.ZERO;
@@ -294,13 +294,13 @@ class PatternVariableFieldGuardTest {
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 public class Fees {
-                    public static final BigInteger q = BigInteger.valueOf(40);
+                    public static final BigInteger q = BigInteger.TEN;
                     public static BigInteger base() { return q; }
                 }""";
         String validator = "import com.example.lib.Fees;\n" + source(SHAPE_TYPES + " public static long m(long n) {"
                 + ONE_SHAPE + " if (s instanceof Sq q) { return q.s().longValue() + Fees.base().longValue(); } return 0; }");
-        // Java: q is the pattern variable (Sq(3)), so 3 + 40.
-        var expected = new Term.Const(Constant.integer(BigInteger.valueOf(43)));
+        // Java: q is the pattern variable (Sq(3)), so 3 + 10.
+        var expected = new Term.Const(Constant.integer(BigInteger.valueOf(13)));
         for (var level : LEVELS) {
             var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
                     new CompilerOptions().setOptimizationLevel(level)).compileMethod(validator, "m", List.of(library)).program();

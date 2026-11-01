@@ -559,7 +559,7 @@ class SubsetRulesTest {
                 """.formatted(member);
     }
 
-    /** A library's static fields lower too, and the same rule holds for the rest. */
+    /** What no library lowers holds only a constant, as a static field of one does. */
     @ParameterizedTest
     @ValueSource(strings = {
             "long instance = helper();",
@@ -576,16 +576,28 @@ class SubsetRulesTest {
         assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
     }
 
-    /** An anonymous class is no class {@code LibraryCompiler} reads, so nothing lowers its static field. */
+    /** {@code new} with a class body is rejected first, wherever it stands. */
     @Test
-    void aLibrarysAnonymousClassLowersNothing() {
+    void aLibrarysAnonymousClassIsRejected() {
         var libraries = List.of(library("boolean instance() { return new Object() { static int x = 1 / 0; }.hashCode() == 0; }"));
+        assertEquals("JULC0100", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+    }
+
+    /** A library's static fields bind at script start, whether or not Java initializes the class, so a constant is what they hold. */
+    @ParameterizedTest
+    @ValueSource(strings = {"static long lowered = helper();", "static long lowered = 1 / (1 - 1);",
+            "static java.math.BigInteger lowered = java.math.BigInteger.ONE.divide(java.math.BigInteger.ZERO);",
+            "static java.math.BigInteger lowered = java.math.BigInteger.valueOf(42);"})
+    void aLibrarysStaticFieldHoldsOnlyAConstant(String member) {
+        var libraries = List.of(library(member));
         assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
     }
 
-    @Test
-    void aLibrarysStaticFieldLowers() {
-        new JulcCompiler(null, new CompilerOptions()).compile(LIBRARY_CALLER, List.of(library("static long lowered = helper();")));
+    @ParameterizedTest
+    @ValueSource(strings = {"static final long K = 7;", "static long k = 7;", "static boolean k = true;",
+            "static byte[] k = new byte[]{1, 2};"})
+    void aLibrarysConstantStaticFieldStaysLegal(String member) {
+        new JulcCompiler(null, new CompilerOptions()).compile(LIBRARY_CALLER, List.of(library(member)));
     }
 
     /** javac reads what the program references, and the rule reads what javac read. */
@@ -1131,9 +1143,9 @@ class SubsetRulesTest {
                 """, "m");
     }
 
-    /** An inherited call on any other {@code @NewType} is {@code JULC0055}, as it was. */
+    /** An inherited call on any other {@code @NewType} is no accessor either. */
     @Test
-    void aNewTypeOfAnIntegerKeepsItsOwnRejection() {
+    void aNewTypeOfAnIntegerTakesOnlyItsAccessor() {
         String source = """
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.*;
@@ -1142,7 +1154,7 @@ class SubsetRulesTest {
                     static long m(N n) { return n.hashCode(); }
                 }
                 """;
-        assertSpelling("JULC0055", source);
+        assertSpelling("JULC0101", source);
     }
 
     @Test
