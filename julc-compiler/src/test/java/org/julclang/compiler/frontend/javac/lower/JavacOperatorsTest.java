@@ -294,7 +294,7 @@ class JavacOperatorsTest {
 
     @Test
     void anAssignmentIsAnAnnotationsArgumentOnly() {
-        assertInstanceOf(NotPorted.class, javac("static long f; static long g = (f = 1);\nstatic boolean m() { return true; }"));
+        assertEquals("JULC0061", javac("static long f; static long g = (f = 1);\nstatic boolean m() { return true; }").diagnostics().getFirst().code());
         assertEquals("JULC0095", javac("long f; long g = (f = 1);\nstatic boolean m() { return true; }").diagnostics().getFirst().code());
         assertSame("@SuppressWarnings(value = \"x\") static boolean m() { return true; }");
     }

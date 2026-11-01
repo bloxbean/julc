@@ -73,7 +73,7 @@ class JavacLoweringLintTest {
     private static final Set<String> NAMED_FIRST = Set.of(PIR_TERM + "Var", PIR_TERM + "Lam", PIR_TERM + "Let", PIR_TERM + "Binding");
     /** What {@code lower/} may call of {@code PirHelpers}: none of it takes a source name. */
     private static final Set<String> PIR_HELPERS = Set.of("isGeneratedName", "builtinApp2", "swappedInOrder", "equality",
-            "fieldExtraction", "wrapEncode");
+            "fieldExtraction", "wrapEncode", "freeVariables", "hygienicName");
 
     private static final String FACTS = JavacFacts.class.getName();
     private static final Set<String> LOOKUPS = Set.of(
@@ -228,12 +228,18 @@ class JavacLoweringLintTest {
             @Override
             public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
                 if (trees.getElement(new TreePath(getCurrentPath(), tree.getMethodSelect())) instanceof ExecutableElement method
-                        && isHelper(method)) {
+                        && (isHelper(method) || namesAGeneratedBinder(method) && !generated(tree.getArguments().getFirst()))) {
                     violation(tree);
                 }
                 return super.visitMethodInvocation(tree, null);
             }
         }.run(source.units());
+    }
+
+    /** {@code hygienicName} takes the name it makes one from, which must be reserved where it is written. */
+    private static boolean namesAGeneratedBinder(ExecutableElement method) {
+        return qualified(method.getEnclosingElement()).equals("org.julclang.compiler.pir.PirHelpers")
+                && method.getSimpleName().contentEquals("hygienicName");
     }
 
     private static boolean isHelper(ExecutableElement method) {
@@ -394,7 +400,8 @@ class JavacLoweringLintTest {
                 "Object v(String n, PirTerm b) { return new PirTerm.MatchBranch(n, List.of(n), List.of(), b, null); }",
                 "BiFunction<String, PirType, PirTerm.Var> v() { return PirTerm.Var::new; }",
                 "Object v() { BiFunction<List<org.julclang.compiler.pir.PirTerm.Binding>, PirTerm, PirTerm> f = PirTerm.LetRec::new; return f; }",
-                "Object v(PirTerm b) { return PirHelpers.wrapDecode(b, null); }")) {
+                "Object v(PirTerm b) { return PirHelpers.wrapDecode(b, null); }",
+                "Object v(String n) { return PirHelpers.hygienicName(n, java.util.Set.of()); }")) {
             assertEquals(1, buildsBinders(control(TERMS_IMPORTS + "class A { " + method + " }"), allowed).size(), method);
         }
         assertEquals(1, buildsBinders(control("import org.julclang.compiler.pir.PirTerm.Var;\n"
@@ -404,6 +411,8 @@ class JavacLoweringLintTest {
         assertTrue(buildsBinders(control(TERMS_IMPORTS + "class A { Object v(PirTerm b) { return new PirTerm.Let(\"#tmp\", b, b); } }"),
                 allowed).isEmpty());
         assertTrue(buildsBinders(control(TERMS_IMPORTS + "class A { boolean v(String n) { return PirHelpers.isGeneratedName(n); } }"),
+                allowed).isEmpty());
+        assertTrue(buildsBinders(control(TERMS_IMPORTS + "class A { Object v() { return PirHelpers.hygienicName(\"#tmp\", java.util.Set.of()); } }"),
                 allowed).isEmpty());
     }
 

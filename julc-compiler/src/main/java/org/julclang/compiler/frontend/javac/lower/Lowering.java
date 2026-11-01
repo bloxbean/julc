@@ -1,9 +1,12 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.BinaryTree;
+import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -39,6 +42,7 @@ public final class Lowering {
     private final Terms terms;
     private final Literals literals;
     private final Names names;
+    private final TypeTests typeTests;
     private final Statements statements;
     private final Operators operators;
     private final Calls calls;
@@ -57,7 +61,8 @@ public final class Lowering {
         this.typing = new Typing(facts);
         this.literals = new Literals(facts, terms);
         this.names = new Names(facts, terms);
-        this.statements = new Statements(facts, terms, typing, this);
+        this.typeTests = new TypeTests(facts, this);
+        this.statements = new Statements(facts, terms, typing, this, typeTests);
         this.operators = new Operators(facts, typing, this);
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
@@ -99,8 +104,17 @@ public final class Lowering {
             case UnaryTree t -> terms.at(t, operators.unary(t, frame));
             case ConditionalExpressionTree t -> terms.at(t, operators.conditional(t, frame));
             case MethodInvocationTree t -> terms.at(t, calls.call(t, frame));
+            case InstanceOfTree t -> terms.at(t, typeTests.instanceOf(t, frame));
+            case AssignmentTree t -> throw reassignment(t.getVariable(), t);
+            case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t);
             default -> throw NotPorted.at(facts, tree);
         };
+    }
+
+    /** ADR-062 T20: only a loop updates a variable declared before it, and loops are not ported, so none of these lowers. */
+    private CompilerException reassignment(ExpressionTree target, ExpressionTree assignment) {
+        var info = DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP;
+        return facts.rejection(info, assignment, target.toString());
     }
 
     /**

@@ -1,10 +1,17 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.BlockTree;
+import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IfTree;
+import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ReturnTree;
+import com.sun.source.tree.StatementTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
@@ -15,10 +22,22 @@ import org.julclang.core.Constant;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Method bodies, in the reference's continuation style. A method is a lambda over its parameters around its body. A
- * {@code return} evaluates its expression and leaves the method, so its operands' order is the expression's.
+ * Method bodies, in the reference's continuation style: a statement list is one term, and each statement holds the ones
+ * after it. A method is a lambda over its parameters around its body.
+ * <p>
+ * <b>Evaluation order.</b> Statements run in source order. A local's initializer and an expression statement are bound by
+ * a strict {@code let}, so each runs before what follows. A {@code return} evaluates its expression and leaves the method,
+ * so nothing after it runs, and its operands' order is the expression's. {@link Ifs} states the order of an {@code if}.
+ * <p>
+ * A {@code cont} is what runs when a list falls off its end: the statements after an enclosing {@code if}. It is a plain
+ * term, built once and reused by reference; null means the list's end is the end of its value, which is unit.
+ * <p>
+ * A local's binder is chosen by {@link Scope} while the {@code let} is built, and its scope is the {@link Frame} passed to
+ * what follows it, so a local ends where its block does, and a name binds as javac bound it. A rejection here is one the
+ * reference makes while generating, kept in that order (I2a); what it rejects before generating is {@code SubsetScan}'s.
  */
 final class Statements {
 
@@ -26,18 +45,32 @@ final class Statements {
     private final Terms terms;
     private final Typing typing;
     private final Lowering lowering;
+    private final Ifs ifs;
 
-    Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering) {
+    private static final String SUPPORTED_STATEMENTS =
+            "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.";
+
+    Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering, TypeTests typeTests) {
         this.facts = facts;
         this.terms = terms;
         this.typing = typing;
         this.lowering = lowering;
+        this.ifs = new Ifs(facts, terms, this, typeTests, lowering);
+    }
+
+    static PirTerm unit() {
+        return new PirTerm.Const(Constant.unit());
     }
 
     PirTerm method(MethodTree tree, Scope enclosing, boolean guardBoolean) {
         if (tree.getBody() == null) throw new CompilerException("Method must have a body: " + tree.getName());
         var element = (ExecutableElement) facts.element(tree);
         var returnType = element.getReturnType();
+        boolean isVoid = returnType.getKind() == TypeKind.VOID;
+        if (!isVoid && !Exits.allPathsReturn(tree.getBody().getStatements())) {
+            throw facts.rejection("Method '" + tree.getName() + "' may not return a value on all execution paths",
+                    "Ensure all code paths end with a 'return' statement.", tree);
+        }
         var scope = enclosing;
         var binders = new ArrayList<Binder>();
         for (var parameter : tree.getParameters()) {
@@ -45,7 +78,6 @@ final class Statements {
             scope = scope.bind(parameterElement, facts.parameterType(parameter));
             binders.add(scope.lookup(parameterElement));
         }
-        boolean isVoid = returnType.getKind() == TypeKind.VOID;
         var exit = new Frame.Exit(isVoid ? null : facts.pirType(returnType, tree.getReturnType()),
                 guardBoolean && returnType.getKind() == TypeKind.BOOLEAN);
         PirTerm result = block(tree.getBody(), new Frame(scope, exit));
@@ -57,17 +89,81 @@ final class Statements {
 
     private PirTerm block(BlockTree block, Frame frame) {
         var statements = block.getStatements();
-        if (statements.isEmpty()) return new PirTerm.Const(Constant.unit());
-        // javac rejects a statement after a return, so a return is the only statement a port of return alone can see.
-        if (statements.size() == 1 && statements.getFirst() instanceof ReturnTree ret) return ret(ret, frame);
-        throw NotPorted.at(facts, statements.getFirst());
+        return statements.isEmpty() ? unit() : sequence(statements, 0, frame, null);
+    }
+
+    /** The statements from {@code index}, then {@code cont}. */
+    PirTerm sequence(List<? extends StatementTree> statements, int index, Frame frame, PirTerm cont) {
+        if (index >= statements.size()) return cont == null ? unit() : cont;
+        return switch (statements.get(index)) {
+            // javac rejects a statement after a return.
+            case ReturnTree tree -> ret(tree, frame);
+            case VariableTree tree -> local(tree, statements, index, frame, cont);
+            case ExpressionStatementTree tree -> {
+                var effect = lowering.expr(tree.getExpression(), frame);
+                yield new PirTerm.Let("#_", effect, sequence(statements, index + 1, frame, cont));
+            }
+            case IfTree tree -> ifs.inSequence(tree, statements, index, frame, cont);
+            case LabeledStatementTree tree -> throw label(tree);
+            case StatementTree tree -> throw unsupported(tree);
+        };
+    }
+
+    /** A branch that falls through to {@code cont}. A block's locals end with it, since {@code frame} is the branch's. */
+    PirTerm branch(StatementTree branch, Frame frame, PirTerm cont) {
+        return sequence(branch instanceof BlockTree block ? block.getStatements() : List.of(branch), 0, frame, cont);
+    }
+
+    /** A branch of an {@code if} that holds no {@code return}, as a value. */
+    PirTerm single(StatementTree statement, Frame frame) {
+        return switch (statement) {
+            case BlockTree tree -> block(tree, frame);
+            case ExpressionStatementTree tree -> lowering.expr(tree.getExpression(), frame);
+            case IfTree tree -> ifs.nested(tree, frame);
+            case LabeledStatementTree tree -> throw label(tree);
+            default -> throw unsupported(statement);
+        };
+    }
+
+    /** {@code JULC0066}: a label is outside the subset, wherever its statement is. */
+    private CompilerException label(LabeledStatementTree tree) {
+        return CompilerTypeDiagnostics.labelUnsupported(tree.getLabel() + ":", facts.location(tree));
+    }
+
+    /** What the reference has no statement for: a bare block, in a list, is one of these. Each slice ports its own. */
+    private CompilerException unsupported(StatementTree tree) {
+        return switch (tree.getKind()) {
+            case BLOCK, EMPTY_STATEMENT -> facts.rejection("Unsupported statement: " + statementName(tree), SUPPORTED_STATEMENTS, tree);
+            default -> NotPorted.at(facts, tree);
+        };
+    }
+
+    private static String statementName(StatementTree tree) {
+        return tree.getKind() == Tree.Kind.BLOCK ? "BlockStmt" : "EmptyStmt";
+    }
+
+    /** {@code let x = value in ...}. The type is what the source wrote; for {@code var}, javac's type of the value. */
+    private PirTerm local(VariableTree tree, List<? extends StatementTree> statements, int index, Frame frame, PirTerm cont) {
+        String name = tree.getName().toString();
+        var initializer = tree.getInitializer();
+        if (initializer == null) {
+            throw new CompilerException("Variable must be initialized: " + name
+                    + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;");
+        }
+        var value = lowering.expr(initializer, frame);
+        var element = facts.element(tree);
+        var type = facts.isGenerated(tree.getType()) ? typing.of(initializer, value) : facts.pirType(element.asType(), tree.getType());
+        typing.requireNativeBoundary("Variable '" + name + "' initializer", typing.of(initializer, value), type, initializer);
+        var scope = frame.scope().bind(element, type);
+        var body = sequence(statements, index + 1, frame.in(scope), cont);
+        return terms.let(scope.lookup(element), value, body);
     }
 
     private PirTerm ret(ReturnTree tree, Frame frame) {
         ExpressionTree expression = tree.getExpression();
         PirTerm result;
         if (expression == null) {
-            result = new PirTerm.Const(Constant.unit());
+            result = unit();
         } else {
             result = lowering.expr(expression, frame);
             if (frame.exit().returnType() != null) {

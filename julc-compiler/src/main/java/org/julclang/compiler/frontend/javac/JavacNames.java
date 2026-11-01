@@ -27,6 +27,8 @@ public final class JavacNames {
     public static final String JULC_MAP = TYPES + "JulcMap";
     public static final String JULC_ARRAY = TYPES + "JulcArray";
 
+    public static final String BUILTINS = "org.julclang.stdlib.Builtins";
+
     private static final String ANNOTATIONS = "org.julclang.stdlib.annotation.";
     public static final String ENTRYPOINT = ANNOTATIONS + "Entrypoint";
     public static final String PARAM = ANNOTATIONS + "Param";

@@ -20,4 +20,9 @@ record Frame(Scope scope, Exit exit) {
     static Frame initializer(Scope scope) {
         return new Frame(scope, new Exit(null, false));
     }
+
+    /** This frame with {@code inner} visible: a binder's scope, which ends where the term it was built for does. */
+    Frame in(Scope inner) {
+        return new Frame(inner, exit);
+    }
 }
