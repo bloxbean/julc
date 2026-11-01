@@ -1083,7 +1083,7 @@ Decisions recorded from the M1a reviews:
 
 [Evidence](evidence/068-m3a-lowering-foundation.md), [reference B2](evidence/068-m3a-reference-b2.md). A program of literals, names and static constants compiles through `frontend=JAVAC` to the reference's bytes; everything else stops at `JULC0084`.
 
-| Gate, at `99810042` | Result |
+| Gate, at `99810042` unless stated | Result |
 |---|---|
 | `./gradlew test` | 15,385 tests, 0 failures, 530 skipped |
 | `adr068Baseline` | Equal to B2 |
@@ -1091,6 +1091,7 @@ Decisions recorded from the M1a reviews:
 | `adr068Types`, `pairCaseTest`, `onChainHarnessTest` | Pass |
 | Native CLI, `wasmGateProbe` | Pass; the probe's lines equal the JVM's |
 | Review programs | 47 run on this head: none diverges from the JVM |
+| Yaci DevKit, at `e3917267` | External examples 446 tests, 0 failed, 11 skipped; in-repo e2e 10, `listCase` 2, `switchPairCase` 2, `nativeConstants` 12, all passing |
 
 M3a closed on independent Claude reviewers and one external review. A Codex read of the name rules is owed (follow-ups).
 
