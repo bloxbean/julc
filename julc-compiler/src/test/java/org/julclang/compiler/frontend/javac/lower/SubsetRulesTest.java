@@ -29,6 +29,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameAsReference;
@@ -718,7 +719,8 @@ class SubsetRulesTest {
             "Class<Boolean> k = Boolean.class; return PlutusData.cast(r, k);",
             "return (boolean) PlutusData.cast(r, Object.class);",
             "return (Boolean) (Object) PlutusData.cast(r, BigInteger.class);",
-            "return PlutusData.cast(PlutusData.cast(r, Object.class), Boolean.class);"})
+            "return PlutusData.cast(PlutusData.cast(r, Object.class), Boolean.class);",
+            "return java.util.Objects.equals(PlutusData.cast(r, Boolean.class), true);"})
     void plutusDataCastIsACast(String body) {
         assertRule("JULC0098", validator(body));
     }
@@ -1007,6 +1009,13 @@ class SubsetRulesTest {
                     static long m() { return 1; }
                 }
                 """, "m");
+    }
+
+    /** The method through a variable is the API's: the rule is about a declared method. */
+    @Test
+    void anApiMethodThroughAVariableIsNoSpelledCall() {
+        String source = validator("Class<BigInteger> k = BigInteger.class; return k.cast(r).signum() > 0;");
+        assertNotEquals("JULC0101", code(compiler -> compiler.compile(source), CompilerFrontend.JAVAPARSER));
     }
 
     @Test

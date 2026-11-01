@@ -15,7 +15,7 @@ unreplayable	17
 coverage	programs	145	15137
 coverage	distinct programs	85
 coverage	programs of more than one method	11
-coverage	methods	320	171992
+coverage	methods	320	172155
 coverage	distinct methods	160
 provenance	-	2
 provenance	fragment	57

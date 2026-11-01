@@ -24,9 +24,9 @@ instantiations.NONE	accepted 33	rejected 14	unreplayable 0
 instantiations.BASELINE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_SAFE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_COSTED	accepted 33	rejected 14	unreplayable 0
-inventory.rows	permanent 1812	scheduled 21
+inventory.rows	permanent 1813	scheduled 21
 inventory.cases	1747
-coverage	sites 155	covered 117	not-source 38	uncovered 0	uncatalogued 0	contradicted 0
+coverage	sites 157	covered 117	not-source 40	uncovered 0	uncatalogued 0	contradicted 0
 runs	1873
 runs.verdicts.AGREE	7076
 runs.verdicts.CRASH	4
