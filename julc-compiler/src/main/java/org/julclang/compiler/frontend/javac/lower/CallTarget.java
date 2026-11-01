@@ -57,6 +57,8 @@ sealed interface CallTarget {
 
     /** A list method that takes a function. */
     record Hof(String method) implements CallTarget {
+        /** The key of its handler. */
+        static final String KEY = "ListType";
     }
 
     /** A member with no lowering on its receiver's type: {@code JULC0055}, the reference's rejection. */

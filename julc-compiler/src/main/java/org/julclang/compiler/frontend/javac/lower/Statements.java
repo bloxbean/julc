@@ -90,7 +90,8 @@ final class Statements {
         return terms.at(tree, result);
     }
 
-    private PirTerm block(BlockTree block, Frame frame) {
+    /** A block as a term: its value is what its statements leave, and unit if it is empty. */
+    PirTerm block(BlockTree block, Frame frame) {
         var statements = block.getStatements();
         return statements.isEmpty() ? unit() : sequence(statements, 0, frame, null);
     }
