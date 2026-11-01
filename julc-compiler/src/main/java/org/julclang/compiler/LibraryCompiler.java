@@ -121,6 +121,7 @@ final class LibraryCompiler {
                     registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
                 }
             }
+            if (!libPirGenerator.getCollectedErrors().isEmpty()) throw new CompilerException(libPirGenerator.getCollectedErrors());
         }
     }
 

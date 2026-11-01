@@ -3258,7 +3258,7 @@ public class PirGenerator {
         var patternType = ioe.getPattern();
         if (patternType.isPresent() && patternType.get() instanceof com.github.javaparser.ast.expr.TypePatternExpr tpe) {
             var typeName = tpe.getType().asClassOrInterfaceType().getNameAsString();
-            var sumType = typeResolver.lookupSumTypeForVariant(typeName);
+            var sumType = typeResolver.lookupSumTypeForVariant(typeResolver.resolveTypeWithScope(tpe.getType().asClassOrInterfaceType()));
             if (sumType.isPresent()) {
                 // Find the tag for this variant
                 for (var ctor : sumType.get().constructors()) {
