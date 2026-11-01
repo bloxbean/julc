@@ -26,7 +26,7 @@ import java.util.function.Predicate;
 
 /**
  * A subset rule ({@code JULC0095}): what is not lowered holds only a constant. Any field initializer a compilation does not
- * lower, and a library's static field, which binds at script start whether or not Java initializes the class, holds only a literal, a {@code new byte[]{...}} of literals, an API constant or a constant variable, and an
+ * lower holds only a literal, a {@code new byte[]{...}} of literals, an API constant or a constant variable, and an
  * initializer block is empty. Only javac can tell these: {@link VariableElement#getConstantValue()} is the language's own
  * answer, and a name is what it resolved to.
  * <p>

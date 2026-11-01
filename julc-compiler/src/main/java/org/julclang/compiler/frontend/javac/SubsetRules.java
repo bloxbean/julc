@@ -46,7 +46,7 @@ final class SubsetRules {
         var discovery = new JavacDiscovery(facts);
         for (var unit : roots) {
             if (compiled == JavacGate.Compiled.LIBRARY) {
-                library(facts, unit);
+                library(facts, discovery, unit);
                 continue;
             }
             var type = discovery.compiledClass(unit, compiled);
@@ -56,7 +56,7 @@ final class SubsetRules {
             BooleanCasts.check(facts, unit);
             ConstructorBodies.check(facts, unit);
         }
-        for (var unit : libraries) library(facts, unit);
+        for (var unit : libraries) library(facts, discovery, unit);
     }
 
     /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */
@@ -71,11 +71,12 @@ final class SubsetRules {
             }
         }
         SpelledTypes.checkUnreadUnits(reading);
+        // The JavaParser frontend binds a library's static fields at script start, whether or not Java initializes the class.
+        for (var unit : compiledAsLibraries) UnloweredInitializers.check(facts, unit, field -> false);
     }
 
-    /** A library's static fields run at script start, whether or not Java initializes the class, so none of its fields is lowered in the rule's sense. */
-    private static void library(JavacFacts facts, CompilationUnitTree unit) {
-        UnloweredInitializers.check(facts, unit, field -> false);
+    private static void library(JavacFacts facts, JavacDiscovery discovery, CompilationUnitTree unit) {
+        UnloweredInitializers.check(facts, unit, discovery::isLoweredInALibrary);
         BooleanCasts.check(facts, unit);
         ConstructorBodies.check(facts, unit);
     }
