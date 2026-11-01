@@ -35,3 +35,15 @@ encoding	m2.fixtures.M2Sealed.PolicyId|61e179de44809459|m2.fixtures.M2Sealed.Pol
 encoding	m2.fixtures.M2Sealed.Datum|88fcc135ee733fcf|m2.fixtures.M2Sealed.Datum|9f1efeab9f978f11	T33, #286: m2-fixtures/M2Sealed: a record holding that PolicyId
 blueprint	7d93f73cc2305334d7b6538b9783901a38c7b7fcd93b45b3f6d20bba92c8e64f|SPEND	T33, #286: m2-fixtures/M2Sealed: the datum's policy field is bytes on the reference and the user's record on javac
 blueprint	867755f840847cb8c6ba8dd79f65fbdf7862b388c2364775a69aad94c9715424|SPEND	D8: a library unit the root does not reference declares a second Token. The reference registers it, so the blueprint names com.myapp.Token by its stable id; javac does not read that unit, so it stays Token. The schema's shape is the same
+registry	f02a18b33e1944916be768d018ae0e5b6fbf2c5431e43a0e8fbb2bdfb71fbf01	T33, #286: reject-068-nested-user-policy-id: a nested user record named PolicyId, as in M2Sealed. The reference reads the field as the ledger's bytes; javac as the user's record
+encoding	Case.PolicyId|61e179de44809459|Case.PolicyId|77454a51caaf4e8d	T33, #286: reject-068-nested-user-policy-id: the nested user PolicyId, as above
+encoding	Case.Datum|14be16471b9b5b83|Case.Datum|90be3dddbd6c2419	T33, #286: reject-068-nested-user-policy-id: a record holding that PolicyId
+encoding	Case.Action|eba98f9954c38cbc|Case.Action.Pay|a56495e38f4fed38	T33, #286: reject-068-nested-user-policy-id: a type holding that PolicyId
+reference-rejects	070646b4cc6563e8a3ce20111700820afaad7c2a1918ab3d2a4bd2dcf71d30dc	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it
+reference-rejects	18c579305c11cc36034a30c2ac671a29bc34e22402b1fc028c143ff75604bc0f	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it
+reference-rejects	1b7329f4827775e0655241cd79f44eb232e6851aced0a88d52a785eaaa6a736c	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it
+reference-rejects	74abcf0be2e3e19c6742c3e200d4d03f13b47b68e77108aa097c479cf224c27d	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it
+reference-rejects	777e5909b72917c48723d370c053524814d1b4841053ef9dd597623df7bbabba	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it
+reference-rejects	81276f73fb1020ef302931b87f34ed546520fef52856c7b09068a37c3d8cb083	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it
+reference-rejects	9f77f47582c5ba9ec8111d07812d728c7ec1acade08e3613c0cfd7228bffd41c	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it
+reference-rejects	d81a9b8b220dc7504260d08a6b3e088f88dc82df03c2fba6ad1900d21a4b191b	reject-068-escape-shape: an ADR-065 I2c escape shape, saved as a .diffcase; the reference's reader rejects it

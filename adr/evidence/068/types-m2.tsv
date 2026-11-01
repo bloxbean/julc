@@ -429,6 +429,7 @@
 06e7c594c8720111bb2719a11f3632ace180aa7454c2a42bd4ab119cb6b0d3bc	equal	79
 06edb2b48ef2af66322a67415ea5ee3b8ca481df4d4c09b6837c522527594d3b	equal	79
 0702cb7d5a51ec086dfdd58eb12e176805f2610aa783b0d6b5f6381f245bf691	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location 0a2493495034e5d8
+070646b4cc6563e8a3ce20111700820afaad7c2a1918ab3d2a4bd2dcf71d30dc	reference-rejects	ParseProblemException: (line 1,col 62) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the escaped backslash toward the raw backslashes after it, and the JLS...
 0709415576f4b7c149df92c050236ed3060c4dba61906884c7857a0328c9cf77	equal	79
 07140a54476f279c83525d467de9a8accf1a913cb4647daa097df65e8104e2d4	equal	79
 071839c8a4fce44f4a444e01ff88843bc45affe5e1479303a0c615519421ab1e	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
@@ -856,6 +857,7 @@
 0d6c263a0f6eda7b30ab747e5b86d75a5751bedb827a41a6f353f64fa0981a80	equal	82
 0d6d2c58313d7f8ad998b217e3554f1d5c414fa02b315d09d247f7248e5fb787	equal	79
 0d77ddf2031fd5995c9d7e1f8284bf9fd44f75cd0391245f6a7fe08127b58a91	equal-tolerant	82 JULC0085 compiler.err.pattern.dominated c662e6e2ad7bb0d7
+0d79cb6591de9f4906e6fa4c6bb16581e1f9fa1e56ae4b0f5fc1e4d8e22fa5d6	equal	80
 0d7e9f7c75a424760492fd273b05c7012621d813ae280a39e4a97ea63fbb9cb9	equal	80
 0d7fff8beeb398161bad8e5b267c331262421f47206da3a225a460ce46106f1d	equal	82
 0d8006770bb1ca233b7d34b7e34ca883e4e56631c3e9e875bae38b33a2e388d1	equal-tolerant	82 JULC0085 compiler.err.cant.resolve ae47a7d4a320a74a
@@ -1613,6 +1615,7 @@
 18c23cbe62580af4f913c754539115e0384a862189e78754aa5f40b78f04abdc	equal	82
 18c347318e44c989af7205ea2b37c3f18eba0bf6f0cf15c75853332bcb091ebc	equal-tolerant	82 JULC0085 compiler.err.cant.resolve ae47a7d4a320a74a
 18c448e434f27a1c1b4c2c1a30033b8452be94a72dfebeb64b352bf7f7bd36d4	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
+18c579305c11cc36034a30c2ac671a29bc34e22402b1fc028c143ff75604bc0f	reference-rejects	ParseProblemException: (line 3,col 23) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the escaped backslash toward the raw backslashes after it, and the JLS...
 18c67ab048f0df374dfb8fec768a1ff5ae88d870e05dd3e5cc5011030f4c8b02	equal-tolerant	82 JULC0085 compiler.err.pattern.dominated c662e6e2ad7bb0d7
 18cc9cd8c51381aa74e7711799905fd25af7f2294656d88183cc5abbb9cee295	equal	79
 18ce2d8a703d45724b454346c290ab9bd796b8eee405708c814941268c76612e	equal	83
@@ -1806,6 +1809,7 @@
 1b69f3074c64616db4ae38dbbd74f5efbb6ab5034799e40fa08b5c1ad437a2d0	equal	82
 1b70d50b92cf09ef54d7dac6a53599d707e4ffd8e2a85a06cca1d7e102efe291	equal	79
 1b7276b3c83c511ce83fe82a2224930dc2578d5e967e32b20480398b29572757	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location.args a9a37915ca71d99a
+1b7329f4827775e0655241cd79f44eb232e6851aced0a88d52a785eaaa6a736c	reference-rejects	ParseProblemException: (line 3,col 18) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JLS 21 §3.3)
 1b7b42b8dafdc24d111c286825725dea95e9b965738c992323cd129a30e98a22	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
 1b836c827d94f42f89bdc5a307987658cbb3aeb4359e9b3924a2faa16f87be17	equal	80
 1b83f1cb36d57a4814361176f5012f08f96c94c6c1efeb5009376f9e4e0d2229	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
@@ -7825,6 +7829,7 @@
 74a3e81448c4df7591ae5704a52f5f9acd725af57a1aa98926113e6cb56a7eb3	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
 74a706c093b2b8f8b7fabe95fd7375afcd0927ca6ec339bbc55b27eadbd4c399	equal-tolerant	82 JULC0085 compiler.err.pattern.dominated c662e6e2ad7bb0d7
 74a86c7f44aec1a0aa05bcd9f7caef801849b40cc889ea2c95e4d9caa41ee562	equal	79
+74abcf0be2e3e19c6742c3e200d4d03f13b47b68e77108aa097c479cf224c27d	reference-rejects	ParseProblemException: (line 1,col 56) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JLS 21 §3.3)
 74ad3208ea746f25b64e947523dc7730d62d553275bef0c5c7dcb51b2a4a5c56	equal	79
 74aeae9e816a91c2fee0cea746ffa7cf638c56634680b991c7526243f4c8c78d	equal-tolerant	82 JULC0085 compiler.err.not.exhaustive 8e00b730da188675
 74b101167be88226d7ad71f0e92f501a578445a4ac849d392c5420d229f7a282	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location.args a9a37915ca71d99a
@@ -8027,6 +8032,7 @@
 7766a3083ec014f9c282981094f62b82fa03c0f9841cff675bfc059f1b437680	equal	82
 77685617e66998ee1667726cc659522b2d35554f22014e60f0b739894f0e6724	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location.args a9a37915ca71d99a
 776b61ebd6cf5adf685406c33498df72f684e154faa7260295f72b8b06b3d390	equal	79
+777e5909b72917c48723d370c053524814d1b4841053ef9dd597623df7bbabba	reference-rejects	ParseProblemException: (line 1,col 62) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the escaped backslash toward the raw backslashes after it, and the JLS...
 77826950318186f7326b39107e84b412434ca35de4be83cf9726dbc2b34b1435	equal-tolerant	79 JULC0085 compiler.err.cant.apply.symbol 188e29dd4e29fc3e
 77842ab90bea71e2122f61e32e48523394bb59fa1071913ecb6ffd76a27ff184	equal	79
 778a85d64e4d5d9246c97cf81e6308d3ff6fd4e7ab7e3f19f7e0712982080735	equal	79
@@ -8634,6 +8640,7 @@
 8118f30e3a8596035374b836a783e3804d82f4cc5237f47d54c6389467491010	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
 811906febcc6d49dc44634e1d15da459f2eab706dfbfb4407ab62fde69adb040	equal	81
 811f5eba7d841bd48c8774994607708b71a7c979a7640e3be5840340ee772943	equal	79
+81276f73fb1020ef302931b87f34ed546520fef52856c7b09068a37c3d8cb083	reference-rejects	ParseProblemException: (line 1,col 62) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the escaped backslash toward the raw backslashes after it, and the JLS...
 812774baee49b9e84dac94667542cbb10b72d3618fffeab17955c211bbdf2b48	equal	81
 812bced024121a21a86b8aca5fe0d6c76191dd872d8155be41dcf2ca7ef81a12	equal	79
 812cb7a1768b3737cf4f770dba6b4ab05ab3daf23335c70499ababa63103d779	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
@@ -10680,6 +10687,7 @@
 9f6f5224aad73d34bd4a3df38e6af14af32e91bfd9e66e0fdda629a90fcd35cb	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location.args a9a37915ca71d99a
 9f701e0aa38ba52fe19f7e113862271cd24e0282417a8484aa309c57bfafd7a2	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location 0a2493495034e5d8
 9f76e81bba19f9ccc23a80d83f5d96852eb0664aa8dcebe0e85ecd85822162b4	equal	79
+9f77f47582c5ba9ec8111d07812d728c7ec1acade08e3613c0cfd7228bffd41c	reference-rejects	ParseProblemException: (line 1,col 62) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the escaped backslash toward the raw backslashes after it, and the JLS...
 9f794237a80a0fa7b7ae326205132dbda9deac2cff8db6df9edd695be47ccc99	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
 9f7bf8437422f62f442a268b6901e0affd07ac9711396b367e2386a45687b562	equal	79
 9f7de43e34dff7a5a1e615e22bfa5406f9e79b87aa166923b84276b2e6e2e199	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
@@ -12660,6 +12668,7 @@ bdfab7c9f0b68c21e15ad466c0ad15e42ef5b964f56d534b8b62ab43ccb879a4	equal	79
 bdfc151858e649b320493c6e26d954a53816ffea53bd03c586ec5830fec1d573	equal	82
 bdfc2e48ff128de4dd16a6058a5cb5e9db21d57b029188c075c05aa3a50fddbd	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
 be03a9b72648017d47322a6c585f38f28e07b5ba15ce6cf8fc9ac0306334bc1c	equal	82
+be0762882bf0acdd63676b364a4e7334396f9314840edcf08a1598f49f50fcd1	equal	79
 be07b00e2657a038b0a7c40b2c5c4c706f40c3b0eb25573cc2c82659fc591018	equal	81
 be0be043bb0a9018908f3692e31028ba0ae4393f144c1aaed0ed2b4bbbc5cfb9	equal	79
 be0c7fcb694dad5d939f70fa87ee97c65ee0c673ece5a5b8db4a56d814653c8d	equal	82
@@ -14417,6 +14426,7 @@ d80bae7fcd2c3736ff2471224f1d844945e4cd497d53e347b0b38424650e8078	equal-tolerant	
 d80f46126abd54bd7b718194d52c548b966f0dc56efd574cd27ed3194b9cdfc6	equal	79
 d816dc853424139557697b3f9364a8a7676014b4e3c51a03eb61a2ba7ccf51bf	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location.args a9a37915ca71d99a
 d8178f8dc85f6ba63aec8cd0e0079f7c77cafa9e68dcc30b6cfe7453a84ec4c6	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
+d81a9b8b220dc7504260d08a6b3e088f88dc82df03c2fba6ad1900d21a4b191b	reference-rejects	ParseProblemException: (line 1,col 56) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JLS 21 §3.3)
 d81efc85e74ee2959450b2fb6221cf5767623dc9f20f3d4cb95802091bbc7dae	equal	86
 d82153ca4fec932c706f8bc9f39cca68edff0ace658e4dfcdf30493ab0068f74	equal-tolerant	82 JULC0085 compiler.err.not.exhaustive 8e00b730da188675
 d834fd9748e42bb87d7222ba637cc8952ded6b29d9609d369d5ab4ed9161ae51	equal-tolerant	79 JULC0085 compiler.err.cant.resolve 3dcec6e40de31b0a
@@ -15983,6 +15993,7 @@ f0122722882a1b6934928fe84aaff07387e6552166c5f5917bf304c7e0771f8a	equal	79
 f0125ec250de5a1426acb801a409ea4863ff5f7e071aafe9185fbb4f2f58cdd8	equal	79
 f017eb6186514cf76b66b76dca2692519fc42b9456026fd9cea91b84ba0a5d3a	equal	79
 f01877532c7fcf318b57f34bab28941d5f38b90d4ec0859aa9d2abfcfcf6ba8b	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location 0a2493495034e5d8
+f02a18b33e1944916be768d018ae0e5b6fbf2c5431e43a0e8fbb2bdfb71fbf01	DIFFERENT	record Case.Action.Pay: RecordType[name=Pay, fields=[Field[name=to, type=ByteStringType[]], Field[name=note, type=RecordType[name=Note, fields=[Field[name=v, type=IntegerType[]]]]]]] / RecordType[name...
 f035b8048e31e0cfef7cfc16fe13ac18ba990fc3f5c0db1dfc1482040261c22d	equal-tolerant	79 JULC0085 compiler.err.cant.resolve.location 0a2493495034e5d8
 f0363812adf9181e87e6e3bfb9cff1e87ec74570b55ae1aa23fdf7fc0a2aa487	equal	83
 f03f41435ec6fea8b7b15b5508cb4ea29d7a6b8cc7f8e4f3b8c41030333d7e31	equal	79

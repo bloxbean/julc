@@ -40,10 +40,10 @@ evaluations.external.replay.unmatched	37
 evaluations.recorded.excluded.harness	6231
 evaluations.recorded.excluded.nondeterministic-tests	21
 evaluations.recorded.replay.agree	1147
-evaluations.recorded.replay.matched-not-replayed	5478
-evaluations.recorded.replay.unmatched	16216
+evaluations.recorded.replay.matched-not-replayed	5518
+evaluations.recorded.replay.unmatched	16176
 sha256	ledger-b0-evaluations-external.tsv	18db22d98263c0e7c39a6759d229d5fca4648bf951d2c4c3806d24bcde4fb495
-sha256	ledger-b0-evaluations.tsv	89e058aa4a0d14c1cdfabfe6a34851c2c68b6d8f3bde5f0631c3301de79964dc
+sha256	ledger-b0-evaluations.tsv	9924765df29157c2f8e3b87715ab305262a17ce239cf04b03c610040cc62ac0b
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.StdlibIntegrationTest$1	5
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.pir.CompositeStdlibLookup	2
 unreplayable	custom stdlib lookup custom:org.julclang.stdlib.StdlibRegistry	3
