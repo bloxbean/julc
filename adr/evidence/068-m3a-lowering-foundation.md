@@ -7,7 +7,7 @@ FLAT bytes. Everything else stops at `JULC0084`, naming the construct and its po
 The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md). Machine and toolchain as in M0's evidence. Branch
 `wip/068-m3a`, based at `a0527fb1`, with M2's close merged in at `baef03a7`.
 
-This file states the code at `7afd2b03`. The I1 gate, `adr068Baseline`, `adr068Types`, `pairCaseTest`, `onChainHarnessTest`, the full suite and the native image ran at that commit. The external examples and the Web Image ran at `d0cee64b`, and the DevKit tests at `ee1c6b81`, before the constructor rule, which only rejects, and `wasmSmokeFull` at `8ff98e81`, before the Value methods. Later commits change documentation only.
+This file states the code at `904e9307`. The I1 gate, `adr068Baseline`, `adr068Types`, `pairCaseTest`, `onChainHarnessTest` and the native image ran at `62c55a1f`, and the full suite at `904e9307`, which changes one test. The external examples and the Web Image ran at `d0cee64b`, the DevKit tests at `ee1c6b81`, and `wasmSmokeFull` at `8ff98e81`. `1ee4ce2f` moves script bytes after those, so they run again. Later commits change documentation only.
 
 ## What was delivered
 
@@ -163,7 +163,7 @@ slice's shapes in a program it covers, and the rule fixtures and `.diffcase`s of
 | Programs the reference accepts | 145 | 15,137 | 0.96% |
 | Their distinct scripts | 85 | | |
 | Programs of more than one method | 11 | | |
-| Methods the reference lowers, library methods included | 320 | 171,992 | 0.19% |
+| Methods the reference lowers, library methods included | 320 | 172,155 | 0.19% |
 | Distinct covered methods | 160 | | |
 
 **What a number means.** M5's gate is zero `JULC0084`, and this is where that starts: under 1% of programs. Most covered programs are
@@ -225,17 +225,17 @@ All listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lowering-ac
 | The three lints | In `JavacLoweringLintTest`, each with negative controls that make it fail |
 | The external `julc-examples` at `22b4e00f`, default frontend and gate mode, against `ff3cef58` and `d0cee64b` | 446 tests, 0 failures, 68 skipped, on both: the skips are its DevKit tests, which a scratch clone turns off through their own assumption. So the gate's rules read every source it compiles, and none rejects. Of the 271 tests that record an evaluation, each has the same outcomes, errors and traces on both. By FLAT digest, tests evaluated 24 of the 67 external cases the Value methods moved. The other 43 compile and are not evaluated as compiled here |
 | The gate's determinism | 2 threads and the default write the same bytes, at `ff3cef58`: the gate's byte comparison passes at both |
-| The default path, gate off, against B2 | `adr068Baseline` now fails unless it writes [B2](068-m3a-reference-b2.md)'s files. At `7afd2b03` it passes: every file equal, 11,425 cases |
+| The default path, gate off, against B2 | `adr068Baseline` now fails unless it writes [B2](068-m3a-reference-b2.md)'s files. At `62c55a1f` it passes: every file equal, 11,425 cases |
 | M2's gate, `adr068Types` | 0 rows moved. The 8 pins of B2 are added to `types-m2.tsv`, each an `equal` row. The schemas of the 4 rule fixtures, and one layout, are newer than B1's table, so each is compared with the reference this run computes |
 
 
 ### Images
 
-`-XDallowStringFolding=false` and its check are in every host, since the check runs in the supported-javac check. The native image was built at `7afd2b03`, and the Web Image at `d0cee64b`, before the constructor rule.
+`-XDallowStringFolding=false` and its check are in every host, since the check runs in the supported-javac check. The native image was built at `62c55a1f`, and the Web Image at `d0cee64b`, before the last rules.
 
 | Host | Result |
 |---|---|
-| Native CLI, `GRAALVM_HOME=<25.0.2> ./gradlew :julc-cli:nativeCompile` | Builds, 108,011,928 bytes. `julc build` compiles a new project through the gate (`AlwaysSucceeds`, 96 bytes); javac runs in the image, since a `BigInteger` `>` fails the build with `JULC0085`, at `d0cee64b`; and the rules run in it, since a cast and a field initializer fail it with `JULC0098` and `JULC0095`, at `d0cee64b`, and a compact constructor's statement with `JULC0099`, while `R { }` builds |
+| Native CLI, `GRAALVM_HOME=<25.0.2> ./gradlew :julc-cli:nativeCompile` | Builds, 108,045,000 bytes. `julc build` compiles a new project through the gate (`AlwaysSucceeds`, 96 bytes), and the rules run in it: `PlutusData.cast` to `Boolean`, a type named `Boolean`, a type parameter of that name and a declared `fromPlutusData` fail the build with `JULC0098`, `JULC0100` and `JULC0101` |
 | Web Image, `:julc-wasm:wasmGateProbe` (GraalVM 25.3, javac 25.0.4.1.1) | Passes, and its lines equal the JVM's: `supported=true`, `FeeGate` accepted at 204 bytes, `OwnerGate` at 269, the dialect `JULC0085`. 26,963,453 bytes |
 
 The probe failed at first, at the base too: `NoSuchFieldError: variables`. It read the class path's jars without depending on them, so in a fresh tree `julc-tools`' jar was missing, and with it JavaParser's reflection metadata, with nothing said. `f2e5f472` fixes that. No shipped image was affected: `wasmImageFull` takes the jars as inputs.
@@ -246,7 +246,7 @@ Counted from JUnit XML.
 
 | Task | Result |
 |---|---|
-| `./gradlew test --offline --continue --rerun --no-watch-fs` | 13,640 tests, 0 failures, 0 errors, 530 skipped. M2's close had 12,923 |
+| `./gradlew test --offline --continue --rerun --no-watch-fs` | 13,834 tests, 0 failures, 0 errors, 530 skipped. M2's close had 12,923 |
 | `:julc-compiler:pairCaseTest --rerun` | 71 tests, 0 failures |
 | `onChainHarnessTest --rerun` | 16 tests, 0 failures |
 | `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1), at `8ff98e81` | `BUILD SUCCESSFUL`; `wasmImageFull` rebuilt; 56 `ok` lines, no `not ok`. It runs the default frontend |
