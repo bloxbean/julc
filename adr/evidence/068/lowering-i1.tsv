@@ -413,7 +413,7 @@
 06b217241f5401c114e540294633f087ab3a0c2f1112c658b8197e969828375d	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 06b4bc4d66400ebafbd9fb02227ec925bd4f46aa2ec3e57efda88862bc3a0ed1	not-ported	0/18	WHILE_LOOP	-	-	
 06b91fac41c78c3bc6814cb3a4efd34d23790b365e550b3791d34882ff02d2d9	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
-06c0423a809e6515fcf2d4efd4368590270900977af15344249acce6462e55f1	i1a-identical	1/1	-	same	-	
+06c0423a809e6515fcf2d4efd4368590270900977af15344249acce6462e55f1	not-ported	0/1	fromPlutusData on a ledger type	-	-	
 06c1c9eef2d3f0868860adf08ade952c7df3e35583b6c8a3829c1f80ea927e5a	reference-rejects-not-ported	0/0	ENHANCED_FOR_LOOP	-	6decc21279509547	null@0:0 Loops.java:16:25: Conditional update to loop-body local 'bodyLocal' is not supported   Hint: An if/else branch carries only loop accumulators out of th...
 06c6055a9bc56455910014daff7ea7d30317da549f30d27cab725e1217e9619e	not-ported	1/48	a library unit	-	-	
 06c970f2407ff5faf6944a425c28a2b70a1fbaf4fec4beed4e264e710291360a	i1a-identical	2/2	-	same	-	
@@ -1122,7 +1122,7 @@
 11101a535bb592b2e8bed3a6850fdf903b9a2428688f7414286069aab56628a5	not-ported	2/31	SWITCH_EXPRESSION	-	-	
 1114eab7f1f8f89886a64ffec75465d59305f71e5c52bfc792d2c57bb84e0a48	not-ported	1/36	a library unit	-	-	
 11172ebdad8af84253a8c2dcbdf7b59c778004ec3ef1f8ec083980eb7464d452	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
-1118febc7ce2927b23544fee33c8ce7569202dc4c6924f8a4095a05262dfaebf	i1a-identical	1/1	-	same	-	
+1118febc7ce2927b23544fee33c8ce7569202dc4c6924f8a4095a05262dfaebf	not-ported	0/1	fromPlutusData on a ledger type	-	-	
 1123b70a6e1a75206095155893e172ef24cb21bbfb3d275ff880867fb52dd2d3	reference-rejects-not-ported	0/0	WHILE_LOOP	-	091a91c80873d4e6	JULC0059@4:391 Pattern variable 'q' has the same name as a field of Probe
 112b9a70c9dd23235a44f61c2154aad003312e97c4c6021d3b50265a0656ad20	not-ported	0/1	WHILE_LOOP	-	-	
 112cd3cfa17bd73b4e0d5c93ed063ec6957ca15c69e98fba1af6d952969f3e90	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
@@ -2976,7 +2976,7 @@
 2ccf735c2810ca2df70a2cba2be60c718ae41a8eeb821c237265b2bd894b094e	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 2cd2d90d380bcd72c0935901b01a0c1c2f31122706af95ad3883441669ccabef	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 2cd69c0757c4be86ae0b78899cc85ab1c314bb19acdcf7e22d34d2ecc03c9fae	javac-rejects	0/4	-	-	40dbc46483b69abe	JULC0085@2:33 cannot find symbol   symbol:   class BigInteger   location: class RecursiveTest (compiler.err.cant.resolve.location)
-2cd8c8334406d215af531f8f51c4327e0c00698ea6b195fe97f8fea928f924e2	i1a-identical	60/60	-	fragment	-	
+2cd8c8334406d215af531f8f51c4327e0c00698ea6b195fe97f8fea928f924e2	not-ported	59/60	fromPlutusData on a ledger type	-	-	
 2cdb7612dde39314251f425f7414acfa85fdc40580fd48ad4285cd8ba1d4b741	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 2cdd278bd06a291720ee1b2500ac285cc7574b6c3ecc2f2f166e306119c9a971	not-ported	0/18	WHILE_LOOP	-	-	
 2cdee6c7745d083866cd45db027879b1a2fb6003cd5ac25b8c9c323b867d3581	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -7646,7 +7646,7 @@
 717c55e6907ef0d818289577b22051857339993203d742a8a419a5924be3e1f1	javac-rejects	0/18	-	-	1cacca9d2c5f35cd	JULC0085@24:63 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 71810f2cb24afb96ce9c82839afa9cb1d9354eca5e96c78756b29009a9515c5f	not-ported	0/18	WHILE_LOOP	-	-	
 7181c7df136443961869d383184beeaf01606ccef8e2496d8f56c01dedc456f3	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-718238a98cd24475b187926a189cece6f711337e880b4409c17aa17044a04981	i1a-identical	1/1	-	fragment	-	
+718238a98cd24475b187926a189cece6f711337e880b4409c17aa17044a04981	not-ported	0/1	fromPlutusData on a ledger type	-	-	
 7183c9e91b1698d403a9eb863b951b432e6b02b4781a3440f3a78a8016367bd1	not-ported	0/18	WHILE_LOOP	-	-	
 7184530b46895063682a984fb7712eb832f672ee8e3817401f1377e6894b9610	not-ported	0/1	WHILE_LOOP	-	-	
 7187eb1d09c84de8f142bab59150ac0deab2567f40c3b97f762e96a17ab11a36	not-ported	0/1	WHILE_LOOP	-	-	
@@ -7847,7 +7847,7 @@
 74bfaa7cc125b49ea66889ae50ec89e43bd4f58655783f975565b3391bff0920	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 74c0bf170ad6fcfd3f97482ebe5f2b8b15bd541b06d1655a43ecf26ddd8a9831	not-ported	0/1	LAMBDA_EXPRESSION	-	-	
 74c4d37f604b1d176b811b93c67c7fb2d79decc43f569b3efc91b4100b3db7fe	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
-74cea76b266409410460682d49925288696706fde6fa95e987eb023fc042ea5d	i1a-identical	1/1	-	fragment	-	
+74cea76b266409410460682d49925288696706fde6fa95e987eb023fc042ea5d	DIFFERENT-javac-rejects	1/1	-	-	e5860fe0062c2d08	JULC0078@9:16 Tuple2.equals compares Probe.R1 with Probe.R2, which Java keeps distinct: on-chain the two can compare equal
 74de21bed87381308e1824fbccce2bf430d3f1d06668de918825e55ab54c6e1f	i1a-identical	2/2	-	same	-	
 74de5f6e3a02a601d065c47749bff912b633f8e066c10d10af3d199550a493e8	DIFFERENT-javac-rejects	0/1	reference equality	-	80805fa71556fefe	JULC0086@10:16 __rest_0 == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 74e5a966c93dd54c6943c199d1270c8d978497f813ffa8dd2898202a87016495	both-reject-javac-first	0/0	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -8879,7 +8879,7 @@
 8469ff17932688a6c3c87269f6ab578b3661f2042b21d3b75547e697e9b90507	both-reject-javac-first	0/2	-	-	3d6cbe3a5a184e58	JULC0085@4:31 cannot find symbol   symbol:   class P   location: class F (compiler.err.cant.resolve.location)
 846ef5554bc7678e9b3948e2e222360e67dca0ee14918735558eb0f32bbb69b4	not-ported	1/2	SWITCH_EXPRESSION	-	-	
 84701fecfb9133e6a8758c3fa17883fe1cf6b44391445039b6bd6159051ed660	both-reject-javac-first	0/1	-	-	ec25a4b9c858eb60	JULC0085@17:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
-8470b042f26689215660eef310832fe5cfa0c738b8f51a4158306fe8ce2ca1c2	i1a-identical	1/1	-	fragment	-	
+8470b042f26689215660eef310832fe5cfa0c738b8f51a4158306fe8ce2ca1c2	DIFFERENT-javac-rejects	1/1	-	-	d46ce2157f59fbed	JULC0078@9:16 Optional.equals compares Probe.R1 with Probe.R2, which Java keeps distinct: on-chain the two can compare equal
 847ae51bf4a00e187e29ed8ff2f1626b97ccd75dc4aaef34c997a9866c9500b3	not-ported	0/18	WHILE_LOOP	-	-	
 847b9711dfe4863e4ad66557d625c6fb98e2e3c48e3ffbfe23d7254ce07224f1	i1a-identical	1/1	-	fragment	-	
 848062a03fa7e408f19e8cbb8a4dc05a40d5b8286fccc1bae7e034e8bb90ee3d	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -17055,7 +17055,7 @@ ffa8c99b5a4b61522fac854416b3f904c5fac4020eeae9f2ee95c58d69b72635	javac-rejects	0
 ffae561bdc3b4bd778ff30d898de045b4f590343193132b387eb47c7c7586521	not-ported	1/29	a library unit	-	-	
 ffb12db8c9695b0c9876d4ce88f108315922185e3143b05fd5fba8d22d3cab05	not-ported	0/18	WHILE_LOOP	-	-	
 ffb1661da5d23a88ed5ef7ae87e371c5c0140b611a455e4adeea562f10b217f5	not-ported	0/29	SWITCH_EXPRESSION	-	-	
-ffb44c5761bf637b191530c30e380196c2e08010837bc6699a4108c672822135	i1a-identical	1/1	-	same	-	
+ffb44c5761bf637b191530c30e380196c2e08010837bc6699a4108c672822135	not-ported	0/1	fromPlutusData on a ledger type	-	-	
 ffbb47b91aec7b76294758d5483e4a85f221dcb487c2d7b9ab1726e2e900a976	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 ffbdad5dcf2eea122955c9d66f98eeb1fc893fdd97a664042d3960e884ccb0be	reference-rejects-not-ported	0/0	ENHANCED_FOR_LOOP	-	8265c26925acc4d9	null@0:0 Loops.java:9:180: Conditional update to loop-body local 'step' is not supported   Hint: An if/else branch carries only loop accumulators out of the bra...
 ffc4cdf6c9e475c084c2e797a8f515027c040f5479cec5551bee5dbde4bfe253	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
