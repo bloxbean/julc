@@ -14,6 +14,7 @@ import com.sun.source.util.Trees;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.error.DiagnosticInfo;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.source.SourceLocation;
@@ -343,6 +344,20 @@ public final class JavacFacts {
         var at = location(where);
         return new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message,
                 at.fileName(), at.line(), at.column())));
+    }
+
+    /** {@link #rejection(String, Tree)}, with the reference's suggestion. */
+    public CompilerException rejection(String message, String suggestion, Tree where) {
+        var at = location(where);
+        return new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message,
+                at.fileName(), at.line(), at.column(), suggestion, null)));
+    }
+
+    /** A coded rejection at {@code where}, with the catalogue's message and fix. */
+    public CompilerException rejection(DiagnosticInfo info, Tree where, Object... arguments) {
+        var at = location(where);
+        return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(arguments),
+                at.fileName(), at.line(), at.column(), info.fix(), info.code())));
     }
 
     private PirType array(ArrayType type, Tree where) {

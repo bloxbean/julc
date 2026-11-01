@@ -118,9 +118,73 @@ class LoweringAloneTest {
         });
     }
 
+    private static PirType.IntegerType integer() {
+        return new PirType.IntegerType();
+    }
+
+    /**
+     * I13 with a continuation: what follows the {@code if} reads the static, and sits inside the branch that declares a
+     * local of its name. Built once in the enclosing scope, so the local takes a mark instead of capturing the read.
+     */
+    @Test
+    void aBranchLocalTakesAMarkSoWhatFollowsReadsTheStatic() {
+        withMethod("class P { static final long K = 1; static long m(long a) { if (a > 0) { long K = a; if (K > 5) { return K; } } return a + K; } }",
+                new CompilerOptions(), (facts, lowered) -> {
+                    var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
+                            .filter(e -> e.getKind() == ElementKind.FIELD).findFirst().orElseThrow();
+                    var scope = Scope.empty().bind(field, integer());
+                    var terms = lowered.lowering().terms();
+                    var body = (PirTerm.Lam) lowered.lowering().method(lowered.method(), scope, false);
+                    var branch = (PirTerm.IfThenElse) body.body();
+                    assertEquals("K'1", ((PirTerm.Let) branch.thenBranch()).name());
+                    var bound = new PirTerm.Let("K", new PirTerm.Const(Constant.integer(1)), body);
+                    terms.assembled(bound, "K", field);
+                    BindingCheck.check(bound, terms.provenance());
+                });
+    }
+
+    /** One binder name per element (I13): every copy of what follows an {@code if} is the one term, built once. */
+    @Test
+    void whatFollowsAnIfIsOneTerm() {
+        withMethod("class P { static long m(long a) { if (a > 0) { if (a > 1) { return 1; } } long b = a; return b; } }",
+                new CompilerOptions(), (facts, lowered) -> {
+                    var outer = (PirTerm.IfThenElse) ((PirTerm.Lam) lowered.term()).body();
+                    var inner = (PirTerm.IfThenElse) outer.thenBranch();
+                    assertSame(outer.elseBranch(), inner.elseBranch());
+                    assertInstanceOf(PirTerm.Let.class, outer.elseBranch());
+                });
+    }
+
+    /**
+     * No operand of a type a program can hold is outside the variant's interface yet: javac rejects the unrelated ones, and
+     * {@code Object} comes only by a cast, which is not ported. When it is, this is the line that stops it: a tag compared
+     * on what may be any value would be another answer.
+     */
+    @Test
+    void anOperandOutsideTheVariantsInterfaceStops() {
+        withMethod("class P { sealed interface S { record A() implements S { } } static Object O; static boolean m() { return O instanceof S.A a; } }",
+                new CompilerOptions(), (facts, lowered) -> {
+                    var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
+                            .filter(e -> e.getKind() == ElementKind.FIELD).findFirst().orElseThrow();
+                    var scope = Scope.empty().bind(field, new PirType.DataType());
+                    assertEquals("an instanceof of an operand outside the variant's sealed interface",
+                            assertThrows(NotPorted.class, () -> lowered.lowering().method(lowered.method(), scope, false)).construct());
+                });
+    }
+
+    /** A loop stops at the scan first, so only this shows that an {@code if} around one does not lower as another shape. */
+    @ParameterizedTest
+    @ValueSource(strings = {"if (a > 0) { while (a > 0) { } }", "if (a > 0) { } else { for (var x : java.util.List.of(a)) { } }",
+            "if (a > 0) { if (a > 1) { while (a > 0) { } } }", "if (a > 0) { if (a > 1) { } else { while (a > 0) { } } }",
+            "if (a > 0) if (a > 1) { } else while (a > 0) { }"})
+    void anIfAroundALoopIsNotPorted(String statement) {
+        withMethod("class P { static long m(long a) { " + statement + " return a; } }", new CompilerOptions(), (facts, lowered) ->
+                assertEquals("an if around a loop", assertThrows(NotPorted.class, lowered::term).construct()));
+    }
+
     /**
      * The strict transform rebuilds every binder of a body whose root is a record, so what is recorded of each must follow
-     * it to the copy. A {@code let} is built here as the locals slice will build it, by {@link Terms}.
+     * it to the copy. A {@code let} is built here as {@link Statements} builds it, by {@link Terms}.
      */
     @Test
     void aBinderKeepsItsProvenanceThroughTheStrictTransform() {

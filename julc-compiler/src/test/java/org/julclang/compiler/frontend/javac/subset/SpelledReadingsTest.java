@@ -31,13 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SpelledReadingsTest {
 
     /** What a compilation gives: the first diagnostic's code, or a value. */
-    private sealed interface Outcome permits Rejected, Evaluates {
+    sealed interface Outcome permits Rejected, Evaluates {
     }
 
-    private record Rejected(String code) implements Outcome {
+    record Rejected(String code) implements Outcome {
     }
 
-    private record Evaluates(long value) implements Outcome {
+    record Evaluates(long value) implements Outcome {
     }
 
     private static Outcome rejected(String code) {
@@ -52,7 +52,7 @@ class SpelledReadingsTest {
         return new Evaluates(value);
     }
 
-    private record Program(String label, Outcome outcome, String root, List<String> pool) {
+    record Program(String label, Outcome outcome, String root, List<String> pool) {
         @Override
         public String toString() {
             return label;
@@ -88,7 +88,7 @@ class SpelledReadingsTest {
         }
     }
 
-    private static Stream<Program> programs() {
+    static Stream<Program> programs() {
         return Stream.of(
                 program("a validator's nested class beside an unimported pool class of its name", rejected("JULC0100"), """
                 package demo;

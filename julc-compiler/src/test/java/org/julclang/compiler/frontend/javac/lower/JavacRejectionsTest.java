@@ -285,12 +285,11 @@ class JavacRejectionsTest {
                 class V {
                     @Entrypoint
                     static boolean validate(PlutusData r, ScriptContext c) {
-                        if (true) return true;
-                        return false;
+                        while (true) return true;
                     }
                 }
-                """, "IF", 10);
+                """, "WHILE_LOOP", 10);
         assertEquals("JULC0084", e.diagnostics().getFirst().code());
-        assertTrue(e.getMessage().contains("IF `if (true) return true;`"), e.getMessage());
+        assertTrue(e.getMessage().contains("WHILE_LOOP `while (true) return true;`"), e.getMessage());
     }
 }

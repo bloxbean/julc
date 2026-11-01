@@ -2,29 +2,44 @@ package org.julclang.compiler.frontend.javac.subset;
 
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.BinaryTree;
+import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.CompoundAssignmentTree;
+import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.InstanceOfTree;
+import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.PrimitiveTypeTree;
+import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.core.source.SourceLocation;
 
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
+import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -57,15 +72,32 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** The kinds that are subset only where lowering reaches them. */
     private static final Set<Tree.Kind> WHERE_LOWERED = EnumSet.of(
             Tree.Kind.METHOD_INVOCATION, Tree.Kind.CONDITIONAL_EXPRESSION,
+            Tree.Kind.IF, Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.LABELED_STATEMENT, Tree.Kind.EMPTY_STATEMENT,
+            Tree.Kind.INSTANCE_OF, Tree.Kind.BINDING_PATTERN, Tree.Kind.DECONSTRUCTION_PATTERN,
+            Tree.Kind.ASSIGNMENT, Tree.Kind.PLUS_ASSIGNMENT, Tree.Kind.MINUS_ASSIGNMENT, Tree.Kind.MULTIPLY_ASSIGNMENT,
+            Tree.Kind.DIVIDE_ASSIGNMENT, Tree.Kind.REMAINDER_ASSIGNMENT, Tree.Kind.LEFT_SHIFT_ASSIGNMENT,
+            Tree.Kind.RIGHT_SHIFT_ASSIGNMENT, Tree.Kind.UNSIGNED_RIGHT_SHIFT_ASSIGNMENT, Tree.Kind.AND_ASSIGNMENT,
+            Tree.Kind.XOR_ASSIGNMENT, Tree.Kind.OR_ASSIGNMENT,
             Tree.Kind.PLUS, Tree.Kind.MINUS, Tree.Kind.MULTIPLY, Tree.Kind.DIVIDE, Tree.Kind.REMAINDER,
             Tree.Kind.EQUAL_TO, Tree.Kind.NOT_EQUAL_TO, Tree.Kind.LESS_THAN, Tree.Kind.LESS_THAN_EQUAL,
             Tree.Kind.GREATER_THAN, Tree.Kind.GREATER_THAN_EQUAL, Tree.Kind.CONDITIONAL_AND, Tree.Kind.CONDITIONAL_OR,
             Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.UNARY_MINUS);
 
+    /** The statements a block holds where lowering reaches it; {@code Statements} rejects those the reference rejects. */
+    private static final Set<Tree.Kind> STATEMENTS = EnumSet.of(Tree.Kind.RETURN, Tree.Kind.VARIABLE, Tree.Kind.IF,
+            Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.BLOCK, Tree.Kind.EMPTY_STATEMENT, Tree.Kind.LABELED_STATEMENT);
+
+    /** The compound operators the reference lowers as {@code target op value}; the rest have a rule of their own. */
+    private static final Map<Tree.Kind, String> UNLOWERED_COMPOUNDS = Map.of(
+            Tree.Kind.LEFT_SHIFT_ASSIGNMENT, "<<=", Tree.Kind.RIGHT_SHIFT_ASSIGNMENT, ">>=",
+            Tree.Kind.UNSIGNED_RIGHT_SHIFT_ASSIGNMENT, ">>>=", Tree.Kind.AND_ASSIGNMENT, "&=",
+            Tree.Kind.XOR_ASSIGNMENT, "^=", Tree.Kind.OR_ASSIGNMENT, "|=");
+
     private final JavacFacts facts;
     private final EqualityRules equality;
     /** The methods and fields lowering reaches. */
     private final Set<Tree> lowered;
+    private final List<CompilerDiagnostic> warnings = new ArrayList<>();
     private boolean inLowered;
 
     private SubsetScan(JavacFacts facts, Set<Tree> lowered) {
@@ -74,9 +106,14 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         this.lowered = lowered;
     }
 
-    /** @param lowered the methods and fields of {@code unit} that the compilation lowers, by identity */
-    public static void check(JavacFacts facts, CompilationUnitTree unit, Set<Tree> lowered) {
-        new SubsetScan(facts, lowered).scan(unit, null);
+    /**
+     * @param lowered the methods and fields of {@code unit} that the compilation lowers, by identity
+     * @return what the scan warns of, in source order
+     */
+    public static List<CompilerDiagnostic> check(JavacFacts facts, CompilationUnitTree unit, Set<Tree> lowered) {
+        var scan = new SubsetScan(facts, lowered);
+        scan.scan(unit, null);
+        return scan.warnings;
     }
 
     @Override
@@ -107,20 +144,69 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return null;
     }
 
-    /** {@code return} alone is ported, and in code that is not lowered a statement can still be a rejected one. */
+    /** In code that is not lowered only {@code return} is read: a statement there can still be a rejected one. */
     @Override
     public Void visitBlock(BlockTree tree, Void unused) {
         if (facts.parent(tree) instanceof ClassTree) return literalsOf(tree);
         for (var statement : tree.getStatements()) {
-            if (statement.getKind() != Tree.Kind.RETURN) throw NotPorted.at(facts, statement);
+            boolean read = inLowered ? STATEMENTS.contains(statement.getKind()) : statement.getKind() == Tree.Kind.RETURN;
+            if (!read) throw NotPorted.at(facts, statement);
         }
+        warnUnreachable(tree);
         return super.visitBlock(tree, unused);
+    }
+
+    /** One warning a block: javac has rejected a statement after a {@code return}, so {@code Builtins.error()} is the rest. */
+    private void warnUnreachable(BlockTree tree) {
+        var statements = tree.getStatements();
+        for (int i = 0; i + 1 < statements.size(); i++) {
+            if (isError(statements.get(i))) {
+                var at = facts.location(statements.get(i + 1));
+                warnings.add(new CompilerDiagnostic(CompilerDiagnostic.Level.WARNING,
+                        "Unreachable code after Builtins.error(). This code will never execute.", at.fileName(), at.line(), at.column()));
+                return;
+            }
+        }
+    }
+
+    private boolean isError(StatementTree statement) {
+        return statement instanceof ExpressionStatementTree expression
+                && expression.getExpression() instanceof MethodInvocationTree call
+                && facts.element(call.getMethodSelect()) instanceof ExecutableElement method
+                && method.getSimpleName().contentEquals("error")
+                && method.getEnclosingElement() instanceof TypeElement owner && facts.identity(owner).equals(JavacNames.BUILTINS);
+    }
+
+    /** {@code JULC0053}: {@code int a = 1, b = 2;} is two trees at one start, and the last one's text is the whole declaration. */
+    private void requireSingleDeclarator(VariableTree tree, BlockTree block) {
+        var at = facts.location(tree);
+        VariableTree last = tree;
+        for (var statement : block.getStatements()) {
+            if (statement instanceof VariableTree other && other != tree && startsAt(other, at)) last = other;
+        }
+        if (last != tree) {
+            String text = facts.location(last).fragment();
+            throw CompilerTypeDiagnostics.multipleDeclarators(text.endsWith(";") ? text.substring(0, text.length() - 1) : text, at);
+        }
+    }
+
+    private boolean startsAt(VariableTree tree, SourceLocation at) {
+        var other = facts.location(tree);
+        return other.line() == at.line() && other.column() == at.column();
     }
 
     /** A lowered field is a member, as a method is. Any other field's initializer is not this list's to judge. */
     @Override
     public Void visitVariable(VariableTree tree, Void unused) {
-        if (!(facts.parent(tree) instanceof ClassTree)) return super.visitVariable(tree, unused);
+        if (!(facts.parent(tree) instanceof ClassTree)) {
+            if (facts.parent(tree) instanceof BlockTree block) requireSingleDeclarator(tree, block);
+            // A var's type tree is javac's, and says what the initializer's type is, whatever that is.
+            if (tree.getType() == null || facts.isGenerated(tree.getType())) {
+                scan(tree.getModifiers(), null);
+                return scan(tree.getInitializer(), null);
+            }
+            return super.visitVariable(tree, unused);
+        }
         if (lowered.contains(tree)) {
             member(tree, () -> super.visitVariable(tree, unused));
             return null;
@@ -146,6 +232,47 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
                 return null;
             }
         }.scan(tree, null);
+        return null;
+    }
+
+    /** A label is the lowering's rejection, and it comes first of all that its statement holds. */
+    @Override
+    public Void visitLabeledStatement(LabeledStatementTree tree, Void unused) {
+        return null;
+    }
+
+    /** {@code JULC0052}. The rest of the compound operators are assignments, which are the lowering's to reject. */
+    @Override
+    public Void visitCompoundAssignment(CompoundAssignmentTree tree, Void unused) {
+        var operator = UNLOWERED_COMPOUNDS.get(tree.getKind());
+        if (operator != null) throw CompilerTypeDiagnostics.compoundAssignmentUnsupported(operator, facts.location(tree));
+        return super.visitCompoundAssignment(tree, unused);
+    }
+
+    /** {@code JULC0059}: the reference binds a pattern variable only where it is a whole condition, so one does not take a field's name. */
+    @Override
+    public Void visitInstanceOf(InstanceOfTree tree, Void unused) {
+        if (tree.getPattern() instanceof BindingPatternTree pattern) {
+            var owner = enclosingWithField(tree, pattern.getVariable().getName());
+            if (owner != null) {
+                throw facts.rejection(DiagnosticCodes.PATTERN_VARIABLE_SHADOWS_FIELD, pattern, pattern.getVariable().getName(), owner);
+            }
+        }
+        return super.visitInstanceOf(tree, unused);
+    }
+
+    /** The nearest class around {@code tree} that declares a field {@code name}. A record's components are not fields here. */
+    private String enclosingWithField(Tree tree, Name name) {
+        for (var at = facts.parent(tree); at != null; at = facts.parent(at)) {
+            if (at instanceof ClassTree type) {
+                for (var member : type.getMembers()) {
+                    if (member instanceof VariableTree field && field.getName().equals(name)
+                            && (type.getKind() != Tree.Kind.RECORD || field.getModifiers().getFlags().contains(Modifier.STATIC))) {
+                        return type.getSimpleName().toString();
+                    }
+                }
+            }
+        }
         return null;
     }
 

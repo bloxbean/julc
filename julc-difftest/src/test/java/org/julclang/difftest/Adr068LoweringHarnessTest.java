@@ -187,7 +187,7 @@ class Adr068LoweringHarnessTest {
     /** A program outside the slice is rejected on JAVAC, not compiled some other way: its verdict says so (I8). */
     @Test
     void aProgramNotPortedIsRejectedHereAndAgreesThere() {
-        var report = run("public static BigInteger m(BigInteger a) { var b = a; return b; }", List.of(integer(2)));
+        var report = run("public static BigInteger m(BigInteger a) { return (BigInteger) a; }", List.of(integer(2)));
         report.results().forEach((config, result) -> {
             if (config.frontend() == CompilerFrontend.JAVAPARSER) {
                 assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report.describe());
@@ -202,7 +202,7 @@ class Adr068LoweringHarnessTest {
     @Test
     void theFrontendIsPartOfTheCacheKey() {
         var executor = new UplcExecutor();
-        var diffCase = new DiffCase("m3a", program("public static BigInteger m(BigInteger a) { var b = a; return b; }"), "Case", "m",
+        var diffCase = new DiffCase("m3a", program("public static BigInteger m(BigInteger a) { return (BigInteger) a; }"), "Case", "m",
                 List.of(integer(2)));
         var reference = executor.run(diffCase, new DiffConfig(org.julclang.compiler.OptimizationLevel.BASELINE, "Java"));
         var javac = executor.run(diffCase, new DiffConfig(org.julclang.compiler.OptimizationLevel.BASELINE, "Java", CompilerFrontend.JAVAC));

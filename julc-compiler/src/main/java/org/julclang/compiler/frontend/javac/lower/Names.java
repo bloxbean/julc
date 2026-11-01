@@ -32,9 +32,10 @@ final class Names {
         var element = facts.element(tree);
         var binder = frame.scope().lookup(element);
         if (binder != null) return terms.var(element, binder);
-        // javac bound the name to a field no binder stands for: one without an initializer, or another class's.
-        if (element.getKind() == ElementKind.FIELD && !tree.getName().contentEquals("this")
-                && !tree.getName().contentEquals("super")) {
+        // javac bound the name to a field no binder stands for: one without an initializer, or another class's. Or to a
+        // pattern variable outside the then branch of the if whose whole condition binds it, the one place it lowers.
+        boolean unbound = element.getKind() == ElementKind.FIELD || element.getKind() == ElementKind.BINDING_VARIABLE;
+        if (unbound && !tree.getName().contentEquals("this") && !tree.getName().contentEquals("super")) {
             throw facts.rejection("Undefined variable: " + tree.getName(), tree);
         }
         throw NotPorted.at(facts, tree);

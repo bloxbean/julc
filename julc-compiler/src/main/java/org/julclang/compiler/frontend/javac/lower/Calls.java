@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import org.julclang.compiler.CompilationContext;
@@ -136,7 +137,11 @@ final class Calls {
     private PirTerm stdlib(CallTarget.Stdlib target, MethodInvocationTree tree, Frame frame) {
         var arguments = arguments(tree, frame);
         var result = lookup(target, arguments, tree);
-        if (result != null) return result;
+        if (result != null) {
+            // A var of a literal is typed by its elements, so keep them with it, as the reference does (ADR-046).
+            if (target.className().equals("JulcArray") && target.method().equals("of")) typing.recordArrayLiteral(result, arguments.types());
+            return result;
+        }
         if (target.className().equals("JulcMap") && target.method().equals("of")) {
             throw CompilerTypeDiagnostics.julcMapOfOffChainOnly(facts.location(tree));
         }
@@ -181,6 +186,9 @@ final class Calls {
     private PirTerm accessor(CallTarget.Accessor target, MethodInvocationTree tree, Frame frame) {
         var receiver = receiver(tree);
         var scope = lowering.expr(receiver, frame);
+        if (!(dispatchType(receiver, scope) instanceof PirType.RecordType)) {
+            throw CompilerTypeDiagnostics.unresolvedMember(target.component(), facts.location(tree));
+        }
         var record = (PirType.RecordType) typing.of(receiver);
         var fields = record.fields();
         for (int i = 0; i < fields.size(); i++) {
@@ -239,11 +247,12 @@ final class Calls {
     /**
      * The type the reference dispatches a member on. It knows no stdlib method's return type, so a member of one's result
      * is looked up on what the term says: {@code Optional.of(a).isPresent()} is {@code JULC0055}, and javac's type does not
-     * widen the subset (I2). A list literal's term says it is a list, so its reads go on, typed by javac.
+     * widen the subset (I2). A list literal's term says it is a list, so its reads go on, typed by javac. A variable's term
+     * says its binder's type, which for a {@code var} of such a call is the same thing ({@link Statements}).
      */
     private PirType dispatchType(ExpressionTree receiver, PirTerm scope) {
-        boolean stdlibCall = receiver instanceof MethodInvocationTree call && targets.classify(call) instanceof CallTarget.Stdlib;
-        return stdlibCall ? typing.ofTerm(scope) : typing.of(receiver, scope);
+        if (targets.isStdlibCall(receiver)) return typing.ofTerm(scope);
+        return receiver instanceof IdentifierTree ? typing.ofVariable(scope) : typing.of(receiver, scope);
     }
 
     /** {@code equals} is the receiver's: the key is what the receiver is, not the class that declares the method. */

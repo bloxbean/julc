@@ -55,7 +55,13 @@ class JavacStopsTest {
             new Stop("an equals between unrelated types", "static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }", "accepted"),
             new Stop("a static call not qualified by a simple class name", "static BigInteger m() { return java.math.BigInteger.valueOf(1); }", "uncoded"),
             new Stop("a method with no stdlib lowering", "static long m(long a) { return Math.floorMod(a, 2L); }", "uncoded"),
-            new Stop("a text block", "static String m() { return \"\"\"\n  a\"\"\"; }", "uncoded"));
+            new Stop("a text block", "static String m() { return \"\"\"\n  a\"\"\"; }", "uncoded"),
+            new Stop("an instanceof of a variant of two sealed interfaces",
+                    "sealed interface P1 permits R { } sealed interface P2 permits R { } record R() implements P1, P2 { } static boolean m(P1 p) { return p instanceof R r; }", "accepted"),
+            new Stop("an instanceof of a variant that is not a plain record",
+                    "sealed interface O permits W { } static final class W implements O { } static boolean m(O o) { return o instanceof W v; }", "accepted"),
+            new Stop("an instanceof of a variant that is not a plain record",
+                    "sealed interface N permits W { } @NewType record W(BigInteger value) implements N { } static boolean m(N n) { return n instanceof W v; }", "accepted"));
 
     static Stream<Stop> stops() {
         return STOPS.stream();

@@ -10,6 +10,9 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TermTypes;
 
+import java.util.List;
+import java.util.Optional;
+
 /**
  * The PIR types of expressions, in the two steps the reference reads them: javac's static type, and where that says only
  * Data, what the lowered term says of itself ({@link TermTypes}). The second step is not a fallback to a guess: a Data
@@ -44,6 +47,21 @@ final class Typing {
     /** What {@code term} says of itself. */
     PirType ofTerm(PirTerm term) {
         return termTypes.infer(term);
+    }
+
+    /** The type {@code read}, a read of a variable, was bound with. */
+    PirType ofVariable(PirTerm read) {
+        return facts.registry().resolveNamed(termTypes.infer(read));
+    }
+
+    /** Keeps the source types of a lowered {@code JulcArray.of(...)}'s elements with its term (identity). */
+    void recordArrayLiteral(PirTerm term, List<PirType> elementTypes) {
+        termTypes.recordArrayLiteral(term, elementTypes);
+    }
+
+    /** The element types kept with {@code term}, if it is an array literal. */
+    Optional<List<PirType>> arrayLiteralElementTypes(PirTerm term) {
+        return termTypes.arrayLiteralElementTypes(term);
     }
 
     /**
