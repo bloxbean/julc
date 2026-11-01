@@ -353,6 +353,12 @@ public final class JavacFacts {
                 at.fileName(), at.line(), at.column(), suggestion, null)));
     }
 
+    /** The rejection the reference raises while generating, whose position and suggestion are in its text. */
+    public CompilerException locatedRejection(String message, String suggestion, Tree where) {
+        var at = location(where);
+        return new CompilerException(at.fileName() + ":" + at.line() + ":" + at.column() + ": " + message + "\n  Hint: " + suggestion);
+    }
+
     /** A coded rejection at {@code where}, with the catalogue's message and fix. */
     public CompilerException rejection(DiagnosticInfo info, Tree where, Object... arguments) {
         var at = location(where);
@@ -390,10 +396,10 @@ public final class JavacFacts {
             case JavacNames.TYPES + "JulcArray" -> new PirType.ArrayType(argument(arguments, 0, simple, where, inferred));
             case "java.util.Map", JavacNames.TYPES + "JulcMap" -> new PirType.MapType(argument(arguments, 0, simple, where, inferred),
                     argument(arguments, 1, simple, where, inferred));
-            case JavacNames.TYPES + "Tuple2" -> new PirType.RecordType("Tuple2", List.of(
+            case JavacNames.TUPLE2 -> new PirType.RecordType("Tuple2", List.of(
                     new PirType.Field("first", argument(arguments, 0, simple, where, inferred)),
                     new PirType.Field("second", argument(arguments, 1, simple, where, inferred))));
-            case JavacNames.TYPES + "Tuple3" -> new PirType.RecordType("Tuple3", List.of(
+            case JavacNames.TUPLE3 -> new PirType.RecordType("Tuple3", List.of(
                     new PirType.Field("first", argument(arguments, 0, simple, where, inferred)),
                     new PirType.Field("second", argument(arguments, 1, simple, where, inferred)),
                     new PirType.Field("third", argument(arguments, 2, simple, where, inferred))));

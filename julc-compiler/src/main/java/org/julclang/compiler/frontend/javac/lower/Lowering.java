@@ -46,6 +46,7 @@ public final class Lowering {
     private final Statements statements;
     private final Operators operators;
     private final Calls calls;
+    private final Records records;
     private final Typing typing;
     private final CallTargets targets;
 
@@ -67,6 +68,7 @@ public final class Lowering {
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests);
         this.operators = new Operators(facts, typing, this);
         this.calls = new Calls(facts, terms, typing, targets, this, context, stdlib, typeMethods);
+        this.records = new Records(facts, typing, this, names);
     }
 
     public Terms terms() {
@@ -98,12 +100,13 @@ public final class Lowering {
             case LiteralTree t -> literals.literal(t);
             case NewArrayTree t -> literals.byteArray(t);
             case IdentifierTree t -> names.identifier(t, frame);
-            case MemberSelectTree t -> names.constant(t);
+            case MemberSelectTree t -> terms.at(t, records.member(t, frame));
             case ParenthesizedTree t -> expr(t.getExpression(), frame);
             case BinaryTree t -> terms.at(t, operators.binary(t, frame));
             case UnaryTree t -> terms.at(t, operators.unary(t, frame));
             case ConditionalExpressionTree t -> terms.at(t, operators.conditional(t, frame));
             case MethodInvocationTree t -> terms.at(t, calls.call(t, frame));
+            case NewClassTree t -> terms.at(t, records.creation(t, frame));
             case InstanceOfTree t -> terms.at(t, typeTests.instanceOf(t, frame));
             case AssignmentTree t -> throw reassignment(t.getVariable(), t);
             case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t);

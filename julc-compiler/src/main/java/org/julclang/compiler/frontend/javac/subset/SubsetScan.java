@@ -17,6 +17,7 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewArrayTree;
+import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
@@ -71,7 +72,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
 
     /** The kinds that are subset only where lowering reaches them. */
     private static final Set<Tree.Kind> WHERE_LOWERED = EnumSet.of(
-            Tree.Kind.METHOD_INVOCATION, Tree.Kind.CONDITIONAL_EXPRESSION,
+            Tree.Kind.METHOD_INVOCATION, Tree.Kind.CONDITIONAL_EXPRESSION, Tree.Kind.NEW_CLASS,
             Tree.Kind.IF, Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.LABELED_STATEMENT, Tree.Kind.EMPTY_STATEMENT,
             Tree.Kind.INSTANCE_OF, Tree.Kind.BINDING_PATTERN, Tree.Kind.DECONSTRUCTION_PATTERN,
             Tree.Kind.ASSIGNMENT, Tree.Kind.PLUS_ASSIGNMENT, Tree.Kind.MINUS_ASSIGNMENT, Tree.Kind.MULTIPLY_ASSIGNMENT,
@@ -144,16 +145,22 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return null;
     }
 
-    /** In code that is not lowered only {@code return} is read: a statement there can still be a rejected one. */
+    /**
+     * In code that is not lowered only {@code return} is read: a statement there can still be a rejected one. What javac
+     * wrote into a constructor, a {@code super();} or a compact constructor's assignments, is not source, and {@code JULC0099}
+     * has read the rest.
+     */
     @Override
     public Void visitBlock(BlockTree tree, Void unused) {
         if (facts.parent(tree) instanceof ClassTree) return literalsOf(tree);
-        for (var statement : tree.getStatements()) {
+        var written = tree.getStatements().stream().filter(statement -> !facts.isGenerated(statement)).toList();
+        for (var statement : written) {
             boolean read = inLowered ? STATEMENTS.contains(statement.getKind()) : statement.getKind() == Tree.Kind.RETURN;
             if (!read) throw NotPorted.at(facts, statement);
         }
         warnUnreachable(tree);
-        return super.visitBlock(tree, unused);
+        written.forEach(statement -> scan(statement, null));
+        return null;
     }
 
     /** One warning a block: javac has rejected a statement after a {@code return}, so {@code Builtins.error()} is the rest. */
@@ -276,13 +283,31 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return null;
     }
 
-    /** Inheritance is outside the subset. An interface's {@code extends} is javac's implements clause. */
+    /** A class body would run code no record has: the reference has no meaning for it, and the gate rejects it. */
+    @Override
+    public Void visitNewClass(NewClassTree tree, Void unused) {
+        if (tree.getClassBody() != null) throw NotPorted.at(facts, tree, "a new with a class body");
+        return super.visitNewClass(tree, unused);
+    }
+
+    /**
+     * Inheritance is outside the subset. An interface's {@code extends} is javac's implements clause. A {@code ;} between
+     * members is no member: javac keeps it as a statement of the class.
+     */
     @Override
     public Void visitClass(ClassTree tree, Void unused) {
         boolean inherits = tree.getKind() == Tree.Kind.INTERFACE ? !tree.getImplementsClause().isEmpty()
                 : tree.getExtendsClause() != null && !isObject(tree.getExtendsClause());
         if (tree.getKind() != Tree.Kind.RECORD && inherits) throw NotPorted.at(facts, tree, "inheritance");
-        return super.visitClass(tree, unused);
+        scan(tree.getModifiers(), null);
+        scan(tree.getTypeParameters(), null);
+        scan(tree.getExtendsClause(), null);
+        scan(tree.getImplementsClause(), null);
+        scan(tree.getPermitsClause(), null);
+        for (var member : tree.getMembers()) {
+            if (member.getKind() != Tree.Kind.EMPTY_STATEMENT) scan(member, null);
+        }
+        return null;
     }
 
     private boolean isObject(Tree type) {

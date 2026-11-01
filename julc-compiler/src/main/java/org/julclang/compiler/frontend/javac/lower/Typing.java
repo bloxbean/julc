@@ -38,8 +38,10 @@ final class Typing {
         }
     }
 
-    /** {@code lowered}'s type, for the expression {@code tree}. */
+    /** {@code lowered}'s type, for the expression {@code tree}: the one kept with it, or see the class's comment. */
     PirType of(ExpressionTree tree, PirTerm lowered) {
+        var kept = termTypes.recorded(lowered);
+        if (kept.isPresent()) return facts.registry().resolveNamed(kept.get());
         var type = of(tree);
         return facts.registry().resolveNamed(type instanceof PirType.DataType ? termTypes.infer(lowered) : type);
     }
@@ -52,6 +54,12 @@ final class Typing {
     /** The type {@code read}, a read of a variable, was bound with. */
     PirType ofVariable(PirTerm read) {
         return facts.registry().resolveNamed(termTypes.infer(read));
+    }
+
+    /** Keeps {@code type} with {@code term} (identity): a diamond's type is worked out here, and no tree says it. */
+    PirTerm keep(PirTerm term, PirType type) {
+        termTypes.record(term, type);
+        return term;
     }
 
     /** Keeps the source types of a lowered {@code JulcArray.of(...)}'s elements with its term (identity). */

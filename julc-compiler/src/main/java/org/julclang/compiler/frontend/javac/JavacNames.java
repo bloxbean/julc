@@ -26,6 +26,8 @@ public final class JavacNames {
     public static final String JULC_LIST = TYPES + "JulcList";
     public static final String JULC_MAP = TYPES + "JulcMap";
     public static final String JULC_ARRAY = TYPES + "JulcArray";
+    public static final String TUPLE2 = TYPES + "Tuple2";
+    public static final String TUPLE3 = TYPES + "Tuple3";
 
     public static final String BUILTINS = "org.julclang.stdlib.Builtins";
 

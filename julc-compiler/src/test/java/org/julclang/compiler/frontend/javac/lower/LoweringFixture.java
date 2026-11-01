@@ -79,6 +79,11 @@ public final class LoweringFixture {
         }
     }
 
+    /** The reference compiles {@code name}, which a test of a difference needs to be sure of. */
+    public static void assertReferenceAcceptsMethod(String source, String name) {
+        assertEquals(false, method(source, name, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAPARSER).hasErrors());
+    }
+
     private static void assertBytes(CompileResult reference, CompileResult javac, String where) {
         var expected = UplcFlatEncoder.encodeProgram(reference.program());
         assertArrayEquals(expected, UplcFlatEncoder.encodeProgram(javac.program()), () -> where + ": expected "

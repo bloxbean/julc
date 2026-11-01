@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodAsReference;
+import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodRejectionAsReference;
 
 /** Literals (ADR-068 I9), against the reference's bytes at every level; the value comes from javac in one and JuLC's reader in the other. */
 class JavacLiteralsTest {
@@ -91,8 +92,11 @@ class JavacLiteralsTest {
 
     /** A qualified class name is rejected by the reference ({@code Undefined variable: java}), so it is not accepted here. */
     @Test
-    void anApiConstantSpelledAnotherWayIsNotPorted() {
-        assertMethodNotPorted(returning("BigInteger", "java.math.BigInteger.ZERO"), "m", "MEMBER_SELECT", 4);
+    void anApiConstantSpelledAnotherWayIsTheReferencesRejection() {
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options)
+                .compileMethod(returning("BigInteger", "java.math.BigInteger.ZERO"), "m", List.of()));
+        assertTrue(failure.getMessage().contains("Undefined variable: java"), failure::getMessage);
     }
 
     /** The constant is the field javac resolved: a user's type of that name is not the API's, on any spelling. */
@@ -108,19 +112,19 @@ class JavacLiteralsTest {
 
     /** A variable as the qualifier reads a static field through it, which the reference rejects. */
     @Test
-    void anApiConstantReadThroughAVariableIsNotPorted() {
-        assertMethodNotPorted("""
+    void anApiConstantReadThroughAVariableIsTheReferencesRejection() {
+        assertSameMethodRejectionAsReference("""
                 import java.math.BigInteger;
                 class P {
                     static BigInteger m(BigInteger x) { return x.ZERO; }
                 }
-                """, "m", "MEMBER_SELECT", 3);
+                """, "m");
     }
 
     /** A literal outside the subset, each until its own rule is ported. */
     @ParameterizedTest
     @CsvSource(delimiter = '|', quoteCharacter = '"', value = {"int|'a'|CHAR_LITERAL", "String|null|NULL_LITERAL",
-            "double|1.5|DOUBLE_LITERAL", "float|1f|FLOAT_LITERAL", "long|Long.MAX_VALUE|MEMBER_SELECT"})
+            "double|1.5|DOUBLE_LITERAL", "float|1f|FLOAT_LITERAL"})
     void otherLiterals(String type, String literal, String construct) {
         assertMethodNotPorted(returning(type, literal), "m", type.equals("double") || type.equals("float") ? "PRIMITIVE_TYPE" : construct,
                 4);
