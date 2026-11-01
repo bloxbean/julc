@@ -53,6 +53,7 @@ class Adr068LoweringTest {
 
     @Test
     void theJavacFrontendAgainstTheReference() throws Exception {
+        refuseTheEvidenceDirectory(OUT, EVIDENCE);
         var corpus = Adr068TypesTest.corpus(REPO);
         corpus.addFixtures("m3a", "julc-difftest/src/test/resources/adr068/m3a-fixtures");
         var tool = new Adr068Lowering(FREEZE_REFERENCE ? null : committedReference());
@@ -170,21 +171,40 @@ class Adr068LoweringTest {
         return moved;
     }
 
-    /** A row that left the corpus, or covers fewer methods, or moved to a class that compares less. */
+    /** A run writes its tables to {@code out}, and then compares them with the committed ones: not with themselves. */
+    static void refuseTheEvidenceDirectory(Path out, Path evidence) throws IOException {
+        Files.createDirectories(out);
+        if (Files.isSameFile(out, evidence)) {
+            throw new IllegalArgumentException("adr068.out is the evidence directory, so the tables would be compared with themselves: " + out);
+        }
+    }
+
+    /** A row that left the corpus, or lost what it compares or pins ({@link #shrinks}). */
     static List<String> shrunk(Map<String, String> frozen, Map<String, String> lines) {
         var shrunk = new ArrayList<String>();
         frozen.forEach((key, line) -> {
             String now = lines.get(key);
-            if (now == null || covered(now) < covered(line)
-                    || Adr068Lowering.rank(line.split("\t")[1]) > Adr068Lowering.rank(now.split("\t")[1])) {
-                shrunk.add(line + "  ->  " + (now == null ? "(not observed)" : now));
-            }
+            if (now == null || shrinks(line, now)) shrunk.add(line + "  ->  " + (now == null ? "(not observed)" : now));
         });
         return shrunk;
     }
 
+    /**
+     * A row shrinks if it covers fewer methods, moves to a class that compares less, or leaves {@code javac-rejects}: javac
+     * stopped rejecting a source, which no rank can call a loss, since the classes above it are what a slice gains. And it
+     * shrinks if its class stays and its digest or provenance change: the row now pins something else, and a miscompile of a
+     * listed row reads just so. A provenance only gains by going from {@code fragment} to {@code same}.
+     */
+    private static boolean shrinks(String line, String now) {
+        String[] was = line.split("\t", -1), is = now.split("\t", -1);
+        if (covered(now) < covered(line) || Adr068Lowering.rank(was[1]) > Adr068Lowering.rank(is[1])) return true;
+        if (!was[1].equals(is[1])) return was[1].equals("javac-rejects");
+        boolean provenanceGained = was[4].equals("fragment") && is[4].equals("same");
+        return !was[5].equals(is[5]) || !was[4].equals(is[4]) && !provenanceGained;
+    }
+
     private static int covered(String line) {
-        String cell = line.split("\t")[2];
+        String cell = line.split("\t", -1)[2];
         return Integer.parseInt(cell.substring(0, cell.indexOf('/')));
     }
 

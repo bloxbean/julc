@@ -16,7 +16,7 @@ import org.julclang.compiler.backend.LibraryRequest;
 import org.julclang.compiler.corpus.RequestText;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
-import org.julclang.compiler.pir.PirFormatter;
+import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.PlutusData;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
@@ -215,18 +215,23 @@ final class Adr068Ledger {
             var provider = new JavaLibraryProvider(texts(c.libraries), lookup(c.lookup), options(c, level, false));
             var imports = provider.materialize(List.<LibraryRequest>of(request));
             var binding = imports.binding(request);
-            var description = new StringBuilder(binding.name()).append(' ').append(binding.type()).append('\n');
-            imports.definitions().forEach((name, term) -> description.append(name).append(' ')
-                    .append(PirFormatter.format(term)).append('\n'));
+            String description = specialization(binding.name(), binding.type(), imports.definitions());
             if (IDENTITY_HASH.matcher(description).find()) {
                 throw new AssertionError("an identity hash in a specialization: the ledger would not be deterministic");
             }
-            return Outcome.accepted(short32(description.toString()), -1, List.of());
+            return Outcome.accepted(short32(description), -1, List.of());
         } catch (AssertionError e) {
             throw e;
         } catch (Throwable t) {
             return rejection(t);
         }
+    }
+
+    /** A specialization, as text: a canonical term spells out every constant, where a printer for people elides them. */
+    static String specialization(String name, Object type, Map<String, PirTerm> definitions) {
+        var description = new StringBuilder(name).append(' ').append(type).append('\n');
+        definitions.forEach((definition, term) -> description.append(definition).append(' ').append(PirCanonical.of(term)).append('\n'));
+        return description.toString();
     }
 
     static boolean isProgramEntry(String entry) {
@@ -360,7 +365,7 @@ final class Adr068Ledger {
                 for (var export : provider.describe(module)) {
                     text.append("  export ").append(export).append('\n');
                     try {
-                        text.append("  pir ").append(PirFormatter.format(provider.materialize(export.symbol()))).append('\n');
+                        text.append("  pir ").append(PirCanonical.of(provider.materialize(export.symbol()))).append('\n');
                     } catch (RuntimeException e) {
                         text.append("  pir failed ").append(e.getClass().getSimpleName()).append('\n');
                     }

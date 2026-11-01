@@ -40,8 +40,12 @@ final class Adr068Lowering {
     /** How much of a row's detail the table shows. What is compared is the digest of all of it. */
     private static final int SHOWN = 160;
 
-    /** One compilation: what the ledger records of it, and the construct that stopped it, if one did. */
-    record Compilation(Adr068Ledger.Outcome outcome, CompileResult result, String construct) {
+    /** One compilation: what the ledger records of it, the construct that stopped it, and what it threw, if either happened. */
+    record Compilation(Adr068Ledger.Outcome outcome, CompileResult result, String construct, Throwable thrown) {
+        Compilation(Adr068Ledger.Outcome outcome, CompileResult result, String construct) {
+            this(outcome, result, construct, null);
+        }
+
         boolean accepted() {
             return outcome.accepted();
         }
@@ -62,12 +66,7 @@ final class Adr068Lowering {
     private static final Javac FRONTEND = new Javac() {
         @Override
         public Compilation compile(Adr068Corpus.Case c, CompilerOptions options) {
-            var compilation = Adr068Lowering.compile(c, options);
-            // A failed I13 check, or a crash: the frontend broke, and that is not a rejection to classify.
-            if ("IllegalStateException".equals(compilation.outcome().exception())) {
-                throw new AssertionError(c.key + ": " + compilation.outcome().error().message());
-            }
-            return compilation;
+            return Adr068Lowering.compile(c, options);
         }
 
         @Override
@@ -107,8 +106,9 @@ final class Adr068Lowering {
     }
 
     /**
-     * The reference's results for one case, as {@code lowering-reference.tsv} holds them: enough to stand in for compiling
-     * the case. Each cell is a digest or ledger cell, of a form the javac frontend's result can be put in too.
+     * The reference's results for one case, as {@code lowering-reference.tsv} holds them. The table is a record of the
+     * reference and a prefilter for its drift: a run still compiles the reference, since a comparison reads more than a row
+     * holds. Each cell is a digest or ledger cell, of a form the javac frontend's result can be put in too.
      *
      * @param status      {@code compiled}, or what the row says instead of compiling
      * @param cells       {@link Adr068Ledger.Outcome#cell()} per level, at the case's source-map setting
@@ -161,7 +161,10 @@ final class Adr068Lowering {
         this.javac = javac;
     }
 
-    /** How much a class compares, so that a row moving down has lost a comparison (F926). */
+    /**
+     * How much a class compares, so that a row moving down has lost a comparison (F926). One number says no more than that:
+     * a row leaving {@code javac-rejects} moves up it, and {@code Adr068LoweringTest.shrunk} counts that move by itself.
+     */
     static int rank(String kind) {
         return switch (kind) {
             case "i1a-identical" -> 5;
@@ -230,10 +233,35 @@ final class Adr068Lowering {
         } catch (AssertionError e) {
             throw e;
         } catch (NotPorted e) {
-            return new Compilation(Adr068Ledger.rejection(e), null, e.construct());
+            return new Compilation(Adr068Ledger.rejection(e), null, e.construct(), e);
         } catch (Throwable t) {
-            return new Compilation(Adr068Ledger.rejection(t), null, null);
+            return new Compilation(Adr068Ledger.rejection(t), null, null, t);
         }
+    }
+
+    /**
+     * The javac side of a comparison. Only a {@link CompilerException} is a rejection: anything else, a failed I13 check or
+     * a crash, is the frontend breaking, and that is no row to classify. {@link Javac#attempts} is the other way into the
+     * frontend, and whatever it throws but a {@code CompilerException} goes through {@link #coverage} untouched. A
+     * {@link JavaLibraryProvider} is the one other API: on both frontends it refuses a source it cannot export with an
+     * {@link IllegalArgumentException}.
+     */
+    private Compilation onJavac(Adr068Corpus.Case c, CompilerOptions options) {
+        var compilation = javac.compile(c, options);
+        var thrown = compilation.thrown();
+        boolean rejection = thrown == null || thrown instanceof CompilerException
+                || c.entry.equals("JavaLibraryProvider") && thrown instanceof IllegalArgumentException;
+        if (!rejection) throw new AssertionError(c.key + ": " + thrown, thrown);
+        return compilation;
+    }
+
+    /** The source-map settings a comparison reads: both, for a program. A provider's row has no map to set. */
+    private static List<Boolean> sourceMapSettings(Adr068Corpus.Case c) {
+        return Adr068Ledger.isProgramEntry(c.entry) ? List.of(false, true) : List.of(c.sourceMap);
+    }
+
+    private static String cellName(OptimizationLevel level, boolean sourceMap) {
+        return level + (sourceMap ? " with a map " : " ");
     }
 
     Classified classify(Adr068Corpus.Case c) {
@@ -293,7 +321,7 @@ final class Adr068Lowering {
 
     private Row classify(Adr068Corpus.Case c, Compilation reference, Map<String, Method> methods) {
         var level = OptimizationLevel.DEFAULT;
-        var javac = this.javac.compile(c, options(c, level, c.sourceMap, CompilerFrontend.JAVAC));
+        var javac = onJavac(c, options(c, level, c.sourceMap, CompilerFrontend.JAVAC));
 
         var coverage = coverage(c, methods, reference.accepted());
         String construct = javac.construct() != null ? javac.construct() : coverage.construct();
@@ -333,27 +361,32 @@ final class Adr068Lowering {
                 : row(c, "DIFFERENT-rejection", coverage, construct, "-", text(referenceError) + " / " + text(javacError));
     }
 
-    /** What javac produced of a program only it accepts, at every level: nothing else pins it. */
+    /** What javac produced of a program only it accepts, at every level, with and without a map: nothing else pins it. */
     private String javacCells(Adr068Corpus.Case c) {
         var cells = new ArrayList<String>();
-        for (var level : Adr068Ledger.LEVELS) {
-            cells.add(level + " " + javac.compile(c, options(c, level, c.sourceMap, CompilerFrontend.JAVAC)).outcome().cell());
+        for (boolean sourceMap : sourceMapSettings(c)) {
+            for (var level : Adr068Ledger.LEVELS) {
+                cells.add(cellName(level, sourceMap) + onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC)).outcome().cell());
+            }
         }
         return String.join("; ", cells);
     }
 
     /**
      * D8: the javac frontend reads what the root references, so where a pool unit is all the reference objects to, its
-     * program is the reference's program of the root alone. That is an oracle for these rows: null when it holds.
+     * program is the reference's program of the root alone, at every level, with and without a map. That is an oracle for
+     * these rows: null when it holds.
      */
     private String rootAloneDifference(Adr068Corpus.Case c) {
         if (c.libraries.isEmpty()) return null;
         var root = c.rootAlone();
         var levels = new ArrayList<String>();
-        for (var level : Adr068Ledger.LEVELS) {
-            var alone = compile(root, options(root, level, c.sourceMap, CompilerFrontend.JAVAPARSER)).outcome().cell();
-            var cell = javac.compile(c, options(c, level, c.sourceMap, CompilerFrontend.JAVAC)).outcome().cell();
-            if (!alone.equals(cell)) levels.add(level + " " + alone + " / " + cell);
+        for (boolean sourceMap : sourceMapSettings(c)) {
+            for (var level : Adr068Ledger.LEVELS) {
+                var alone = compile(root, options(root, level, sourceMap, CompilerFrontend.JAVAPARSER)).outcome().cell();
+                var cell = onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC)).outcome().cell();
+                if (!alone.equals(cell)) levels.add(cellName(level, sourceMap) + alone + " / " + cell);
+            }
         }
         return levels.isEmpty() ? null : String.join("; ", levels);
     }
@@ -383,35 +416,39 @@ final class Adr068Lowering {
         return new Row(c.key, kind, coverage.covered(), coverage.total(), construct, provenance, detail, coverage.pir(), "-");
     }
 
-    /** Every level, with and without a source map, against the reference. Null when all are equal. */
+    /**
+     * Every level, with and without a source map, against the reference, then the diagnostics and {@code @Param} infos at
+     * the default level. The cells come first, so that a row with another difference still pins the bytes. Null when all are
+     * equal.
+     */
     private String byteDifference(Adr068Corpus.Case c, Compilation reference, Compilation javac) {
-        if (!reference.outcome().diagnosticsCell().equals(javac.outcome().diagnosticsCell())) {
-            return "diagnostics " + reference.outcome().diagnosticsCell() + " / " + javac.outcome().diagnosticsCell();
-        }
-        if (reference.result() != null && !reference.result().params().equals(javac.result().params())) {
-            return "params " + reference.result().params() + " / " + javac.result().params();
-        }
-        var levels = new ArrayList<String>();
-        for (boolean sourceMap : Adr068Ledger.isProgramEntry(c.entry) ? List.of(false, true) : List.of(c.sourceMap)) {
+        var differences = new ArrayList<String>();
+        for (boolean sourceMap : sourceMapSettings(c)) {
             for (var level : Adr068Ledger.LEVELS) {
                 var r = compile(c, options(c, level, sourceMap, CompilerFrontend.JAVAPARSER));
-                var j = this.javac.compile(c, options(c, level, sourceMap, CompilerFrontend.JAVAC));
+                var j = onJavac(c, options(c, level, sourceMap, CompilerFrontend.JAVAC));
                 if (!r.outcome().cell().equals(j.outcome().cell())) {
-                    levels.add(level + (sourceMap ? " with a map " : " ") + r.outcome().cell() + " / " + j.outcome().cell());
+                    differences.add(cellName(level, sourceMap) + r.outcome().cell() + " / " + j.outcome().cell());
                 }
             }
         }
-        return levels.isEmpty() ? null : String.join("; ", levels);
+        if (!reference.outcome().diagnosticsCell().equals(javac.outcome().diagnosticsCell())) {
+            differences.add("diagnostics " + reference.outcome().diagnosticsCell() + " / " + javac.outcome().diagnosticsCell());
+        }
+        if (reference.result() != null && !reference.result().params().equals(javac.result().params())) {
+            differences.add("params " + reference.result().params() + " / " + javac.result().params());
+        }
+        return differences.isEmpty() ? null : String.join("; ", differences);
     }
 
     /** What the frontends' source maps say of the same program, at every level: {@code location ...} if one moved (I7). */
-    private String sourceMapDifference(Adr068Corpus.Case c) {
+    String sourceMapDifference(Adr068Corpus.Case c) {
         if (!Adr068Ledger.isProgramEntry(c.entry)) return "-";
         var moved = new ArrayList<String>();
         boolean compared = false, fragment = false;
         for (var level : Adr068Ledger.LEVELS) {
             var reference = compile(c, options(c, level, true, CompilerFrontend.JAVAPARSER));
-            var javac = this.javac.compile(c, options(c, level, true, CompilerFrontend.JAVAC));
+            var javac = onJavac(c, options(c, level, true, CompilerFrontend.JAVAC));
             if (!reference.accepted() || !javac.accepted()) {
                 if (reference.accepted() != javac.accepted()) moved.add(level + " only one compiles with a source map");
                 continue;

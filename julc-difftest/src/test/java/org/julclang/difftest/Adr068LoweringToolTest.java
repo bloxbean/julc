@@ -3,9 +3,15 @@ package org.julclang.difftest;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.frontend.javac.JavacEvidence;
+import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.core.Constant;
+import org.julclang.core.PlutusData;
+import org.julclang.core.source.SourceMap;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -249,6 +255,40 @@ class Adr068LoweringToolTest {
         for (var level : Adr068Ledger.LEVELS) assertTrue(row.detail().contains(level.name()), row.detail());
     }
 
+    /** Every cell is compared before anything else, so a row that differs in diagnostics still pins javac's bytes. */
+    @Test
+    void aRowWithADiagnosticDifferencePinsTheBytes() {
+        var warning = new Adr068Ledger.Diagnostic("WARNING", "JULC9999", "injected", "", 1, 1);
+        var tested = method("class P { static long m() { return 1; } }");
+        var other = method("class P { static long m() { return 2; } }");
+        var same = new Injected();
+        same.compilation = c -> new Adr068Lowering.Compilation(Adr068Ledger.Outcome.accepted(c.outcome().digest(), c.outcome().size(),
+                List.of(warning)), c.result(), null);
+        var moved = new Injected();
+        moved.compilation = same.compilation;
+        moved.source = c -> other;
+        var one = same.row(tested);
+        var two = moved.row(tested);
+        assertEquals("DIFFERENT-bytes", two.kind(), two::line);
+        assertNotEquals(one.line(), two.line());
+        assertTrue(two.detail().contains("diagnostics"), two.detail());
+    }
+
+    @Test
+    void aRowWithAParamDifferencePinsTheBytes() {
+        var same = new Injected();
+        same.compilation = c -> new Adr068Lowering.Compilation(c.outcome(), withoutParams(c.result()), null);
+        var moved = new Injected();
+        moved.compilation = same.compilation;
+        var other = validator(VALIDATOR.replace("return true", "return false"));
+        moved.source = c -> other;
+        var one = same.row(validator(VALIDATOR));
+        var two = moved.row(validator(VALIDATOR));
+        assertEquals("DIFFERENT-bytes", two.kind(), two::line);
+        assertNotEquals(one.line(), two.line());
+        assertTrue(two.detail().contains("params"), two.detail());
+    }
+
     /** What javac produced of a row only it accepts is in the row: another program moves it. */
     @Test
     void javacsCellsOfARowOnlyItAcceptsArePinned() {
@@ -264,6 +304,47 @@ class Adr068LoweringToolTest {
         for (var level : Adr068Ledger.LEVELS) assertTrue(first.detail().contains(level.name()), first.detail());
     }
 
+    /** A javac side that compiles {@code other} with a source map, and the real case without one. */
+    private static Adr068Lowering.Javac otherWithAMap(Adr068Corpus.Case other) {
+        var real = Adr068Lowering.frontend();
+        return new Adr068Lowering.Javac() {
+            @Override
+            public Adr068Lowering.Compilation compile(Adr068Corpus.Case c, CompilerOptions options) {
+                return real.compile(options.isSourceMapEnabled() ? other : c, options);
+            }
+
+            @Override
+            public List<JavacEvidence.Attempt> attempts(Adr068Corpus.Case c, CompilerOptions options) {
+                return real.attempts(c, options);
+            }
+        };
+    }
+
+    /** With a source map too, though a row only javac accepts is recorded without one. */
+    @Test
+    void javacsCellsOfARowOnlyItAcceptsArePinnedWithASourceMap() {
+        var source = "class P { static long m() { return 1; } } // \\uD800";
+        var tested = method(source);
+        var other = method("class P { static long m() { return 2; } } // \\uD800");
+        var first = new Adr068Lowering(null).classify(tested).row();
+        var second = new Adr068Lowering(null, otherWithAMap(other)).classify(tested).row();
+        assertEquals("DIFFERENT-javac-accepts", first.kind(), first::line);
+        assertEquals("DIFFERENT-javac-accepts", second.kind(), second::line);
+        assertNotEquals(first.line(), second.line());
+        for (var level : Adr068Ledger.LEVELS) assertTrue(first.detail().contains(level + " with a map"), first.detail());
+    }
+
+    @Test
+    void aProgramWithALibraryIsTheRootsAloneWithASourceMap() {
+        var root = Adr068Corpus.Source.of("record Bid(long amount) { }\nclass P { static long m() { return 1; } }", null);
+        var library = Adr068Corpus.Source.of("record Bid(byte[] amount) { }", null);
+        var c = new Adr068Corpus(REPO).add("tool", "compileMethod", "m", "none", root, List.of(library));
+        var other = method("class P { static long m() { return 2; } }");
+        var row = new Adr068Lowering(null, otherWithAMap(other)).classify(c).row();
+        assertEquals("DIFFERENT-root-alone", row.kind(), row::line);
+        assertTrue(row.detail().contains("with a map"), row.detail());
+    }
+
     /** D8's oracle: where a pool unit is all the reference objects to, javac's program is the root alone's. */
     @Test
     void aProgramWithALibraryIsTheRootsAlone() {
@@ -277,6 +358,71 @@ class Adr068LoweringToolTest {
         injected.source = ignored -> other;
         var row = injected.row(c);
         assertEquals("DIFFERENT-root-alone", row.kind(), row::line);
+    }
+
+    /** One code and one message are not one rejection, where the reference gave a position. */
+    @Test
+    void aRejectionAtAnotherPositionIsReported() {
+        String source = """
+                import org.julclang.stdlib.annotation.NewType;
+                class P {
+                    @NewType record Bad(long a, long b) { }
+                    static long m() { return 1; }
+                }
+                """;
+        assertEquals("both-reject", row(source).kind(), () -> row(source).line());
+        var injected = new Injected();
+        var other = method("\n" + source);
+        injected.source = c -> other;
+        var row = injected.row(method(source));
+        assertEquals("DIFFERENT-rejection", row.kind(), row::line);
+    }
+
+    /** Only the reference says what a program's methods are, so one it did not lower has no place in the row. */
+    @Test
+    void aMethodLoweredOnlyByJavacIsReported() {
+        var injected = new Injected();
+        injected.attempts = attempts -> {
+            var more = new ArrayList<>(attempts);
+            more.add(new JavacEvidence.Attempt("P.extra", attempts.getFirst().type(), attempts.getFirst().term(), null));
+            return more;
+        };
+        var row = injected.row(method("class P { static long m() { return 1; } }"));
+        assertEquals("DIFFERENT-pir", row.kind(), row::line);
+        assertTrue(row.detail().contains("P.extra"), row.detail());
+    }
+
+    /** The loop over positions skips a term one side lost, so only the sets show it. */
+    @Test
+    void aLostPositionIsReported() {
+        var injected = new Injected();
+        injected.compilation = c -> new Adr068Lowering.Compilation(c.outcome(), withoutALocation(c.result()), null);
+        var row = injected.row(method("class P { static long m() { return 1; } }"));
+        assertEquals("DIFFERENT-provenance", row.kind(), row::line);
+        assertTrue(row.detail().contains("located terms"), row.detail());
+    }
+
+    private static CompileResult withoutALocation(CompileResult result) {
+        if (result == null || result.sourceMap() == null || result.sourceMap().isEmpty()) return result;
+        var located = new TreeMap<>(result.sourceMap().toIndexed(result.program().term()));
+        located.pollLastEntry();
+        return new CompileResult(result.program(), result.diagnostics(), result.params(), result.pirTerm(), result.uplcTerm(),
+                SourceMap.reconstruct(located, result.program().term()), result.target(), result.optimizationReport(),
+                result.javacProvenance());
+    }
+
+    /**
+     * On a whole row {@code byteDifference} meets this first, as a cell that differs, so the comparison is asked directly: a
+     * program one side rejects with a map has no positions to compare, and that is no agreement.
+     */
+    @Test
+    void onlyOneSideCompilingWithAMapIsReported() {
+        var real = Adr068Lowering.frontend();
+        var tested = method("class P { static long m() { return 1; } }");
+        var rejecting = method("interface P { static long m() { return 1; } }");
+        var difference = new Adr068Lowering(null, otherWithAMap(rejecting)).sourceMapDifference(tested);
+        assertTrue(difference.contains("only one compiles with a source map"), difference);
+        assertEquals("fragment", new Adr068Lowering(null, real).sourceMapDifference(tested));
     }
 
     /** A rejection of javac's own is pinned by what it says and where, not only by its code. */
@@ -350,6 +496,50 @@ class Adr068LoweringToolTest {
 
     private static String row(String key, String kind, String covered) {
         return key + "\t" + kind + "\t" + covered + "\t-\t-\t-\t";
+    }
+
+    private static String pinned(String kind, String provenance, String digest) {
+        return "k\t" + kind + "\t1/1\t-\t" + provenance + "\t" + digest + "\t";
+    }
+
+    private static int shrunk(String frozen, String now) {
+        return Adr068LoweringTest.shrunk(Map.of("k", frozen), Map.of("k", now)).size();
+    }
+
+    /** F981: javac stopped rejecting a source. No class above gains from that, whatever a rank would say of it. */
+    @Test
+    void aMoveOutOfJavacRejectsIsAShrink() {
+        String rejects = row("k", "javac-rejects", "0/2");
+        for (String kind : List.of("not-ported", "i1a-identical", "DIFFERENT-javac-rejects", "both-reject")) {
+            assertEquals(1, shrunk(rejects, row("k", kind, "0/2")), kind);
+        }
+        assertEquals(0, shrunk(rejects, rejects));
+        assertEquals(0, shrunk(row("k", "not-ported", "0/2"), row("k", "i1a-identical", "2/2")), "a port is a gain");
+    }
+
+    /** F982: a listed row is pinned by its digest, and a miscompile of it changes nothing else. */
+    @Test
+    void aChangedDigestOfARowIsAShrink() {
+        for (String kind : List.of("DIFFERENT-bytes", "DIFFERENT-javac-accepts", "DIFFERENT-rejection", "both-reject", "javac-rejects")) {
+            assertEquals(1, shrunk(pinned(kind, "-", "aaaa"), pinned(kind, "-", "bbbb")), kind);
+            assertEquals(0, shrunk(pinned(kind, "-", "aaaa"), pinned(kind, "-", "aaaa")), kind);
+        }
+    }
+
+    @Test
+    void aChangedProvenanceOfARowIsAShrink() {
+        assertEquals(1, shrunk(pinned("DIFFERENT-provenance", "same", "aaaa"), pinned("DIFFERENT-provenance", "fragment", "aaaa")));
+        assertEquals(1, shrunk(pinned("i1a-identical", "same", "-"), pinned("i1a-identical", "fragment", "-")));
+        assertEquals(0, shrunk(pinned("i1a-identical", "fragment", "-"), pinned("i1a-identical", "same", "-")), "a gain");
+    }
+
+    /** F992: a table compared with itself says nothing. */
+    @Test
+    void theEvidenceDirectoryIsNoOutputDirectory(@TempDir Path evidence) throws IOException {
+        assertThrows(IllegalArgumentException.class, () -> Adr068LoweringTest.refuseTheEvidenceDirectory(evidence, evidence));
+        assertThrows(IllegalArgumentException.class,
+                () -> Adr068LoweringTest.refuseTheEvidenceDirectory(evidence.resolve("."), evidence));
+        Adr068LoweringTest.refuseTheEvidenceDirectory(evidence.resolve("out"), evidence);
     }
 
     /** F926: a row that moves to a class that compares less has shrunk, though it stays in the table. */
@@ -432,6 +622,82 @@ class Adr068LoweringToolTest {
         assertTrue(thrown.getMessage().startsWith("I13"), thrown.getMessage());
     }
 
+    /** Spelled to look like the one that is a rejection. */
+    private static final class CompilerException extends RuntimeException {
+    }
+
+    /** A javac side that fails on every compilation with {@code thrown}. */
+    private static Adr068Lowering.Javac throwing(Throwable thrown) {
+        var real = Adr068Lowering.frontend();
+        return new Adr068Lowering.Javac() {
+            @Override
+            public Adr068Lowering.Compilation compile(Adr068Corpus.Case c, CompilerOptions options) {
+                return new Adr068Lowering.Compilation(Adr068Ledger.rejection(thrown), null, null, thrown);
+            }
+
+            @Override
+            public List<JavacEvidence.Attempt> attempts(Adr068Corpus.Case c, CompilerOptions options) {
+                return real.attempts(c, options);
+            }
+        };
+    }
+
+    /** F991: on the whole-program path too, only a {@code CompilerException} is a rejection, by type and not by name. */
+    @Test
+    void aCrashOfAWholeProgramFailsTheTool() {
+        var c = method("class P { static long m() { return 1; } }");
+        for (var crash : List.of(new NullPointerException("crash"), new IllegalStateException("I13: crash"),
+                new StackOverflowError(), new CompilerException())) {
+            var failure = assertThrows(AssertionError.class, () -> new Adr068Lowering(null, throwing(crash)).classify(c), crash::toString);
+            assertEquals(crash, failure.getCause());
+        }
+    }
+
+    @Test
+    void aRejectionOfAWholeProgramIsARow() {
+        var c = method("class P { static long m() { return 1; } }");
+        var rejection = new org.julclang.compiler.CompilerException("a rejection of the frontend's own");
+        assertEquals("DIFFERENT-javac-rejects", new Adr068Lowering(null, throwing(rejection)).classify(c).row().kind());
+    }
+
+    /** A provider refuses what it cannot export with this type, on both frontends. A program has no such rejection. */
+    @Test
+    void anIllegalArgumentIsARejectionOfAProviderAlone() {
+        var refused = new IllegalArgumentException("Only @OnchainLibrary sources can be exported: Ordinary");
+        var source = Adr068Corpus.Source.of("class Ordinary { }", null);
+        var provider = new Adr068Corpus(REPO).add("tool", "JavaLibraryProvider", null, "none", null, List.of(source));
+        assertEquals("both-reject", new Adr068Lowering(null).classify(provider).row().kind());
+        new Adr068Lowering(null, throwing(refused)).classify(provider);
+        var c = method("class P { static long m() { return 1; } }");
+        assertThrows(AssertionError.class, () -> new Adr068Lowering(null, throwing(refused)).classify(c));
+        assertThrows(AssertionError.class, () -> new Adr068Lowering(null, throwing(new NullPointerException("crash"))).classify(provider));
+    }
+
+    @Test
+    void theFrontendReportsWhatItThrew() {
+        var c = new Adr068Corpus(REPO).add("tool", "no such entry", "m", "none",
+                Adr068Corpus.Source.of("class P { static long m() { return 1; } }", null), List.of());
+        var thrown = Adr068Lowering.frontend().compile(c, new CompilerOptions()).thrown();
+        assertTrue(thrown != null && !(thrown instanceof org.julclang.compiler.CompilerException), () -> String.valueOf(thrown));
+    }
+
+    @Test
+    void aCrashOfOneMethodFailsTheTool() {
+        var failing = new Adr068Lowering.Javac() {
+            @Override
+            public Adr068Lowering.Compilation compile(Adr068Corpus.Case c, CompilerOptions options) {
+                return Adr068Lowering.frontend().compile(c, options);
+            }
+
+            @Override
+            public List<JavacEvidence.Attempt> attempts(Adr068Corpus.Case c, CompilerOptions options) {
+                throw new NullPointerException("crash");
+            }
+        };
+        assertThrows(NullPointerException.class,
+                () -> new Adr068Lowering(null, failing).classify(method("class P { static long m() { return 1; } }")));
+    }
+
     /** One method's rejection leaves the others compared. */
     @Test
     void aMethodIsComparedThoughAnotherIsRejected() {
@@ -443,6 +709,41 @@ class Adr068LoweringToolTest {
                     static long m() { return 1; }
                 }
                 """));
+    }
+
+    private static String library(String body) {
+        return """
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcScalars;
+                import org.julclang.stdlib.Builtins;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+
+                @OnchainLibrary
+                public class Lib {
+                    public static BigInteger n() { %s return BigInteger.ONE; }
+                }
+                """.formatted(body);
+    }
+
+    private static String providerCell(String text) {
+        var sources = List.of(Adr068Corpus.Source.of(text, null));
+        var c = new Adr068Corpus(REPO).add("tool", "JavaLibraryProvider", null, Adr068Corpus.STDLIB_LOOKUP, null, sources);
+        return new Adr068Lowering(null).classify(c).reference().cells().getFirst();
+    }
+
+    /** F983: a provider's cell holds every constant of what it describes, where a printer for people elides a list. */
+    @Test
+    void aProviderCellSpellsOutItsConstants() {
+        assertNotEquals(providerCell(library("var s = Builtins.scalars(BigInteger.ONE, BigInteger.TWO);")),
+                providerCell(library("var s = Builtins.scalars(BigInteger.TWO, BigInteger.TEN);")));
+    }
+
+    @Test
+    void aSpecializationSpellsOutItsConstants() {
+        var one = new PirTerm.Const(new Constant.DataConst(PlutusData.integer(1)));
+        var other = new PirTerm.Const(new Constant.DataConst(PlutusData.integer(2)));
+        assertNotEquals(Adr068Ledger.specialization("n", "type", Map.of("d", one)),
+                Adr068Ledger.specialization("n", "type", Map.of("d", other)));
     }
 
     @Test
