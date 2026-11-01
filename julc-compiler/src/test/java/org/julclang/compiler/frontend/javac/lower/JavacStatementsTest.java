@@ -33,6 +33,7 @@ class JavacStatementsTest {
             import org.julclang.core.types.JulcG1;
             import org.julclang.core.types.JulcList;
             import org.julclang.ledger.Credential;
+            import org.julclang.ledger.Interval;
             import org.julclang.ledger.OutputDatum;
             import org.julclang.ledger.Value;
             import org.julclang.stdlib.Builtins;
@@ -66,6 +67,7 @@ class JavacStatementsTest {
             "static final long K = 3; static long m(long a) { long K = a; return K; }",
             "static final long K = 3; static long m(long a) { long b = K; return b + a; }",
             "static void h(long a) { } static long m(long a) { h(a); return a; }",
+            "static long error(long a) { return a; } static long m(long a) { error(a); return a; }",
             "static long h(long a) { return a; } static long m(long a) { h(a); h(a + 1); return a; }",
             "static void m() { }",
             "static void m() { return; }",
@@ -143,6 +145,7 @@ class JavacStatementsTest {
             "static long m(long a) { x: return a; }",
             "static long m(boolean c) { if (c) y: { return 1; } return 2; }",
             "static long m(boolean c) { if (c) y: Builtins.error(); return 2; }",
+            "static long m(long a) { x: while (a > 0) { return 1; } return 2; }",
             "static long m(JulcList b) { JulcList<JulcG1> x = b; return 1; }",
     })
     void rejections(String members) {
@@ -185,6 +188,7 @@ class JavacStatementsTest {
     @ValueSource(strings = {
             "static boolean m(BigInteger a) { var o = Optional.of(a); return o.isPresent(); }",
             "static BigInteger m(BigInteger a) { var o = Optional.of(a); return o.get(); }",
+            "static boolean m(BigInteger a) { var i = Interval.between(a, a); var f = i.from(); return true; }",
     })
     void aVarOfAStdlibCallHasNoMembers(String members) {
         var failure = javac(members);
@@ -203,7 +207,7 @@ class JavacStatementsTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                 .compileMethod(source("static long m() { " + body + " }"), "m", List.of()));
         assertFalse(failure instanceof NotPorted, failure::getMessage);
-        assertEquals(12, failure.diagnostics().getFirst().line());
+        assertEquals(13, failure.diagnostics().getFirst().line());
     }
 
     @Test
@@ -216,6 +220,7 @@ class JavacStatementsTest {
     @Test
     void unreachableCodeWarnsAsTheReferenceDoes() {
         same("static long m(long a) { Builtins.error(); return a; }");
+        same("static long m(long a) { Builtins.error(); Builtins.error(); return a; }");
         same("static long m(boolean c) { if (c) { Builtins.error(); long b = 1; return b; } return 2; }");
     }
 
@@ -296,6 +301,7 @@ class JavacStatementsTest {
             "static BigInteger m(S s) { if (s instanceof S.A a && a.v().signum() > 0) { return a.v(); } return BigInteger.ZERO; }",
             "static BigInteger m(S s) { if (!(s instanceof S.A a)) { return BigInteger.ZERO; } return a.v(); }",
             "static BigInteger m(S s) { return s instanceof S.A a ? a.v() : BigInteger.ZERO; }",
+            "static boolean m(S s) { return (s instanceof S.A a ? a : s) instanceof S t; }",
     })
     void aPatternVariableBindsOnlyWhereItIsTheWholeCondition(String members) {
         rejectedWith(members, "Undefined variable: a");
