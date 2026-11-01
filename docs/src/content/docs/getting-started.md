@@ -1634,8 +1634,10 @@ following limitations apply:
 - **Some names are JuLC's.** A name JuLC reads by its spelling, such as `Boolean`,
   `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to
   the type JuLC reads, not to a variable, a type parameter or another type
-  (`JULC0100`). A name of the ledger, such as `Value`, may also be a record or a sealed
-  interface. A plain class does not share its name with a record of the compilation.
+  (`JULC0100`). A name of the ledger, such as `Rational`, may also be a nested or
+  packaged record or sealed interface, and no top-level type of the unnamed package
+  takes one. A variable does not take the name of a type of the compilation, and a
+  plain class does not share its name with a record or a library class of it.
   A method does not take a name JuLC reads in place of its body (`JULC0101`):
   `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a
   `@NewType`, an explicit accessor or `equals` on a record. A `@NewType`'s component

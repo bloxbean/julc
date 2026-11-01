@@ -1346,20 +1346,24 @@ variable, a type parameter, or an inherited member. The names are:
   `JulcArray`, `JulcMap`, `Tuple2`, `Tuple3`, `AssetEntry`, `PubKeyHash`, `ScriptHash`, `ValidatorHash`, `PolicyId`,
   `TokenName`, `DatumHash`, `TxId`, `Builtins`, `CryptoProvider`, and the classes of `org.julclang.stdlib.lib`, such as
   `ListsLib`.
-- **The ledger's types, such as `Value`, `Interval`, `TxOut` or `PubKeyCredential`:** a simple name binds to that type, or
-  to a record, a sealed interface or a library of another unit.
+- **The ledger's types, such as `Interval`, `TxOut`, `Rational` or `PubKeyCredential`:** a simple name binds to that type,
+  or to a nested or packaged record or sealed interface, or a library of another unit. No top-level type of the unnamed
+  package takes such a name, of any kind.
 - **JuLC's annotations, where they stand as annotations:** `Entrypoint`, `Param`, `NewType`, `OnchainLibrary` and the
   validator annotations.
 
 More forms read a name:
 
-- A class, or an interface that is not sealed, does not share its name with a record, a sealed interface or a library
-  offered to the compilation, read or not. The same goes for a platform type, such as `java.util.Set`, and for a type
-  parameter outside a library.
-- A record or sealed interface reached by inheritance or a static import is written with its qualifier.
+- A variable does not take the name of a type offered to the compilation, read or not: a class, a record or a sealed
+  interface at any depth, of the sources or the libraries it is given. That covers a local, a parameter, a field, a lambda
+  parameter and a pattern variable.
+- A class, or an interface that is not sealed, does not share its name with a record, a sealed interface or a class of a
+  library offered to the compilation, read or not. The same goes for an API or a platform type JuLC does not lower, such
+  as `java.util.Set`, and for a type parameter outside a library.
+- A record, a sealed interface or a library class reached by inheritance or a static import is written with its qualifier.
 - Two variants of one sealed interface do not share a simple name.
-- A record does not take a type key of JuLC's lowering: `IntegerType`, `ByteStringType`, `StringType`, `DataType`,
-  `RecordType`, `SumType`, `ListType`, `ArrayType`, `OptionalType`, `MapType` or `PairType`.
+- A class or a record does not take a type key of JuLC's lowering: `IntegerType`, `ByteStringType`, `StringType`,
+  `DataType`, `RecordType`, `SumType`, `ListType`, `ArrayType`, `OptionalType`, `MapType`, `PairType` or `Value`.
 - The datum of a three-parameter entry point is written `Optional<...>` exactly when it is one. A type named
   `OptionalThing`, and a qualified `java.util.Optional<T>`, are rejected there.
 
@@ -1369,8 +1373,7 @@ More forms read a name:
 
 **Cause:** JuLC lowers some calls by their spelling, so a body under that name would not run:
 `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit
-accessor or `equals` on a record, `equals` on a sealed interface, and `assetOf`, `containsPolicy`, `isEmpty`
-and `lovelaceOf` on a record named `Value`. The same goes for a `@NewType`'s component named like a method of
+accessor or `equals` on a record, and `equals` on a sealed interface. The same goes for a `@NewType`'s component named like a method of
 the type it lowers to, such as `abs` on a `BigInteger` or `length` on a `byte[]` or `String`, for a component
 named `toPlutusData`, and for a `@NewType` of `byte[]` whose component is not `value`, or a call of an inherited
 method such as `hashCode` on one. A call named `headList`, `tailList`, `mkCons`, `mkNilData`, `mkNilPairData`,
