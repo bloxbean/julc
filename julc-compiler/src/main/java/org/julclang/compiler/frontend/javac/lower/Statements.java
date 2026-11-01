@@ -174,8 +174,8 @@ final class Statements {
      * binds what the term says, and a read of a member is {@code JULC0055} there, as on the call itself: javac knowing the
      * type does not widen the subset (I2). What a list's reads decode to is still javac's, which is {@link Typing#of}'s.
      * Elements of different types have no one type for an array's reads to decode, and that is a rejection. Around
-     * parentheses or a conditional the reference reads the term too, so a record there is a record only if the term says
-     * one: a {@code new} says Data, and a read of a component is {@code JULC0055}, as on the {@code new} itself.
+     * parentheses or a conditional the reference reads the term too, so a record or a sum there is one only if the term
+     * says so: a {@code new} says Data, and a read of a component is {@code JULC0055}, as on the {@code new} itself.
      */
     private PirType varType(ExpressionTree initializer, PirTerm value) {
         var elements = typing.arrayLiteralElementTypes(value);
@@ -185,7 +185,8 @@ final class Statements {
         if (targets.isStdlibCall(initializer)) return typing.ofTerm(value);
         var type = typing.of(initializer, value);
         boolean wrapped = initializer instanceof ParenthesizedTree || initializer instanceof ConditionalExpressionTree;
-        return wrapped && type instanceof PirType.RecordType ? typing.ofTerm(value) : type;
+        boolean named = type instanceof PirType.RecordType || type instanceof PirType.SumType;
+        return wrapped && named ? typing.ofTerm(value) : type;
     }
 
     private PirTerm ret(ReturnTree tree, Frame frame) {
