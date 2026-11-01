@@ -28,6 +28,8 @@ import java.util.List;
  *   <li>What is not lowered holds only a constant ({@link UnloweredInitializers}, {@code JULC0095}).</li>
  *   <li>A value reaches {@code boolean} through a cast only from a boolean ({@link BooleanCasts}, {@code JULC0098}).</li>
  *   <li>A constructor holds no statement ({@link ConstructorBodies}, {@code JULC0099}).</li>
+ *   <li>A method does not declare what a record compiles as its components: {@code toPlutusData} or an accessor
+ *       ({@link SpelledMethods#checkDeclarations}, {@code JULC0101}).</li>
  * </ul>
  * An API type comes in as a class file, so these rules never read one.
  * <p>
@@ -37,7 +39,7 @@ import java.util.List;
  * ({@link #checkSpellings}): the javac frontend binds a name to its element, and has no such reading.
  * <ul>
  *   <li>A name that frontend reads by its spelling binds, at every use, to what it reads ({@link SpelledTypes}, {@code JULC0100}).</li>
- *   <li>A method does not take a name it reads in place of the method's body ({@link SpelledMethods}, {@code JULC0101}).</li>
+ *   <li>A method does not take any other name it reads in place of the method's body ({@link SpelledMethods}, {@code JULC0101}).</li>
  * </ul>
  */
 final class SubsetRules {
@@ -54,6 +56,7 @@ final class SubsetRules {
                 library(facts, discovery, unit);
                 continue;
             }
+            SpelledMethods.checkDeclarations(facts, unit);
             var type = discovery.compiledClass(unit, compiled);
             if (type == null) continue;
             UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
@@ -89,6 +92,7 @@ final class SubsetRules {
     }
 
     private static void library(JavacFacts facts, JavacDiscovery discovery, CompilationUnitTree unit) {
+        SpelledMethods.checkDeclarations(facts, unit);
         UnloweredInitializers.check(facts, unit, discovery::isLoweredInALibrary);
         BooleanCasts.check(facts, unit);
         ConstructorBodies.check(facts, unit);

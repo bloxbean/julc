@@ -70,6 +70,29 @@ public final class SpelledMethods {
     private SpelledMethods() {
     }
 
+    /**
+     * The part of this rule that holds on every frontend: JuLC compiles a record as its components, so a declared
+     * {@code toPlutusData} or accessor is never what a script's Data is, wherever the record is built, stored or returned.
+     */
+    public static void checkDeclarations(JavacFacts facts, CompilationUnitTree unit) {
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitMethod(MethodTree tree, Void unused) {
+                var method = (ExecutableElement) facts.element(tree);
+                if (method.getKind() == ElementKind.METHOD && isReadAsComponents(facts, method)) throw reject(facts, method, tree);
+                return super.visitMethod(tree, unused);
+            }
+        }.scan(unit, null);
+    }
+
+    private static boolean isReadAsComponents(JavacFacts facts, ExecutableElement method) {
+        String name = method.getSimpleName().toString();
+        if (!method.getParameters().isEmpty() || method.getModifiers().contains(Modifier.STATIC)) return false;
+        if (name.equals("toPlutusData")) return true;
+        var owner = (TypeElement) method.getEnclosingElement();
+        return owner.getKind() == ElementKind.RECORD && isComponent(facts, owner, name);
+    }
+
     public static void check(JavacFacts facts, CompilationUnitTree unit) {
         new TreeScanner<Void, Void>() {
             @Override
