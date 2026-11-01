@@ -45,6 +45,7 @@ class Adr068LoweringToolTest {
     private static final class Injected implements Adr068Lowering.Javac {
         private final Adr068Lowering.Javac real;
         Function<Adr068Corpus.Case, Adr068Corpus.Case> source = c -> c;
+        Function<Adr068Corpus.Case, Adr068Corpus.Case> program = c -> c;
         Function<Adr068Lowering.Compilation, Adr068Lowering.Compilation> compilation = c -> c;
         Function<List<JavacEvidence.Attempt>, List<JavacEvidence.Attempt>> attempts = a -> a;
 
@@ -54,7 +55,7 @@ class Adr068LoweringToolTest {
 
         @Override
         public Adr068Lowering.Compilation compile(Adr068Corpus.Case c, CompilerOptions options) {
-            return compilation.apply(real.compile(source.apply(c), options));
+            return compilation.apply(real.compile(program.apply(source.apply(c)), options));
         }
 
         @Override
@@ -266,10 +267,11 @@ class Adr068LoweringToolTest {
                 List.of(warning)), c.result(), null);
         var moved = new Injected();
         moved.compilation = same.compilation;
-        moved.source = c -> other;
+        moved.program = c -> other;
         var one = same.row(tested);
         var two = moved.row(tested);
         assertEquals("DIFFERENT-bytes", two.kind(), two::line);
+        assertEquals(one.covered(), two.covered());
         assertNotEquals(one.line(), two.line());
         assertTrue(two.detail().contains("diagnostics"), two.detail());
     }
@@ -281,10 +283,11 @@ class Adr068LoweringToolTest {
         var moved = new Injected();
         moved.compilation = same.compilation;
         var other = validator(VALIDATOR.replace("return true", "return false"));
-        moved.source = c -> other;
+        moved.program = c -> other;
         var one = same.row(validator(VALIDATOR));
         var two = moved.row(validator(VALIDATOR));
         assertEquals("DIFFERENT-bytes", two.kind(), two::line);
+        assertEquals(one.covered(), two.covered());
         assertNotEquals(one.line(), two.line());
         assertTrue(two.detail().contains("params"), two.detail());
     }
