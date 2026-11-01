@@ -1,9 +1,10 @@
-cases	17052
+cases	17053
 DIFFERENT-bytes	4
 DIFFERENT-javac-accepts	19
+DIFFERENT-javac-rejects	7
 DIFFERENT-provenance	2
-DIFFERENT-rejection	8
-both-reject	56
+DIFFERENT-rejection	9
+both-reject	49
 both-reject-javac-first	1288
 i1a-identical	145
 javac-rejects	5359
@@ -11,11 +12,11 @@ ledger-source	38
 not-ported	9619
 reference-rejects-not-ported	497
 unreplayable	17
-coverage	programs	145	15129
+coverage	programs	145	15136
 coverage	distinct programs	85
 coverage	programs of more than one method	11
-coverage	methods	313	171820
-coverage	distinct methods	159
+coverage	methods	320	171991
+coverage	distinct methods	160
 provenance	-	2
 provenance	fragment	57
 provenance	same	86
@@ -35,8 +36,8 @@ first-construct	PLUS	12
 first-construct	LOGICAL_COMPLEMENT	9
 first-construct	a contract schema	9
 first-construct	NEW_CLASS	8
+first-construct	TYPE_CAST	8
 first-construct	MULTIPLY	7
-first-construct	TYPE_CAST	7
 first-construct	WHILE_LOOP	7
 first-construct	a library unit	7
 first-construct	GREATER_THAN_EQUAL	4
@@ -59,7 +60,8 @@ first-construct	a library method	1
 part	blaster	not-ported	7
 part	c7	i1a-identical	4
 part	c7	not-ported	2
-part	diffcase	both-reject	5
+part	diffcase	DIFFERENT-javac-rejects	4
+part	diffcase	DIFFERENT-rejection	1
 part	diffcase	both-reject-javac-first	1
 part	diffcase	not-ported	142
 part	diffcase	reference-rejects-not-ported	53
@@ -71,8 +73,8 @@ part	g0	not-ported	376
 part	g1	not-ported	123
 part	head	DIFFERENT-bytes	1
 part	head	DIFFERENT-javac-accepts	18
-part	head	DIFFERENT-rejection	8
-part	head	both-reject	50
+part	head	DIFFERENT-rejection	9
+part	head	both-reject	49
 part	head	both-reject-javac-first	1288
 part	head	i1a-identical	136
 part	head	javac-rejects	121
@@ -88,14 +90,14 @@ part	m3a	DIFFERENT-javac-accepts	1
 part	m3a	i1a-identical	4
 part	m3a	not-ported	2
 part	recorded	DIFFERENT-javac-accepts	10
-part	recorded	DIFFERENT-rejection	8
-part	recorded	both-reject	16
+part	recorded	DIFFERENT-rejection	9
+part	recorded	both-reject	15
 part	recorded	both-reject-javac-first	1266
 part	recorded	i1a-identical	73
 part	recorded	javac-rejects	5241
 part	recorded	not-ported	4185
 part	recorded	reference-rejects-not-ported	425
 part	recorded	unreplayable	10
-part	rules	both-reject	2
+part	rules	DIFFERENT-javac-rejects	3
 part	stdlib	not-ported	13
 part	stdlib	reference-rejects-not-ported	4
