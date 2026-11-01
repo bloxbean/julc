@@ -107,6 +107,8 @@ class JavacStopsTest {
             new Stop("TYPE_CAST", "static boolean m(PlutusData v, PlutusData p) { return ((JulcMap)(Object) v).containsKey(p); }", "accepted"),
             new Stop("SWITCH_EXPRESSION", "static boolean m(BigInteger a, boolean c) { return a.equals(switch (c ? 1 : 0) { case 1 -> a; default -> BigInteger.ONE; }); }", "JULC0007"),
             new Stop("a library unit", "static boolean m(PlutusData r) { return org.julclang.stdlib.lib.MapLib.member(PlutusData.cast(r, JulcMap.class), Builtins.iData(2)); }", "uncoded"),
+            new Stop("an expression of type java.lang.Object",
+                    "sealed interface S { record A() implements S { } } static boolean m(boolean c, S a, S.A b) { return a.equals(c ? a : b); }", "accepted"),
             new Stop("IDENTIFIER", "static final boolean J = false; static boolean m() { boolean J = (true || J); return J; }", "accepted"),
             new Stop("a wrapper's component read as Data", "static byte[] m(byte[] a) { return new PubKeyHash(a).hash(); }", "accepted"),
             new Stop("MEMBER_SELECT", "static boolean m() { var c = String.class; return true; }", "uncoded"));

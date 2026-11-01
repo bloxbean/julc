@@ -187,6 +187,10 @@ class Adr068EqualityHarnessTest {
         rows.add(kept("a hash from its bytes", "public static boolean m(List<PubKeyHash> a, byte[] b) { return a.contains(new PubKeyHash(b)); }", TRUE, l(s("x")), s("x")));
         rows.add(kept("Data", "public static boolean m(List<PlutusData> a, PlutusData b) { return a.contains(b); }", TRUE, l(i(1)), i(1)));
         rows.add(kept("Data subtype", "public static boolean m(JulcList<PlutusData> a, BigInteger b) { return a.contains(Builtins.iData(b)); }", TRUE, l(i(1)), i(1)));
+        // A read through a list literal is seen as Data, and holds what javac's element type decoded it to.
+        rows.add(kept("a decoded read", "public static boolean m(BigInteger a) { return JulcList.of(a).head().equals(a); }", TRUE, i(1)));
+        rows.add(kept("a var of a decoded read", "public static boolean m(BigInteger a) { var h = JulcList.of(a).head(); return h.equals(a); }", TRUE, i(1)));
+        rows.add(kept("a decoded text", "public static boolean m(String a) { var h = JulcList.of(a).head(); return h.equals(a); }", TRUE, s("x")));
         // A conditional is typed by its operands, whatever its target is.
         String conditional = "public static boolean m(boolean c, BigInteger a, BigInteger b) { return a.equals(c ? b : a); }";
         rows.add(kept("Z2", conditional, TRUE, TRUE, i(1), i(1)));
