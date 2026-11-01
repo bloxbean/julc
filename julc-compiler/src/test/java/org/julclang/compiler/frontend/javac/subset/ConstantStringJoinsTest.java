@@ -47,6 +47,7 @@ class ConstantStringJoinsTest {
             "\"a\" + \"b\"                 | 1",
             "\"a\" + \"b\" + \"c\"           | 1",
             "\"a\" + (\"b\" + \"c\")         | 1",
+            "(\"a\" + \"b\") + (\"c\" + \"d\") | 1",
             "(\"a\") + (\"b\")             | 1",
             "K + \"b\"                     | 1",
             "K + K                         | 1",
@@ -99,6 +100,13 @@ class ConstantStringJoinsTest {
         var off = compile("\"a\" + \"b\"", new CompilerOptions().setJavacGate(JavacGateMode.OFF));
         var on = compile("\"a\" + \"b\"", new CompilerOptions());
         assertEquals(off.pirTerm(), on.pirTerm());
+    }
+
+    /** Only a {@code +} joins: the default frontend compiles this, and it is no join. */
+    @Test
+    void aComparisonOfConstantsDoesNotWarn() {
+        var source = "class P { static boolean m() { return \"a\" == \"b\"; } }";
+        assertEquals(List.of(), joins(new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of())));
     }
 
     @Test

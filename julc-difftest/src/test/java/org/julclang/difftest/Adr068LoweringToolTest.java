@@ -834,6 +834,14 @@ class Adr068LoweringToolTest {
                 "static long m() { return L.f(1); }"));
     }
 
+    /** A method lowered on its own reads its class's methods, and I13's check binds them around it. */
+    @Test
+    void aLoneMethodThatCallsAMethodOfItsClassPassesTheCheck() {
+        var attempts = JavacEvidence.attempts("class P { static long h(long a) { return a; } static long m(long a) { return h(a); } }",
+                List.of(), "m", null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        attempts.forEach(attempt -> assertEquals(null, attempt.construct(), attempt.binder()));
+    }
+
     @Test
     void aFixedLibraryMethodLowersAtItsCallSite() {
         assertEquals(null, construct("public static long f(long a) { return a; }", "static long m() { return L.f(1); }"));

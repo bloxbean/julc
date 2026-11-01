@@ -346,6 +346,8 @@ class JavacCallsTest {
         for (var call : List.of("h(1)", "h(1, new byte[]{1})")) {
             assertTrue(rejected("static long h(long a, byte... rest) { return a; } static long m() { return " + call + "; }")
                     .message().contains("Unsupported primitive type: byte"));
+            assertTrue(rejected("static long m() { return " + call + "; } static long h(long a, byte... rest) { return a; }")
+                    .message().contains("Unsupported primitive type: byte"), "the signature comes before any body");
         }
     }
 
