@@ -610,7 +610,7 @@ public class JulcCompiler {
                         debugMetadata == null ? null : debugMetadata.provenance(),
                         debugMetadata == null ? null : (param, binding) ->
                                 debugMetadata.associate(declarations.get(param.name()), binding, param.type()),
-                        pirGenerator::rejectUnresolvedMembers, null),
+                        pirGenerator::rejectUnresolvedMembers, null, null),
                 captureDetails);
         var result = assembled.result();
         var lowered = assembled.lowered();
@@ -1014,7 +1014,7 @@ public class JulcCompiler {
                         assemblyParams(paramFields)),
                 context,
                 new ValidatorAssembly.Frontend(pirGenerator.getPirPositions(), null, null,
-                        pirGenerator::rejectUnresolvedMembers, null));
+                        pirGenerator::rejectUnresolvedMembers, null, null));
     }
 
     // --- What the assembly takes (ADR-068 F846) ---

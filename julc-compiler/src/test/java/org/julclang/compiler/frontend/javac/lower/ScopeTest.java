@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.util.ElementFilter;
-import java.util.IdentityHashMap;
+import java.lang.reflect.Modifier;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -83,9 +83,9 @@ class ScopeTest {
         var a = elements().get(0);
         var v = new PirTerm.Var("a", INT);
         var let = new PirTerm.Let("a", zero(), v);
-        var provenance = new IdentityHashMap<PirTerm, Element>();
-        provenance.put(v, a);
-        provenance.put(let, a);
+        var provenance = new Provenance();
+        provenance.read(v, a);
+        provenance.binder(let, "a", a);
         assertDoesNotThrow(() -> BindingCheck.check(let, provenance));
     }
 
@@ -94,9 +94,9 @@ class ScopeTest {
         var all = elements();
         var v = new PirTerm.Var("a", INT);
         var let = new PirTerm.Let("a", zero(), v);
-        var provenance = new IdentityHashMap<PirTerm, Element>();
-        provenance.put(v, all.get(0));
-        provenance.put(let, all.get(3));
+        var provenance = new Provenance();
+        provenance.read(v, all.get(0));
+        provenance.binder(let, "a", all.get(3));
         assertTrue(assertThrows(IllegalStateException.class, () -> BindingCheck.check(let, provenance))
                 .getMessage().startsWith("I13"));
     }
@@ -104,8 +104,8 @@ class ScopeTest {
     @Test
     void aFreeVarFails() {
         var v = new PirTerm.Var("a", INT);
-        var provenance = new IdentityHashMap<PirTerm, Element>();
-        provenance.put(v, elements().get(0));
+        var provenance = new Provenance();
+        provenance.read(v, elements().get(0));
         assertThrows(IllegalStateException.class, () -> BindingCheck.check(v, provenance));
     }
 
@@ -115,10 +115,10 @@ class ScopeTest {
         var v = new PirTerm.Var("a", INT);
         var inner = new PirTerm.Lam("a", INT, v);
         var outer = new PirTerm.Let("a", zero(), inner);
-        var provenance = new IdentityHashMap<PirTerm, Element>();
-        provenance.put(v, all.get(0));
-        provenance.put(outer, all.get(0));
-        provenance.put(inner, all.get(3));
+        var provenance = new Provenance();
+        provenance.read(v, all.get(0));
+        provenance.binder(outer, "a", all.get(0));
+        provenance.binder(inner, "a", all.get(3));
         assertThrows(IllegalStateException.class, () -> BindingCheck.check(outer, provenance));
     }
 
@@ -128,9 +128,9 @@ class ScopeTest {
         var v = new PirTerm.Var("a", INT);
         var inner = new PirTerm.Lam("a", INT, v);
         var outer = new PirTerm.Let("a", zero(), inner);
-        var provenance = new IdentityHashMap<PirTerm, Element>();
-        provenance.put(v, a);
-        provenance.put(outer, a);
+        var provenance = new Provenance();
+        provenance.read(v, a);
+        provenance.binder(outer, "a", a);
         assertThrows(IllegalStateException.class, () -> BindingCheck.check(outer, provenance));
     }
 
@@ -140,10 +140,10 @@ class ScopeTest {
         var v = new PirTerm.Var("a", INT);
         var inner = new PirTerm.Let("a", v, zero());
         var outer = new PirTerm.Let("a", zero(), inner);
-        var provenance = new IdentityHashMap<PirTerm, Element>();
-        provenance.put(v, all.get(0));
-        provenance.put(outer, all.get(0));
-        provenance.put(inner, all.get(3));
+        var provenance = new Provenance();
+        provenance.read(v, all.get(0));
+        provenance.binder(outer, "a", all.get(0));
+        provenance.binder(inner, "a", all.get(3));
         assertDoesNotThrow(() -> BindingCheck.check(outer, provenance));
     }
 
@@ -154,17 +154,115 @@ class ScopeTest {
         var shared = new PirTerm.Var("a", INT);
         var capturing = new PirTerm.Let("a", zero(), shared);
         var outer = new PirTerm.Let("a", zero(), new PirTerm.App(new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger), shared), capturing));
-        var provenance = new IdentityHashMap<PirTerm, Element>();
-        provenance.put(shared, all.get(0));
-        provenance.put(outer, all.get(0));
-        provenance.put(capturing, all.get(3));
+        var provenance = new Provenance();
+        provenance.read(shared, all.get(0));
+        provenance.binder(outer, "a", all.get(0));
+        provenance.binder(capturing, "a", all.get(3));
         assertThrows(IllegalStateException.class, () -> BindingCheck.check(outer, provenance));
-        provenance.put(capturing, all.get(0));
+        provenance.binder(capturing, "a", all.get(0));
         assertDoesNotThrow(() -> BindingCheck.check(outer, provenance));
     }
 
+    /** Only a name no source variable can have goes unchecked: a generated one, or a qualified method binder. */
     @Test
-    void aVarNotBuiltForAnElementIsNotChecked() {
-        assertDoesNotThrow(() -> BindingCheck.check(new PirTerm.Var("#free", INT), new IdentityHashMap<>()));
+    void aVarNotBuiltForAnElementIsAllowedOnlyForANameNoSourceCanHave() {
+        assertDoesNotThrow(() -> BindingCheck.check(new PirTerm.Var("#free", INT), new Provenance()));
+        assertDoesNotThrow(() -> BindingCheck.check(new PirTerm.Var("P.m", INT), new Provenance()));
+        var unrecorded = assertThrows(IllegalStateException.class,
+                () -> BindingCheck.check(new PirTerm.Var("a", INT), new Provenance()));
+        assertTrue(unrecorded.getMessage().startsWith("I13"), unrecorded.getMessage());
+    }
+
+    /** A {@code LetRec} binds several names on one node: each is its own binder. */
+    @Test
+    void aMultiBindingLetRecKeepsEachName() {
+        var all = elements();
+        var v = new PirTerm.Var("b", INT);
+        var rec = new PirTerm.LetRec(List.of(new PirTerm.Binding("a", zero()), new PirTerm.Binding("b", zero())), v);
+        var provenance = new Provenance();
+        provenance.binder(rec, "a", all.get(0));
+        provenance.binder(rec, "b", all.get(1));
+        provenance.read(v, all.get(1));
+        assertDoesNotThrow(() -> BindingCheck.check(rec, provenance));
+        provenance.read(v, all.get(0));
+        assertThrows(IllegalStateException.class, () -> BindingCheck.check(rec, provenance));
+    }
+
+    @Test
+    void aListMatchKeepsItsHeadAndItsTail() {
+        var all = elements();
+        var head = new PirTerm.Var("a", INT);
+        var match = new PirTerm.ListMatch(zero(), "a", "b", zero(), head);
+        var provenance = new Provenance();
+        provenance.binder(match, "a", all.get(0));
+        provenance.binder(match, "b", all.get(1));
+        provenance.read(head, all.get(0));
+        assertDoesNotThrow(() -> BindingCheck.check(match, provenance));
+        provenance.read(head, all.get(1));
+        assertThrows(IllegalStateException.class, () -> BindingCheck.check(match, provenance));
+    }
+
+    @Test
+    void aPairMatchKeepsItsTwoNames() {
+        var all = elements();
+        var second = new PirTerm.Var("b", INT);
+        var match = new PirTerm.PairMatch(zero(), new PirType.PairType(INT, INT), "a", "b", second);
+        var provenance = new Provenance();
+        provenance.binder(match, "a", all.get(0));
+        provenance.binder(match, "b", all.get(1));
+        provenance.read(second, all.get(1));
+        assertDoesNotThrow(() -> BindingCheck.check(match, provenance));
+        provenance.read(second, all.get(0));
+        assertThrows(IllegalStateException.class, () -> BindingCheck.check(match, provenance));
+    }
+
+    /** A {@code DataMatch} binds per branch: two branches can bind one name to two elements. */
+    @Test
+    void aDataMatchBindsPerBranch() {
+        var all = elements();
+        var left = new PirTerm.Var("a", INT);
+        var right = new PirTerm.Var("a", INT);
+        var first = new PirTerm.MatchBranch("A", List.of("a"), List.of(INT), left, null);
+        var second = new PirTerm.MatchBranch("B", List.of("a"), List.of(INT), right, null);
+        var match = new PirTerm.DataMatch(zero(), List.of(first, second));
+        var provenance = new Provenance();
+        provenance.binder(first, "a", all.get(0));
+        provenance.binder(second, "a", all.get(3));
+        provenance.read(left, all.get(0));
+        provenance.read(right, all.get(3));
+        assertDoesNotThrow(() -> BindingCheck.check(match, provenance));
+        provenance.read(right, all.get(0));
+        assertThrows(IllegalStateException.class, () -> BindingCheck.check(match, provenance));
+    }
+
+    /** What a rebuild of the term keeps: every binder, for each node and branch that binds. */
+    @Test
+    void aRebuiltNodeKeepsItsBinders() {
+        var all = elements();
+        var read = new PirTerm.Var("a", INT);
+        var rec = new PirTerm.LetRec(List.of(new PirTerm.Binding("a", zero()), new PirTerm.Binding("b", zero())), read);
+        var copy = new PirTerm.LetRec(rec.bindings(), read);
+        var provenance = new Provenance();
+        provenance.binder(rec, "a", all.get(0));
+        provenance.read(read, all.get(0));
+        assertThrows(IllegalStateException.class, () -> BindingCheck.check(copy, provenance));
+        provenance.rebuilt(rec, copy);
+        assertDoesNotThrow(() -> BindingCheck.check(copy, provenance));
+
+        var branch = new PirTerm.MatchBranch("A", List.of("a"), List.of(INT), read, null);
+        var match = new PirTerm.DataMatch(zero(), List.of(branch));
+        var rebuilt = new PirTerm.DataMatch(zero(), List.of(new PirTerm.MatchBranch("A", List.of("a"), List.of(INT), read, null)));
+        provenance.binder(branch, "a", all.get(0));
+        assertThrows(IllegalStateException.class, () -> BindingCheck.check(rebuilt, provenance));
+        provenance.rebuilt(match, rebuilt);
+        assertDoesNotThrow(() -> BindingCheck.check(rebuilt, provenance));
+    }
+
+    /** Only a scope makes a binder, so a name is never chosen elsewhere (I13). */
+    @Test
+    void noBinderIsMadeOutsideAScope() {
+        for (var constructor : Scope.Binder.class.getDeclaredConstructors()) {
+            assertTrue(Modifier.isPrivate(constructor.getModifiers()), constructor.toString());
+        }
     }
 }

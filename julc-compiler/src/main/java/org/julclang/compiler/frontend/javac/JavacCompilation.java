@@ -44,6 +44,9 @@ import java.util.Set;
  */
 public final class JavacCompilation {
 
+    /** What a method's attempt names when it is rejected, not stopped at a construct. */
+    static final String REJECTED = "(rejected)";
+
     /** What the reference would have lowered of one method: its term and type, or the construct that stopped it. */
     record MethodAttempt(String binder, PirType type, PirTerm term, String construct) {
     }
@@ -79,13 +82,14 @@ public final class JavacCompilation {
     private static JavacProgram attributed(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
                                            CompilationContext context) {
         var program = JavacProgram.attribute(List.of(root), pool);
-        context.setJavacProvenance(JavacProvenance.of(null, program.result()));
+        context.setJavacProvenance(JavacProvenance.frontend(program.result()));
         return program;
     }
 
     /**
      * I1b, for the evidence tooling: every method the reference lowers of {@code root}, each lowered on its own, so a
-     * method is compared even where another one stops the program. No compilation path goes through here.
+     * method is compared even where another one stops or rejects the program. I13's check is not a rejection: it fails
+     * the caller. No compilation path goes through here.
      *
      * @param methodName the {@code compileMethod} target, or null for the validator of {@code root}
      */
@@ -113,6 +117,8 @@ public final class JavacCompilation {
                 attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method), term, null));
             } catch (NotPorted e) {
                 attempts.add(new MethodAttempt(parts.binder(method), null, null, e.construct()));
+            } catch (CompilerException e) {
+                attempts.add(new MethodAttempt(parts.binder(method), null, null, REJECTED));
             }
         }
         return attempts;
@@ -127,6 +133,7 @@ public final class JavacCompilation {
         final List<VariableTree> statics;
         final Scope scope;
         private final Map<MethodTree, PirType> methodTypes = new LinkedHashMap<>();
+        private final Map<String, Element> methodElements = new LinkedHashMap<>();
 
         ClassParts(ClassTree type) {
             owner = facts.identity((TypeElement) facts.element(type));
@@ -152,7 +159,7 @@ public final class JavacCompilation {
 
         private PirTerm standIn(Element element, PirTerm body) {
             var binding = new PirTerm.Let(scope.lookup(element).name(), new PirTerm.Const(Constant.unit()), body);
-            lowering.terms().assembled(binding, element);
+            lowering.terms().assembled(binding, binding.name(), element);
             return binding;
         }
 
@@ -192,6 +199,7 @@ public final class JavacCompilation {
             var body = lowering.method(method, scope, false);
             overloads.check(method.getName().toString(), methodType(method), body, () -> facts.location(method));
             methods.put(binder(method), new ValidatorAssembly.Method(binder(method), body));
+            methodElements.put(binder(method), facts.element(method));
         }
 
         /** What the assembly needs of this compilation: where terms came from, and I13's check of the result. */
@@ -201,11 +209,12 @@ public final class JavacCompilation {
             for (var param : params) elements.put(scope.lookup(param.element()).name(), param.element());
             for (var field : statics) elements.put(scope.lookup(facts.element(field)).name(), facts.element(field));
             return new ValidatorAssembly.Frontend(terms.positions(), null,
-                    (param, binding) -> terms.assembled(binding, elements.get(param.name())),
+                    (param, binding) -> terms.assembled(binding, param.name(), elements.get(param.name())),
                     term -> {
                         if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) BindingCheck.check(term, terms.provenance());
                     },
-                    (field, binding) -> terms.assembled(binding, elements.get(field.name())));
+                    (field, binding) -> terms.assembled(binding, field.name(), elements.get(field.name())),
+                    (name, binding) -> terms.assembled(binding, name, methodElements.get(name)));
         }
     }
 
@@ -247,7 +256,7 @@ public final class JavacCompilation {
         }.scan(unit, null);
         context.verifyBinderNames(name -> {
             if (PirHelpers.isGeneratedName(name)) return true;
-            int mark = name.indexOf('\'');
+            int mark = name.indexOf(Scope.MARK);
             if (declared.contains(mark < 0 ? name : name.substring(0, mark))) return true;
             int dot = name.lastIndexOf('.');
             return dot > 0 && methods.contains(name.substring(dot + 1));
@@ -301,8 +310,8 @@ public final class JavacCompilation {
         for (var entry : entrypoints) {
             var function = lowering.method(entry.method(), parts.scope, context.isSourceMapEnabled());
             var parameters = entryParameters(entry.method(), function);
-            var transformed = ValidatorAssembly.strictEntrypoint(function, parameters, facts.registry());
-            lowering.terms().rebuiltLambdas(function, transformed.function());
+            var transformed = ValidatorAssembly.strictEntrypoint(function, parameters, facts.registry(),
+                    lowering.terms().provenance().rebuildsOf(function));
             strictErrors.addAll(transformed.errors());
             boolean hasDatum = parameters.size() == 3 && (autoDispatch ? entry.tag() == 1 : purpose == ScriptPurpose.SPENDING);
             entries.add(new ValidatorAssembly.Entry(entry.tag(), parameters.size(), transformed.function(),

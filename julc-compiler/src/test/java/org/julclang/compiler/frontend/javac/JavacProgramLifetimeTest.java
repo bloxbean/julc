@@ -125,7 +125,10 @@ class JavacProgramLifetimeTest {
         }
     }
 
-    /** Outside this package the model is reached through {@code read}: the compiler holds that, not a convention. */
+    /**
+     * Outside this package the facts come only through {@code read}. The rest of the discipline is a convention: a query
+     * could still return an element, and nothing here stops it.
+     */
     @Test
     void theFactsAccessorIsNotPublic() throws Exception {
         assertFalse(Modifier.isPublic(JavacProgram.class.getDeclaredMethod("facts").getModifiers()));

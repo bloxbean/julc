@@ -8,6 +8,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;

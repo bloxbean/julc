@@ -4,9 +4,9 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 
 /**
- * Evidence tooling only (ADR-068 I1b): told each method a compilation lowers, with its binder, type and term, before any
- * transform of the assembly. Both frontends report through it, so the I1 tool compares them at the same point. Removed
- * at M6.
+ * Evidence tooling only (ADR-068 I1b): told each method the JavaParser frontend lowers, with its binder, type and term,
+ * before any transform of the assembly. The javac frontend does not report through it: a compilation there stops at the
+ * first {@code JULC0084}, so the I1 tool asks it for each method on its own. Removed at M6.
  */
 @FunctionalInterface
 public interface LoweredMethodObserver {

@@ -93,10 +93,12 @@ public final class ValidatorAssembly {
      * @param paramBound  told each {@code @Param}'s binding as it is built, or null
      * @param finalCheck  run on the assembled term, before the backend
      * @param staticBound told each static field's binding as it is built, one per copy, or null
+     * @param methodBound told each method's binding by its binder name, one per copy, or null
      */
     public record Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
                            BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
-                           BiConsumer<StaticField, PirTerm> staticBound) {
+                           BiConsumer<StaticField, PirTerm> staticBound,
+                           BiConsumer<String, PirTerm> methodBound) {
     }
 
     /** A compiled program: the result, and what the backend returned for it. */
@@ -111,6 +113,13 @@ public final class ValidatorAssembly {
      */
     public static StrictRecordEntrypoint.Result strictEntrypoint(PirTerm function, List<Parameter> parameters,
                                                                  TypeRegistry types) {
+        return strictEntrypoint(function, parameters, types, StrictRecordEntrypoint.Rebuilds.NONE);
+    }
+
+    /** {@link #strictEntrypoint(PirTerm, List, TypeRegistry)}, telling {@code rebuilds} what the transform builds. */
+    public static StrictRecordEntrypoint.Result strictEntrypoint(PirTerm function, List<Parameter> parameters,
+                                                                 TypeRegistry types,
+                                                                 StrictRecordEntrypoint.Rebuilds rebuilds) {
         var roots = new ArrayList<StrictRecordEntrypoint.Root>();
         int rootCount = Math.max(0, parameters.size() - 1); // ScriptContext is always last
         for (int i = 0; i < rootCount; i++) {
@@ -118,7 +127,7 @@ public final class ValidatorAssembly {
             requireStrictBoundary(parameter, types);
             roots.add(new StrictRecordEntrypoint.Root(parameter.binderName(), parameter.type()));
         }
-        return StrictRecordEntrypoint.transform(function, roots, types.namedDefinitions());
+        return StrictRecordEntrypoint.transform(function, roots, types.namedDefinitions(), rebuilds);
     }
 
     private static void requireStrictBoundary(Parameter parameter, TypeRegistry types) {
@@ -171,11 +180,11 @@ public final class ValidatorAssembly {
             // Wrap helper methods around each handler (dependency-ordered)
             for (var entry : validator.entries()) {
                 handlers.put(entry.tag(), bindStatics(validator.statics(),
-                        wrapMethodBindings(validator.helpers(), entry.function()), frontend));
+                        wrapMethodBindings(validator.helpers(), entry.function(), frontend), frontend));
             }
         } else {
             body = bindStatics(validator.statics(),
-                    wrapMethodBindings(validator.helpers(), validator.entries().getFirst().function()), frontend);
+                    wrapMethodBindings(validator.helpers(), validator.entries().getFirst().function(), frontend), frontend);
         }
 
         // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
@@ -304,7 +313,7 @@ public final class ValidatorAssembly {
         }
 
         // 12. Wrap ALL methods as Let/LetRec bindings (target + helpers, dependency-ordered)
-        body = wrapMethodBindings(program.methods(), body);
+        body = wrapMethodBindings(program.methods(), body, frontend);
         // 14. Wrap static field initializers
         body = bindStatics(program.statics(), body, frontend);
         // 15. Wrap library methods as Let bindings
@@ -331,7 +340,7 @@ public final class ValidatorAssembly {
      * Wrap class/validator methods as Let/LetRec bindings in dependency order.
      * Uses Tarjan's SCC to handle forward references and mutual recursion.
      */
-    private static PirTerm wrapMethodBindings(List<Method> methods, PirTerm body) {
+    private static PirTerm wrapMethodBindings(List<Method> methods, PirTerm body, Frontend frontend) {
         if (methods.isEmpty()) return body;
 
         var bindings = new ArrayList<MethodDependencyResolver.NamedBinding>();
@@ -364,6 +373,9 @@ public final class ValidatorAssembly {
                         .toList();
                 throw new CompilerException(
                         "Mutual recursion with more than 2 methods is not supported: " + names);
+            }
+            if (frontend.methodBound() != null) {
+                for (var b : group.bindings()) frontend.methodBound().accept(b.name(), body);
             }
         }
 

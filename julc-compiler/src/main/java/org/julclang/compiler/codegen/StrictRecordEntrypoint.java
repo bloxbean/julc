@@ -13,10 +13,40 @@ import java.util.Map;
 public final class StrictRecordEntrypoint {
     private StrictRecordEntrypoint() { }
 
+    /**
+     * Told what the transform builds, for a frontend that keeps a side table keyed by term identity. It rebuilds the
+     * function's lambdas and every binder of its body, under the same names.
+     */
+    public interface Rebuilds {
+        Rebuilds NONE = new Rebuilds() {
+            @Override
+            public void rebuilt(PirTerm original, PirTerm copy) {
+            }
+
+            @Override
+            public void parameterRead(PirTerm.Var read) {
+            }
+        };
+
+        /** {@code copy} stands for {@code original}, with the same binders. */
+        void rebuilt(PirTerm original, PirTerm copy);
+
+        /** {@code read} is a new read of the root parameter of its name. */
+        void parameterRead(PirTerm.Var read);
+    }
+
     public static Result transform(
             PirTerm function,
             List<Root> roots,
             Map<String, PirType> namedDefinitions) {
+        return transform(function, roots, namedDefinitions, Rebuilds.NONE);
+    }
+
+    public static Result transform(
+            PirTerm function,
+            List<Root> roots,
+            Map<String, PirType> namedDefinitions,
+            Rebuilds rebuilds) {
         if (roots.isEmpty()) return new Result(function, List.of());
 
         var lambdas = new ArrayList<PirTerm.Lam>();
@@ -47,7 +77,7 @@ public final class StrictRecordEntrypoint {
                 rawFields.add(new PirTerm.Var(rawName, new PirType.DataType()));
                 PirTerm extraction = extraction(
                         new PirTerm.Var(root.parameter(), root.type()), i, field.type());
-                body = replace(body, extraction, new PirTerm.Var(cachedName, field.type()));
+                body = replace(body, extraction, new PirTerm.Var(cachedName, field.type()), rebuilds);
             }
 
             for (int i = record.fields().size() - 1; i >= 0; i--) {
@@ -77,14 +107,15 @@ public final class StrictRecordEntrypoint {
             }
             body = new PirTerm.Let(fieldsName,
                     builtin1(DefaultFun.SndPair, pair), body);
-            body = new PirTerm.Let(pairName,
-                    builtin1(DefaultFun.UnConstrData,
-                            new PirTerm.Var(root.parameter(), new PirType.DataType())), body);
+            var parameter = new PirTerm.Var(root.parameter(), new PirType.DataType());
+            rebuilds.parameterRead(parameter);
+            body = new PirTerm.Let(pairName, builtin1(DefaultFun.UnConstrData, parameter), body);
         }
 
         for (int i = lambdas.size() - 1; i >= 0; i--) {
             var lambda = lambdas.get(i);
             body = new PirTerm.Lam(lambda.param(), lambda.paramType(), body);
+            rebuilds.rebuilt(lambda, body);
         }
         return new Result(body, errors);
     }
@@ -122,45 +153,50 @@ public final class StrictRecordEntrypoint {
         return builtin1(DefaultFun.HeadList, current);
     }
 
-    private static PirTerm replace(PirTerm term, PirTerm target, PirTerm replacement) {
+    private static PirTerm replace(PirTerm term, PirTerm target, PirTerm replacement, Rebuilds rebuilds) {
         if (term.equals(target)) return replacement;
         return switch (term) {
             case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> term;
-            case PirTerm.Let(var name, var value, var body) -> new PirTerm.Let(name,
-                    replace(value, target, replacement), replace(body, target, replacement));
-            case PirTerm.LetRec(var bindings, var body) -> new PirTerm.LetRec(
+            case PirTerm.Let(var name, var value, var body) -> rebuilt(term, new PirTerm.Let(name,
+                    replace(value, target, replacement, rebuilds), replace(body, target, replacement, rebuilds)), rebuilds);
+            case PirTerm.LetRec(var bindings, var body) -> rebuilt(term, new PirTerm.LetRec(
                     bindings.stream().map(binding -> new PirTerm.Binding(binding.name(),
-                            replace(binding.value(), target, replacement))).toList(),
-                    replace(body, target, replacement));
+                            replace(binding.value(), target, replacement, rebuilds))).toList(),
+                    replace(body, target, replacement, rebuilds)), rebuilds);
             case PirTerm.Lam(var param, var type, var body) ->
-                    new PirTerm.Lam(param, type, replace(body, target, replacement));
+                    rebuilt(term, new PirTerm.Lam(param, type, replace(body, target, replacement, rebuilds)), rebuilds);
             case PirTerm.App(var function, var argument) -> new PirTerm.App(
-                    replace(function, target, replacement),
-                    replace(argument, target, replacement));
+                    replace(function, target, replacement, rebuilds),
+                    replace(argument, target, replacement, rebuilds));
             case PirTerm.IfThenElse(var cond, var yes, var no) -> new PirTerm.IfThenElse(
-                    replace(cond, target, replacement),
-                    replace(yes, target, replacement), replace(no, target, replacement));
+                    replace(cond, target, replacement, rebuilds),
+                    replace(yes, target, replacement, rebuilds), replace(no, target, replacement, rebuilds));
             case PirTerm.DataConstr(var tag, var type, var fields) -> new PirTerm.DataConstr(
                     tag, type, fields.stream().map(field ->
-                            replace(field, target, replacement)).toList());
+                            replace(field, target, replacement, rebuilds)).toList());
             case PirTerm.IntegerCase(var scrutinee, var branches) ->
-                    new PirTerm.IntegerCase(replace(scrutinee, target, replacement),
-                            branches.stream().map(b -> replace(b, target, replacement)).toList());
+                    new PirTerm.IntegerCase(replace(scrutinee, target, replacement, rebuilds),
+                            branches.stream().map(b -> replace(b, target, replacement, rebuilds)).toList());
             case PirTerm.PairMatch(var pair, var type, var first, var second, var body) ->
-                    new PirTerm.PairMatch(replace(pair, target, replacement), type, first, second,
-                            replace(body, target, replacement));
+                    rebuilt(term, new PirTerm.PairMatch(replace(pair, target, replacement, rebuilds), type, first, second,
+                            replace(body, target, replacement, rebuilds)), rebuilds);
             case PirTerm.ListMatch(var xs, var head, var tail, var nil, var cons) ->
-                    new PirTerm.ListMatch(replace(xs, target, replacement), head, tail,
-                            replace(nil, target, replacement), replace(cons, target, replacement));
-            case PirTerm.DataMatch(var scrutinee, var branches) -> new PirTerm.DataMatch(
-                    replace(scrutinee, target, replacement),
+                    rebuilt(term, new PirTerm.ListMatch(replace(xs, target, replacement, rebuilds), head, tail,
+                            replace(nil, target, replacement, rebuilds), replace(cons, target, replacement, rebuilds)), rebuilds);
+            case PirTerm.DataMatch(var scrutinee, var branches) -> rebuilt(term, new PirTerm.DataMatch(
+                    replace(scrutinee, target, replacement, rebuilds),
                     branches.stream().map(branch -> new PirTerm.MatchBranch(
                             branch.constructorName(), branch.bindings(), branch.bindingTypes(),
-                            replace(branch.body(), target, replacement), branch.patternVar())).toList());
+                            replace(branch.body(), target, replacement, rebuilds), branch.patternVar())).toList()), rebuilds);
             case PirTerm.Trace(var message, var body) -> new PirTerm.Trace(
-                    replace(message, target, replacement),
-                    replace(body, target, replacement));
+                    replace(message, target, replacement, rebuilds),
+                    replace(body, target, replacement, rebuilds));
         };
+    }
+
+    private static PirTerm rebuilt(PirTerm original, PirTerm copy, Rebuilds rebuilds) {
+        rebuilds.rebuilt(original, copy);
+        return copy;
     }
 
     private static PirTerm builtin1(DefaultFun fun, PirTerm argument) {

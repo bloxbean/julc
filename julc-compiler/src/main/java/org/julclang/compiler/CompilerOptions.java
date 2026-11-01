@@ -164,8 +164,8 @@ public class CompilerOptions {
     }
 
     /**
-     * Experimental, evidence tooling only (ADR-068 I1b): told each method a compilation lowers. It sees PIR and changes
-     * nothing, so a compilation's bytes do not depend on it. Removed with the option at M6.
+     * Experimental, evidence tooling only (ADR-068 I1b): told each method the JavaParser frontend lowers. It sees PIR and
+     * changes nothing, so a compilation's bytes do not depend on it. Removed with the option at M6.
      */
     public CompilerOptions setMethodObserver(LoweredMethodObserver methodObserver) {
         this.methodObserver = methodObserver;

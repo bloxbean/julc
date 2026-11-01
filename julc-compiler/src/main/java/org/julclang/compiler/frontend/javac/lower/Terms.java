@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac.lower;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.source.SourceLocation;
 
@@ -10,50 +11,41 @@ import javax.lang.model.element.Element;
 import java.util.IdentityHashMap;
 
 /**
- * The only code that builds a {@code Var}, {@code Lam} or {@code Let} for a source element (ADR-068 I13), and the only
- * recorder of source positions (I7). Both are side tables keyed by term identity, written while the term is built:
- * {@link PirTerm} carries neither, and nothing is renamed or located afterwards.
+ * The only code that builds a {@code Var} or {@code Lam} for a source element (ADR-068 I13), and the only recorder of
+ * source positions (I7). Both go in side tables keyed by term identity, written while the term is built: {@link PirTerm}
+ * carries neither, and nothing is renamed or located afterwards.
  */
 public final class Terms {
 
     private final JavacFacts facts;
     private final boolean sourceMaps;
     private final IdentityHashMap<PirTerm, SourceLocation> positions = new IdentityHashMap<>();
-    private final IdentityHashMap<PirTerm, Element> provenance = new IdentityHashMap<>();
+    private final Provenance provenance = new Provenance();
 
     Terms(JavacFacts facts, CompilationContext context) {
         this.facts = facts;
         this.sourceMaps = context.isSourceMapEnabled();
     }
 
-    PirTerm.Var var(Binder binder) {
-        return recorded(new PirTerm.Var(binder.name(), binder.type()), binder);
+    /**
+     * A read of {@code binder}, for {@code element}: what javac bound the name to, not what the scope answered, so I13's
+     * check compares two independent sources and a wrong lookup fails it.
+     */
+    PirTerm.Var var(Element element, Binder binder) {
+        var read = new PirTerm.Var(binder.name(), binder.type());
+        provenance.read(read, element);
+        return read;
     }
 
     PirTerm.Lam lam(Binder binder, PirTerm body) {
-        return recorded(new PirTerm.Lam(binder.name(), binder.type(), body), binder);
+        var lambda = new PirTerm.Lam(binder.name(), binder.type(), body);
+        provenance.binder(lambda, binder.name(), binder.element());
+        return lambda;
     }
 
-    private <T extends PirTerm> T recorded(T term, Binder binder) {
-        provenance.put(term, binder.element());
-        return term;
-    }
-
-    /** A binder the assembly built for {@code element}, whose source name it is (a static field or {@code @Param}). */
-    public void assembled(PirTerm binding, Element element) {
-        provenance.put(binding, element);
-    }
-
-    /**
-     * {@code rebuilt} is {@code function} with its lambdas built again, by the strict record transform, over the same
-     * parameters: they keep their elements. Nothing is renamed, so a later name cannot have changed.
-     */
-    public void rebuiltLambdas(PirTerm function, PirTerm rebuilt) {
-        while (function instanceof PirTerm.Lam original && rebuilt instanceof PirTerm.Lam copy) {
-            provenance.put(copy, provenance.get(original));
-            function = original.body();
-            rebuilt = copy.body();
-        }
+    /** A binder the assembly built for {@code element}: a static field's, a {@code @Param}'s or a method's. */
+    public void assembled(PirTerm binding, String name, Element element) {
+        provenance.binder(binding, name, element);
     }
 
     /** Records where {@code term} came from, when this compilation has a source map. */
@@ -67,8 +59,8 @@ public final class Terms {
         return positions;
     }
 
-    /** Each {@code Var} and binder built for a source element, to that element: I13's construction-time provenance. */
-    public IdentityHashMap<PirTerm, Element> provenance() {
+    /** I13's construction-time provenance. */
+    public Provenance provenance() {
         return provenance;
     }
 }
