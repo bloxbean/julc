@@ -190,15 +190,20 @@ class Adr068LoweringTest {
     }
 
     /**
-     * A row shrinks if it covers fewer methods, moves to a class that compares less, or leaves {@code javac-rejects}: javac
-     * stopped rejecting a source, which no rank can call a loss, since the classes above it are what a slice gains. And it
-     * shrinks if its class stays and its digest or provenance change: the row now pins something else, and a miscompile of a
-     * listed row reads just so. A provenance only gains by going from {@code fragment} to {@code same}.
+     * A row shrinks if it covers fewer methods, moves to a class that compares less, or leaves {@code javac-rejects} or
+     * {@code DIFFERENT-javac-rejects}: a rejection went, which no rank can call a loss, since the classes above are what a
+     * slice gains. A move into a listed class from another listed class or from {@code both-reject} is a shrink too: ranks
+     * do not tell those apart. And a row shrinks if its class stays and its digest or provenance change: it now pins
+     * something else, and a miscompile of a listed row reads just so. A provenance only gains by going from {@code fragment}
+     * to {@code same}.
      */
     private static boolean shrinks(String line, String now) {
         String[] was = line.split("\t", -1), is = now.split("\t", -1);
         if (covered(now) < covered(line) || Adr068Lowering.rank(was[1]) > Adr068Lowering.rank(is[1])) return true;
-        if (!was[1].equals(is[1])) return was[1].equals("javac-rejects");
+        if (!was[1].equals(is[1])) {
+            if (was[1].equals("javac-rejects") || was[1].equals("DIFFERENT-javac-rejects")) return true;
+            return LISTED.matcher(is[1]).matches() && (LISTED.matcher(was[1]).matches() || was[1].startsWith("both-reject"));
+        }
         boolean provenanceGained = was[4].equals("fragment") && is[4].equals("same");
         return !was[5].equals(is[5]) || !was[4].equals(is[4]) && !provenanceGained;
     }

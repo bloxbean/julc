@@ -520,6 +520,56 @@ class Adr068LoweringToolTest {
         assertEquals(0, shrunk(row("k", "not-ported", "0/2"), row("k", "i1a-identical", "2/2")), "a port is a gain");
     }
 
+    /** F1006: a gate rule's pin is a rejection: losing the rule reads as more coverage, and no rank can say otherwise. */
+    @Test
+    void aMoveOutOfAListedRejectionIsAShrink() {
+        String rejects = row("k", "DIFFERENT-javac-rejects", "1/1");
+        for (String kind : List.of("i1a-identical", "not-ported", "javac-rejects", "DIFFERENT-bytes", "both-reject")) {
+            assertEquals(1, shrunk(rejects, row("k", kind, "1/1")), kind);
+        }
+        assertEquals(0, shrunk(rejects, rejects));
+    }
+
+    @Test
+    void aMoveAmongListedClassesIsAShrink() {
+        for (String[] move : List.of(new String[]{"DIFFERENT-bytes", "DIFFERENT-provenance"},
+                new String[]{"DIFFERENT-bytes", "DIFFERENT-javac-rejects"},
+                new String[]{"DIFFERENT-javac-accepts", "DIFFERENT-rejection"},
+                new String[]{"both-reject", "DIFFERENT-javac-accepts"},
+                new String[]{"both-reject", "DIFFERENT-rejection"},
+                new String[]{"both-reject-javac-first", "DIFFERENT-javac-accepts"})) {
+            assertEquals(1, shrunk(row("k", move[0], "1/1"), row("k", move[1], "1/1")), move[0] + " to " + move[1]);
+        }
+    }
+
+    /** What a slice does: a port, a new rule, and a listed difference that goes. */
+    @Test
+    void aGainIsNoShrink() {
+        for (String[] move : List.of(new String[]{"not-ported", "i1a-identical"},
+                new String[]{"not-ported", "DIFFERENT-javac-rejects"},
+                new String[]{"reference-rejects-not-ported", "both-reject"},
+                new String[]{"reference-rejects-not-ported", "DIFFERENT-javac-accepts"},
+                new String[]{"DIFFERENT-bytes", "i1a-identical"},
+                new String[]{"DIFFERENT-rejection", "both-reject"})) {
+            assertEquals(0, shrunk(row("k", move[0], "1/1"), row("k", move[1], "1/1")), move[0] + " to " + move[1]);
+        }
+    }
+
+    /** F1009: a case newer than the frozen table has the reference this run computed, and is compared with it. */
+    @Test
+    void aRowNewerThanTheTableIsComparedWithTheRunsReference() {
+        var totals = new TreeMap<String, Integer>();
+        var differences = new ArrayList<String>();
+        Adr068EncodingsTest.compare("blueprint", Map.of("k", "aa"), Map.of(), Map.of("k", "aa"), totals, differences);
+        assertEquals(List.of(), differences);
+        assertEquals(Map.of("blueprint.equal, newer than the table", 1), totals);
+        Adr068EncodingsTest.compare("blueprint", Map.of("k", "aa"), Map.of(), Map.of("k", "bb"), totals, differences);
+        assertEquals(List.of("blueprint\tk\tbb\taa"), differences);
+        differences.clear();
+        Adr068EncodingsTest.compare("blueprint", Map.of("k", "aa"), Map.of(), Map.of(), totals, differences);
+        assertEquals(List.of("blueprint\tk\tno such layout in the reference\taa"), differences);
+    }
+
     /** F982: a listed row is pinned by its digest, and a miscompile of it changes nothing else. */
     @Test
     void aChangedDigestOfARowIsAShrink() {
