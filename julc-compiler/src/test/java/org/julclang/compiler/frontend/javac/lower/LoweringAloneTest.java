@@ -125,6 +125,22 @@ class LoweringAloneTest {
                 assertEquals(construct, assertThrows(NotPorted.class, lowered::term).construct()));
     }
 
+    /** The method is the API's and the receiver is not what its handler lowers, so the key must agree with both. */
+    @Test
+    void aSubtypeOfAnApiTypeDoesNotDispatch() {
+        withMethod("""
+                class P {
+                    sealed interface S extends org.julclang.core.types.JulcArray<java.math.BigInteger> permits A { }
+                    record A(java.math.BigInteger x) implements S {
+                        public java.math.BigInteger get(long index) { return x; }
+                        public long length() { return 1; }
+                    }
+                    static long m(S s) { return s.length(); }
+                }
+                """, new CompilerOptions(), (facts, lowered) -> assertEquals("a method of a subtype of an API type",
+                assertThrows(NotPorted.class, lowered::term).construct()));
+    }
+
     /** A field's initializer, where a type the subset rejects has not stopped the lowering first. */
     @ParameterizedTest
     @ValueSource(strings = {"long[] f = new long[]{1};", "byte[] f = {1};", "byte[][] f = new byte[][]{};"})

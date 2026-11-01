@@ -31,6 +31,7 @@ class JavacCallsTest {
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
             import org.julclang.core.types.JulcList;
+            import org.julclang.core.types.JulcMap;
             import org.julclang.ledger.PubKeyHash;
             import org.julclang.ledger.TokenName;
             import org.julclang.stdlib.annotation.NewType;
@@ -236,6 +237,18 @@ class JavacCallsTest {
         assertSame("static BigInteger m(long a) { return BigInteger.valueOf(a); }");
         assertSame("static BigInteger m() { return BigInteger.valueOf(5); }");
         assertSame("static BigInteger m(long a) { return BigInteger.valueOf(a + 1).add(BigInteger.ONE); }");
+    }
+
+    /** {@code JulcMap.of} is off-chain only: the reference's rejection, at the reference's place. */
+    @Test
+    void julcMapOfIsRejected() {
+        var members = "static boolean m(BigInteger a) { return JulcMap.of(a, a).isEmpty(); }";
+        var failure = rejected(members);
+        assertEquals("JULC0062", failure.code());
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
+                .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
+        assertEquals(reference.code(), failure.code());
+        assertEquals(reference.message(), failure.message());
     }
 
     @Test

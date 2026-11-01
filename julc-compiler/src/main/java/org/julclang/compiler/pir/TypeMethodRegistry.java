@@ -164,12 +164,6 @@ public final class TypeMethodRegistry {
         return Optional.of(registration.handler().handle(context, scope, args, scopeType, argTypes));
     }
 
-    /** The return type an exact key declares for {@code scopeType}, if the key has a lowering. */
-    public Optional<PirType> returnTypeExact(String typeKey, String method, PirType scopeType) {
-        var registration = registry.get(typeKey + "." + method);
-        return registration == null ? Optional.empty() : Optional.of(registration.returnType().resolve(scopeType));
-    }
-
     /** Protocol requirements of the lowering under one exact key. */
     public LoweringRequirements requirementsExact(CompilationContext context, String typeKey, String method) {
         Objects.requireNonNull(context, "context");

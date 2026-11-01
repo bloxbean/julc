@@ -46,11 +46,6 @@ final class Typing {
         return termTypes.infer(term);
     }
 
-    /** The type a typed dispatch declares for its {@code term}. */
-    void record(PirTerm term, PirType type) {
-        termTypes.record(term, type);
-    }
-
     /**
      * ADR-047, the one check of every boundary: a native value never crosses a differently typed boundary, and a byte
      * string, Data or a Data list never crosses a natively typed one. javac admits either only through a raw type.

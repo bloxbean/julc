@@ -260,9 +260,7 @@ final class Calls {
     private PirTerm dispatch(String key, String method, PirTerm scope, PirType type, Arguments arguments,
                              MethodInvocationTree tree) {
         requireAvailable(typeMethods.requirementsExact(context, key, method), tree);
-        var result = typeMethods.dispatchExact(context, key, method, scope, arguments.terms(), type, arguments.types())
+        return typeMethods.dispatchExact(context, key, method, scope, arguments.terms(), type, arguments.types())
                 .orElseThrow(() -> new CompilerException("No lowering for " + key + "." + method));
-        typeMethods.returnTypeExact(key, method, type).ifPresent(declared -> typing.record(result, declared));
-        return result;
     }
 }
