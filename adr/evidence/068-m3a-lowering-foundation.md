@@ -149,9 +149,9 @@ and tests. `first-construct` in the totals is the worklist: what stops the most 
 
 | First construct | Cases |
 |---|---:|
-| `VARIABLE` | 5,954 |
+| `VARIABLE` | 5,936 |
 | `LESS_THAN_EQUAL` | 2,173 |
-| `METHOD_INVOCATION` | 1,104 |
+| `METHOD_INVOCATION` | 1,122 |
 | `GREATER_THAN` | 225 |
 | `IF` | 215 |
 | `SWITCH_EXPRESSION` | 178 |
@@ -440,7 +440,7 @@ Garbage in the accepted table's class cell, `NEEDS A DECISION`, a duplicate key,
 
 J1, J4 and J8 survived the first pass, so the rule had tests only for calls and names: `SubsetRulesTest` gained operators, conditionals, `new`, constant variables with an expression, and a type inside a lowered initializer, and each then fails. J12 drops the flag, and the check then refuses every compilation (`JULC0089`), which is the point of it.
 
-**Key-based Value methods.** After a no-op control (stdlib 0/111, compiler 0/317), the 15 mutants of `lovelaceOf`, `add`, `subtract` and `negate` each fail `ValuesLibByKeyTest` or a test beside it, including a read by position on both paths, a key returned twice at both levels, presence by amount, and reversed order.
+**Key-based Value methods.** After a no-op control (stdlib 0/115, compiler 0/317), the 17 mutants of `lovelaceOf`, `add`, `subtract` and `negate` each fail `ValuesLibByKeyTest` or a test beside it, including a read by position on both paths, a second implementation of `lovelaceOf`, a key returned twice at both levels, presence by amount, and reversed order.
 
 **The older mutants, again at this head.** All 71 ran again at `8ff98e81` or later, or at `3da56ad3` for the seven whose anchors moved, and none survives. D12, A2, D19 and F1 fail the gate alone, as they did. Their counts differ a little from the tables above, since tests and fixtures were added; the tables above are kept as what `fbc37706` showed.
 

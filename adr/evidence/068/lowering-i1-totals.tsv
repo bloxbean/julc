@@ -19,9 +19,9 @@ coverage	distinct methods	159
 provenance	-	2
 provenance	fragment	57
 provenance	same	86
-first-construct	VARIABLE	5954
+first-construct	VARIABLE	5936
 first-construct	LESS_THAN_EQUAL	2173
-first-construct	METHOD_INVOCATION	1104
+first-construct	METHOD_INVOCATION	1122
 first-construct	GREATER_THAN	225
 first-construct	IF	215
 first-construct	SWITCH_EXPRESSION	178
