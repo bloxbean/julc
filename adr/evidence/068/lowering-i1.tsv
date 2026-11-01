@@ -3508,7 +3508,7 @@
 348f3da1d5f9daa830ca77ed6573edbd7a7daef8fd09af75f00480b194ce7908	not-ported	0/2	VARIABLE	-	-	
 3490cfc4a92eaa2c6109f65e817c22f6c8d98af616e8b9fc6907c0ed19db511b	not-ported	0/1	VARIABLE	-	-	
 34924b62560c0dbf98092ebdd447a9e143afe8a59b27f18199f9ec1539874d5b	javac-rejects	0/1	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-34942f7f2b502924794b197b0a0a88e49d79e4eb50270dd7efbc7b7f1a6d58ef	DIFFERENT-javac-accepts	0/0	-	-	e5d4377cc88beffb	null@0:0 Failed to parse method source source: (line 3,col 17) The source holds the unpaired surrogate U+D800. A UPLC string cannot hold one, and javac reads th...
+34942f7f2b502924794b197b0a0a88e49d79e4eb50270dd7efbc7b7f1a6d58ef	DIFFERENT-javac-accepts	0/0	-	-	240224afd4df0a20	null@0:0 Failed to parse method source source: (line 3,col 17) The source holds the unpaired surrogate U+D800. A UPLC string cannot hold one, and javac reads th...
 3495b404dd2d7780731bf8ff83f86d4713e91019c2ca0ac62bebfa35dacbdfa4	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 34968b992fe3852d84b19c247086459cf7a394df6bf8ff921cba94eb84dcedab	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 349a1aca691e912158d494959bdda5bf3db392b5babcbcf5d5d6645a8b82a902	not-ported	0/37	METHOD_INVOCATION	-	-	
@@ -3808,7 +3808,7 @@
 38ce33a63e803cb6afc1656405228ea4aa28d634ac800be524afbb32590b3771	not-ported	0/29	VARIABLE	-	-	
 38d259252ff39ff6a2656787bc9e3a41796bd7b6c4dac74f67edc61990250bbd	not-ported	0/18	VARIABLE	-	-	
 38da1e449a845a1450e9e1d60a4aea20bb9ce0923b79e529232d663555973145	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-38dcf09e76c2035ab20fdff2f3f2de8697b3e4985076de1a4668a177d2d2e155	DIFFERENT-javac-accepts	0/0	-	-	c4a49a1142f5a898	null@0:0 Failed to parse method source source: (line 1,col 55) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JL...
+38dcf09e76c2035ab20fdff2f3f2de8697b3e4985076de1a4668a177d2d2e155	DIFFERENT-javac-accepts	0/0	-	-	92f4dbbbe793408d	null@0:0 Failed to parse method source source: (line 1,col 55) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JL...
 38e0a361368e15c82b3ac197c48191f596895d1f6eb13e21cda14638e8dd4138	javac-rejects	0/28	-	-	e04c5bfbfb3755a2	JULC0085@8:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 38e216f65ce1c3f451b4bad197e4a370109f4c9ef0ec8adaa3b5e40a5cdb6b08	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 38e6af323e540cf257c4b0faf710319cd7346b682cda4f075896ada657bdd8e4	not-ported	0/2	LESS_THAN_EQUAL	-	-	
@@ -5582,7 +5582,7 @@
 52931b281fb077632d6dcc8d1e647a1495cebc98e04d17e92146c68c7a6075dd	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 52955f0a64c6cbd55e0a444c4d5044b51eae59ccb236c8d7e39684ae3100f032	both-reject	0/0	-	-	56e8723b26173362	JULC0008@7:5 @MintingValidator entrypoint must have 2 parameters (redeemer, scriptContext), found 3 in BadMint.validate(). Did you mean @SpendingValidator?
 5297cf059fbf10bb6d20cde8be1691e0f04ea82503a7c2e98327e268d8ddab61	not-ported	0/1	VARIABLE	-	-	
-529d5cccaac5a375d9850a7f3fa2220f10cbbdd66ac9a7d4ce3b19bd76eee5b9	DIFFERENT-javac-accepts	0/0	-	-	2dd840734d63bdca	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
+529d5cccaac5a375d9850a7f3fa2220f10cbbdd66ac9a7d4ce3b19bd76eee5b9	DIFFERENT-javac-accepts	0/0	-	-	f83e3b2cdc3f648b	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
 529ebb6570390e228e78b838109cc75275aef5b4648c3367fc7ae89ca3453aea	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 52a5a999c88b5a26b6759ff144006acad97445df20d7a705a891bd19cb215d88	not-ported	0/29	METHOD_INVOCATION	-	-	
 52a780e941751c8c69a694450a023a22e43a19aaf86ace8be16120dd97195660	not-ported	0/1	VARIABLE	-	-	
@@ -5813,7 +5813,7 @@
 55da8dcb28ec19cb1c6d9d0fa68b9e8548fae8c79ae4a19d16b7d3875ae1b7ab	not-ported	0/1	VARIABLE	-	-	
 55dbeb0c92b15119630b2fb4027b5842a351236615ae00d72cef2d19a8c8bd49	not-ported	0/3	LESS_THAN_EQUAL	-	-	
 55f73ef134555039710b5a7d9c6e25b52fbd991e0c0ab05f9c4083e010922e4c	not-ported	0/155	VARIABLE	-	-	
-55f73f559d0dfc61630c4bf3360e87fac8b508ed032b674519848d874e3081a4	DIFFERENT-javac-accepts	0/0	-	-	9f34c106edfa2926	null@0:0 Library source must not contain validator annotation @SpendingValidator: FakeValidator / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026bad...
+55f73f559d0dfc61630c4bf3360e87fac8b508ed032b674519848d874e3081a4	DIFFERENT-javac-accepts	0/0	-	-	cda85e0f2efae9d2	null@0:0 Library source must not contain validator annotation @SpendingValidator: FakeValidator / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026bad...
 55f7c91a52a5f4f259a3527c3426e1fd1554fc72ff990298e9f524e69dd4adfa	both-reject-javac-first	0/1	-	-	9f09c7a1f3adb8c9	JULC0085@14:16 the switch expression does not cover all possible input values (compiler.err.not.exhaustive)
 55fc5d5e4085abdca5bcbeda770d7146ec49bab44213d083ef37a8dd2dcbe53b	not-ported	0/12	VARIABLE	-	-	
 5600abde66e8a048868105f5c020bf7e6e8df236a65e86eadb239a15cada3452	not-ported	0/3	LESS_THAN_EQUAL	-	-	
@@ -6442,7 +6442,7 @@
 5fb08128e078ed55d25293924b7a8cd183d35eb9343761611304578811f3e55b	not-ported	0/29	VARIABLE	-	-	
 5fb11ffed4a2f2a2ca050ad05e299528028f26759a144e480fe568773c98ffb8	not-ported	0/31	METHOD_INVOCATION	-	-	
 5fb458827517e1b877a0ec7739799d518d42bba09867ddca85b6dea9053786f7	not-ported	0/18	VARIABLE	-	-	
-5fb8c54085461a277e9206d18ba196f6adc5c7e7a5283c40060cfa3841d1dca9	DIFFERENT-javac-accepts	0/0	-	-	39fbcb941e0ff027	null@0:0 Failed to parse method source source: (line 3,col 18) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JL...
+5fb8c54085461a277e9206d18ba196f6adc5c7e7a5283c40060cfa3841d1dca9	DIFFERENT-javac-accepts	0/0	-	-	2acd10f3486cdff7	null@0:0 Failed to parse method source source: (line 3,col 18) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JL...
 5fb98d3c688501c1c9872990370da2a0d02d71e5ed9d2b2327edfa6386f91f3c	not-ported	0/2	LESS_THAN_EQUAL	-	-	
 5fc78874917a4346dece1ad74902da33e88be746c4070c664dc77582e6c58750	not-ported	0/1	VARIABLE	-	-	
 5fc904b29f01b33d90a8a29715d4ec8e4a8607e26f07000511c7e2ce5aa587b3	javac-rejects	0/1	-	-	ab0a1b15196d76ea	JULC0085@4:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -6920,7 +6920,7 @@
 669038345332cba8960090355b5b6af0e63fd1088538fe89ef84f7eff8605008	not-ported	0/1	VARIABLE	-	-	
 6691aee7f3cee5449f0c3f2bced60182c6536bac001f88cbde8916c134ec933a	not-ported	0/3	LESS_THAN_EQUAL	-	-	
 6693358061c9b1b918882aa0e89b1215e15a1d3d2d663f16925192c83dc44334	reference-rejects-not-ported	0/0	SWITCH_EXPRESSION	-	ff97d75dda2e5347	null@0:0 Before.java:11:17: Reassignment of switch case-pattern variable 'd' is not supported   Hint: Copy the pattern variable to a fresh local accumulator ins...
-6694977db9add0afd0204397d22ebb4519a9b8a9b70c25efbd12402bb2fc2cc9	DIFFERENT-javac-accepts	0/0	-	-	f7a7a0c42c81e712	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
+6694977db9add0afd0204397d22ebb4519a9b8a9b70c25efbd12402bb2fc2cc9	DIFFERENT-javac-accepts	0/0	-	-	c58d847f02b41d99	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
 669826e05a5510861e0313033796173f4372b7050379a20a6f7d27dca64cc5aa	reference-rejects-not-ported	0/28	WHILE_LOOP	-	f14cb3e19ca27ce4	JULC0063@10:26 break is not supported in a loop that updates no variable declared before the loop
 66997932cf59ec56436face4fdcd4ad0522454679d17cd1f805852d2a24fe1a6	not-ported	0/2	LESS_THAN_EQUAL	-	-	
 669c57b3c8dfb549108079f1fdc3a7a451aba933f8ac0119f3a397bf83eaaeeb	javac-rejects	0/1	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
@@ -7843,7 +7843,7 @@
 74e5a966c93dd54c6943c199d1270c8d978497f813ffa8dd2898202a87016495	both-reject-javac-first	0/0	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 74e5fe4ab8d8f6dcde78ee0a4ff5c943ed4683c9aaaa76f097342d4f1bce288e	not-ported	0/1	VARIABLE	-	-	
 74e86b24269170cbb1c450d27f0eac056dedf8c84ce76e52b156df681b3bfcb2	not-ported	0/1	VARIABLE	-	-	
-74e9044ec7564dbee47d98ce5fbb885401bb82e5c05737aa31403200c9702040	DIFFERENT-javac-accepts	0/0	-	-	f34314e5a137bece	null@5:1 Duplicate record type 'Datum' found across compilation units / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647981557111c6b389f34644:...
+74e9044ec7564dbee47d98ce5fbb885401bb82e5c05737aa31403200c9702040	DIFFERENT-javac-accepts	0/0	-	-	81db6f59110f9540	null@5:1 Duplicate record type 'Datum' found across compilation units / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647981557111c6b389f34644:...
 74eb1cdbf1d8d13415a2cebd22f1198abdfe97ff82e17656100d89410d801a46	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 74f0b2509eac686e0414203c7f34c54bea635a98cfe86031c05477fc9f868935	not-ported	0/1	VARIABLE	-	-	
 74f611a85f669ee0eabb7773eb937df1c7376a2af8010ad045bec6e467765b71	reference-rejects-not-ported	0/28	VARIABLE	-	3af1f868c6f32084	JULC0064@12:13 A nested for-each loop is not supported in a loop that contains break and updates one variable declared before the loop
@@ -7982,7 +7982,7 @@
 76d02fd2049916701b17c571cdf64f909ccc80c5dae4b861b6cd8feb761b4770	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 76d21a0ee1e34316f17da9e983011aae36ffbe7d9467688b4cd5de7b8501c70a	javac-rejects	0/5	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 76d3862b1bc27165aed794a27cc6f39e3e4b218a3c50faeff3d0ef9d2bf44f40	javac-rejects	0/2	-	-	d6ae426e7ce411b8	JULC0085@2:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-76d3d9768c93d079da28087d72680cb522102125b9b2aaf05b327cef258c7bff	DIFFERENT-javac-accepts	0/0	-	-	117f72d7e7985cf8	null@0:0 Library source must not contain validator annotation @WithdrawValidator: BadLib / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647981...
+76d3d9768c93d079da28087d72680cb522102125b9b2aaf05b327cef258c7bff	DIFFERENT-javac-accepts	0/0	-	-	19d6e6704e197944	null@0:0 Library source must not contain validator annotation @WithdrawValidator: BadLib / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647981...
 76d71334ca2ccd430b3d8fc49f3c0a738210d372c721c2464571f031c3e0b880	javac-rejects	0/59	-	-	ab0a1b15196d76ea	JULC0085@4:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 76d7e64c0881d1c62734d5cc40db1e1cc55137713dbe577f8f976f7a5e313a90	not-ported	0/1	VARIABLE	-	-	
 76da069cdb1f8c6c6ec6c761ecd337a4b274df6d782b612ccd6d55d779f7294d	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
@@ -8088,7 +8088,7 @@
 783b06adf67ec8de572cc07f8527333d899544b4e3e233d4828f31061e4e8a54	not-ported	0/18	VARIABLE	-	-	
 783d4307fe183bb56c494187a0dcd90d6692f04b3cb23e60e1b80b8026724674	both-reject	0/0	-	-	2fecfddd2959444b	JULC0091@11:56 A type argument of Tuple3 needs a Data encoding of the native array Array[Integer], which has none
 783f0ee6f7757fbfebe43892e96dd252ff3939131d791b3a744a2c29451844dc	not-ported	0/1	VARIABLE	-	-	
-7843985a74f500b60e3dd003b0f551597c4366852ba5e966610f69cdec421318	DIFFERENT-javac-accepts	0/0	-	-	574dc226d5f49e37	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
+7843985a74f500b60e3dd003b0f551597c4366852ba5e966610f69cdec421318	DIFFERENT-javac-accepts	0/0	-	-	d4efead7309cef25	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
 7847667218d87c7299f20cbf073739a12240e5fec665f93d24ff548700c4caf3	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 7849115cc0e50441c97fa3064b50a7b2a0b81663e898e066bcd536633723bc3a	not-ported	0/1	VARIABLE	-	-	
 785876a9a9ef186f9552a531dfaa8eab4cc1eb6b07b24c03b1a171eeea66da68	not-ported	0/18	VARIABLE	-	-	
@@ -8186,7 +8186,7 @@
 79cfde46d274782617105055a50c7a1105c3d6929408f6eb54634c92de8fa3e8	not-ported	0/1	VARIABLE	-	-	
 79d0c6e260065494251292f2b8660e65d9f0fe77f2e2c0abb660df9eca765078	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 79d2f37b1255fc6b07dc1551386e0c2061644dd5b0f11cad8e4a94ee760fe757	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
-79d96800388cedd24a4ffd1b8f40bbbaa17705d1c92837ca5517d4679d315cf2	DIFFERENT-javac-accepts	0/0	-	-	2ae50833b4c910ce	null@0:0 Library source must not contain validator annotation @MintingValidator: FakePolicy / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647...
+79d96800388cedd24a4ffd1b8f40bbbaa17705d1c92837ca5517d4679d315cf2	DIFFERENT-javac-accepts	0/0	-	-	5ebff45ea1ebdb23	null@0:0 Library source must not contain validator annotation @MintingValidator: FakePolicy / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647...
 79d9d159facf16b87e74e8f49e407dffb23e8689ee752c4950dff9bb737dbb3e	not-ported	0/29	VARIABLE	-	-	
 79de54900da95be55234f9d2f663f8018913237001bbc3043812822201b2c786	not-ported	0/1	VARIABLE	-	-	
 79e778cd5ad36c182e3f051325300fbd037111d640df4bb5ad11b5ca878c8095	javac-rejects	0/29	-	-	a2543d5e75523742	JULC0085@10:22 incompatible types: java.math.BigInteger cannot be converted to long (compiler.err.prob.found.req)
@@ -8274,7 +8274,7 @@
 7b3ed7bcf0cf9e02dcb2f5b2538ca80a47f3b98962652484630afa3aafd43809	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 7b487842ee9ceaac82a5141f63880ca195fdbb0b1a60f26c6e423a0ede06f5a3	javac-rejects	0/4	-	-	8f284ecfab880657	JULC0085@9:28 incompatible types: int cannot be converted to java.math.BigInteger (compiler.err.prob.found.req)
 7b4a50cc94a394f083f2d30ed975e341ee1e441557c112def2db6a1977cb8525	not-ported	0/3	LESS_THAN_EQUAL	-	-	
-7b58b9826f3d924d6b34d0df00105783b01fe016e94a617bb16559935b5b6f5e	DIFFERENT-javac-accepts	0/0	-	-	84fbcb031d1e1be2	JULC0013@14:5 @Param type 'BytesData' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpr...
+7b58b9826f3d924d6b34d0df00105783b01fe016e94a617bb16559935b5b6f5e	DIFFERENT-javac-accepts	0/0	-	-	4c108dbae42454c7	JULC0013@14:5 @Param type 'BytesData' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpr...
 7b5a32386c5123b31d96748fccab9ed2af18eb65dd935f02cd9cd5645cd51f85	not-ported	0/1	VARIABLE	-	-	
 7b5f4bae541b17c0611b9d8a7e6a9fb408968e36099cc6568021c0fef1c19eeb	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 7b60097679e9a3c178b5ec89372811e6a9b84bf83bfd66463405b4dba2f4a98e	not-ported	0/3	LESS_THAN_EQUAL	-	-	
@@ -9387,7 +9387,7 @@
 8c13ce1e97e40770bfd56020a0f73313e681fb48682c0d3247aa566f46a64951	javac-rejects	0/1	-	-	88de9a69ebf3466a	JULC0085@15:27 cannot find symbol   symbol:   method value()   location: variable n of type java.math.BigInteger (compiler.err.cant.resolve.location.args)
 8c14b276669ca40b43aea4bfb9297008097bfa92542a947948addf44e2551e26	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 8c14cf94d6cab328d09ee2b92a331b27f4d705af28b3d180eacdbf0c207d3c1e	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
-8c15a5e33feb6b286dc7aa79ad408174d3288b1761ce692237986559e972bfeb	DIFFERENT-javac-accepts	0/0	-	-	22931d24310e1430	null@0:0 Failed to parse method source source: (line 3,col 18) The source holds the unpaired surrogate U+D800. A UPLC string cannot hold one, and javac reads th...
+8c15a5e33feb6b286dc7aa79ad408174d3288b1761ce692237986559e972bfeb	DIFFERENT-javac-accepts	0/0	-	-	9caa7275a948bc58	null@0:0 Failed to parse method source source: (line 3,col 18) The source holds the unpaired surrogate U+D800. A UPLC string cannot hold one, and javac reads th...
 8c15a78b57b23a4893a49e3498d6d7ea8e917621ade49694d0092d9643878864	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 8c1666d88c4ac0e1e07b93b46e9463502e39093ac659031a597910482831665e	not-ported	0/18	VARIABLE	-	-	
 8c17950134f2c07582058efdf80816d2978843b2919d9a0929cf33e17ecc5379	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
@@ -9646,7 +9646,7 @@
 9037bb567918e9f397371b9da5548e92b8c60e091d42af7f0c0ebd5eb932ddee	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 9038a54fe498ebada4a5b022d385e91f3c00dc5d5d181fb23a2ad5a92b502e3b	javac-rejects	0/18	-	-	89be7c314269ed0b	JULC0085@24:62 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 9039ae18775862dfbf9b19d92d07d92be752521825aea5b8234a98fbdf4e6ef2	both-reject-javac-first	0/47	-	-	9d2f5efa35db5fc7	JULC0085@14:181 incompatible types: bad type in conditional expression     org.julclang.core.types.JulcG2 cannot be converted to org.julclang.core.types.JulcG1 ...
-903db48e74936a69ed96677fbe3ab674ff8754ae7e8ef02dcf623ca5cb93faf7	DIFFERENT-javac-accepts	0/0	-	-	f34314e5a137bece	null@5:1 Duplicate record type 'Datum' found across compilation units / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647981557111c6b389f34644:...
+903db48e74936a69ed96677fbe3ab674ff8754ae7e8ef02dcf623ca5cb93faf7	DIFFERENT-javac-accepts	0/0	-	-	81db6f59110f9540	null@5:1 Duplicate record type 'Datum' found across compilation units / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELINE A:a026badc647981557111c6b389f34644:...
 903e9150e6f367e860f27bcda9e8b7675ce65235ab1e233165cc2b0caae19885	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 90403b182c87a747e6b2529308896c075a5cb407c10abe4a03882f6e99ef0c8c	not-ported	0/1	VARIABLE	-	-	
 904046561f4b2de82e31743fafaad344b75ded23d7d9ba305c53577fe0738bdf	both-reject-javac-first	0/0	-	-	00ec70688750d821	JULC0085@12:41 incompatible types: org.julclang.core.PlutusData.IntData cannot be converted to boolean (compiler.err.prob.found.req)
@@ -9660,7 +9660,7 @@
 904d0ce4b10eb33e0540054fc9fc2f47fb84c51e9e5fb1d176c6cace05ef419e	not-ported	0/1	VARIABLE	-	-	
 904f51a1975a2460d6714e6ae6d74134c96018533f7a6773b1d43d31e0f5c383	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 9050391cc640f28cf35408c0b61265306a5399357e9ae5fd64ea74900bd6d5dc	not-ported	0/2	LESS_THAN_EQUAL	-	-	
-9052357d392fab35680d1e721b2a53f725ef1f8e260b54f7030c7fa255e79743	DIFFERENT-javac-accepts	0/0	-	-	70d5c43634b705ab	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
+9052357d392fab35680d1e721b2a53f725ef1f8e260b54f7030c7fa255e79743	DIFFERENT-javac-accepts	0/0	-	-	4481526e6e766aa0	null@0:0 Failed to parse method source source: (line 1,col 61) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
 90585e08c2a919ffe4715a92140cb7fbde5434cdaac59b261d2dcb9cf8bbb1ff	not-ported	0/2	LESS_THAN_EQUAL	-	-	
 905f1fe813e1b4473e1b674677d0f96f33f4bebe45c1fc4608ff9e8b68335139	reference-rejects-not-ported	0/1	GREATER_THAN	-	c4801789a430b7a7	JULC0072@15:29 Invalid guard on 'case A x0 when ((S) (Object) new A(n)) instanceof A': '(S) (Object) new A(n)' casts to a reference type, and JuLC erases the ca...
 906091217e7a12de9fad084e2a1141c1587b944a9df381aea82980a531686302	both-reject-javac-first	0/1	-	-	ec25a4b9c858eb60	JULC0085@17:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
@@ -10524,7 +10524,7 @@
 9cddeeb2c109e7af12c9ba93a5ecbe6aaa933888140377911f3892de185bfc1f	javac-rejects	0/29	-	-	25f7ce3d582686b3	JULC0085@12:44 incompatible types: java.math.BigInteger cannot be converted to long (compiler.err.prob.found.req)
 9ce4debcd624f6d5f85b8ca0ee22432de3b20da8870c2607636c73b2796102f3	not-ported	0/36	VARIABLE	-	-	
 9ce5e74c2f86b627f8bd956d94871531d6559e7f278436b485843536b1a70c5e	javac-rejects	0/2	-	-	ab0a1b15196d76ea	JULC0085@4:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-9cf0e1d4b543ca64c4de220db4b28778c5992c042d96aea075d09b6d796f0e57	DIFFERENT-javac-accepts	0/0	-	-	17b06870d67770d6	null@5:1 Duplicate record type 'com.myapp.Bid' found across compilation units / NONE A:cb69c129e1c91c61f52b9f80124f48ce:37; BASELINE A:c1cd083d5353b78a6337679b3...
+9cf0e1d4b543ca64c4de220db4b28778c5992c042d96aea075d09b6d796f0e57	DIFFERENT-javac-accepts	0/0	-	-	87ebde70e663734c	null@5:1 Duplicate record type 'com.myapp.Bid' found across compilation units / NONE A:cb69c129e1c91c61f52b9f80124f48ce:37; BASELINE A:c1cd083d5353b78a6337679b3...
 9cf84cb14ca47bbee8b2b397dfee804f50273c3d32c317cdf2ef82fb8f1cceb2	not-ported	0/1	VARIABLE	-	-	
 9cf9f12767db8e2c52c44eca8abf277904e93c713a810349222fb67dc74ef935	not-ported	0/5	VARIABLE	-	-	
 9cfb95682524050570b94bb631fa973a9562c2462043c5a4dae073b215ab32ee	not-ported	0/29	VARIABLE	-	-	
@@ -11913,7 +11913,7 @@ b241f418de7d844b18b0c3ace402b924250c53a08b561e7ffc0526ddbe9eb5d0	not-ported	0/1	
 b243380731ed13d7c6738270f490cab76b79d1848e8b3bb184761d9617cf83b0	reference-rejects-not-ported	0/0	VARIABLE	-	e4cc1999705fd939	JULC0091@13:29 The value of 'xs.toArray()' needs a Data encoding of the native array Array[Integer], which has none
 b2466691556b7599cc80d68a4307dc4c7859af03ed25c21fb1501c2af6e9c01d	not-ported	0/2	LESS_THAN_EQUAL	-	-	
 b2495ac013410ed8c7eff44069d8525dc38720bf32df26a53fd5f2bcd89e92a2	both-reject-javac-first	0/0	-	-	b4a03afada51c77a	JULC0085@9:157 cannot find symbol   symbol:   variable p   location: class Loops (compiler.err.cant.resolve.location)
-b24bd9d4ebafba21812cfbabea166b97509356fb9606ed547bb88a087f0a7d38	DIFFERENT-javac-accepts	0/0	-	-	17b06870d67770d6	null@5:1 Duplicate record type 'com.myapp.Bid' found across compilation units / NONE A:cb69c129e1c91c61f52b9f80124f48ce:37; BASELINE A:c1cd083d5353b78a6337679b3...
+b24bd9d4ebafba21812cfbabea166b97509356fb9606ed547bb88a087f0a7d38	DIFFERENT-javac-accepts	0/0	-	-	87ebde70e663734c	null@5:1 Duplicate record type 'com.myapp.Bid' found across compilation units / NONE A:cb69c129e1c91c61f52b9f80124f48ce:37; BASELINE A:c1cd083d5353b78a6337679b3...
 b24c773f689b244a7db7270cd697ddecc8c30299aadea57734e523c1a2fad02c	not-ported	0/18	VARIABLE	-	-	
 b254026b1da956618ad107af78eada3dd387099785cc092f2587638530de3b89	reference-rejects-not-ported	0/0	TRY	-	b2d9234d1321d47e	JULC0015@7:9 try/catch is not supported on-chain
 b25655f5f9c90b6ff6e1cc6b1f787c2011043131c87abec2eda49220766e7943	not-ported	0/1	VARIABLE	-	-	
@@ -12527,7 +12527,7 @@ bbb9f457209bdbc3b58e12e8ad121ac19ec6990faafd1a7073f2fe97ca547214	not-ported	0/2	
 bbc2dc29ae63ea1d76902a244c32743eaeb96a3af351ec3a832790583d1b1771	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 bbc706bae3380655cbc51602d6f59baf7c206b6bb5b433cee9ab797578a5b0b0	javac-rejects	0/1	-	-	cc07d5a49c7befa6	JULC0085@7:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 bbc9831a12dedefdb7deb89a3e84205c71f1e1af82d3714208849a6a7c8ce1e3	not-ported	0/1	VARIABLE	-	-	
-bbcd68d4f88a48a5c712fa646d7d37b760e741b101b25983c2bfed3ae3dc83f0	DIFFERENT-javac-accepts	0/0	-	-	16a6ee1f167d1125	null@0:0 Class ConfusedLib must not combine @OnchainLibrary with validator annotation(s): @MintingValidator / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELI...
+bbcd68d4f88a48a5c712fa646d7d37b760e741b101b25983c2bfed3ae3dc83f0	DIFFERENT-javac-accepts	0/0	-	-	9ef630c7873127e8	null@0:0 Class ConfusedLib must not combine @OnchainLibrary with validator annotation(s): @MintingValidator / NONE A:039f6eb1dc5a1c4aa6a96168f3f9ce6a:92; BASELI...
 bbd3db7c458fbdec5f634624dce6a5b14639d57aa51d7b6c7e51a0c0a7e5c391	javac-rejects	0/88	-	-	ab0a1b15196d76ea	JULC0085@4:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 bbd708addd41f048ba262268e42a8608cff20eeb9a0fc3e5f70d0c74c539802f	not-ported	0/1	VARIABLE	-	-	
 bbd84532f1aac4e33f1c9bbf69220084f6d33df308c569e6db54b094a1f4740a	reference-rejects-not-ported	0/0	VARIABLE	-	fc24440752a3cabe	JULC0072@11:43 Invalid guard on 'case A x when n * 2 > 0': 'n * 2' is int or long arithmetic, which JuLC evaluates without Java's overflow (ADR-062 T6); use Big...
@@ -14313,7 +14313,7 @@ d64faa9199291c88ea5e2f31f107b47a64365afaffdad88c070525549ae0c69b	not-ported	0/18
 d65560cf3d2e731969d0fc5014767c61ee80ee2ca85eb4f7c6cf47d77f388ad3	not-ported	0/1	VARIABLE	-	-	
 d65bd4cbd43dfb895408922b4ba4274029dc14217d19dbd592d7e13991a918e5	not-ported	0/1	VARIABLE	-	-	
 d65e9fc47d118cb3cd0e80293fe0e08161fee50e69e6bf2e3ff7003de9697b69	not-ported	0/2	LESS_THAN_EQUAL	-	-	
-d662dbcaf9e04a79b5c578b7b16f130347a14aaac0bfc65fa024eed7b9abb9bb	DIFFERENT-javac-accepts	0/0	-	-	193085a0065a7086	null@0:0 Failed to parse method source source: (line 3,col 23) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
+d662dbcaf9e04a79b5c578b7b16f130347a14aaac0bfc65fa024eed7b9abb9bb	DIFFERENT-javac-accepts	0/0	-	-	e73f34e44c5b4c03	null@0:0 Failed to parse method source source: (line 3,col 23) A backslash written as a Unicode escape is followed by raw backslashes and u. javac counts the es...
 d665615120809bea9efdba60475490ad9d175a0a843fa4e6ae8e1bdfdb003e46	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 d6668bad8ecc1e0ec4c0fc1b8335c9c3aabe77307f9012d329e8644b3a5fa42f	not-ported	0/2	METHOD_INVOCATION	-	-	
 d66725c8b77191e1fd324c90d3e1f6272b34f854ff5012c500ad112c7df1a121	not-ported	0/2	LESS_THAN_EQUAL	-	-	
@@ -15933,7 +15933,7 @@ ef375ef53c3be0b9b7aa3e4d204586f4d31a39178759baf92748e40665a188bf	javac-rejects	0
 ef3d3f13a30237b9a14fb0d5e038fc7b102d10de8fdc15fd257039e4860af9ce	javac-rejects	0/1	-	-	b10696f4eeec7bbb	JULC0085@1:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 ef3db3b54d0290762f7e5ecc2a8805fb16d58d81cdbe2ab31a4ddfd91182eb62	javac-rejects	0/1	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 ef3e07f2024a05543d58d3a41fa46ca2f3592eca52d6e0526d8952566c54f43c	not-ported	0/3	LESS_THAN_EQUAL	-	-	
-ef3e1b3fb165245f08db3c45dca47f0a0541ecf93cb2d5fcc8ef5857ed0f1443	DIFFERENT-javac-accepts	0/0	-	-	4af59ed693406d08	null@0:0 Failed to parse method source source: (line 1,col 55) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JL...
+ef3e1b3fb165245f08db3c45dca47f0a0541ecf93cb2d5fcc8ef5857ed0f1443	DIFFERENT-javac-accepts	0/0	-	-	3f1e88534a2d0a20	null@0:0 Failed to parse method source source: (line 1,col 55) Illegal Unicode escape: a backslash and u must be followed by four hex digits 0-9, a-f or A-F (JL...
 ef41f0006584b678978af8b30a0bb4d6180807c68d065348d65bf9b4bfeaee9a	both-reject-javac-first	0/0	-	-	aa36b4abd12514da	JULC0085@3:22 illegal unicode escape (compiler.err.illegal.unicode.esc)
 ef475eb179bb4b9ee87d35b31df53fcfcb5fe62831ae2aaa23717f026b23e0f1	javac-rejects	0/18	-	-	ee4aa49f8b27fb43	JULC0085@24:81 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 ef4d9f8f32f1017e073cb3ba29e6160cd85d4ab989e787b97f31e4650a47dd6d	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)

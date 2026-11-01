@@ -55,8 +55,9 @@ the rejection-site catalogue and grows with the javac frontend.
 | Rejection sites: covered / not from source / uncovered | 117 / 29 / 0 | 117 / 37 / 0 |
 | Harness runs | 1,869 | 1,873 |
 | Run × level verdicts: `AGREE` / `MISMATCH` / `REJECTED` / `INCONCLUSIVE` / `CRASH` | 7,064 / 184 / 220 / 8 / 0 | 7,076 / 184 / 220 / 8 / 4 |
+| Recorded evaluations replayed: agree / matched, not replayed / unmatched | 1,202 / 5,982 / 15,657 | 1,197 / 5,966 / 15,678 |
 
-The rejection inventory's one row: `ValuesLib` has three new helpers and two fewer, and each is a row of the exports the provider cannot name. The three rule codes are in the sites' "not from source" column, since none is a rejection with the gate off.
+The rejection inventory's one row: `ValuesLib` has three new helpers and two fewer, and each is a row of `stdlib:all`'s exports the provider cannot name. The three rule codes are in the sites' "not from source" column, since none is a rejection with the gate off. 21 recorded evaluations no longer match a program: a recording holds the program it ran, and a case that compiles `ValuesLib` now has another one.
 
 ## The B1 → B2 differences, classified (D13)
 
@@ -67,9 +68,10 @@ The rejection inventory's one row: `ValuesLib` has three new helpers and two few
 | 132 | Cases that compile `ValuesLib` or call `Value.lovelaceOf()`: their bytes and source maps | Reference change: the methods above |
 | 3 + 3 | The stdlib's `ValuesLib` and all-libraries rows, and the ledger's `Value.java` row, keyed by the new source; their old keys leave | Reference change: the sources above |
 | 7 | New pins: 4 `.diffcase`s of `JULC0095` (a `@Param`, an instance field, a nested type's field, an initializer block) and 3 fixtures of `JULC0094` and `JULC0098` (`adr068/rule-fixtures`). With the gate off each compiles | New cases |
-| 7 + 7 | The Blaster fixtures M1b rewrote, keyed by their new sources; their old keys leave. Same programs as at M1b | Not a change of B2: the corpus's fixtures are read from the tree |
+| 7 + 7 | The Blaster fixtures M1b rewrote, keyed by their new sources; their old keys leave. Same programs as at M1b, though two differ in bytes from B1's rows, 432 to 437 and 360 to 363 at `BASELINE`, which the new keys keep out of the diff | Not a change of B2: the corpus's fixtures are read from the tree |
+| 21 + 33 | Provider rows, and specialization rows of part `instantiation`: their cells now digest a canonical text with every constant spelled out, where they digested a printer's | Tool correction (D13): `Adr068Ledger.describe` and `instantiate`. No source and neither frontend changed |
 
-No other cell moves. No semantic observation of B1's 697 runs moves, and no specialization or rejection. The 4 `.diffcase`s add 4 runs: three give the JVM's value at every level, and the `@Param` one records `Crash` at every level, because it is a compilation the harness has no `@Param` value for. With the gate on, as the regression suite runs them, each is `JULC0095`.
+No other cell moves. No semantic observation of B1's 697 runs moves. The 132 have no run of their own, so that says nothing of them: each reads `semantics not observed`. No specialization moves apart from the row above, and no rejection apart from the inventory's one row. The 4 `.diffcase`s add 4 runs: three give the JVM's value at every level, and the `@Param` one records `Crash` at every level: with the gate off it compiles to a program over the `@Param` as well, so the case's one argument fills that and leaves a function for a result. With the gate on, as the regression suite runs them, each is `JULC0095`.
 
 ## What the rules reach
 
