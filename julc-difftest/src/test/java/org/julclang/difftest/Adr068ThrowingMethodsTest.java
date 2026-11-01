@@ -13,9 +13,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 
 import static org.julclang.difftest.Adr068CallsHarnessTest.assertAgree;
+import static org.julclang.difftest.Adr068CallsHarnessTest.bool;
 import static org.julclang.difftest.Adr068CallsHarnessTest.bytes;
 import static org.julclang.difftest.Adr068CallsHarnessTest.integer;
 import static org.julclang.difftest.Adr068CallsHarnessTest.list;
@@ -82,15 +84,104 @@ class Adr068ThrowingMethodsTest {
                 "a.drop(n).take(n).size()");
     }
 
-    @Property(tries = 40)
-    void aListCount(@ForAll("listMethods") String body, @ForAll @IntRange(min = 0, max = 4) int size,
-                    @ForAll @IntRange(min = -EDGE, max = EDGE) int n) {
+    /** Small values, and the counts an {@code int} would read as another: Java's {@code long} is the count, as in the script. */
+    @Provide
+    Arbitrary<Long> counts() {
+        return Arbitraries.oneOf(Arbitraries.longs().between(-EDGE, EDGE), Arbitraries.of(Long.MIN_VALUE, Long.MIN_VALUE + 1,
+                -(1L << 32) - 1, -(1L << 32), -(1L << 32) + 1, -(1L << 31) - 1, -(1L << 31)));
+    }
+
+    /** A count past an {@code int} in the other direction, which {@code DropList} would run out of budget on. */
+    @Provide
+    Arbitrary<Long> indices() {
+        return Arbitraries.oneOf(counts(), Arbitraries.of(1L << 31, (1L << 32) - 1, 1L << 32, (1L << 32) + 1, Long.MAX_VALUE));
+    }
+
+    @Property(tries = 60)
+    void aListCount(@ForAll("listMethods") String body, @ForAll @IntRange(min = 0, max = 4) int size, @ForAll("counts") long n) {
         assertAgree("public static long m(JulcList<BigInteger> a, long n) { return " + body + "; }", elements(size), integer(n));
     }
 
-    @Property(tries = 20)
-    void aListRead(@ForAll @IntRange(min = 0, max = 3) int size, @ForAll @IntRange(min = -EDGE, max = EDGE) int n) {
+    @Property(tries = 40)
+    void aListRead(@ForAll @IntRange(min = 0, max = 3) int size, @ForAll("indices") long n) {
         assertAgree("public static BigInteger m(JulcList<BigInteger> a, long n) { return a.get(n); }", elements(size), integer(n));
+    }
+
+    @Property(tries = 40)
+    void anArrayRead(@ForAll @IntRange(min = 0, max = 3) int size, @ForAll("indices") long n) {
+        assertAgree("public static BigInteger m(JulcList<BigInteger> a, long n) { return a.toArray().get(n); }", elements(size), integer(n));
+    }
+
+    @Property(tries = 20)
+    void aTakePastAnInt(@ForAll @IntRange(min = 0, max = 4) int size, @ForAll("indices") long n) {
+        assertAgree("public static long m(JulcList<BigInteger> a, long n) { return a.take(n).size(); }", elements(size), integer(n));
+    }
+
+    // --- Builtins that the JVM's stubs run: Plutus 1.63.0.0 is the truth, and the VM its copy here ---
+
+    @Provide
+    Arbitrary<PlutusData> byteStrings() {
+        return Arbitraries.integers().between(0, 255).list().ofMaxSize(4).map(values -> bytes(values.stream().mapToInt(Integer::intValue).toArray()));
+    }
+
+    @Property(tries = 40)
+    void aByteStringComparison(@ForAll("byteStrings") PlutusData a, @ForAll("byteStrings") PlutusData b) {
+        assertAgree("public static boolean m(byte[] a, byte[] b) { return Builtins.lessThanByteString(a, b); }", a, b);
+        assertAgree("public static boolean m(byte[] a, byte[] b) { return Builtins.lessThanEqualsByteString(a, b); }", a, b);
+    }
+
+    @Provide
+    Arbitrary<String> bitwiseMethods() {
+        return Arbitraries.of("andByteString", "orByteString", "xorByteString");
+    }
+
+    @Property(tries = 40)
+    void aBitwiseMethod(@ForAll("bitwiseMethods") String method, @ForAll boolean padding, @ForAll("byteStrings") PlutusData a,
+                        @ForAll("byteStrings") PlutusData b) {
+        assertAgree("public static byte[] m(boolean p, byte[] a, byte[] b) { return Builtins." + method + "(p, a, b); }",
+                bool(padding), a, b);
+    }
+
+    @Property(tries = 40)
+    void aSlice(@ForAll("indices") long start, @ForAll("indices") long length, @ForAll("byteStrings") PlutusData bytes) {
+        assertAgree("public static byte[] m(long s, long l, byte[] b) { return Builtins.sliceByteString(s, l, b); }",
+                integer(start), integer(length), bytes);
+    }
+
+    @Property(tries = 30)
+    void anIndex(@ForAll("byteStrings") PlutusData bytes, @ForAll("indices") long index) {
+        assertAgree("public static long m(byte[] b, long i) { return Builtins.indexByteString(b, i); }", bytes, integer(index));
+    }
+
+    @Provide
+    Arbitrary<Long> byteValues() {
+        return Arbitraries.of(-(1L << 32), -256L, -1L, 0L, 1L, 255L, 256L, 257L, 1L << 32, (1L << 32) + 1);
+    }
+
+    @Property(tries = 20)
+    void aCons(@ForAll("byteValues") long value, @ForAll("byteStrings") PlutusData bytes) {
+        assertAgree("public static byte[] m(long v, byte[] b) { return Builtins.consByteString(v, b); }", integer(value), bytes);
+    }
+
+    @Property(tries = 30)
+    void aReplication(@ForAll("replicationLengths") long length, @ForAll("byteValues") long value) {
+        assertAgree("public static long m(long n, long v) { return Builtins.lengthOfByteString(Builtins.replicateByte(n, v)); }",
+                integer(length), integer(value));
+    }
+
+    /** Near the bound: {@code ReplicateByte} costs by its literal count, so a count far past it runs out of budget first. */
+    @Provide
+    Arbitrary<Long> replicationLengths() {
+        return Arbitraries.of(-8193L, -1L, 0L, 1L, 8192L, 8193L, 100000L);
+    }
+
+    /** Bytes that are text and bytes that are not: overlong forms, surrogates, past U+10FFFF, cut short, stray continuations. */
+    @ParameterizedTest
+    @ValueSource(strings = {"", "61", "c3a9", "e282ac", "f09f9880", "f48fbfbf", "ff", "80", "c080", "c1bf", "e08080", "eda080", "edbfbf", "f0808080",
+            "f4908080", "f5808080", "e282", "c3", "f09f98", "61ff61"})
+    void aDecoding(String hex) {
+        var input = new PlutusData.BytesData(HexFormat.of().parseHex(hex));
+        assertAgree("public static boolean m(byte[] a) { Builtins.decodeUtf8(a); return true; }", input);
     }
 
     @ParameterizedTest

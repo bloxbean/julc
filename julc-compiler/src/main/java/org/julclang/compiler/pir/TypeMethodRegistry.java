@@ -401,11 +401,9 @@ public final class TypeMethodRegistry {
     // --- String methods (2) ---
 
     private static void registerStringMethods(TypeMethodRegistry reg) {
-        // length: LengthOfByteString(EncodeUtf8(s))
+        // length: UTF-16 code units, as Java counts
         reg.register("StringType", "length",
-                (scope, args, scopeType, argTypes) ->
-                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString),
-                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), scope)),
+                (scope, args, scopeType, argTypes) -> PirHelpers.utf16Length(scope),
                 scopeType -> new PirType.IntegerType());
 
         // equals: EqualsString

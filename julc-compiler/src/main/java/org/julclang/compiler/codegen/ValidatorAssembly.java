@@ -161,7 +161,8 @@ public final class ValidatorAssembly {
         PirTerm wrapped = wrap(validator, types, context, frontend);
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
-        var lowered = PirBackend.lower(wrapped, context, frontend.positions(), true, frontend.provenance());
+        var lowered = PirBackend.lower(wrapped, context, frontend.positions(), true, frontend.provenance(),
+                bindings(validator.helpers(), validator.statics(), validator.libraries()));
         var program = lowered.program();
         var result = new CompileResult(
                 program, context.diagnostics(), paramInfos(validator.params()),
@@ -323,7 +324,8 @@ public final class ValidatorAssembly {
 
         frontend.finalCheck().accept(body);
         // 17. Lower to UPLC (with source map support)
-        var lowered = PirBackend.lowerQuietly(body, context, frontend.positions());
+        var lowered = PirBackend.lowerQuietly(body, context, frontend.positions(),
+                bindings(program.methods(), program.statics(), program.libraries()));
         return new CompileResult(
                 lowered.program(), context.diagnostics(), paramInfos(program.params()), lowered.pir(),
                 lowered.program().term(), lowered.sourceMap(),
@@ -331,6 +333,16 @@ public final class ValidatorAssembly {
     }
 
     // --- Bindings ---
+
+    /** The binders {@link org.julclang.compiler.pir.DelayedMethodPass} reads: a method with no parameters that may fail runs at each call. */
+    private static PirBackend.Bindings bindings(List<Method> methods, List<StaticField> statics, Collection<LibraryMethod> libraries) {
+        var binders = new LinkedHashSet<String>();
+        methods.forEach(method -> binders.add(method.name()));
+        libraries.forEach(method -> binders.add(method.qualifiedName()));
+        var fields = new LinkedHashSet<String>();
+        statics.forEach(field -> fields.add(field.name()));
+        return new PirBackend.Bindings(binders, fields);
+    }
 
     private static boolean containsVarRef(PirTerm term, String name) {
         return PirHelpers.containsVarRef(term, name);

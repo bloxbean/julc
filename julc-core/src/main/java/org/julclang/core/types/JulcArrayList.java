@@ -32,7 +32,7 @@ public final class JulcArrayList<T> implements JulcList<T> {
 
     @Override
     public T get(long index) {
-        return delegate.get((int) index);
+        return delegate.get(Math.toIntExact(index));
     }
 
     @Override
@@ -43,14 +43,18 @@ public final class JulcArrayList<T> implements JulcList<T> {
 
     @Override
     public JulcList<T> take(long n) {
-        int count = (int) Math.min(n, delegate.size());
-        return new JulcArrayList<>(delegate.subList(0, count));
+        return new JulcArrayList<>(delegate.subList(0, count(n)));
     }
 
     @Override
     public JulcList<T> drop(long n) {
-        int skip = (int) Math.min(n, delegate.size());
-        return new JulcArrayList<>(delegate.subList(skip, delegate.size()));
+        return new JulcArrayList<>(delegate.subList(count(n), delegate.size()));
+    }
+
+    /** The elements {@code take} or {@code drop} counts: {@code n}, up to the size. A negative {@code n} throws. */
+    private int count(long n) {
+        if (n < 0) throw new IllegalArgumentException("negative count: " + n);
+        return (int) Math.min(n, delegate.size());
     }
 
     @Override

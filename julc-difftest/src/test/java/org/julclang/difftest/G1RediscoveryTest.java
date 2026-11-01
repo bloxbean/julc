@@ -49,24 +49,18 @@ class G1RediscoveryTest {
         assertTrue(changed.all(Verdict.Kind.AGREE), changed.describe());
     }
 
-    private void pinned(String name, Verdict.Kind defect) {
-        pinned("diverge-g1-" + name, "agree-g1-" + name + "-counterfactual", defect);
-    }
-
-    private void pinned(String reproducer, String counterfactual, Verdict.Kind defect) {
-        counterfactualAgrees(saved(reproducer), saved(counterfactual), defect);
-    }
-
     /**
-     * #280: the helper gets an unused parameter. The cases found by earlier G1 revisions stay (ADR-063 D8): G1 r1's,
-     * then one per later revision, with its own provenance (r4 found r2's program again).
+     * #280, fixed by ADR-068 B4: a method with no parameters whose body traces runs at each call, so one that is not called
+     * does not trace. The counterfactual gives the helper an unused parameter. The cases found by earlier G1 revisions stay
+     * (ADR-063 D8): G1 r1's, then one per later revision, with its own provenance (r4 found r2's program again).
      */
     @Test
     void zeroArgumentHelper() {
-        pinned("diverge-g1-280-uncalled-zero-arg-helper", "agree-g1-280-counterfactual", Verdict.Kind.MISMATCH);
-        pinned("diverge-g1-280-uncalled-zero-arg-helper-r2", "agree-g1-280-uncalled-zero-arg-helper-counterfactual",
-                Verdict.Kind.MISMATCH);
-        for (String revision : List.of("-r3", "-r4", "-r5")) pinned("280-uncalled-zero-arg-helper" + revision, Verdict.Kind.MISMATCH);
+        fixed("diverge-g1-280-uncalled-zero-arg-helper", "agree-g1-280-counterfactual");
+        fixed("diverge-g1-280-uncalled-zero-arg-helper-r2", "agree-g1-280-uncalled-zero-arg-helper-counterfactual");
+        for (String revision : List.of("-r3", "-r4", "-r5")) {
+            fixed("diverge-g1-280-uncalled-zero-arg-helper" + revision, "agree-g1-280-uncalled-zero-arg-helper" + revision + "-counterfactual");
+        }
     }
 
     /**

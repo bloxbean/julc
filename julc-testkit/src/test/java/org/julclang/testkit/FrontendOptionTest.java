@@ -25,7 +25,7 @@ class FrontendOptionTest {
 
     private static final String NOT_PORTED = """
             import java.math.BigInteger;
-            class C { static BigInteger twice(BigInteger a) { var b = a; return b.add(b); } }
+            class C { static BigInteger twice(BigInteger a) { BigInteger b = a; while (b.signum() < 0) { b = b.add(BigInteger.ONE); } return b.add(b); } }
             """;
 
     private static final String VALIDATOR = """
@@ -99,7 +99,7 @@ class FrontendOptionTest {
 
     @Test
     void validatorTestReachesTheFrontend() {
-        String source = VALIDATOR.replace("return ctx.txInfo().signatories().isEmpty();", "var s = ctx.txInfo().signatories(); return s.isEmpty();");
+        String source = VALIDATOR.replace("return ctx.txInfo().signatories().isEmpty();", "boolean none = true; for (var s : ctx.txInfo().signatories()) { none = false; } return none;");
         ValidatorTest.compile(source);
         var failure = assertThrows(CompilerException.class, () -> ValidatorTest.compile(source, CompilerFrontend.JAVAC));
         assertTrue(isNotPorted(failure), failure::getMessage);

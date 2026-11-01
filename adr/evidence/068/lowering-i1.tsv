@@ -286,7 +286,7 @@
 0481cb8995b296cf3afb0eb73c692b0c5ca603a45e544d4f1ae1c5b9a28a5416	i1a-identical	1/1	-	fragment	-	
 0481cf0dd10b6c731abc6985894cb8daa96471a0c6caef44429f978dba428020	both-reject-javac-first	0/2	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 04852568378f632aee4ad3542ccbb1594196832979d46d1628ee35389a66a9cd	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
-04876b6f258cf59cb495f7d9fa9f5c30aaffe1fc6b67588e8c1955cf7f56c1a9	DIFFERENT-bytes	1/5	-	-	70c8561fab941877	NONE A:e1695c8acf51d7e98f60fb08e5edae44:263 / A:e7781a376e18c945f1aad14c9b5ad506:272; BASELINE A:ef2147c618aa2c15db99702891d6220f:131 / A:f9d3e75824c4de983cc8c7...
+04876b6f258cf59cb495f7d9fa9f5c30aaffe1fc6b67588e8c1955cf7f56c1a9	DIFFERENT-bytes	1/5	-	-	12de1e2f1a8f736c	NONE A:f37d3b17610c9f2f51bdff901aa8f2bb:264 / A:fd9a4c7e530e2828ba06ee7203483adb:273; NONE with a map A:625267913871e1418159e875d0955e64:271 / A:3de62db2bacc92b...
 0488e637cac0ae4f14bfae7f67cd5840fb436c945cc31da6d91b13f052e0eb50	not-ported	1/29	a library unit	-	-	
 048c7d50888196dc048868d91fbdf9fed37bac75d2153980d2c901bb01feba91	not-ported	0/1	SWITCH_EXPRESSION	-	-	
 0495db11928f996f8139a4092464c62c7a1000b4c4231794ba8e543efa78b600	javac-rejects	0/28	-	-	e04c5bfbfb3755a2	JULC0085@8:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)

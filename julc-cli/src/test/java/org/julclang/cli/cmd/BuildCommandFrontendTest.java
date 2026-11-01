@@ -74,7 +74,7 @@ class BuildCommandFrontendTest {
 
     @Test
     void theOptionReachesTheCompilation(@TempDir Path dir) throws Exception {
-        String body = "var fee = ctx.txInfo().fee(); return fee.signum() > 0;";
+        String body = "BigInteger left = ctx.txInfo().fee(); while (left.signum() > 1) { left = left.subtract(BigInteger.ONE); } return left.signum() > 0;";
         assertEquals(0, build(project(dir, "reference", body), "--frontend", "javaparser"));
         assertEquals(1, build(project(dir, "javac", body), "--frontend", "javac"));
     }

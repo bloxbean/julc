@@ -20,7 +20,7 @@ it has no effect. `IfThenElse(argument < least, Error, operation)` takes no trac
 
 **A constant that cannot fail takes no check.** A local test on the argument term decides, with no pass: an integer `Const` at or above the
 bound. `x.mod(BigInteger.TEN)`, `x.mod(BigInteger.valueOf(7))`, `x.mod(new BigInteger("7"))`, `take(3)`, `take(0)` and `drop(0)` compile to
-the bytes they did. A constant below the bound keeps the check, and fails.
+the bytes they did. A constant below the bound keeps the check, and fails. A named constant is not such a term: `static final BigInteger K = BigInteger.valueOf(7); a.mod(K)` takes the check, as `long k = 2; a.take(k)` does.
 
 **How these read in the corpus.** Across 10,379 distinct sources: `mod` appears 3 times, with `BigInteger.TWO`, `BigInteger.valueOf(5)` and
 `BigInteger.valueOf(b)`. `take` appears about 1,380 times and `drop` about 1,390, nearly all from one ADR-060 family, `items.take(probe.longValue() - 5)`,
@@ -101,8 +101,10 @@ cost of a call is measured directly, on the pre-change handlers against these, i
 `NONE` moves more cases because an unused `ListsLib` stays in the program at that level.
 
 **External examples.** Of 102 cases, 4 move at `PV11_SAFE`, each by +15 bytes: `SwapOrder` (2 entries, 8,229 → 8,244 and 8,717 → 8,732),
-`VestingValidator` (6,678 → 6,693) and `EscrowValidator` (7,633 → 7,648). None of the three calls these methods in its own source: the bytes
-come from a bound library method. 67 move at `NONE`, by +23 to +69 bytes. No Elci case has a compiled cell in the ledger.
+`VestingValidator` (6,678 → 6,693) and `EscrowValidator` (7,633 → 7,648). All four are recorded with `sourceMap: true`, and `PirBackend` skips the
+UPLC optimizer in that mode. `ValuesLib` calls `ListsLib.reverse`, so `ListsLib` is in each program, and its unused `take` and `drop` stay bound,
+with 0 references, so the checks in them cannot run. The same 4 move at `BASELINE` and `PV11_COSTED`. A compile without a source map does not move.
+67 move at `NONE`, by +23 to +69 bytes. No Elci case has a compiled cell in the ledger.
 
 **I1.** `lowering-reference.tsv`: 3,811 of 17,063 rows changed, in their level cells, located terms and method terms only. No row changed its
 status, diagnostics or params. 2 rows are new. The row table gains those 2 as `i1a-identical`, moved 0 and shrunk 0 after the freeze, with no
@@ -152,5 +154,7 @@ and every `compiledCode` hex equal the lock. Nothing was regenerated.
 
 - **Two differences stay,** as known issues, because the script accepts and rejects what Java does: argument-first `prepend`, `contains` and
   `insert`, and duplicated operands in T13's family. See the follow-ups and the release notes.
+- **A check on Java's wrapped value.** The check reads the same unbounded integer as T6. Where a Java value wraps and the script's does not, it decides
+  on the script's number: `a.take(2147483647 + 2147483647)` throws in Java and returns on the script. That is T6, before and after this change.
 - **An on-chain run.** DevKit was not run. The harness's VM is the evidence.
 - **Recorded evaluations.** Those whose script hash moved are no longer replayed against the recording, as the counts above say.

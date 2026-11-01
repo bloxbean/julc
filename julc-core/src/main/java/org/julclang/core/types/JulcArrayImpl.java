@@ -24,7 +24,7 @@ public final class JulcArrayImpl<T> implements JulcArray<T> {
 
     @Override
     public T get(long index) {
-        return delegate.get((int) index);
+        return delegate.get(Math.toIntExact(index));
     }
 
     @Override

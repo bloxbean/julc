@@ -384,7 +384,7 @@ testkit expose it from M3, once a compilation can succeed on it; at M2 each woul
   is public (an issue, an ADR-062 row, a saved pin), and M5 closes the window. The list is every ADR-062 row open
   at B0 and every issue filed against JuLC's semantics by then; M0 freezes it with each pin's ID. Among them: T3–T5
   (equality), T6 (`int`/`long` width), T7 (`any`/`all`), T11, T12, #146's remaining forms (T13), T29 (cross-type
-  `equals`), T30 (two sealed parents), T31 (record members), T32, T33 (ledger names), T34, #280, #288, #289, #295
+  `equals`), T30 (two sealed parents), T31 (record members), T32, T33 (ledger names), T34, #280 (closed at B4), #288, #289, #295
   for the forms D4's exception 1 does not cover, and #296 (`"a" + 1`). The release notes of any release before M5 list them. `SECURITY.md` puts such
   bugs in scope; M0 adds a sentence there that, during the preview, divergences catalogued publicly in ADR-062
   are tracked as public issues, and only undisclosed ones go through the private advisory process.
@@ -973,10 +973,17 @@ milestone's evidence; a skipped check fails the gate.
 3. **Hosted lowering in the user's javac** (ADR-065 option B). Lean: defer; reconsider after M6.
 4. **When ADR-061 decides its representation,** is it inserted between javac trees and PIR for statements (D2)?
    Lean: yes, as ADR-061's own migration.
-5. **Methods with no parameters.** Such a method is bound with a strict `let`, so its body evaluates once at script
-   start whether or not it is called. `MerklePatriciaForestry.nullHash*` and `IntervalLib.always` rest on that sharing.
-   Lean: delay only a body that may fail, after measuring those libraries. It would be a reference change. To decide
-   before M3's Group 1 closes.
+5. **Methods with no parameters.** *Decided at B4:* a method with no parameters whose body may fail or trace is delayed,
+   and each read of its binder is a call, so it runs at each call and only if it is called, as in Java. A body shown to be
+   total stays a shared strict `let`, so `MerklePatriciaForestry.nullHash*` and `IntervalLib.always` keep their sharing and
+   their bytes. `DelayedMethodPass.mayFail` decides, over the PIR term, and only what it can show is total is total: constants,
+   variables bound to a total term, listed builtins on arguments of their kinds and within the bounds both of the
+   target's variants take, a partial builtin only where constants show its range, and a call of a bound, non-recursive
+   function, read through its body with what is known of each argument. A recursive function, an unknown one, a parameter,
+   a trace and anything else may fail. The pass runs on the assembled term, because a call site can come before the
+   method's body is lowered, after the literal folds, so a body they reduce to a constant stays shared. A library reached
+   through a provider import stays strict. See
+   [`068-m3-reference-b4.md`](evidence/068-m3-reference-b4.md).
 
 ## Implementation results
 
@@ -1340,3 +1347,6 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     `JULC0102`, a warning on both frontends that comes from the gate on the JavaParser frontend, is the first such row.
   - B3: `mod`, `take` and `drop` fail where Java throws, on both frontends, under exception 2. This is the third reference
     change (`068-m3-reference-b3.md`).
+  - B4: `String.length` counts UTF-16 code units, and a method with no parameters whose body may fail runs at each call
+    (open question 5, closed), on both frontends, under exception 2. This is the fourth reference change
+    (`068-m3-reference-b4.md`). The JVM's byte string builtins and list counts follow Plutus 1.63.0.0, which moves no script.

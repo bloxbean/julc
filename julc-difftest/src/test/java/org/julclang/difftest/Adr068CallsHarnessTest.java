@@ -56,7 +56,7 @@ class Adr068CallsHarnessTest {
         return new PlutusData.IntData(BigInteger.valueOf(value));
     }
 
-    private static PlutusData bool(boolean value) {
+    static PlutusData bool(boolean value) {
         return new PlutusData.ConstrData(value ? 1 : 0, List.of());
     }
 
@@ -241,7 +241,7 @@ class Adr068CallsHarnessTest {
     }
 
     /** The frontends agree with each other and not with the JVM: the reference's shape, ported, and reported. */
-    private static void assertBothDivergeAlike(String members, PlutusData... args) {
+    static void assertBothDivergeAlike(String members, PlutusData... args) {
         var report = run(members, List.of(args));
         var observations = new HashSet<>();
         report.results().forEach((config, result) -> {
@@ -483,15 +483,12 @@ class Adr068CallsHarnessTest {
                 integer(1), integer(2));
     }
 
-    /**
-     * A helper with no parameter is a {@code let}, bound in the assembly both frontends share, so its body runs once and
-     * first: traced twice in Java it traces once, and it runs whether the branch that calls it does or not.
-     */
+    /** A helper with no parameter runs at each call, as in Java, and only if it is called: see {@link Adr068DelayedMethodsTest}. */
     @Test
-    void aHelperWithNoParameterRunsOnceAndFirst() {
-        assertBothDivergeAlike("static long k() { return saidL(\"K\", 1); } public static long m() { return k() + k(); }");
-        assertBothDivergeAlike("static long k() { return saidL(\"K\", 1); } public static long m(boolean c) { return c ? k() : 2; }", bool(false));
-        assertBothDivergeAlike("static long k() { return fail(BigInteger.ONE).longValue(); } public static long m(boolean c) { return c ? k() : 2; }", bool(false));
+    void aHelperWithNoParameterRunsAtEachCall() {
+        assertAgree("static long k() { return saidL(\"K\", 1); } public static long m() { return k() + k(); }");
+        assertAgree("static long k() { return saidL(\"K\", 1); } public static long m(boolean c) { return c ? k() : 2; }", bool(false));
+        assertAgree("static long k() { return fail(BigInteger.ONE).longValue(); } public static long m(boolean c) { return c ? k() : 2; }", bool(false));
     }
 
     /** Overloads share a binder and must be interchangeable; javac's choice among them cannot change the result. */
