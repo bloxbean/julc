@@ -10,6 +10,7 @@ import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 
 import javax.lang.model.element.ExecutableElement;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -62,8 +63,9 @@ final class SubsetRules {
     /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */
     static void checkSpellings(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
                                JavacGate.Compiled compiled, SpelledTypes.Reading reading) {
-        var compiledAsLibraries = new HashSet<>(libraries);
-        if (compiled == JavacGate.Compiled.LIBRARY) compiledAsLibraries.addAll(roots);
+        var libraryUnits = new ArrayList<>(libraries);
+        if (compiled == JavacGate.Compiled.LIBRARY) libraryUnits.addAll(roots);
+        var compiledAsLibraries = new HashSet<>(libraryUnits);
         for (var units : List.of(roots, libraries)) {
             for (var unit : units) {
                 SpelledTypes.check(facts, unit, reading, compiledAsLibraries);
@@ -72,7 +74,7 @@ final class SubsetRules {
         }
         SpelledTypes.checkUnreadUnits(reading);
         // The JavaParser frontend binds a library's static fields at script start, whether or not Java initializes the class.
-        for (var unit : compiledAsLibraries) UnloweredInitializers.check(facts, unit, field -> false);
+        for (var unit : libraryUnits) UnloweredInitializers.check(facts, unit, field -> false);
     }
 
     private static void library(JavacFacts facts, JavacDiscovery discovery, CompilationUnitTree unit) {
