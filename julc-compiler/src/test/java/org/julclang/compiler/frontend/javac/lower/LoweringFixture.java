@@ -8,6 +8,7 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.flat.UplcFlatEncoder;
 
 import java.util.HexFormat;
@@ -40,7 +41,12 @@ public final class LoweringFixture {
 
     private static CompileResult method(String source, String name, OptimizationLevel level, boolean sourceMap,
                                         CompilerFrontend frontend) {
-        return new JulcCompiler(null, options(level, sourceMap, frontend)).compileMethod(source, name, List.of());
+        return method(source, name, level, sourceMap, frontend, null);
+    }
+
+    private static CompileResult method(String source, String name, OptimizationLevel level, boolean sourceMap,
+                                        CompilerFrontend frontend, StdlibLookup stdlib) {
+        return new JulcCompiler(stdlib, options(level, sourceMap, frontend)).compileMethod(source, name, List.of());
     }
 
     /** Same FLAT bytes as the reference at every level, with and without a source map. */
@@ -59,6 +65,16 @@ public final class LoweringFixture {
             for (boolean sourceMap : List.of(false, true)) {
                 assertBytes(method(source, name, level, sourceMap, CompilerFrontend.JAVAPARSER),
                         method(source, name, level, sourceMap, CompilerFrontend.JAVAC), level + " sourceMap=" + sourceMap);
+            }
+        }
+    }
+
+    /** {@link #assertSameMethodAsReference(String, String)} with a stdlib. */
+    public static void assertSameMethodAsReference(String source, String name, StdlibLookup stdlib) {
+        for (var level : OptimizationLevel.values()) {
+            for (boolean sourceMap : List.of(false, true)) {
+                assertBytes(method(source, name, level, sourceMap, CompilerFrontend.JAVAPARSER, stdlib),
+                        method(source, name, level, sourceMap, CompilerFrontend.JAVAC, stdlib), level + " sourceMap=" + sourceMap);
             }
         }
     }
@@ -88,6 +104,11 @@ public final class LoweringFixture {
     /** {@link #assertSameRejectionAsReference} for a {@code compileMethod} target. */
     public static void assertSameMethodRejectionAsReference(String source, String name) {
         assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend));
+    }
+
+    /** {@link #assertSameMethodRejectionAsReference(String, String)} with a stdlib. */
+    public static void assertSameMethodRejectionAsReference(String source, String name, StdlibLookup stdlib) {
+        assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend, stdlib));
     }
 
     static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile) {

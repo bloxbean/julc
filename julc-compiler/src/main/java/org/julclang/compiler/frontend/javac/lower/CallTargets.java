@@ -219,6 +219,11 @@ final class CallTargets {
         return name.equals("hash") ? call == null || !typedCall(call) : call == null;
     }
 
+    /** Whether {@code tree} is a call of an API static method, whose result's type the reference does not know. */
+    boolean isStdlibCall(ExpressionTree tree) {
+        return tree instanceof MethodInvocationTree call && classify(call) instanceof CallTarget.Stdlib;
+    }
+
     /**
      * Whether the reference knows the type of {@code call} when it reads a member of the result. It knows a library
      * method's, a registry method's and a record component's, not a helper's or a stdlib intrinsic's: chaining on those is

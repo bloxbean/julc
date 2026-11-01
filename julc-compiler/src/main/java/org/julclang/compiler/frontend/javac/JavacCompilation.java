@@ -295,7 +295,7 @@ public final class JavacCompilation {
         SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
-        SubsetScan.check(facts, unit, discovery.lowered(discovery.validatorClassOrNull(unit)));
+        SubsetScan.check(facts, unit, discovery.lowered(discovery.validatorClassOrNull(unit))).forEach(context::report);
         verifyBinderNamespace(unit);
         // 3. Library units hold no validator annotation: no step here, since a library unit javac read stops at step 8
         // 4. Find annotated validator class and determine purpose
@@ -396,7 +396,7 @@ public final class JavacCompilation {
         SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
-        SubsetScan.check(facts, unit, discovery.lowered(discovery.firstClassOrNull(unit)));
+        SubsetScan.check(facts, unit, discovery.lowered(discovery.firstClassOrNull(unit))).forEach(context::report);
         verifyBinderNamespace(unit);
         // 3. Find the target class (first non-interface class)
         var type = discovery.firstClass(unit);

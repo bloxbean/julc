@@ -4,6 +4,7 @@ import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.source.SourceLocation;
@@ -13,7 +14,7 @@ import javax.lang.model.element.ExecutableElement;
 import java.util.IdentityHashMap;
 
 /**
- * The only code that builds a {@code Var} or {@code Lam} for a source element (ADR-068 I13), and the only recorder of
+ * The only code that builds a {@code Var}, {@code Lam} or {@code Let} for a source element (ADR-068 I13), and the only recorder of
  * source positions (I7). Both go in side tables keyed by term identity, written while the term is built: {@link PirTerm}
  * carries neither, and nothing is renamed or located afterwards.
  */
@@ -54,6 +55,21 @@ public final class Terms {
         var lambda = new PirTerm.Lam(binder.name(), binder.type(), body);
         provenance.binder(lambda, binder.name(), binder.element());
         return lambda;
+    }
+
+    /** {@code let binder = value in body}, a local's or a pattern variable's. */
+    PirTerm.Let let(Binder binder, PirTerm value, PirTerm body) {
+        var binding = new PirTerm.Let(binder.name(), value, body);
+        provenance.binder(binding, binder.name(), binder.element());
+        return binding;
+    }
+
+    /**
+     * An {@code if} that ran for its effect, then {@code rest}. {@code rest} holds the terms of whatever follows, a
+     * builder's among them, so the name is chosen to miss what they read (ADR-060).
+     */
+    PirTerm.Let afterEffect(PirTerm effect, PirTerm rest) {
+        return new PirTerm.Let(PirHelpers.hygienicName("#_if", PirHelpers.freeVariables(rest)), effect, rest);
     }
 
     /** A binder the assembly built for {@code element}: a static field's, a {@code @Param}'s or a method's. */
