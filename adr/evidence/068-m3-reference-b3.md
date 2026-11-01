@@ -46,6 +46,13 @@ compiler: no library's text moved.
 
 `adr068Baseline` now fails unless it writes the b3 files, byte for byte, except the totals' `coverage` line.
 
+**Saved cases that join after B3.** A `.diffcase` adds a row to every corpus table, and a table may gain a row without the reference moving.
+`adr068Baseline`, run to a scratch directory with no freeze flag, reported the 11 cases of [M3d's F953](068-m3d-records.md#f953-the-saved-cases) and
+nothing else: 0 rows left or changed in any table, 11 rows added to `corpus-b3`, `ledger-b3`, `ledger-b3-semantic` and `ledger-b3-budget`, 8 to
+`rejection-inventory-b3` (the eight escape shapes the reader rejects), and the totals' counts. Those rows were copied in, and the 11 rows of
+`lowering-reference.tsv` the same way, from the run's own table. `lowering-i1.tsv` gained them by `-Padr068.freeze=true`. The table below is B3's
+as first frozen.
+
 ## Totals
 
 | | B2 | B3 |
