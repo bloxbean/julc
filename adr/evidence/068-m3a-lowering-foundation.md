@@ -7,7 +7,7 @@ FLAT bytes. Everything else stops at `JULC0084`, naming the construct and its po
 The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md). Machine and toolchain as in M0's evidence. Branch
 `wip/068-m3a`, based at `a0527fb1`, with M2's close merged in at `baef03a7`.
 
-This file states the code at `904e9307`. The I1 gate, `adr068Baseline`, `adr068Types`, `pairCaseTest`, `onChainHarnessTest` and the native image ran at `62c55a1f`, and the full suite at `904e9307`, which changes one test. The external examples and the Web Image ran at `d0cee64b`, the DevKit tests at `ee1c6b81`, and `wasmSmokeFull` at `8ff98e81`. `1ee4ce2f` moves script bytes after those, so they run again. Later commits change documentation only.
+This file states the code at `79b7e2ba`. The compiler tests, the I1 gate and `adr068Baseline` ran at that commit, which adds only a rule that rejects. `adr068Types`, `pairCaseTest`, `onChainHarnessTest` and the native image ran at `62c55a1f`, and the full suite at `904e9307`. The external examples and the Web Image ran at `d0cee64b`, the DevKit tests at `ee1c6b81`, and `wasmSmokeFull` at `8ff98e81`. `1ee4ce2f` moves script bytes after those, so they run again. Later commits change documentation only.
 
 ## What was delivered
 
@@ -578,6 +578,26 @@ J12 drops the flag, and the check then refuses every compilation (`JULC0089`), w
 | T22: a move from both-reject is no shrink | 1 |
 | T23: a newer row taken as equal | 1 |
 | T24: a newer row not compared | 1 |
+
+**A `@NewType`'s component.** Each ran over `SubsetRulesTest` and `SubsetRulesAtEveryEntryTest`, after a no-op control through the same script (0 of 443).
+
+| Mutation | Tests failing, of 443 |
+|---|---:|
+| P1: components not read | 58 |
+| P2: a plain record read as a @NewType | 5 |
+| P3: toPlutusData not read | 3 |
+| P4: a row that lowers to the receiver rejected | 6 |
+| P5: the bytes fallback not read | 32 |
+| P6: the registry not read | 45 |
+| P7: an integer not read | 43 |
+| P8: a string not read | 4 |
+| P9: bytes not read | 38 |
+| P10: a boolean not read | 1 |
+| P11: a generated call on bytes not read | 3 |
+| P12: the accessor read as another call | 1 |
+| P13: another call on any @NewType | 1 |
+| P14: every row without an argument lowers to the receiver | 37 |
+| P15: no row is served | 46 |
 
 **The gate's own tool, for a freeze.** Each is a change to the tool, with a no-op control through the same script (0 of 53). These are its negative controls for what a compare or a freeze could miss. T8 and T9 survived the first pass, since the injected program also moved the row's coverage, so the two tests now change only what compiles, and each then fails. K25's arm is asked directly: on a whole row `byteDifference` meets a program one side rejects first, as a cell.
 
