@@ -117,8 +117,10 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return scan.warnings;
     }
 
+    /** A {@code ;} after a type is no declaration: javac keeps it among a unit's types. */
     @Override
     public Void scan(Tree tree, Void unused) {
+        if (tree != null && tree.getKind() == Tree.Kind.EMPTY_STATEMENT && facts.parent(tree) instanceof CompilationUnitTree) return null;
         if (tree != null && !allowed(tree.getKind())) throw NotPorted.at(facts, tree);
         return super.scan(tree, unused);
     }
@@ -290,24 +292,13 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return super.visitNewClass(tree, unused);
     }
 
-    /**
-     * Inheritance is outside the subset. An interface's {@code extends} is javac's implements clause. A {@code ;} between
-     * members is no member: javac keeps it as a statement of the class.
-     */
+    /** Inheritance is outside the subset. An interface's {@code extends} is javac's implements clause. */
     @Override
     public Void visitClass(ClassTree tree, Void unused) {
         boolean inherits = tree.getKind() == Tree.Kind.INTERFACE ? !tree.getImplementsClause().isEmpty()
                 : tree.getExtendsClause() != null && !isObject(tree.getExtendsClause());
         if (tree.getKind() != Tree.Kind.RECORD && inherits) throw NotPorted.at(facts, tree, "inheritance");
-        scan(tree.getModifiers(), null);
-        scan(tree.getTypeParameters(), null);
-        scan(tree.getExtendsClause(), null);
-        scan(tree.getImplementsClause(), null);
-        scan(tree.getPermitsClause(), null);
-        for (var member : tree.getMembers()) {
-            if (member.getKind() != Tree.Kind.EMPTY_STATEMENT) scan(member, null);
-        }
-        return null;
+        return super.visitClass(tree, unused);
     }
 
     private boolean isObject(Tree type) {

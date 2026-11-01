@@ -175,6 +175,8 @@ class JavacRecordsTest {
             "static int m(int a) { var t = new Tuple2<>(a, 2); return t.first(); }",
             "static Tuple2 m(PlutusData a) { return new Tuple2(a, a); }",
             "static Tuple2 m(PlutusData a) { return new Tuple2<>(a, a); }",
+            "static boolean m(boolean c, PlutusData a) { Tuple2 t = c ? new Tuple2<>(a, a) : (new Tuple2<>(a, a)); return true; }",
+            "static long h(Tuple2 t) { return 1; } static long m(PlutusData a) { return h(new Tuple2<>(a, a)); }",
             "static boolean m(PlutusData a) { Tuple2 t = new Tuple2<>(a, a); return true; }",
             "static Tuple2 m(P a, S b) { return new Tuple2(a, b); }",
             "static Tuple2<Boolean, String> m(boolean c) { return c ? new Tuple2<>(c, \"a\") : new Tuple2<>(!c, \"b\"); }",
@@ -200,6 +202,12 @@ class JavacRecordsTest {
     })
     void whatJavacWroteIsNotSource(String members) {
         same(members);
+    }
+
+    /** A {@code ;} after a type is no declaration, which javac keeps among a unit's types. */
+    @Test
+    void aSemicolonAfterAType() {
+        LoweringFixture.assertSameMethodAsReference("class Main { static long m() { return 1; } };\n;\nclass Other { }\n", "m");
     }
 
     /** A static method's parameter of a component's name is the parameter, and a component is read through its accessor alone. */
@@ -239,10 +247,17 @@ class JavacRecordsTest {
             "static Tuple2 m(PlutusData d, BigInteger a) { return new Tuple2(d, a); }",
             "static boolean m(BigInteger a) { Tuple2 t = new Tuple2<>(a, a); return true; }",
             "static boolean m(PlutusData d) { Tuple2<PlutusData.ListData, BigInteger> t = new Tuple2<>(Builtins.tailList(Builtins.unListData(d)), BigInteger.ONE); return true; }",
-            "record R(JulcValue v) { } static boolean m(JulcValue a) { var r = new R(a); return true; }",
-            "static boolean m(JulcValue a) { var t = new Tuple2<>(a, a); return true; }",
-            "static boolean m(JulcValue a) { var t = new Tuple2<JulcValue, JulcValue>(a, a); return true; }",
-            "sealed interface W { record I(JulcValue v) implements W { } } static boolean m(JulcValue a) { var r = new W.I(a); return true; }",
+            "static boolean m(boolean c, BigInteger a) { Tuple2 t = c ? new Tuple2<>(a, a) : new Tuple2<>(a, a); return true; }",
+            "static boolean m(BigInteger a) { Tuple2 t = (new Tuple2<>(a, a)); return true; }",
+            "static Tuple2 m(BigInteger a) { return new Tuple2<>(a, a); }",
+            "static Tuple2<PlutusData.ListData, BigInteger> m(PlutusData d) { return new Tuple2<>(Builtins.tailList(Builtins.unListData(d)), BigInteger.ONE); }",
+            "static long h(Tuple2 t) { return 1; } static long m(BigInteger a) { return h(new Tuple2<>(a, a)); }",
+            "static final Tuple2 K = new Tuple2<>(BigInteger.ONE, BigInteger.TWO); static long m() { return 1; }",
+            "record R(JulcValue v) { } static boolean m(PlutusData d) { var r = new R(Builtins.unValueData(d)); return true; }",
+            "static boolean m(PlutusData d) { var t = new Tuple2<>(Builtins.unValueData(d), d); return true; }",
+            "static boolean m(PlutusData d) { var t = new Tuple2<JulcValue, PlutusData>(Builtins.unValueData(d), d); return true; }",
+            "sealed interface W { record I(JulcValue v) implements W { } } static boolean m(PlutusData d) { var r = new W.I(Builtins.unValueData(d)); return true; }",
+            "static boolean m(PlutusData d) { var a = JulcArray.of(BigInteger.ONE); var t = new Tuple2<>(a, a); return true; }",
             "record R(BigInteger a) { R { a = BigInteger.ONE; } } static long m() { return 1; }",
             "record R(BigInteger a, BigInteger b) { R(BigInteger a) { this(a, a); } } static R m(BigInteger x) { return new R(x); }",
     })
