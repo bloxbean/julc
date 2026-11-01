@@ -1,12 +1,10 @@
 format: 2
-name: #282 an explicit accessor called through a helper's parameter (N9, T31)
+name: #282 an explicit accessor called through a helper's parameter (N9)
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T31 Value/Value
-jvm: Value 24 []
-uplc: Value 05 []
-note: ADR-067 N9.
+expect: REJECT JULC0101
+note: ADR-067 N9. A subset rule: a method does not take a name read in place of its body.
 ---
 import java.math.BigInteger;
 

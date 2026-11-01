@@ -4,6 +4,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JavaLibraryProvider;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.backend.LibraryType.Reference;
 import org.julclang.compiler.pir.PirTerm;
@@ -199,7 +200,9 @@ class GenericExportsTest {
                 """;
         for (String source : List.of(shadowing, shadowing.replace("<T> boolean get(T", "<U> boolean get(U"))) {
             var request = new LibraryRequest.Instantiate("demo.Shadow.get", List.of(INT_REF));
-            var group = provider(source).materialize(List.of(request));
+            // With the gate off: its closed list holds a library's static field to a constant, and this field's type is the point.
+            var group = new JavaLibraryProvider(List.of(source), StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setJavacGate(JavacGateMode.OFF)).materialize(List.of(request));
             assertEquals(new Term.Const(Constant.bool(true)),
                     value(apply(ref(group, request), integer(5)), BOOL, group), source);
         }

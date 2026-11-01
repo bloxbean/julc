@@ -484,7 +484,7 @@ record AssetId(byte[] policy, byte[] name) {}
 
 // CORRECT: single field
 @NewType
-record PolicyId(byte[] hash) {}
+record PolicyHash(byte[] value) {}
 ```
 
 ---
@@ -1305,6 +1305,113 @@ The [release notes](/reference/release-notes/) list the rewrites.
 `-Djulc.javacGate=report` or `off` turns the check off for now; this is experimental.
 
 A runtime without a supported javac (JDK 25 with the `jdk.compiler` module) is `JULC0089`.
+
+### `JULC0094` `Entrypoint <method> of <class> returns <type>; an entry point returns boolean or java.lang.Boolean`
+
+**Cause:** An `@Entrypoint` method returns something other than `boolean` or `java.lang.Boolean`.
+A type of your own named `Boolean` is not `java.lang.Boolean`.
+
+**Fix:** Return a `boolean`. To fail, return `false` or call `Builtins.error()`.
+
+### `JULC0095` `<field or block> is not lowered, so ...`
+
+**Cause:** A `static` field of the class being compiled is lowered. Nothing lowers any other
+field (a `@Param`, an instance field, a field of a nested type or a record), and nothing lowers
+an initializer block. A library's `static` field binds at script start, whether or not Java
+initializes the class, so it counts as one of these.
+
+**Fix:** Such a field holds only a literal, a `new byte[]{...}` of literals,
+`BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, `PlutusData.UNIT`, a constant variable, or
+`Boolean.valueOf(true)` or `Boolean.valueOf(false)`. Move anything else to a `static` field of
+the class being compiled, or to a method. Keep an initializer block empty.
+
+### `JULC0098` `A cast to <type> takes a boolean or a Boolean, not <type>`
+
+**Cause:** A cast to `boolean` or `Boolean`, or a call that lowers to its argument with that result, such
+as `PlutusData.cast(x, Boolean.class)`, of something else, through parentheses and other casts. Data is
+something else: a cast does not decode it.
+
+**Fix:** Compute the boolean with a comparison.
+
+### `JULC0100` `JuLC reads <name> as <type>, and here it is <declaration>, so a program does not write it`
+
+**Cause:** JuLC reads some names by their spelling, so at every use such a name binds to what JuLC reads. That goes for
+every place a name stands: a type, the qualifier of a field or a method, `new`, a cast, `instanceof`, a pattern, a method
+reference, a class literal, a generic argument, an annotation, `throws` and `extends`. It does not matter how the other
+meaning came into scope: a nested or imported type, a variable, a parameter, a field, a lambda parameter, a pattern
+variable, a type parameter, or an inherited member. The names are:
+
+- **One type each, qualified or not:** `BigInteger`, `String`, `Boolean`, `Integer`, `Long`, `Short`, `Byte`,
+  `Character`, `Object`, `Math`, `List`, `Map`, `Optional`, `PlutusData`, `ConstrData`, `MapData`, `ListData`, `IntData`,
+  `BytesData`, `JulcValue`, `JulcG1`, `JulcG2`, `JulcMlResult`, `JulcScalars`, `JulcG1Points`, `JulcG2Points`, `JulcList`,
+  `JulcArray`, `JulcMap`, `Tuple2`, `Tuple3`, `AssetEntry`, `PubKeyHash`, `ScriptHash`, `ValidatorHash`, `PolicyId`,
+  `TokenName`, `DatumHash`, `TxId`, `Builtins`, `CryptoProvider`, and the classes of `org.julclang.stdlib.lib`, such as
+  `ListsLib`.
+- **The ledger's types, such as `Interval`, `TxOut`, `Rational` or `PubKeyCredential`:** a simple name binds to that type,
+  or to a nested or packaged record or sealed interface, or a library of another unit.
+- **JuLC's annotations, where they stand as annotations:** `Entrypoint`, `Param`, `NewType`, `OnchainLibrary` and the
+  validator annotations.
+
+More forms read a name:
+
+- A variable does not take the name of a type offered to the compilation, read or not: a class, a record or a sealed
+  interface at any depth, of the sources or the libraries it is given. That covers a local, a parameter, a field, a lambda
+  parameter and a pattern variable.
+- A class, or an interface that is not sealed, does not share its name with a record, a sealed interface or a class of a
+  library offered to the compilation, read or not. The same goes for an API or a platform type JuLC does not lower, such
+  as `java.util.Set`, and for a type parameter outside a library.
+- A top-level type of the unnamed package takes no name of the ledger, of another type of the compilation, or of a package
+  of the compilation, of any kind.
+- A record, a sealed interface or a library class reached by inheritance or a static import, or through a qualifier that is
+  not its owner, is written with its owner. A name in a guard does not bind to such a member.
+- Two variants of one sealed interface do not share a simple name. With no `permits` clause, the variants are the records
+  nested in the interface: any other list is `JULC0092`.
+- A class or a record does not take a type key of JuLC's lowering: `IntegerType`, `ByteStringType`, `StringType`,
+  `DataType`, `RecordType`, `SumType`, `ListType`, `ArrayType`, `OptionalType`, `MapType`, `PairType` or `Value`.
+- The datum of a three-parameter entry point is written `Optional<...>` exactly when it is one. A type named
+  `OptionalThing`, and a qualified `java.util.Optional<T>`, are rejected there.
+- `new` has no class body.
+- The operand of `instanceof` on a variant has the variant's type or its sealed interface's as its static type. A cast to
+  `Object` is rejected there.
+
+**Fix:** Rename the declaration, or write the type JuLC reads.
+
+### `JULC0101` `<method or component> has a name JuLC reads in place of its body, so a program does not declare it`
+
+**Cause:** JuLC lowers some calls by their spelling, so a body under that name would not run:
+`fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit
+accessor or `equals` on a record, and `equals` on a sealed interface. The same goes for a `@NewType`'s component named like a method of
+the type it lowers to, such as `abs` on a `BigInteger` or `length` on a `byte[]` or `String`, for a component
+named `toPlutusData`, and for a `@NewType` of `byte[]` whose component is not `value`, or a call of an inherited
+method such as `hashCode` on one. A `@NewType` takes no instance call but its accessor, an inherited default method or
+`equals` included, and no field read. A `byte[]` takes no no-argument call, and a ledger hash none but its accessor and
+`toPlutusData`. A no-argument call on an `Optional` of a record does not take the name of one of its components, such as
+`isPresent`. A call named `headList`, `tailList`, `mkCons`, `mkNilData`, `mkNilPairData`,
+`mkPairData`, `unMapData`, `fstPair` or `sndPair` is `Builtins`' own: a method or component of a program does not take
+those names.
+
+**Fix:** Give the method or component another name. `value`, and on a `BigInteger` `intValue` and `longValue`, are
+names of the value itself. Name a `@NewType` of `byte[]`'s component `value`.
+
+### `JULC0099` `The body of constructor <constructor> does not run on-chain, so a constructor holds no statement`
+
+**Cause:** A constructor the source declares, on a record or a class, holds a statement. A value is
+built from its components alone, so the statement would not run on-chain.
+
+**Fix:** Move the statement to a static method that returns the value. An empty `R { }` is allowed.
+
+### `JULC0096` `<source or class> declares more than one <validator class or @Entrypoint method>`
+
+**Cause:** With `frontend=JAVAC`: a source declares two validator classes, or a single-purpose
+validator has two `@Entrypoint` methods.
+
+**Fix:** Keep one. A `@MultiValidator` is how a script has several entry points.
+
+### `JULC0097` `Entrypoint <method> of <class> is not static`
+
+**Cause:** With `frontend=JAVAC`: an entry point is not `static`.
+
+**Fix:** Declare the entry point `static`.
 
 ### 3.1 `Failed to parse <label> source: <details>`
 

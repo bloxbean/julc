@@ -4,6 +4,7 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.JavacTask;
+import com.sun.source.util.TreeScanner;
 
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
@@ -21,13 +22,17 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The package and top-level type names of a compilation unit, read by javac's parser (no attribution), so that a
- * pool source is found on the source path by the binary name javac looks up. Cached by the text's digest: the same
- * library sources are offered to every compilation of a process.
+ * pool source is found on the source path by the binary name javac looks up, and the names the JavaParser frontend
+ * registers whether or not javac reads the unit. Cached by the text's digest: the same library sources are offered to
+ * every compilation of a process.
  */
 final class JavacUnits {
 
-    /** The package, the top-level type names in source order, and the primary one (public, else first). */
-    record UnitInfo(String packageName, List<String> topLevelNames, String primary) {
+    /**
+     * The package, the top-level type names in source order, the primary one (public, else first), and the simple names at
+     * any depth of the unit's records and sealed interfaces, and of its classes, once per declaration.
+     */
+    record UnitInfo(String packageName, List<String> topLevelNames, String primary, List<String> dataTypes, List<String> classes) {
     }
 
     private static final int CACHE_LIMIT = 8192;
@@ -101,6 +106,18 @@ final class JavacUnits {
             if (primary == null && type.getModifiers().getFlags().contains(Modifier.PUBLIC)) primary = name;
         }
         if (primary == null) primary = names.isEmpty() ? "Unit_" + digest.substring(0, 12) : names.getFirst();
-        return new UnitInfo(pkg, List.copyOf(names), primary);
+        var dataTypes = new ArrayList<String>();
+        var classes = new ArrayList<String>();
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitClass(ClassTree tree, Void unused) {
+                boolean sealed = tree.getKind() == Tree.Kind.INTERFACE
+                        && tree.getModifiers().getFlags().contains(Modifier.SEALED);
+                if (tree.getKind() == Tree.Kind.RECORD || sealed) dataTypes.add(tree.getSimpleName().toString());
+                else if (tree.getKind() == Tree.Kind.CLASS) classes.add(tree.getSimpleName().toString());
+                return super.visitClass(tree, unused);
+            }
+        }.scan(unit, null);
+        return new UnitInfo(pkg, List.copyOf(names), primary, List.copyOf(dataTypes), List.copyOf(classes));
     }
 }

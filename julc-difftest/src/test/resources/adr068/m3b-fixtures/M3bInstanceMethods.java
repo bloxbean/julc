@@ -28,7 +28,7 @@ class M3bInstanceMethods {
     record Inner(BigInteger deep, Datum2 next) { }
     record Datum2(boolean flag, String text) { }
     @NewType record Amount(BigInteger value) { }
-    @NewType record Tag(byte[] bytes) { }
+    @NewType record Tag(byte[] value) { }
     record Wrapped(Amount amount, Tag tag) { }
     record Holder(TokenName token) { }
 
@@ -102,7 +102,7 @@ class M3bInstanceMethods {
     static byte[] hashOfComponent(Datum d) { return d.signer().hash(); }
     static byte[] nameOfToken(Holder h) { return h.token().name(); }
     static BigInteger newTypeValue(Wrapped w) { return w.amount().value(); }
-    static byte[] newTypeBytes(Wrapped w) { return w.tag().bytes(); }
+    static byte[] newTypeBytes(Wrapped w) { return w.tag().value(); }
     static BigInteger tupleFirst(Tuple2<BigInteger, byte[]> t) { return t.first(); }
     static byte[] tupleSecond(Tuple2<BigInteger, byte[]> t) { return t.second(); }
     static BigInteger tupleThird(Tuple3<byte[], byte[], BigInteger> t) { return t.third(); }

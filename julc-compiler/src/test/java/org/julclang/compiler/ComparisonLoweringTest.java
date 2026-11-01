@@ -128,8 +128,9 @@ class ComparisonLoweringTest {
     }
 
     /**
-     * Static-library dispatch runs before the rule and is unchanged: a local {@code BigInteger Shadow} next to an
-     * {@code @OnchainLibrary class Shadow} still calls {@code Shadow.compareTo} (T33's kind, accepted until M5).
+     * Static-library dispatch runs before the rule and is unchanged: with the gate off, a local {@code BigInteger Shadow}
+     * next to an {@code @OnchainLibrary class Shadow} still calls {@code Shadow.compareTo}. The default gate rejects that
+     * shape: a variable does not take the name of a type offered to a compilation.
      */
     @Test
     void staticLibraryDispatchIsUnchanged() {
@@ -142,8 +143,11 @@ class ComparisonLoweringTest {
                 }
                 """;
         String body = "BigInteger Shadow = a; return Shadow.compareTo(b) > 0;";
+        var rejected = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileMethod(source(body), "m", List.of(library)));
+        assertEquals("JULC0100", rejected.diagnostics().getFirst().code());
         var result = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setOptimizationLevel(OptimizationLevel.NONE))
+                new CompilerOptions().setOptimizationLevel(OptimizationLevel.NONE).setJavacGate(JavacGateMode.OFF))
                 .compileMethod(source(body), "m", List.of(library));
         String pir = result.pirFormatted();
         assertTrue(pir.contains("Shadow.compareTo"), pir);

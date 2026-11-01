@@ -487,7 +487,7 @@ not Java (ADR-068 D6).
 import org.julclang.stdlib.annotation.NewType;
 
 @NewType
-record AssetId(byte[] hash) {}
+record AssetId(byte[] value) {}
 
 // new AssetId(bytes) compiles to identity -- no ConstrData overhead
 AssetId id = new AssetId(someBytes);
@@ -557,8 +557,8 @@ PubKeyHash pkh = PubKeyHash.of(beneficiaryBytes);
 ```
 
 On-chain, `.of()` is identity (the bytes pass through). Off-chain, it delegates to
-the record constructor with validation (e.g., `PubKeyHash` checks for exactly 28
-bytes).
+the record constructor, which checks for null and copies the bytes. Length is a
+ledger rule, not a type invariant.
 
 For casting `PlutusData` to typed records (e.g., datums, redeemers), use `PlutusData.cast()`:
 
@@ -1607,6 +1607,54 @@ following limitations apply:
   binds the variant's field names in scope. If a method parameter has the same name
   as a field, the field binding shadows the parameter. Use different parameter
   names.
+
+### Entry Points and Fields
+
+- **An entry point returns `boolean`** (or `Boolean`), and every entry point of a
+  `@MultiValidator` does too (`JULC0094`).
+- **A field initializer that nothing lowers holds only a constant** (`JULC0095`).
+  A `static` field of the class being compiled is lowered. Any other field (a
+  `@Param`, an instance field, a field of a nested type or a record, a field of a
+  library) holds only:
+  - a literal, or a negated one;
+  - a `new byte[]{...}` of literals;
+  - `BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, or `PlutusData.UNIT`;
+  - a constant variable, as Java defines one, named directly or through a type;
+  - for a `Boolean` `@Param`, `Boolean.valueOf(true)` or `Boolean.valueOf(false)`.
+
+  A `@Param` takes these forms as they stand: `BigInteger.ONE` written qualified, not
+  `ONE` by a static import, and `Boolean.valueOf(true)`, not `Boolean.TRUE`.
+- **An initializer block is empty** (`JULC0095`). Give the field its value where it
+  is declared.
+- **No varargs**: declare a `byte[]`, a `List<T>` or a `JulcList<T>` parameter.
+- **A value reaches `boolean` through a cast only from a boolean** (`JULC0098`). A
+  cast to `boolean` or `Boolean`, or `PlutusData.cast` to either, takes an operand
+  whose type, through parentheses and other casts, is `boolean` or `Boolean`. Read a
+  boolean out of Data by a typed field. A `@NewType` of a boolean
+  is one too.
+- **Some names are JuLC's.** A name JuLC reads by its spelling, such as `Boolean`,
+  `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to
+  the type JuLC reads, not to a variable, a type parameter or another type
+  (`JULC0100`). A name of the ledger, such as `Rational`, may also be a nested or
+  packaged record or sealed interface. A top-level type of the unnamed package takes
+  no name of the ledger, of another type of the compilation or of a package of it. A
+  variable does not take the name of a type of the compilation, and a plain class does
+  not share its name with a record or a library class of it. `new` has no class body,
+  and the operand of `instanceof` has the variant's type or its sealed interface's.
+  A method does not take a name JuLC reads in place of its body (`JULC0101`):
+  `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a
+  `@NewType`, an explicit accessor or `equals` on a record. A `@NewType`'s component
+  does not take the name of a method of its type, such as `abs` on a `BigInteger` or
+  `length` on a `String`, and a `@NewType` of `byte[]` names its component `value`.
+- **A constructor holds no statement** (`JULC0099`), on a record or a class: a value
+  is built from its components alone, so a constructor's body does not run on-chain.
+  That goes for a compact, canonical or other constructor; `R { }` holds nothing, and
+  is allowed. Put the statement in a static method that returns the value.
+
+### Strings
+
+- **`"a" + "b"` concatenates at run time**, as any `+` of strings does. For one
+  string, write one literal.
 
 ### Not Supported
 

@@ -14,13 +14,13 @@ import org.julclang.stdlib.annotation.SpendingValidator;
  */
 @SpendingValidator
 class M3bWrapperReads {
-    @NewType record Tag(byte[] bytes) { }
+    @NewType record Tag(byte[] value) { }
     record Holder(PubKeyHash signer) { }
 
     static byte[] hashOfParameter(PubKeyHash p) { return p.hash(); }
     static byte[] hashParenthesized(Holder h) { return (h.signer()).hash(); }
     static byte[] nameOfParameter(TokenName t) { return t.name(); }
-    static byte[] newTypeOfParameter(Tag t) { return t.bytes(); }
+    static byte[] newTypeOfParameter(Tag t) { return t.value(); }
     static PubKeyHash hashFromData(PlutusData d) { return PubKeyHash.fromPlutusData(d); }
 
     @Entrypoint

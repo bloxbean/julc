@@ -1,12 +1,10 @@
 format: 2
-name: #282 an explicit accessor called on a local (R6, T31)
+name: #282 an explicit accessor called on a local (R6)
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T31 Value/Value
-jvm: Value 24 []
-uplc: Value 05 []
-note: ADR-067 R6.
+expect: REJECT JULC0101
+note: ADR-067 R6. A subset rule: a method does not take a name read in place of its body.
 ---
 import java.math.BigInteger;
 

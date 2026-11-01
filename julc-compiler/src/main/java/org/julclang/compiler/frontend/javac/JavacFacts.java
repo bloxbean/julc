@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.LineMap;
@@ -20,6 +21,7 @@ import org.julclang.core.source.SourceLocation;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.RecordComponentElement;
 import javax.lang.model.element.TypeElement;
@@ -28,6 +30,7 @@ import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import java.io.IOException;
@@ -127,6 +130,17 @@ public final class JavacFacts {
         return element;
     }
 
+    /** {@link #element}, for a tree that may denote nothing, such as a name of an annotation's element. */
+    public Element elementOrNull(Tree tree) {
+        return trees.getElement(path(tree));
+    }
+
+    /** The unit that declares {@code element}, or null for what has no tree. */
+    public CompilationUnitTree unitOf(Element element) {
+        Tree tree = trees.getTree(element);
+        return tree == null ? null : path(tree).getCompilationUnit();
+    }
+
     /** The attributed type of {@code tree}; an error type never reaches JuLC (I12). */
     public TypeMirror type(Tree tree) {
         TypeMirror type = trees.getTypeMirror(path(tree));
@@ -199,6 +213,25 @@ public final class JavacFacts {
         return permitted;
     }
 
+    /**
+     * The records nested in {@code tree} that a sealed interface with no permits clause takes as its variants, in member
+     * order, as the JavaParser frontend reads them. A record implementing another type of the interface's simple name is
+     * one too: it has a tag there, so it must not drop out here and shift the others silently. It makes this list differ
+     * from {@link #permitted}, which is {@code JULC0092}.
+     */
+    public List<TypeElement> nestedVariants(ClassTree tree, TypeElement sealed) {
+        var nested = new ArrayList<TypeElement>();
+        for (Tree member : tree.getMembers()) {
+            if (member instanceof ClassTree nestedTree && nestedTree.getKind() == Tree.Kind.RECORD) {
+                var record = (TypeElement) element(nestedTree);
+                if (record.getInterfaces().stream().anyMatch(i -> typeElement(i).getSimpleName().contentEquals(sealed.getSimpleName()))) {
+                    nested.add(record);
+                }
+            }
+        }
+        return nested;
+    }
+
     /** Whether {@code element} carries the annotation named {@code annotation}, by identity. */
     public boolean hasAnnotation(Element element, String annotation) {
         for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
@@ -248,13 +281,20 @@ public final class JavacFacts {
         return pirType(type, where, true);
     }
 
+    /** The method a binder of {@code method} stands for: a binder goes by class and name, so interchangeable overloads share the first's. */
+    public ExecutableElement binderMethod(ExecutableElement method) {
+        return ElementFilter.methodsIn(method.getEnclosingElement().getEnclosedElements()).stream()
+                .filter(other -> other.getSimpleName().equals(method.getSimpleName()))
+                .filter(other -> other.getModifiers().contains(Modifier.STATIC)).findFirst().orElse(method);
+    }
+
     /** The PIR function type of {@code method}, a lambda's worth of arrows per parameter. A stub's has no trees to name. */
     public PirType methodType(ExecutableElement method) {
         MethodTree tree = trees == null ? null : trees.getTree(method);
         var parameters = method.getParameters();
         var argumentTypes = new ArrayList<PirType>();
         for (int i = 0; i < parameters.size(); i++) {
-            argumentTypes.add(pirType(parameters.get(i).asType(), tree == null ? null : tree.getParameters().get(i)));
+            argumentTypes.add(tree == null ? pirType(parameters.get(i).asType(), null) : parameterType(tree.getParameters().get(i)));
         }
         PirType type = pirType(method.getReturnType(), tree == null ? null : tree.getReturnType());
         for (int i = argumentTypes.size() - 1; i >= 0; i--) type = new PirType.FunType(argumentTypes.get(i), type);
@@ -275,6 +315,26 @@ public final class JavacFacts {
             default -> throw rejection("Cannot resolve type: " + type + ". Supported types: BigInteger,"
                     + " String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces", where);
         };
+    }
+
+    /** Whether {@code type} is {@code boolean} or {@code java.lang.Boolean}, by identity. */
+    public boolean isBoolean(TypeMirror type) {
+        return type.getKind() == TypeKind.BOOLEAN
+                || type instanceof DeclaredType declared && identity(declared).equals(JavacNames.BOOLEAN);
+    }
+
+    /**
+     * The PIR type of a method's parameter. A varargs parameter's Java type is an array, so {@code byte...} would read as
+     * {@code byte[]}: it is not one, and its element's type is what the subset rejects.
+     */
+    public PirType parameterType(VariableTree parameter) {
+        var type = element(parameter).asType();
+        if (element(parameter).getEnclosingElement() instanceof ExecutableElement method && method.isVarArgs()
+                && method.getParameters().getLast().equals(element(parameter)) && type instanceof ArrayType array
+                && array.getComponentType().getKind() == TypeKind.BYTE) {
+            return pirType(array.getComponentType(), parameter.getType());
+        }
+        return pirType(type, parameter.getType());
     }
 
     /** A rejection at {@code where}. */
@@ -396,6 +456,11 @@ public final class JavacFacts {
         return text.length() > FRAGMENT_LIMIT ? text.substring(0, FRAGMENT_LIMIT - 3) + "..." : text;
     }
 
+    /** Whether a unit declares {@code element}. An API type comes in as a class file, so its members are not. */
+    public boolean isDeclaredInSource(Element element) {
+        return trees.getTree(element) != null;
+    }
+
     /** Whether javac generated {@code tree}: it has no source text, as a default constructor has none. */
     public boolean isGenerated(Tree tree) {
         return end(tree) < 0;
@@ -403,21 +468,29 @@ public final class JavacFacts {
 
     /**
      * The first {@code count} characters of {@code tree}'s source as javac reads them: a Unicode escape is the character it
-     * denotes (JLS 3.3). What a token is spelled with can only be read here; javac's trees keep its value.
+     * denotes, and a backslash begins one only after an even number of backslashes (JLS 3.3). What a token is spelled with
+     * can only be read here; javac's trees keep its value.
      */
     public String leadingSource(Tree tree, int count) {
-        var unit = path(tree).getCompilationUnit();
-        String text = text(unit);
+        String text = text(path(tree).getCompilationUnit());
         var read = new StringBuilder();
-        for (int at = (int) start(tree); read.length() < count && at < text.length(); at++) {
-            char c = text.charAt(at);
-            if (c == '\\' && at + 1 < text.length() && text.charAt(at + 1) == 'u') {
-                at++;
-                while (text.charAt(at + 1) == 'u') at++;
-                c = (char) Integer.parseInt(text.substring(at + 1, at + 5), 16);
-                at += 4;
+        int backslashes = 0;
+        try {
+            for (int at = (int) start(tree); read.length() < count && at < text.length(); at++) {
+                char c = text.charAt(at);
+                if (c == '\\' && backslashes % 2 == 0 && at + 1 < text.length() && text.charAt(at + 1) == 'u') {
+                    at++;
+                    while (text.charAt(at + 1) == 'u') at++;
+                    c = (char) Integer.parseInt(text.substring(at + 1, at + 5), 16);
+                    at += 4;
+                    backslashes = 0;
+                } else {
+                    backslashes = c == '\\' ? backslashes + 1 : 0;
+                }
+                read.append(c);
             }
-            read.append(c);
+        } catch (NumberFormatException | IndexOutOfBoundsException e) {
+            throw rejection("Cannot read the source of this literal: " + e.getMessage(), tree);
         }
         return read.toString();
     }

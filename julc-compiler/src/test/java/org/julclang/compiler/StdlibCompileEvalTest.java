@@ -609,7 +609,7 @@ class StdlibCompileEvalTest {
         @Test
         void addTwoValues() {
             // Test ValuesLib.add with two singleton values for different policies.
-            // This exercises adjustOuterForAdd + extraOuterEntries which have mkNilPairData+mkCons patterns.
+            // This exercises the merge of the two pair lists.
             var source = """
                     import org.julclang.stdlib.Builtins;
                     import org.julclang.stdlib.lib.*;
@@ -6111,7 +6111,7 @@ class StdlibCompileEvalTest {
         @Test
         void newTypeByteArrayInHofLambda() {
             // @NewType byte[] maps to ByteStringType.
-            // In HOF lambda, field accessor (.id()) should be identity for HOF-unwrapped var.
+            // In HOF lambda, field accessor (.value()) should be identity for HOF-unwrapped var.
             // Redeemer = Constr(0, [list_of_bdata, target_bytes])
             var source = """
                     import org.julclang.stdlib.Builtins;
@@ -6124,14 +6124,14 @@ class StdlibCompileEvalTest {
                     @SpendingValidator
                     class TestValidator {
                         @NewType
-                        record AssetId(byte[] id) {}
+                        record AssetId(byte[] value) {}
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
                             JulcList<AssetId> assets = PlutusData.cast(Builtins.unListData(Builtins.headList(fields)), JulcList.class);
                             byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
-                            return assets.any(a -> Builtins.equalsByteString(a.id(), target));
+                            return assets.any(a -> Builtins.equalsByteString(a.value(), target));
                         }
                     }
                     """;

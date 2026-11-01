@@ -139,22 +139,14 @@ class ComparisonOrderDiffTest {
         }
     }
 
-    /**
-     * A {@code @NewType} that declares {@code compareTo}: the frozen frontend's dispatch selects the integer handler
-     * and ignores the declared method (T31, accepted until M5), before and after the rule. With an order-preserving
-     * declaration both sides agree; with a reversed one UPLC still makes the builtin comparison.
-     */
+    /** A {@code @NewType} that declares {@code compareTo}: a method does not take a name read in place of its body. */
     @Test
-    void newTypeWithADeclaredCompareToKeepsTheBuiltinComparison() {
-        String natural = "@NewType record Amt(BigInteger v) { public int compareTo(Amt o) { return v.compareTo(o.v()); } }";
-        String reversed = "@NewType record Amt(BigInteger v) { public int compareTo(Amt o) { return o.v().compareTo(v); } }";
-        for (long[] in : INPUTS) {
-            agrees(natural, "Amt x = new Amt(t(\"A\", a)); Amt y = new Amt(b); return x.compareTo(y) > 0;", in[0], in[1]);
-            agrees(natural, "return new Amt(t(\"A\", a)).compareTo(new Amt(t(\"B\", b))) >= 0;", in[0], in[1]);
-            var report = run(reversed, "boolean", "return new Amt(t(\"A\", a)).compareTo(new Amt(t(\"B\", b))) > 0;", in[0], in[1]);
-            var builtin = new Observation.Value(new PlutusData.ConstrData(in[0] > in[1] ? 1 : 0, List.of()), List.of("A", "B"));
-            report.results().values().forEach(result -> assertEquals(builtin, result.uplc(), report.describe()));
-        }
+    void newTypeDeclaringCompareToIsRejected() {
+        String declared = "@NewType record Amt(BigInteger v) { public int compareTo(Amt o) { return v.compareTo(o.v()); } }";
+        var report = run(declared, "boolean", "return new Amt(t(\"A\", a)).compareTo(new Amt(t(\"B\", b))) > 0;", 3, 1);
+        assertTrue(report.all(Verdict.Kind.REJECTED), report.describe());
+        report.results().values().forEach(result ->
+                assertEquals("JULC0101", ((Observation.Rejected) result.uplc()).code(), report.describe()));
     }
 
     /** The frozen frontend rejects a compareTo on a chained accessor of a call; the rule does not change that. */

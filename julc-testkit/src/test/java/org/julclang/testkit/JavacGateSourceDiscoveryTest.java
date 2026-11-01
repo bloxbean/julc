@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -72,6 +73,112 @@ class JavacGateSourceDiscoveryTest {
                 }
                 """);
         assertFalse(SourceDiscovery.compile("com.example.FeeGate", root).hasErrors());
+    }
+
+    /** A pool library the program reads meets the subset's rules at the default mode, with nothing set. */
+    @Test
+    void aSubsetRuleInAPoolLibraryRejects() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        write("""
+                package com.example;
+
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+
+                @OnchainLibrary
+                public class Fees {
+                    final long instance = 1 / 0;
+                    public static BigInteger minimum() { return BigInteger.TWO; }
+                }
+                """);
+        var e = assertThrows(CompilerException.class, () -> SourceDiscovery.compile("com.example.FeeGate", root));
+        assertEquals("JULC0095", e.diagnostics().getFirst().code(), e.diagnostics().toString());
+    }
+
+    private static final String CAST = """
+            import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+
+            @SpendingValidator
+            public class Gate {
+                @Entrypoint
+                public static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                    return (boolean) (Object) redeemer;
+                }
+            }
+            """;
+
+    @Test
+    void theHostsMeetTheCastAndNameRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        for (String[] rule : List.of(
+                new String[]{"JULC0098", CAST.replace("(boolean) (Object) redeemer", "org.julclang.core.PlutusData.cast(redeemer, Boolean.class)")},
+                new String[]{"JULC0100", CAST.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")},
+                new String[]{"JULC0101", CAST.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint").replace("(boolean) (Object) redeemer", "true")})) {
+            var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(rule[1]));
+            assertEquals(rule[0], e.diagnostics().getFirst().code(), e.diagnostics().toString());
+        }
+    }
+
+    @Test
+    void validatorTestMeetsTheSubsetsRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(CAST));
+        assertEquals("JULC0098", e.diagnostics().getFirst().code(), e.diagnostics().toString());
+    }
+
+    @Test
+    void methodEvaluatorMeetsTheSubsetsRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var e = assertThrows(CompilerException.class,
+                () -> MethodEvaluator.evaluateBoolean("""
+                        class P {
+                            final long instance = 1 / 0;
+                            static boolean m() { return true; }
+                        }
+                        """, "m"));
+        assertEquals("JULC0095", e.diagnostics().getFirst().code(), e.diagnostics().toString());
+    }
+
+    private static final List<String> CONSTRUCTORS = List.of(
+            "record R(BigInteger a) { R { a = a.abs(); } }",
+            "record R(BigInteger a) { R { a = BigInteger.ONE; } }",
+            "record R(BigInteger a) { R() { this(BigInteger.ONE); } }",
+            "static boolean OPEN = true; record R(BigInteger a) { R { OPEN = false; } }",
+            "record R(BigInteger a) { R { a = a.max(BigInteger.ONE); } }");
+
+    @Test
+    void aConstructorsStatementRejectsAtEveryHostEntry() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        for (String member : CONSTRUCTORS) {
+            write("""
+                    package com.example;
+
+                    import java.math.BigInteger;
+                    import org.julclang.stdlib.annotation.OnchainLibrary;
+
+                    @OnchainLibrary
+                    public class Fees {
+                        %s
+                        public static BigInteger minimum() { return BigInteger.TWO; }
+                    }
+                    """.formatted(member));
+            var pool = assertThrows(CompilerException.class, () -> SourceDiscovery.compile("com.example.FeeGate", root));
+            assertEquals("JULC0099", pool.diagnostics().getFirst().code(), pool.diagnostics().toString());
+            var validator = assertThrows(CompilerException.class,
+                    () -> ValidatorTest.compile(CAST.replace("(boolean) (Object) redeemer", "true").replace("    @Entrypoint", "    " + member + "\n    @Entrypoint")));
+            assertEquals("JULC0099", validator.diagnostics().getFirst().code(), validator.diagnostics().toString());
+            var method = assertThrows(CompilerException.class, () -> MethodEvaluator.evaluateBoolean("""
+                    import java.math.BigInteger;
+                    class P {
+                        %s
+                        static boolean m() { return true; }
+                    }
+                    """.formatted(member), "m"));
+            assertEquals("JULC0099", method.diagnostics().getFirst().code(), method.diagnostics().toString());
+        }
     }
 
     @Test

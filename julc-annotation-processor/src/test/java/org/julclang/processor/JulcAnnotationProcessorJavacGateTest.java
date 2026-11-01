@@ -101,6 +101,75 @@ class JulcAnnotationProcessorJavacGateTest {
         assertTrue(Files.exists(out.resolve("META-INF/plutus/FeeGate.plutus.json")));
     }
 
+    /** A subset rule reaches the processor at the default mode: no property, and javac itself has nothing to say. */
+    @Test
+    void aSubsetRuleFailsTheValidator() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var diagnostics = process(Map.of("FeeGate", validator("(boolean) (Object) ctx.txInfo().fee()")));
+        var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                .map(d -> d.getMessage(null)).toList();
+        assertEquals(1, errors.size(), diagnostics.toString());
+        assertTrue(errors.getFirst().contains("JULC0098"), errors.getFirst());
+    }
+
+    static final List<String> CONSTRUCTORS = List.of(
+            "record R(java.math.BigInteger a) { R { a = a.abs(); } }",
+            "record R(java.math.BigInteger a) { R { a = java.math.BigInteger.ONE; } }",
+            "record R(java.math.BigInteger a) { R() { this(java.math.BigInteger.ONE); } }",
+            "static boolean OPEN = true; record R(java.math.BigInteger a) { R { OPEN = false; } }",
+            "record R(java.math.BigInteger a) { R { a = a.max(java.math.BigInteger.ONE); } }");
+
+    static String withMember(String source, String member) {
+        return source.replace("    @Entrypoint", "    " + member + "\n    @Entrypoint");
+    }
+
+    @Test
+    void aConstructorsStatementFailsTheValidator() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        for (String member : CONSTRUCTORS) {
+            var diagnostics = process(Map.of("FeeGate", withMember(validator("true"), member)));
+            var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                    .map(d -> d.getMessage(null)).toList();
+            assertEquals(1, errors.size(), diagnostics.toString());
+            assertTrue(errors.getFirst().contains("JULC0099"), errors.getFirst());
+        }
+    }
+
+    private void assertFails(String code, String source) throws Exception {
+        var diagnostics = process(Map.of("FeeGate", source));
+        var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                .map(d -> d.getMessage(null)).toList();
+        assertEquals(1, errors.size(), diagnostics.toString());
+        assertTrue(errors.getFirst().contains(code), errors.getFirst());
+    }
+
+    @Test
+    void theCastAndNameRulesFailTheValidator() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        assertFails("JULC0098", validator("PlutusData.cast(ctx.txInfo().fee(), Boolean.class)"));
+        assertFails("JULC0098", validator("(boolean) (Object) (PlutusData) (Object) ctx.txInfo().fee()"));
+        assertFails("JULC0100", withMember(validator("true"), "record Boolean(java.math.BigInteger a) { }"));
+        assertFails("JULC0100", withMember(validator("true"), "static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; }"));
+        assertFails("JULC0101", withMember(validator("true"), "record R(long a) { static boolean fromPlutusData(long x) { return false; } }"));
+    }
+
+    @Test
+    void anEmptyConstructorCompiles() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var diagnostics = process(Map.of("FeeGate", withMember(validator("true"), "record R(java.math.BigInteger a) { R { } }")));
+        assertTrue(diagnostics.stream().noneMatch(d -> d.getKind() == Diagnostic.Kind.ERROR), diagnostics.toString());
+    }
+
+    @Test
+    void aLibrarysSubsetRuleFailsTheValidator() throws Exception {
+        var library = FEES.replace("public static BigInteger minimum()", "long instance = 1 / 0;\n    public static BigInteger minimum()");
+        var diagnostics = process(Map.of("Fees", library, "FeeGate", validator("Fees.minimum().signum() > 0")));
+        var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                .map(d -> d.getMessage(null)).toList();
+        assertEquals(1, errors.size(), diagnostics.toString());
+        assertTrue(errors.getFirst().contains("JULC0095"), errors.getFirst());
+    }
+
     @Test
     void javacGateRejectionFailsTheValidator() throws Exception {
         // -proc:only does not attribute, so the user's javac lets the dialect through to the processor; the gate's

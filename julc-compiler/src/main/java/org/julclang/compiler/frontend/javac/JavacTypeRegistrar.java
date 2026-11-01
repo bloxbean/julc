@@ -44,7 +44,6 @@ import java.util.TreeMap;
  */
 final class JavacTypeRegistrar {
 
-    private static final String NEW_TYPE = "org.julclang.stdlib.annotation.NewType";
 
     /** A record or sealed interface, with its tree when it comes from source. */
     record Declared(TypeElement element, ClassTree tree) {
@@ -302,7 +301,7 @@ final class JavacTypeRegistrar {
     }
 
     private boolean isNewType(TypeElement record) {
-        return facts.hasAnnotation(record, NEW_TYPE);
+        return facts.hasAnnotation(record, JavacNames.NEW_TYPE);
     }
 
     /** The types a record component names: the base type and its type arguments, at any depth. */
@@ -322,25 +321,9 @@ final class JavacTypeRegistrar {
             return permitted;
         }
         if (!declared.tree().getPermitsClause().isEmpty()) return permitted;
-        var nested = new ArrayList<TypeElement>();
-        for (Tree member : declared.tree().getMembers()) {
-            if (member instanceof ClassTree tree && tree.getKind() == Tree.Kind.RECORD) {
-                var record = (TypeElement) facts.element(tree);
-                if (namesParent(record, element)) nested.add(record);
-            }
-        }
+        var nested = facts.nestedVariants(declared.tree(), element);
         if (!nested.equals(permitted)) throw permitsRequired(declared, permitted);
         return nested;
-    }
-
-    /**
-     * Whether {@code record} implements a type of {@code parent}'s simple name. Not {@code parent} itself: a nested
-     * record implementing another {@code S} has a tag on the JavaParser frontend, so it must not drop out here and shift
-     * the others silently. It makes the list differ from javac's, which is {@code JULC0092} (F800).
-     */
-    private boolean namesParent(TypeElement record, TypeElement parent) {
-        return record.getInterfaces().stream()
-                .anyMatch(i -> facts.typeElement(i).getSimpleName().contentEquals(parent.getSimpleName()));
     }
 
     /** A tag the ledger fixes is JuLC's (I11): a stub that disagrees is a broken build, not a new encoding. */
@@ -352,12 +335,8 @@ final class JavacTypeRegistrar {
     }
 
     private CompilerException permitsRequired(Declared declared, List<TypeElement> permitted) {
-        var info = DiagnosticCodes.SEALED_PERMITS_REQUIRED;
-        var location = facts.location(declared.tree());
-        var names = permitted.stream().map(v -> v.getSimpleName().toString()).toList();
-        return new CompilerException(List.of(new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR,
-                info.format(declared.element().getSimpleName(), String.join(", ", names)), location.fileName(),
-                location.line(), location.column(), info.fix(), info.code())));
+        return CompilerTypeDiagnostics.sealedPermitsRequired(declared.element().getSimpleName().toString(),
+                permitted.stream().map(v -> v.getSimpleName().toString()).toList(), facts.location(declared.tree()));
     }
 
     /** The {@code index}-th component's type tree in a source record, or the record if javac's tree has none. */

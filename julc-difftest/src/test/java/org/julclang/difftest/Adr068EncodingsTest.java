@@ -74,6 +74,7 @@ class Adr068EncodingsTest {
     @Test
     void dataAndBlueprintsAgainstTheFrozenReference() throws Exception {
         var corpus = Adr068TypesTest.corpus(REPO);
+        var tabled = read(FROZEN.resolve("encodings-b1.tsv")).keySet();
         var encodings = new ConcurrentHashMap<String, String>();     // layout key -> digest of the javac registry's Data
         var references = new ConcurrentHashMap<String, String>();    // layout key -> digest of the reference's Data
         var blueprints = new ConcurrentHashMap<String, String>();    // case/interface -> digest of javac's schemas
@@ -87,7 +88,7 @@ class Adr068EncodingsTest {
         try {
             pool.submit(() -> corpus.sorted().parallelStream().forEach(c -> {
                 try {
-                    probeCase(c, encodings, references, blueprints, referenceBlueprints, skips, conflicts, rejectedOnly);
+                    probeCase(c, tabled, encodings, references, blueprints, referenceBlueprints, skips, conflicts, rejectedOnly);
                 } catch (RuntimeException | StackOverflowError e) {
                     // The encoder met a sample its registry cannot hold: that is a wrong registry, not a skip.
                     conflicts.put(c.key, "the encoder failed: " + Adr068Types.message(e));
@@ -105,8 +106,8 @@ class Adr068EncodingsTest {
         var frozenBlueprints = read(FREEZE ? OUT.resolve("blueprints-b1.tsv") : FROZEN.resolve("blueprints-b1.tsv"));
         var totals = new TreeMap<String, Integer>();
         var differences = new ArrayList<String>();
-        compare("encoding", encodings, frozenEncodings, totals, differences);
-        compare("blueprint", blueprints, frozenBlueprints, totals, differences);
+        compare("encoding", encodings, frozenEncodings, references, totals, differences);
+        compare("blueprint", blueprints, frozenBlueprints, referenceBlueprints, totals, differences);
         totals.put("encoding.distinct-data", new TreeSet<>(encodings.values()).size());
         totals.put("blueprint.distinct-schemas", new TreeSet<>(blueprints.values()).size());
         skips.forEach((reason, n) -> totals.put("skip: " + reason, n));
@@ -130,8 +131,9 @@ class Adr068EncodingsTest {
         assertEquals(accepted.keySet(), found, "an unclassified difference (D13), or a stale entry");
     }
 
-    private static void compare(String kind, Map<String, String> actual, Map<String, String> frozen,
-                                Map<String, Integer> totals, List<String> differences) {
+    /** @param computed the reference's digests from this run: what a case newer than the frozen table is compared with */
+    static void compare(String kind, Map<String, String> actual, Map<String, String> frozen, Map<String, String> computed,
+                        Map<String, Integer> totals, List<String> differences) {
         // A frozen row must be seen again: a source the frontend stops accepting takes its rows out of `actual`.
         frozen.forEach((key, digest) -> {
             if (!actual.containsKey(key)) {
@@ -141,7 +143,12 @@ class Adr068EncodingsTest {
         });
         actual.forEach((key, digest) -> {
             String expected = frozen.get(key);
-            if (expected == null) {
+            if (expected == null && digest.equals(computed.get(key))) {
+                totals.merge(kind + ".equal, newer than the table", 1, Integer::sum);
+            } else if (expected == null && computed.containsKey(key)) {
+                totals.merge(kind + ".DIFFERENT", 1, Integer::sum);
+                differences.add(kind + "\t" + key + "\t" + computed.get(key) + "\t" + digest);
+            } else if (expected == null) {
                 // A layout the reference never had: a wrong layout under test lands here, so it is a difference.
                 totals.merge(kind + ".DIFFERENT (no such layout in the reference)", 1, Integer::sum);
                 differences.add(kind + "\t" + key + "\tno such layout in the reference\t" + digest);
@@ -172,7 +179,7 @@ class Adr068EncodingsTest {
         return rows;
     }
 
-    private static void probeCase(Adr068Corpus.Case c, Map<String, String> encodings, Map<String, String> references,
+    private static void probeCase(Adr068Corpus.Case c, Set<String> tabled, Map<String, String> encodings, Map<String, String> references,
                                   Map<String, String> blueprints, Map<String, String> referenceBlueprints,
                                   Map<String, Integer> skips, Map<String, String> conflicts, Set<String> rejectedOnly) {
         if (c.main == null || c.entry.equals("ledger-source")) return;
@@ -204,7 +211,7 @@ class Adr068EncodingsTest {
         }
         var registry = program.registry().snapshot();
         for (var probe : probes(program, registry, encodings, conflicts, skips)) {
-            if (FREEZE && !references.containsKey(probe.key())) {
+            if ((FREEZE || !tabled.contains(probe.key())) && !references.containsKey(probe.key())) {
                 references.put(probe.key(), reference(c.main.text(), program, probe, libraries));
             }
         }

@@ -399,13 +399,14 @@ testkit expose it from M3, once a compilation can succeed on it; at M2 each woul
     comparison. Every earlier dispatch decision stays as it is: in particular static-library dispatch, which runs
     first and treats the receiver's spelling as a class name (`PirGenerator.java:1304-1315`, `:1379-1430`), so
     `BigInteger Shadow = …; Shadow.compareTo(y) > 0` next to an `@OnchainLibrary class Shadow` still calls
-    `Shadow.compareTo`, as today (a name-resolution divergence of the T33 kind, on the accepted list). Where
+    `Shadow.compareTo`, as today (a name-resolution divergence of the T33 kind, on the accepted list; the lowering
+    stays, and since M3a the gate rejects the shape, `JULC0100`, so a compilation reaches it only with the gate off). Where
     the integer handler is selected, the frozen frontend already lowers `compareTo` to the integer comparison: a `@NewType` that declares its own `compareTo` is
     lowered to the builtin comparison today, ignoring the declared method (probe at B0; that is T31, on the
     accepted list above). So the rule changes only how many times the operands are evaluated (#146), never which
     comparison is made. No javac fact flows into that frontend (I8). Tests: a `@NewType` with a declared
     `compareTo` (same comparison before and after), an accessor receiver (`p.amt().compareTo(y) > 0`), a
-    method-call receiver, the `Shadow` case (unchanged from B0), and a chained accessor the frozen frontend rejects
+    method-call receiver, the `Shadow` case (lowering unchanged from B0, gate off), and a chained accessor the frozen frontend rejects
     today (`box("L", 2).amt().compareTo(…) > 0`, still rejected).
   M1 gates that every rewritten corpus source costs no more, in size and budget, than the **order-correct**
   lowering of its dialect original, which is the dialect form plus D6's single binding where one is needed, with the
@@ -1223,3 +1224,8 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     `JULC0081` (D3), which extends D3's ownership check beyond top-level types: calls dispatch on these names in M3. It
     is a new rejection the JavaParser frontend does not make; no corpus case is affected.
   - F860 → a variant's constructor is held by identity, not found by simple name.
+- **r11** (2026-11-01, M3a, on repository evidence and the coordinator's decisions):
+  - D4: `JULC0100` rejects T33's shapes and the `Shadow` shape at the gate. A variable does not take the name of a type
+    offered to a compilation, a class or a record `Value` is a type key like any other, and no top-level type of the
+    unnamed package takes a name of the ledger. The lowering, which the gate's rule stops short of, is unchanged, and
+    the rule is the gate's alone: the javac frontend binds by identity.

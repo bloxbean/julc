@@ -25,20 +25,11 @@ import java.math.BigInteger;
 public class ValuesLib {
 
     /**
-     * Extracts the lovelace (ADA) amount from a Value.
-     * <p>
-     * Assumes the ADA entry (empty bytestring policy) is the <b>first</b> entry in the outer map.
-     * This invariant holds for all on-chain Values produced by the Cardano ledger, but may not hold
-     * for hand-constructed Values in tests.
+     * The lovelace (ADA) amount of a Value: its amount under the empty policy and the empty token name, by key, wherever
+     * that entry is. Returns 0 if there is none.
      */
     public static BigInteger lovelaceOf(Value value) {
-        var pairs = Builtins.unMapData(value);
-        var firstPair = Builtins.headList(pairs);
-        var tokenMapData = Builtins.sndPair(firstPair);
-        var tokenPairs = Builtins.unMapData(tokenMapData);
-        var firstTokenPair = Builtins.headList(tokenPairs);
-        var amountData = Builtins.sndPair(firstTokenPair);
-        return Builtins.unIData(amountData);
+        return value.lovelaceOf();
     }
 
     /** Check if a policy ID (as bytes) exists in a Value. */
@@ -101,42 +92,52 @@ public class ValuesLib {
         return result;
     }
 
-    /** Checks if value a >= value b for ALL policy/token pairs (multi-asset). */
+    /**
+     * Checks if value a >= value b for ALL policy/token pairs (multi-asset): over the keys of both Values, where a key one
+     * of them does not hold is 0 there.
+     */
     public static boolean geqMultiAsset(Value a, Value b) {
-        var result = true;
-        var outerPairs = Builtins.unMapData(b);
-        PlutusData outerCurrent = outerPairs;
-        while (!Builtins.nullList(outerCurrent)) {
-            var outerPair = Builtins.headList(outerCurrent);
-            if (checkPolicyGeq(a, outerPair)) {
-                outerCurrent = Builtins.tailList(outerCurrent);
-            } else {
-                result = false;
-                outerCurrent = Builtins.mkNilPairData();
-            }
-        }
-        return result;
+        return _holdsBothWays(a, b, BigInteger.ONE);
     }
 
-    /** Check all tokens under a policy pair have sufficient amounts in value a. */
-    public static boolean checkPolicyGeq(Value a, PlutusData outerPair) {
-        var policyKey = Builtins.fstPair(outerPair);
-        var innerPairs = Builtins.unMapData(Builtins.sndPair(outerPair));
-        var result = true;
-        PlutusData current = innerPairs;
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            var tokenKey = Builtins.fstPair(pair);
-            var bAmount = Builtins.unIData(Builtins.sndPair(pair));
-            var aAmount = _assetOf(a, (PlutusData.BytesData) policyKey, (PlutusData.BytesData) tokenKey);
-            if (aAmount.compareTo(bAmount) >= 0) {
-                current = Builtins.tailList(current);
-            } else {
-                result = false;
-                current = Builtins.mkNilPairData();
-            }
+    /**
+     * Compares two Values by one pass over the keys of each, where a key one of them does not hold is 0 there. At each key,
+     * {@code walked - other} is 0 or has the sign of {@code direction}. A {@code direction} of 0 asks for equality.
+     */
+    public static boolean _holdsBothWays(Value a, Value b, BigInteger direction) {
+        var aPolicies = Builtins.unMapData(a);
+        var bPolicies = Builtins.unMapData(b);
+        if (!_holdsOverPolicies(aPolicies, bPolicies, direction)) {
+            return false;
         }
-        return result;
+        return _holdsOverPolicies(bPolicies, aPolicies, direction.negate());
+    }
+
+    /** {@link #_holdsBothWays} over the walked side's policies: each takes one lookup of the other side's tokens. */
+    public static boolean _holdsOverPolicies(PlutusData policies, PlutusData other, BigInteger direction) {
+        if (Builtins.nullList(policies)) {
+            return true;
+        }
+        var pair = Builtins.headList(policies);
+        var otherTokens = _tokensOf(other, Builtins.fstPair(pair));
+        if (!_holdsOverTokens(Builtins.unMapData(Builtins.sndPair(pair)), otherTokens, direction)) {
+            return false;
+        }
+        return _holdsOverPolicies(Builtins.tailList(policies), other, direction);
+    }
+
+    /** {@link #_holdsBothWays} over one policy's tokens. Each key takes one lookup: the walked amount is in its entry. */
+    public static boolean _holdsOverTokens(PlutusData tokens, PlutusData.MapData other, BigInteger direction) {
+        if (Builtins.nullList(tokens)) {
+            return true;
+        }
+        var entry = Builtins.headList(tokens);
+        var difference = Builtins.unIData(Builtins.sndPair(entry))
+                .subtract(findTokenAmount(other, (PlutusData.BytesData) Builtins.fstPair(entry)));
+        if (!difference.equals(BigInteger.ZERO) && difference.multiply(direction).compareTo(BigInteger.ZERO) <= 0) {
+            return false;
+        }
+        return _holdsOverTokens(Builtins.tailList(tokens), other, direction);
     }
 
     /** Checks if value a <= value b (multi-asset). */
@@ -146,11 +147,7 @@ public class ValuesLib {
 
     /** Checks if two values are equal (multi-asset). */
     public static boolean eq(Value a, Value b) {
-        if (geqMultiAsset(a, b)) {
-            return geqMultiAsset(b, a);
-        } else {
-            return false;
-        }
+        return _holdsBothWays(a, b, BigInteger.ZERO);
     }
 
     /** Checks if a value is zero (all amounts == 0). */
@@ -207,37 +204,36 @@ public class ValuesLib {
         return (Value)(Object) Builtins.mapData(outerList);
     }
 
-    /** Negates all amounts in a value. */
+    /** Negates all amounts in a value, keeping its order. */
     public static Value negate(Value value) {
-        var outerPairs = Builtins.unMapData(value);
-        PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = outerPairs;
-        while (!Builtins.nullList(current)) {
-            var outerPair = Builtins.headList(current);
-            var policyKey = Builtins.fstPair(outerPair);
-            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
-            var negatedInnerMap = negateTokenMap(innerMap);
-            var newOuterPair = Builtins.mkPairData(policyKey, negatedInnerMap);
-            result = Builtins.mkCons(newOuterPair, result);
-            current = Builtins.tailList(current);
-        }
-        return (Value)(Object) Builtins.mapData(result);
+        return (Value)(Object) Builtins.mapData(_negatePolicies(Builtins.unMapData(value)));
     }
 
-    /** Negate all amounts in a token map pair list. */
-    public static PlutusData.MapData negateTokenMap(PlutusData.MapData innerPairs) {
-        PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = Builtins.unMapData(innerPairs);
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            var tokenKey = Builtins.fstPair(pair);
-            var amt = Builtins.unIData(Builtins.sndPair(pair));
-            var negAmt = amt.negate();
-            var newPair = Builtins.mkPairData(tokenKey, Builtins.iData(negAmt));
-            result = Builtins.mkCons(newPair, result);
-            current = Builtins.tailList(current);
+    /** Each policy of a pair list with its amounts negated, in order. */
+    public static PlutusData _negatePolicies(PlutusData policies) {
+        if (Builtins.nullList(policies)) {
+            return policies;
         }
-        return Builtins.mapData(result);
+        var pair = Builtins.headList(policies);
+        var tokens = negateTokenMap((PlutusData.MapData) Builtins.sndPair(pair));
+        return Builtins.mkCons(Builtins.mkPairData(Builtins.fstPair(pair), tokens),
+                _negatePolicies(Builtins.tailList(policies)));
+    }
+
+    /** Negate all amounts in a token map, keeping its order. */
+    public static PlutusData.MapData negateTokenMap(PlutusData.MapData innerPairs) {
+        return Builtins.mapData(_negateAmounts(Builtins.unMapData(innerPairs)));
+    }
+
+    /** Each token of a pair list with its amount negated, in order. */
+    public static PlutusData _negateAmounts(PlutusData tokens) {
+        if (Builtins.nullList(tokens)) {
+            return tokens;
+        }
+        var pair = Builtins.headList(tokens);
+        var amount = Builtins.unIData(Builtins.sndPair(pair));
+        return Builtins.mkCons(Builtins.mkPairData(Builtins.fstPair(pair), Builtins.iData(amount.negate())),
+                _negateAmounts(Builtins.tailList(tokens)));
     }
 
     /**
@@ -301,97 +297,105 @@ public class ValuesLib {
     }
 
     /**
-     * Adds two Values together (union, adding amounts for matching policy/token).
+     * Adds two Values by key: each (policy, token) appears once, with the sum of its amounts, and a policy in both has one
+     * entry, with their tokens merged. An amount of 0 stays an entry. Inputs sorted by key at both levels give a result
+     * sorted at both levels; for any other input, every entry is still there once.
      * <p>
-     * Complexity: O(P * T * P) worst case, where P = number of policies and T = tokens per policy.
-     * For each token in value {@code a}, {@code _assetOf} scans value {@code b} to find matching amounts.
-     * Suitable for typical on-chain Values (few policies/tokens) but may be expensive for Values with
-     * many distinct policies.
+     * An input holds no repeated key, as a ledger Value does not. A Value cast from Data can; then the first entry of a
+     * key is the one this reads, and what happens to the others is not defined.
+     * <p>
+     * Complexity: O(P * P + T * T) for P policies and T tokens under a policy, since each key is looked up in the other
+     * Value. Suitable for typical on-chain Values, but may be expensive for Values with many distinct policies.
      */
     public static Value add(Value a, Value b) {
-        Value adjustedMap = adjustOuterForAdd(a, b);
-        Value extraMap = extraOuterEntries(b, a);
-        // Concat the two pair lists: prepend all of extraMap onto adjustedMap
-        PlutusData result = Builtins.unMapData(adjustedMap);
-        PlutusData current = Builtins.unMapData(extraMap);
-        while (!Builtins.nullList(current)) {
-            result = Builtins.mkCons(Builtins.headList(current), result);
-            current = Builtins.tailList(current);
-        }
-        return (Value)(Object) Builtins.mapData(result);
+        var aPolicies = Builtins.unMapData(a);
+        var bPolicies = Builtins.unMapData(b);
+        return (Value)(Object) Builtins.mapData(
+                _mergeByKey(_addPolicies(aPolicies, bPolicies), _entriesNotIn(bPolicies, aPolicies)));
     }
 
-    /** Walk a's outer map, adjust each token amount by adding assetOf(other). */
-    public static Value adjustOuterForAdd(Value a, Value other) {
-        var outerPairs = Builtins.unMapData(a);
-        PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = outerPairs;
-        while (!Builtins.nullList(current)) {
-            var outerPair = Builtins.headList(current);
-            var policyKey = Builtins.fstPair(outerPair);
-            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
-            var adjustedInnerMap = adjustInnerForAdd(innerMap, other, policyKey);
-            var newOuterPair = Builtins.mkPairData(policyKey, adjustedInnerMap);
-            result = Builtins.mkCons(newOuterPair, result);
-            current = Builtins.tailList(current);
+    /** Each policy of {@code policies}, in order, with the tokens {@code other} holds under it added. */
+    public static PlutusData _addPolicies(PlutusData policies, PlutusData other) {
+        if (Builtins.nullList(policies)) {
+            return policies;
         }
-        return (Value)(Object) Builtins.mapData(result);
+        var pair = Builtins.headList(policies);
+        var policy = Builtins.fstPair(pair);
+        var tokens = _addTokens((PlutusData.MapData) Builtins.sndPair(pair), _tokensOf(other, policy));
+        return Builtins.mkCons(Builtins.mkPairData(policy, tokens), _addPolicies(Builtins.tailList(policies), other));
     }
 
-    /** Adjust each token amount: new_amt = amt + assetOf(other, policy, token). */
-    public static PlutusData.MapData adjustInnerForAdd(PlutusData.MapData innerPairs, Value other, PlutusData policyKey) {
-        PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = Builtins.unMapData(innerPairs);
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            var tokenKey = Builtins.fstPair(pair);
-            var amtA = Builtins.unIData(Builtins.sndPair(pair));
-            var amtOther = _assetOf(other, (PlutusData.BytesData) policyKey, (PlutusData.BytesData) tokenKey);
-            var newAmt = amtA.add(amtOther);
-            var newPair = Builtins.mkPairData(tokenKey, Builtins.iData(newAmt));
-            result = Builtins.mkCons(newPair, result);
-            current = Builtins.tailList(current);
+    /** The tokens {@code policies} holds under {@code policy}, or an empty map. */
+    public static PlutusData.MapData _tokensOf(PlutusData policies, PlutusData policy) {
+        if (Builtins.nullList(policies)) {
+            return Builtins.mapData(policies);
         }
-        return Builtins.mapData(result);
+        var pair = Builtins.headList(policies);
+        if (Builtins.equalsData(Builtins.fstPair(pair), policy)) {
+            return (PlutusData.MapData) Builtins.sndPair(pair);
+        }
+        return _tokensOf(Builtins.tailList(policies), policy);
     }
 
-    /** Walk b's outer map, collect entries where assetOf(base) == 0 (not in base). */
-    public static Value extraOuterEntries(Value b, Value base) {
-        var outerPairs = Builtins.unMapData(b);
-        PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = outerPairs;
-        while (!Builtins.nullList(current)) {
-            var outerPair = Builtins.headList(current);
-            var policyKey = Builtins.fstPair(outerPair);
-            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
-            var extraInnerMap = extraInnerEntries(innerMap, base, policyKey);
-            if (Builtins.nullList(Builtins.unMapData(extraInnerMap))) {
-                result = result;
-            } else {
-                var newOuterPair = Builtins.mkPairData(policyKey, extraInnerMap);
-                result = Builtins.mkCons(newOuterPair, result);
-            }
-            current = Builtins.tailList(current);
-        }
-        return (Value)(Object) Builtins.mapData(result);
+    /** Two token maps added by key. */
+    public static PlutusData.MapData _addTokens(PlutusData.MapData a, PlutusData.MapData b) {
+        var aTokens = Builtins.unMapData(a);
+        return Builtins.mapData(_mergeByKey(_addAmounts(aTokens, b), _entriesNotIn(Builtins.unMapData(b), aTokens)));
     }
 
-    /** Collect inner entries where assetOf(base, policy, token) == 0. */
-    public static PlutusData.MapData extraInnerEntries(PlutusData.MapData innerPairs, Value base, PlutusData policyKey) {
-        PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = Builtins.unMapData(innerPairs);
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            var tokenKey = Builtins.fstPair(pair);
-            var amtInBase = _assetOf(base, (PlutusData.BytesData) policyKey, (PlutusData.BytesData) tokenKey);
-            if (amtInBase.equals(BigInteger.ZERO)) {
-                result = Builtins.mkCons(pair, result);
-            } else {
-                result = result;
-            }
-            current = Builtins.tailList(current);
+    /** Each token of {@code tokens}, in order, with its amount in {@code other} added. */
+    public static PlutusData _addAmounts(PlutusData tokens, PlutusData.MapData other) {
+        if (Builtins.nullList(tokens)) {
+            return tokens;
         }
-        return Builtins.mapData(result);
+        var pair = Builtins.headList(tokens);
+        var token = Builtins.fstPair(pair);
+        var amount = Builtins.unIData(Builtins.sndPair(pair)).add(findTokenAmount(other, (PlutusData.BytesData) token));
+        return Builtins.mkCons(Builtins.mkPairData(token, Builtins.iData(amount)),
+                _addAmounts(Builtins.tailList(tokens), other));
+    }
+
+    /** The entries of a pair list whose key the pair list {@code other} does not hold, in order. */
+    public static PlutusData _entriesNotIn(PlutusData pairs, PlutusData other) {
+        if (Builtins.nullList(pairs)) {
+            return pairs;
+        }
+        var pair = Builtins.headList(pairs);
+        var rest = _entriesNotIn(Builtins.tailList(pairs), other);
+        if (_hasKey(other, Builtins.fstPair(pair))) {
+            return rest;
+        }
+        return Builtins.mkCons(pair, rest);
+    }
+
+    /** Whether a pair list holds an entry of {@code key}. */
+    public static boolean _hasKey(PlutusData pairs, PlutusData key) {
+        if (Builtins.nullList(pairs)) {
+            return false;
+        }
+        if (Builtins.equalsData(Builtins.fstPair(Builtins.headList(pairs)), key)) {
+            return true;
+        }
+        return _hasKey(Builtins.tailList(pairs), key);
+    }
+
+    /**
+     * Merges two pair lists with no key in common, taking the lesser key first. Two sorted lists give a sorted list, and
+     * any others keep every entry.
+     */
+    public static PlutusData _mergeByKey(PlutusData a, PlutusData b) {
+        if (Builtins.nullList(a)) {
+            return b;
+        }
+        if (Builtins.nullList(b)) {
+            return a;
+        }
+        var first = Builtins.headList(a);
+        var second = Builtins.headList(b);
+        if (Builtins.lessThanByteString(Builtins.unBData(Builtins.fstPair(second)), Builtins.unBData(Builtins.fstPair(first)))) {
+            return Builtins.mkCons(second, _mergeByKey(a, Builtins.tailList(b)));
+        }
+        return Builtins.mkCons(first, _mergeByKey(Builtins.tailList(a), b));
     }
 
     /** Subtracts value b from value a: add(a, negate(b)). */

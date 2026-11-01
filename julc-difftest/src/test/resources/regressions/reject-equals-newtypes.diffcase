@@ -1,12 +1,10 @@
 format: 2
-name: equals between two @NewType types (E8, T29)
+name: equals between two @NewType types
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T29 Value/Value
-jvm: Value 00 []
-uplc: Value 01 []
-note: ADR-067 E8: retained (open question 2).
+expect: REJECT JULC0101
+note: ADR-067 E8: retained (open question 2). A subset rule: a @NewType takes no instance call but its accessor.
 ---
 import java.math.BigInteger;
 import org.julclang.stdlib.annotation.NewType;

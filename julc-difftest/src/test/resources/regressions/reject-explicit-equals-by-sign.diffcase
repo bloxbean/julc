@@ -1,18 +1,16 @@
 format: 2
-name: #282 an explicit equals that is always true (T31)
+name: #282 an explicit equals comparing by sign (H5)
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T31 Value/Value
-jvm: Value 01 []
-uplc: Value 00 []
-note: ADR-067 #282.
+expect: REJECT JULC0101
+note: ADR-067 H5. A subset rule: a method does not take a name read in place of its body.
 ---
 import java.math.BigInteger;
 
 public class Probe {
     record P(BigInteger v) {
-        public boolean equals(Object o) { return true; }
+        public boolean equals(Object o) { return o instanceof P p && p.v().signum() == v.signum(); }
     }
 
     public static BigInteger m(BigInteger a) {

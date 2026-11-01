@@ -3,6 +3,18 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: a conditional lowers to `Case` on a proven boolean
+
+A conditional lowers to `Case` when the compiler proves its condition produces a real boolean: a
+boolean constant, a comparison or another builtin with a boolean result, a decoded boolean field, a
+local bound to one of these, or a call of a function whose result is one of these. Any other
+condition, such as a method parameter or a loop's accumulator, lowers to builtin `ifThenElse`. The
+two agree on every boolean.
+
+Recompiling can change script bytes and budgets at `pv11-safe` and `pv11-costed`, so a script hash
+can change: about 4 bytes at each conditional on the builtin, and 188,049 CPU and 701 memory each
+time it runs.
+
 ## Upcoming preview: sources must be Java that javac accepts (ADR-068 M1)
 
 Every compilation now has javac analyze its sources first, on every host (the compiler API,
@@ -42,6 +54,30 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   or `report` (javac runs and rejects nothing), or call `CompilerOptions.setJavacGate(...)`.
   With `report`, `-Djulc.javacGate.report=<dir>` records each source javac would reject. The
   default is `enforce`.
+- **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
+  initializer that nothing lowers holds only a constant, and an initializer block is empty
+  (`JULC0095`). A value reaches `boolean` or `Boolean` through a cast only from a boolean
+  (`JULC0098`). A constructor holds no statement (`JULC0099`). A name JuLC reads by its spelling
+  binds at every use to the type JuLC reads, not to a variable, a type parameter or another type,
+  a variable does not take the name of a type of the compilation, a top-level type of the unnamed
+  package takes no name of the ledger, of another type or of a package of the compilation, no class
+  or record is named `Value`, `new` has no class body, and `instanceof` tests a variant of its
+  operand's sealed interface (`JULC0100`). A sealed interface with no `permits` clause holds its
+  variants (`JULC0092`). A method does not take a name JuLC reads in place of its body, and a
+  `@NewType` takes no instance call but its accessor and no field read (`JULC0101`).
+- **Two fixes in the JavaParser frontend.** `instanceof` on a qualified variant reads that variant,
+  and a library's unsupported statement or unknown method is a compile error, as in a root. The same rule covers a record component: a `@NewType` of `byte[]` names its
+  component `value`, so rename `record MyHash(byte[] hash)` to `record MyHash(byte[] value)`.
+  They run on javac's trees, so they follow the gate's mode, and `off` turns them off with it.
+  See [Compiler Limitations](/getting-started/#16-compiler-limitations).
+- **Value operations are key-based.** `ValuesLib.lovelaceOf` and `Value.lovelaceOf()` look up the
+  empty policy and token name, as `assetOf` does, and give 0 for a Value without them.
+  `ValuesLib.add`, `subtract` and `negate` keep each (policy, token) once with its amounts summed,
+  keep sorted inputs sorted, and keep an amount of 0 as an entry; an input holds no repeated key.
+  `geqMultiAsset`, `leq` and `eq` compare over the keys of both Values, with a missing key as 0,
+  and each key takes one lookup, so `eq` costs about what `geqMultiAsset` costs.
+  The helpers `adjustOuterForAdd`, `adjustInnerForAdd`, `extraOuterEntries`, `extraInnerEntries` and
+  `checkPolicyGeq` are gone; use `add` and `geqMultiAsset`.
 - **`PlutusData.cast`** views Data as a type on-chain. It is an unchecked cast, not a decoder: on
   the JVM it throws `ClassCastException` for a `ConstrData`.
 - **`CompileResult`** has a new component, `javacProvenance()`: the javac version, the platform

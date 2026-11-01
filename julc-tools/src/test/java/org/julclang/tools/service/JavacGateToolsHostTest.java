@@ -96,6 +96,61 @@ class JavacGateToolsHostTest {
         assertTrue(equalStanding(untagged.compile(new CompileRequest(VALIDATOR, "java", EDITOR_LIBRARY)).body()));
     }
 
+    private static final String CAST = VALIDATOR.replace("Rates.rate().add(Fees.fee()).signum() > 0",
+            "(boolean) (Object) ctx.txInfo().fee()");
+
+    /** A subset rule reaches the tools at the default mode, with nothing set. */
+    @Test
+    void compileMeetsTheSubsetsRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
+        var compiled = tools.compile(new CompileRequest(CAST, "java", EDITOR_LIBRARY)).body();
+        assertTrue(String.valueOf(compiled).contains("JULC0098"), String.valueOf(compiled));
+    }
+
+    @Test
+    void sourceDebugMeetsTheSubsetsRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var opened = new SourceDebugService(classpath).open(new OpenRequest(CAST, EDITOR_LIBRARY, List.of(),
+                spendTransaction(), 11, null, null, null, null, false)).body();
+        assertTrue(String.valueOf(opened).contains("JULC0098"), String.valueOf(opened));
+    }
+
+    @Test
+    void theToolsMeetTheCastAndNameRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
+        for (String[] rule : List.of(
+                new String[]{"JULC0098", VALIDATOR.replace("Rates.rate().add(Fees.fee()).signum() > 0", "PlutusData.cast(ctx.txInfo().fee(), Boolean.class)")},
+                new String[]{"JULC0100", VALIDATOR.replace("    @Entrypoint", "    record Boolean(BigInteger a) { }\n    @Entrypoint")},
+                new String[]{"JULC0101", VALIDATOR.replace("    @Entrypoint", "    record R(long a) { static boolean fromPlutusData(long x) { return false; } }\n    @Entrypoint")})) {
+            var compiled = tools.compile(new CompileRequest(rule[1], "java", EDITOR_LIBRARY)).body();
+            assertTrue(String.valueOf(compiled).contains(rule[0]), String.valueOf(compiled));
+            var opened = new SourceDebugService(classpath).open(new OpenRequest(rule[1], EDITOR_LIBRARY, List.of(),
+                    spendTransaction(), 11, null, null, null, null, false)).body();
+            assertTrue(String.valueOf(opened).contains(rule[0]), String.valueOf(opened));
+        }
+    }
+
+    @Test
+    void theToolsMeetTheConstructorRule() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var tools = new ToolsService(ToolsService.compilerFor(classpath), classpath, JulcVm::create);
+        for (String member : List.of(
+                "record R(BigInteger a) { R { a = a.abs(); } }",
+                "record R(BigInteger a) { R { a = BigInteger.ONE; } }",
+                "record R(BigInteger a) { R() { this(BigInteger.ONE); } }",
+                "static boolean OPEN = true; record R(BigInteger a) { R { OPEN = false; } }",
+                "record R(BigInteger a) { R { a = a.max(BigInteger.ONE); } }")) {
+            String source = VALIDATOR.replace("    @Entrypoint", "    " + member + "\n    @Entrypoint");
+            var compiled = tools.compile(new CompileRequest(source, "java", EDITOR_LIBRARY)).body();
+            assertTrue(String.valueOf(compiled).contains("JULC0099"), String.valueOf(compiled));
+            var opened = new SourceDebugService(classpath).open(new OpenRequest(source, EDITOR_LIBRARY, List.of(),
+                    spendTransaction(), 11, null, null, null, null, false)).body();
+            assertTrue(String.valueOf(opened).contains("JULC0099"), String.valueOf(opened));
+        }
+    }
+
     @Test
     void sourceDebugRanksTheClassPathBelowTheEditor() {
         var opened = new SourceDebugService(classpath).open(new OpenRequest(VALIDATOR, EDITOR_LIBRARY, List.of(),

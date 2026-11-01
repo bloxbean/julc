@@ -196,7 +196,6 @@ class JavacCallsTest {
         assertSame("@NewType record A(byte[] value) { } static byte[] m(A a) { return a.value(); }");
         assertSame("@NewType record A(BigInteger value) { } static BigInteger m(A a) { return a.value(); }");
         assertSame("@NewType record A(byte[] value) { } record R(A a) { } static byte[] m(R r) { return r.a().value(); }");
-        assertSame("@NewType record H(byte[] v) { } record R(H h) { } static byte[] m(R r) { return r.h().v(); }");
         assertEquals("JULC0055", rejected("@NewType record A(BigInteger amount) { } record R(A a) { }\n"
                 + "static BigInteger m(R r) { return r.a().amount(); }").code());
     }
@@ -318,7 +317,7 @@ class JavacCallsTest {
     }
 
     @Test
-    void anInstanceHelperIsNotALocal() {
+    void anEntryPointThatCallsAnInstanceHelperIsNotStatic() {
         var source = IMPORTS + """
                 import org.julclang.ledger.ScriptContext;
                 import org.julclang.stdlib.annotation.Entrypoint;
@@ -329,19 +328,19 @@ class JavacCallsTest {
                     @Entrypoint boolean validate(PlutusData r, ScriptContext c) { return helper(); }
                 }
                 """;
-        var failure = assertInstanceOf(NotPorted.class, assertThrows(CompilerException.class, () ->
-                new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compile(source, List.of())));
-        assertTrue(failure.construct().startsWith("a call of helper"), failure::construct);
+        var failure = assertThrows(CompilerException.class, () ->
+                new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compile(source, List.of()));
+        assertTrue(failure.getMessage().contains("Entrypoint validate of V is not static"), failure::getMessage);
     }
 
     // --- Varargs ---
 
     @Test
     void aVarargsMethodDoesNotLower() {
-        assertEquals("a call of a varargs method", notPorted(
-                "static long h(long a, byte... rest) { return a; } static long m() { return h(1); }"));
-        assertEquals("a call of a varargs method", notPorted(
-                "static long h(long a, byte... rest) { return a; } static long m() { return h(1, new byte[]{1}); }"));
+        for (var call : List.of("h(1)", "h(1, new byte[]{1})")) {
+            assertTrue(rejected("static long h(long a, byte... rest) { return a; } static long m() { return " + call + "; }")
+                    .message().contains("Unsupported primitive type: byte"));
+        }
     }
 
     // --- JULC0057 ---

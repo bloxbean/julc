@@ -1,12 +1,10 @@
 format: 2
-name: #282 a compact constructor normalizing a component (N3, T31)
+name: #282 a compact constructor normalizing a component (N3)
 class: Probe
 method: m
 arg: 05
-expect: DIVERGE T31 Value/Value
-jvm: Value 05 []
-uplc: Value 24 []
-note: ADR-067 N3.
+expect: REJECT JULC0099
+note: ADR-067 N3. A subset rule: a constructor holds no statement.
 ---
 import java.math.BigInteger;
 

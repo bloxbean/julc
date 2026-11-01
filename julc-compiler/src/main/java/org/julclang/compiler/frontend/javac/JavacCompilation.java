@@ -46,6 +46,9 @@ import java.util.Set;
  */
 public final class JavacCompilation {
 
+    /** What a method's attempt names when it is rejected, not stopped at a construct. */
+    static final String REJECTED = "(rejected)";
+
     /** What the reference would have lowered of one method: its term and type, or the construct that stopped it. */
     record MethodAttempt(String binder, PirType type, PirTerm term, String construct) {
     }
@@ -85,13 +88,14 @@ public final class JavacCompilation {
     private static JavacProgram attributed(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool,
                                            CompilationContext context) {
         var program = JavacProgram.attribute(List.of(root), pool);
-        context.setJavacProvenance(JavacProvenance.of(null, program.result()));
+        context.setJavacProvenance(JavacProvenance.frontend(program.result()));
         return program;
     }
 
     /**
      * I1b, for the evidence tooling: every method the reference lowers of {@code root}, each lowered on its own, so a
-     * method is compared even where another one stops the program. No compilation path goes through here.
+     * method is compared even where another one stops or rejects the program. I13's check is not a rejection: it fails
+     * the caller. No compilation path goes through here.
      *
      * @param methodName the {@code compileMethod} target, or null for the validator of {@code root}
      */
@@ -109,7 +113,7 @@ public final class JavacCompilation {
         var attempts = new ArrayList<MethodAttempt>();
         for (var method : discovery.methods(type)) {
             boolean entry = methodName == null && discovery.isEntrypoint(method);
-            if (!JavacDiscovery.isStatic(method) && !entry) continue;
+            if (!discovery.isStatic(method) && !entry) continue;
             try {
                 // As the program lowers it: an entry point's boolean returns are guarded under a source map.
                 var term = lowering.method(method, parts.scope, entry && context.isSourceMapEnabled());
@@ -120,7 +124,7 @@ public final class JavacCompilation {
             } catch (NotPorted e) {
                 attempts.add(new MethodAttempt(parts.binder(method), null, null, e.construct()));
             } catch (CompilerException e) {
-                attempts.add(new MethodAttempt(parts.binder(method), null, null, "a rejection"));
+                attempts.add(new MethodAttempt(parts.binder(method), null, null, REJECTED));
             }
         }
         return attempts;
@@ -136,6 +140,7 @@ public final class JavacCompilation {
         final List<VariableTree> statics;
         final Scope scope;
         private final Map<MethodTree, PirType> methodTypes = new LinkedHashMap<>();
+        private final Map<String, Element> methodElements = new LinkedHashMap<>();
 
         ClassParts(ClassTree type) {
             this.type = type;
@@ -157,19 +162,27 @@ public final class JavacCompilation {
         PirTerm bindAround(PirTerm term) {
             for (var param : params) term = standIn(param.element(), term);
             for (var field : statics) term = standIn(facts.element(field), term);
+            for (var method : discovery.methods(type)) {
+                if (!discovery.isStatic(method)) continue;
+                term = standIn(binder(method), facts.binderMethod((ExecutableElement) facts.element(method)), term);
+            }
             return term;
         }
 
         private PirTerm standIn(Element element, PirTerm body) {
-            var binding = new PirTerm.Let(scope.lookup(element).name(), new PirTerm.Const(Constant.unit()), body);
-            lowering.terms().assembled(binding, element);
+            return standIn(scope.lookup(element).name(), element, body);
+        }
+
+        private PirTerm standIn(String name, Element element, PirTerm body) {
+            var binding = new PirTerm.Let(name, new PirTerm.Const(Constant.unit()), body);
+            lowering.terms().assembled(binding, name, element);
             return binding;
         }
 
         /** Step 10: every static method's type, before any body is lowered, so a bad signature is reported first. */
         void declareMethods(ClassTree type) {
             for (var method : discovery.methods(type)) {
-                if (JavacDiscovery.isStatic(method)) methodType(method);
+                if (discovery.isStatic(method)) methodType(method);
             }
         }
 
@@ -216,6 +229,7 @@ public final class JavacCompilation {
             var body = lowering.method(method, scope, false);
             overloads.check(method.getName().toString(), methodType(method), body, () -> facts.location(method));
             methods.put(binder(method), new ValidatorAssembly.Method(binder(method), body));
+            methodElements.put(binder(method), facts.binderMethod((ExecutableElement) facts.element(method)));
         }
 
         /** What the assembly needs of this compilation: where terms came from, and I13's check of the result. */
@@ -225,11 +239,12 @@ public final class JavacCompilation {
             for (var param : params) elements.put(scope.lookup(param.element()).name(), param.element());
             for (var field : statics) elements.put(scope.lookup(facts.element(field)).name(), facts.element(field));
             return new ValidatorAssembly.Frontend(terms.positions(), null,
-                    (param, binding) -> terms.assembled(binding, elements.get(param.name())),
+                    (param, binding) -> terms.assembled(binding, param.name(), elements.get(param.name())),
                     term -> {
                         if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) BindingCheck.check(term, terms.provenance());
                     },
-                    (field, binding) -> terms.assembled(binding, elements.get(field.name())));
+                    (field, binding) -> terms.assembled(binding, field.name(), elements.get(field.name())),
+                    (name, binding) -> terms.assembled(binding, name, methodElements.get(name)));
         }
     }
 
@@ -265,7 +280,7 @@ public final class JavacCompilation {
         }.scan(unit, null);
         context.verifyBinderNames(name -> {
             if (PirHelpers.isGeneratedName(name)) return true;
-            int mark = name.indexOf('\'');
+            int mark = name.indexOf(Scope.MARK);
             if (declared.contains(mark < 0 ? name : name.substring(0, mark))) return true;
             int dot = name.lastIndexOf('.');
             return dot > 0 && methods.contains(name.substring(dot + 1));
@@ -276,9 +291,12 @@ public final class JavacCompilation {
 
     private CompileResult validator(boolean captureDetails) {
         var unit = program.roots().getFirst();
+        // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
+        SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
         // 2. Validate subset
         SubsetScan.check(facts, unit, discovery.lowered(discovery.validatorClassOrNull(unit)));
         verifyBinderNamespace(unit);
+        // 3. Library units hold no validator annotation: no step here, since a library unit javac read stops at step 8
         // 4. Find annotated validator class and determine purpose
         var type = discovery.validatorClass(unit);
         var purpose = discovery.purpose(type);
@@ -303,7 +321,7 @@ public final class JavacCompilation {
         var overloads = new OnchainOverloads(type.getSimpleName().toString(), entrypointNames);
         var helpers = new LinkedHashMap<String, ValidatorAssembly.Method>();
         for (var method : discovery.methods(type)) {
-            if (JavacDiscovery.isStatic(method) && !discovery.isEntrypoint(method)) {
+            if (discovery.isStatic(method) && !discovery.isEntrypoint(method)) {
                 parts.lowerMethod(method, overloads, helpers);
             }
         }
@@ -316,8 +334,8 @@ public final class JavacCompilation {
         for (var entry : entrypoints) {
             var function = lowering.method(entry.method(), parts.scope, context.isSourceMapEnabled());
             var parameters = entryParameters(entry.method(), function);
-            var transformed = ValidatorAssembly.strictEntrypoint(function, parameters, facts.registry());
-            lowering.terms().rebuiltLambdas(function, transformed.function());
+            var transformed = ValidatorAssembly.strictEntrypoint(function, parameters, facts.registry(),
+                    lowering.terms().provenance().rebuildsOf(function));
             strictErrors.addAll(transformed.errors());
             boolean hasDatum = parameters.size() == 3 && (autoDispatch ? entry.tag() == 1 : purpose == ScriptPurpose.SPENDING);
             entries.add(new ValidatorAssembly.Entry(entry.tag(), parameters.size(), transformed.function(),
@@ -332,10 +350,18 @@ public final class JavacCompilation {
     }
 
     private List<JavacDiscovery.EntryPoint> entrypoints(ClassTree type, ScriptPurpose purpose) {
-        if (purpose == ScriptPurpose.MULTI) return discovery.multiEntrypoints(type);
-        var method = discovery.entrypoint(type);
-        discovery.requireEntrypointParameters(method, purpose, type);
-        return List.of(new JavacDiscovery.EntryPoint(method, "DEFAULT", -1));
+        List<JavacDiscovery.EntryPoint> entries;
+        if (purpose == ScriptPurpose.MULTI) {
+            entries = discovery.multiEntrypoints(type);
+        } else {
+            var method = discovery.entrypoint(type);
+            discovery.requireEntrypointParameters(method, purpose, type);
+            entries = List.of(new JavacDiscovery.EntryPoint(method, "DEFAULT", -1));
+        }
+        for (var entry : entries) {
+            discovery.requireStaticEntrypoint(entry.method(), type);
+        }
+        return entries;
     }
 
     /** The parameters of an entry point, each under the binder {@code function} binds it to. */
@@ -365,6 +391,8 @@ public final class JavacCompilation {
 
     private CompileResult method(String methodName) {
         var unit = program.roots().getFirst();
+        // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
+        SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
         // 2. Validate subset
         SubsetScan.check(facts, unit, discovery.lowered(discovery.firstClassOrNull(unit)));
         verifyBinderNamespace(unit);
@@ -372,7 +400,7 @@ public final class JavacCompilation {
         var type = discovery.firstClass(unit);
         // 4. Find the target method
         var target = discovery.methods(type).stream()
-                .filter(method -> JavacDiscovery.isStatic(method) && method.getName().contentEquals(methodName))
+                .filter(method -> discovery.isStatic(method) && method.getName().contentEquals(methodName))
                 .findFirst()
                 .orElseThrow(() -> new CompilerException(
                         "No static method '" + methodName + "' found in " + type.getSimpleName()));
@@ -390,7 +418,7 @@ public final class JavacCompilation {
         for (var parameter : target.getParameters()) {
             String name = parameter.getName().toString();
             var at = facts.location(parameter);
-            var parameterType = facts.pirType(facts.element(parameter).asType(), parameter);
+            var parameterType = facts.parameterType(parameter);
             if (registry().containsNativeOpaque(parameterType)) {
                 throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(name, parameterType, at);
             }
@@ -407,7 +435,7 @@ public final class JavacCompilation {
         var overloads = new OnchainOverloads(type.getSimpleName().toString(), Set.of());
         var methods = new LinkedHashMap<String, ValidatorAssembly.Method>();
         for (var method : discovery.methods(type)) {
-            if (JavacDiscovery.isStatic(method)) parts.lowerMethod(method, overloads, methods);
+            if (discovery.isStatic(method)) parts.lowerMethod(method, overloads, methods);
         }
 
         // 11-17. Everything from here on takes PIR and resolved types (F846).

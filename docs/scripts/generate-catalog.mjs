@@ -366,7 +366,7 @@ const SKIP_METHOD_NAMES = new Set([
 //   2. A parameter or return type naming `PlutusData.<subtype>` (e.g.
 //      `PlutusData.MapData`, `PlutusData.ConstrData`) — these are internal
 //      pair-list / inner-map plumbing helpers (`negateTokenMap`,
-//      `adjustInnerForAdd`, `findTokenAmount`, etc.). The project rule is
+//      `findTokenAmount`, etc.). The project rule is
 //      "do not hand users PlutusData subtypes"; surfacing such methods in
 //      the AI catalog would directly contradict it (Codex review P1.4).
 //   3. Methods named in {`toPlutusData`, `fromPlutusData`, `equals`,
@@ -381,9 +381,7 @@ const SKIP_METHOD_NAMES = new Set([
 // instead of canonical methods (geqMultiAsset, flatten, ...). Mirror
 // this list in StdlibCatalog.java if you add to it.
 const SKIP_STDLIB_HELPERS = new Set([
-  'checkPolicyGeq', 'flattenStep', 'flattenPolicy',
-  'adjustOuterForAdd', 'adjustInnerForAdd',
-  'extraOuterEntries', 'extraInnerEntries',
+  'flattenStep', 'flattenPolicy',
 ]);
 
 function isInternalHelperMethod({ name, returns, params }) {

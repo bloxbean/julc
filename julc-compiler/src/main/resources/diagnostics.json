@@ -1132,6 +1132,118 @@
       "template": "A string literal holds the unpaired surrogate U+{0}, which a UPLC string cannot hold",
       "summary": "javac accepts a lone surrogate in a string literal, but a UPLC string is Unicode text: the script's FLAT encoding would carry a ? in its place, so the JVM program would not be the script (ADR-065, ADR-068 I2a).",
       "fix": "Write a supplementary character as its high surrogate followed by its low surrogate, or remove it."
+    },
+    {
+      "code": "JULC0094",
+      "constant": "ENTRYPOINT_RETURN_TYPE",
+      "status": "emitted",
+      "title": "An entry point returns boolean",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} returns {2}; an entry point returns boolean or java.lang.Boolean",
+      "summary": "An @Entrypoint method of a validator states its verdict as a boolean or Boolean. Any other return type is not a validator's result.",
+      "fix": "Declare the method to return boolean.",
+      "example": {
+        "bad": "@Entrypoint\npublic static BigInteger validate(PlutusData redeemer, ScriptContext ctx) { return BigInteger.ONE; }",
+        "good": "@Entrypoint\npublic static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }"
+      }
+    },
+    {
+      "code": "JULC0095",
+      "constant": "INITIALIZER_NOT_LOWERED",
+      "status": "emitted",
+      "title": "An initializer that is not lowered holds only a constant",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "{0} is not lowered, so {1}",
+      "summary": "A static field of the compiled class is lowered. Any other field initializer (a @Param field, an instance field, a field of another type, a field of a library, whose static fields bind at script start) and any initializer block is not, so it holds only a literal, a new byte[]{...} of literals, BigInteger.ZERO, ONE, TWO or TEN, PlutusData.UNIT, or a constant variable. Boolean.valueOf(true) and Boolean.valueOf(false) are allowed for a @Param field that must not be a constant variable. An initializer block is empty.",
+      "fix": "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.",
+      "example": {
+        "bad": "class Limits { static BigInteger MAX = BigInteger.valueOf(5); }",
+        "good": "@SpendingValidator\nclass V { static final BigInteger MAX = BigInteger.valueOf(5); }"
+      }
+    },
+    {
+      "code": "JULC0101",
+      "constant": "METHOD_NAME_READ_BY_SPELLING",
+      "status": "emitted",
+      "title": "A method does not take a name JuLC reads in place of its body",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "{0} has a name JuLC reads in place of its body, so a program does not declare it",
+      "summary": "JuLC lowers some calls by their spelling, so a body declared under that name would not run: fromPlutusData and toPlutusData on any type, of and instance methods on a @NewType record, an explicit accessor or equals on a record, equals on a sealed interface, and a @NewType's component named like a method of the type it lowers to. A @NewType of byte[] names its component value. A @NewType takes no instance call but its accessor, and no field read. A byte[] or a ledger hash takes no other no-argument call, and a no-argument call on an Optional of a record does not take the name of a component. A call named headList, tailList, mkCons, mkNilData, mkNilPairData, mkPairData, unMapData, fstPair or sndPair is Builtins' own.",
+      "fix": "Give the method another name.",
+      "example": {
+        "bad": "record Amount(BigInteger v) { public BigInteger v() { return v.abs(); } }",
+        "good": "record Amount(BigInteger v) { static BigInteger size(Amount a) { return a.v().abs(); } }"
+      }
+    },
+    {
+      "code": "JULC0100",
+      "constant": "TYPE_NAME_READ_BY_SPELLING",
+      "status": "emitted",
+      "title": "A name JuLC reads by its spelling binds to what JuLC reads",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "JuLC reads {0} as {1}, and here it is {2}, so a program does not write it",
+      "summary": "JuLC reads some names by their spelling, so at every use such a name binds to what JuLC reads, whether it stands as a type, a qualifier or an annotation. A program does not bind it to a variable, a parameter, a type parameter or another type, declared, imported or inherited. A name of the ledger may also be a nested or packaged record or sealed interface, or a library of another unit. A top-level type of the unnamed package takes no name of the ledger, of another type of the compilation, or of a package of the compilation. A variable does not take the name of a type offered to the compilation. A class or an interface that is not sealed does not share its name with a record, a sealed interface or a library class of the compilation. A record or sealed interface reached by inheritance or a static import is written with its owner, and a name in a guard does not bind to such a member. Two variants of a sealed interface do not share a name, a class or a record does not take a type key of JuLC's lowering, such as ListType or Value, and the datum of an entry point is written Optional<...> exactly when it is one. new has no class body, and the operand of instanceof on a variant has the variant's type or its sealed interface's.",
+      "fix": "Rename the declaration, or write the type JuLC reads.",
+      "example": {
+        "bad": "@NewType record Boolean(BigInteger v) { }",
+        "good": "@NewType record Flag(BigInteger v) { }"
+      }
+    },
+    {
+      "code": "JULC0099",
+      "constant": "CONSTRUCTOR_BODY",
+      "status": "emitted",
+      "title": "A constructor holds no statement",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "The body of constructor {0} does not run on-chain, so a constructor holds no statement",
+      "summary": "A value is built from its components alone, so a constructor's body never runs on-chain. Any constructor a source declares, on a record or a class, holds no statement.",
+      "fix": "Move the statement to a method, and call the method where the value is made.",
+      "example": {
+        "bad": "record Amount(BigInteger v) { Amount { v = v.abs(); } }",
+        "good": "record Amount(BigInteger v) { static Amount of(BigInteger v) { return new Amount(v.abs()); } }"
+      }
+    },
+    {
+      "code": "JULC0098",
+      "constant": "BOOLEAN_CAST_OPERAND",
+      "status": "emitted",
+      "title": "A value reaches boolean through a cast only from a boolean",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "A cast to {0} takes a boolean or a Boolean, not {1}",
+      "summary": "A cast to boolean or Boolean, or a call JuLC lowers to its argument with that result, such as PlutusData.cast, takes an operand whose type, through parentheses and other casts, is boolean or Boolean.",
+      "fix": "Compare the value to get a boolean.",
+      "example": {
+        "bad": "boolean b = (boolean)(Object) amount;",
+        "good": "boolean b = amount.signum() > 0;"
+      }
+    },
+    {
+      "code": "JULC0096",
+      "constant": "ENTRYPOINT_NOT_UNIQUE",
+      "status": "emitted",
+      "title": "A program has one validator class, and a single-purpose validator one entry point",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "{0} declares more than one {1}",
+      "summary": "A compilation unit holds one validator class, and a single-purpose validator one @Entrypoint method. Only a @MultiValidator has several, one per purpose.",
+      "fix": "Keep one, or use @MultiValidator with a purpose on each @Entrypoint."
+    },
+    {
+      "code": "JULC0097",
+      "constant": "ENTRYPOINT_NOT_STATIC",
+      "status": "emitted",
+      "title": "An entry point is static",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} is not static",
+      "summary": "An @Entrypoint method is static.",
+      "fix": "Declare the method static."
     }
   ]
 }

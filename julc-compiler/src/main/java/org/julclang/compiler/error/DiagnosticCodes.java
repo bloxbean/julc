@@ -61,6 +61,14 @@ public final class DiagnosticCodes {
             "{0} targets backend contract revision {1}; this backend supports revisions {2}",
             "Produce the descriptor for a supported revision reported by CompilerBackend.capabilities, or use a compiler release that implements the requested revision.");
 
+    public static final DiagnosticInfo BOOLEAN_CAST_OPERAND = new DiagnosticInfo(
+            "JULC0098",
+            "BOOLEAN_CAST_OPERAND",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "A cast to {0} takes a boolean or a Boolean, not {1}",
+            "Compare the value to get a boolean.");
+
     public static final DiagnosticInfo BREAK_IN_LOOP_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
             "JULC0063",
             "BREAK_IN_LOOP_WITHOUT_ACCUMULATOR",
@@ -149,6 +157,14 @@ public final class DiagnosticCodes {
             "Compound assignment operator {0} is not supported on-chain",
             "Write the update explicitly. For booleans evaluate the check first so it always runs, as Java's &= does: boolean c = check(x); ok = ok && c;");
 
+    public static final DiagnosticInfo CONSTRUCTOR_BODY = new DiagnosticInfo(
+            "JULC0099",
+            "CONSTRUCTOR_BODY",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "The body of constructor {0} does not run on-chain, so a constructor holds no statement",
+            "Move the statement to a method, and call the method where the value is made.");
+
     public static final DiagnosticInfo CONTINUE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0060",
             "CONTINUE_UNSUPPORTED",
@@ -189,6 +205,30 @@ public final class DiagnosticCodes {
             "No @Entrypoint method found in {0}",
             "Annotate exactly one `public static` method with `@Entrypoint`. The method must return `boolean` (or `void` for newer signature shapes).");
 
+    public static final DiagnosticInfo ENTRYPOINT_NOT_STATIC = new DiagnosticInfo(
+            "JULC0097",
+            "ENTRYPOINT_NOT_STATIC",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Entrypoint {0} of {1} is not static",
+            "Declare the method static.");
+
+    public static final DiagnosticInfo ENTRYPOINT_NOT_UNIQUE = new DiagnosticInfo(
+            "JULC0096",
+            "ENTRYPOINT_NOT_UNIQUE",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "{0} declares more than one {1}",
+            "Keep one, or use @MultiValidator with a purpose on each @Entrypoint.");
+
+    public static final DiagnosticInfo ENTRYPOINT_RETURN_TYPE = new DiagnosticInfo(
+            "JULC0094",
+            "ENTRYPOINT_RETURN_TYPE",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Entrypoint {0} of {1} returns {2}; an entry point returns boolean or java.lang.Boolean",
+            "Declare the method to return boolean.");
+
     public static final DiagnosticInfo ENTRYPOINT_WRONG_PARAMETER_COUNT = new DiagnosticInfo(
             "JULC0008",
             "ENTRYPOINT_WRONG_PARAMETER_COUNT",
@@ -228,6 +268,14 @@ public final class DiagnosticCodes {
             "FRONTEND",
             "The javac frontend does not compile {0} yet",
             "Compile with the default frontend until the construct is ported.");
+
+    public static final DiagnosticInfo INITIALIZER_NOT_LOWERED = new DiagnosticInfo(
+            "JULC0095",
+            "INITIALIZER_NOT_LOWERED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "{0} is not lowered, so {1}",
+            "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.");
 
     public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
             "JULC0077",
@@ -324,6 +372,14 @@ public final class DiagnosticCodes {
             "CONTROL_FLOW",
             "Method {0} may not return a value on all execution paths",
             "Ensure every if/else branch returns, or add a fallthrough return at the end of the method.");
+
+    public static final DiagnosticInfo METHOD_NAME_READ_BY_SPELLING = new DiagnosticInfo(
+            "JULC0101",
+            "METHOD_NAME_READ_BY_SPELLING",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "{0} has a name JuLC reads in place of its body, so a program does not declare it",
+            "Give the method another name.");
 
     public static final DiagnosticInfo METHOD_OVERLOAD_UNSUPPORTED = new DiagnosticInfo(
             "JULC0054",
@@ -645,6 +701,14 @@ public final class DiagnosticCodes {
             "try/catch is not supported on-chain",
             "Use if/else checks instead of exception handling");
 
+    public static final DiagnosticInfo TYPE_NAME_READ_BY_SPELLING = new DiagnosticInfo(
+            "JULC0100",
+            "TYPE_NAME_READ_BY_SPELLING",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "JuLC reads {0} as {1}, and here it is {2}, so a program does not write it",
+            "Rename the declaration, or write the type JuLC reads.");
+
     public static final DiagnosticInfo TYPE_RESOLUTION_FAILED = new DiagnosticInfo(
             "JULC0012",
             "TYPE_RESOLUTION_FAILED",
@@ -734,6 +798,7 @@ public final class DiagnosticCodes {
             BACKEND_TARGET_MISMATCH,
             BACKEND_UNSUPPORTED_REQUEST,
             BACKEND_UNSUPPORTED_REVISION,
+            BOOLEAN_CAST_OPERAND,
             BREAK_IN_LOOP_WITHOUT_ACCUMULATOR,
             BREAK_LOOP_STATEMENT_UNSUPPORTED,
             BREAK_OUTSIDE_LOOP,
@@ -745,16 +810,21 @@ public final class DiagnosticCodes {
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,
             COMPOUND_ASSIGNMENT_UNSUPPORTED,
+            CONSTRUCTOR_BODY,
             CONTINUE_UNSUPPORTED,
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
             ENTRYPOINT_MISSING,
+            ENTRYPOINT_NOT_STATIC,
+            ENTRYPOINT_NOT_UNIQUE,
+            ENTRYPOINT_RETURN_TYPE,
             ENTRYPOINT_WRONG_PARAMETER_COUNT,
             EQUALS_ALWAYS_FALSE,
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             FRONTEND_CONSTRUCT_NOT_PORTED,
+            INITIALIZER_NOT_LOWERED,
             INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
             INTEGER_LITERAL_INVALID,
             JAVAC_ERROR,
@@ -767,6 +837,7 @@ public final class DiagnosticCodes {
             LOOP_UPDATE_POSITION_UNSUPPORTED,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
+            METHOD_NAME_READ_BY_SPELLING,
             METHOD_OVERLOAD_UNSUPPORTED,
             MISSING_OPTIMIZATION_COST_PROFILE,
             MULTIPLE_DECLARATORS_UNSUPPORTED,
@@ -807,6 +878,7 @@ public final class DiagnosticCodes {
             SWITCH_REQUIRES_SEALED_INTERFACE,
             THROW_UNSUPPORTED,
             TRY_CATCH_UNSUPPORTED,
+            TYPE_NAME_READ_BY_SPELLING,
             TYPE_RESOLUTION_FAILED,
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,

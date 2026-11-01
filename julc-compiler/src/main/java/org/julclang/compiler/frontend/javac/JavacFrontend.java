@@ -1,11 +1,17 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.source.util.Trees;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
+import org.julclang.compiler.resolve.TypeRegistry;
 
 import javax.lang.model.SourceVersion;
 import javax.lang.model.util.Elements;
@@ -14,6 +20,7 @@ import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -25,6 +32,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,14 +48,21 @@ import java.util.function.Supplier;
  * {@link #OPTIONS} and the English locale, and uses only exported APIs ({@code javax.tools}, {@code javax.lang.model},
  * {@code com.sun.source}; I6). It never reads the host's {@code jrt:/}, {@code ct.sym} or class path.
  * <p>
- * {@link #analyze} runs, in order: the supported-javac check ({@code JULC0089}), the ownership check by provenance
+ * {@link #analyze} runs, in order: the supported-javac check, of the feature release and of the options' effect
+ * ({@code JULC0089}), the ownership check by provenance
  * ({@code JULC0081}), then javac's {@code parse()} and {@code analyze()}, whose errors become {@code JULC0085}
  * (D5). Diagnostics follow javac's emission order, which depends only on the inputs (I4).
  */
 public final class JavacFrontend {
 
-    /** javac's options (D3). No {@code --release}: the platform blob is the platform. */
-    public static final List<String> OPTIONS = List.of("-proc:none", "-source", "21", "-implicit:none", "-Xlint:none");
+    /**
+     * javac's options (D3). No {@code --release}: the platform blob is the platform. {@code -XDallowStringFolding=false}
+     * keeps a {@code +} of string literals in the tree as written, so that lowering decides what it means; the parser
+     * would otherwise join the literals and no tree would show it. It is a hidden option, so {@link #compiler()} checks
+     * that this javac honours it.
+     */
+    public static final List<String> OPTIONS = List.of("-proc:none", "-source", "21", "-implicit:none", "-Xlint:none",
+            "-XDallowStringFolding=false");
 
     /** The javac feature release JuLC supports (D3). */
     public static final String SUPPORTED_RELEASE = "RELEASE_25";
@@ -66,7 +81,6 @@ public final class JavacFrontend {
     };
     private static final int CACHE_LIMIT = 512;
 
-    /** A source given to javac: its text and, for the path entry points, its file. */
     /**
      * Where a pool unit comes from (D8: roots, then same-project sources, then JAR sources). A host that merges a
      * class-path pool with project sources tags the JAR ones; every other unit is a project unit, so untagged units
@@ -181,6 +195,66 @@ public final class JavacFrontend {
     /** {@link #analyze(List, List)}, keeping the attributed trees. */
     Attribution attribute(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true, null);
+    }
+
+    /** {@link #analyze(List, List)}, then, on what javac accepted, the subset's rules ({@link SubsetRules}). */
+    JavacResult analyzeWithRules(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled) {
+        var attribution = attribute(roots, pool);
+        if (!attribution.result().isAccepted() || attribution.trees() == null) return attribution.result();
+        try {
+            var facts = JavacFacts.of(attribution, new TypeRegistry());
+            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), compiled, reading(roots, pool, compiled, attribution.result().dropped()));
+            SubsetRules.check(facts, attribution.roots(), attribution.libraries(), compiled);
+            return attribution.result();
+        } catch (CompilerException e) {
+            var rejected = e.diagnostics().stream().map(diagnostic -> new JavacDiagnostic(diagnostic.code(), null,
+                    diagnostic.message(), diagnostic.fileName(), diagnostic.line(), diagnostic.column(), -1, -1,
+                    diagnostic.suggestion())).toList();
+            return new JavacResult(rejected, javacVersion(), platform.platformDigest(), platform.stubsDigest(),
+                    attribution.result().dropped());
+        }
+    }
+
+    /** What the JavaParser frontend reads in this environment, for these units: every one it compiles, read by javac or not. */
+    private SpelledTypes.Reading reading(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled, Set<String> dropped) {
+        var rootTexts = new LinkedHashSet<String>();
+        roots.forEach(unit -> rootTexts.add(unit.text()));
+        var libraries = new LinkedHashSet<>(bundled.texts().values());
+        pool.forEach(unit -> libraries.add(unit.text()));
+        libraries.removeAll(rootTexts);
+        libraries.removeIf(text -> dropped.contains(JavacPlatform.identity(text)));
+        if (compiled == JavacGate.Compiled.LIBRARY) {
+            libraries.addAll(rootTexts);
+            rootTexts.clear();
+        }
+        var libraryInfos = JavacUnits.infos(compiler(), platform, List.copyOf(libraries));
+        var rootInfos = JavacUnits.infos(compiler(), platform, List.copyOf(rootTexts));
+        var registered = new HashSet<String>();
+        libraryInfos.forEach(info -> registered.addAll(info.classes()));
+        var packages = new HashSet<String>();
+        var unnamed = new HashSet<String>();
+        var offered = new HashSet<String>();
+        var repeated = new HashSet<String>();
+        for (var infos : List.of(libraryInfos, rootInfos)) {
+            for (var info : infos) {
+                registered.addAll(info.dataTypes());
+                packages.add(firstName(info.packageName()));
+                if (info.packageName().isEmpty()) unnamed.addAll(info.topLevelNames());
+                for (var names : List.of(info.dataTypes(), info.classes())) {
+                    for (String name : names) {
+                        if (!offered.add(name)) repeated.add(name);
+                    }
+                }
+            }
+        }
+        var identities = new HashSet<>(platform.stubIdentities());
+        identities.addAll(bundled.digests().keySet());
+        return SpelledTypes.Reading.of(identities, registered, offered, repeated, packages, unnamed);
+    }
+
+    private static String firstName(String packageName) {
+        int dot = packageName.indexOf('.');
+        return dot < 0 ? packageName : packageName.substring(0, dot);
     }
 
     /**
@@ -333,8 +407,40 @@ public final class JavacFrontend {
                         "its highest source version is " + highest + ", and JuLC supports javac feature release 25");
                 return null;
             }
+            String folding = foldingProblem(found);
+            if (folding != null) {
+                unsupported = DiagnosticCodes.JAVAC_UNSUPPORTED.format(javacVersion(), folding);
+                return null;
+            }
             compiler = found;
             return found;
+        }
+    }
+
+    /**
+     * Whether {@code javac} keeps a {@code +} of string literals as written, read from a parse with {@link #OPTIONS}:
+     * null when it does, otherwise why it is not supported. Nothing else would notice a javac that stopped honouring the
+     * hidden option, since the joined literal is a valid tree.
+     */
+    private String foldingProblem(JavaCompiler javac) {
+        var probe = new SimpleJavaFileObject(URI.create("string:///FoldingProbe.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return "class FoldingProbe { String s = \"a\" + \"b\"; }";
+            }
+        };
+        try {
+            var task = (JavacTask) javac.getTask(null, new EmbeddedFileManager(platform, List.of(), null),
+                    diagnostic -> { }, OPTIONS, null, List.of(probe));
+            var unit = task.parse().iterator().next();
+            var type = (ClassTree) unit.getTypeDecls().getFirst();
+            var field = (VariableTree) type.getMembers().getFirst();
+            var read = field.getInitializer().getKind();
+            if (read == Tree.Kind.PLUS) return null;
+            return "with " + OPTIONS.getLast() + " it reads a + of string literals as " + read
+                    + ", and JuLC needs the + as written";
+        } catch (IOException | RuntimeException e) {
+            return "it could not parse with " + OPTIONS + ": " + e;
         }
     }
 

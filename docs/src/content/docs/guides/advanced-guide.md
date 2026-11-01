@@ -594,54 +594,12 @@ Map<ByteString, Map<ByteString, Integer>>
 Lovelace (ADA) is stored under the **empty bytestring** policy ID and the
 **empty bytestring** token name.
 
-### Manual Lovelace Extraction
-
-This is what `ValuesLib.lovelaceOf()` does under the hood:
-
-```java
-import java.math.BigInteger;
-import org.julclang.core.PlutusData;
-import org.julclang.ledger.ScriptContext;
-import org.julclang.ledger.TxInfo;
-import org.julclang.ledger.TxOut;
-import org.julclang.stdlib.Builtins;
-import org.julclang.stdlib.annotation.Entrypoint;
-import org.julclang.stdlib.annotation.SpendingValidator;
-
-@SpendingValidator
-class LovelaceExtraction {
-    static BigInteger extractLovelace(PlutusData value) {
-        // Value is MapData: first entry is the ADA policy (empty ByteString)
-        var outerPairs = Builtins.unMapData(value);
-        var firstOuterPair = Builtins.headList(outerPairs);
-
-        // The value of the first pair is the inner token map
-        var innerMap = Builtins.sndPair(firstOuterPair);
-        var innerPairs = Builtins.unMapData(innerMap);
-        var firstInnerPair = Builtins.headList(innerPairs);
-
-        // The value of the first inner pair is the lovelace amount
-        return Builtins.unIData(Builtins.sndPair(firstInnerPair));
-    }
-
-    @Entrypoint
-    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        TxInfo txInfo = ctx.txInfo();
-        var outputs = txInfo.outputs();
-        TxOut firstOutput = (TxOut)(Object) Builtins.headList(
-            (PlutusData)(Object) outputs);
-        PlutusData outputValue = (PlutusData)(Object) firstOutput.value();
-
-        BigInteger lovelace = extractLovelace(outputValue);
-        return lovelace.compareTo(BigInteger.valueOf(2_000_000)) >= 0;
-    }
-}
-```
-
 ### Manual Asset Lookup
 
 Looking up a specific native token amount requires traversing both the outer
-map (by policy ID) and the inner map (by token name):
+map (by policy ID) and the inner map (by token name). Lovelace is the same lookup
+with an empty policy ID and an empty token name, which is what
+`ValuesLib.lovelaceOf()` does:
 
 ```java
 import java.math.BigInteger;
@@ -1650,7 +1608,7 @@ The `@NewType` annotation creates zero-cost type aliases for single-field record
 import org.julclang.stdlib.annotation.NewType;
 
 @NewType
-public record AssetClass(byte[] policyId) {}
+public record AssetClass(byte[] value) {}
 
 // Usage in validator:
 AssetClass ac = new AssetClass(myBytes);
@@ -1659,6 +1617,7 @@ AssetClass ac = new AssetClass(myBytes);
 **Constraints:**
 - Must be a `record` with exactly one field
 - Underlying type must be `byte[]`, `BigInteger`, `String`, or `boolean`
+- The field does not take the name of a method of its type (`JULC0101`), such as `abs` on a `BigInteger` or `length` on a `String`. A `byte[]` field is named `value`
 - Multi-field or unsupported-type records produce a compiler error
 
 **On-chain behavior:** `new AssetClass(bytes)` compiles to identity — the bytes are passed through as-is. Field access `ac.policyId()` is also identity. A synthesized `AssetClass.of(bytes)` factory is not Java, so JuLC no longer accepts it (ADR-068 D6); the ledger hash types keep their real `of(byte[])` methods.

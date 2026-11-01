@@ -278,11 +278,19 @@ class Adr068CallsHarnessTest {
         assertBothDivergeAlike(method, integer(7), integer(-3));
         assertBothDivergeAlike("public static long m(JulcList<BigInteger> a) { return a.take(-1).size(); }", list(integer(1), integer(2)));
         assertBothDivergeAlike("public static long m(JulcList<BigInteger> a) { return a.drop(-1).size(); }", list(integer(1), integer(2)));
+    }
+
+    /** {@code lovelaceOf} looks ADA up by key on both frontends and on the JVM: with no ADA, or nothing at all, it is 0. */
+    @Test
+    void lovelaceOfIsALookupByKey() {
         String lovelace = "public static BigInteger m(PlutusData a) { return Value.fromPlutusData(a).lovelaceOf(); }";
-        var noAda = new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(1),
-                new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(2), integer(7)))))));
-        assertBothDivergeAlike(lovelace, noAda);
-        assertBothDivergeAlike(lovelace, new PlutusData.MapData(List.of()));
+        var ada = new PlutusData.Pair(new PlutusData.BytesData(new byte[0]), new PlutusData.MapData(List.of(
+                new PlutusData.Pair(new PlutusData.BytesData(new byte[0]), integer(5)))));
+        var token = new PlutusData.Pair(bytes(1), new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(2), integer(7)))));
+        assertAgree(lovelace, new PlutusData.MapData(List.of(token)));
+        assertAgree(lovelace, new PlutusData.MapData(List.of()));
+        assertAgree(lovelace, new PlutusData.MapData(List.of(ada)));
+        assertAgree(lovelace, new PlutusData.MapData(List.of(ada, token)));
     }
 
     // --- Short-circuiting ---

@@ -114,11 +114,15 @@ public class JulcCompiler {
      * references (ADR-068 D8).
      */
     private List<String> classpathLibraries(String source, ClassLoader classLoader, CompilationContext context) {
+        var libraries = classpathLibraries(source, classLoader, context.frontend());
+        context.markJarSources(libraries);
+        return libraries;
+    }
+
+    private static List<String> classpathLibraries(String source, ClassLoader classLoader, CompilerFrontend frontend) {
         var available = LibrarySourceResolver.scanClasspathSources(classLoader);
-        if (context.frontend() == CompilerFrontend.JAVAC) {
-            var scanned = available.values().stream().map(library -> library.source()).toList();
-            context.markJarSources(scanned);
-            return scanned;
+        if (frontend == CompilerFrontend.JAVAC) {
+            return available.values().stream().map(library -> library.source()).toList();
         }
         return available.isEmpty() ? List.of() : LibrarySourceResolver.resolve(source, available);
     }
@@ -214,10 +218,16 @@ public class JulcCompiler {
 
     /** Compile a source-debug artifact with classpath-discovered libraries. */
     public DebugCompileResult compileForDebug(String validatorSource) {
+        return compileForDebug(validatorSource, JulcCompiler.class.getClassLoader());
+    }
+
+    /** {@link #compileForDebug(String)}, with the libraries of {@code classLoader}: they are found before anything else. */
+    DebugCompileResult compileForDebug(String validatorSource, ClassLoader classLoader) {
+        var libraries = classpathLibraries(validatorSource, classLoader, options.getFrontend());
         requireSourceMap();
         var context = beginCompilation();
-        return compileForDebug(validatorSource,
-                classpathLibraries(validatorSource, JulcCompiler.class.getClassLoader(), context), context);
+        context.markJarSources(libraries);
+        return compileForDebug(validatorSource, libraries, context);
     }
 
     /**
@@ -589,7 +599,7 @@ public class JulcCompiler {
                         debugMetadata == null ? null : debugMetadata.provenance(),
                         debugMetadata == null ? null : (param, binding) ->
                                 debugMetadata.associate(declarations.get(param.name()), binding, param.type()),
-                        pirGenerator::rejectUnresolvedMembers, null),
+                        pirGenerator::rejectUnresolvedMembers, null, null),
                 captureDetails);
         var result = assembled.result();
         var lowered = assembled.lowered();
@@ -987,7 +997,7 @@ public class JulcCompiler {
                         assemblyParams(paramFields)),
                 context,
                 new ValidatorAssembly.Frontend(pirGenerator.getPirPositions(), null, null,
-                        pirGenerator::rejectUnresolvedMembers, null));
+                        pirGenerator::rejectUnresolvedMembers, null, null));
     }
 
     // --- What the assembly takes (ADR-068 F846) ---
@@ -1467,26 +1477,26 @@ public class JulcCompiler {
         var result = new ArrayList<ParamField>();
         for (var field : cls.getFields()) {
             if (field.getAnnotationByName("Param").isPresent()) {
-                var javaType = field.getCommonType().asString();
-                if (BANNED_PARAM_TYPES.contains(javaType)) {
-                    int line = 0, col = 0;
-                    var range = field.getRange();
-                    if (range.isPresent()) {
-                        line = range.get().begin.line;
-                        col = range.get().begin.column;
-                    }
-                    diagnostics.add(new CompilerDiagnostic(
-                            CompilerDiagnostic.Level.ERROR,
-                            PARAM_RAW_PLUTUS_DATA.format(javaType),
-                            "<source>", line, col,
-                            PARAM_RAW_PLUTUS_DATA.fix(),
-                            PARAM_RAW_PLUTUS_DATA.code()));
-                    continue;
-                }
                 for (var variable : field.getVariables()) {
+                    var javaType = variable.getType().asString();
+                    if (BANNED_PARAM_TYPES.contains(javaType)) {
+                        int line = 0, col = 0;
+                        var range = field.getRange();
+                        if (range.isPresent()) {
+                            line = range.get().begin.line;
+                            col = range.get().begin.column;
+                        }
+                        diagnostics.add(new CompilerDiagnostic(
+                                CompilerDiagnostic.Level.ERROR,
+                                PARAM_RAW_PLUTUS_DATA.format(javaType),
+                                "<source>", line, col,
+                                PARAM_RAW_PLUTUS_DATA.fix(),
+                                PARAM_RAW_PLUTUS_DATA.code()));
+                        continue;
+                    }
                     var name = variable.getNameAsString();
-                    var pirType = typeResolver.resolve(field.getCommonType());
-                    typeResolver.requireDataEncodable(pirType, "@Param field '" + name + "'", field.getCommonType());
+                    var pirType = typeResolver.resolve(variable.getType());
+                    typeResolver.requireDataEncodable(pirType, "@Param field '" + name + "'", variable.getType());
                     result.add(new ParamField(name, pirType, javaType, sourceLocation(variable), variable));
                 }
             }
@@ -1702,7 +1712,7 @@ public class JulcCompiler {
             for (var variable : field.getVariables()) {
                 if (variable.getInitializer().isEmpty()) continue;
                 var name = variable.getNameAsString();
-                var pirType = typeResolver.resolve(field.getCommonType());
+                var pirType = typeResolver.resolve(variable.getType());
                 result.add(new StaticField(name, pirType, variable.getInitializer().get()));
             }
         }

@@ -1,5 +1,8 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -12,6 +15,7 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -192,6 +196,59 @@ class JavacFrontendTest {
         assertTrue(d.message().contains("RELEASE_24"), d.message());
         assertFalse(older.supported().isAccepted());
         assertTrue(JavacFrontend.shared().supported().isAccepted());
+    }
+
+    /** A javac that drops {@code -XDallowStringFolding=false}, as one that stopped honouring it would behave. */
+    private static JavaCompiler compilerFoldingStrings() {
+        JavaCompiler real = ToolProvider.getSystemJavaCompiler();
+        return (JavaCompiler) Proxy.newProxyInstance(JavaCompiler.class.getClassLoader(),
+                new Class<?>[]{JavaCompiler.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("getTask")) {
+                        var options = new ArrayList<String>();
+                        ((Iterable<?>) args[3]).forEach(option -> options.add(option.toString()));
+                        options.remove("-XDallowStringFolding=false");
+                        args[3] = options;
+                    }
+                    return method.invoke(real, args);
+                });
+    }
+
+    /** The options the check parses with are the ones every compilation uses: the flag is in them, and it holds. */
+    @Test
+    void aConcatenationOfLiteralsStaysAsWritten() {
+        assertTrue(JavacFrontend.OPTIONS.contains("-XDallowStringFolding=false"));
+        assertTrue(JavacFrontend.shared().supported().isAccepted());
+        var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of("class P { String s = \"a\" + \"b\"; }")), List.of());
+        program.read(facts -> {
+            var type = (ClassTree) program.roots().getFirst().getTypeDecls().getFirst();
+            var field = type.getMembers().stream().filter(VariableTree.class::isInstance).map(VariableTree.class::cast).findFirst().orElseThrow();
+            assertEquals(Tree.Kind.PLUS, field.getInitializer().getKind());
+            return null;
+        });
+    }
+
+    /** Nothing else would notice: the joined literal is a valid tree, and it compiles to something. */
+    @Test
+    void javacThatFoldsStringsIsJulc0089() {
+        var folding = new JavacFrontend(JavacPlatform.shared(), JavacFrontendTest::compilerFoldingStrings,
+                JavacFrontend.BundledSources.load());
+        var d = folding.analyze(List.of(JavacFrontend.Unit.of(VALID)), List.of()).diagnostics().getFirst();
+        assertEquals("JULC0089", d.code());
+        assertTrue(d.message().contains("-XDallowStringFolding=false"), d.message());
+        assertTrue(d.message().contains(System.getProperty("java.version").split("\\.")[0]), d.message());
+        assertFalse(folding.supported().isAccepted());
+    }
+
+    /** A javac that fails on the options is unsupported too, not a crash at the first compilation. */
+    @Test
+    void javacThatRefusesTheOptionsIsJulc0089() {
+        JavaCompiler real = ToolProvider.getSystemJavaCompiler();
+        var refusing = new JavacFrontend(JavacPlatform.shared(), () -> (JavaCompiler) Proxy.newProxyInstance(
+                JavaCompiler.class.getClassLoader(), new Class<?>[]{JavaCompiler.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("getTask")) throw new IllegalArgumentException("invalid flag");
+                    return method.invoke(real, args);
+                }), JavacFrontend.BundledSources.load());
+        assertEquals("JULC0089", refusing.supported().diagnostics().getFirst().code());
     }
 
     @Test

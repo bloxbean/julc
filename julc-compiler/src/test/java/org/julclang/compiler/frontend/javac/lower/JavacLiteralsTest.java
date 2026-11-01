@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
@@ -12,6 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodAsReference;
 
@@ -66,7 +68,8 @@ class JavacLiteralsTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"\"\"", "\"a\"", "\"a\\nb\"", "\"\\t\\\"\\\\\"", "\"a\\sb\"", "\"\\101\"", "\"\\7\"", "\"\\377\"",
-            "\"é\"", "\"😀\"", "\"\\uD83D\\uDE00\"", "\"\\u0041\"", "\"\\uuuu0041\""})
+            "\"é\"", "\"😀\"", "\"\\uD83D\\uDE00\"", "\"\\u0041\"", "\"\\uuuu0041\"",
+            "\"\\\\user\"", "\"\\\\unicode\"", "\"\\\\u\"", "\"\\\\uu\"", "\"\\\\\\\\u0041\""})
     void strings(String literal) {
         assertSameMethodAsReference(returning("String", literal), "m");
     }
@@ -121,6 +124,24 @@ class JavacLiteralsTest {
     void otherLiterals(String type, String literal, String construct) {
         assertMethodNotPorted(returning(type, literal), "m", type.equals("double") || type.equals("float") ? "PRIMITIVE_TYPE" : construct,
                 4);
+    }
+
+    /** {@code "a" + "b"} joins at run time: the tree keeps the {@code +}, and each literal is its own. */
+    @Test
+    void aConcatenationOfLiteralsIsAnOperator() {
+        assertSameMethodAsReference(returning("String", "\"a\" + \"b\""), "m");
+        assertMethodNotPorted(returning("String", "\"a\" + \"\"\"\n    b\"\"\""), "m", "a text block", 4);
+    }
+
+    /** Each literal is its own, so half a pair stops on both frontends, in each one's words. */
+    @Test
+    void aPairSplitAcrossAConcatenationIsRejected() {
+        var source = returning("String", "\"\\uD83D\" + \"\\uDE00\"");
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m", List.of()));
+        assertTrue(failure.getMessage().contains("unpaired surrogate U+D83D"), failure::getMessage);
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler().compileMethod(source, "m", List.of()));
+        assertTrue(reference.getMessage().contains("unpaired surrogate U+D83D"), reference::getMessage);
     }
 
     @Test

@@ -96,7 +96,7 @@ class PaymentGateValidatorTest {
         var outputs = List.of(pay(PAYEE, 2_000_000), pay(OTHER, 9_000_000), pay(PAYEE, 3_000_000));
         EvalResult result = ValidatorTest.evaluate(compiled, context(CLAIM, outputs));
         BudgetAssertions.assertSuccess(result);
-        BudgetAssertions.assertBudgetUnder(result, 35_000_000, 140_000);
+        BudgetAssertions.assertBudgetUnder(result, 26_000_000, 90_000);
         BudgetAssertions.assertScriptSizeUnder(compiled, 1_000);
     }
     // endregion

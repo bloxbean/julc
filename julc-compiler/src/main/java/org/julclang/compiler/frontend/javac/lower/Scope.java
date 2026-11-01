@@ -15,7 +15,35 @@ import javax.lang.model.element.Element;
 public final class Scope {
 
     /** The mark of a renamed binder, which the binder-namespace check reads as its source name (ADR-060). */
-    private static final char MARK = '\'';
+    public static final char MARK = '\'';
+
+    /**
+     * A source element's PIR binder: the element, the name chosen for it when it was bound (I13), and its type. Only a
+     * {@link Scope} makes one, so a name cannot be chosen anywhere else.
+     */
+    public static final class Binder {
+        private final Element element;
+        private final String name;
+        private final PirType type;
+
+        private Binder(Element element, String name, PirType type) {
+            this.element = element;
+            this.name = name;
+            this.type = type;
+        }
+
+        public Element element() {
+            return element;
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public PirType type() {
+            return type;
+        }
+    }
 
     private static final Scope EMPTY = new Scope(null, null);
 

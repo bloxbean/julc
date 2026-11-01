@@ -223,6 +223,60 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(field), location);
     }
 
+    /** JULC0095: an initializer that is not lowered and holds more than a constant. */
+    public static CompilerException initializerNotLowered(String what, String rule, SourceLocation location) {
+        var info = DiagnosticCodes.INITIALIZER_NOT_LOWERED;
+        return exception(info.code(), info.level(), info.fix(), info.format(what, rule), location);
+    }
+
+    /** JULC0094: an entry point that does not return {@code boolean}. */
+    public static CompilerException entrypointReturnType(String method, String owner, String type, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_RETURN_TYPE;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner, type), location);
+    }
+
+    /** JULC0096: a second entry point, or a second validator class. */
+    public static CompilerException entrypointNotUnique(String owner, String what, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_NOT_UNIQUE;
+        return exception(info.code(), info.level(), info.fix(), info.format(owner, what), location);
+    }
+
+    /** JULC0101: a method or component under a name the JavaParser frontend reads in place of its body. */
+    public static CompilerException methodNameReadBySpelling(String method, SourceLocation location) {
+        var info = DiagnosticCodes.METHOD_NAME_READ_BY_SPELLING;
+        return exception(info.code(), info.level(), info.fix(), info.format(method), location);
+    }
+
+    /** JULC0092: a sealed interface with no permits clause whose permitted subclasses are not the records nested in it. */
+    public static CompilerException sealedPermitsRequired(String sealed, List<String> permitted, SourceLocation location) {
+        var info = DiagnosticCodes.SEALED_PERMITS_REQUIRED;
+        return exception(info.code(), info.level(), info.fix(), info.format(sealed, String.join(", ", permitted)), location);
+    }
+
+    /** JULC0100: {@code name}, which the JavaParser frontend reads as {@code read}, is {@code here} in this program. */
+    public static CompilerException typeNameReadBySpelling(String name, String read, String here, SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_NAME_READ_BY_SPELLING;
+        return exception(info.code(), info.level(), info.fix(), info.format(name, read, here), location);
+    }
+
+    /** JULC0099: a constructor that holds a statement. */
+    public static CompilerException constructorBody(String constructor, SourceLocation location) {
+        var info = DiagnosticCodes.CONSTRUCTOR_BODY;
+        return exception(info.code(), info.level(), info.fix(), info.format(constructor), location);
+    }
+
+    /** JULC0098: a cast to {@code boolean} or {@code Boolean} of what is neither of them nor Data. */
+    public static CompilerException booleanCastOperand(String target, String operand, SourceLocation location) {
+        var info = DiagnosticCodes.BOOLEAN_CAST_OPERAND;
+        return exception(info.code(), info.level(), info.fix(), info.format(target, operand), location);
+    }
+
+    /** JULC0097: an entry point that is not {@code static}. */
+    public static CompilerException entrypointNotStatic(String method, String owner, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_NOT_STATIC;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner), location);
+    }
+
     /** JULC0093: a string literal holding an unpaired surrogate, which a UPLC string cannot hold. */
     public static CompilerException unpairedSurrogate(char surrogate, SourceLocation location) {
         var info = DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE;

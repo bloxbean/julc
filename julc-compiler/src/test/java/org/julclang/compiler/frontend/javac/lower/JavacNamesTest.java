@@ -141,26 +141,28 @@ class JavacNamesTest {
                 """, "m");
     }
 
+    /** An interface's field is static by the language, though the source does not say so. */
     @Test
-    void aVoidMethodIsUnit() {
-        assertSameMethodAsReference("class P { static void m() { } }", "m");
-        assertSameMethodAsReference("class P { static void m() { return; } }", "m");
-        assertSameMethodAsReference("class P { static void helper() { return; } static long m() { return 1; } }", "m");
-    }
-
-    @Test
-    void anEntrypointNeedNotBeStatic() {
+    void anInterfaceConstantIsStatic() {
         assertSameAsReference("""
                 import org.julclang.core.PlutusData;
                 import org.julclang.ledger.ScriptContext;
                 import org.julclang.stdlib.annotation.*;
 
                 @SpendingValidator
-                class V {
+                interface V {
+                    boolean K = true;
                     @Entrypoint
-                    public boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return K; }
                 }
                 """);
+    }
+
+    @Test
+    void aVoidMethodIsUnit() {
+        assertSameMethodAsReference("class P { static void m() { } }", "m");
+        assertSameMethodAsReference("class P { static void m() { return; } }", "m");
+        assertSameMethodAsReference("class P { static void helper() { return; } static long m() { return 1; } }", "m");
     }
 
     /** javac bound the name, and nothing stands for it: the reference's words, and a position it did not give. */
@@ -278,15 +280,27 @@ class JavacNamesTest {
                 """, "m");
     }
 
-    /** A constant initializer that is an expression stops at its operator for now, and is {@code JULC0088} after it. */
+    /** A constant variable's initializer is any constant expression javac folds, and it reaches its operator in lowering. */
     @Test
-    void aConstantExpressionParamWaitsForTheOperators() {
-        assertMethodNotPorted("""
-                import org.julclang.stdlib.annotation.Param;
+    void aConstantExpressionFieldLowersItsOperator() {
+        assertSameMethodAsReference("""
                 class P {
-                    @Param static final long K = 1 + 1;
-                    static long m() { return 1; }
+                    static long m() { return K; }
+                    static final long K = 1 + 1;
                 }
-                """, "m", "PLUS", 3);
+                """, "m");
+    }
+
+    /** What the static fields of the compiled class hold lowers; a {@code BigInteger} constant keeps its position. */
+    @Test
+    void aStaticInitializerKeepsThePositionsOfItsConstants() {
+        assertSameMethodAsReference("""
+                import java.math.BigInteger;
+                class P {
+                    static final long NEGATIVE = -5;
+                    static final BigInteger TEN = BigInteger.TEN;
+                    static BigInteger m() { return TEN; }
+                }
+                """, "m");
     }
 }

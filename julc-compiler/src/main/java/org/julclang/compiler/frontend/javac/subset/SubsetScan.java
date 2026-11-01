@@ -9,6 +9,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.PrimitiveTypeTree;
@@ -27,16 +28,20 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * ADR-068 I2c at its first size: an allow-list of tree kinds, with the contextual rules each needs, over all of a root
- * unit. Lowering sees only what it lowers, and the JavaParser frontend's {@code SubsetValidator} sees everything, so code
- * lowering never reaches (an instance method, a field's unused initializer, another class) could otherwise hold what the
- * reference rejects, and be accepted here. So a tree outside this list is {@code JULC0084}, whether lowered or not.
+ * ADR-068 I2c at its first size: an allow-list of tree kinds, with the contextual rules each needs, over declarations and
+ * method bodies. A method nothing lowers does not run, but the JavaParser frontend's {@code SubsetValidator} still reads
+ * it, so what that frontend rejects there is {@code JULC0084} here until its rule is ported. That is what the list decides,
+ * and {@code JULC0084} fails closed.
+ * <p>
+ * <b>A kind goes on this list when lowering reaches it, and it is allowed where lowering reaches it, not everywhere.</b> A
+ * field initializer and an initializer block run when a class is loaded, whether or not anything lowers them, so this scan
+ * reads only their literals, and {@link UnloweredInitializers}, whose list is closed, checks them. A field the compilation
+ * lowers is read as a method is. An annotation's arguments are constants, read for their literals too.
  * <p>
  * The list grows with each ported construct, and takes on {@code SubsetValidator}'s rules and codes as it does; it is not
  * that validator yet. A construct on it here is one whose rejections, if any, are its own rules below.
  * <p>
- * A kind is allowed where lowering reaches it, not everywhere: {@link #WHERE_LOWERED} holds in the methods and static
- * fields the compilation lowers, and nowhere else. An assignment is an annotation's argument and nothing else here.
+ * {@link #WHERE_LOWERED} holds in the methods and static fields the compilation lowers, and nowhere else.
  */
 public final class SubsetScan extends TreeScanner<Void, Void> {
 
@@ -62,7 +67,6 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** The methods and fields lowering reaches. */
     private final Set<Tree> lowered;
     private boolean inLowered;
-    private boolean inAnnotation;
 
     private SubsetScan(JavacFacts facts, Set<Tree> lowered) {
         this.facts = facts;
@@ -82,7 +86,6 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     }
 
     private boolean allowed(Tree.Kind kind) {
-        if (kind == Tree.Kind.ASSIGNMENT) return inAnnotation;
         return ALLOWED.contains(kind) || inLowered && WHERE_LOWERED.contains(kind);
     }
 
@@ -104,30 +107,46 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return null;
     }
 
-    /** A field is a member; a parameter is its method's. */
-    @Override
-    public Void visitVariable(VariableTree tree, Void unused) {
-        if (facts.parent(tree) instanceof ClassTree) member(tree, () -> super.visitVariable(tree, unused));
-        else super.visitVariable(tree, unused);
-        return null;
-    }
-
-    @Override
-    public Void visitAnnotation(AnnotationTree tree, Void unused) {
-        boolean outer = inAnnotation;
-        inAnnotation = true;
-        super.visitAnnotation(tree, unused);
-        inAnnotation = outer;
-        return null;
-    }
-
     /** {@code return} alone is ported, and in code that is not lowered a statement can still be a rejected one. */
     @Override
     public Void visitBlock(BlockTree tree, Void unused) {
+        if (facts.parent(tree) instanceof ClassTree) return literalsOf(tree);
         for (var statement : tree.getStatements()) {
             if (statement.getKind() != Tree.Kind.RETURN) throw NotPorted.at(facts, statement);
         }
         return super.visitBlock(tree, unused);
+    }
+
+    /** A lowered field is a member, as a method is. Any other field's initializer is not this list's to judge. */
+    @Override
+    public Void visitVariable(VariableTree tree, Void unused) {
+        if (!(facts.parent(tree) instanceof ClassTree)) return super.visitVariable(tree, unused);
+        if (lowered.contains(tree)) {
+            member(tree, () -> super.visitVariable(tree, unused));
+            return null;
+        }
+        scan(tree.getModifiers(), null);
+        scan(tree.getType(), null);
+        return literalsOf(tree.getInitializer());
+    }
+
+    /** An annotation's arguments are constants, and {@code name = value} is how one is written, and nowhere else. */
+    @Override
+    public Void visitAnnotation(AnnotationTree tree, Void unused) {
+        return literalsOf(tree);
+    }
+
+    /** The literals of a subtree no kind check applies to. */
+    private Void literalsOf(Tree tree) {
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitLiteral(LiteralTree literal, Void ignored) {
+                if (literal.getKind() == Tree.Kind.NULL_LITERAL) throw NotPorted.at(facts, literal);
+                requirePairedSurrogates(literal);
+                return null;
+            }
+        }.scan(tree, null);
+        return null;
     }
 
     /** Inheritance is outside the subset. An interface's {@code extends} is javac's implements clause. */
@@ -155,9 +174,24 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** {@code this} and {@code super} are identifiers to javac, and outside the subset. */
     @Override
     public Void visitIdentifier(IdentifierTree tree, Void unused) {
-        if (tree.getName().contentEquals("this") || tree.getName().contentEquals("super")) {
-            throw NotPorted.at(facts, tree);
-        }
+        if (isThisOrSuper(tree.getName())) throw NotPorted.at(facts, tree);
+        return null;
+    }
+
+    /** {@code V.this} and {@code V.super} are member selects to javac. */
+    @Override
+    public Void visitMemberSelect(MemberSelectTree tree, Void unused) {
+        if (isThisOrSuper(tree.getIdentifier())) throw NotPorted.at(facts, tree);
+        return super.visitMemberSelect(tree, unused);
+    }
+
+    private static boolean isThisOrSuper(CharSequence name) {
+        return name.toString().equals("this") || name.toString().equals("super");
+    }
+
+    @Override
+    public Void visitLiteral(LiteralTree tree, Void unused) {
+        requirePairedSurrogates(tree);
         return null;
     }
 
@@ -176,33 +210,34 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     }
 
     /** A UPLC string is Unicode text: a surrogate must be the high half of a pair followed by its low half. */
-    @Override
-    public Void visitLiteral(LiteralTree tree, Void unused) {
-        if (tree.getValue() instanceof String value) {
-            for (int i = 0; i < value.length(); i++) {
-                char c = value.charAt(i);
-                if (Character.isHighSurrogate(c) && i + 1 < value.length() && Character.isLowSurrogate(value.charAt(i + 1))) {
-                    i++;
-                } else if (Character.isSurrogate(c)) {
-                    throw CompilerTypeDiagnostics.unpairedSurrogate(c, facts.location(tree));
-                }
+    private void requirePairedSurrogates(LiteralTree tree) {
+        if (!(tree.getValue() instanceof String value)) return;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isHighSurrogate(c) && i + 1 < value.length() && Character.isLowSurrogate(value.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                throw CompilerTypeDiagnostics.unpairedSurrogate(c, facts.location(tree));
             }
         }
-        return null;
     }
 
     /** The one array: {@code new byte[]{...}} over integer literals, each negated or not. */
     @Override
     public Void visitNewArray(NewArrayTree tree, Void unused) {
-        if (tree.getType() == null || tree.getInitializers() == null || !isByte(tree.getType())) {
-            throw NotPorted.at(facts, tree);
-        }
+        if (!isByteLiteral(tree)) throw NotPorted.at(facts, tree);
+        return null;
+    }
+
+    /** Whether {@code tree} is the one array of the subset. */
+    static boolean isByteLiteral(NewArrayTree tree) {
+        if (tree.getType() == null || tree.getInitializers() == null || !isByte(tree.getType())) return false;
         for (ExpressionTree element : tree.getInitializers()) {
             var literal = element instanceof UnaryTree unary && element.getKind() == Tree.Kind.UNARY_MINUS
                     ? unary.getExpression() : element;
-            if (literal.getKind() != Tree.Kind.INT_LITERAL) throw NotPorted.at(facts, element);
+            if (literal.getKind() != Tree.Kind.INT_LITERAL) return false;
         }
-        return null;
+        return true;
     }
 
     private static boolean isByte(Tree type) {

@@ -1,10 +1,10 @@
 format: 2
-name: a user record Value through a local (F45b)
+name: a user record Value through a local
 class: Probe
 method: m
 arg: 05
-expect: AGREE
-note: ADR-067 F45b: field access resolves first.
+expect: REJECT JULC0100
+note: ADR-067 F45b: field access resolves first. A subset rule: a class or a record does not take a type key of the lowering.
 ---
 import java.math.BigInteger;
 

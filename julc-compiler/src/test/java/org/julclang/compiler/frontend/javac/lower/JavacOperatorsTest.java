@@ -13,6 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -255,29 +256,39 @@ class JavacOperatorsTest {
         assertSame("static boolean m(JulcList<PubKeyHash> l, PubKeyHash b) { return l.contains(b); }");
     }
 
-    /** A kind is subset where lowering reaches it, so a call or an operator stops anywhere else. */
+    /** A kind is subset where lowering reaches it, so a call or an operator stops in a method nothing lowers. */
     @ParameterizedTest
     @ValueSource(strings = {"long notLowered(long a) { return a + 1; }", "long notLowered(BigInteger a) { return a.longValue(); }",
-            "long f = 1 + 1;", "BigInteger f = BigInteger.valueOf(1);", "boolean f = !true;", "long f = true ? 1 : 2;",
-            "static class N { static long f = 1 + 1; }", "static class N { static long f() { return 1 + 1; } }",
-            "record N(long a) { static long f = 1 + 1; }", "record N(long a) { long f() { return a + 1; } }"})
+            "static class N { static long f() { return 1 + 1; } }", "record N(long a) { long f() { return a + 1; } }"})
     void aKindIsAllowedWhereLoweringReachesIt(String member) {
         assertInstanceOf(NotPorted.class, javac(member + "\nstatic boolean m() { return true; }"));
     }
 
-    /** {@code @Param}'s initializer is not lowered, so nothing there is reached. */
+    /** A field nothing lowers holds a constant: {@code JULC0095}'s rule, whatever lowering has learned. */
     @ParameterizedTest
-    @ValueSource(strings = {"@Param static long f = 1 + 1;", "@Param static boolean f = Boolean.valueOf(true);"})
-    void aParamInitializerIsNotReached(String field) {
+    @ValueSource(strings = {"long f = 1 + 1;", "BigInteger f = BigInteger.valueOf(1);", "boolean f = !true;", "long f = true ? 1 : 2;",
+            "static class N { static long f = 1 + 1; }", "record N(long a) { static long f = 1 + 1; }"})
+    void aFieldNothingLowersHoldsAConstant(String member) {
+        assertEquals("JULC0095", javac(member + "\nstatic boolean m() { return true; }").diagnostics().getFirst().code());
+    }
+
+    /** {@code @Param}'s initializer is not lowered: it holds a constant, and D14's remedy is one. */
+    @Test
+    void aParamInitializerIsNotLowered() {
+        var failure = assertThrows(CompilerException.class, () -> compileParam("@Param static long f = 1 + 1;"));
+        assertEquals("JULC0095", failure.diagnostics().getFirst().code());
+        assertDoesNotThrow(() -> compileParam("@Param static boolean f = Boolean.valueOf(true);"));
+    }
+
+    private static void compileParam(String field) {
         var source = "import org.julclang.stdlib.annotation.Param;\nclass C {\n" + field + "\nstatic boolean m() { return true; }\n}\n";
-        assertInstanceOf(NotPorted.class, assertThrows(CompilerException.class, () ->
-                new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of())));
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of());
     }
 
     @Test
     void anAssignmentIsAnAnnotationsArgumentOnly() {
         assertInstanceOf(NotPorted.class, javac("static long f; static long g = (f = 1);\nstatic boolean m() { return true; }"));
-        assertInstanceOf(NotPorted.class, javac("long f; long g = (f = 1);\nstatic boolean m() { return true; }"));
+        assertEquals("JULC0095", javac("long f; long g = (f = 1);\nstatic boolean m() { return true; }").diagnostics().getFirst().code());
         assertSame("@SuppressWarnings(value = \"x\") static boolean m() { return true; }");
     }
 

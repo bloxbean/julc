@@ -315,6 +315,42 @@ For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByt
 
 ---
 
+### 6.13 An entry point returns `boolean`
+
+Every `@Entrypoint`, including each one of a `@MultiValidator`, returns `boolean` or `Boolean`. Anything else is `JULC0094`.
+
+### 6.14 What a field initializer may hold
+
+A `static` field of the class being compiled is lowered, so it can hold an expression. Nothing lowers any other field, a library's included: a `@Param`, an instance field, or a field of a nested type or a record. Such a field holds only a literal, a `new byte[]{...}` of literals, `BigInteger.ZERO`/`ONE`/`TWO`/`TEN`, `PlutusData.UNIT`, a constant variable, or, for a `Boolean` `@Param`, `Boolean.valueOf(true)` or `Boolean.valueOf(false)`. An initializer block is empty. Anything else is `JULC0095`.
+
+```java
+// ❌ BAD
+@Param static BigInteger limit = BigInteger.valueOf(100);
+
+// ✅ GOOD — a @Param gets its value when the script is applied
+@Param static BigInteger limit;
+```
+
+### 6.15 No varargs
+
+Declare a `byte[]`, `List<T>` or `JulcList<T>` parameter.
+
+### 6.16 `"a" + "b"` concatenates at run time
+
+A `+` of strings is an `appendString` at run time, of literals too. For one string, write one literal.
+
+### 6.17 A value reaches `boolean` through a cast only from a boolean
+
+A cast to `boolean` or `Boolean`, or `PlutusData.cast` to either, takes an operand whose type, through parentheses and other casts, is `boolean` or `Boolean`. Anything else is `JULC0098`, Data included.
+
+### 6.18 A constructor holds no statement
+
+A value is built from its components alone, so a constructor's body does not run on-chain. Any constructor a source declares, compact, canonical or other, on a record or a class, holds no statement: `JULC0099`. An empty `R { }` is allowed. Write a static method that returns the value instead.
+
+### 6.19 Some names are JuLC's
+
+A name JuLC reads by its spelling, such as `Boolean`, `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to the type JuLC reads, not to a variable, a type parameter or another type: `JULC0100`. A name of the ledger, such as `Rational`, may also be a nested or packaged record or sealed interface. A top-level type of the unnamed package takes no name of the ledger, of another type of the compilation or of a package of it. A variable does not take the name of a type of the compilation, a plain class does not share its name with a record or a library class of it, a class or a record does not take a type key of the lowering such as `ListType` or `Value`, a datum is written `Optional<...>` exactly when it is one, `new` has no class body, and the operand of `instanceof` has the variant's type or its sealed interface's. A method does not take a name JuLC reads in place of its body: `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit accessor or `equals` on a record, and a `@NewType`'s component named like a method of its type, such as `abs` on a `BigInteger`: `JULC0101`. A `@NewType` of `byte[]` names its component `value`, and a `@NewType` takes no instance call but its accessor and no field read. A `byte[]` or a ledger hash takes no other no-argument call. A call named `headList`, `tailList`, `mkCons` and the like is `Builtins`' own.
+
 ## 7. Common errors — root cause and fix
 
 | Error message | Likely cause | Fix |

@@ -31,7 +31,7 @@ final class Names {
     PirTerm identifier(IdentifierTree tree, Frame frame) {
         var element = facts.element(tree);
         var binder = frame.scope().lookup(element);
-        if (binder != null) return terms.var(binder);
+        if (binder != null) return terms.var(element, binder);
         // javac bound the name to a field no binder stands for: one without an initializer, or another class's.
         if (element.getKind() == ElementKind.FIELD && !tree.getName().contentEquals("this")
                 && !tree.getName().contentEquals("super")) {

@@ -195,6 +195,7 @@ class Adr068TypesTest {
         corpus.addDiffcases();
         corpus.addG0Exhaustive();
         corpus.addG1FixedSeed(Path.of(Adr068G1Capture.FILE));
+        corpus.addFixtures("rules", "julc-difftest/src/test/resources/adr068/rule-fixtures");
         corpus.addFixtures("m2", "julc-difftest/src/test/resources/adr068/m2-fixtures");
         return corpus;
     }

@@ -21,8 +21,9 @@ import java.util.function.Supplier;
 
 /**
  * ADR-068 M1's javac gate: before the JavaParser frontend lowers anything, every {@code JulcCompiler} entry point
- * and {@code JavaLibraryProvider} has javac analyze the same sources (D3, D5). Nothing else changes: the gate never
- * alters what the JavaParser frontend compiles or produces.
+ * and {@code JavaLibraryProvider} has javac analyze the same sources (D3, D5), and the subset's rules that rest on what
+ * javac resolved run on its trees ({@link SubsetRules}). Their rejections follow the gate's mode like javac's own. Nothing
+ * else changes: the gate never alters what the JavaParser frontend compiles or produces.
  * <p>
  * The mode comes from {@link CompilerOptions#getJavacGate()}, else the system property {@value #MODE_PROPERTY}
  * ({@code off}, {@code report} or {@code enforce}), else {@link JavacGateMode#ENFORCE} (M1b rewrote every in-repo
@@ -33,6 +34,19 @@ import java.util.function.Supplier;
  * so the same sources in the same environment (one test compiled at four optimization levels) give the same result.
  */
 public final class JavacGate {
+
+    /** What a compilation compiles of its roots, which decides what the subset's rules read as lowered. */
+    public enum Compiled {
+        VALIDATOR, METHOD, LIBRARY;
+
+        static Compiled of(String entry) {
+            return switch (entry) {
+                case "compileMethod" -> METHOD;
+                case "JavaLibraryProvider" -> LIBRARY;
+                default -> VALIDATOR;
+            };
+        }
+    }
 
     public static final String MODE_PROPERTY = "julc.javacGate";
     public static final String REPORT_PROPERTY = "julc.javacGate.report";
@@ -69,7 +83,7 @@ public final class JavacGate {
         if (mode == JavacGateMode.OFF) return null;
         JavacResult result;
         try {
-            result = cached(roots, pool);
+            result = cached(Compiled.of(entry), roots, pool);
         } catch (LinkageError e) {
             if (!isMissingCompiler(e)) return failed(mode, entry, roots, pool, e);
             result = noCompiler(e);
@@ -175,9 +189,9 @@ public final class JavacGate {
      * cache, so a result is only ever reused within the immutable environment (platform, stubs, bundled set) that
      * produced it; an analysis still running in a replaced environment fills only that environment's cache (F510).
      */
-    private static JavacResult cached(List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
+    private static JavacResult cached(Compiled compiled, List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
         var frontend = JavacFrontend.shared();
-        return frontend.cached(key(roots, pool), () -> frontend.analyze(roots, pool));
+        return frontend.cached(compiled + ":" + key(roots, pool), () -> frontend.analyzeWithRules(roots, pool, compiled));
     }
 
     /**

@@ -7,6 +7,7 @@ import com.sun.source.tree.ReturnTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
@@ -41,7 +42,7 @@ final class Statements {
         var binders = new ArrayList<Binder>();
         for (var parameter : tree.getParameters()) {
             var parameterElement = facts.element(parameter);
-            scope = scope.bind(parameterElement, facts.pirType(parameterElement.asType(), parameter));
+            scope = scope.bind(parameterElement, facts.parameterType(parameter));
             binders.add(scope.lookup(parameterElement));
         }
         boolean isVoid = returnType.getKind() == TypeKind.VOID;

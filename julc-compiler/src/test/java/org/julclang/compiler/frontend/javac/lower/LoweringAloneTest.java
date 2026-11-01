@@ -7,17 +7,20 @@ import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.codegen.StrictRecordEntrypoint;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.core.Constant;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import javax.lang.model.element.ElementKind;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -69,23 +72,68 @@ class LoweringAloneTest {
             var inner = assertInstanceOf(PirTerm.Lam.class, outer.body());
             var read = assertInstanceOf(PirTerm.Var.class, inner.body());
             var provenance = lowered.lowering().terms().provenance();
-            assertSame(facts.element(lowered.parameter(0)), provenance.get(outer));
-            assertSame(facts.element(lowered.parameter(1)), provenance.get(inner));
-            assertSame(facts.element(lowered.parameter(1)), provenance.get(read));
+            assertSame(facts.element(lowered.parameter(0)), provenance.binderOf(outer, "a"));
+            assertSame(facts.element(lowered.parameter(1)), provenance.binderOf(inner, "b"));
+            assertSame(facts.element(lowered.parameter(1)), provenance.readOf(read));
             assertEquals(3, provenance.size());
         });
     }
 
+    /**
+     * The two sides of the check come from two places: the read from what javac bound the name to, the binder from the
+     * scope. A wrong lookup makes them differ, with no table touched: a {@code Var} of the outer {@code K}'s binder, built
+     * for the parameter {@code K}, runs and returns the wrong value unless this check stops it.
+     */
     @Test
-    void whatTheCheckReadsMakesItFailOnARealTerm() {
-        withMethod("class P { static long m(long a, long b) { return b; } }", new CompilerOptions(), (facts, lowered) -> {
-            var term = lowered.term();
-            var provenance = lowered.lowering().terms().provenance();
-            BindingCheck.check(term, provenance);
-            // The Var read b; say it was built for a, as a binding bug would.
-            var inner = (PirTerm.Lam) ((PirTerm.Lam) term).body();
-            provenance.put(inner.body(), facts.element(lowered.parameter(0)));
-            assertThrows(IllegalStateException.class, () -> BindingCheck.check(term, provenance));
+    void aWrongLookupFailsTheCheck() {
+        withMethod("class P { static long K = 1; static long m(long K) { return K; } }", new CompilerOptions(), (facts, lowered) -> {
+            var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
+                    .filter(e -> e.getSimpleName().contentEquals("K") && e.getKind() == ElementKind.FIELD).findFirst().orElseThrow();
+            var parameter = facts.element(lowered.parameter(0));
+            var type = new PirType.IntegerType();
+            var outer = Scope.empty().bind(field, type);
+            var inner = outer.bind(parameter, type);
+            var terms = lowered.lowering().terms();
+
+            var right = new PirTerm.Let("K", new PirTerm.Const(Constant.integer(1)),
+                    terms.lam(inner.lookup(parameter), terms.var(parameter, inner.lookup(parameter))));
+            terms.assembled(right, "K", field);
+            BindingCheck.check(right, terms.provenance());
+
+            var wrong = new PirTerm.Let("K", new PirTerm.Const(Constant.integer(1)),
+                    terms.lam(inner.lookup(parameter), terms.var(parameter, inner.lookup(field))));
+            terms.assembled(wrong, "K", field);
+            var failure = assertThrows(IllegalStateException.class, () -> BindingCheck.check(wrong, terms.provenance()));
+            assertTrue(failure.getMessage().startsWith("I13"), failure.getMessage());
+        });
+    }
+
+    /**
+     * The strict transform rebuilds every binder of a body whose root is a record, so what is recorded of each must follow
+     * it to the copy. A {@code let} is built here as the locals slice will build it, by {@link Terms}.
+     */
+    @Test
+    void aBinderKeepsItsProvenanceThroughTheStrictTransform() {
+        withMethod("record R(long a) { } class P { static long m(R r, long y) { return y; } }", new CompilerOptions(), (facts, lowered) -> {
+            var terms = lowered.lowering().terms();
+            var root = facts.element(lowered.parameter(0));
+            var local = facts.element(lowered.parameter(1));
+            var rootType = facts.parameterType(lowered.parameter(0));
+            var scope = Scope.empty().bind(root, rootType).bind(local, new PirType.IntegerType());
+            var read = terms.var(local, scope.lookup(local));
+            var binding = new PirTerm.Let(scope.lookup(local).name(), new PirTerm.Const(Constant.integer(1)), read);
+            terms.assembled(binding, binding.name(), local);
+            var function = terms.lam(scope.lookup(root), binding);
+            BindingCheck.check(function, terms.provenance());
+
+            var roots = List.of(new StrictRecordEntrypoint.Root(scope.lookup(root).name(), rootType));
+            var definitions = facts.registry().namedDefinitions();
+            var kept = StrictRecordEntrypoint.transform(function, roots, definitions, terms.provenance().rebuildsOf(function));
+            BindingCheck.check(kept.function(), terms.provenance());
+
+            var lost = StrictRecordEntrypoint.transform(function, roots, definitions);
+            assertThrows(IllegalStateException.class, () -> BindingCheck.check(lost.function(), terms.provenance()),
+                    "with nothing told, the check sees the copies as binders of generated names");
         });
     }
 

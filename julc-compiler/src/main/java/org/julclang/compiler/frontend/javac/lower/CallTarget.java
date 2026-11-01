@@ -20,12 +20,19 @@ sealed interface CallTarget {
         TO_DATA
     }
 
+    /** What the stdlib lookup is asked for, by a key {@code CallTargets} takes from the owner's identity. */
+    sealed interface Keyed extends CallTarget permits Stdlib, Library {
+        String className();
+
+        String method();
+    }
+
     /** A static method of an API class, lowered by the stdlib lookup. */
-    record Stdlib(String className, String method) implements CallTarget {
+    record Stdlib(String className, String method) implements Keyed {
     }
 
     /** A static method of a library unit: the stdlib lookup first, as in the reference, then a call of its binder. */
-    record Library(String className, String method, ExecutableElement element) implements CallTarget {
+    record Library(String className, String method, ExecutableElement element) implements Keyed {
     }
 
     /** A static method of the class being lowered, called by its simple name. */

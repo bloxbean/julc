@@ -1,9 +1,9 @@
-cases	17037
+cases	17045
 DIFFERENT	6
 both-reject	12
 both-reject-javac-first	38
 both-reject-tolerant	3
-equal	10283
+equal	10291
 equal-reference-rejects-lowering	6
 equal-tolerant	6632
 javac-rejects-unreadable	4
@@ -14,7 +14,7 @@ compared	DIFFERENT	6	6	0	0	0	0	0	0
 compared	both-reject	12	12	0	0	0	0	0	0
 compared	both-reject-javac-first	38	38	0	0	0	0	0	0
 compared	both-reject-tolerant	3	3	0	0	0	0	0	0
-compared	equal	10283	6678	941	6635	3460	34	8687	1077
+compared	equal	10291	6685	942	6635	3460	34	8688	1078
 compared	equal-reference-rejects-lowering	6	6	0	0	0	0	0	0
 compared	equal-tolerant	6632	4674	187	3727	1841	27	3845	264
 compared	javac-rejects-unreadable	4	4	0	0	0	0	0	0
@@ -26,7 +26,7 @@ part	c7	equal	6
 part	diffcase	DIFFERENT	5
 part	diffcase	both-reject	2
 part	diffcase	both-reject-javac-first	1
-part	diffcase	equal	189
+part	diffcase	equal	193
 part	elci	equal	4
 part	external	equal	100
 part	external	equal-tolerant	2
@@ -54,5 +54,6 @@ part	recorded	equal-reference-rejects-lowering	1
 part	recorded	equal-tolerant	6491
 part	recorded	javac-rejects-unreadable	4
 part	recorded	reference-rejects	15
+part	rules	equal	4
 part	stdlib	equal	13
 part	stdlib	equal-reference-rejects-lowering	4

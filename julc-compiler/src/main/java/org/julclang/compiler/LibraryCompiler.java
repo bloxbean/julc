@@ -121,6 +121,7 @@ final class LibraryCompiler {
                     registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
                 }
             }
+            if (!libPirGenerator.getCollectedErrors().isEmpty()) throw new CompilerException(libPirGenerator.getCollectedErrors());
         }
     }
 
@@ -182,7 +183,7 @@ final class LibraryCompiler {
             for (var variable : field.getVariables()) {
                 if (variable.getInitializer().isEmpty()) continue;
                 var name = variable.getNameAsString();
-                var pirType = typeResolver.resolve(field.getCommonType());
+                var pirType = typeResolver.resolve(variable.getType());
                 result.add(new StaticField(name, pirType, variable.getInitializer().get()));
             }
         }

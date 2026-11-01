@@ -135,7 +135,7 @@ final class Calls {
 
     private PirTerm stdlib(CallTarget.Stdlib target, MethodInvocationTree tree, Frame frame) {
         var arguments = arguments(tree, frame);
-        var result = lookup(target.className(), target.method(), arguments, tree);
+        var result = lookup(target, arguments, tree);
         if (result != null) return result;
         if (target.className().equals("JulcMap") && target.method().equals("of")) {
             throw CompilerTypeDiagnostics.julcMapOfOffChainOnly(facts.location(tree));
@@ -143,16 +143,16 @@ final class Calls {
         throw NotPorted.at(facts, tree, "a method with no stdlib lowering");
     }
 
-    private PirTerm lookup(String className, String method, Arguments arguments, MethodInvocationTree tree) {
+    private PirTerm lookup(CallTarget.Keyed target, Arguments arguments, MethodInvocationTree tree) {
         if (stdlib == null) return null;
-        requireAvailable(stdlib.requirements(className, method), tree);
-        return stdlib.lookup(context, className, method, arguments.terms(), arguments.types()).orElse(null);
+        requireAvailable(stdlib.requirements(target.className(), target.method()), tree);
+        return stdlib.lookup(context, target.className(), target.method(), arguments.terms(), arguments.types()).orElse(null);
     }
 
     /** The stdlib lookup comes first, as the reference composes them; a library method is then a call of its binder. */
     private PirTerm library(CallTarget.Library target, MethodInvocationTree tree, Frame frame) {
         var arguments = arguments(tree, frame);
-        var result = lookup(target.className(), target.method(), arguments, tree);
+        var result = lookup(target, arguments, tree);
         if (result != null) return result;
         if (librarySites.lookupMethod(target.className() + "." + target.method()).isEmpty()) {
             librarySites.register(target.className(), target.method(), facts.methodType(target.element()), null);
@@ -163,7 +163,7 @@ final class Calls {
     /** A static method of this class: its binder, applied to each argument from left to right. */
     private PirTerm local(CallTarget.Local target, MethodInvocationTree tree, Frame frame) {
         var type = facts.methodType(target.element());
-        PirTerm function = terms.method(target.binder(), type);
+        PirTerm function = terms.method(target.element(), target.binder(), type);
         var parameterTypes = LibraryMethodRegistry.getParamTypes(type);
         var arguments = tree.getArguments();
         for (int i = 0; i < arguments.size(); i++) {
