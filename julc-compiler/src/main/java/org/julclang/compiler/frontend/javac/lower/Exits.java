@@ -26,7 +26,6 @@ final class Exits {
             case BlockTree block -> block.getStatements().stream().anyMatch(Exits::holdsReturn);
             case IfTree branch -> holdsReturn(branch.getThenStatement())
                     || branch.getElseStatement() != null && holdsReturn(branch.getElseStatement());
-            case LabeledStatementTree labeled -> holdsReturn(labeled.getStatement());
             default -> false;
         };
     }
@@ -47,15 +46,12 @@ final class Exits {
      * goes before what it collected here. The case of a loop as the last statement comes with loops.
      */
     static boolean allPathsReturn(List<? extends StatementTree> statements) {
-        for (int i = 0; i < statements.size(); i++) {
-            var statement = statements.get(i);
+        for (var statement : statements) {
             if (statement instanceof ReturnTree || statement instanceof LabeledStatementTree) return true;
-            if (statement instanceof IfTree branch) {
-                boolean thenReturns = allPathsReturn(blockStatements(branch.getThenStatement()));
-                boolean elseReturns = branch.getElseStatement() != null
-                        && allPathsReturn(blockStatements(branch.getElseStatement()));
-                if (thenReturns && elseReturns) return true;
-                if (thenReturns && allPathsReturn(statements.subList(i + 1, statements.size()))) return true;
+            if (statement instanceof IfTree branch && branch.getElseStatement() != null
+                    && allPathsReturn(blockStatements(branch.getThenStatement()))
+                    && allPathsReturn(blockStatements(branch.getElseStatement()))) {
+                return true;
             }
         }
         return false;

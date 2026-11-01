@@ -137,6 +137,7 @@ class JavacStatementsTest {
             "static long m(boolean c) { if (c) { ; } return 1; }",
             "static long m(boolean c) { if (c) { { return 1; } } return 2; }",
             "static long m(boolean c) { if (c) { { return 1; } } else { return 2; } }",
+            "static long m(boolean c) { if (c) { return 1; } else { { return 2; } } }",
             "static long m(boolean c) { if (c) { { } } return 2; }",
             "static long m(long a) { x: if (a > 0) { return 1; } return 2; }",
             "static long m(long a) { x: return a; }",
