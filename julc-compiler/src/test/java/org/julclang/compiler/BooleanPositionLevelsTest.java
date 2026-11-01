@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A value that is not a real boolean, at a boolean position, fails at every optimization level, on every
- * route that puts one there. The source rules stop these shapes earlier, so the javac gate is off here:
- * what is tested is the lowering of the condition, not the rule in front of it.
+ * route that puts one there. The javac gate is off here, since what is tested is the lowering of the
+ * condition, not a rule in front of it: a source rule stops some of these shapes and not others.
  */
 class BooleanPositionLevelsTest {
 
@@ -138,8 +138,12 @@ class BooleanPositionLevelsTest {
                         """ + ENTRY_INT + "{ if (N.of(1)) { return true; } return false; }"),
                 new Shape("a type variable named Boolean", integer(1), """
                         static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; }
-                        """ + ENTRY_INT + "{ java.lang.Boolean b = bad(1); if (b) { return true; } return false; }"),
-                // Collection elements, which are Data.
+                        """ + ENTRY_INT + "{ java.lang.Boolean b = bad(1); if (b) { return true; } return false; }"));
+    }
+
+    /** Valid Java that returns true on the JVM, whose element the lowering leaves as Data. */
+    static Stream<Shape> undecodedElements() {
+        return Stream.of(
                 new Shape("a list head", integer(1), ENTRY_INT + """
                         { var xs = JulcList.of(true); if (xs.head()) { return true; } return false; }"""),
                 new Shape("a found element", integer(1), ENTRY_INT + """
@@ -172,6 +176,13 @@ class BooleanPositionLevelsTest {
                 assertInstanceOf(EvalResult.Failure.class, result, () -> level + " sourceMap=" + sourceMap);
             }
         }
+    }
+
+    /** A follow-up of the javac slices: this flips when they decode the element. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("undecodedElements")
+    void anElementLeftAsDataFailsAtEveryLevel(Shape shape) {
+        aValueThatIsNotABooleanFailsAtEveryLevel(shape);
     }
 
     /** The same programs, given real booleans, take the same path at every level. */

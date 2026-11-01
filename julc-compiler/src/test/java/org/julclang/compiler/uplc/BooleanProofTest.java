@@ -358,6 +358,15 @@ class BooleanProofTest {
             assertFalse(proven(new PirTerm.PairMatch(app(builtin(DefaultFun.UnIData), ZERO), PAIR, "t", "fs", TRUE)));
         }
 
+        @ParameterizedTest
+        @EnumSource(DefaultFun.class)
+        void pairMatchOverAnyOtherBuiltinIsUnproven(DefaultFun fun) {
+            if (fun == DefaultFun.UnConstrData) return;
+            var arguments = new PirTerm[BuiltinSemantics.find(fun).valueArity()];
+            Arrays.fill(arguments, ONE);
+            assertFalse(proven(new PirTerm.PairMatch(app(builtin(fun), arguments), PAIR, "t", "fs", TRUE)), fun.name());
+        }
+
         @Test void listMatchIsUnproven() {
             assertFalse(proven(new PirTerm.ListMatch(var("xs"), "h", "t", TRUE, TRUE)));
         }
@@ -500,6 +509,18 @@ class BooleanProofTest {
         @Test void theRecursiveBindingHoldsItsFactInItsOwnBodyAndInItsScope() {
             var f = lam("x", ifThenElse(app(var("f"), var("x")), TRUE, FALSE));
             var term = lower(letRec("f", f, ifThenElse(app(var("f"), ONE), ONE, ZERO)), safe);
+            assertEquals(0, builtinCount(term));
+        }
+
+        @Test void aRecursiveCallInAnArmTakesTheFixpoint() {
+            var f = lam("x", ifThenElse(TRUE, TRUE, app(var("f"), var("x"))));
+            var term = lower(letRec("f", f, ifThenElse(app(var("f"), ONE), ONE, ZERO)), safe);
+            assertEquals(0, builtinCount(term));
+        }
+
+        @Test void theFixpointReadsTheEnclosingScope() {
+            var f = lam("x", ifThenElse(TRUE, app(var("g"), var("x")), app(var("f"), var("x"))));
+            var term = lower(let("g", lam("y", TRUE), letRec("f", f, ifThenElse(app(var("f"), ONE), ONE, ZERO))), safe);
             assertEquals(0, builtinCount(term));
         }
 
