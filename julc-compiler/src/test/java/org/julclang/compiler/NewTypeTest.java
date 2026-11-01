@@ -138,7 +138,7 @@ class NewTypeTest {
                     @SpendingValidator
                     class TestValidator {
                         @NewType
-                        record MyHash(byte[] hash) {}
+                        record MyHash(byte[] value) {}
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -168,7 +168,7 @@ class NewTypeTest {
                     @SpendingValidator
                     class TestValidator {
                         @NewType
-                        record MyHash(byte[] hash) {}
+                        record MyHash(byte[] value) {}
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -199,7 +199,7 @@ class NewTypeTest {
                     @SpendingValidator
                     class TestValidator {
                         @NewType
-                        record MyHash(byte[] hash) {}
+                        record MyHash(byte[] value) {}
 
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -406,7 +406,7 @@ class NewTypeTest {
                     @MintingValidator
                     class TestValidator {
                         @NewType
-                        record AssetId(byte[] hash) {}
+                        record AssetId(byte[] value) {}
 
                         record CompareRedeemer(byte[] expected, byte[] actual) {}
 
@@ -440,7 +440,7 @@ class NewTypeTest {
                     @MintingValidator
                     class TestValidator {
                         @NewType
-                        record AssetId(byte[] hash) {}
+                        record AssetId(byte[] value) {}
 
                         record CompareRedeemer(byte[] expected, byte[] actual) {}
 

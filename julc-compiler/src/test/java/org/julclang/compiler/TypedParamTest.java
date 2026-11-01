@@ -725,7 +725,7 @@ class TypedParamTest {
                     @SpendingValidator
                     class NewTypeParamValidator {
                         @NewType
-                        record AssetName(byte[] name) {}
+                        record AssetName(byte[] value) {}
 
                         @Param static AssetName asset;
 
@@ -760,7 +760,7 @@ class TypedParamTest {
                     @SpendingValidator
                     class NewTypeEmptyValidator {
                         @NewType
-                        record AssetName(byte[] name) {}
+                        record AssetName(byte[] value) {}
 
                         @Param static AssetName asset;
 

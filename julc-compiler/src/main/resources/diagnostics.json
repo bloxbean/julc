@@ -1170,8 +1170,8 @@
       "title": "A method does not take a name JuLC reads in place of its body",
       "category": "SYNTAX",
       "severity": "error",
-      "template": "The method {0} has a name JuLC reads in place of its body, so a program does not declare it",
-      "summary": "JuLC lowers some calls by their spelling, so a body declared under that name would not run: fromPlutusData and toPlutusData on any type, of and instance methods on a @NewType record, an explicit accessor or equals on a record, and equals on a sealed interface.",
+      "template": "{0} has a name JuLC reads in place of its body, so a program does not declare it",
+      "summary": "JuLC lowers some calls by their spelling, so a body declared under that name would not run: fromPlutusData and toPlutusData on any type, of and instance methods on a @NewType record, an explicit accessor or equals on a record, equals on a sealed interface, and a @NewType's component named like a method of the type it lowers to. A @NewType of byte[] names its component value.",
       "fix": "Give the method another name.",
       "example": {
         "bad": "record Amount(BigInteger v) { public BigInteger v() { return v.abs(); } }",

@@ -378,7 +378,7 @@ public final class DiagnosticCodes {
             "METHOD_NAME_READ_BY_SPELLING",
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
-            "The method {0} has a name JuLC reads in place of its body, so a program does not declare it",
+            "{0} has a name JuLC reads in place of its body, so a program does not declare it",
             "Give the method another name.");
 
     public static final DiagnosticInfo METHOD_OVERLOAD_UNSUPPORTED = new DiagnosticInfo(

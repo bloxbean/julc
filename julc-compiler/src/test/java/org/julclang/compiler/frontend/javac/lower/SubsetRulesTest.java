@@ -10,6 +10,8 @@ import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
+import org.julclang.compiler.pir.PirType;
+import org.julclang.compiler.pir.TypeMethodRegistry;
 import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.junit.jupiter.api.Test;
@@ -973,6 +975,138 @@ class SubsetRulesTest {
                     %s
                 }
                 """.formatted(members));
+    }
+
+    /** A component's name is served ahead of its generated accessor, on the type the {@code @NewType} lowers to. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "BigInteger abs", "BigInteger add", "BigInteger compareTo", "BigInteger divide", "BigInteger equals", "BigInteger max",
+            "BigInteger min", "BigInteger mod", "BigInteger multiply", "BigInteger negate", "BigInteger remainder", "BigInteger signum",
+            "BigInteger subtract", "BigInteger toPlutusData",
+            "byte[] append", "byte[] equals", "byte[] hash", "byte[] length", "byte[] prepend", "byte[] toPlutusData",
+            "byte[] b", "byte[] name", "byte[] id", "byte[] intValue",
+            "String equals", "String getBytes", "String length", "String toPlutusData",
+            "boolean toPlutusData"})
+    void aNewTypesComponentTakesNoServedName(String component) {
+        assertSpelling("JULC0101", """
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    @NewType record N(%s) { }
+                    static long m() { return 1; }
+                }
+                """.formatted(component));
+    }
+
+    /** These rows lower to the receiver, so the accessor's value is what the call gives. Other names are nobody's. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "BigInteger value", "BigInteger intValue", "BigInteger longValue", "BigInteger v", "BigInteger raw", "BigInteger amount",
+            "byte[] value", "String v", "String value", "String abs", "boolean v", "boolean value", "boolean length"})
+    void aNewTypesComponentTakesAnyOtherName(String component) {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    @NewType record N(%s) { }
+                    static long m() { return 1; }
+                }
+                """.formatted(component), "m");
+    }
+
+    /** The names come from the registry's rows. Should a row change, what lowers to the receiver is what this says. */
+    @Test
+    void theRegistrysRowsSayWhichLowerToTheReceiver() {
+        var registry = TypeMethodRegistry.defaultRegistry();
+        var integer = new PirType.IntegerType();
+        var bytes = new PirType.ByteStringType();
+        for (String name : List.of("value", "intValue", "longValue")) assertTrue(registry.lowersToTheReceiver(integer, name), name);
+        for (String name : List.of("abs", "negate", "signum", "add", "compareTo", "nothing")) {
+            assertFalse(registry.lowersToTheReceiver(integer, name), name);
+        }
+        assertTrue(registry.lowersToTheReceiver(bytes, "value"));
+        for (String name : List.of("hash", "length", "append", "equals", "prepend")) assertFalse(registry.lowersToTheReceiver(bytes, name), name);
+        assertTrue(registry.serves(integer, "abs"));
+        assertFalse(registry.serves(integer, "nothing"));
+    }
+
+    /** A {@code @NewType} of a type outside the four is that type's own rejection. */
+    @Test
+    void aNewTypeOfAnotherTypeIsNotThisRule() {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    @NewType record N(long abs) { }
+                    static long m() { return 1; }
+                }
+                """, "m"));
+        assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
+    }
+
+    /** A plain record reads a field by its name first. */
+    @ParameterizedTest
+    @ValueSource(strings = {"BigInteger abs", "byte[] length", "byte[] hash", "String getBytes", "BigInteger signum"})
+    void aPlainRecordsComponentTakesAnyName(String component) {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import java.math.BigInteger;
+                class P {
+                    record R(%s) { }
+                    static long m() { return 1; }
+                }
+                """.formatted(component), "m");
+    }
+
+    /** The bytes fallback takes a call of what a {@code @NewType} of bytes generates or inherits too. */
+    @ParameterizedTest
+    @ValueSource(strings = {"h.hashCode()", "h.toString()", "h.getClass()"})
+    void aNewTypeOfBytesHasNoInheritedCall(String call) {
+        assertSpelling("JULC0101", """
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    @NewType record H(byte[] value) { }
+                    static long m(H h) { var x = %s; return 1; }
+                }
+                """.formatted(call));
+    }
+
+    @Test
+    void aNewTypeOfBytesReadsItsValue() {
+        new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    @NewType record H(byte[] value) { }
+                    static byte[] m(H h) { return h.value(); }
+                }
+                """, "m");
+    }
+
+    /** An inherited call on any other {@code @NewType} is {@code JULC0055}, as it was. */
+    @Test
+    void aNewTypeOfAnIntegerKeepsItsOwnRejection() {
+        String source = """
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    @NewType record N(BigInteger value) { }
+                    static long m(N n) { return n.hashCode(); }
+                }
+                """;
+        assertSpelling("JULC0055", source);
+    }
+
+    @Test
+    void theRuleNamesTheComponent() {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    @NewType record N(BigInteger abs) { }
+                    static long m() { return 1; }
+                }
+                """, "m"));
+        var diagnostic = thrown.diagnostics().getFirst();
+        assertTrue(diagnostic.message().startsWith("The component N.abs"), diagnostic.message());
+        assertEquals(4, diagnostic.line());
     }
 
     @Test

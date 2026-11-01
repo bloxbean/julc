@@ -484,7 +484,7 @@ record AssetId(byte[] policy, byte[] name) {}
 
 // CORRECT: single field
 @NewType
-record PolicyId(byte[] hash) {}
+record PolicyHash(byte[] value) {}
 ```
 
 ---
@@ -1342,14 +1342,18 @@ declares: `BigInteger`, `String`, `Boolean`, `PlutusData`, `ConstrData`, `MapDat
 
 **Fix:** Give the type another name.
 
-### `JULC0101` `The method <method> has a name JuLC reads in place of its body, so a program does not declare it`
+### `JULC0101` `<method or component> has a name JuLC reads in place of its body, so a program does not declare it`
 
 **Cause:** JuLC lowers some calls by their spelling, so a body under that name would not run:
 `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit
 accessor or `equals` on a record, `equals` on a sealed interface, and `assetOf`, `containsPolicy`, `isEmpty`
-and `lovelaceOf` on a record named `Value`.
+and `lovelaceOf` on a record named `Value`. The same goes for a `@NewType`'s component named like a method of
+the type it lowers to, such as `abs` on a `BigInteger` or `length` on a `byte[]` or `String`, for a component
+named `toPlutusData`, and for a `@NewType` of `byte[]` whose component is not `value`, or a call of an inherited
+method such as `hashCode` on one.
 
-**Fix:** Give the method another name, or make it a static method of another name.
+**Fix:** Give the method or component another name. `value`, and on a `BigInteger` `intValue` and `longValue`, are
+names of the value itself. Name a `@NewType` of `byte[]`'s component `value`.
 
 ### `JULC0099` `The body of constructor <constructor> does not run on-chain, so a constructor holds no statement`
 

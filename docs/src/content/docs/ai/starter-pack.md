@@ -349,7 +349,7 @@ A value is built from its components alone, so a constructor's body does not run
 
 ### 6.19 Some names are JuLC's
 
-A type or type parameter does not take a name JuLC reads as its own type, such as `Boolean`, `BigInteger`, `JulcList` or `PubKeyHash`: `JULC0100`. A method does not take a name JuLC reads in place of its body: `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit accessor or `equals` on a record: `JULC0101`.
+A type or type parameter does not take a name JuLC reads as its own type, such as `Boolean`, `BigInteger`, `JulcList` or `PubKeyHash`: `JULC0100`. A method does not take a name JuLC reads in place of its body: `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit accessor or `equals` on a record, and a `@NewType`'s component named like a method of its type, such as `abs` on a `BigInteger`: `JULC0101`. A `@NewType` of `byte[]` names its component `value`.
 
 ## 7. Common errors — root cause and fix
 

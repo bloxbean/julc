@@ -151,6 +151,26 @@ public final class TypeMethodRegistry {
         return registry.containsKey(typeKey + "." + method);
     }
 
+    /** Whether {@link #dispatch} of {@code method} on {@code scopeType} has a row. */
+    public boolean serves(PirType scopeType, String method) {
+        return registry.containsKey(scopeType.getClass().getSimpleName() + "." + method);
+    }
+
+    /**
+     * Whether {@code method} on {@code scopeType} lowers to the receiver itself, read from the row and not from a list: its
+     * handler is asked for a term with no arguments, so a row that needs one is no such row.
+     */
+    public boolean lowersToTheReceiver(PirType scopeType, String method) {
+        var registration = registry.get(scopeType.getClass().getSimpleName() + "." + method);
+        if (registration == null) return false;
+        PirTerm receiver = new PirTerm.Var("#receiver", scopeType);
+        try {
+            return registration.handler().handle(CompilationContext.pv11Defaults(), receiver, List.of(), scopeType, List.of()) == receiver;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /**
      * Create a registry with all standard instance methods registered.
      */

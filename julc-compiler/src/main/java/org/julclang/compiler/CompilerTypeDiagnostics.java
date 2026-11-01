@@ -241,7 +241,7 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(owner, what), location);
     }
 
-    /** JULC0101: a method declared under a name the JavaParser frontend reads in place of its body. */
+    /** JULC0101: a method or component under a name the JavaParser frontend reads in place of its body. */
     public static CompilerException methodNameReadBySpelling(String method, SourceLocation location) {
         var info = DiagnosticCodes.METHOD_NAME_READ_BY_SPELLING;
         return exception(info.code(), info.level(), info.fix(), info.format(method), location);

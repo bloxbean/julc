@@ -81,6 +81,10 @@ This file states the code at `904e9307`. The I1 gate, `adr068Baseline`, `adr068T
   rule. A type or type parameter does not take a name of `SpelledTypes.NAMES`, which is `resolveClassType`'s cases and the ledger's hash names, and a test holds
   the two together. A method does not take a name read in place of its body: `SpelledMethods`' Javadoc lists each matcher, and the declaration it stands in for.
   That closes T31's explicit accessors and `equals`, and T33's user record `PubKeyHash`, on the default frontend: their `.diffcase`s are renamed and expect the rule.
+  A `@NewType`'s component is read the same way, ahead of its generated accessor, so it does not take a name `TypeMethodRegistry` serves on the type it lowers to,
+  unless that row lowers to the receiver, or `toPlutusData`. The rows are read, not listed: `value`, `intValue` and `longValue` lower to the receiver on an integer, `value` on bytes,
+  and none on a string or a boolean. The no-argument fallback on bytes serves any other name, and a generated `hashCode` or `toString`, so a `@NewType` of `byte[]` names its component `value`.
+  A plain record reads a field by name first, so this does not reach it, but for a receiver that is no name: T33's record `Value`, and a component named `equals` or `toPlutusData`.
 - **A constructor holds no statement** (`JULC0099`). A value is built from its components alone, so a constructor's body does not run on-chain. With the gate off the default frontend drops such a body. The rule reads any constructor a source declares, compact, canonical or other, on a record or a class, however deep. What javac wrote has no source text and does not count: `super();`, a compact constructor's assignments, a generated constructor. So `R { }` holds nothing. An API type comes in as a class file and is not read: `068-followups.md` states what those constructors do.
 - **A `+` of string literals stays a `+`.** `-XDallowStringFolding=false` keeps the tree as written, so `"a" + "b"` is `PLUS`, and
   `x + "c" + "d"` is two nodes. It is a hidden option, so the supported-javac check parses `"a" + "b"` once per compiler and requires

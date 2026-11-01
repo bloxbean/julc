@@ -81,7 +81,7 @@ Zero-cost type aliases for single-field records with a supported underlying type
 import org.julclang.stdlib.annotation.NewType;
 
 @NewType
-public record AssetClass(byte[] policyId) {}
+public record AssetClass(byte[] value) {}
 
 // On-chain: new AssetClass(bytes) is identity (no ConstrData wrap)
 // There is no synthesized AssetClass.of(bytes): it is not Java (ADR-068 D6)

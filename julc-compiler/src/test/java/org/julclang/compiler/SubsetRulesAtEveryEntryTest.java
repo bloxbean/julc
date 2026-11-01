@@ -180,7 +180,10 @@ class SubsetRulesAtEveryEntryTest {
             "@NewType record N(BigInteger value) { static BigInteger of(BigInteger x) { return x.add(BigInteger.ONE); } }",
             "@NewType record N(BigInteger v) { boolean abs() { return true; } }",
             "record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } }",
-            "record R(BigInteger a) { public boolean equals(Object o) { return true; } }");
+            "record R(BigInteger a) { public boolean equals(Object o) { return true; } }",
+            "@NewType record N(BigInteger abs) { }",
+            "@NewType record H(byte[] length) { }",
+            "@NewType record H(byte[] b) { }");
 
     private static String libraryOf(String member) {
         return """

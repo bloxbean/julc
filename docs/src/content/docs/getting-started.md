@@ -487,7 +487,7 @@ not Java (ADR-068 D6).
 import org.julclang.stdlib.annotation.NewType;
 
 @NewType
-record AssetId(byte[] hash) {}
+record AssetId(byte[] value) {}
 
 // new AssetId(bytes) compiles to identity -- no ConstrData overhead
 AssetId id = new AssetId(someBytes);
@@ -1635,7 +1635,9 @@ following limitations apply:
   as its own type, such as `Boolean`, `BigInteger`, `JulcList` or `PubKeyHash`
   (`JULC0100`). A method does not take a name JuLC reads in place of its body (`JULC0101`):
   `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a
-  `@NewType`, an explicit accessor or `equals` on a record.
+  `@NewType`, an explicit accessor or `equals` on a record. A `@NewType`'s component
+  does not take the name of a method of its type, such as `abs` on a `BigInteger` or
+  `length` on a `String`, and a `@NewType` of `byte[]` names its component `value`.
 - **A constructor holds no statement** (`JULC0099`), on a record or a class: a value
   is built from its components alone, so a constructor's body does not run on-chain.
   That goes for a compact, canonical or other constructor; `R { }` holds nothing, and

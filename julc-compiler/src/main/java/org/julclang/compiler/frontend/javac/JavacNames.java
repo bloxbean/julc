@@ -13,6 +13,7 @@ public final class JavacNames {
     public static final String OBJECT = "java.lang.Object";
     public static final String BOOLEAN = "java.lang.Boolean";
     public static final String BIG_INTEGER = "java.math.BigInteger";
+    public static final String STRING = "java.lang.String";
     public static final String PLUTUS_DATA = "org.julclang.core.PlutusData";
     public static final String CONSTR_DATA = PLUTUS_DATA + ".ConstrData";
     public static final String TYPES = "org.julclang.core.types.";
