@@ -141,10 +141,10 @@ class PairCaseLoweringTest {
             for (int j = 0; j < n % 10; j++) {
                 int value = random.nextInt(11) - 5;
                 values.add(PlutusData.integer(value));
-                if (j >= Math.max(0, drop)) sum += value;
+                if (j >= drop) sum += value;
             }
             inputs.add(new Scenario(PlutusData.constr(0, PlutusData.list(values.toArray(PlutusData[]::new)),
-                    PlutusData.integer(drop), PlutusData.integer(minimum)), sum >= minimum && sum + 6 >= 10));
+                    PlutusData.integer(drop), PlutusData.integer(minimum)), drop >= 0 && sum >= minimum && sum + 6 >= 10));
         }
         // Strict boundary validation must reject even an element that drop would skip.
         inputs.add(new Scenario(PlutusData.constr(0, PlutusData.list(PlutusData.bytes(new byte[0])),
