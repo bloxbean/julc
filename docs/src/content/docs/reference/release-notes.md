@@ -3,15 +3,41 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: `String.length` counts as Java does, and a method with no parameters runs when called
+
+`s.length()` counts UTF-16 code units, as Java does. It counted the bytes of the string's UTF-8
+encoding, so `"é".length()` was 2 and `"😀".length()` was 4. A constant string folds to Java's value.
+Any other string is now counted byte by byte, so `length` costs in proportion to the string: about
+1.1M CPU and 4,800 memory per UTF-8 byte at `PV11_SAFE`, and 1.7M CPU and 6,900 memory at `BASELINE`.
+
+A method with no parameters whose body may fail, or traces, now runs at each call, and only if it is
+called, as in Java. It ran once at script start, whether or not it was called, so
+`c ? boom() : 2` failed with `c` false. Such a method now costs a call each time, and a trace in it
+shows at each call. A body the compiler can show cannot fail stays one shared value: constants, the
+listed builtins that cannot fail, and calls of non-recursive functions whose bodies it can read. Any
+other body, including a read of a `@Param` field, is delayed. A library reached through a provider
+import stays as it was: its method with no parameters runs once when the program starts.
+
+Both changes apply on both frontends. A script that uses `length` on a string that is not a constant, or
+has such a method, changes its bytes and its script hash.
+
+On the JVM, these now do what the script does: `lessThanByteString` and `lessThanEqualsByteString`
+compare unsigned bytes; `andByteString`, `orByteString` and `xorByteString` align from the first byte,
+and padding keeps the longer string's tail; `sliceByteString` clamps its counts; `indexByteString`,
+`consByteString` and `replicateByte` throw outside their ranges; `decodeUtf8` throws on bytes that are
+not UTF-8. `JulcList.take` and `drop` throw on any negative count, and `JulcList.get` and
+`JulcArray.get` on an index past an `int`. These change no script, but a test that relied on the old
+result changes.
+
 ## Upcoming preview: `mod`, `take` and `drop` fail where Java throws
 
 `a.mod(b)` with `b` below 1, and `take(n)` and `drop(n)` with `n` below 0, throw in Java. They now
 fail in the script too, on both frontends. Before this change `mod` took a negative modulus and
 `take` and `drop` took a negative count.
 
-An argument that is a constant that cannot fail, such as `x.mod(BigInteger.TEN)` or `take(3)`,
-compiles as before. Any other argument takes a check, so a script that calls one of these methods
-that way changes its bytes and costs slightly more, and its script hash changes.
+A literal constant that passes, such as `x.mod(BigInteger.TEN)` or `take(3)`, takes no check and
+compiles as before. A named constant takes one, like any other argument, so a script that calls one
+of these methods that way changes its bytes and costs slightly more, and its script hash changes.
 
 Two differences from Java stay. Neither changes what a script accepts, since both sides still run:
 `prepend`, `contains` and `insert` evaluate their argument before their receiver, and `abs`, `min`,
