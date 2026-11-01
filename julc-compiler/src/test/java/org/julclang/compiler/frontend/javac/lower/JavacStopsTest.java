@@ -52,7 +52,10 @@ class JavacStopsTest {
             new Stop("the negation of a type's minimum value", "static int m() { return -(-2147483648); }", "accepted"),
             new Stop("the negation of a type's minimum value", "static long m() { return -0x8000000000000000L; }", "accepted"),
             new Stop("an equals between unrelated types", "static boolean m(PubKeyHash a, BigInteger b) { return a.equals(b); }", "accepted"),
-            new Stop("an equals between unrelated types", "static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }", "accepted"));
+            new Stop("an equals between unrelated types", "static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }", "accepted"),
+            new Stop("a static call not qualified by a simple class name", "static BigInteger m() { return java.math.BigInteger.valueOf(1); }", "uncoded"),
+            new Stop("a method with no stdlib lowering", "static long m(long a) { return Math.floorMod(a, 2L); }", "uncoded"),
+            new Stop("a text block", "static String m() { return \"\"\"\n  a\"\"\"; }", "uncoded"));
 
     static Stream<Stop> stops() {
         return STOPS.stream();
