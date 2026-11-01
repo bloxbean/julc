@@ -73,6 +73,7 @@ JULC0096	code	JULC0096	ENTRYPOINT_NOT_UNIQUE	javac frontend: emitted with fronte
 JULC0097	code	JULC0097	ENTRYPOINT_NOT_STATIC	javac frontend: emitted with frontend=JAVAC (ADR-068 M3a); not a reference-frontend rejection
 JULC0102	code	JULC0102	CONSTANT_STRING_JOIN	javac gate: a warning on javac's trees, on both frontends (ADR-068 M3b); it rejects nothing
 JULC0091	code	JULC0091	NATIVE_ARRAY_NOT_DATA_ENCODABLE (ADR-068 M1c, #298)	source
+JULC0078	code	JULC0078	EQUALS_ALWAYS_FALSE	javac frontend: emitted with frontend=JAVAC (ADR-067 D5, ADR-068 D6, M3 Group 1); not a reference-frontend rejection
 JULC0086	code	JULC0086	REFERENCE_EQUALITY_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 JULC0087	code	JULC0087	ARRAY_EQUALS_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 JULC0090	code	JULC0090	STRING_CONCAT_NON_STRING	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection

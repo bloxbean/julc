@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * The {@code JULC0087} predicate of ADR-068 D6: whether the JVM's equality for some value of a static type
@@ -157,6 +158,14 @@ public final class ArrayIdentityEquality {
 
     private static final Result SAFE = new Result(Kind.SAFE, "");
 
+    /** javac numbers a capture by an identity hash, so a capture is printed without its number: a message is deterministic (I4). */
+    private static final Pattern CAPTURE_NUMBER = Pattern.compile("capture#\\d+");
+
+    /** {@code type} as a diagnostic prints it: the same text on every compilation. */
+    public static String text(TypeMirror type) {
+        return CAPTURE_NUMBER.matcher(type.toString()).replaceAll("capture");
+    }
+
     private final Types types;
     private final Elements elements;
     private final Trees trees;
@@ -194,14 +203,14 @@ public final class ArrayIdentityEquality {
             case ARRAY -> {
                 var component = ((ArrayType) type).getComponentType();
                 if (inJulcCollection && component.getKind() == TypeKind.BYTE) return SAFE;
-                return result(Kind.ARRAY_IDENTITY, path, type.toString());
+                return result(Kind.ARRAY_IDENTITY, path, text(type));
             }
             case TYPEVAR -> {
-                return result(Kind.TYPE_VARIABLE, path, type.toString());
+                return result(Kind.TYPE_VARIABLE, path, text(type));
             }
             case WILDCARD -> {
                 var bound = ((WildcardType) type).getExtendsBound();
-                if (bound == null) return result(Kind.UNRESOLVED, path, type.toString());
+                if (bound == null) return result(Kind.UNRESOLVED, path, text(type));
                 return check(bound, inJulcCollection, onPath, path);
             }
             case INTERSECTION -> {
@@ -215,10 +224,10 @@ public final class ArrayIdentityEquality {
                 return declared((DeclaredType) type, onPath, path);
             }
             case ERROR -> {
-                return result(Kind.UNRESOLVED, path, ERROR_TYPE + type);
+                return result(Kind.UNRESOLVED, path, ERROR_TYPE + text(type));
             }
             default -> {
-                return result(Kind.UNRESOLVED, path, type.toString());
+                return result(Kind.UNRESOLVED, path, text(type));
             }
         }
     }
@@ -271,7 +280,7 @@ public final class ArrayIdentityEquality {
 
     private Result typeArguments(DeclaredType type, boolean julcCollection, Set<String> onPath, List<String> path) {
         var arguments = type.getTypeArguments();
-        if (arguments.isEmpty()) return result(Kind.UNRESOLVED, path, type + " (raw)");
+        if (arguments.isEmpty()) return result(Kind.UNRESOLVED, path, text(type) + " (raw)");
         for (int i = 0; i < arguments.size(); i++) {
             path.add(simpleName(type) + "<" + i + ">");
             var r = check(arguments.get(i), julcCollection, onPath, path);

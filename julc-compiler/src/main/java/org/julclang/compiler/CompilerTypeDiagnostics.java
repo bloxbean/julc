@@ -301,6 +301,12 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(operation, path), location);
     }
 
+    /** JULC0078: an operation that compares two types Java keeps distinct, whose representations can still be equal. */
+    public static CompilerException equalsAlwaysFalse(String operation, String left, String right, SourceLocation location) {
+        var info = DiagnosticCodes.EQUALS_ALWAYS_FALSE;
+        return exception(info.code(), info.level(), info.fix(), info.format(operation, left, right), location);
+    }
+
     /** JULC0090: string {@code +} with an operand that is not a {@code String} (#296). */
     public static CompilerException stringConcatNonString(String expression, String type, SourceLocation location) {
         var info = DiagnosticCodes.STRING_CONCAT_NON_STRING;

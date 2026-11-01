@@ -22,6 +22,7 @@ import org.julclang.core.source.SourceLocation;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.RecordComponentElement;
@@ -190,6 +191,24 @@ public final class JavacFacts {
     /** The table of operations that compare elements or keys (ADR-068 D6). */
     public EqualityOperations equalityOperations() {
         return new EqualityOperations(types, elements);
+    }
+
+    /** Whether Java's {@code equals} can hold between two static types (ADR-068 D6). */
+    public EqualityRelation equalityRelation() {
+        return new EqualityRelation(types, elements);
+    }
+
+    /** The sealed interfaces of {@code variant} the registry holds as sums, in declaration order. */
+    public List<TypeElement> sealedParents(TypeElement variant) {
+        var parents = new ArrayList<TypeElement>();
+        for (var type : variant.getInterfaces()) {
+            var parent = typeElement(type);
+            if (parent.getKind() == ElementKind.INTERFACE && parent.getModifiers().contains(Modifier.SEALED)
+                    && registry().lookupNominal(identity(parent)).orElse(null) instanceof PirType.SumType) {
+                parents.add(parent);
+            }
+        }
+        return parents;
     }
 
     /** The class a declared type names. */

@@ -14,6 +14,7 @@ import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
 import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.EqualityOperations;
+import org.julclang.compiler.frontend.javac.EqualityRelation;
 
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
@@ -84,6 +85,8 @@ final class Adr068EqualityScan {
     final List<Site> nestedCollectionSites = new ArrayList<>();
     /** Sites whose compared type javac did not attribute (only in units it rejected): not decided, counted (F204). */
     final List<Site> skippedSites = new ArrayList<>();
+    /** Sites between types {@link EqualityRelation} does not find related, or on a raw collection: what the rule reads. */
+    final List<Site> relationSites = new ArrayList<>();
     final Map<String, int[]> unitCounts = new LinkedHashMap<>();
 
     private final String classPath;
@@ -116,7 +119,7 @@ final class Adr068EqualityScan {
     }
 
     private record Outcome(List<Unit> units, List<Boolean> accepted, boolean imports, List<Site> sites,
-                           List<Site> typeVariables, List<Site> nested, List<Site> skipped) {
+                           List<Site> typeVariables, List<Site> nested, List<Site> skipped, List<Site> relations) {
     }
 
     private void record(String corpus, Outcome outcome) {
@@ -128,6 +131,7 @@ final class Adr068EqualityScan {
         for (var s : outcome.typeVariables()) typeVariableSites.add(withCorpus(s, corpus));
         for (var s : outcome.nested()) nestedCollectionSites.add(withCorpus(s, corpus));
         for (var s : outcome.skipped()) skippedSites.add(withCorpus(s, corpus));
+        for (var s : outcome.relations()) relationSites.add(withCorpus(s, corpus));
     }
 
     private static Site withCorpus(Site s, String corpus) {
@@ -161,7 +165,7 @@ final class Adr068EqualityScan {
             task.analyze();
         } catch (RuntimeException | AssertionError e) {
             for (int i = 0; i < units.size(); i++) accepted.set(i, false);
-            return new Outcome(units, accepted, imports, List.of(), List.of(), List.of(), List.of());
+            return new Outcome(units, accepted, imports, List.of(), List.of(), List.of(), List.of(), List.of());
         }
         for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
             if (d.getKind() != Diagnostic.Kind.ERROR) continue;
@@ -176,10 +180,11 @@ final class Adr068EqualityScan {
         var typeVariables = new ArrayList<Site>();
         var nested = new ArrayList<Site>();
         var skipped = new ArrayList<Site>();
-        var scanner = new SiteScanner(task, units, byUri, accepted, imports, sites, typeVariables, nested, skipped);
+        var relations = new ArrayList<Site>();
+        var scanner = new SiteScanner(task, units, byUri, accepted, imports, sites, typeVariables, nested, skipped, relations);
         for (CompilationUnitTree unit : trees) scanner.scanUnit(unit);
         scanner.checkGenericCalls(trees);
-        return new Outcome(units, accepted, imports, sites, typeVariables, nested, skipped);
+        return new Outcome(units, accepted, imports, sites, typeVariables, nested, skipped, relations);
     }
 
     static String withImplicitImports(String text) {
@@ -207,8 +212,10 @@ final class Adr068EqualityScan {
         private final List<Site> typeVariables;
         private final List<Site> nested;
         private final List<Site> skipped;
+        private final List<Site> relations;
         private final ArrayIdentityEquality check;
         private final EqualityOperations operations;
+        private final EqualityRelation relation;
         private final Types types;
         /** Per generic method, the type variables it compares directly. */
         private final Map<ExecutableElement, Set<TypeVariable>> summaries = new HashMap<>();
@@ -216,7 +223,7 @@ final class Adr068EqualityScan {
         private int currentIndex;
 
         SiteScanner(JavacTask task, List<Unit> units, Map<URI, Integer> byUri, List<Boolean> accepted, boolean imports,
-                    List<Site> sites, List<Site> typeVariables, List<Site> nested, List<Site> skipped) {
+                    List<Site> sites, List<Site> typeVariables, List<Site> nested, List<Site> skipped, List<Site> relations) {
             this.trees = Trees.instance(task);
             this.skipped = skipped;
             this.units = units;
@@ -226,10 +233,12 @@ final class Adr068EqualityScan {
             this.sites = sites;
             this.typeVariables = typeVariables;
             this.nested = nested;
+            this.relations = relations;
             this.types = task.getTypes();
             var elements = task.getElements();
             this.check = new ArrayIdentityEquality(types, elements, trees);
             this.operations = new EqualityOperations(types, elements);
+            this.relation = new EqualityRelation(types, elements);
         }
 
         void scanUnit(CompilationUnitTree unit) {
@@ -257,6 +266,7 @@ final class Adr068EqualityScan {
                         }
                         report(path, site.operation(), site.compared(), site.julcCollection(), site.collectionOperation(),
                                 site.raw() ? "raw collection: compared at the argument's type" : "");
+                        relation(path, node, site);
                     }
                 }
             }
@@ -279,6 +289,26 @@ final class Adr068EqualityScan {
                 }
             }
             return null;
+        }
+
+        /** What the relatedness rule says of a site, whatever else stops its program first. */
+        private void relation(TreePath path, MethodInvocationTree node, EqualityOperations.Site site) {
+            var position = position(path.getLeaf());
+            var file = units.get(currentIndex).label();
+            if (site.raw()) {
+                relations.add(new Site("", state(), file, position[0], position[1], site.operation(), site.compared().toString(), "RAW", "", ""));
+                return;
+            }
+            if (site.argument() == EqualityOperations.NO_ARGUMENT) return;
+            for (var operand : EqualityRelation.operands(node.getArguments().get(site.argument()))) {
+                var type = trees.getTypeMirror(TreePath.getPath(current, operand));
+                if (type == null || type.getKind() == TypeKind.ERROR) continue;
+                var result = relation.between(site.compared(), type);
+                if (result.kind() != EqualityRelation.Kind.RELATED) {
+                    relations.add(new Site("", state(), file, position[0], position[1], site.operation(), site.compared().toString(),
+                            result.kind().name(), type.toString(), result.left() + " / " + result.right()));
+                }
+            }
         }
 
         private void report(TreePath path, String operation, TypeMirror compared, boolean julcCollection,

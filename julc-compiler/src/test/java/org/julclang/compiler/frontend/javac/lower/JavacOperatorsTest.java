@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -222,6 +223,15 @@ class JavacOperatorsTest {
         var failure = rejected("static boolean m(byte[] a, byte[] b) { return a.equals(b); }");
         assertEquals("JULC0087", failure.code());
         assertEquals("Object.equals compares byte[], whose equality on the JVM compares an array by identity", failure.message());
+    }
+
+    /** javac numbers a capture by an identity hash: a message must not change from one compilation to the next (I4). */
+    @Test
+    void aCaptureIsPrintedWithoutItsNumber() {
+        String members = "static boolean m(boolean c, BigInteger a) { var x = c ? new org.julclang.core.types.Tuple2<>(a, true) : new org.julclang.core.types.Tuple2<>(new byte[]{1}, true); return x.first().equals(a); }";
+        var first = rejected(members).message();
+        assertEquals(first, rejected(members).message());
+        assertFalse(first.matches(".*capture#\\d.*"), first);
     }
 
     @Test

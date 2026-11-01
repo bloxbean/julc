@@ -35,11 +35,14 @@ import java.util.List;
  */
 public final class EqualityOperations {
 
+    /** A comparison with no single argument on its other side. */
+    public static final int NO_ARGUMENT = -1;
+
     /** Where a comparison's type comes from: the receiver's or the first argument's view as a collection. */
     private enum From { RECEIVER, FIRST_ARGUMENT }
 
-    /** One compared type: the view's type argument at {@code index}. */
-    private record Comparison(From from, String view, int index) {
+    /** One compared type: the view's type argument at {@code index}, and the argument compared with it. */
+    private record Comparison(From from, String view, int index, int argument) {
     }
 
     private record Rule(String owner, String method, List<String> parameters, List<Comparison> comparisons) {
@@ -53,11 +56,13 @@ public final class EqualityOperations {
     private static final String OBJECT = "java.lang.Object";
     private static final String DATA = "org.julclang.core.PlutusData";
 
-    private static final Comparison JULC_ELEMENT = new Comparison(From.RECEIVER, JULC_LIST, 0);
-    private static final Comparison JULC_KEY = new Comparison(From.RECEIVER, JULC_MAP, 0);
-    private static final Comparison ELEMENT = new Comparison(From.RECEIVER, COLLECTION, 0);
-    private static final Comparison KEY = new Comparison(From.RECEIVER, MAP, 0);
-    private static final Comparison VALUE = new Comparison(From.RECEIVER, MAP, 1);
+    private static final Comparison JULC_ELEMENT = new Comparison(From.RECEIVER, JULC_LIST, 0, 0);
+    private static final Comparison JULC_KEY = new Comparison(From.RECEIVER, JULC_MAP, 0, 0);
+    private static final Comparison ELEMENT = new Comparison(From.RECEIVER, COLLECTION, 0, 0);
+    private static final Comparison KEY = new Comparison(From.RECEIVER, MAP, 0, 0);
+    private static final Comparison VALUE = new Comparison(From.RECEIVER, MAP, 1, 0);
+    /** A collection's element, taken by the operation through a whole other collection: no one value to compare. */
+    private static final Comparison ELEMENTS = new Comparison(From.RECEIVER, COLLECTION, 0, NO_ARGUMENT);
 
     private static final List<Rule> RULES = List.of(
             new Rule(JULC_LIST, "contains", List.of(OBJECT), List.of(JULC_ELEMENT)),
@@ -67,18 +72,18 @@ public final class EqualityOperations {
             new Rule(JULC_MAP, "delete", List.of(OBJECT), List.of(JULC_KEY)),
             new Rule(JULC_MAP, "getOrDefault", List.of(OBJECT, OBJECT), List.of(JULC_KEY)),
             new Rule("org.julclang.stdlib.lib.MapLib", "lookup", List.of(JULC_MAP, DATA),
-                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0))),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0, 1))),
             new Rule("org.julclang.stdlib.lib.MapLib", "member", List.of(JULC_MAP, DATA),
-                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0))),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0, 1))),
             new Rule("org.julclang.stdlib.lib.MapLib", "delete", List.of(JULC_MAP, DATA),
-                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0))),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_MAP, 0, 1))),
             new Rule("org.julclang.stdlib.lib.ListsLib", "contains", List.of(JULC_LIST, DATA),
-                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_LIST, 0))),
+                    List.of(new Comparison(From.FIRST_ARGUMENT, JULC_LIST, 0, 1))),
             new Rule(COLLECTION, "contains", List.of(OBJECT), List.of(ELEMENT)),
             new Rule(COLLECTION, "remove", List.of(OBJECT), List.of(ELEMENT)),
-            new Rule(COLLECTION, "containsAll", List.of(COLLECTION), List.of(ELEMENT)),
-            new Rule(COLLECTION, "removeAll", List.of(COLLECTION), List.of(ELEMENT)),
-            new Rule(COLLECTION, "retainAll", List.of(COLLECTION), List.of(ELEMENT)),
+            new Rule(COLLECTION, "containsAll", List.of(COLLECTION), List.of(ELEMENTS)),
+            new Rule(COLLECTION, "removeAll", List.of(COLLECTION), List.of(ELEMENTS)),
+            new Rule(COLLECTION, "retainAll", List.of(COLLECTION), List.of(ELEMENTS)),
             new Rule(LIST, "indexOf", List.of(OBJECT), List.of(ELEMENT)),
             new Rule(LIST, "lastIndexOf", List.of(OBJECT), List.of(ELEMENT)),
             new Rule(MAP, "get", List.of(OBJECT), List.of(KEY)),
@@ -86,7 +91,7 @@ public final class EqualityOperations {
             new Rule(MAP, "containsKey", List.of(OBJECT), List.of(KEY)),
             new Rule(MAP, "containsValue", List.of(OBJECT), List.of(VALUE)),
             new Rule(MAP, "remove", List.of(OBJECT), List.of(KEY)),
-            new Rule(MAP, "remove", List.of(OBJECT, OBJECT), List.of(KEY, VALUE)));
+            new Rule(MAP, "remove", List.of(OBJECT, OBJECT), List.of(KEY, new Comparison(From.RECEIVER, MAP, 1, 1))));
 
     /** The operations in the table, as {@code owner.method(parameters) [compared]}, for reports. */
     public static final List<String> TABLE = tableText();
@@ -94,11 +99,12 @@ public final class EqualityOperations {
     /**
      * One compared type of an equality-using call: the operation ({@code Owner.method}), the static type, whether it
      * is a collection operation (membership or lookup, not {@code equals}), whether the compared values are elements,
-     * keys or values of a JuLC collection (so an array of bytes among them is compared deeply after ADR-068 M1), and
-     * whether the collection is raw, when the compared type is the argument's static type.
+     * keys or values of a JuLC collection (so an array of bytes among them is compared deeply after ADR-068 M1),
+     * whether the collection is raw, when the compared type is the argument's static type, and which argument the
+     * compared type meets ({@link #NO_ARGUMENT} for none).
      */
     public record Site(String operation, TypeMirror compared, boolean collectionOperation, boolean julcCollection,
-                       boolean raw) {
+                       boolean raw, int argument) {
     }
 
     private final Types types;
@@ -125,11 +131,11 @@ public final class EqualityOperations {
         boolean isStatic = method.getModifiers().contains(Modifier.STATIC);
         var parameters = method.getParameters().stream().map(p -> types.erasure(p.asType()).toString()).toList();
         if (!isStatic && name.equals("equals") && parameters.equals(List.of(OBJECT)) && receiver != null) {
-            return List.of(new Site(owner.getSimpleName() + ".equals", receiver, false, false, false));
+            return List.of(new Site(owner.getSimpleName() + ".equals", receiver, false, false, false, 0));
         }
         if (isStatic && name.equals("equals") && owner.getQualifiedName().contentEquals("java.util.Objects")
                 && parameters.equals(List.of(OBJECT, OBJECT)) && arguments.size() == 2) {
-            return List.of(new Site("Objects.equals", arguments.getFirst(), false, false, false));
+            return List.of(new Site("Objects.equals", arguments.getFirst(), false, false, false, 1));
         }
         for (Rule rule : RULES) {
             if (!rule.method().equals(name) || !rule.parameters().equals(parameters)) continue;
@@ -145,13 +151,13 @@ public final class EqualityOperations {
                 boolean julc = !comparison.view().startsWith("java.util.");
                 if (view == null) {
                     // Not resolvable as the collection: the base itself is compared, which the check reports.
-                    sites.add(new Site(operation, base, true, julc, false));
+                    sites.add(new Site(operation, base, true, julc, false, comparison.argument()));
                 } else if (view.getTypeArguments().size() > comparison.index()) {
-                    sites.add(new Site(operation, view.getTypeArguments().get(comparison.index()), true, julc, false));
+                    sites.add(new Site(operation, view.getTypeArguments().get(comparison.index()), true, julc, false, comparison.argument()));
                 } else {
                     // A raw collection has no element or key type: the compared value's static type is all there is.
-                    int argument = (comparison.from() == From.FIRST_ARGUMENT ? 1 : 0) + comparison.index();
-                    if (arguments.size() > argument) sites.add(new Site(operation, arguments.get(argument), true, julc, true));
+                    int argument = comparison.argument();
+                    sites.add(new Site(operation, arguments.get(Math.max(argument, 0)), true, julc, true, argument));
                 }
             }
             return sites;

@@ -256,6 +256,8 @@ class Adr068BaselineTest {
                 + " collection (#297)\n", Adr068EqualityScan.lines(scan.nestedCollectionSites));
         write("equality-scan-b0-skipped.tsv", header + "# sites whose compared type javac did not attribute (units javac"
                 + " rejects): not decided (F204)\n", Adr068EqualityScan.lines(scan.skippedSites));
+        write("equality-scan-relation.tsv", header + "# sites EqualityRelation does not find related, or on a raw collection, whatever"
+                + " else stops their program first\n", Adr068EqualityScan.lines(scan.relationSites));
         var totals = new ArrayList<String>();
         scan.unitCounts.forEach((corpus, n) -> totals.add("units." + corpus + "\taccepted " + n[0]
                 + "\taccepted+imports " + n[1] + "\tpartial " + n[2]));

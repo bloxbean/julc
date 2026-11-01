@@ -250,7 +250,7 @@ public final class DiagnosticCodes {
             "EQUALS_ALWAYS_FALSE",
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
-            "{0}.equals({1}) is always false in Java: the operand types have no class in common",
+            "{0} compares {1} with {2}, which Java keeps distinct: on-chain the two can compare equal",
             "Compare through one typed value (decode the datum to the record type first), or compare the components explicitly.");
 
     public static final DiagnosticInfo FIELD_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(

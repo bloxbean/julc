@@ -936,12 +936,12 @@
     {
       "code": "JULC0078",
       "constant": "EQUALS_ALWAYS_FALSE",
-      "status": "planned",
+      "status": "emitted",
       "title": "equals between types that can never be equal",
       "category": "TYPE",
       "severity": "error",
-      "template": "{0}.equals({1}) is always false in Java: the operand types have no class in common",
-      "summary": "Reserved by ADR-067 (D5): an equals call whose operands' known class sets are disjoint is always false in Java, but compared structurally on-chain.",
+      "template": "{0} compares {1} with {2}, which Java keeps distinct: on-chain the two can compare equal",
+      "summary": "An equals call or collection operation whose JVM implementation compares with equals, between static types that are not related: neither is a subtype of the other by class, or a type argument is not related to the same argument of the other (ADR-067 D5, ADR-068 D6). Java's answer is false, and on-chain a comparison reads representations, so an integer and a long, a string and its bytes, or two records with the same fields can be equal. Emitted by the javac frontend.",
       "fix": "Compare through one typed value (decode the datum to the record type first), or compare the components explicitly."
     },
     {
