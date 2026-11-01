@@ -30,6 +30,7 @@ class JavacCallsTest {
     private static final String IMPORTS = """
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcG1;
             import org.julclang.core.types.JulcList;
             import org.julclang.core.types.JulcMap;
             import org.julclang.ledger.PubKeyHash;
@@ -192,6 +193,8 @@ class JavacCallsTest {
     @Test
     void aNewTypeValueIsItsComponent() {
         assertSame("@NewType record A(BigInteger value) { } record R(A a) { } static BigInteger m(R r) { return r.a().value(); }");
+        assertSame("@NewType record A(byte[] value) { } static byte[] m(A a) { return a.value(); }");
+        assertSame("@NewType record A(BigInteger value) { } static BigInteger m(A a) { return a.value(); }");
         assertSame("@NewType record A(byte[] value) { } record R(A a) { } static byte[] m(R r) { return r.a().value(); }");
         assertSame("@NewType record H(byte[] v) { } record R(H h) { } static byte[] m(R r) { return r.h().v(); }");
         assertEquals("JULC0055", rejected("@NewType record A(BigInteger amount) { } record R(A a) { }\n"
@@ -208,6 +211,13 @@ class JavacCallsTest {
             "@NewType record H(byte[] v) { } static byte[] m(H h) { return h.v(); }"})
     void aWrapperReadAsDataDoesNotLower(String members) {
         assertEquals("a wrapper's component read as Data", notPorted(members));
+    }
+
+    /** The reference reads any no-argument method on bytes as a component: a hash's string is not its bytes. */
+    @Test
+    void aMethodOfAHashThatIsNoComponentDoesNotLower() {
+        assertEquals("the method toString of a byte string", notPorted("static String m(PubKeyHash p) { return p.toString(); }"));
+        assertEquals("the method hashCode of a byte string", notPorted("static int m(PubKeyHash p) { return p.hashCode(); }"));
     }
 
     @Test
@@ -232,6 +242,19 @@ class JavacCallsTest {
         assertSame("static long h(long a) { return a; } static long h(int a) { return a; } static long m(long a) { return h(a); }");
     }
 
+    /** ADR-047: only a raw type lets a value past javac into a natively typed parameter, and the words are the reference's. */
+    @Test
+    void aNativeParameterKeepsItsType() {
+        var members = "static long h(JulcList<JulcG1> a) { return 1; }\n@SuppressWarnings(\"unchecked\") static long k(JulcList b) { return h(b); }\n"
+                + "static long m() { return 1; }";
+        var failure = rejected(members);
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
+                .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
+        assertTrue(failure.message().contains("h argument 1"), failure::toString);
+        assertEquals(reference.message(), failure.message());
+        assertEquals(reference.code(), failure.code());
+    }
+
     @Test
     void valueOf() {
         assertSame("static BigInteger m(long a) { return BigInteger.valueOf(a); }");
@@ -248,6 +271,17 @@ class JavacCallsTest {
         var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
                 .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
         assertEquals(reference.code(), failure.code());
+        assertEquals(reference.message(), failure.message());
+    }
+
+    /** {@code PlutusData.cast}'s class must be a literal: nothing else says what the view is. */
+    @Test
+    void aCastToAClassThatIsNoLiteralIsRejected() {
+        var members = "static PlutusData m(PlutusData d) { return PlutusData.cast(d, d.getClass()); }";
+        var failure = rejected(members);
+        assertEquals("PlutusData.cast() second argument must be a literal ClassName.class expression", failure.message());
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
+                .compileMethod(source(members), "m", List.of())).diagnostics().getFirst();
         assertEquals(reference.message(), failure.message());
     }
 

@@ -5,6 +5,7 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
@@ -123,6 +124,28 @@ class LoweringAloneTest {
     void whatTheSubsetRejectsIsNotLoweredHereToo(String method, String construct) {
         withMethod("class P { " + method + " }", new CompilerOptions(), (facts, lowered) ->
                 assertEquals(construct, assertThrows(NotPorted.class, lowered::term).construct()));
+    }
+
+    /** A generic library method is a template, which Java cannot call (ADR-059): the reference's rejection, in its words. */
+    @Test
+    void aGenericLibraryMethodIsRejected() {
+        var root = "import lib.L;\nclass P { static long m() { return L.f(1L); } }\n";
+        var library = "package lib;\npublic class L { public static <T> T f(T a) { return a; } }\n";
+        var program = JavacProgram.analyze(List.of(JavacFrontend.Unit.of(root)), List.of(JavacFrontend.Unit.of(library)));
+        program.read(facts -> {
+            var methods = new ArrayList<MethodTree>();
+            new TreeScanner<Void, Void>() {
+                @Override
+                public Void visitMethod(MethodTree tree, Void unused) {
+                    if (tree.getName().contentEquals("m")) methods.add(tree);
+                    return null;
+                }
+            }.scan(program.roots().getFirst(), null);
+            var lowering = new Lowering(facts, CompilationContext.resolve(new CompilerOptions()));
+            var failure = assertThrows(CompilerException.class, () -> lowering.method(methods.getFirst(), Scope.empty(), false));
+            assertTrue(failure.getMessage().contains("Generic library method lib.L.f cannot be called from Java yet"), failure::getMessage);
+            return null;
+        });
     }
 
     /** The method is the API's and the receiver is not what its handler lowers, so the key must agree with both. */

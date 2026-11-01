@@ -352,6 +352,14 @@ class Adr068CallsHarnessTest {
                 new PlutusData.ConstrData(0, List.of(integer(1))), new PlutusData.ConstrData(0, List.of(integer(2))));
     }
 
+    /** A stdlib call's receiver dispatches on what its term says, Data here, which is what makes this {@code EqualsData}. */
+    @Test
+    void equalsOnAStdlibCallIsData() {
+        for (long b : List.of(1L, 2L)) {
+            assertAgree("public static boolean m(BigInteger a, BigInteger b) { return Optional.of(a).equals(Optional.of(b)); }", integer(1), integer(b));
+        }
+    }
+
     @Test
     void equalsOnASealedInterfaceIsObjectEqualsAndValueEquality() {
         String members = "public sealed interface S { record A(BigInteger x) implements S { } record B() implements S { } }"
@@ -541,6 +549,8 @@ class Adr068CallsHarnessTest {
         assertFixedOnJavac("public static BigInteger m() { return JulcList.of(BigInteger.ONE, BigInteger.TWO).head(); }");
         assertFixedOnJavac("public static boolean m() { return JulcList.of(BigInteger.ONE, BigInteger.TWO).contains(BigInteger.TWO); }");
         assertFixedOnJavac("public static BigInteger m() { return JulcList.of(BigInteger.ONE).head().add(BigInteger.ONE); }");
+        assertFixedOnJavac("public static long m() { return JulcList.of(1, 2).head() + 1; }");
+        assertFixedOnJavac("public static boolean m() { return JulcList.of(1, 2).contains(2); }");
     }
 
     // --- What stops rather than diverges ---

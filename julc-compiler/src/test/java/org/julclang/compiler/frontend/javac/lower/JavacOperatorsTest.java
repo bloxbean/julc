@@ -175,7 +175,7 @@ class JavacOperatorsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"(2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"", "\"a\" + 1 == \"a1\"", "BAD == \"a\"", "ALIAS == \"a\"", "ALIAS2 == \"a\"",
+    @ValueSource(strings = {"(2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"", "\"a\" + 1 == \"a1\"", "\"a\" + (\"b\" == \"b\") == \"atrue\"", "BAD == \"a\"", "ALIAS == \"a\"", "ALIAS2 == \"a\"",
             "S == \"a\"", "\"x\" == S", "NOT_FINAL == \"a\""})
     void anyOtherStringComparisonIsReferenceEquality(String body) {
         var failure = rejected("""

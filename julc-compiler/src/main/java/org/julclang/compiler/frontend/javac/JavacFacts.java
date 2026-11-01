@@ -157,13 +157,9 @@ public final class JavacFacts {
         return path != null && libraries.contains(path.getCompilationUnit());
     }
 
-    /**
-     * Whether a source declares {@code method}: an accessor a record writes out. The one javac generates has a tree with
-     * no text, and a stub's has none.
-     */
+    /** Whether a source declares {@code method}: an accessor a record writes out. javac's own has no tree, nor has a stub's. */
     public boolean declaredInSource(ExecutableElement method) {
-        var path = trees == null ? null : trees.getPath(method);
-        return path != null && trees.getSourcePositions().getEndPosition(path.getCompilationUnit(), path.getLeaf()) >= 0;
+        return trees != null && trees.getTree(method) != null;
     }
 
     /** The initializer of a variable a source declares, or null: a stub has none. */
