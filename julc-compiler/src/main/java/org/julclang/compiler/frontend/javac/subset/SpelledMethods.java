@@ -20,7 +20,7 @@ import java.util.Set;
 /**
  * A subset rule ({@code JULC0101}): a program does not declare a method under a name the JavaParser frontend reads by its
  * spelling ahead of the method's body. Each row is a matcher of {@code PirGenerator}'s method calls, which stands in for
- * the call without lowering the body. A method javac generates is exempt.
+ * the call without lowering the body. A method javac generates has no tree to read at this point, so it is exempt.
  * <table>
  *   <caption>The matchers, and the declaration each one stands in for</caption>
  *   <tr><td>{@code tryFromPlutusDataIdentity}</td><td>{@code fromPlutusData} of one parameter, on any type</td></tr>
@@ -47,7 +47,7 @@ public final class SpelledMethods {
             @Override
             public Void visitMethod(MethodTree tree, Void unused) {
                 var method = (ExecutableElement) facts.element(tree);
-                if (method.getKind() == ElementKind.METHOD && !facts.isGenerated(tree) && isReadBySpelling(facts, method)) {
+                if (method.getKind() == ElementKind.METHOD && isReadBySpelling(facts, method)) {
                     throw reject(facts, method, tree);
                 }
                 return super.visitMethod(tree, unused);

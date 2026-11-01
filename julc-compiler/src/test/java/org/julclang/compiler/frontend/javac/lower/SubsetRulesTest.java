@@ -29,7 +29,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameAsReference;
@@ -1015,7 +1015,35 @@ class SubsetRulesTest {
     @Test
     void anApiMethodThroughAVariableIsNoSpelledCall() {
         String source = validator("Class<BigInteger> k = BigInteger.class; return k.cast(r).signum() > 0;");
-        assertNotEquals("JULC0101", code(compiler -> compiler.compile(source), CompilerFrontend.JAVAPARSER));
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compile(source));
+        assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
+    }
+
+    /** Called on a type, a declared method of these names is its own, and the frontend's rejection of the call is what stands. */
+    @Test
+    void aCallOnATypeIsNoSpelledCall() {
+        String source = """
+                class P {
+                    record R(long a) { static long of(long x) { return x; } static long valueOf(long x) { return x; } }
+                    static long m() { return R.of(1) + R.valueOf(1); }
+                }
+                """;
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+        assertFalse(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
+    }
+
+    /** {@code cast} is the API's: a user's method of that name is no cast. */
+    @Test
+    void aUsersCastIsNoCast() {
+        String source = """
+                import java.math.BigInteger;
+                class P {
+                    record R(long a) { static boolean cast(BigInteger x, Class<?> c) { return true; } }
+                    static boolean m(BigInteger r) { return R.cast(r, Object.class); }
+                }
+                """;
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+        assertFalse(thrown.getMessage().contains("JULC0098"), thrown::getMessage);
     }
 
     @Test
