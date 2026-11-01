@@ -44,15 +44,18 @@ import java.util.stream.Stream;
  *       read as well.</li>
  *   <li>A name of the ledger, at any depth, is reached by an implicit import unless a record or a sealed interface of a
  *       program takes it, which that frontend registers ({@link Reading#ledger}). So a simple name binds to the ledger's type,
- *       or to a record, a sealed interface or a library of another unit. A qualified name goes through the qualifier.</li>
+ *       or to a record, a sealed interface or a library of another unit. A qualified name goes through the qualifier. In the
+ *       unnamed package the implicit import wins, so no top-level type there takes such a name.</li>
+ *   <li>A variable does not take the name of a type offered to a compilation ({@link Reading#offered}): that frontend reads
+ *       {@code name.method()} as a static call first, on every class of a library unit, whatever the program bound.</li>
  *   <li>A plain class or interface is not registered, so its simple name is read as a record, a sealed interface or a
- *       library of that name anywhere in a compilation, whichever scope that is in ({@link Reading#registered}). A type
- *       parameter of such a name is read the same way.</li>
+ *       class of a library unit of that name anywhere in a compilation, whichever scope that is in
+ *       ({@link Reading#registered}). A type parameter of such a name is read the same way.</li>
  *   <li>That frontend's resolver has no inherited member and no static import, so a type of a program reached by one of
  *       those is written with its qualifier.</li>
  *   <li>A sealed interface's variant is read by its simple name, so two variants of one interface do not share it.</li>
- *   <li>A record does not take a type key of {@code TypeMethodRegistry}, which reads a record's name ahead of its members.
- *       A record {@code Value} stays open: ADR-062 T33 lists it.</li>
+ *   <li>A class or a record does not take a type key of {@code TypeMethodRegistry}, which reads the name of a record, or of a
+ *       variant that is a class, ahead of its members. A sealed interface is no such reading: its rows are {@code SumType}'s.</li>
  *   <li>The datum of a three-parameter entry point is read as an {@code Optional} when its type's text starts with that word,
  *       so the text and the type agree.</li>
  * </ul>
@@ -73,20 +76,21 @@ public final class SpelledTypes {
     private static final String STDLIB_LIBRARIES = STDLIB + ".lib";
     private static final String OPTIONAL = "java.util.Optional";
     private static final Set<String> TYPE_KEYS = SpelledMethods.REGISTRY.typeKeys();
-    /** The type key a record of that name keeps, by ADR-062 T33. */
-    private static final String OPEN_TYPE_KEY = "Value";
 
     /**
      * What the frontend's implicit imports and its registries read in one environment.
      *
      * @param libraries the stdlib's classes, by simple name
      * @param ledger    the ledger's types at any depth, by simple name
-     * @param registered the simple names of the records, sealed interfaces and libraries offered to a compilation, read or not
+     * @param registered the simple names of the records and sealed interfaces offered to a compilation, read or not, and of
+     *                   every class of a unit it compiles as a library
+     * @param offered    those, and the simple names of the classes of the units it compiles as roots
      */
-    public record Reading(Map<String, String> libraries, Map<String, Set<String>> ledger, Set<String> registered) {
+    public record Reading(Map<String, String> libraries, Map<String, Set<String>> ledger, Set<String> registered,
+                          Set<String> offered) {
 
         /** {@code identities} is every API class's qualified name. */
-        public static Reading of(Collection<String> identities, Set<String> registered) {
+        public static Reading of(Collection<String> identities, Set<String> registered, Set<String> offered) {
             var libraries = new HashMap<String, String>();
             var ledger = new HashMap<String, Set<String>>();
             for (String identity : identities) {
@@ -96,7 +100,7 @@ public final class SpelledTypes {
                 if (owner.equals(STDLIB) || owner.equals(STDLIB_LIBRARIES)) libraries.put(name, identity);
                 if (identity.startsWith(LEDGER)) ledger.computeIfAbsent(name, k -> new TreeSet<>()).add(identity);
             }
-            return new Reading(Map.copyOf(libraries), Map.copyOf(ledger), Set.copyOf(registered));
+            return new Reading(Map.copyOf(libraries), Map.copyOf(ledger), Set.copyOf(registered), Set.copyOf(offered));
         }
     }
 
@@ -128,8 +132,9 @@ public final class SpelledTypes {
         return Map.copyOf(annotations);
     }
 
-    public static void check(JavacFacts facts, CompilationUnitTree unit, Reading reading) {
-        new Scan(facts, unit, reading).scan(unit, null);
+    /** @param compiledAsLibraries the units read by javac that the frontend compiles as libraries */
+    public static void check(JavacFacts facts, CompilationUnitTree unit, Reading reading, Set<CompilationUnitTree> compiledAsLibraries) {
+        new Scan(facts, unit, reading, compiledAsLibraries).scan(unit, null);
     }
 
     private static final class Scan extends TreeScanner<Void, Void> {
@@ -137,11 +142,13 @@ public final class SpelledTypes {
         private final JavacFacts facts;
         private final CompilationUnitTree unit;
         private final Reading reading;
+        private final Set<CompilationUnitTree> compiledAsLibraries;
 
-        Scan(JavacFacts facts, CompilationUnitTree unit, Reading reading) {
+        Scan(JavacFacts facts, CompilationUnitTree unit, Reading reading, Set<CompilationUnitTree> compiledAsLibraries) {
             this.facts = facts;
             this.unit = unit;
             this.reading = reading;
+            this.compiledAsLibraries = compiledAsLibraries;
         }
 
         /** The one type {@code name} is read as, or null. */
@@ -162,8 +169,13 @@ public final class SpelledTypes {
             if (read != null && !read.equals(facts.identity((TypeElement) facts.element(tree)))) {
                 throw reject(name, read, describe(facts.element(tree)), tree);
             }
-            if (tree.getKind() == Tree.Kind.RECORD && !name.equals(OPEN_TYPE_KEY) && TYPE_KEYS.contains(name)) {
+            boolean classOrRecord = tree.getKind() == Tree.Kind.RECORD || tree.getKind() == Tree.Kind.CLASS;
+            if (classOrRecord && TYPE_KEYS.contains(name)) {
                 throw reject(name, "a type key of its lowering", describe(facts.element(tree)), tree);
+            }
+            if (facts.element(tree).getEnclosingElement() instanceof PackageElement owner && owner.isUnnamed()
+                    && reading.ledger().containsKey(name)) {
+                throw reject(name, String.join(" or ", reading.ledger().get(name)), describe(facts.element(tree)), tree);
             }
             if (facts.element(tree) instanceof TypeElement type && isSealedInterface(type)) requireVariantNames(type, tree);
             return super.visitClass(tree, unused);
@@ -231,7 +243,8 @@ public final class SpelledTypes {
             var ledger = reading.ledger().get(name);
             boolean readInTheLedger = simple && ledger != null;
             boolean registered = reading.registered().contains(name);
-            if (read == null && !readInTheLedger && !registered) return;
+            boolean offered = simple && reading.offered().contains(name);
+            if (read == null && !readInTheLedger && !registered && !offered) return;
             Element element = facts.elementOrNull(tree);
             // A method has a namespace of its own, and a package is no binding of a name in a type's place.
             if (element == null || element instanceof ExecutableElement || element instanceof PackageElement) return;
@@ -241,13 +254,15 @@ public final class SpelledTypes {
                 }
                 return;
             }
-            String expected = readInTheLedger ? String.join(" or ", ledger) : "the type a compilation registers under that name";
+            String expected = readInTheLedger ? String.join(" or ", ledger) : "the type of that name this compilation is offered";
             if (element instanceof TypeElement type) {
                 if (ledger != null && ledger.contains(facts.identity(type))) return;
-                if (isPlain(type) || simple && registered && isOutsideTheResolver(type, tree)) {
+                boolean readAsAnother = isPlain(type) && (readInTheLedger || registered && !compiledAsLibraries.contains(facts.unitOf(type)));
+                if (readAsAnother || simple && registered && isOutsideTheResolver(type, tree)) {
                     throw reject(name, expected, describe(element), tree);
                 }
-            } else if (readInTheLedger || registered && element instanceof TypeParameterElement parameter && !isSpecialized(parameter)) {
+            } else if (readInTheLedger || offered && element instanceof VariableElement
+                    || registered && element instanceof TypeParameterElement parameter && !isSpecialized(parameter)) {
                 throw reject(name, expected, describe(element), tree);
             }
         }

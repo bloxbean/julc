@@ -1,6 +1,7 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +40,15 @@ class SwitchDiagnosticsTest {
         assertEquals(code, diagnostic.code(), diagnostic.message());
         assertTrue(diagnostic.message().contains(fragment), diagnostic.message());
         return diagnostic;
+    }
+
+    /** With the gate off, for what its rules reject first: the frontend's own rejection is what is pinned. */
+    private static void rejectedWithTheGateOff(String source, String code, String fragment) {
+        var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setJavacGate(JavacGateMode.OFF)).compileMethod(source, "m"), source);
+        var diagnostic = error.diagnostics().getFirst();
+        assertEquals(code, diagnostic.code(), diagnostic.message());
+        assertTrue(diagnostic.message().contains(fragment), diagnostic.message());
     }
 
     private static void accepted(String source) {
@@ -642,7 +652,7 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when Probe.ON -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "Probe.ON");
+                """), "JULC0100", "the variable Probe");
         // F56: a qualified pattern type naming another declaration (qualifiedPatternTypeOfAnotherDeclaration).
         rejected(probe(S + """
                     static final class Other {
@@ -720,7 +730,7 @@ class SwitchDiagnosticsTest {
         // F50: 'Probe' is a local here, which obscures the class, so Probe.ON is the record component (false in Java),
         // never the constant field. It used to fold to true and run the first arm; now it is not folded, and since
         // JuLC cannot type a component read as a field, the guard fails closed.
-        rejected(probe(S + """
+        String qualifierIsALocal = probe(S + """
                     record Flags(boolean ON) {}
                     static final boolean ON = true;
                     static BigInteger m(BigInteger a) {
@@ -728,7 +738,10 @@ class SwitchDiagnosticsTest {
                         S s = new A(a);
                         return switch (s) { case A x when Probe.ON -> BigInteger.ONE; case A x -> BigInteger.TWO; case B y -> BigInteger.ZERO; };
                     }
-                """), "JULC0072", "Probe.ON");
+                """);
+        rejectedWithTheGateOff(qualifierIsALocal, "JULC0072", "Probe.ON");
+        // The gate rejects the shape first: a variable does not take the name of a type offered to a compilation.
+        rejected(qualifierIsALocal, "JULC0100", "the variable Probe");
         // With the class as the qualifier, Probe.ON is the constant true: the label is unguarded and covers A.
         accepted(probe(S + """
                     static final boolean ON = true;

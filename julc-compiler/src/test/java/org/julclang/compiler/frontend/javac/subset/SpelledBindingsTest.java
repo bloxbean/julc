@@ -127,7 +127,7 @@ class SpelledBindingsTest {
         return identities;
     }
 
-    private static final SpelledTypes.Reading READING = SpelledTypes.Reading.of(identities(), Set.of());
+    private static final SpelledTypes.Reading READING = SpelledTypes.Reading.of(identities(), Set.of(), Set.of());
 
     /** Every name read as one type, and every name of the ledger. */
     private static Stream<String> spelledNames() {
@@ -281,6 +281,7 @@ class SpelledBindingsTest {
         var wrong = new ArrayList<String>();
         for (var use : TYPE_USES) {
             for (var binding : TypeBinding.values()) {
+                if (binding == TypeBinding.STATIC_IMPORTED) continue;
                 var program = typeBound(binding, use.header(), use.code(), FREE_NAME);
                 if (!compilesPastThisRule(program.root(), program.pool())) {
                     wrong.add(use.label() + " " + binding + ": " + code(program.root(), program.pool()) + "\n" + program.root());
@@ -383,17 +384,57 @@ class SpelledBindingsTest {
         assertEquals("accepted", code(source, List.of()));
     }
 
-    /** ADR-062 T33 lists these, so the gate leaves a record of a ledger name as it is. */
+    /** Nested or packaged, that frontend registers the record, and reads it ahead of the implicit import. */
     @ParameterizedTest
-    @ValueSource(strings = {"Value", "Rational", "Constitution", "Address", "TxOut"})
-    void aRecordOfALedgerNameIsLeftAlone(String name) {
+    @ValueSource(strings = {"Rational", "Constitution", "Address", "TxOut"})
+    void aRecordOfALedgerNameThatIsNestedOrPackaged(String name) {
         String nested = "class P { record %1$s(long a) { } static long m() { return new %1$s(1).a(); } }".formatted(name);
         assertEquals("accepted", code(nested, List.of()), nested);
-        String top = "record %1$s(long a) { } class P { static long m() { return new %1$s(1).a(); } }".formatted(name);
-        assertEquals("accepted", code(top, List.of()), top);
+        String packaged = "package demo;\nrecord %1$s(long a) { } class P { static long m() { return new %1$s(1).a(); } }".formatted(name);
+        assertEquals("accepted", code(packaged, List.of()), packaged);
         String sealed = "class P { sealed interface %1$s permits A { } record A() implements %1$s { } static long m(%1$s s) { return 1; } }"
                 .formatted(name);
         assertEquals("accepted", code(sealed, List.of()), sealed);
+    }
+
+    private static Stream<String> ledgerNames() {
+        return READING.ledger().keySet().stream().sorted();
+    }
+
+    /** The implicit ledger import wins in the unnamed package, whatever the kind of the type. */
+    @ParameterizedTest
+    @MethodSource("ledgerNames")
+    void noTopLevelTypeOfTheUnnamedPackageTakesALedgerName(String name) {
+        var wrong = new ArrayList<String>();
+        for (String declaration : List.of("record %s(long a) { }", "sealed interface %s permits A { } record A() implements %<s { }",
+                "class %s { }", "interface %s { }", "@interface %s { }")) {
+            String source = declaration.formatted(name) + " class P { static long m() { return 1; } }";
+            assertBoundToSomethingElse(source, List.of(), source, wrong);
+        }
+        var library = JavacFrontend.Unit.of("""
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public class %s { public static long f(long x) { return x; } }
+                """.formatted(name));
+        assertBoundToSomethingElse("class P { static long m() { return %s.f(1); } }".formatted(name), List.of(library), name + " library", wrong);
+        assertNoneWrong(wrong);
+    }
+
+    @Test
+    void aClassOfTheUnnamedPackageUnderItsOwnNameIsLeftAlone() {
+        assertEquals("accepted", code("class Ledger { static long m() { return 1; } }", List.of()));
+        assertEquals("accepted", code("record Foo(long a) { } class P { static long m() { return 1; } }", List.of()));
+    }
+
+    /** A nested type's owner is a type, so the rule of the unnamed package is not its rule. */
+    @Test
+    void aNestedClassOfTheUnnamedPackageIsNotTopLevel() {
+        assertEquals("accepted", code("class P { static class Credential { } static long m() { return 1; } }", List.of()));
+    }
+
+    @Test
+    void aPackagedTypeOfALedgerNameIsNotInTheUnnamedPackage() {
+        assertEquals("accepted", code("package demo;\nclass Credential { } class P { static long m() { return 1; } }", List.of()));
     }
 
     @Test
@@ -529,16 +570,118 @@ class SpelledBindingsTest {
         assertEquals("accepted", code("import lib.Lib;\nclass P { static long m() { return Lib.f(1); } }", List.of(library)));
     }
 
-    /** A variable of a user library's name is ADR-068 D4's row: {@code ComparisonLoweringTest} holds it as it is. */
+    private static final String TWO_READINGS = """
+            class P {
+                record H(long abs) { long f(long x) { return 3; } }
+                static long m() { H %s = new H(3); return %<s.f(-1); }
+            }
+            """;
+
+    /** Every class of a library unit is compiled, so a call through a variable of its name reads the class's method. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "package lib; public class Helper { public static long f(long x) { return 7; } }",
+            "package lib; public class Outer { public static class Helper { public static long f(long x) { return 7; } } }",
+            "package lib; import org.julclang.stdlib.annotation.OnchainLibrary; @OnchainLibrary public class Helper { public static long f(long x) { return 7; } }"})
+    void aVariableDoesNotTakeTheNameOfAClassOfAnUnreadLibraryUnit(String library) {
+        var pool = List.of(JavacFrontend.Unit.of(library));
+        String source = TWO_READINGS.formatted("Helper");
+        var options = new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.OFF);
+        assertFalse(new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(source, "m", List.of(library)).hasErrors());
+        assertTrue(code(source, pool).startsWith("JULC0100 "), () -> code(source, pool));
+    }
+
+    /** The rule is one rule: nothing but a library unit's class diverges today, and any type offered is its name. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static class Helper { }",
+            "record Helper(long a) { }",
+            "sealed interface Helper permits A { } record A() implements Helper { }",
+            "static class Outer { static class Helper { } }"})
+    void aVariableDoesNotTakeTheNameOfATypeOfItsUnit(String declaration) {
+        String source = "class P { " + declaration + " record H(long v) { } static long m() { H Helper = new H(3); return Helper.v(); } }";
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
+    }
+
     @Test
-    void aVariableOfALibrarysNameStaysAsD4HasIt() {
+    void aVariableBindingOfAnOfferedNameInEveryForm() {
+        var pool = List.of(JavacFrontend.Unit.of("package other;\npublic class Offered { }"));
+        var wrong = new ArrayList<String>();
+        for (var binding : VariableBinding.values()) {
+            var units = new ArrayList<>(binding.pool("Offered"));
+            units.addAll(pool);
+            assertBoundToSomethingElse(binding.source("Offered", "%s.f(1)"), units, binding.name(), wrong);
+        }
+        assertNoneWrong(wrong);
+    }
+
+    /** A variable's plain read goes through the symbol table, but one rule is simpler than two, and no real code writes it. */
+    @Test
+    void aPlainReadOfAVariableOfAnOfferedNameIsTheSameRule() {
+        String source = "class P { record Foo(long a) { } static long m() { long Foo = 1; return Foo + 1; } }";
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
+    }
+
+    @Test
+    void aVariableOfAnotherNameIsLeftAlone() {
+        assertEquals("accepted", code("class P { static class Helper { } record H(long v) { } static long m() { H helper = new H(3); return helper.v(); } }", List.of()));
+    }
+
+    /** A field of another type goes through its qualifier, which is no reading of the name. */
+    @Test
+    void aFieldSelectedByQualifierIsNotThisRule() {
+        assertEquals("accepted", code("""
+                class P {
+                    static class Helper { }
+                    record H(long Helper) { }
+                    static long m() { H h = new H(1); return h.Helper(); }
+                }
+                """, List.of()));
+    }
+
+    @Test
+    void aClassOfALibraryUnitIsReadAsItself() {
+        var library = JavacFrontend.Unit.of("package lib;\npublic class Helper { public static long f(long x) { return 7; } }");
+        assertEquals("accepted", code("import lib.Helper;\nclass P { static long m() { return Helper.f(1); } }", List.of(library)));
+    }
+
+    @Test
+    void aPlainClassDoesNotShareTheNameOfAClassOfALibraryUnit() {
+        var library = JavacFrontend.Unit.of("package lib;\npublic class Helper { public static long f(long x) { return 7; } }");
+        String source = "class P { static class Helper { static long f(long x) { return 9; } } static long m() { return Helper.f(1); } }";
+        assertTrue(code(source, List.of(library)).startsWith("JULC0100 "), () -> code(source, List.of(library)));
+    }
+
+    /** A class of a library unit reads its own helper: the frontend compiles both. */
+    @Test
+    void aLibraryUnitReadsItsOwnClasses() {
         var library = JavacFrontend.Unit.of("""
                 package lib;
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
-                public class Lib { public static long f(long x) { return 7; } }
+                public class Lib {
+                    static class Helper { static long g(long x) { return x; } }
+                    public static long f(long x) { return Helper.g(x); }
+                }
                 """);
-        assertEquals("accepted", code("class P { record H(long a) { } static long m() { H Lib = new H(1); return Lib.a(); } }", List.of(library)));
+        assertEquals("accepted", code("import lib.Lib;\nclass P { static long m() { return Lib.f(1); } }", List.of(library)));
+    }
+
+    /** The units {@code JavaLibraryProvider} compiles are its roots, and they are libraries. */
+    @Test
+    void aRootOfALibraryCompilationIsALibraryUnit() {
+        String source = """
+                package lib;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public class Lib {
+                    static class Helper { static long g(long x) { return x; } }
+                    public static long f(long x) { return Helper.g(x); }
+                }
+                """;
+        var result = JavacGate.check("JavaLibraryProvider", List.of(JavacFrontend.Unit.of(source)), List.of(),
+                new CompilerOptions().setJavacGate(org.julclang.compiler.frontend.javac.JavacGateMode.REPORT));
+        assertTrue(result.isAccepted(), () -> result.compilerDiagnostics().toString());
     }
 
     @Test
@@ -584,6 +727,16 @@ class SpelledBindingsTest {
                 interface B { record Foo(long b, long a) { } }
                 """;
         assertEquals("accepted", code(qualified, List.of(library)));
+    }
+
+    /** A class of a library unit is registered, so a static import of one is outside the resolver as well. */
+    @Test
+    void aStaticImportedClassIsWrittenWithItsQualifier() {
+        var program = typeBound(TypeBinding.STATIC_IMPORTED, TypeUse.CLASS, "static long u() { return %s.f(1); }", FREE_NAME);
+        assertTrue(code(program.root(), program.pool()).startsWith("JULC0100 "), () -> code(program.root(), program.pool()));
+        String qualified = PACKAGE + "import lib.Holder;\nclass P { static long u() { return Holder.%s.f(1); } static long m() { return 1; } }"
+                .formatted(FREE_NAME);
+        assertEquals("accepted", code(qualified, program.pool()));
     }
 
     @Test
@@ -687,14 +840,28 @@ class SpelledBindingsTest {
 
     private static Stream<String> typeKeys() {
         var keys = new TreeSet<>(SpelledMethods.REGISTRY.typeKeys());
-        assertTrue(keys.contains("ListType") && keys.contains("IntegerType"), keys.toString());
-        keys.remove("Value");
+        assertTrue(keys.containsAll(List.of("ListType", "IntegerType", "Value")), keys.toString());
         return keys.stream();
     }
 
-    @Test
-    void aClassOfATypeKeyNameIsLeftAlone() {
-        assertEquals("accepted", code("class P { static class ListType { } static long m() { return 1; } }", List.of()));
+    /** A class that is a variant is lowered as a record of its name, so it reads the same rows. */
+    @ParameterizedTest
+    @MethodSource("typeKeys")
+    void aClassDoesNotTakeATypeKey(String key) {
+        String source = "package demo; class P { sealed interface S permits %1$s { } static final class %1$s implements S { } static long m() { return 1; } }"
+                .formatted(key);
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
+    }
+
+    /** A sum's rows are {@code SumType}'s, whatever the interface is called, and a plain interface has no lowering. */
+    @ParameterizedTest
+    @MethodSource("typeKeys")
+    void anInterfaceOfATypeKeyNameIsLeftAlone(String key) {
+        String sealed = "package demo; class P { sealed interface %1$s permits A { } record A(long size) implements %1$s { } static long m() { return 1; } }"
+                .formatted(key);
+        assertEquals("accepted", code(sealed, List.of()), sealed);
+        String plain = "package demo; class P { interface %s { } static long m() { return 1; } }".formatted(key);
+        assertEquals("accepted", code(plain, List.of()), plain);
     }
 
     private static final String VALIDATOR = """
@@ -834,6 +1001,16 @@ class SpelledBindingsTest {
             assertNotEquals("JULC0100", e.diagnostics().getFirst().code(), e.getMessage());
         }
         var wrong = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m"));
+        assertEquals("JULC0100", wrong.diagnostics().getFirst().code());
+    }
+
+    /** A library in the pool runs with the gate off, so the rule is what stops the wrong method. */
+    @Test
+    void aWholeCompilationThroughAVariableOfALibrarysName() {
+        String library = "package lib; public class Helper { public static long f(long x) { return 7; } }";
+        String source = TWO_READINGS.formatted("Helper");
+        var wrong = assertThrows(CompilerException.class,
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "m", List.of(library)));
         assertEquals("JULC0100", wrong.diagnostics().getFirst().code());
     }
 

@@ -958,9 +958,7 @@ class SubsetRulesTest {
             "@NewType record H(String s) { boolean length() { return true; } }",
             "record R(BigInteger a) { public BigInteger a() { return BigInteger.ONE; } }",
             "record R(BigInteger a) { public boolean equals(Object o) { return true; } }",
-            "sealed interface S permits A { boolean equals(Object o); } record A(long a) implements S { }",
-            "record Value(BigInteger a) { boolean isEmpty() { return true; } }",
-            "record Value(BigInteger a) { boolean lovelaceOf() { return true; } }"})
+            "sealed interface S permits A { boolean equals(Object o); } record A(long a) implements S { }"})
     void noMethodTakesAnIntrinsicsName(String member) {
         assertSpelling("JULC0101", """
                 import java.math.BigInteger;
@@ -977,7 +975,7 @@ class SubsetRulesTest {
     @ValueSource(strings = {
             "static class H { long valueOf(long x) { return x + 1; } } static H h; static long m() { return h.valueOf(1); }",
             "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H h; static long m() { return h.cast(1, Object.class); }",
-            "@NewType record N(long a) { } static class H { long of(long x) { return x + 1; } } static H N; static long m() { return N.of(1); }"})
+            "static class H { long of(long x) { return x + 1; } } static H h; static long m() { return h.of(1); }"})
     void noMethodIsCalledThroughASpelledVariable(String members) {
         assertSpelling("JULC0101", """
                 import org.julclang.stdlib.annotation.*;
@@ -990,9 +988,11 @@ class SubsetRulesTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "static class H { long valueOf(long x) { return x + 1; } } static H BigInteger; static long m() { return BigInteger.valueOf(1); }",
-            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H PlutusData; static long m() { return PlutusData.cast(1, Object.class); }"})
+            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H PlutusData; static long m() { return PlutusData.cast(1, Object.class); }",
+            "@NewType record N(long a) { } static class H { long of(long x) { return x + 1; } } static H N; static long m() { return N.of(1); }"})
     void aVariableOfASpelledNameIsThatNamesRule(String members) {
         assertSpelling("JULC0100", """
+                import org.julclang.stdlib.annotation.*;
                 class P {
                     %s
                 }

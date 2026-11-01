@@ -38,7 +38,6 @@ import java.util.Set;
  *   <tr><td>{@code .hash()} and the no-argument fallback on bytes</td><td>an instance method of a {@code @NewType}</td></tr>
  *   <tr><td>a record field read by its accessor's name</td><td>an explicit accessor</td></tr>
  *   <tr><td>{@code TypeMethodRegistry}'s {@code equals}</td><td>{@code equals} of one parameter, on a record or a sealed interface</td></tr>
- *   <tr><td>{@code TypeMethodRegistry}'s named row for a record {@code Value}</td><td>{@code assetOf}, {@code containsPolicy}, {@code isEmpty}, {@code lovelaceOf}, on a record {@code Value}</td></tr>
  *   <tr><td>the {@code toPlutusData} fallback</td><td>{@code toPlutusData} of no parameters, on any type</td></tr>
  *   <tr><td>{@code tryBigIntegerConstant}, {@code tryPlutusDataCast}, the {@code of} lookup</td><td>a call of a declared {@code valueOf}, {@code cast} or {@code of} through a variable of any name: the names of those types are {@code JULC0100}'s</td></tr>
  *   <tr><td>{@code AccumulatorTypeAnalyzer}, which types a loop's accumulator by the names of the calls assigned to it, on any receiver</td><td>a call of a method of a name of {@link #ACCUMULATOR_CALLS} that is not {@code Builtins}' own</td></tr>
@@ -50,12 +49,12 @@ import java.util.Set;
  * a component is checked, so this list cannot drift from them. The other matchers of {@code PirGenerator} and
  * {@code TypeInferenceHelper} read a name after a type: {@code compareTo}, {@code hash}, {@code length}, {@code tail}, the list
  * higher-order methods and the methods of an API type. That type comes from a type name, which {@code JULC0100} binds, and
- * a {@code @NewType} that lowers to it has no instance method and no component of those names here. {@code equals} in a guard
+ * a {@code @NewType} that lowers to it has no instance method and no component of those names here. {@code TypeMethodRegistry}'s
+ * named rows go by a record's name, which is {@code JULC0100}'s. {@code equals} in a guard
  * and {@code apply}, {@code test}, {@code accept}, {@code get} and {@code run} on a functional variable are read to reject.
  */
 public final class SpelledMethods {
 
-    private static final Set<String> VALUE_METHODS = Set.of("assetOf", "containsPolicy", "isEmpty", "lovelaceOf");
     private static final Set<String> SPELLED_CALLS = Set.of("valueOf", "cast", "of");
     /** The calls {@code AccumulatorTypeAnalyzer} reads as {@code Builtins}', by the method's name alone. */
     public static final Set<String> ACCUMULATOR_CALLS = Set.of("mkNilPairData", "unMapData", "tailList", "mkNilData",
@@ -132,8 +131,7 @@ public final class SpelledMethods {
         if (owner.getKind() == ElementKind.INTERFACE) return equals && owner.getModifiers().contains(Modifier.SEALED);
         if (owner.getKind() != ElementKind.RECORD) return false;
         if (isNewType(owner)) return instance || name.equals("of") && parameters == 1;
-        return equals || instance && parameters == 0 && isComponent(facts, owner, name)
-                || instance && owner.getSimpleName().contentEquals("Value") && VALUE_METHODS.contains(name);
+        return equals || instance && parameters == 0 && isComponent(facts, owner, name);
     }
 
     private static boolean isReadAheadOfAccessor(JavacFacts facts, TypeElement record, RecordComponentElement component) {

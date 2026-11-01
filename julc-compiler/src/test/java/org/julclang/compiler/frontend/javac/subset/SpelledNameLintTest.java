@@ -149,7 +149,7 @@ class SpelledNameLintTest {
     private static Set<String> spelled() {
         var identities = new HashSet<>(JavacPlatform.shared().stubIdentities());
         identities.addAll(JavacFrontend.shared().bundled().digests().keySet());
-        var reading = SpelledTypes.Reading.of(identities, Set.of());
+        var reading = SpelledTypes.Reading.of(identities, Set.of(), Set.of());
         var names = new HashSet<>(SpelledTypes.NAMES.keySet());
         names.addAll(SpelledTypes.ANNOTATIONS.keySet());
         names.addAll(reading.libraries().keySet());

@@ -31,10 +31,10 @@ import java.util.concurrent.ConcurrentHashMap;
 final class JavacUnits {
 
     /**
-     * The package, the top-level type names in source order, the primary one (public, else first), and the simple name of
-     * every record, sealed interface and {@code @OnchainLibrary} class at any depth.
+     * The package, the top-level type names in source order, the primary one (public, else first), and the simple names at
+     * any depth of the unit's records and sealed interfaces, and of its classes.
      */
-    record UnitInfo(String packageName, List<String> topLevelNames, String primary, Set<String> registeredTypes) {
+    record UnitInfo(String packageName, List<String> topLevelNames, String primary, Set<String> dataTypes, Set<String> classes) {
     }
 
     private static final int CACHE_LIMIT = 8192;
@@ -108,22 +108,18 @@ final class JavacUnits {
             if (primary == null && type.getModifiers().getFlags().contains(Modifier.PUBLIC)) primary = name;
         }
         if (primary == null) primary = names.isEmpty() ? "Unit_" + digest.substring(0, 12) : names.getFirst();
-        return new UnitInfo(pkg, List.copyOf(names), primary, registeredTypes(unit));
-    }
-
-    private static Set<String> registeredTypes(CompilationUnitTree unit) {
-        var names = new HashSet<String>();
+        var dataTypes = new HashSet<String>();
+        var classes = new HashSet<String>();
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
                 boolean sealed = tree.getKind() == Tree.Kind.INTERFACE
                         && tree.getModifiers().getFlags().contains(Modifier.SEALED);
-                boolean library = tree.getModifiers().getAnnotations().stream()
-                        .anyMatch(annotation -> annotation.getAnnotationType().toString().endsWith("OnchainLibrary"));
-                if (tree.getKind() == Tree.Kind.RECORD || sealed || library) names.add(tree.getSimpleName().toString());
+                if (tree.getKind() == Tree.Kind.RECORD || sealed) dataTypes.add(tree.getSimpleName().toString());
+                else if (tree.getKind() == Tree.Kind.CLASS) classes.add(tree.getSimpleName().toString());
                 return super.visitClass(tree, unused);
             }
         }.scan(unit, null);
-        return Set.copyOf(names);
+        return new UnitInfo(pkg, List.copyOf(names), primary, Set.copyOf(dataTypes), Set.copyOf(classes));
     }
 }

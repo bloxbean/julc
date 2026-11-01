@@ -202,7 +202,7 @@ public final class JavacFrontend {
         if (!attribution.result().isAccepted() || attribution.trees() == null) return attribution.result();
         try {
             var facts = JavacFacts.of(attribution, new TypeRegistry());
-            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), reading(roots, pool));
+            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), compiled, reading(roots, pool, compiled));
             SubsetRules.check(facts, attribution.roots(), attribution.libraries(), compiled);
             return attribution.result();
         } catch (CompilerException e) {
@@ -215,14 +215,25 @@ public final class JavacFrontend {
     }
 
     /** What the JavaParser frontend reads in this environment, for these units: every one it is given, read by javac or not. */
-    private SpelledTypes.Reading reading(List<Unit> roots, List<Unit> pool) {
-        var texts = new ArrayList<String>(bundled.texts().values());
-        for (var units : List.of(roots, pool)) units.forEach(unit -> texts.add(unit.text()));
+    private SpelledTypes.Reading reading(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled) {
+        var libraries = new ArrayList<String>(bundled.texts().values());
+        pool.forEach(unit -> libraries.add(unit.text()));
+        var others = new ArrayList<String>();
+        (compiled == JavacGate.Compiled.LIBRARY ? libraries : others).addAll(roots.stream().map(Unit::text).toList());
         var registered = new HashSet<String>();
-        JavacUnits.infos(compiler(), platform, texts).forEach(info -> registered.addAll(info.registeredTypes()));
+        var offered = new HashSet<String>();
+        for (var info : JavacUnits.infos(compiler(), platform, libraries)) {
+            registered.addAll(info.dataTypes());
+            registered.addAll(info.classes());
+        }
+        for (var info : JavacUnits.infos(compiler(), platform, others)) {
+            registered.addAll(info.dataTypes());
+            offered.addAll(info.classes());
+        }
+        offered.addAll(registered);
         var identities = new HashSet<>(platform.stubIdentities());
         identities.addAll(bundled.digests().keySet());
-        return SpelledTypes.Reading.of(identities, registered);
+        return SpelledTypes.Reading.of(identities, registered, offered);
     }
 
     /**

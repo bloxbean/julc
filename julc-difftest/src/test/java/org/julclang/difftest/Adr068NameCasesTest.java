@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * ADR-068 M2's exit: the saved #284 and #286 cases (ADR-062 T33) under the javac frontend. Each pin's divergence is a
  * name bound to the wrong declaration, so the check is the binding: the user's record is registered with the user's
- * components, and every {@code new} and accessor binds to it. The JavaParser frontend keeps diverging on these, as
- * pinned ({@code RegressionCasesTest}; frozen until M5, D4). javac cannot run them before M3: the compilation ends in
+ * components, and every {@code new} and accessor binds to it. The gate rejects these on the JavaParser frontend, as pinned
+ * ({@code RegressionCasesTest}; frozen until M5, D4). javac cannot run them before M3: the compilation ends in
  * {@code JULC0084}, so what the value is on the javac frontend is not observed here.
  */
 class Adr068NameCasesTest {
@@ -36,12 +36,12 @@ class Adr068NameCasesTest {
 
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
-            "diverge-t33-packageless-rational|Rational|denominator,numerator|numerator",
-            "diverge-t33-packageless-rational-wildcard|Rational|denominator,numerator|numerator",
+            "reject-packageless-rational-record|Rational|denominator,numerator|numerator",
+            "reject-packageless-rational-record-wildcard|Rational|denominator,numerator|numerator",
             "reject-packageless-pubkeyhash-record|PubKeyHash|h|h",
-            "diverge-t33-top-level-user-value-on-constructor|Value|isEmpty|isEmpty",
-            "diverge-t33-top-level-user-value-on-local|Value|isEmpty|isEmpty",
-            "diverge-t33-user-value-accessor-on-constructor|Probe.Value|isEmpty|isEmpty",
+            "reject-top-level-user-value-on-constructor|Value|isEmpty|isEmpty",
+            "reject-top-level-user-value-on-local|Value|isEmpty|isEmpty",
+            "reject-user-value-accessor-on-constructor|Probe.Value|isEmpty|isEmpty",
             "agree-nested-rational|Probe.Rational|denominator,numerator|numerator"})
     void theNameBindsToTheUsersRecord(String pin, String identity, String components, String accessor) {
         String source = saved(pin).diffCase().source();

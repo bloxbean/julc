@@ -10,6 +10,7 @@ import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 
 import javax.lang.model.element.ExecutableElement;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -60,10 +61,12 @@ final class SubsetRules {
 
     /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */
     static void checkSpellings(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
-                               SpelledTypes.Reading reading) {
+                               JavacGate.Compiled compiled, SpelledTypes.Reading reading) {
+        var compiledAsLibraries = new HashSet<>(libraries);
+        if (compiled == JavacGate.Compiled.LIBRARY) compiledAsLibraries.addAll(roots);
         for (var units : List.of(roots, libraries)) {
             for (var unit : units) {
-                SpelledTypes.check(facts, unit, reading);
+                SpelledTypes.check(facts, unit, reading, compiledAsLibraries);
                 SpelledMethods.check(facts, unit);
             }
         }
