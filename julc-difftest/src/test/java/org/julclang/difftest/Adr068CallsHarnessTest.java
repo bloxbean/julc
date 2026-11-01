@@ -56,7 +56,7 @@ class Adr068CallsHarnessTest {
         return new PlutusData.IntData(BigInteger.valueOf(value));
     }
 
-    private static PlutusData bool(boolean value) {
+    static PlutusData bool(boolean value) {
         return new PlutusData.ConstrData(value ? 1 : 0, List.of());
     }
 
