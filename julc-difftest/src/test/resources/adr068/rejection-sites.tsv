@@ -71,6 +71,7 @@ JULC0100	code	JULC0100	TYPE_NAME_READ_BY_SPELLING	javac gate: emitted on javac's
 JULC0101	code	JULC0101	METHOD_NAME_READ_BY_SPELLING	javac gate: emitted on javac's trees after analyze() (ADR-068 M3a); not a rejection of the JavaParser frontend with the gate off
 JULC0096	code	JULC0096	ENTRYPOINT_NOT_UNIQUE	javac frontend: emitted with frontend=JAVAC (ADR-068 M3a); not a reference-frontend rejection
 JULC0097	code	JULC0097	ENTRYPOINT_NOT_STATIC	javac frontend: emitted with frontend=JAVAC (ADR-068 M3a); not a reference-frontend rejection
+JULC0102	code	JULC0102	CONSTANT_STRING_JOIN	javac gate: a warning on javac's trees, on both frontends (ADR-068 M3b); it rejects nothing
 JULC0091	code	JULC0091	NATIVE_ARRAY_NOT_DATA_ENCODABLE (ADR-068 M1c, #298)	source
 JULC0086	code	JULC0086	REFERENCE_EQUALITY_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
 JULC0087	code	JULC0087	ARRAY_EQUALS_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection
