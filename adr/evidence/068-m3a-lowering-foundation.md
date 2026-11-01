@@ -7,7 +7,7 @@ FLAT bytes. Everything else stops at `JULC0084`, naming the construct and its po
 The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md). Machine and toolchain as in M0's evidence. Branch
 `wip/068-m3a`, based at `a0527fb1`, with M2's close merged in at `baef03a7`.
 
-This file states the code at `ff3cef58`. The I1 gate, `adr068Baseline`, `adr068Types`, `pairCaseTest`, `onChainHarnessTest` and `wasmSmokeFull` ran at `8ff98e81`, the full suite at `ff3cef58`; the commit between adds one test. Later commits change documentation only. Each milestone here carries a review round; the [B2 reference change](068-m3a-reference-b2.md) is its own file.
+This file states the code at `b81b5726`. The I1 gate, `adr068Baseline`, `adr068Types`, `pairCaseTest`, `onChainHarnessTest` and the full suite ran at `803c4564`, whose code is the same. `wasmSmokeFull` ran at `8ff98e81` and the images at `3da56ad3`, before the Value methods changed; those are plain stdlib and handler code. The older mutants ran at `8ff98e81`. Later commits change documentation only. The [B2 reference change](068-m3a-reference-b2.md) is its own file.
 the two commits between add tests. Later commits change documentation only.
 
 ## What was delivered
@@ -196,7 +196,7 @@ All listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lowering-ac
 | D14 | `@Param` constant variables are `JULC0088`, with tests for each kind, instance fields and multiple declarators; a `@Param` javac cannot fold compiles to the reference's bytes |
 | The three lints | In `JavacLoweringLintTest`, each with negative controls that make it fail |
 | The gate's determinism | 2 threads and the default write the same bytes, at `ff3cef58`: the gate's byte comparison passes at both |
-| The default path, gate off, against B2 | `adr068Baseline` now fails unless it writes [B2](068-m3a-reference-b2.md)'s files. At `8ff98e81` it passes: every file equal, 11,423 cases. Against B1, 1 case moves and 6 pins join, as that file lists |
+| The default path, gate off, against B2 | `adr068Baseline` now fails unless it writes [B2](068-m3a-reference-b2.md)'s files. At `803c4564` it passes: every file equal, 11,423 cases |
 | M2's gate, `adr068Types` | 0 rows moved. The 6 pins of B2 are added to `types-m2.tsv`, each an `equal` row |
 
 
@@ -217,7 +217,7 @@ Counted from JUnit XML.
 
 | Task | Result |
 |---|---|
-| `./gradlew test --offline --continue --rerun --no-watch-fs` | 13,055 tests, 0 failures, 0 errors, 530 skipped. M2's close had 12,923 |
+| `./gradlew test --offline --continue --rerun --no-watch-fs` | 13,395 tests, 0 failures, 0 errors, 530 skipped. M2's close had 12,923 |
 | `:julc-compiler:pairCaseTest --rerun` | 71 tests, 0 failures |
 | `onChainHarnessTest --rerun` | 16 tests, 0 failures |
 | `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1) | `BUILD SUCCESSFUL`; `wasmImageFull` rebuilt; 56 `ok` lines, no `not ok`. It runs the default frontend |
