@@ -110,6 +110,14 @@ Each entry gives:
 | Goldens under `o8` and `o9` | M3a review (F1048) | 21 rows reproduce from neither side of the change that last touched them. Nothing compares them today | Regenerate them from one commit when M3 closes, and record it |
 | Illustrative doc blocks | M1b | 16 whole-unit doc blocks stay invalid alone on purpose (WRONG/CORRECT pairs, compact source files, cross-file examples, sketches); 408 fragments were scanned only by the BigInteger-operator heuristic | Compile docs' examples in a test (as `ValueOrientedExamplesTest` does) when the docs are next reworked |
 
+## Codex read owed
+
+If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).
+
+| Head | What it needs | Why it went without |
+|---|---|---|
+| `558c5f58` and M3a's final head | The spelled-name rules (`JULC0100`, `JULC0101`), with the last closures | Codex's safety filter stopped the task after 1m28s. No findings came back |
+
 ## Future stdlib enhancements (after ADR-068 is complete)
 
 Nice-to-have additions, not part of the migration. Pick these up once M6 is done.
