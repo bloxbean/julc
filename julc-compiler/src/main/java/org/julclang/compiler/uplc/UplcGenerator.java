@@ -35,7 +35,8 @@ public class UplcGenerator {
     public static final String PV11_CASE_BOOL_RULE = "pv11.o2.case-bool";
     public static final String PV11_CASE_INTEGER_RULE = "pv11.o5.case-integer";
 
-    private final Deque<String> scope = new ArrayDeque<>();
+    /** The binders in scope, innermost first, with what {@link BooleanProof} knows each holds. */
+    private BooleanProof.Scope scope = BooleanProof.Scope.EMPTY;
 
     /** The single resolved target shared by this lowering invocation. */
     private final CompilationContext context;
@@ -150,7 +151,7 @@ public class UplcGenerator {
             case PirTerm.Lam(var param, _, var body) -> {
                 bind(param);
                 var bodyTerm = generate(body);
-                scope.pop();
+                unbind();
                 var lambda = new Term.Lam(param, bodyTerm);
                 recordBinder(pir, lambda);
                 yield lambda;
@@ -163,9 +164,9 @@ public class UplcGenerator {
             case PirTerm.Let(var name, var value, var body) -> {
                 // Let(name, val, body) -> Apply(Lam(name, body'), val')
                 var valTerm = generate(value);
-                bind(name);
+                bind(name, factOf(value));
                 var bodyTerm = generate(body);
-                scope.pop();
+                unbind();
                 var lambda = new Term.Lam(name, bodyTerm);
                 recordBinder(pir, lambda);
                 yield Term.apply(lambda, valTerm);
@@ -174,8 +175,8 @@ public class UplcGenerator {
             case PirTerm.LetRec letRec -> generateLetRec(letRec);
 
             case PirTerm.IfThenElse(var cond, var thenBranch, var elseBranch) -> {
-                if (context.optimizationLevel().pv11SafeRulesEnabled()
-                        && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS)) {
+                // Case agrees with the builtin only on a real boolean, so it needs a proof of one.
+                if (caseBoolEnabled() && BooleanProof.proves(cond, scope)) {
                     context.recordOptimizationRule(PV11_CASE_BOOL_RULE);
                     // Case Bool branch order is False (0), then True (1).
                     // Case evaluates the scrutinee once and only the selected branch.
@@ -217,8 +218,8 @@ public class UplcGenerator {
                 try {
                     bodyTerm = generate(body);
                 } finally {
-                    scope.pop();
-                    scope.pop();
+                    unbind();
+                    unbind();
                 }
                 yield new Term.Case(pairTerm, List.of(Term.lam(first, Term.lam(second, bodyTerm))));
             }
@@ -238,8 +239,8 @@ public class UplcGenerator {
                 try {
                     consTerm = generate(cons);
                 } finally {
-                    scope.pop();
-                    scope.pop();
+                    unbind();
+                    unbind();
                 }
                 // List Case: h::t selects branch 0 (applied to h then t); [] selects branch 1.
                 yield new Term.Case(listTerm,
@@ -315,20 +316,25 @@ public class UplcGenerator {
             var branch = Term.lam("x", Term.apply(Term.var(2), innerBody));
             var fix = Term.lam("f", Term.apply(branch, branch));
 
+            // Both sides of the binder hold what the fixpoint proved of it.
+            var fact = caseBoolEnabled()
+                    ? BooleanProof.bindRecursive(letRec.bindings(), scope).fact()
+                    : BooleanProof.UNKNOWN;
+
             // Generate the recursive function body: Lam(name, body')
             // The body references 'name' which is the recursive reference
-            bind(name);
+            bind(name, fact);
             var bodyTerm = generate(value);
-            scope.pop();
+            unbind();
             var recursiveLam = Term.lam(name, bodyTerm);
 
             // Apply fix to the recursive lambda
             var fixedFn = Term.apply(fix, recursiveLam);
 
             // Now bind name = fixedFn and generate the expression
-            bind(name);
+            bind(name, fact);
             var exprTerm = generate(letRec.body());
-            scope.pop();
+            unbind();
 
             return Term.apply(Term.lam(name, exprTerm), fixedFn);
         }
@@ -497,6 +503,17 @@ public class UplcGenerator {
         return generate(outerLetRecA);
     }
 
+    /** O2's legality gate: the safe profile and Case on builtin constants. */
+    private boolean caseBoolEnabled() {
+        return context.optimizationLevel().pv11SafeRulesEnabled()
+                && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS);
+    }
+
+    /** What the proof knows of a value, which it reads only where the rule can fire. */
+    private BooleanProof.Fact factOf(PirTerm value) {
+        return caseBoolEnabled() ? BooleanProof.of(value, scope) : BooleanProof.UNKNOWN;
+    }
+
     /** Shared O3/O4/O5 legality gate: exact PV11 target, safe profile, Case on builtin constants. */
     private boolean pv11CaseOnBuiltinEnabled() {
         return context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
@@ -639,16 +656,25 @@ public class UplcGenerator {
         return new PirTerm.App(new PirTerm.Builtin(fun), arg);
     }
 
-    /** Enter a binder's scope; every PIR binder passes the frontend's namespace check (ADR-060 G2). */
+    /** Enter a binder's scope, holding nothing the proof can use. */
     private void bind(String name) {
+        bind(name, BooleanProof.UNKNOWN);
+    }
+
+    /** Enter a binder's scope; every PIR binder passes the frontend's namespace check (ADR-060 G2). */
+    private void bind(String name, BooleanProof.Fact fact) {
         context.checkBinderName(name);
-        scope.push(name);
+        scope = scope.bind(name, fact);
+    }
+
+    private void unbind() {
+        scope = scope.outer();
     }
 
     private int deBruijnIndex(String name) {
         int index = 1; // De Bruijn indices are 1-based
-        for (var n : scope) {
-            if (n.equals(name)) return index;
+        for (var binder = scope; binder != BooleanProof.Scope.EMPTY; binder = binder.outer()) {
+            if (binder.name().equals(name)) return index;
             index++;
         }
         throw new CompilerException("Unbound variable: " + name);
