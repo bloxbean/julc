@@ -17,6 +17,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.RecordComponentElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
@@ -41,7 +42,7 @@ import java.util.Set;
  *   <tr><td>the {@code toPlutusData} fallback</td><td>{@code toPlutusData} of no parameters, on any type</td></tr>
  *   <tr><td>{@code tryBigIntegerConstant}, {@code tryPlutusDataCast}, the {@code of} lookup</td><td>a call of a declared {@code valueOf}, {@code cast} or {@code of} through a variable of the spelled name: the types of those names are {@code JULC0100}'s</td></tr>
  *   <tr><td>{@code TypeMethodRegistry} on the type a {@code @NewType} lowers to</td><td>a component of that name, other than a row that lowers to the receiver</td></tr>
- *   <tr><td>the {@code toPlutusData} fallback</td><td>a {@code @NewType}'s component of that name</td></tr>
+ *   <tr><td>{@code TypeMethodRegistry}'s {@code equals} and the {@code toPlutusData} fallback</td><td>a component of that name, on any record</td></tr>
  *   <tr><td>the no-argument fallback on bytes</td><td>any other component of a {@code @NewType} of {@code byte[]}, and a call of the generated {@code hashCode} or {@code toString}, or an inherited method, on one</td></tr>
  * </table>
  * A {@code @NewType} lowers to bytes, an integer, a string or a boolean. The rows are {@code TypeMethodRegistry}'s, read when
@@ -51,6 +52,7 @@ public final class SpelledMethods {
 
     private static final Set<String> VALUE_METHODS = Set.of("assetOf", "containsPolicy", "isEmpty", "lovelaceOf");
     private static final Set<String> SPELLED_CALLS = Set.of("valueOf", "cast", "of");
+    private static final Set<String> ANY_RECORD_COMPONENTS = Set.of("equals", "toPlutusData");
     private static final TypeMethodRegistry REGISTRY = TypeMethodRegistry.defaultRegistry();
 
     private SpelledMethods() {
@@ -60,10 +62,9 @@ public final class SpelledMethods {
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
-                if (facts.element(tree) instanceof TypeElement type && type.getKind() == ElementKind.RECORD && isNewType(type)) {
+                if (facts.element(tree) instanceof TypeElement type && type.getKind() == ElementKind.RECORD) {
                     for (var component : facts.components(type)) {
-                        var lowered = lowered(facts, component.asType());
-                        if (lowered != null && isServed(lowered, component.getSimpleName().toString())) {
+                        if (isReadAheadOfAccessor(facts, type, component)) {
                             throw CompilerTypeDiagnostics.methodNameReadBySpelling(
                                     "The component " + type.getSimpleName() + "." + component.getSimpleName(), facts.location(tree));
                         }
@@ -118,6 +119,14 @@ public final class SpelledMethods {
                 || instance && owner.getSimpleName().contentEquals("Value") && VALUE_METHODS.contains(name);
     }
 
+    private static boolean isReadAheadOfAccessor(JavacFacts facts, TypeElement record, RecordComponentElement component) {
+        String name = component.getSimpleName().toString();
+        if (ANY_RECORD_COMPONENTS.contains(name)) return true;
+        if (!isNewType(record)) return false;
+        var lowered = lowered(facts, component.asType());
+        return lowered != null && isServed(lowered, name);
+    }
+
     /** What a {@code @NewType} of {@code type} lowers to, or null for a type it may not hold: that is the type's own rejection. */
     private static PirType lowered(JavacFacts facts, TypeMirror type) {
         if (type.getKind() == TypeKind.BOOLEAN) return new PirType.BoolType();
@@ -132,7 +141,6 @@ public final class SpelledMethods {
 
     /** Whether the compiler serves a call of {@code name} on a {@code @NewType} that lowers to {@code type}, ahead of its accessor. */
     private static boolean isServed(PirType type, String name) {
-        if (name.equals("toPlutusData")) return true;
         if (REGISTRY.lowersToTheReceiver(type, name)) return false;
         return type instanceof PirType.ByteStringType || REGISTRY.serves(type, name);
     }

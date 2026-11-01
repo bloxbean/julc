@@ -1056,6 +1056,20 @@ class SubsetRulesTest {
                 """.formatted(component), "m");
     }
 
+    /** On a receiver that is no name, these two are read ahead of a plain record's generated accessor too. */
+    @ParameterizedTest
+    @ValueSource(strings = {"BigInteger equals", "byte[] equals", "BigInteger toPlutusData", "String toPlutusData"})
+    void anyRecordsComponentTakesNeitherName(String component) {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""
+                import java.math.BigInteger;
+                class P {
+                    record R(%s) { }
+                    static long m() { return 1; }
+                }
+                """.formatted(component), "m"));
+        assertTrue(thrown.getMessage().contains("JULC0101"), thrown::getMessage);
+    }
+
     /** The bytes fallback takes a call of what a {@code @NewType} of bytes generates or inherits too. */
     @ParameterizedTest
     @ValueSource(strings = {"h.hashCode()", "h.toString()", "h.getClass()"})
