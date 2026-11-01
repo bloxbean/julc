@@ -211,6 +211,17 @@ class SpelledProgramsOnJavacTest {
     /** The programs of this slice that can run now, each over a sealed value passed as Data. */
     private static Stream<Case> runnable() {
         return Stream.of(
+                new Case("a widening cast over a parameter", stops("TYPE_CAST"), """
+                        import java.math.BigInteger;
+                        class P {
+                          sealed interface S { record A(BigInteger v) implements S { } record C(BigInteger v) implements S { } }
+                          record R(BigInteger v) { }
+                          static BigInteger m(R r) {
+                            if ((Object) r instanceof S.A a) { return a.v(); }
+                            return BigInteger.ZERO;
+                          }
+                        }
+                        """, List.of(), null, List.of(), false),
                 call("a qualified variant beside a member record of its name", QUALIFIED,
                         oracle("P.m(new P.S.X(BigInteger.TEN))").replace("class J", INTEGER_IMPORT + "class J"),
                         PlutusData.constr(1, integer(10))),

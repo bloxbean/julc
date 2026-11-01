@@ -186,7 +186,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         }
         if (last != tree) {
             String text = facts.location(last).fragment();
-            throw CompilerTypeDiagnostics.multipleDeclarators(text.substring(0, text.length() - 1), at);
+            throw CompilerTypeDiagnostics.multipleDeclarators(text.endsWith(";") ? text.substring(0, text.length() - 1) : text, at);
         }
     }
 
