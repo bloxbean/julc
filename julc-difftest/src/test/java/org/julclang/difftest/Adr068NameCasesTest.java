@@ -1,15 +1,9 @@
 package org.julclang.difftest;
 
-import org.julclang.compiler.CompilerException;
-import org.julclang.compiler.CompilerFrontend;
-import org.julclang.compiler.CompilerOptions;
-import org.julclang.compiler.JulcCompiler;
-import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacEvidence;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.pir.PirType;
-import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -22,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * ADR-068 M2's exit: the saved #284 and #286 cases (ADR-062 T33) under the javac frontend. Each pin's divergence is a
  * name bound to the wrong declaration, so the check is the binding: the user's record is registered with the user's
  * components, and every {@code new} and accessor binds to it. The gate rejects these on the JavaParser frontend, as pinned
- * ({@code RegressionCasesTest}; frozen until M5, D4). javac cannot run them before M3: the compilation ends in
- * {@code JULC0084}, so what the value is on the javac frontend is not observed here.
+ * ({@code RegressionCasesTest}; frozen until M5, D4). What each evaluates to on the javac frontend is
+ * {@code Adr068SavedCasesOnJavacTest}'s.
  */
 class Adr068NameCasesTest {
 
@@ -56,10 +50,5 @@ class Adr068NameCasesTest {
         assertTrue(bindings.contains("new " + identity), bindings.toString());
         assertTrue(bindings.contains(identity + "." + accessor), bindings.toString());
         assertTrue(bindings.stream().noneMatch(b -> b.contains("org.julclang.ledger")), bindings.toString());
-
-        var diffCase = saved(pin).diffCase();
-        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, diffCase.method()));
-        assertEquals(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code(), e.diagnostics().getFirst().code(), e.getMessage());
     }
 }

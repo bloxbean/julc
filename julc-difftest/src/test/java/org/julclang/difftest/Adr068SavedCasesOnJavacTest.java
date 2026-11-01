@@ -23,7 +23,8 @@ class Adr068SavedCasesOnJavacTest {
     private static final DiffRunner RUNNER = new DiffRunner(DiffConfig.allLevels(CompilerFrontend.JAVAC), 10_000);
 
     private static final Set<String> T33_PINS = Set.of("reject-packageless-pubkeyhash-record.diffcase", "reject-packageless-rational-record.diffcase",
-            "reject-packageless-rational-record-wildcard.diffcase", "reject-top-level-user-value-on-local.diffcase");
+            "reject-packageless-rational-record-wildcard.diffcase", "reject-top-level-user-value-on-local.diffcase",
+            "agree-nested-rational.diffcase");
 
     /** A read of a member on {@code new} itself stays {@code JULC0055}: javac knowing the type does not widen the subset (I2). */
     private static final Set<String> READ_ON_NEW = Set.of("reject-top-level-user-value-on-constructor.diffcase",
