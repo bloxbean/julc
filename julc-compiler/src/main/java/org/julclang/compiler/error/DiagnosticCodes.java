@@ -189,6 +189,30 @@ public final class DiagnosticCodes {
             "No @Entrypoint method found in {0}",
             "Annotate exactly one `public static` method with `@Entrypoint`. The method must return `boolean` (or `void` for newer signature shapes).");
 
+    public static final DiagnosticInfo ENTRYPOINT_NOT_STATIC = new DiagnosticInfo(
+            "JULC0097",
+            "ENTRYPOINT_NOT_STATIC",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Entrypoint {0} of {1} is not static",
+            "Declare the method static.");
+
+    public static final DiagnosticInfo ENTRYPOINT_NOT_UNIQUE = new DiagnosticInfo(
+            "JULC0096",
+            "ENTRYPOINT_NOT_UNIQUE",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "{0} declares more than one {1}",
+            "Keep one, or use @MultiValidator with a purpose on each @Entrypoint.");
+
+    public static final DiagnosticInfo ENTRYPOINT_RETURN_TYPE = new DiagnosticInfo(
+            "JULC0094",
+            "ENTRYPOINT_RETURN_TYPE",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Entrypoint {0} of {1} returns {2}; an entry point returns boolean",
+            "Declare the method to return boolean.");
+
     public static final DiagnosticInfo ENTRYPOINT_WRONG_PARAMETER_COUNT = new DiagnosticInfo(
             "JULC0008",
             "ENTRYPOINT_WRONG_PARAMETER_COUNT",
@@ -228,6 +252,14 @@ public final class DiagnosticCodes {
             "FRONTEND",
             "The javac frontend does not compile {0} yet",
             "Compile with the default frontend until the construct is ported.");
+
+    public static final DiagnosticInfo INITIALIZER_NOT_LOWERED = new DiagnosticInfo(
+            "JULC0095",
+            "INITIALIZER_NOT_LOWERED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "{0} is not lowered, so it holds only a literal, a byte[] literal, an API constant or a constant",
+            "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.");
 
     public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
             "JULC0077",
@@ -750,11 +782,15 @@ public final class DiagnosticCodes {
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
             ENTRYPOINT_MISSING,
+            ENTRYPOINT_NOT_STATIC,
+            ENTRYPOINT_NOT_UNIQUE,
+            ENTRYPOINT_RETURN_TYPE,
             ENTRYPOINT_WRONG_PARAMETER_COUNT,
             EQUALS_ALWAYS_FALSE,
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             FRONTEND_CONSTRUCT_NOT_PORTED,
+            INITIALIZER_NOT_LOWERED,
             INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
             INTEGER_LITERAL_INVALID,
             JAVAC_ERROR,

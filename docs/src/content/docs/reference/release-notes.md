@@ -42,6 +42,9 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
   or `report` (javac runs and rejects nothing), or call `CompilerOptions.setJavacGate(...)`.
   With `report`, `-Djulc.javacGate.report=<dir>` records each source javac would reject. The
   default is `enforce`.
+- **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
+  initializer that nothing lowers holds only a constant, and an initializer block is empty
+  (`JULC0095`). See [Compiler Limitations](/getting-started/#16-compiler-limitations).
 - **`PlutusData.cast`** views Data as a type on-chain. It is an unchecked cast, not a decoder: on
   the JVM it throws `ClassCastException` for a `ConstrData`.
 - **`CompileResult`** has a new component, `javacProvenance()`: the javac version, the platform

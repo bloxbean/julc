@@ -1608,6 +1608,27 @@ following limitations apply:
   as a field, the field binding shadows the parameter. Use different parameter
   names.
 
+### Entry Points and Fields
+
+- **An entry point returns `boolean`** (or `Boolean`), and every entry point of a
+  `@MultiValidator` does too (`JULC0094`).
+- **A field initializer that nothing lowers holds only a constant** (`JULC0095`).
+  A `static` field of the class being compiled is lowered. Any other field (a
+  `@Param`, an instance field, a field of a nested type or a record) holds only:
+  - a literal, or a negated one;
+  - a `new byte[]{...}` of literals;
+  - `BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, or `PlutusData.UNIT`;
+  - a constant variable, as Java defines one;
+  - for a `Boolean` `@Param`, `Boolean.valueOf(true)` or `Boolean.valueOf(false)`.
+- **An initializer block is empty** (`JULC0095`). Give the field its value where it
+  is declared.
+- **No varargs**: declare a `byte[]`, a `List<T>` or a `JulcList<T>` parameter.
+
+### Strings
+
+- **`"a" + "b"` concatenates at run time**, as any `+` of strings does. For one
+  string, write one literal.
+
 ### Not Supported
 
 - No standard Java library classes (only `BigInteger` and the JuLC stdlib)

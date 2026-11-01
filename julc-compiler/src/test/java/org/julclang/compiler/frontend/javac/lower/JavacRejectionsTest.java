@@ -222,16 +222,11 @@ class JavacRejectionsTest {
                 "m", "WHILE_LOOP", 3);
     }
 
+    /** {@code V.this} is a member select to javac, so {@code this} is not only an identifier. */
     @Test
-    void aParamInitializerIsScannedThoughNeverLowered() {
-        String source = """
-                import org.julclang.stdlib.annotation.Param;
-                class P {
-                    @Param static String s = null;
-                    static long m() { return 1; }
-                }
-                """;
-        assertMethodNotPorted(source, "m", "NULL_LITERAL", 3);
+    void aQualifiedThisIsOutsideTheSubset() {
+        assertMethodNotPorted("class V {\n    boolean b;\n    boolean g() { return V.this.b; }\n    static long m() { return 1; }\n}\n",
+                "m", "MEMBER_SELECT", 3);
     }
 
     @Test

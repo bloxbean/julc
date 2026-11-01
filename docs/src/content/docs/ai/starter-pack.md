@@ -315,6 +315,30 @@ For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByt
 
 ---
 
+### 6.13 An entry point returns `boolean`
+
+Every `@Entrypoint`, including each one of a `@MultiValidator`, returns `boolean` or `Boolean`. Anything else is `JULC0094`.
+
+### 6.14 What a field initializer may hold
+
+A `static` field of the class being compiled is lowered, so it can hold an expression. Nothing lowers any other field: a `@Param`, an instance field, or a field of a nested type or a record. Such a field holds only a literal, a `new byte[]{...}` of literals, `BigInteger.ZERO`/`ONE`/`TWO`/`TEN`, `PlutusData.UNIT`, a constant variable, or, for a `Boolean` `@Param`, `Boolean.valueOf(true)` or `Boolean.valueOf(false)`. An initializer block is empty. Anything else is `JULC0095`.
+
+```java
+// ❌ BAD
+@Param static BigInteger limit = BigInteger.valueOf(100);
+
+// ✅ GOOD — a @Param gets its value when the script is applied
+@Param static BigInteger limit;
+```
+
+### 6.15 No varargs
+
+Declare a `byte[]`, `List<T>` or `JulcList<T>` parameter.
+
+### 6.16 `"a" + "b"` concatenates at run time
+
+A `+` of strings is an `appendString` at run time, of literals too. For one string, write one literal.
+
 ## 7. Common errors — root cause and fix
 
 | Error message | Likely cause | Fix |

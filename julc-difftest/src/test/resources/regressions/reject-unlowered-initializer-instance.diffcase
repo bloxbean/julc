@@ -1,0 +1,17 @@
+format: 2
+name: An instance field holds only a constant
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0095
+note: A subset rule: what is not lowered holds only a constant.
+---
+import java.math.BigInteger;
+
+public class Probe {
+    BigInteger f = BigInteger.valueOf(1);
+
+    public static BigInteger m(BigInteger a) {
+        return a;
+    }
+}

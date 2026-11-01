@@ -1132,6 +1132,58 @@
       "template": "A string literal holds the unpaired surrogate U+{0}, which a UPLC string cannot hold",
       "summary": "javac accepts a lone surrogate in a string literal, but a UPLC string is Unicode text: the script's FLAT encoding would carry a ? in its place, so the JVM program would not be the script (ADR-065, ADR-068 I2a).",
       "fix": "Write a supplementary character as its high surrogate followed by its low surrogate, or remove it."
+    },
+    {
+      "code": "JULC0094",
+      "constant": "ENTRYPOINT_RETURN_TYPE",
+      "status": "emitted",
+      "title": "An entry point returns boolean",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} returns {2}; an entry point returns boolean",
+      "summary": "An @Entrypoint method of a validator states its verdict as a boolean or Boolean. Any other return type is not a validator's result.",
+      "fix": "Declare the method to return boolean.",
+      "example": {
+        "bad": "@Entrypoint\npublic static BigInteger validate(PlutusData redeemer, ScriptContext ctx) { return BigInteger.ONE; }",
+        "good": "@Entrypoint\npublic static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }"
+      }
+    },
+    {
+      "code": "JULC0095",
+      "constant": "INITIALIZER_NOT_LOWERED",
+      "status": "emitted",
+      "title": "An initializer that is not lowered holds only a constant",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "{0} is not lowered, so it holds only a literal, a byte[] literal, an API constant or a constant",
+      "summary": "A static field of the compiled class is lowered. Any other field initializer (a @Param field, an instance field, a field of another type) and any initializer block is not, so it holds only a literal, a new byte[]{...} of literals, BigInteger.ZERO, ONE, TWO or TEN, PlutusData.UNIT, or a constant variable. Boolean.valueOf(true) and Boolean.valueOf(false) are allowed for a @Param field that must not be a constant variable. An initializer block is empty.",
+      "fix": "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.",
+      "example": {
+        "bad": "class Limits { static BigInteger MAX = BigInteger.valueOf(5); }",
+        "good": "@SpendingValidator\nclass V { static final BigInteger MAX = BigInteger.valueOf(5); }"
+      }
+    },
+    {
+      "code": "JULC0096",
+      "constant": "ENTRYPOINT_NOT_UNIQUE",
+      "status": "emitted",
+      "title": "A program has one validator class, and a single-purpose validator one entry point",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "{0} declares more than one {1}",
+      "summary": "A compilation unit holds one validator class, and a single-purpose validator one @Entrypoint method. Only a @MultiValidator has several, one per purpose.",
+      "fix": "Keep one, or use @MultiValidator with a purpose on each @Entrypoint."
+    },
+    {
+      "code": "JULC0097",
+      "constant": "ENTRYPOINT_NOT_STATIC",
+      "status": "emitted",
+      "title": "An entry point is static",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} is not static",
+      "summary": "An @Entrypoint method is static.",
+      "fix": "Declare the method static."
     }
   ]
 }

@@ -17,10 +17,12 @@ import org.julclang.compiler.pir.PirType;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -33,8 +35,9 @@ import static org.julclang.compiler.error.DiagnosticCodes.VALIDATOR_ANNOTATION_M
 /**
  * Finds what a program declares for a compilation, on javac's trees, by the reference's rules and with its rejections, in
  * its order (ADR-068 I2a): the validator class and its purpose, the {@code @Param} and static fields, the entry points.
- * Annotations are matched by identity: a user's own {@code @Entrypoint} is not JuLC's (as {@code @NewType}, D7). No
- * lowering happens here.
+ * The reference's message for a legacy annotation has no counterpart: {@code @Validator} does not resolve, so javac rejects
+ * it, unless a user declares one, and then it is that user's annotation. Annotations are matched by identity: a user's own
+ * {@code @Entrypoint} is not JuLC's (as {@code @NewType}, D7). No lowering happens here.
  */
 final class JavacDiscovery {
 
@@ -93,9 +96,15 @@ final class JavacDiscovery {
     ClassTree validatorClass(CompilationUnitTree unit) {
         var types = types(unit);
         for (var type : types) rejectRoleConflict(type);
+        ClassTree validator = null;
         for (var type : types) {
-            if (isClassOrInterface(type) && !validatorAnnotations(type).isEmpty()) return type;
+            if (!isClassOrInterface(type) || validatorAnnotations(type).isEmpty()) continue;
+            if (validator != null) {
+                throw CompilerTypeDiagnostics.entrypointNotUnique("This compilation unit", "validator class", facts.location(type));
+            }
+            validator = type;
         }
+        if (validator != null) return validator;
         throw validationError(VALIDATOR_ANNOTATION_MISSING,
                 "Add exactly one validator annotation at the class level, such as "
                         + "@SpendingValidator, @MintingValidator, @WithdrawValidator, "
@@ -163,12 +172,14 @@ final class JavacDiscovery {
         return methods;
     }
 
-    static boolean isStatic(MethodTree method) {
-        return method.getModifiers().getFlags().contains(Modifier.STATIC);
+    /** Whether a declaration is static: the element's modifiers, which hold what Java implies, as for an interface's field. */
+    boolean isStatic(Tree declaration) {
+        return facts.element(declaration).getModifiers().contains(Modifier.STATIC);
     }
 
-    static boolean isStatic(VariableTree field) {
-        return field.getModifiers().getFlags().contains(Modifier.STATIC);
+    /** Whether the compilation lowers {@code field}: a static field of the compiled class, other than a {@code @Param}. */
+    boolean isLowered(VariableTree field, ClassTree compiled) {
+        return facts.parent(field) == compiled && isStatic(field) && !isParam(field);
     }
 
     boolean isParam(VariableTree field) {
@@ -224,13 +235,39 @@ final class JavacDiscovery {
 
     // --- Entry points ---
 
-    /** The first {@code @Entrypoint} method of a single-purpose validator. */
+    /** The {@code @Entrypoint} method of a single-purpose validator. */
     MethodTree entrypoint(ClassTree type) {
+        MethodTree entrypoint = null;
         for (var method : methods(type)) {
-            if (isEntrypoint(method)) return method;
+            if (!isEntrypoint(method)) continue;
+            if (entrypoint != null) {
+                throw CompilerTypeDiagnostics.entrypointNotUnique(type.getSimpleName().toString(), "@Entrypoint method",
+                        facts.location(method));
+            }
+            entrypoint = method;
         }
+        if (entrypoint != null) return entrypoint;
         throw validationError(ENTRYPOINT_MISSING, "Annotate exactly one public static validator method with @Entrypoint.",
                 type, type.getSimpleName());
+    }
+
+    /** An entry point returns {@code boolean} or {@code Boolean}, by identity. */
+    void requireBooleanResult(MethodTree method, ClassTree type) {
+        var result = ((ExecutableElement) facts.element(method)).getReturnType();
+        boolean bool = result.getKind() == TypeKind.BOOLEAN
+                || result instanceof DeclaredType declared && facts.identity(declared).equals(JavacNames.BOOLEAN);
+        if (!bool) {
+            throw CompilerTypeDiagnostics.entrypointReturnType(method.getName().toString(), type.getSimpleName().toString(),
+                    method.getReturnType().toString(), facts.location(method));
+        }
+    }
+
+    /** An entry point is static. A method with no body is the lowering's rejection, as in the reference. */
+    void requireStaticEntrypoint(MethodTree method, ClassTree type) {
+        if (method.getBody() != null && !isStatic(method)) {
+            throw CompilerTypeDiagnostics.entrypointNotStatic(method.getName().toString(), type.getSimpleName().toString(),
+                    facts.location(method));
+        }
     }
 
     /** The purpose {@code @Entrypoint} names; a marker annotation is the default. */

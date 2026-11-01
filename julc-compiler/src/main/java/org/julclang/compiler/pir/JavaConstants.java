@@ -40,7 +40,7 @@ import java.util.Set;
  * this class does not model exactly (floating point, a division by zero) is {@link Result#UNCLASSIFIABLE}, never a
  * guess: a guard must not be classified wrongly (I9).
  */
-final class JavaConstants {
+public final class JavaConstants {
 
     /** The Java type of a constant value: byte and short values are held as {@code INT} after promotion. */
     enum Kind { BOOLEAN, INT, LONG, CHAR, STRING }
@@ -67,6 +67,11 @@ final class JavaConstants {
     }
 
     private JavaConstants() {
+    }
+
+    /** Whether {@code expression} is a constant expression of Java (JLS 21 §15.29), modelled or not. */
+    public static boolean isConstant(Expression expression) {
+        return evaluate(expression).constant();
     }
 
     static Result evaluate(Expression expression) {

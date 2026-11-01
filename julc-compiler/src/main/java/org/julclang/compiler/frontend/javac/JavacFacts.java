@@ -218,6 +218,20 @@ public final class JavacFacts {
         };
     }
 
+    /**
+     * The PIR type of a method's parameter. A varargs parameter's Java type is an array, so {@code byte...} would read as
+     * {@code byte[]}: it is not one, and its element's type is what the subset rejects.
+     */
+    public PirType parameterType(VariableTree parameter) {
+        var type = element(parameter).asType();
+        if (element(parameter).getEnclosingElement() instanceof ExecutableElement method && method.isVarArgs()
+                && method.getParameters().getLast().equals(element(parameter)) && type instanceof ArrayType array
+                && array.getComponentType().getKind() == TypeKind.BYTE) {
+            return pirType(array.getComponentType(), parameter.getType());
+        }
+        return pirType(type, parameter.getType());
+    }
+
     /** A rejection at {@code where}. */
     public CompilerException rejection(String message, Tree where) {
         if (where == null) return new CompilerException(message);
@@ -329,21 +343,29 @@ public final class JavacFacts {
 
     /**
      * The first {@code count} characters of {@code tree}'s source as javac reads them: a Unicode escape is the character it
-     * denotes (JLS 3.3). What a token is spelled with can only be read here; javac's trees keep its value.
+     * denotes, and a backslash begins one only after an even number of backslashes (JLS 3.3). What a token is spelled with
+     * can only be read here; javac's trees keep its value.
      */
     public String leadingSource(Tree tree, int count) {
-        var unit = path(tree).getCompilationUnit();
-        String text = text(unit);
+        String text = text(path(tree).getCompilationUnit());
         var read = new StringBuilder();
-        for (int at = (int) start(tree); read.length() < count && at < text.length(); at++) {
-            char c = text.charAt(at);
-            if (c == '\\' && at + 1 < text.length() && text.charAt(at + 1) == 'u') {
-                at++;
-                while (text.charAt(at + 1) == 'u') at++;
-                c = (char) Integer.parseInt(text.substring(at + 1, at + 5), 16);
-                at += 4;
+        int backslashes = 0;
+        try {
+            for (int at = (int) start(tree); read.length() < count && at < text.length(); at++) {
+                char c = text.charAt(at);
+                if (c == '\\' && backslashes % 2 == 0 && at + 1 < text.length() && text.charAt(at + 1) == 'u') {
+                    at++;
+                    while (text.charAt(at + 1) == 'u') at++;
+                    c = (char) Integer.parseInt(text.substring(at + 1, at + 5), 16);
+                    at += 4;
+                    backslashes = 0;
+                } else {
+                    backslashes = c == '\\' ? backslashes + 1 : 0;
+                }
+                read.append(c);
             }
-            read.append(c);
+        } catch (NumberFormatException | IndexOutOfBoundsException e) {
+            throw rejection("Cannot read the source of this literal: " + e.getMessage(), tree);
         }
         return read.toString();
     }

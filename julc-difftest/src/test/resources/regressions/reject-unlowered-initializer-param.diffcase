@@ -1,0 +1,18 @@
+format: 2
+name: A @Param field holds only a constant
+class: Probe
+method: m
+arg: 05
+expect: REJECT JULC0095
+note: A subset rule: what is not lowered holds only a constant.
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.Param;
+
+public class Probe {
+    @Param static BigInteger p = BigInteger.valueOf(1);
+
+    public static BigInteger m(BigInteger a) {
+        return a;
+    }
+}

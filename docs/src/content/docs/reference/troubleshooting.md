@@ -1306,6 +1306,36 @@ The [release notes](/reference/release-notes/) list the rewrites.
 
 A runtime without a supported javac (JDK 25 with the `jdk.compiler` module) is `JULC0089`.
 
+### `JULC0094` `Entrypoint <method> of <class> returns <type>; an entry point returns boolean`
+
+**Cause:** An `@Entrypoint` method returns something other than `boolean` or `Boolean`.
+
+**Fix:** Return a `boolean`. To fail, return `false` or call `Builtins.error()`.
+
+### `JULC0095` `<field or block> is not lowered, so it holds only a literal, a byte[] literal, an API constant or a constant`
+
+**Cause:** A `static` field of the class being compiled is lowered. Nothing lowers any other
+field (a `@Param`, an instance field, a field of a nested type or a record), and nothing lowers
+an initializer block.
+
+**Fix:** Such a field holds only a literal, a `new byte[]{...}` of literals,
+`BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, `PlutusData.UNIT`, a constant variable, or
+`Boolean.valueOf(true)` or `Boolean.valueOf(false)`. Move anything else to a `static` field of
+the class being compiled, or to a method. Keep an initializer block empty.
+
+### `JULC0096` `<source or class> declares more than one <validator class or @Entrypoint method>`
+
+**Cause:** With `frontend=JAVAC`: a source declares two validator classes, or a single-purpose
+validator has two `@Entrypoint` methods.
+
+**Fix:** Keep one. A `@MultiValidator` is how a script has several entry points.
+
+### `JULC0097` `Entrypoint <method> of <class> is not static`
+
+**Cause:** With `frontend=JAVAC`: an entry point is not `static`.
+
+**Fix:** Declare the entry point `static`.
+
 ### 3.1 `Failed to parse <label> source: <details>`
 
 **Cause:** The Java source code has syntax errors that JavaParser cannot parse.

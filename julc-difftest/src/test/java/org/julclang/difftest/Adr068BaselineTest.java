@@ -60,6 +60,7 @@ class Adr068BaselineTest {
         corpus.addLedger();
         corpus.addFixtures("blaster", "verification/blaster/fixtures");
         corpus.addFixtures("c7", "verification/c7/fixtures");
+        corpus.addFixtures("rules", "julc-difftest/src/test/resources/adr068/rule-fixtures");
         corpus.addDiffcases();
         corpus.addG0Exhaustive();
         int g1 = corpus.addG1FixedSeed(Path.of(Adr068G1Capture.FILE));

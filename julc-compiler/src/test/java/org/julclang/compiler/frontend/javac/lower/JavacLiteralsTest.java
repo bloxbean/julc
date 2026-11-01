@@ -66,7 +66,8 @@ class JavacLiteralsTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"\"\"", "\"a\"", "\"a\\nb\"", "\"\\t\\\"\\\\\"", "\"a\\sb\"", "\"\\101\"", "\"\\7\"", "\"\\377\"",
-            "\"é\"", "\"😀\"", "\"\\uD83D\\uDE00\"", "\"\\u0041\"", "\"\\uuuu0041\""})
+            "\"é\"", "\"😀\"", "\"\\uD83D\\uDE00\"", "\"\\u0041\"", "\"\\uuuu0041\"",
+            "\"\\\\user\"", "\"\\\\unicode\"", "\"\\\\u\"", "\"\\\\uu\"", "\"\\\\\\\\u0041\""})
     void strings(String literal) {
         assertSameMethodAsReference(returning("String", literal), "m");
     }

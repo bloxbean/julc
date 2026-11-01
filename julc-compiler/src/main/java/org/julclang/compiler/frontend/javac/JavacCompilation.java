@@ -18,6 +18,7 @@ import org.julclang.compiler.frontend.javac.lower.BindingCheck;
 import org.julclang.compiler.frontend.javac.lower.Lowering;
 import org.julclang.compiler.frontend.javac.lower.Scope;
 import org.julclang.compiler.frontend.javac.subset.SubsetScan;
+import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -102,7 +103,7 @@ public final class JavacCompilation {
         var attempts = new ArrayList<MethodAttempt>();
         for (var method : discovery.methods(type)) {
             boolean entry = methodName == null && discovery.isEntrypoint(method);
-            if (!JavacDiscovery.isStatic(method) && !entry) continue;
+            if (!discovery.isStatic(method) && !entry) continue;
             try {
                 // As the program lowers it: an entry point's boolean returns are guarded under a source map.
                 var term = lowering.method(method, parts.scope, entry && context.isSourceMapEnabled());
@@ -158,7 +159,7 @@ public final class JavacCompilation {
         /** Step 10: every static method's type, before any body is lowered, so a bad signature is reported first. */
         void declareMethods(ClassTree type) {
             for (var method : discovery.methods(type)) {
-                if (JavacDiscovery.isStatic(method)) methodType(method);
+                if (discovery.isStatic(method)) methodType(method);
             }
         }
 
@@ -212,7 +213,7 @@ public final class JavacCompilation {
         var element = (ExecutableElement) facts.element(method);
         var parameters = method.getParameters();
         var types = new ArrayList<PirType>();
-        for (var parameter : parameters) types.add(facts.pirType(facts.element(parameter).asType(), parameter));
+        for (var parameter : parameters) types.add(facts.parameterType(parameter));
         PirType type = facts.pirType(element.getReturnType(), method.getReturnType());
         for (int i = types.size() - 1; i >= 0; i--) type = new PirType.FunType(types.get(i), type);
         return type;
@@ -260,9 +261,12 @@ public final class JavacCompilation {
         // 2. Validate subset
         SubsetScan.check(facts, unit);
         verifyBinderNamespace(unit);
+        // 3. Library units hold no validator annotation: no step here, since a library unit javac read stops at step 8
         // 4. Find annotated validator class and determine purpose
         var type = discovery.validatorClass(unit);
         var purpose = discovery.purpose(type);
+        // 4b. What is not lowered holds only a constant
+        UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
         // 5. Register types
         program.registerTypes();
         // 6, 6b. @Param and static fields
@@ -284,7 +288,7 @@ public final class JavacCompilation {
         var overloads = new OnchainOverloads(type.getSimpleName().toString(), entrypointNames);
         var helpers = new LinkedHashMap<String, ValidatorAssembly.Method>();
         for (var method : discovery.methods(type)) {
-            if (JavacDiscovery.isStatic(method) && !discovery.isEntrypoint(method)) {
+            if (discovery.isStatic(method) && !discovery.isEntrypoint(method)) {
                 parts.lowerMethod(method, overloads, helpers);
             }
         }
@@ -313,10 +317,19 @@ public final class JavacCompilation {
     }
 
     private List<JavacDiscovery.EntryPoint> entrypoints(ClassTree type, ScriptPurpose purpose) {
-        if (purpose == ScriptPurpose.MULTI) return discovery.multiEntrypoints(type);
-        var method = discovery.entrypoint(type);
-        discovery.requireEntrypointParameters(method, purpose, type);
-        return List.of(new JavacDiscovery.EntryPoint(method, "DEFAULT", -1));
+        List<JavacDiscovery.EntryPoint> entries;
+        if (purpose == ScriptPurpose.MULTI) {
+            entries = discovery.multiEntrypoints(type);
+        } else {
+            var method = discovery.entrypoint(type);
+            discovery.requireEntrypointParameters(method, purpose, type);
+            entries = List.of(new JavacDiscovery.EntryPoint(method, "DEFAULT", -1));
+        }
+        for (var entry : entries) {
+            discovery.requireBooleanResult(entry.method(), type);
+            discovery.requireStaticEntrypoint(entry.method(), type);
+        }
+        return entries;
     }
 
     /** The parameters of an entry point, each under the binder {@code function} binds it to. */
@@ -353,10 +366,12 @@ public final class JavacCompilation {
         var type = discovery.firstClass(unit);
         // 4. Find the target method
         var target = discovery.methods(type).stream()
-                .filter(method -> JavacDiscovery.isStatic(method) && method.getName().contentEquals(methodName))
+                .filter(method -> discovery.isStatic(method) && method.getName().contentEquals(methodName))
                 .findFirst()
                 .orElseThrow(() -> new CompilerException(
                         "No static method '" + methodName + "' found in " + type.getSimpleName()));
+        // 4b. What is not lowered holds only a constant
+        UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
         // 5. Register types
         program.registerTypes();
         // 7, 7b. @Param and static fields
@@ -371,7 +386,7 @@ public final class JavacCompilation {
         for (var parameter : target.getParameters()) {
             String name = parameter.getName().toString();
             var at = facts.location(parameter);
-            var parameterType = facts.pirType(facts.element(parameter).asType(), parameter);
+            var parameterType = facts.parameterType(parameter);
             if (registry().containsNativeOpaque(parameterType)) {
                 throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(name, parameterType, at);
             }
@@ -388,7 +403,7 @@ public final class JavacCompilation {
         var overloads = new OnchainOverloads(type.getSimpleName().toString(), Set.of());
         var methods = new LinkedHashMap<String, ValidatorAssembly.Method>();
         for (var method : discovery.methods(type)) {
-            if (JavacDiscovery.isStatic(method)) parts.lowerMethod(method, overloads, methods);
+            if (discovery.isStatic(method)) parts.lowerMethod(method, overloads, methods);
         }
 
         // 11-17. Everything from here on takes PIR and resolved types (F846).

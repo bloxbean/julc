@@ -40,7 +40,7 @@ final class Statements {
         var binders = new ArrayList<Binder>();
         for (var parameter : tree.getParameters()) {
             var parameterElement = facts.element(parameter);
-            scope = scope.bind(parameterElement, facts.pirType(parameterElement.asType(), parameter));
+            scope = scope.bind(parameterElement, facts.parameterType(parameter));
             binders.add(scope.lookup(parameterElement));
         }
         boolean isVoid = returnType.getKind() == TypeKind.VOID;

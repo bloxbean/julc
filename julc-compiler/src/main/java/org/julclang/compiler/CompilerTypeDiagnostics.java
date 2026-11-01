@@ -223,6 +223,30 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(field), location);
     }
 
+    /** JULC0095: an initializer that is not lowered and holds more than a constant. */
+    public static CompilerException initializerNotLowered(String what, SourceLocation location) {
+        var info = DiagnosticCodes.INITIALIZER_NOT_LOWERED;
+        return exception(info.code(), info.level(), info.fix(), info.format(what), location);
+    }
+
+    /** JULC0094: an entry point that does not return {@code boolean}. */
+    public static CompilerException entrypointReturnType(String method, String owner, String type, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_RETURN_TYPE;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner, type), location);
+    }
+
+    /** JULC0096: a second entry point, or a second validator class. */
+    public static CompilerException entrypointNotUnique(String owner, String what, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_NOT_UNIQUE;
+        return exception(info.code(), info.level(), info.fix(), info.format(owner, what), location);
+    }
+
+    /** JULC0097: an entry point that is not {@code static}. */
+    public static CompilerException entrypointNotStatic(String method, String owner, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_NOT_STATIC;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner), location);
+    }
+
     /** JULC0093: a string literal holding an unpaired surrogate, which a UPLC string cannot hold. */
     public static CompilerException unpairedSurrogate(char surrogate, SourceLocation location) {
         var info = DiagnosticCodes.STRING_LITERAL_UNPAIRED_SURROGATE;
