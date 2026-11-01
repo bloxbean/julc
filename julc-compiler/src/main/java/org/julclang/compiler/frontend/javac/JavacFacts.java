@@ -218,6 +218,12 @@ public final class JavacFacts {
         };
     }
 
+    /** Whether {@code type} is {@code boolean} or {@code java.lang.Boolean}, by identity. */
+    public boolean isBoolean(TypeMirror type) {
+        return type.getKind() == TypeKind.BOOLEAN
+                || type instanceof DeclaredType declared && identity(declared).equals(JavacNames.BOOLEAN);
+    }
+
     /**
      * The PIR type of a method's parameter. A varargs parameter's Java type is an array, so {@code byte...} would read as
      * {@code byte[]}: it is not one, and its element's type is what the subset rejects.

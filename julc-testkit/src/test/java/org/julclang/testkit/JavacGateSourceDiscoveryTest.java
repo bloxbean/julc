@@ -74,6 +74,61 @@ class JavacGateSourceDiscoveryTest {
         assertFalse(SourceDiscovery.compile("com.example.FeeGate", root).hasErrors());
     }
 
+    /** A pool library the program reads meets the subset's rules at the default mode, with nothing set. */
+    @Test
+    void aSubsetRuleInAPoolLibraryRejects() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        write("""
+                package com.example;
+
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+
+                @OnchainLibrary
+                public class Fees {
+                    final long instance = 1 / 0;
+                    public static BigInteger minimum() { return BigInteger.TWO; }
+                }
+                """);
+        var e = assertThrows(CompilerException.class, () -> SourceDiscovery.compile("com.example.FeeGate", root));
+        assertEquals("JULC0095", e.diagnostics().getFirst().code(), e.diagnostics().toString());
+    }
+
+    private static final String CAST = """
+            import java.math.BigInteger;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.SpendingValidator;
+
+            @SpendingValidator
+            public class Gate {
+                @Entrypoint
+                public static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                    return (boolean) (Object) redeemer;
+                }
+            }
+            """;
+
+    @Test
+    void validatorTestMeetsTheSubsetsRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var e = assertThrows(CompilerException.class, () -> ValidatorTest.compile(CAST));
+        assertEquals("JULC0098", e.diagnostics().getFirst().code(), e.diagnostics().toString());
+    }
+
+    @Test
+    void methodEvaluatorMeetsTheSubsetsRules() {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var e = assertThrows(CompilerException.class,
+                () -> MethodEvaluator.evaluateBoolean("""
+                        class P {
+                            final long instance = 1 / 0;
+                            static boolean m() { return true; }
+                        }
+                        """, "m"));
+        assertEquals("JULC0095", e.diagnostics().getFirst().code(), e.diagnostics().toString());
+    }
+
     @Test
     void javacErrorInAPoolLibraryRejects() throws Exception {
         write("""

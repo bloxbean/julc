@@ -121,7 +121,8 @@ public class CompilerOptions {
      * Experimental (ADR-068 M1): how the javac gate acts, which has javac analyze every compilation's sources before
      * the JavaParser frontend compiles them. {@code null} (the default) defers to the system property
      * {@code julc.javacGate} ({@code off}, {@code report} or {@code enforce}), and then to {@code enforce}, which
-     * fails a compilation javac rejects. {@code report} never fails one.
+     * fails a compilation javac rejects. {@code report} never fails one. The subset's rules that rest on what javac
+     * resolved run in the gate, so they follow its mode, and {@code off} turns them off with the rest of it.
      */
     public CompilerOptions setJavacGate(JavacGateMode javacGate) {
         this.javacGate = javacGate;

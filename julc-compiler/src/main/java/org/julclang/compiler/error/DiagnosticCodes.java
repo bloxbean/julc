@@ -61,6 +61,14 @@ public final class DiagnosticCodes {
             "{0} targets backend contract revision {1}; this backend supports revisions {2}",
             "Produce the descriptor for a supported revision reported by CompilerBackend.capabilities, or use a compiler release that implements the requested revision.");
 
+    public static final DiagnosticInfo BOOLEAN_CAST_OPERAND = new DiagnosticInfo(
+            "JULC0098",
+            "BOOLEAN_CAST_OPERAND",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "A cast to {0} takes a boolean, a Boolean or a PlutusData, not {1}",
+            "Compare the value to get a boolean.");
+
     public static final DiagnosticInfo BREAK_IN_LOOP_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
             "JULC0063",
             "BREAK_IN_LOOP_WITHOUT_ACCUMULATOR",
@@ -210,7 +218,7 @@ public final class DiagnosticCodes {
             "ENTRYPOINT_RETURN_TYPE",
             CompilerDiagnostic.Level.ERROR,
             "VALIDATOR",
-            "Entrypoint {0} of {1} returns {2}; an entry point returns boolean",
+            "Entrypoint {0} of {1} returns {2}; an entry point returns boolean or java.lang.Boolean",
             "Declare the method to return boolean.");
 
     public static final DiagnosticInfo ENTRYPOINT_WRONG_PARAMETER_COUNT = new DiagnosticInfo(
@@ -258,7 +266,7 @@ public final class DiagnosticCodes {
             "INITIALIZER_NOT_LOWERED",
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
-            "{0} is not lowered, so it holds only a literal, a byte[] literal, an API constant or a constant",
+            "{0} is not lowered, so {1}",
             "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.");
 
     public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
@@ -766,6 +774,7 @@ public final class DiagnosticCodes {
             BACKEND_TARGET_MISMATCH,
             BACKEND_UNSUPPORTED_REQUEST,
             BACKEND_UNSUPPORTED_REVISION,
+            BOOLEAN_CAST_OPERAND,
             BREAK_IN_LOOP_WITHOUT_ACCUMULATOR,
             BREAK_LOOP_STATEMENT_UNSUPPORTED,
             BREAK_OUTSIDE_LOOP,

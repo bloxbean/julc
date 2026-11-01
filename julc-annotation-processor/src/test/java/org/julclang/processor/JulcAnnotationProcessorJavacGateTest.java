@@ -101,6 +101,27 @@ class JulcAnnotationProcessorJavacGateTest {
         assertTrue(Files.exists(out.resolve("META-INF/plutus/FeeGate.plutus.json")));
     }
 
+    /** A subset rule reaches the processor at the default mode: no property, and javac itself has nothing to say. */
+    @Test
+    void aSubsetRuleFailsTheValidator() throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        var diagnostics = process(Map.of("FeeGate", validator("(boolean) (Object) ctx.txInfo().fee()")));
+        var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                .map(d -> d.getMessage(null)).toList();
+        assertEquals(1, errors.size(), diagnostics.toString());
+        assertTrue(errors.getFirst().contains("JULC0098"), errors.getFirst());
+    }
+
+    @Test
+    void aLibrarysSubsetRuleFailsTheValidator() throws Exception {
+        var library = FEES.replace("public static BigInteger minimum()", "long instance = 1 / 0;\n    public static BigInteger minimum()");
+        var diagnostics = process(Map.of("Fees", library, "FeeGate", validator("Fees.minimum().signum() > 0")));
+        var errors = diagnostics.stream().filter(d -> d.getKind() == Diagnostic.Kind.ERROR)
+                .map(d -> d.getMessage(null)).toList();
+        assertEquals(1, errors.size(), diagnostics.toString());
+        assertTrue(errors.getFirst().contains("JULC0095"), errors.getFirst());
+    }
+
     @Test
     void javacGateRejectionFailsTheValidator() throws Exception {
         // -proc:only does not attribute, so the user's javac lets the dialect through to the processor; the gate's

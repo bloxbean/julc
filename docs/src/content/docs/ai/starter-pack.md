@@ -339,6 +339,10 @@ Declare a `byte[]`, `List<T>` or `JulcList<T>` parameter.
 
 A `+` of strings is an `appendString` at run time, of literals too. For one string, write one literal.
 
+### 6.17 A cast to `boolean` takes a boolean or Data
+
+A cast to `boolean` or `Boolean` takes an operand whose type, through parentheses and other casts, is `boolean`, `Boolean`, or `PlutusData` and its subtypes. Anything else is `JULC0098`.
+
 ## 7. Common errors — root cause and fix
 
 | Error message | Likely cause | Fix |

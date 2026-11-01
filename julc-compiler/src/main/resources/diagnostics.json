@@ -1140,7 +1140,7 @@
       "title": "An entry point returns boolean",
       "category": "VALIDATOR",
       "severity": "error",
-      "template": "Entrypoint {0} of {1} returns {2}; an entry point returns boolean",
+      "template": "Entrypoint {0} of {1} returns {2}; an entry point returns boolean or java.lang.Boolean",
       "summary": "An @Entrypoint method of a validator states its verdict as a boolean or Boolean. Any other return type is not a validator's result.",
       "fix": "Declare the method to return boolean.",
       "example": {
@@ -1155,12 +1155,27 @@
       "title": "An initializer that is not lowered holds only a constant",
       "category": "SYNTAX",
       "severity": "error",
-      "template": "{0} is not lowered, so it holds only a literal, a byte[] literal, an API constant or a constant",
+      "template": "{0} is not lowered, so {1}",
       "summary": "A static field of the compiled class is lowered. Any other field initializer (a @Param field, an instance field, a field of another type) and any initializer block is not, so it holds only a literal, a new byte[]{...} of literals, BigInteger.ZERO, ONE, TWO or TEN, PlutusData.UNIT, or a constant variable. Boolean.valueOf(true) and Boolean.valueOf(false) are allowed for a @Param field that must not be a constant variable. An initializer block is empty.",
       "fix": "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.",
       "example": {
         "bad": "class Limits { static BigInteger MAX = BigInteger.valueOf(5); }",
         "good": "@SpendingValidator\nclass V { static final BigInteger MAX = BigInteger.valueOf(5); }"
+      }
+    },
+    {
+      "code": "JULC0098",
+      "constant": "BOOLEAN_CAST_OPERAND",
+      "status": "emitted",
+      "title": "A cast to boolean takes a boolean or a PlutusData",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "A cast to {0} takes a boolean, a Boolean or a PlutusData, not {1}",
+      "summary": "A cast to boolean or Boolean takes an operand whose type, through parentheses and other casts, is boolean, Boolean, or PlutusData and its subtypes.",
+      "fix": "Compare the value to get a boolean.",
+      "example": {
+        "bad": "boolean b = (boolean)(Object) amount;",
+        "good": "boolean b = amount.signum() > 0;"
       }
     },
     {

@@ -79,6 +79,15 @@ class JulcPluginJavacGateTest {
         assertTrue(Files.exists(project.resolve("build/plutus/FeeGate.json")));
     }
 
+    /** A subset rule reaches the task at the default mode, with no property on the build. */
+    @Test
+    void aSubsetRuleFailsTheBuild() throws IOException {
+        writeValidator("(boolean) (Object) ctx.txInfo().fee()");
+        var result = GradleRunner.create().withProjectDir(project.toFile()).withPluginClasspath()
+                .withArguments("compileJulc", "--stacktrace").buildAndFail();
+        assertTrue(result.getOutput().contains("JULC0098"), result.getOutput());
+    }
+
     @Test
     void javacErrorFailsTheBuild() throws IOException {
         writeValidator("ctx.txInfo().fee() > Fees.minimum()");

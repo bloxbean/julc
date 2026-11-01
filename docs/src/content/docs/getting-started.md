@@ -1618,11 +1618,14 @@ following limitations apply:
   - a literal, or a negated one;
   - a `new byte[]{...}` of literals;
   - `BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, or `PlutusData.UNIT`;
-  - a constant variable, as Java defines one;
+  - a constant variable, as Java defines one, named directly or through a type;
   - for a `Boolean` `@Param`, `Boolean.valueOf(true)` or `Boolean.valueOf(false)`.
 - **An initializer block is empty** (`JULC0095`). Give the field its value where it
   is declared.
 - **No varargs**: declare a `byte[]`, a `List<T>` or a `JulcList<T>` parameter.
+- **A cast to `boolean` or `Boolean`** takes an operand whose type, through
+  parentheses and other casts, is `boolean`, `Boolean`, or `PlutusData` and its
+  subtypes (`JULC0098`).
 
 ### Strings
 

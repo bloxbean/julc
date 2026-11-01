@@ -23,7 +23,6 @@ import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.compiler.uplc.UplcGenerator;
 import org.julclang.compiler.uplc.UplcTargetValidator;
 import org.julclang.compiler.validate.SubsetValidator;
-import org.julclang.compiler.validate.UnloweredInitializers;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.source.SourceLocation;
@@ -31,7 +30,6 @@ import org.julclang.core.debug.DebugMetadata;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
@@ -52,7 +50,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
-import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_RETURN_TYPE;
 import static org.julclang.compiler.error.DiagnosticCodes.ENTRYPOINT_WRONG_PARAMETER_COUNT;
 import static org.julclang.compiler.error.DiagnosticCodes.PARAM_RAW_PLUTUS_DATA;
 import static org.julclang.compiler.error.DiagnosticCodes.VALIDATOR_ANNOTATION_MISSING;
@@ -406,12 +403,6 @@ public class JulcCompiler {
         context.logf("Found @%sValidator: %s", scriptPurpose.name().charAt(0)
                 + scriptPurpose.name().substring(1).toLowerCase(), validatorClass.getNameAsString());
 
-        // 4b. What is not lowered holds only a constant
-        diagnostics.addAll(UnloweredInitializers.check(validatorCu, field -> isLowered(field, validatorClass)));
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
-
         // 5. Register types from ALL sources (topo-sorted)
         var typeResolver = new TypeResolver();
 
@@ -474,12 +465,10 @@ public class JulcCompiler {
 
         if (scriptPurpose == ScriptPurpose.MULTI) {
             entrypointInfos = findMultiEntrypoints(validatorClass);
-            for (var info : entrypointInfos) requireBooleanEntrypoint(info.method(), validatorClass);
         } else {
             entrypointMethod = findEntrypoint(validatorClass);
             // 7b. Validate parameter count matches script purpose
             validateEntrypointParams(entrypointMethod, scriptPurpose, validatorClass);
-            requireBooleanEntrypoint(entrypointMethod, validatorClass);
         }
 
         // 8. Compile library static methods to PIR (progressive lookup: each library sees previous)
@@ -877,12 +866,6 @@ public class JulcCompiler {
                 .findFirst()
                 .orElseThrow(() -> new CompilerException(
                         "No static method '" + methodName + "' found in " + targetClass.getNameAsString()));
-
-        // 4b. What is not lowered holds only a constant
-        diagnostics.addAll(UnloweredInitializers.check(cu, field -> isLowered(field, targetClass)));
-        if (hasErrors(diagnostics)) {
-            throw new CompilerException(diagnostics);
-        }
 
         // 5. Register types (ledger + user-defined)
         var typeResolver = new TypeResolver();
@@ -1425,20 +1408,6 @@ public class JulcCompiler {
         return entrypoints;
     }
 
-    /** Whether the compilation lowers {@code field}: a static field of the compiled class, other than a {@code @Param}. */
-    private static boolean isLowered(FieldDeclaration field, ClassOrInterfaceDeclaration compiled) {
-        return field.getParentNode().orElse(null) == compiled && field.isStatic()
-                && field.getAnnotationByName("Param").isEmpty();
-    }
-
-    /** An entry point returns {@code boolean} or {@code Boolean}. */
-    private static void requireBooleanEntrypoint(MethodDeclaration method, ClassOrInterfaceDeclaration cls) {
-        var type = method.getTypeAsString();
-        if (type.equals("boolean") || type.equals("Boolean") || type.equals("java.lang.Boolean")) return;
-        throw validationError(ENTRYPOINT_RETURN_TYPE, ENTRYPOINT_RETURN_TYPE.fix(), method,
-                method.getNameAsString(), cls.getNameAsString(), type);
-    }
-
     private void validateEntrypointParams(MethodDeclaration entrypoint, ScriptPurpose purpose,
                                           ClassOrInterfaceDeclaration cls) {
         int paramCount = entrypoint.getParameters().size();
@@ -1508,26 +1477,26 @@ public class JulcCompiler {
         var result = new ArrayList<ParamField>();
         for (var field : cls.getFields()) {
             if (field.getAnnotationByName("Param").isPresent()) {
-                var javaType = field.getCommonType().asString();
-                if (BANNED_PARAM_TYPES.contains(javaType)) {
-                    int line = 0, col = 0;
-                    var range = field.getRange();
-                    if (range.isPresent()) {
-                        line = range.get().begin.line;
-                        col = range.get().begin.column;
-                    }
-                    diagnostics.add(new CompilerDiagnostic(
-                            CompilerDiagnostic.Level.ERROR,
-                            PARAM_RAW_PLUTUS_DATA.format(javaType),
-                            "<source>", line, col,
-                            PARAM_RAW_PLUTUS_DATA.fix(),
-                            PARAM_RAW_PLUTUS_DATA.code()));
-                    continue;
-                }
                 for (var variable : field.getVariables()) {
+                    var javaType = variable.getType().asString();
+                    if (BANNED_PARAM_TYPES.contains(javaType)) {
+                        int line = 0, col = 0;
+                        var range = field.getRange();
+                        if (range.isPresent()) {
+                            line = range.get().begin.line;
+                            col = range.get().begin.column;
+                        }
+                        diagnostics.add(new CompilerDiagnostic(
+                                CompilerDiagnostic.Level.ERROR,
+                                PARAM_RAW_PLUTUS_DATA.format(javaType),
+                                "<source>", line, col,
+                                PARAM_RAW_PLUTUS_DATA.fix(),
+                                PARAM_RAW_PLUTUS_DATA.code()));
+                        continue;
+                    }
                     var name = variable.getNameAsString();
-                    var pirType = typeResolver.resolve(field.getCommonType());
-                    typeResolver.requireDataEncodable(pirType, "@Param field '" + name + "'", field.getCommonType());
+                    var pirType = typeResolver.resolve(variable.getType());
+                    typeResolver.requireDataEncodable(pirType, "@Param field '" + name + "'", variable.getType());
                     result.add(new ParamField(name, pirType, javaType, sourceLocation(variable), variable));
                 }
             }
@@ -1743,7 +1712,7 @@ public class JulcCompiler {
             for (var variable : field.getVariables()) {
                 if (variable.getInitializer().isEmpty()) continue;
                 var name = variable.getNameAsString();
-                var pirType = typeResolver.resolve(field.getCommonType());
+                var pirType = typeResolver.resolve(variable.getType());
                 result.add(new StaticField(name, pirType, variable.getInitializer().get()));
             }
         }

@@ -22,7 +22,6 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -90,6 +89,30 @@ final class JavacDiscovery {
     ClassTree firstClass(CompilationUnitTree unit) {
         return types(unit).stream().filter(tree -> tree.getKind() == Tree.Kind.CLASS).findFirst()
                 .orElseThrow(() -> new CompilerException("No class found in source"));
+    }
+
+    /**
+     * The class a compilation of {@code unit} compiles, or null if it has none, which that compilation goes on to report.
+     * Annotations count by name here, as the JavaParser frontend reads them, so that a user's own annotation of that
+     * name decides nothing in its favour.
+     */
+    ClassTree compiledClass(CompilationUnitTree unit, JavacGate.Compiled compiled) {
+        if (compiled == JavacGate.Compiled.METHOD) {
+            return types(unit).stream().filter(tree -> tree.getKind() == Tree.Kind.CLASS).findFirst().orElse(null);
+        }
+        return types(unit).stream().filter(JavacDiscovery::isClassOrInterface)
+                .filter(type -> JavacNames.VALIDATORS.stream().anyMatch(name -> carries(type, simpleName(name))))
+                .findFirst().orElse(null);
+    }
+
+    /** Whether a declaration has an annotation of the simple name {@code name}, whichever type that resolved to. */
+    boolean carries(Tree declaration, String name) {
+        return facts.element(declaration).getAnnotationMirrors().stream()
+                .anyMatch(mirror -> mirror.getAnnotationType().asElement().getSimpleName().contentEquals(name));
+    }
+
+    static String simpleName(String identity) {
+        return identity.substring(identity.lastIndexOf('.') + 1);
     }
 
     /** The annotated validator class. */
@@ -179,7 +202,13 @@ final class JavacDiscovery {
 
     /** Whether the compilation lowers {@code field}: a static field of the compiled class, other than a {@code @Param}. */
     boolean isLowered(VariableTree field, ClassTree compiled) {
-        return facts.parent(field) == compiled && isStatic(field) && !isParam(field);
+        return facts.parent(field) == compiled && isStatic(field) && !carries(field, simpleName(JavacNames.PARAM));
+    }
+
+    /** Whether compiling a library lowers {@code field}: a static field of a class, other than a {@code @Param}. */
+    boolean isLoweredInALibrary(VariableTree field) {
+        return facts.parent(field) instanceof ClassTree owner && owner.getKind() == Tree.Kind.CLASS && isStatic(field)
+                && !carries(field, simpleName(JavacNames.PARAM));
     }
 
     boolean isParam(VariableTree field) {
@@ -249,17 +278,6 @@ final class JavacDiscovery {
         if (entrypoint != null) return entrypoint;
         throw validationError(ENTRYPOINT_MISSING, "Annotate exactly one public static validator method with @Entrypoint.",
                 type, type.getSimpleName());
-    }
-
-    /** An entry point returns {@code boolean} or {@code Boolean}, by identity. */
-    void requireBooleanResult(MethodTree method, ClassTree type) {
-        var result = ((ExecutableElement) facts.element(method)).getReturnType();
-        boolean bool = result.getKind() == TypeKind.BOOLEAN
-                || result instanceof DeclaredType declared && facts.identity(declared).equals(JavacNames.BOOLEAN);
-        if (!bool) {
-            throw CompilerTypeDiagnostics.entrypointReturnType(method.getName().toString(), type.getSimpleName().toString(),
-                    method.getReturnType().toString(), facts.location(method));
-        }
     }
 
     /** An entry point is static. A method with no body is the lowering's rejection, as in the reference. */

@@ -6,10 +6,8 @@ import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
-import org.julclang.compiler.validate.UnloweredInitializers;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 
 import java.util.ArrayList;
@@ -39,10 +37,6 @@ final class LibraryCompiler {
     void compile(List<CompilationUnit> libCus, TypeResolver typeResolver,
                  LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
                  Set<String> knownFqcns) {
-        // What is not lowered holds only a constant. Each library class lowers its static fields.
-        var rejected = new ArrayList<CompilerDiagnostic>();
-        for (var libCu : libCus) rejected.addAll(UnloweredInitializers.check(libCu, LibraryCompiler::isLowered));
-        if (!rejected.isEmpty()) throw new CompilerException(rejected);
         var remaining = new ArrayList<>(libCus);
         boolean progress = true;
         while (progress && !remaining.isEmpty()) {
@@ -70,11 +64,6 @@ final class LibraryCompiler {
         for (var libCu : remaining) {
             compileSingleCu(libCu, typeResolver, registry, effectiveLookup, knownFqcns);
         }
-    }
-
-    private static boolean isLowered(FieldDeclaration field) {
-        return field.getParentNode().orElse(null) instanceof ClassOrInterfaceDeclaration owner && !owner.isInterface()
-                && field.isStatic() && field.getAnnotationByName("Param").isEmpty();
     }
 
     private void compileSingleCu(CompilationUnit libCu, TypeResolver typeResolver,
@@ -193,7 +182,7 @@ final class LibraryCompiler {
             for (var variable : field.getVariables()) {
                 if (variable.getInitializer().isEmpty()) continue;
                 var name = variable.getNameAsString();
-                var pirType = typeResolver.resolve(field.getCommonType());
+                var pirType = typeResolver.resolve(variable.getType());
                 result.add(new StaticField(name, pirType, variable.getInitializer().get()));
             }
         }

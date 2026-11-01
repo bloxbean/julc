@@ -224,9 +224,9 @@ public final class CompilerTypeDiagnostics {
     }
 
     /** JULC0095: an initializer that is not lowered and holds more than a constant. */
-    public static CompilerException initializerNotLowered(String what, SourceLocation location) {
+    public static CompilerException initializerNotLowered(String what, String rule, SourceLocation location) {
         var info = DiagnosticCodes.INITIALIZER_NOT_LOWERED;
-        return exception(info.code(), info.level(), info.fix(), info.format(what), location);
+        return exception(info.code(), info.level(), info.fix(), info.format(what, rule), location);
     }
 
     /** JULC0094: an entry point that does not return {@code boolean}. */
@@ -239,6 +239,12 @@ public final class CompilerTypeDiagnostics {
     public static CompilerException entrypointNotUnique(String owner, String what, SourceLocation location) {
         var info = DiagnosticCodes.ENTRYPOINT_NOT_UNIQUE;
         return exception(info.code(), info.level(), info.fix(), info.format(owner, what), location);
+    }
+
+    /** JULC0098: a cast to {@code boolean} or {@code Boolean} of what is neither of them nor Data. */
+    public static CompilerException booleanCastOperand(String target, String operand, SourceLocation location) {
+        var info = DiagnosticCodes.BOOLEAN_CAST_OPERAND;
+        return exception(info.code(), info.level(), info.fix(), info.format(target, operand), location);
     }
 
     /** JULC0097: an entry point that is not {@code static}. */

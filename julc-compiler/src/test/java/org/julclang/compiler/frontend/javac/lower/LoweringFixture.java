@@ -90,7 +90,7 @@ public final class LoweringFixture {
         assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend));
     }
 
-    private static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile) {
+    static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile) {
         var reference = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAPARSER));
         var javac = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAC));
         assertEquals(error(reference), error(javac), () -> javac.getMessage());

@@ -5,9 +5,11 @@ import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
+import org.julclang.core.flat.UplcFlatEncoder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -15,16 +17,19 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.List;
 import java.util.function.Function;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodRejectionAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameRejectionAsReference;
 
 /**
- * The subset's rules for an entry point and for what a field initializer may hold, on both frontends: the same code, words
- * and position. Rules only the javac frontend makes, because they are about what javac resolved, say so.
+ * The subset's rules for an entry point, for what a field initializer may hold and for a cast to {@code boolean}, on both
+ * frontends: the same code, words and position. One rule runs on javac's trees for both, so what these tests say about one
+ * frontend they say about the other. Rules only the javac frontend makes say so.
  */
 class SubsetRulesTest {
 
@@ -129,15 +134,50 @@ class SubsetRulesTest {
                 """.formatted(type));
     }
 
-    /** {@code Boolean} is the JDK's by identity on javac: a user's own is another type. */
-    @Test
-    void aUsersBooleanIsNotABooleanResult() {
-        assertJavacRule("JULC0094", IMPORTS + """
+    /** {@code Boolean} is the JDK's by identity: a user's own is another type, however it is declared. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record Boolean(long value) { }",
+            "@NewType record Boolean(BigInteger value) { }",
+            "class Boolean { }"})
+    void aUsersBooleanIsNotABooleanResult(String declaration) {
+        assertRule("JULC0094", IMPORTS + """
                 @SpendingValidator
                 class V {
-                    record Boolean(long value) { }
+                    %s
                     @Entrypoint
-                    static Boolean validate(Boolean redeemer, ScriptContext ctx) { return redeemer; }
+                    static Boolean validate(BigInteger redeemer, ScriptContext ctx) { return null; }
+                }
+                """.formatted(declaration));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "@NewType record Boolean(BigInteger value) { }",
+            "record Boolean(long value) { }"})
+    void aTopLevelUsersBooleanIsNotABooleanResult(String declaration) {
+        assertRule("JULC0094", IMPORTS + """
+                %s
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static Boolean validate(BigInteger redeemer, ScriptContext ctx) { return null; }
+                }
+                """.formatted(declaration));
+    }
+
+    /** The rule reads what an annotation is called, as the compilation does: a user's own {@code @Entrypoint} is one. */
+    @Test
+    void anEntryPointIsKnownByItsAnnotationsName() {
+        assertRule("JULC0094", """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                @SpendingValidator
+                class V {
+                    @interface Entrypoint { }
+                    @Entrypoint
+                    static long validate(PlutusData redeemer, ScriptContext ctx) { return 1; }
                 }
                 """);
     }
@@ -205,7 +245,19 @@ class SubsetRulesTest {
             "static final long K = 1; BigInteger instance = BigInteger.valueOf(K);",
             "BigInteger instance = new BigInteger(\"5\");",
             "long instance = 1 + 1;",
-            "long instance = helper2() > 0 ? 1 : 2;"})
+            "long instance = helper2() > 0 ? 1 : 2;",
+            "final long instance = 1 / 0;",
+            "@Param static final long p = 1 / 0;",
+            "final long instance = 1L % (1L - 1L);",
+            "static class Nested { static final long H = 1L % (1L - 1L); }",
+            "record Nested(long a) { static final long H = 1 / 0; }",
+            "BigInteger instance = null;",
+            "long instance = ~1;",
+            "boolean instance = !true;",
+            "long instance = -helper2();",
+            "int instance = Boolean.hashCode(true);",
+            "boolean instance = Boolean.valueOf(helper2() > 0);",
+            "boolean instance = Boolean.valueOf(\"true\");"})
     void aFieldNothingLowersHoldsOnlyAConstant(String field) {
         assertMethodRule("JULC0095", IMPORTS + """
                 class P {
@@ -218,17 +270,15 @@ class SubsetRulesTest {
                 """.formatted(field));
     }
 
-    /** The one array is {@code byte[]}. The reference has an older word for this; both reject it. */
+    /** The one array is {@code byte[]}. */
     @Test
     void anArrayInAnInitializerIsNoConstant() {
-        String source = """
+        assertMethodRule("JULC0095", """
                 class P {
                     long[] instance = new long[]{1};
                     static long m() { return 1; }
                 }
-                """;
-        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
-        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+                """);
     }
 
     @ParameterizedTest
@@ -293,17 +343,116 @@ class SubsetRulesTest {
         assertEquals("JULC0088", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
     }
 
-    /** The one call is the JDK's: a user's {@code Boolean} has no {@code valueOf} this rule knows. */
-    @Test
-    void aUsersValueOfIsACall() {
-        String source = """
+    /** What stands before the dot runs unless it is a type, whatever the dot reaches. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "@Param static long p = ((OPEN = false) ? SELF : SELF).K;",
+            "@Param static long p = SELF.x;",
+            "@Param static Boolean p = ((OPEN = false) ? Boolean.TRUE : Boolean.FALSE).valueOf(true);",
+            "@Param static long p = new P().K;",
+            "long instance = (SELF).K;",
+            "long instance = SELF.K;"})
+    void aConstantIsReachedOnAType(String field) {
+        assertMethodRule("JULC0095", """
+                import org.julclang.stdlib.annotation.*;
                 class P {
-                    static class Boolean { static long valueOf(boolean b) { return 1; } }
-                    long instance = Boolean.valueOf(true);
+                    static boolean OPEN = true;
+                    static P SELF;
+                    static final long K = 5;
+                    final long x = 5;
+                    %s
                     static long m() { return 1; }
                 }
-                """;
-        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
+                """.formatted(field));
+    }
+
+    /** A name is what it resolved to: a field of that name is no API type, and a user's type has no API constant. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static P BigInteger; long ZERO; @Param static long p = BigInteger.ZERO;",
+            "static P PlutusData; long UNIT; @Param static long p = PlutusData.UNIT;",
+            "static class BigInteger { static final Object ZERO = new Object(); } Object instance = BigInteger.ZERO;",
+            "static class PlutusData { static final Object UNIT = new Object(); } Object instance = PlutusData.UNIT;"})
+    void anApiConstantIsTheApis(String field) {
+        assertMethodRule("JULC0095", """
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    %s
+                    static long m() { return 1; }
+                }
+                """.formatted(field));
+    }
+
+    /** The one call is the JDK's: a user's {@code Boolean} has no {@code valueOf} this rule knows. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static class Boolean { static long valueOf(boolean b) { return 1; } } long instance = Boolean.valueOf(true);",
+            "static class Boolean { static boolean valueOf(boolean b) { return 1 / 0 == 0; } } @Param static boolean p = Boolean.valueOf(true);",
+            "static class Boolean { static boolean valueOf(boolean b) { OPEN = false; return b; } } @Param static boolean p = Boolean.valueOf(true);"})
+    void aUsersValueOfIsACall(String field) {
+        assertMethodRule("JULC0095", """
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    static boolean OPEN = true;
+                    %s
+                    static long m() { return 1; }
+                }
+                """.formatted(field));
+    }
+
+    @Test
+    void aTopLevelUsersValueOfIsACall() {
+        assertMethodRule("JULC0095", """
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    static boolean OPEN = true;
+                    @Param static boolean p = Boolean.valueOf(true);
+                    static long m() { return 1; }
+                }
+                class Boolean {
+                    static boolean valueOf(boolean b) { P.OPEN = false; return b; }
+                }
+                """);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "long instance = K;",
+            "long instance = P.K;",
+            "long instance = (P.K);"})
+    void aConstantOnATypeIsAConstant(String field) {
+        assertSameMethodAsReference("""
+                class P {
+                    static final long K = 5;
+                    %s
+                    static long m() { return 1; }
+                }
+                """.formatted(field), "m");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Boolean.valueOf(true)", "java.lang.Boolean.valueOf(false)", "valueOf(true)"})
+    void theJdksValueOfIsTheOneCall(String call) {
+        assertSameMethodAsReference("""
+                import static java.lang.Boolean.valueOf;
+                class P {
+                    boolean instance = %s;
+                    static long m() { return 1; }
+                }
+                """.formatted(call), "m");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SpendingValidator", "MintingValidator", "MultiValidator"})
+    void aParamOfAnyValidatorHoldsOnlyAConstant(String annotation) {
+        assertRule("JULC0095", IMPORTS + """
+                @%s
+                class V {
+                    @Param static final long p = 1 / 0;
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """.formatted(annotation));
     }
 
     @ParameterizedTest
@@ -358,27 +507,55 @@ class SubsetRulesTest {
         });
     }
 
-    /** A library's static fields lower too, and the same rule holds for the rest. The javac frontend reads no library yet. */
-    @Test
-    void aLibraryFieldNothingLowersHoldsOnlyAConstant() {
-        String validator = IMPORTS + """
-                @SpendingValidator
-                class V {
-                    @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
-                }
-                """;
-        String library = """
+    private static final String LIBRARY_CALLER = IMPORTS + """
+            @SpendingValidator
+            class V {
+                @Entrypoint
+                static boolean validate(PlutusData redeemer, ScriptContext ctx) { return L.helper() > 0; }
+            }
+            """;
+
+    private static String library(String member) {
+        return """
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 class L {
-                    long instance = helper();
+                    %s
                     static long helper() { return 1; }
                 }
-                """;
-        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compile(validator, List.of(library)));
-        assertEquals("JULC0095", thrown.diagnostics().getFirst().code());
-        new JulcCompiler(null, new CompilerOptions()).compile(validator, List.of(library.replace("long instance = helper();", "static long lowered = helper();")));
+                """.formatted(member);
+    }
+
+    /** A library's static fields lower too, and the same rule holds for the rest. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "long instance = helper();",
+            "long instance = 1 / 0;",
+            "record R(int a) { static final int H = 1 / 0; }",
+            "@org.julclang.stdlib.annotation.Param static long p = helper();",
+            "static { helper(); }",
+            "interface I { long F = helper(); }"})
+    void aLibraryFieldNothingLowersHoldsOnlyAConstant(String member) {
+        var libraries = List.of(library(member));
+        LoweringFixture.assertSameRejection(frontend -> new JulcCompiler(null, new CompilerOptions().setFrontend(frontend))
+                .compile(LIBRARY_CALLER, libraries));
+        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAC));
+        assertEquals("JULC0095", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+    }
+
+    @Test
+    void aLibrarysStaticFieldLowers() {
+        new JulcCompiler(null, new CompilerOptions()).compile(LIBRARY_CALLER, List.of(library("static long lowered = helper();")));
+    }
+
+    /** javac reads what the program references, and the rule reads what javac read. */
+    @Test
+    void aLibraryTheProgramDoesNotReadIsNotChecked() {
+        String validator = LIBRARY_CALLER.replace("L.helper() > 0", "true");
+        for (var level : OptimizationLevel.values()) {
+            var options = new CompilerOptions().setOptimizationLevel(level);
+            new JulcCompiler(null, options).compile(validator, List.of(library("long instance = helper();")));
+        }
     }
 
     @Test
@@ -396,6 +573,150 @@ class SubsetRulesTest {
                     static long m() { return K; }
                 }
                 """, "m");
+    }
+
+    // --- A cast to boolean ---
+
+    private static String validator(String body) {
+        return IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) { %s }
+                }
+                """.formatted(body);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "return (boolean) (Object) r;",
+            "return (Boolean) (Object) r;",
+            "return (boolean) ((Object) r);",
+            "return (boolean) (Object) (PlutusData) (Object) r;",
+            "if ((boolean) (Object) r) { return true; } return false;",
+            "boolean b = (boolean) (Object) r; return b && true;",
+            "return !(boolean) (Object) r;",
+            "return (boolean) (Object) ((PlutusData) (Object) r);",
+            "PlutusData d = (PlutusData) (Object) (boolean) (Object) r; return true;"})
+    void aCastToBooleanTakesABooleanOrData(String body) {
+        assertRule("JULC0098", validator(body));
+    }
+
+    @Test
+    void aHelpersCastToBooleanTakesABooleanOrData() {
+        assertRule("JULC0098", IMPORTS + """
+                @SpendingValidator
+                class V {
+                    static boolean helper(BigInteger r) { return (boolean) (Object) r; }
+                    @Entrypoint
+                    static boolean validate(BigInteger r, ScriptContext ctx) { return helper(r); }
+                }
+                """);
+    }
+
+    @Test
+    void aMethodsCastToBooleanTakesABooleanOrData() {
+        assertMethodRule("JULC0098", """
+                import java.math.BigInteger;
+                class P {
+                    static boolean m(BigInteger r) { return (Boolean) (Object) r; }
+                }
+                """);
+    }
+
+    @Test
+    void aLibrarysCastToBooleanTakesABooleanOrData() {
+        var library = library("static boolean flag(BigInteger r) { return (boolean) (Object) r; }")
+                .replace("import ", "import java.math.BigInteger;\nimport ");
+        assertEquals("JULC0098", code(compiler -> compiler.compile(LIBRARY_CALLER, List.of(library)), CompilerFrontend.JAVAPARSER));
+        assertEquals("JULC0098", code(compiler -> compiler.compile(LIBRARY_CALLER, List.of(library)), CompilerFrontend.JAVAC));
+    }
+
+    /** What is allowed is left as it was: boolean stays boolean, and Data is read at the cast. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "return (boolean) true;",
+            "return (Boolean) true;",
+            "boolean flag = r.signum() > 0; return (boolean) flag;",
+            "boolean flag = r.signum() > 0; return (Boolean) flag;",
+            "Boolean flag = r.signum() > 0; return (boolean) flag;",
+            "boolean flag = r.signum() > 0; return (boolean) (Object) flag;",
+            "boolean flag = r.signum() > 0; return (Boolean) (Object) flag;",
+            "boolean flag = r.signum() > 0; return (boolean) ((Object) flag);"})
+    void aCastToBooleanOfABooleanCompiles(String body) {
+        new JulcCompiler(null, new CompilerOptions()).compile(validator(body));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PlutusData", "PlutusData.ConstrData"})
+    void aCastToBooleanOfDataCompiles(String type) {
+        new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(%s r, ScriptContext ctx) { return (boolean) (Object) r; }
+                }
+                """.formatted(type));
+    }
+
+    @Test
+    void aCastToAnotherTypeIsLeftAlone() {
+        new JulcCompiler(null, new CompilerOptions()).compile(validator("BigInteger same = (BigInteger) (Object) r; return same.signum() > 0;"));
+    }
+
+    /** {@code null} has no type this rule reads, and no meaning on-chain: that is its own rejection. */
+    @Test
+    void aCastOfNullIsNull() {
+        assertEquals("JULC0017", code(compiler -> compiler.compile(validator("return (Boolean) null;")), CompilerFrontend.JAVAPARSER));
+    }
+
+    // --- A declaration of several variables ---
+
+    /** Each variable has its own type: the {@code []} is on the name. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "final byte a = 1, b[] = new byte[]{1};",
+            "static class Nested { static final byte a = 1, b[] = new byte[]{1}; }"})
+    void aDeclarationOfTwoTypesHoldsOnlyConstants(String field) {
+        assertSameMethodAsReference("""
+                class P {
+                    %s
+                    static long m() { return 1; }
+                }
+                """.formatted(field), "m");
+    }
+
+    @Test
+    void aLibrarysDeclarationOfTwoTypesHoldsOnlyConstants() {
+        new JulcCompiler(null, new CompilerOptions()).compile(LIBRARY_CALLER, List.of(library("final byte a = 1, b[] = new byte[]{1};")));
+    }
+
+    /** A lowered {@code byte} has no type on-chain: that is the type's rejection, not a failure to read the declaration. */
+    @ParameterizedTest
+    @ValueSource(strings = {"static final byte a = 1, b[] = new byte[]{1};", "@Param static byte a = 1, b[] = new byte[]{1};"})
+    void aLoweredDeclarationOfTwoTypesIsReadVariableByVariable(String field) {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+                @SpendingValidator
+                class V {
+                    %s
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """.formatted(field)));
+        assertTrue(thrown.getMessage().contains("byte"), thrown::getMessage);
+    }
+
+    @Test
+    void theParamsHaveATypeEach() {
+        var result = new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Param static BigInteger first = BigInteger.ZERO, second = BigInteger.ONE;
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return first.compareTo(second) < 0; }
+                }
+                """);
+        assertEquals(List.of("first", "second"), result.params().stream().map(CompileResult.ParamInfo::name).toList());
     }
 
     // --- Varargs ---

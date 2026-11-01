@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -73,6 +75,22 @@ class BuildCommandJavacGateTest {
         Path project = project(dir, "MathLib.max(ctx.txInfo().fee(), Fees.minimum()).signum() > 0");
         assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString()));
         assertTrue(Files.isRegularFile(ProjectLayout.plutusDir(project).resolve("plutus.json")));
+    }
+
+    /** A subset rule reaches the build at the default mode, with nothing set. */
+    @Test
+    void aSubsetRuleFailsTheBuild(@TempDir Path dir) throws Exception {
+        System.clearProperty(JavacGate.MODE_PROPERTY);
+        Path project = project(dir, "(boolean) (Object) ctx.txInfo().fee()");
+        var err = System.err;
+        var written = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(written, true));
+        try {
+            assertEquals(1, new CommandLine(new BuildCommand()).execute(project.toString()));
+        } finally {
+            System.setErr(err);
+        }
+        assertTrue(written.toString().contains("JULC0098"), written.toString());
     }
 
     @Test

@@ -18,7 +18,6 @@ import org.julclang.compiler.frontend.javac.lower.BindingCheck;
 import org.julclang.compiler.frontend.javac.lower.Lowering;
 import org.julclang.compiler.frontend.javac.lower.Scope;
 import org.julclang.compiler.frontend.javac.subset.SubsetScan;
-import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -267,6 +266,8 @@ public final class JavacCompilation {
 
     private CompileResult validator(boolean captureDetails) {
         var unit = program.roots().getFirst();
+        // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
+        SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
         // 2. Validate subset
         SubsetScan.check(facts, unit);
         verifyBinderNamespace(unit);
@@ -274,8 +275,6 @@ public final class JavacCompilation {
         // 4. Find annotated validator class and determine purpose
         var type = discovery.validatorClass(unit);
         var purpose = discovery.purpose(type);
-        // 4b. What is not lowered holds only a constant
-        UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
         // 5. Register types
         program.registerTypes();
         // 6, 6b. @Param and static fields
@@ -335,7 +334,6 @@ public final class JavacCompilation {
             entries = List.of(new JavacDiscovery.EntryPoint(method, "DEFAULT", -1));
         }
         for (var entry : entries) {
-            discovery.requireBooleanResult(entry.method(), type);
             discovery.requireStaticEntrypoint(entry.method(), type);
         }
         return entries;
@@ -368,6 +366,8 @@ public final class JavacCompilation {
 
     private CompileResult method(String methodName) {
         var unit = program.roots().getFirst();
+        // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
+        SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
         // 2. Validate subset
         SubsetScan.check(facts, unit);
         verifyBinderNamespace(unit);
@@ -379,8 +379,6 @@ public final class JavacCompilation {
                 .findFirst()
                 .orElseThrow(() -> new CompilerException(
                         "No static method '" + methodName + "' found in " + type.getSimpleName()));
-        // 4b. What is not lowered holds only a constant
-        UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
         // 5. Register types
         program.registerTypes();
         // 7, 7b. @Param and static fields

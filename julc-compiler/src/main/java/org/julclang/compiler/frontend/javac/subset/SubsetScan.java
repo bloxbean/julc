@@ -104,6 +104,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitLiteral(LiteralTree literal, Void ignored) {
+                if (literal.getKind() == Tree.Kind.NULL_LITERAL) throw NotPorted.at(facts, literal);
                 requirePairedSurrogates(literal);
                 return null;
             }

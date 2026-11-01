@@ -8,7 +8,9 @@ import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.source.util.Trees;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.resolve.TypeRegistry;
 
 import javax.lang.model.SourceVersion;
 import javax.lang.model.util.Elements;
@@ -191,6 +193,22 @@ public final class JavacFrontend {
     /** {@link #analyze(List, List)}, keeping the attributed trees. */
     Attribution attribute(List<Unit> roots, List<Unit> pool) {
         return analyze(roots, pool, null, true, null);
+    }
+
+    /** {@link #analyze(List, List)}, then, on what javac accepted, the subset's rules ({@link SubsetRules}). */
+    JavacResult analyzeWithRules(List<Unit> roots, List<Unit> pool, JavacGate.Compiled compiled) {
+        var attribution = attribute(roots, pool);
+        if (!attribution.result().isAccepted() || attribution.trees() == null) return attribution.result();
+        try {
+            SubsetRules.check(JavacFacts.of(attribution, new TypeRegistry()), attribution.roots(), attribution.libraries(), compiled);
+            return attribution.result();
+        } catch (CompilerException e) {
+            var rejected = e.diagnostics().stream().map(diagnostic -> new JavacDiagnostic(diagnostic.code(), null,
+                    diagnostic.message(), diagnostic.fileName(), diagnostic.line(), diagnostic.column(), -1, -1,
+                    diagnostic.suggestion())).toList();
+            return new JavacResult(rejected, javacVersion(), platform.platformDigest(), platform.stubsDigest(),
+                    attribution.result().dropped());
+        }
     }
 
     /**

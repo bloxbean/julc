@@ -1306,13 +1306,14 @@ The [release notes](/reference/release-notes/) list the rewrites.
 
 A runtime without a supported javac (JDK 25 with the `jdk.compiler` module) is `JULC0089`.
 
-### `JULC0094` `Entrypoint <method> of <class> returns <type>; an entry point returns boolean`
+### `JULC0094` `Entrypoint <method> of <class> returns <type>; an entry point returns boolean or java.lang.Boolean`
 
-**Cause:** An `@Entrypoint` method returns something other than `boolean` or `Boolean`.
+**Cause:** An `@Entrypoint` method returns something other than `boolean` or `java.lang.Boolean`.
+A type of your own named `Boolean` is not `java.lang.Boolean`.
 
 **Fix:** Return a `boolean`. To fail, return `false` or call `Builtins.error()`.
 
-### `JULC0095` `<field or block> is not lowered, so it holds only a literal, a byte[] literal, an API constant or a constant`
+### `JULC0095` `<field or block> is not lowered, so ...`
 
 **Cause:** A `static` field of the class being compiled is lowered. Nothing lowers any other
 field (a `@Param`, an instance field, a field of a nested type or a record), and nothing lowers
@@ -1322,6 +1323,12 @@ an initializer block.
 `BigInteger.ZERO`, `ONE`, `TWO` or `TEN`, `PlutusData.UNIT`, a constant variable, or
 `Boolean.valueOf(true)` or `Boolean.valueOf(false)`. Move anything else to a `static` field of
 the class being compiled, or to a method. Keep an initializer block empty.
+
+### `JULC0098` `A cast to <type> takes a boolean, a Boolean or a PlutusData, not <type>`
+
+**Cause:** A cast to `boolean` or `Boolean` of something else, through parentheses and other casts.
+
+**Fix:** Compute the boolean with a comparison.
 
 ### `JULC0096` `<source or class> declares more than one <validator class or @Entrypoint method>`
 

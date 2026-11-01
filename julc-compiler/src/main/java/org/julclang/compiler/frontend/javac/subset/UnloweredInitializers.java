@@ -17,25 +17,22 @@ import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.TypeKind;
 import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * A subset rule ({@code JULC0095}): what is not lowered holds only a constant. A static field of the compiled class is
- * lowered. Any other field initializer (a {@code @Param} field, an instance field, a field of another type) holds only a
- * literal, a {@code new byte[]{...}} of literals, an API constant or a constant variable, and an initializer block is
- * empty.
+ * A subset rule ({@code JULC0095}): what is not lowered holds only a constant. Any field initializer a compilation does not
+ * lower holds only a literal, a {@code new byte[]{...}} of literals, an API constant or a constant variable, and an
+ * initializer block is empty. Only javac can tell these: {@link VariableElement#getConstantValue()} is the language's own
+ * answer, and a name is what it resolved to.
  * <p>
  * This list is closed, and it is deliberately not {@link SubsetScan}'s: that list grows as lowering learns a construct,
- * and a construct lowering has learned says nothing here, where lowering never looks. So a kind joins {@code SubsetScan}
- * for the code lowering reaches, and this rule stays as it is. A field Java itself treats as a constant is left alone, so
- * that {@code JULC0088} still reports a {@code @Param} one.
+ * and a construct lowering has learned says nothing here, where lowering never looks. A field Java itself treats as a
+ * constant is left alone, so that {@code JULC0088} still reports a {@code @Param} one.
  */
 public final class UnloweredInitializers {
 
@@ -59,6 +56,7 @@ public final class UnloweredInitializers {
                 if (facts.parent(tree) instanceof ClassTree && tree.getInitializer() != null && !lowered.test(tree)
                         && !rule.holdsAConstant(tree)) {
                     throw CompilerTypeDiagnostics.initializerNotLowered("The initializer of field '" + tree.getName() + "'",
+                            "it holds only a literal, a byte[] literal, an API constant or a constant",
                             facts.location(tree.getInitializer()));
                 }
                 return super.visitVariable(tree, unused);
@@ -67,7 +65,7 @@ public final class UnloweredInitializers {
             @Override
             public Void visitBlock(BlockTree tree, Void unused) {
                 if (facts.parent(tree) instanceof ClassTree && !tree.getStatements().isEmpty()) {
-                    throw CompilerTypeDiagnostics.initializerNotLowered("An initializer block", facts.location(tree));
+                    throw CompilerTypeDiagnostics.initializerNotLowered("An initializer block", "it is empty", facts.location(tree));
                 }
                 return super.visitBlock(tree, unused);
             }
@@ -81,20 +79,21 @@ public final class UnloweredInitializers {
     private boolean isAllowed(ExpressionTree expression) {
         return switch (expression) {
             case ParenthesizedTree enclosed -> isAllowed(enclosed.getExpression());
-            case LiteralTree literal -> isLiteral(literal);
+            case LiteralTree literal -> literal.getKind() != Tree.Kind.NULL_LITERAL;
             case UnaryTree unary -> unary.getKind() == Tree.Kind.UNARY_MINUS && unary.getExpression() instanceof LiteralTree;
             case NewArrayTree array -> SubsetScan.isByteLiteral(array);
             case IdentifierTree name -> isConstantVariable(name);
-            case MemberSelectTree select -> isConstantVariable(select) || isApiConstant(select);
+            case MemberSelectTree select -> onAType(select) && (isConstantVariable(select) || isApiConstant(select));
             case MethodInvocationTree call -> isBooleanValueOf(call);
             default -> false;
         };
     }
 
-    /** {@code null} has a rule of its own in the subset, which is not ported. */
-    private boolean isLiteral(LiteralTree literal) {
-        if (literal.getKind() == Tree.Kind.NULL_LITERAL) throw NotPorted.at(facts, literal);
-        return true;
+    /** What stands before the dot is a type. Any other expression there would run, whatever the dot reaches. */
+    private boolean onAType(MemberSelectTree select) {
+        var qualifier = select.getExpression();
+        return (qualifier instanceof IdentifierTree || qualifier instanceof MemberSelectTree)
+                && facts.element(qualifier) instanceof TypeElement;
     }
 
     private boolean isConstantVariable(Tree name) {
@@ -102,23 +101,22 @@ public final class UnloweredInitializers {
     }
 
     private boolean isApiConstant(MemberSelectTree select) {
-        return select.getExpression() instanceof IdentifierTree qualifier && facts.element(qualifier) instanceof TypeElement
-                && facts.element(select).getEnclosingElement() instanceof TypeElement owner
+        return facts.element(select).getEnclosingElement() instanceof TypeElement owner
                 && JavacNames.API_CONSTANTS.getOrDefault(facts.identity(owner), Set.of())
                         .contains(select.getIdentifier().toString());
     }
 
     /**
      * {@code Boolean.valueOf(true)}, the one call: how a {@code boolean @Param} is written so that it is no constant
-     * variable (D14). By identity: the JDK's {@code valueOf(boolean)}, over a literal.
+     * variable (D14). By identity: the JDK's {@code valueOf}, of a boolean literal, on a type or a static import.
      */
     private boolean isBooleanValueOf(MethodInvocationTree call) {
-        return facts.element(call.getMethodSelect()) instanceof ExecutableElement method
+        var select = call.getMethodSelect();
+        return (select instanceof IdentifierTree || select instanceof MemberSelectTree member && onAType(member))
+                && facts.element(select) instanceof ExecutableElement method
                 && method.getSimpleName().contentEquals(BOOLEAN_VALUE_OF)
                 && method.getEnclosingElement() instanceof TypeElement owner
                 && facts.identity(owner).equals(JavacNames.BOOLEAN)
-                && method.getParameters().size() == 1
-                && method.getParameters().getFirst().asType().getKind() == TypeKind.BOOLEAN
                 && call.getArguments().getFirst().getKind() == Tree.Kind.BOOLEAN_LITERAL;
     }
 }
