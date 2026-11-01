@@ -97,36 +97,47 @@ public class ValuesLib {
      * of them does not hold is 0 there.
      */
     public static boolean geqMultiAsset(Value a, Value b) {
-        if (!_geqOverPolicies(Builtins.unMapData(a), a, b)) {
-            return false;
-        }
-        return _geqOverPolicies(Builtins.unMapData(b), a, b);
+        return _holdsBothWays(a, b, BigInteger.ONE);
     }
 
-    /** Whether a >= b at every (policy, token) of a pair list of policies. */
-    public static boolean _geqOverPolicies(PlutusData policies, Value a, Value b) {
+    /**
+     * Compares two Values by one pass over the keys of each, where a key one of them does not hold is 0 there. At each key,
+     * {@code walked - other} is 0 or has the sign of {@code direction}. A {@code direction} of 0 asks for equality.
+     */
+    public static boolean _holdsBothWays(Value a, Value b, BigInteger direction) {
+        var aPolicies = Builtins.unMapData(a);
+        var bPolicies = Builtins.unMapData(b);
+        if (!_holdsOverPolicies(aPolicies, bPolicies, direction)) {
+            return false;
+        }
+        return _holdsOverPolicies(bPolicies, aPolicies, direction.negate());
+    }
+
+    /** {@link #_holdsBothWays} over the walked side's policies: each takes one lookup of the other side's tokens. */
+    public static boolean _holdsOverPolicies(PlutusData policies, PlutusData other, BigInteger direction) {
         if (Builtins.nullList(policies)) {
             return true;
         }
         var pair = Builtins.headList(policies);
-        if (!_geqOverTokens(Builtins.fstPair(pair), Builtins.unMapData(Builtins.sndPair(pair)), a, b)) {
+        var otherTokens = _tokensOf(other, Builtins.fstPair(pair));
+        if (!_holdsOverTokens(Builtins.unMapData(Builtins.sndPair(pair)), otherTokens, direction)) {
             return false;
         }
-        return _geqOverPolicies(Builtins.tailList(policies), a, b);
+        return _holdsOverPolicies(Builtins.tailList(policies), other, direction);
     }
 
-    /** Whether a >= b at every token of a pair list, under one policy. */
-    public static boolean _geqOverTokens(PlutusData policy, PlutusData tokens, Value a, Value b) {
+    /** {@link #_holdsBothWays} over one policy's tokens. Each key takes one lookup: the walked amount is in its entry. */
+    public static boolean _holdsOverTokens(PlutusData tokens, PlutusData.MapData other, BigInteger direction) {
         if (Builtins.nullList(tokens)) {
             return true;
         }
-        var token = Builtins.fstPair(Builtins.headList(tokens));
-        var aAmount = _assetOf(a, (PlutusData.BytesData) policy, (PlutusData.BytesData) token);
-        var bAmount = _assetOf(b, (PlutusData.BytesData) policy, (PlutusData.BytesData) token);
-        if (aAmount.compareTo(bAmount) < 0) {
+        var entry = Builtins.headList(tokens);
+        var difference = Builtins.unIData(Builtins.sndPair(entry))
+                .subtract(findTokenAmount(other, (PlutusData.BytesData) Builtins.fstPair(entry)));
+        if (!difference.equals(BigInteger.ZERO) && difference.multiply(direction).compareTo(BigInteger.ZERO) <= 0) {
             return false;
         }
-        return _geqOverTokens(policy, Builtins.tailList(tokens), a, b);
+        return _holdsOverTokens(Builtins.tailList(tokens), other, direction);
     }
 
     /** Checks if value a <= value b (multi-asset). */
@@ -136,11 +147,7 @@ public class ValuesLib {
 
     /** Checks if two values are equal (multi-asset). */
     public static boolean eq(Value a, Value b) {
-        if (geqMultiAsset(a, b)) {
-            return geqMultiAsset(b, a);
-        } else {
-            return false;
-        }
+        return _holdsBothWays(a, b, BigInteger.ZERO);
     }
 
     /** Checks if a value is zero (all amounts == 0). */

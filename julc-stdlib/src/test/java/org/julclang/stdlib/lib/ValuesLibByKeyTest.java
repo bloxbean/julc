@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code lovelaceOf}, {@code add}, {@code subtract}, {@code negate}, {@code geqMultiAsset}, {@code leq} and {@code eq} go by
- * key: a computed Value is read on-chain with {@code lovelaceOf} and {@code assetOf}, and compared whole, at every level.
+ * key: a computed Value is read on-chain with {@code lovelaceOf} and {@code assetOf}, and compared whole.
  * On-chain is the point: a Value carried back to the JVM is read through a map, by key, which shows neither the order of its
  * entries nor a repeated key.
  */
@@ -359,6 +359,14 @@ class ValuesLibByKeyTest {
         assertEquals(false, evaluates(level, "sum", integerPolicy, value(policy(Q, token(T1, 1)))));
         assertEquals(false, evaluates(level, "sum", integerToken, value(policy(P, token(T1, 1)))));
         assertEquals(integerPolicy, run(level, "sum", integerPolicy, value()));
+    }
+
+    /** A comparison reads every amount of the keys it walks, so an amount that is no map stops it. */
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void geqMultiAssetReadsAPolicysTokensAsAMap(OptimizationLevel level) {
+        assertEquals(false, evaluates(level, "geqEveryKey", value(entry(P, ONE)), value()));
+        assertEquals(false, evaluates(level, "geqEveryKey", value(), value(entry(P, ONE))));
     }
 
     @ParameterizedTest
