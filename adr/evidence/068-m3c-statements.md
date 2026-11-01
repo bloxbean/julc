@@ -58,9 +58,10 @@ The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md). Mach
 | A variant of two sealed interfaces | `JULC0084`: a tag is per interface, and the reference takes the last registered. No rule on the javac frontend names it yet |
 | A variant that is a class, or a `@NewType` record | `JULC0084`: the reference accepts these; a `@NewType` is not Constr-encoded, so a tag read of it is not Java's test |
 
-The third row is the gate's `JULC0100` rule as a stop, since the gate's rules do not run on `JAVAC`. No program reaches it today: javac rejects
-an unrelated operand, an interface that is not sealed is no type of the subset, and `Object` comes only by a cast, which stops first. It is
-what stands in front of `(Object) r instanceof S.A a` when casts are ported. `LoweringAloneTest` reaches it past the scan.
+The third row is the gate's `JULC0100` rule as a stop, since the gate's rules do not run on `JAVAC`. javac rejects an unrelated operand, an interface
+that is not sealed is no type of the subset, and `Object` comes only by a cast, which stops first. `(c ? a : b) instanceof S.B x`, with `S.A a, S.B b`,
+reaches it with no cast: the operand's type is the lub `Record & S`, and the default frontend's answer is `JULC0100`. It also stands in front of
+`(Object) r instanceof S.A a` when casts are ported. `LoweringAloneTest` reaches it past the scan.
 
 **Evaluation order.** `TypeTests`, `Ifs` and `Statements` state it. As in the reference, `if (e instanceof V v)` lowers `e` twice, so where the
 test holds it runs twice. It is pinned, not changed: the second evaluation gives the same value, and only a trace or the budget shows it.
@@ -162,9 +163,9 @@ The same differences with no row, since no corpus case has them:
 | Semantic fix | `instanceof` on one of two variants of one simple name takes its own tag (F807). The reference compares the first's | `Adr068StatementsHarnessTest.twoVariantsOfOneSimpleNameHaveTwoTags` |
 | Diagnostic change | A rejection the reference raises with no diagnostic (`Unsupported instanceof pattern`, `EmptyStmt` in a branch, `Undefined variable: x`) is located here, with its words. Types as M2's row says | `JavacStatementsTest` |
 
-**No new widening.** `DIFFERENT-javac-accepts` is 19, as it was. M3c's first run had none either, but a shape the corpus lacks did widen: `var o =
-Optional.of(a); o.isPresent()`, and `var a = JulcArray.of(BigInteger.ONE, "x")`, each agreeing with the JVM where the reference rejects. Both are
-closed, by the rules above, and pinned.
+**Widening.** `DIFFERENT-javac-accepts` is 19, as it was. M3c's first run had none either, but a shape the corpus lacks did widen: `var o =
+Optional.of(a); o.isPresent()`, and `var a = JulcArray.of(BigInteger.ONE, "x")`, each agreeing with the JVM where the reference rejects. Both closed by the
+rules above. Parentheses, a conditional and `var p = o` around the first stayed open past this slice, and Group 1 closes them with one rule: `CallTargets.seen`.
 
 ## Results
 
@@ -354,7 +355,8 @@ Every `JULC0084` this slice adds that a compilation can reach. `JavacStopsTest` 
 | `an instanceof of a variant of two sealed interfaces` | `record R() implements P1, P2`, tested on either | Accepts it, with the last registered sum's tag. M5 needs a decision: ADR-067 M3's `JULC0079` is the likely answer |
 | `an instanceof of a variant that is not a plain record` | A class or a `@NewType` as a variant | Accepts it |
 
-**A guard behind another rule.** `an instanceof of an operand outside the variant's sealed interface` stands behind `TYPE_CAST` until casts are ported, and is the gate's `JULC0100` on this frontend.
+**The operand of a type test.** `an instanceof of an operand outside the variant's sealed interface` is the gate's `JULC0100` on this frontend. A cast or a conditional of two variants reaches it (row above).
+**The other stops this slice reaches.** `boolean J = (true || J);` with a static `J`: Java lets a local's initializer read the local in an operand that never runs. It stops at `IDENTIFIER J`, since the binder does not exist yet, and the reference reads the static, also unevaluated. No answer can differ.
 `an if around a loop` stands behind the loops' own stops, until M4.
 
 **Constructs a later slice ports.** Prefix and postfix `++` and `--`, `assert`, a local class or record, `try`, `throw`, `synchronized`, `for`, `do`, a `switch` statement and `null`. The reference has a rule

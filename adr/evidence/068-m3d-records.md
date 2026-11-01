@@ -48,7 +48,8 @@ Machine and toolchain as in M0's evidence.
   `java.math.BigInteger.ONE` are `Undefined variable`, also the reference's. `BigInteger.X` and `PlutusData.X` on a type of that simple name
   that is not the API's stop, because the reference reads those two qualifiers by spelling.
 - **A read on `new` itself stays rejected.** `new R(x).a()`, `(new R(x)).a()`, `new Tuple2<>(x, y).second()`, and a `var` of `(new R(x))` or of
-  a conditional of two `new`s, are `JULC0055` (I2). `new R(x).equals(y)` lowers, as in the reference.
+  a conditional of two `new`s, are `JULC0055` (I2). So is a `var` of a parenthesized or conditional explicit tuple, whose type only a diamond keeps with
+  its term. `(new Tuple2<>(x, y)).second()` of a diamond lowers, as in the reference. `new R(x).equals(y)` lowers, as in the reference.
 - **`@Param` outside the compiled class (F909).** Nothing changes here. It is inert on both frontends: it is no parameter, and a read through
   the type is `Undefined variable`, so the field has no value to be wrong about. `JavacRecordsTest` pins that. The ADR can state it in D14.
 
@@ -166,7 +167,7 @@ New against the merged base. The integrator lists these in `068/lowering-accepte
 | 3 | `DIFFERENT-bytes` | Semantic fix (#284, #286, T33) | `be426258`, `548f9534`, `de6c50ef`: `reject-packageless-pubkeyhash-record`, `reject-packageless-rational-record`, `-wildcard`: a user record named like a ledger type. The reference, with the gate off, reads the ledger's. On `JAVAC` each agrees with the JVM at all four levels (`Adr068SavedCasesOnJavacTest`) |
 | 1 | `DIFFERENT-bytes` | Semantic fix (T33) | `079d0289`: `reject-top-level-user-value-on-local`: `record Value(boolean isEmpty)`. The same test |
 | 1 | `DIFFERENT-javac-rejects` | Policy rejection (M0's clarification of D6) | `132e0afc`: `agree-equals-unknown-ternary`: `.equals` at static type `java.lang.Record` is `JULC0087`. `new` was what stopped it before |
-| 2 | `DIFFERENT-javac-rejects` | Policy rejection (I2) | `3fd05c4d`, `4bc9400a`: `reject-top-level-user-value-on-constructor`, `reject-user-value-accessor-on-constructor`: a read on `new` itself is `JULC0055`. The reference, with the gate off, reads the name as the ledger's |
+| 2 | `DIFFERENT-javac-rejects` | Policy rejection (D15) | `3fd05c4d`, `4bc9400a`: `reject-top-level-user-value-on-constructor`, `reject-user-value-accessor-on-constructor`: `JULC0100` rejects the name on the default frontend, and with the gate off the reference reads it as the ledger's. Here a read on `new` itself is `JULC0055` |
 | 2 | `DIFFERENT-rejection` | Diagnostic change: F946's family | `58251078`, `cd915c5e`. Two errors in one method. The reference collects `JULC0061` and goes on to `Undefined variable: q`, which it throws; `JAVAC` stops at `JULC0061` |
 | 1 | `DIFFERENT-rejection` | Diagnostic change: F946's family | `d439542c`: `box("L", a).amt().compareTo(b) > 0`. Both `JULC0055` at one position. The reference names the outer member, `JAVAC` the inner one |
 | 1 | `DIFFERENT-rejection` | Diagnostic change | `e01a0161`: `reject-instanceof-record-pattern`. `new` stopped it before. M3c's rejection prints javac's tree, `A(java.math.BigInteger v)`, with a position, where the reference prints `A(var v)` with its position in the words. `JavacStatementsTest` holds M3c's form, so this slice leaves it |
@@ -269,8 +270,9 @@ Two mutants of the plan were dropped because their code is gone: the canonical-c
 ## What this does not establish
 
 - **Library bodies.** A record of a library unit is constructed by the same code, and a program that reads a library still stops there.
-- **Ledger records that hold a `Value`.** `TxOut`, `TxInInfo` and what holds them are not built in `Adr068LedgerRecordsHarnessTest`, since
-  `new Value` stops and `Value.zero()` is no on-chain method. Their bytes rest on the same code path and on I1.
+- **Ledger records that hold a `Value`.** `TxOut`, `TxInInfo` and what holds them are not built in `Adr068LedgerRecordsHarnessTest`. They can be, from a
+  `Value` parameter, since only `new Value` stops. The records review built `TxOut`, `TxInInfo`, `TxInfo` and `ScriptContext` that way against their own
+  `toPlutusData`, with 3 samples each, in scratch, and all agreed. The test does not hold them yet.
 - **`.equals` on a record that a program built** is held to the reference's bytes, and to the JVM on the shapes in the harness. T29's forms stop or
   are rejected as before.
 - **I2a's inventory** is still not run on this frontend. The rejections here are tested one by one against the reference.
