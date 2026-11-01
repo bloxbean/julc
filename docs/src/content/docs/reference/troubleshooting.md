@@ -1344,7 +1344,8 @@ variable, a type parameter, or an inherited member. The names are:
   `Character`, `Object`, `Math`, `List`, `Map`, `Optional`, `PlutusData`, `ConstrData`, `MapData`, `ListData`, `IntData`,
   `BytesData`, `JulcValue`, `JulcG1`, `JulcG2`, `JulcMlResult`, `JulcScalars`, `JulcG1Points`, `JulcG2Points`, `JulcList`,
   `JulcArray`, `JulcMap`, `Tuple2`, `Tuple3`, `AssetEntry`, `PubKeyHash`, `ScriptHash`, `ValidatorHash`, `PolicyId`,
-  `TokenName`, `DatumHash`, `TxId`, `Builtins`, and the classes of `org.julclang.stdlib.lib`, such as `ListsLib`.
+  `TokenName`, `DatumHash`, `TxId`, `Builtins`, `CryptoProvider`, and the classes of `org.julclang.stdlib.lib`, such as
+  `ListsLib`.
 - **The ledger's types, such as `Value`, `Interval`, `TxOut` or `PubKeyCredential`:** a simple name binds to that type, or
   to a record, a sealed interface or a library of another unit.
 - **JuLC's annotations, where they stand as annotations:** `Entrypoint`, `Param`, `NewType`, `OnchainLibrary` and the

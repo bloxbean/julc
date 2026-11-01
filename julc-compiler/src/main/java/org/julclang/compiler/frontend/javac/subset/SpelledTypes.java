@@ -7,7 +7,6 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
-import com.sun.source.tree.PackageTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.util.TreeScanner;
@@ -157,11 +156,6 @@ public final class SpelledTypes {
         }
 
         @Override
-        public Void visitPackage(PackageTree tree, Void unused) {
-            return null;
-        }
-
-        @Override
         public Void visitClass(ClassTree tree, Void unused) {
             String name = tree.getSimpleName().toString();
             String read = oneType(name);
@@ -234,9 +228,10 @@ public final class SpelledTypes {
 
         private void use(Tree tree, String name, boolean simple) {
             String read = oneType(name);
-            var ledger = simple ? reading.ledger().get(name) : null;
+            var ledger = reading.ledger().get(name);
+            boolean readInTheLedger = simple && ledger != null;
             boolean registered = reading.registered().contains(name);
-            if (read == null && ledger == null && !registered) return;
+            if (read == null && !readInTheLedger && !registered) return;
             Element element = facts.elementOrNull(tree);
             // A method has a namespace of its own, and a package is no binding of a name in a type's place.
             if (element == null || element instanceof ExecutableElement || element instanceof PackageElement) return;
@@ -246,13 +241,13 @@ public final class SpelledTypes {
                 }
                 return;
             }
-            String expected = ledger != null ? String.join(" or ", ledger) : "the type a compilation registers under that name";
+            String expected = readInTheLedger ? String.join(" or ", ledger) : "the type a compilation registers under that name";
             if (element instanceof TypeElement type) {
                 if (ledger != null && ledger.contains(facts.identity(type))) return;
                 if (isPlain(type) || simple && registered && isOutsideTheResolver(type, tree)) {
                     throw reject(name, expected, describe(element), tree);
                 }
-            } else if (ledger != null || registered && element instanceof TypeParameterElement parameter && !isSpecialized(parameter)) {
+            } else if (readInTheLedger || registered && element instanceof TypeParameterElement parameter && !isSpecialized(parameter)) {
                 throw reject(name, expected, describe(element), tree);
             }
         }
@@ -266,14 +261,16 @@ public final class SpelledTypes {
         }
 
         /**
-         * Whether the frontend has no registration of {@code type}, so that it reads the name as something else: a class or
-         * an interface that is not sealed, of a source or of the platform. A library of another unit is registered; the
-         * frontend's list of libraries does not hold the units it compiles as roots.
+         * Whether the frontend has no registration of {@code type}, so that it reads the name as something else: a class or an
+         * interface of a source that is not sealed, or any type of the API or the platform, whose registered types were read
+         * before this. A library of another unit is registered; the frontend's list of libraries does not hold the units it
+         * compiles as roots. An annotation's name is not read as a type.
          */
         private boolean isPlain(TypeElement type) {
+            if (type.getKind() == ElementKind.ANNOTATION_TYPE) return false;
+            if (!facts.isDeclaredInSource(type)) return true;
             boolean classOrInterface = type.getKind() == ElementKind.CLASS || type.getKind() == ElementKind.INTERFACE;
             if (!classOrInterface || isSealedInterface(type)) return false;
-            if (!facts.isDeclaredInSource(type)) return facts.identity(type).startsWith("java.");
             return !facts.hasAnnotation(type, JavacNames.ONCHAIN_LIBRARY) || facts.unitOf(type) == unit;
         }
 

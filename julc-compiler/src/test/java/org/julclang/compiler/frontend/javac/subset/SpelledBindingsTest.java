@@ -426,6 +426,28 @@ class SpelledBindingsTest {
         assertEquals("accepted", code("class P { record H(long a) { } static long m() { H Math = new H(1); return 1; } }", List.of()));
     }
 
+    /** An API type of a spelled name is still another type: the frontend reads the name, not the qualifier. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "class P { static long m(org.julclang.core.DefaultUni.String v) { return 1; } }",
+            "class P { static long m(org.julclang.core.DefaultUni.Integer v) { return 1; } }",
+            "import org.julclang.core.DefaultUni.String;\nclass P { static long m(String v) { return 1; } }"})
+    void anApiMemberOfASpelledNameIsAnotherType(String source) {
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
+    }
+
+    @Test
+    void anImportAloneIsNoUseOfAnApiMember() {
+        assertEquals("accepted", code("import org.julclang.core.DefaultUni.String;\nclass P { static long m() { return 1; } }", List.of()));
+    }
+
+    /** A package is no type in that name's place, and {@code resolveClassType} reads the last name. */
+    @Test
+    void aPackageOfASpelledNameIsNoBinding() {
+        var library = JavacFrontend.Unit.of("package lib.Math;\npublic class Holder { }");
+        assertEquals("accepted", code("class P { static long m(lib.Math.Holder h) { return 1; } }", List.of(library)));
+    }
+
     /** A type's namespace is not a method's: {@code Math(1)} calls a method. */
     @Test
     void aMethodOfASpelledNameIsNoBinding() {
@@ -609,6 +631,37 @@ class SpelledBindingsTest {
                     static long m() { return 1; }
                 }
                 """, List.of()));
+    }
+
+    /** The ledger's own type, written out, beside a record of that name. */
+    @Test
+    void aQualifiedLedgerTypeBesideARecordOfItsName() {
+        assertEquals("accepted", code("class P { record Rational(long a) { } static long m(org.julclang.ledger.Rational r) { return 1; } }", List.of()));
+        assertEquals("accepted", code("class P { record Vote(long a) { } static long m(org.julclang.ledger.Delegatee.Vote v) { return 1; } }", List.of()));
+    }
+
+    @Test
+    void anAnnotationBesideARecordOfItsNameIsLeftAlone() {
+        assertEquals("accepted", code("""
+                import org.julclang.stdlib.annotation.*;
+                class P {
+                    static class Other { record Param(long a) { } }
+                    @Param static long p = 1;
+                    static long m() { return p; }
+                }
+                """, List.of()));
+    }
+
+    @Test
+    void anApiClassDoesNotShareARecordsName() {
+        String source = """
+                import org.julclang.core.Constant;
+                class P {
+                    static class Other { record Constant(long a) { } }
+                    static long m(Constant c) { return 1; }
+                }
+                """;
+        assertTrue(code(source, List.of()).startsWith("JULC0100 "), () -> code(source, List.of()));
     }
 
     @Test
