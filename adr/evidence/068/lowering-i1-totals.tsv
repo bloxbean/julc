@@ -1,4 +1,4 @@
-cases	17063
+cases	17065
 DIFFERENT-bytes	6
 DIFFERENT-diagnostics	2
 DIFFERENT-javac-accepts	19
@@ -7,19 +7,19 @@ DIFFERENT-provenance	4
 DIFFERENT-rejection	10
 both-reject	62
 both-reject-javac-first	1288
-i1a-identical	1105
+i1a-identical	1107
 javac-rejects	5359
 ledger-source	38
 not-ported	8634
 reference-rejects-not-ported	484
 unreplayable	17
-coverage	programs	1105	15145
-coverage	distinct programs	330
+coverage	programs	1107	15147
+coverage	distinct programs	332
 coverage	programs of more than one method	808
-coverage	methods	6663	172424
-coverage	distinct methods	1133
+coverage	methods	6665	172426
+coverage	distinct methods	1136
 provenance	-	2
-provenance	fragment	358
+provenance	fragment	360
 provenance	same	745
 first-construct	VARIABLE	7375
 first-construct	SWITCH_EXPRESSION	688
@@ -62,7 +62,7 @@ part	diffcase	DIFFERENT-javac-rejects	9
 part	diffcase	DIFFERENT-rejection	2
 part	diffcase	both-reject	1
 part	diffcase	both-reject-javac-first	1
-part	diffcase	i1a-identical	20
+part	diffcase	i1a-identical	22
 part	diffcase	not-ported	117
 part	diffcase	reference-rejects-not-ported	51
 part	elci	i1a-identical	2

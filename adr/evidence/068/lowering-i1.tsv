@@ -5416,6 +5416,7 @@
 50271509c5f672385679a6d6f84d261c605e22cfa4bc0438cd5f934071d0fd4c	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 5030aa1bc60c7622de62cdca9ed37635fca5013c613b93016250a232c0f9fad1	not-ported	0/29	VARIABLE	-	-	
 5032b74b72329dc1fbf48157307abd838ba6f097418d58849bc87127ebf07c88	not-ported	1/3	VARIABLE	-	-	
+50349b6ebcd8e7ad8869054b1780d3e3f38c12608b7d509f56a435279f4c09bf	i1a-identical	1/1	-	fragment	-	
 50374fab1368cef5c8aee4f8369340102f65e240d00446cc19d577501b5a0abf	not-ported	0/1	VARIABLE	-	-	
 50385c9439c5d05c3a3b2028a740a348e4dc5ee4b3acde22bf64e8a2e6450f26	not-ported	0/36	IF	-	-	
 503c97251f67a16697616ba77daf6489057f00a6aa1e1c1eb7825a18f59a229c	not-ported	0/29	VARIABLE	-	-	
@@ -10989,6 +10990,7 @@ a409d9758d260d6b40ba5ca71389e2de01560f1219c7c9472778817b10df5da9	javac-rejects	0
 a411c1fe734f0ef947cfccf6f98c21e380b305aaaa82e564eae1ab5422b2e96d	not-ported	0/1	VARIABLE	-	-	
 a411c4ece24fd49ad2406ebe40433cd569297f8e2013621bd3affc1043c0bb37	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 a414ca8b6f217c47a4947bf2ced5bde169a9ad60ef4f7ff3d3a833142bfcacb0	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
+a41c0a71b23a9f0aea2ff9de0223203579694e0960846bb75ce336c087a425c8	i1a-identical	1/1	-	fragment	-	
 a422fe63a092dddfb0e12a0e13d75913b712871d0addfadadfbbdbcfa01728f3	javac-rejects	0/1	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 a4247b51aa15ba05680f171458075bb483cb34176c0e686aca600e53a2be5ec3	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 a4284bc21c6cfb9724e8efb8a0ddcfa76bfe750733730d6876bb4d86cf6842a0	not-ported	0/29	VARIABLE	-	-	
