@@ -418,7 +418,7 @@ branch is M3a's.
 **`JULC0102`.** It reads javac's trees, so both frontends report one code, position and text. On the JavaParser frontend it comes through
 the gate, in `enforce` and `report` mode, and it is absent with the gate off. That is how the reference's table and B2 are taken, so neither
 moved. A constant is a string literal, a `String` variable javac gives a constant value, or a `+` of constants, through parentheses, and one
-warning covers a whole expression of constants. An annotation's argument does not warn. A library's source warns in its own compilation.
+warning covers a whole expression of constants. An annotation's argument does not warn. The rule reads a compilation's roots, so a join in a library unit does not warn, and a `JavaLibraryProvider` compilation reports none.
 
 ## The stops for M5
 
