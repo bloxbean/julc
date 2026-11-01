@@ -48,7 +48,8 @@ public record Value(JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> inner) imp
 
     /**
      * Merge two values by adding all token quantities.
-     * Equivalent to on-chain ValuesLib.add().
+     * Holds the same amounts as on-chain ValuesLib.add(), in a different order: a key this merge touches
+     * moves to the front, where add() keeps sorted keys sorted.
      */
     public Value merge(Value other) {
         // Start with a mutable copy of this value's entries
