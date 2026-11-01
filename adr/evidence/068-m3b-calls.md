@@ -8,10 +8,8 @@ The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md); the 
 [`068-m3a-lowering-foundation.md`](068-m3a-lowering-foundation.md). Machine and toolchain as in M0's evidence. Branch `wip/068-m3b`,
 based at `f3752147`, which is M3a.
 
-This file states the code at `8f2c76b5`. `test` and `wasmSmokeFull` ran there; `pairCaseTest`, `onChainHarnessTest`, `adr068Lowering`,
-`adr068Types` and `adr068Baseline` ran at `4b38ad08`, whose main sources are the same: the commit between adds a test and an argument to
-a test's runner. Those results are from before the merge of M3a. [The merge](#the-merge-of-m3a) says what has run since, and the broad
-gates run once more on M3a's final head.
+This file states the code at `9f3a71d1`, which merges M3a's final head `3bcd0dc9`. Every task in the results ran there. `5b1a6c8d` and
+`7767cfe1` then add tests only, and the mutants of the merge ran on them.
 
 ## What was delivered
 
@@ -106,38 +104,42 @@ in a program that can compile yet. A freeze ran against M3a's table without `all
 
 | Class | M3a | M3b |
 |---|---:|---:|
-| `i1a-identical` | 145 | 1,104 |
-| `not-ported` | 9,617 | 8,636 |
-| `reference-rejects-not-ported` | 498 | 486 |
+| `i1a-identical` | 145 | 1,105 |
+| `not-ported` | 9,617 | 8,634 |
+| `reference-rejects-not-ported` | 496 | 484 |
 | `javac-rejects` | 5,359 | 5,359 |
 | `both-reject-javac-first` | 1,288 | 1,288 |
 | `both-reject` | 49 | 62 |
 | `ledger-source` | 38 | 38 |
 | `unreplayable` | 17 | 17 |
-| `DIFFERENT-javac-accepts` | 18 | 18 |
-| `DIFFERENT-javac-rejects` | 0 | 25 |
-| `DIFFERENT-rejection` | 8 | 8 |
-| `DIFFERENT-bytes` | 2 | 5 |
+| `DIFFERENT-javac-accepts` | 19 | 19 |
+| `DIFFERENT-javac-rejects` | 10 | 35 |
+| `DIFFERENT-rejection` | 10 | 10 |
+| `DIFFERENT-bytes` | 4 | 6 |
 | `DIFFERENT-provenance` | 2 | 4 |
-| Total | 17,041 | 17,050 |
+| `DIFFERENT-diagnostics` | | 2 |
+| Total | 17,054 | 17,063 |
 
-Of the recorded rows that changed class: 955 went from `not-ported` to `i1a-identical`, 25 to a policy rejection, 12 from
-`reference-rejects-not-ported` to `both-reject`, 2 to a provenance row and 1 to a representation row. The 9 rows new to the table are
-M3b's fixtures.
+The M3a column is its final head, `3bcd0dc9`. 3,721 rows moved against it, and none lost coverage, a total or its place in the corpus.
+Of the 17,054 recorded rows, 3,712 moved: 956 from `not-ported` to `i1a-identical`, 25 to a policy rejection, 12 from
+`reference-rejects-not-ported` to `both-reject`, 2 to a provenance row, 1 to a bytes row, 1 to a diagnostics row, and 2,715 that kept their
+class and covered more methods or stopped at a later construct. The 9 rows new to the table are M3b's fixtures. `lowering-reference.tsv`
+gained those 9 rows and changed none, and the freeze needed no `allowShrink`. Two fixtures changed a key when their component became
+`value`, before any table held them.
 
 ### Coverage
 
 | | Covered | Of | | M3a |
 |---|---:|---:|---|---:|
-| Programs the reference accepts | 1,104 | 15,133 | 7.3% | 145 |
+| Programs the reference accepts | 1,105 | 15,145 | 7.3% | 145 |
 | Their distinct scripts | 330 | | | 85 |
-| Programs of more than one method | 807 | | | 11 |
-| Methods the reference lowers, library methods included | 6,573 | 171,266 | 3.8% | 307 |
-| Distinct covered methods | 1,120 | | | 156 |
+| Programs of more than one method | 808 | | | 11 |
+| Methods the reference lowers, library methods included | 6,663 | 172,424 | 3.9% | 320 |
+| Distinct covered methods | 1,133 | | | 160 |
 
-**What a number means.** Most of the 1,104 are small: the ADR-060 families compile one small validator under many names, so distinct
-scripts is the fairer count. 171,266 counts library bodies, which this slice does not lower. Of the 1,104, source maps have equal
-fragments in 745 and differ only in a fragment's text in 357; every line and column is equal.
+**What a number means.** Most of the 1,105 are small: the ADR-060 families compile one small validator under many names, so distinct
+scripts is the fairer count. 172,424 counts library bodies, which this slice does not lower. Of the 1,105, source maps have equal
+fragments in 745 and differ only in a fragment's text in 358; every line and column is equal.
 
 ### The worklist
 
@@ -145,24 +147,24 @@ fragments in 745 and differ only in a fragment's text in 357; every line and col
 
 | First construct | Cases | M3a |
 |---|---:|---:|
-| `VARIABLE` | 7,391 | 5,903 |
+| `VARIABLE` | 7,375 | 5,938 |
 | `SWITCH_EXPRESSION` | 688 | 178 |
 | `a library unit` | 317 | 7 |
 | `IF` | 249 | 215 |
-| `EXPRESSION_STATEMENT` | 184 | 43 |
-| `NEW_CLASS` | 163 | 94 |
+| `EXPRESSION_STATEMENT` | 181 | 40 |
+| `NEW_CLASS` | 163 | 8 |
 | `the exports of library sources` | 35 | 35 |
+| `TYPE_CAST` | 28 | 8 |
 | `reference equality` | 21 | |
 | `LAMBDA_EXPRESSION` | 17 | |
 | `ENHANCED_FOR_LOOP` | 15 | 14 |
-| `METHOD_INVOCATION` | 10 | 1,074 |
 | `a contract schema` | 10 | 9 |
-| `TYPE_CAST` | 9 | 7 |
+| `METHOD_INVOCATION` | 9 | 1,122 |
 | `WHILE_LOOP` | 7 | 7 |
 | `MEMBER_SELECT` | 6 | |
 
 The rows that grew are not regressions: a method that used to stop at its first call now reaches what stops it next. `METHOD_INVOCATION`'s
-10 are calls outside what lowering reaches, such as a `@Param` initializer. `reference equality` is where a method alone stops; in a
+9 are calls outside what lowering reaches, such as a `@Param` initializer. `reference equality` is where a method alone stops; in a
 compilation those are the `JULC0086` rows. Locals are the next slice by a wide margin.
 
 ### The differences
@@ -174,9 +176,9 @@ Every row is listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lo
 | 21 | `DIFFERENT-javac-rejects` | Policy rejection | `JULC0086`: `==` between references, where the reference compares values (T3, T4) |
 | 4 | `DIFFERENT-javac-rejects` | Policy rejection | `JULC0087`: `equals` that reaches an array by identity, or a record that declares `equals` (T4, T5) |
 | 2 | `DIFFERENT-provenance` | Provenance change | M3a's rule: for a source with no file, the file is named after the primary type |
-| 1 | `DIFFERENT-bytes` | Representation only | D8: an unused library at `NONE`, as M3a's row, 7 bytes |
+| 1 | `DIFFERENT-bytes` | Representation only | D8: an unused library the reference keeps, as M3a's row |
 | 1 | `DIFFERENT-bytes` | Semantic fix | `M3bSemanticFixes`: #297, and reads of a list literal typed by javac |
-| | `DIFFERENT-diagnostics` | Diagnostic change | `JULC0102`: a `+` of string constants warns on `JAVAC`, and the reference's table is taken with the gate off, which is where the JavaParser frontend reports it |
+| 2 | `DIFFERENT-diagnostics` | Diagnostic change | `JULC0102`, on `M3aConcatenation` and `M3bFoldedStrings`. A `+` of string constants warns on `JAVAC`. On the JavaParser frontend the warning comes from the gate, so it is absent with the gate off, which is how the reference's table is taken. The bytes are compared and equal |
 
 D13 asks a policy rejection for docs and release notes too; those are not written yet. The semantic fix's evidence is in-code, as stated
 below.
@@ -187,31 +189,31 @@ Counted from JUnit XML.
 
 | Task | Result |
 |---|---|
-| `./gradlew test --offline --continue --rerun --no-watch-fs` | 13,557 tests, 0 failures, 0 errors, 530 skipped, 27 modules. M3a's close had 13,055 |
+| `./gradlew test --offline --continue --rerun --no-watch-fs` | 15,776 tests, 0 failures, 0 errors, 530 skipped, 27 modules |
+| `:julc-compiler:test` | 5,100 tests, 0 failures, before the rejection-sites row; no compiler source has changed since |
+| `:julc-stdlib:test` | 527 tests, 0 failures |
+| `:julc-difftest:test` | 735 tests, 0 failures |
 | `:julc-compiler:pairCaseTest --rerun` | 71 tests, 0 failures |
 | `:julc-e2e-tests:onChainHarnessTest --rerun` | 16 tests, 0 failures |
-| `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1) | `BUILD SUCCESSFUL`; `wasmImageFull` rebuilt; 56 `ok` lines, no `not ok`. It runs the default frontend |
-| `:julc-difftest:adr068Lowering` | `BUILD SUCCESSFUL`; 0 rows moved, 0 shrunk |
+| `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1) | `BUILD SUCCESSFUL`; 56 `ok` lines, no `not ok`. It runs the default frontend |
+| `:julc-difftest:adr068Lowering` | `BUILD SUCCESSFUL`; 0 rows moved, 0 shrunk, after the freeze |
 | `:julc-difftest:adr068Types` | `BUILD SUCCESSFUL` |
-| `:julc-difftest:adr068Baseline`, gate off | As below |
+| `:julc-difftest:adr068Baseline`, gate off | `BUILD SUCCESSFUL`: as below |
 
-Two tasks failed on the way, neither on this slice's code, and the table above is the runs after them:
+On the first run after the merge, `:julc-difftest:test` failed in `Adr068RejectionSitesTest`, since `JULC0102` had no row in the catalogue,
+and `adr068Lowering` failed on the 9 fixtures with no reference row. Both are closed at `9f3a71d1`. The `JulcPluginTest` failure and the two
+`wasmSmokeFull` timeouts of the pre-merge runs were at a load of 200, and did not recur.
 
-- `JulcPluginTest.schemaFailurePreservesLastGoodGradleOutputs` at `4b38ad08`, at load 200: the flake the follow-ups describe, `compileJulc`
-  `UP-TO-DATE` after its source changed. That run had 13,556 tests and that 1 failure. The test's runner now passes `--no-watch-fs`.
-- `wasmSmokeFull` at `4b38ad08` and again at `8f2c76b5`, at load 200, after 55 `ok` lines. The smoke's last step gives an engine 200 ms,
-  which a `debug` request cannot meet on a loaded machine. At load 51 the same commit passed.
-
-**The default path against B1.** `ledger-b0-semantic.tsv` (1,872 lines), `-budget` (1,871), `-instantiations` (50) and
-`rejection-inventory-b0.tsv` (1,835) are byte-identical. `ledger-b0.tsv` and `corpus-b0.tsv` have 11,411 rows shared with B1, 7 of M1b's
-re-keyed Blaster fixtures, and 0 rows that differ under a shared key. `totals-b0.tsv` differs in one line, the rejection catalogue: 152
-sites, not 146, which are `JULC0086`, `JULC0087`, `JULC0088`, `JULC0090`, `JULC0092` and `JULC0093`, none a reference rejection.
+**The default path against B2.** `adr068Baseline` compares what it writes with M3a's B2 tables, byte for byte, with the gate off, and passed:
+ledger, semantic, budget, instantiations, rejection inventory and corpus. The one exception it allows is the totals' `coverage` line,
+which counts the rejection catalogue: 161 sites, not 157, of which 44 are not source rejections, not 40. Those four are `JULC0086`,
+`JULC0087`, `JULC0090` and `JULC0102`, none a rejection of the frozen frontend.
 
 | Check | Result |
 |---|---|
-| Byte identity against the reference | 1,104 programs, at all four levels, with and without a source map |
-| I1b | 6,573 methods equal the reference's term and type up to alpha-equivalence, 1,120 of them distinct |
-| I13's binding check | On, on every compilation in tests and each method lowered on its own. No violation. A static method's binder has no provenance, by design: see the follow-ups |
+| Byte identity against the reference | 1,105 programs, at all four levels, with and without a source map |
+| I1b | 6,663 methods equal the reference's term and type up to alpha-equivalence, 1,133 of them distinct |
+| I13's binding check | On, on every compilation in tests and each method lowered on its own. No violation. A read of a class's static method carries its element and is checked as a variable's is. A library call site's read is still exempt, as the follow-ups say |
 | ADR-060 | `GeneratedBinderNameLintTest`, `BinderNameIndependenceTest` and `julc.verifyBinderNamespace` stay green |
 | The three lints | Green. `lower/` looks nothing up by a made-up name: `facts.identity` is the only way to a registry |
 | Evaluation against the JVM | `Adr068CallsHarnessTest`, 125 tests: each operator and call on the JVM and through both frontends at all four levels |
@@ -225,7 +227,16 @@ Every mutation below ran in a throwaway worktree, one runner to a worktree under
 scoped unit tests, the harness, `Adr068LoweringToolTest` where it is said, and the I1 gate. A later step runs only if the earlier ones
 passed, and they stop at the first failure, so a row names what caught the mutant, and how many tests would have is not measured.
 
-**99 mutants on the final code: 96 killed, 78 of them by a unit test, 11 by the harness and 7 by the gate alone; 3 left, each equivalent for
+**The pass of the merge.** 20 mutants of what the merge added, on `5b1a6c8d`, one runner in one worktree, after a no-op control: `JULC0102`'s
+rule and its two paths to a result, a method read's provenance, a lowered field in `SubsetScan`, `methodType`'s varargs, and the
+`DIFFERENT-diagnostics` class. 15 were killed. Of the 5 left, 4 had a real gap: a nested join, a comparison of constants, a lone method's
+binders, and a signature after a body. Each now has a test at `7767cfe1`, and each was rerun and killed. The fifth, `withDropped` losing
+the warnings, is equivalent today: `withDropped` runs in `analyze`, before any warning exists.
+
+**The pass of the slice.** It ran before the merge. Its mutants were not rerun on the merged code, whose rules in front of the lowering
+are M3a's and have M3a's own passes.
+
+**99 mutants on that code: 96 killed, 78 of them by a unit test, 11 by the harness and 7 by the gate alone; 3 left, each equivalent for
 now and said why below.** The no-op control passed in every worktree, through every step, before any mutant ran, at each commit
 (unit 0/391, harness 0/195, gate 0 moved, hosts 15/0, at the last). Those are the controls' counts; the unit step is the `lower` tests and
 `GeneratedBinderNameLintTest`.
@@ -403,6 +414,11 @@ nothing in that case, since it had passed before the second runner started; the 
 
 `M3bFoldedStrings`' accepted entry is gone: M3a's parser option keeps the `+`. Until the gate has run on the merge, the row table in the
 branch is M3a's.
+
+**`JULC0102`.** It reads javac's trees, so both frontends report one code, position and text. On the JavaParser frontend it comes through
+the gate, in `enforce` and `report` mode, and it is absent with the gate off. That is how the reference's table and B2 are taken, so neither
+moved. A constant is a string literal, a `String` variable javac gives a constant value, or a `+` of constants, through parentheses, and one
+warning covers a whole expression of constants. An annotation's argument does not warn. A library's source warns in its own compilation.
 
 ## The stops for M5
 
