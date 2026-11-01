@@ -302,6 +302,7 @@ class JavacStatementsTest {
             "static BigInteger m(S s) { if (!(s instanceof S.A a)) { return BigInteger.ZERO; } return a.v(); }",
             "static BigInteger m(S s) { return s instanceof S.A a ? a.v() : BigInteger.ZERO; }",
             "static boolean m(S s) { return (s instanceof S.A a ? a : s) instanceof S t; }",
+            "static BigInteger m(S s) { if (s instanceof S.A a) { } else { return BigInteger.ZERO; } return a.v(); }",
     })
     void aPatternVariableBindsOnlyWhereItIsTheWholeCondition(String members) {
         rejectedWith(members, "Undefined variable: a");

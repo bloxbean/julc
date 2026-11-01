@@ -175,7 +175,8 @@ class LoweringAloneTest {
     /** A loop stops at the scan first, so only this shows that an {@code if} around one does not lower as another shape. */
     @ParameterizedTest
     @ValueSource(strings = {"if (a > 0) { while (a > 0) { } }", "if (a > 0) { } else { for (var x : java.util.List.of(a)) { } }",
-            "if (a > 0) { if (a > 1) { while (a > 0) { } } }", "if (a > 0) { if (a > 1) { } else { while (a > 0) { } } }"})
+            "if (a > 0) { if (a > 1) { while (a > 0) { } } }", "if (a > 0) { if (a > 1) { } else { while (a > 0) { } } }",
+            "if (a > 0) if (a > 1) { } else while (a > 0) { }"})
     void anIfAroundALoopIsNotPorted(String statement) {
         withMethod("class P { static long m(long a) { " + statement + " return a; } }", new CompilerOptions(), (facts, lowered) ->
                 assertEquals("an if around a loop", assertThrows(NotPorted.class, lowered::term).construct()));
