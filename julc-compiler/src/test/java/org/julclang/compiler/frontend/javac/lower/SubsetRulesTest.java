@@ -707,6 +707,13 @@ class SubsetRulesTest {
     }
 
     @Test
+    void aLibrarysLoweredDeclarationOfTwoTypesIsReadVariableByVariable() {
+        var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions())
+                .compile(LIBRARY_CALLER, List.of(library("static final byte a = 1, b[] = new byte[]{1};"))));
+        assertTrue(thrown.getMessage().contains("byte"), thrown::getMessage);
+    }
+
+    @Test
     void theParamsHaveATypeEach() {
         var result = new JulcCompiler(null, new CompilerOptions()).compile(IMPORTS + """
                 @SpendingValidator
