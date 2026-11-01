@@ -247,10 +247,10 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(method), location);
     }
 
-    /** JULC0100: a type declared under a name the JavaParser frontend reads as its own type. */
-    public static CompilerException typeNameReadBySpelling(String type, SourceLocation location) {
+    /** JULC0100: {@code name}, which the JavaParser frontend reads as {@code read}, is {@code here} in this program. */
+    public static CompilerException typeNameReadBySpelling(String name, String read, String here, SourceLocation location) {
         var info = DiagnosticCodes.TYPE_NAME_READ_BY_SPELLING;
-        return exception(info.code(), info.level(), info.fix(), info.format(type), location);
+        return exception(info.code(), info.level(), info.fix(), info.format(name, read, here), location);
     }
 
     /** JULC0099: a constructor that holds a statement. */

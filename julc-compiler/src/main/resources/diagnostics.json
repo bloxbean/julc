@@ -1171,7 +1171,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "{0} has a name JuLC reads in place of its body, so a program does not declare it",
-      "summary": "JuLC lowers some calls by their spelling, so a body declared under that name would not run: fromPlutusData and toPlutusData on any type, of and instance methods on a @NewType record, an explicit accessor or equals on a record, equals on a sealed interface, and a @NewType's component named like a method of the type it lowers to. A @NewType of byte[] names its component value.",
+      "summary": "JuLC lowers some calls by their spelling, so a body declared under that name would not run: fromPlutusData and toPlutusData on any type, of and instance methods on a @NewType record, an explicit accessor or equals on a record, equals on a sealed interface, and a @NewType's component named like a method of the type it lowers to. A @NewType of byte[] names its component value. A call named headList, tailList, mkCons, mkNilData, mkNilPairData, mkPairData, unMapData, fstPair or sndPair is Builtins' own.",
       "fix": "Give the method another name.",
       "example": {
         "bad": "record Amount(BigInteger v) { public BigInteger v() { return v.abs(); } }",
@@ -1182,12 +1182,12 @@
       "code": "JULC0100",
       "constant": "TYPE_NAME_READ_BY_SPELLING",
       "status": "emitted",
-      "title": "A type does not take a name JuLC reads as its own type",
+      "title": "A name JuLC reads by its spelling binds to what JuLC reads",
       "category": "SYNTAX",
       "severity": "error",
-      "template": "The type {0} has a name JuLC reads as its own type, so a program does not declare it",
-      "summary": "JuLC reads some type names by their spelling, ahead of any type a program declares, so a program does not declare a type or a type parameter of that name.",
-      "fix": "Give the type another name.",
+      "template": "JuLC reads {0} as {1}, and here it is {2}, so a program does not write it",
+      "summary": "JuLC reads some names by their spelling, so at every use such a name binds to what JuLC reads, whether it stands as a type, a qualifier or an annotation. A program does not bind it to a variable, a parameter, a type parameter or another type, declared, imported or inherited. A name of the ledger may also be a record, a sealed interface or a library of another unit. A class or an interface that is not sealed does not share its name with a record, a sealed interface or a library of the compilation. A record or sealed interface reached by inheritance or a static import is written with its qualifier, two variants of a sealed interface do not share a name, a record does not take a type key of JuLC's lowering, such as ListType, and the datum of an entry point is written Optional<...> exactly when it is one.",
+      "fix": "Rename the declaration, or write the type JuLC reads.",
       "example": {
         "bad": "@NewType record Boolean(BigInteger v) { }",
         "good": "@NewType record Flag(BigInteger v) { }"

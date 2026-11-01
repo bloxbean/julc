@@ -706,8 +706,8 @@ public final class DiagnosticCodes {
             "TYPE_NAME_READ_BY_SPELLING",
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
-            "The type {0} has a name JuLC reads as its own type, so a program does not declare it",
-            "Give the type another name.");
+            "JuLC reads {0} as {1}, and here it is {2}, so a program does not write it",
+            "Rename the declaration, or write the type JuLC reads.");
 
     public static final DiagnosticInfo TYPE_RESOLUTION_FAILED = new DiagnosticInfo(
             "JULC0012",

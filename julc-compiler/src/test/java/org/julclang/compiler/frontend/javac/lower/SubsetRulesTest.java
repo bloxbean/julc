@@ -185,10 +185,13 @@ class SubsetRulesTest {
                 """.formatted(declaration));
     }
 
-    /** The rule reads what an annotation is called, as the compilation does: a user's own {@code @Entrypoint} is one. */
+    /**
+     * The rule reads what an annotation is called, as the compilation does: a user's own {@code @Entrypoint} is one on the
+     * javac frontend. The gate has the name read by spelling first, so the default frontend never gets that far.
+     */
     @Test
     void anEntryPointIsKnownByItsAnnotationsName() {
-        assertRule("JULC0094", """
+        String source = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.ledger.ScriptContext;
                 import org.julclang.stdlib.annotation.SpendingValidator;
@@ -198,7 +201,9 @@ class SubsetRulesTest {
                     @Entrypoint
                     static long validate(PlutusData redeemer, ScriptContext ctx) { return 1; }
                 }
-                """);
+                """;
+        assertJavacRule("JULC0094", source);
+        assertEquals("JULC0100", code(compiler -> compiler.compile(source), CompilerFrontend.JAVAPARSER));
     }
 
     private static String body(String type) {
@@ -385,19 +390,24 @@ class SubsetRulesTest {
                 """.formatted(field));
     }
 
-    /** A name is what it resolved to: a field of that name is no API type, and a user's type has no API constant. */
+    /**
+     * A name is what it resolved to: a field of that name is no API type, and a user's type has no API constant. So the
+     * javac frontend reads a field here, and the gate stops the name first on the default frontend.
+     */
     @ParameterizedTest
     @ValueSource(strings = {
             "static P BigInteger; long ZERO; @Param static long p = BigInteger.ZERO;",
             "static P PlutusData; long UNIT; @Param static long p = PlutusData.UNIT;"})
     void anApiConstantIsTheApis(String field) {
-        assertMethodRule("JULC0095", """
+        String source = """
                 import org.julclang.stdlib.annotation.*;
                 class P {
                     %s
                     static long m() { return 1; }
                 }
-                """.formatted(field));
+                """.formatted(field);
+        assertEquals("JULC0095", code(compiler -> compiler.compileMethod(source, "m"), CompilerFrontend.JAVAC));
+        assertSpelling("JULC0100", source);
     }
 
     /** The one call is the JDK's: a user's {@code Boolean} has no {@code valueOf} this rule knows. The gate stops at its name. */
@@ -853,11 +863,11 @@ class SubsetRulesTest {
         while (cases.find()) {
             for (String name : cases.group(1).split(",")) names.add(name.strip().replace("\"", ""));
         }
-        assertEquals(names, new TreeSet<>(SpelledTypes.NAMES));
+        assertTrue(SpelledTypes.NAMES.keySet().containsAll(names), names.toString());
     }
 
     private static Stream<String> spelledNames() {
-        return SpelledTypes.NAMES.stream().sorted();
+        return SpelledTypes.NAMES.keySet().stream().sorted();
     }
 
     @ParameterizedTest
@@ -965,8 +975,8 @@ class SubsetRulesTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "static class H { long valueOf(long x) { return x + 1; } } static H BigInteger; static long m() { return BigInteger.valueOf(1); }",
-            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H PlutusData; static long m() { return PlutusData.cast(1, Object.class); }",
+            "static class H { long valueOf(long x) { return x + 1; } } static H h; static long m() { return h.valueOf(1); }",
+            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H h; static long m() { return h.cast(1, Object.class); }",
             "@NewType record N(long a) { } static class H { long of(long x) { return x + 1; } } static H N; static long m() { return N.of(1); }"})
     void noMethodIsCalledThroughASpelledVariable(String members) {
         assertSpelling("JULC0101", """
@@ -976,6 +986,33 @@ class SubsetRulesTest {
                 }
                 """.formatted(members));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static class H { long valueOf(long x) { return x + 1; } } static H BigInteger; static long m() { return BigInteger.valueOf(1); }",
+            "static class H { long cast(long x, Class<?> c) { return x + 1; } } static H PlutusData; static long m() { return PlutusData.cast(1, Object.class); }"})
+    void aVariableOfASpelledNameIsThatNamesRule(String members) {
+        assertSpelling("JULC0100", """
+                class P {
+                    %s
+                }
+                """.formatted(members));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static org.julclang.core.PlutusData headList(org.julclang.core.PlutusData x) { return x; } static org.julclang.core.PlutusData g(org.julclang.core.PlutusData x) { return headList(x); }",
+            "record H(long tailList) { } static long g(H h) { return h.tailList(); }",
+            "static class H { static long mkCons(long x) { return x; } } static long g() { return H.mkCons(1); }"})
+    void noCallOfAnAccumulatorsNameIsAUsersMethod(String members) {
+        assertSpelling("JULC0101", """
+                class P {
+                    %s
+                    static long m() { return 1; }
+                }
+                """.formatted(members));
+    }
+
 
     /** A component's name is served ahead of its generated accessor, on the type the {@code @NewType} lowers to. */
     @ParameterizedTest

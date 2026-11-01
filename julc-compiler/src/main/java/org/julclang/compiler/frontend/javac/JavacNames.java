@@ -22,6 +22,7 @@ public final class JavacNames {
     public static final String ENTRYPOINT = ANNOTATIONS + "Entrypoint";
     public static final String PARAM = ANNOTATIONS + "Param";
     public static final String ONCHAIN_LIBRARY = ANNOTATIONS + "OnchainLibrary";
+    public static final String NEW_TYPE = ANNOTATIONS + "NewType";
 
     /** The validator annotations, in the reference's order. */
     public static final List<String> VALIDATORS = List.of(

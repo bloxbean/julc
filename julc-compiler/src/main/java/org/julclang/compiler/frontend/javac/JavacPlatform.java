@@ -141,6 +141,14 @@ public final class JavacPlatform {
         return names;
     }
 
+    /** The qualified names of the stubs' classes, at any depth. */
+    public Set<String> stubIdentities() {
+        var names = new TreeSet<String>();
+        classPath.forEach((pkg, files) -> files.keySet().forEach(simple ->
+                names.add((pkg.isEmpty() ? "" : pkg + ".") + simple.replace('$', '.'))));
+        return names;
+    }
+
     /** Reads a blob: path -> bytes, in path order. */
     public static Map<String, byte[]> read(byte[] blob) {
         var entries = new TreeMap<String, byte[]>();

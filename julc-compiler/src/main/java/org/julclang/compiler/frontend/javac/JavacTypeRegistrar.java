@@ -44,7 +44,6 @@ import java.util.TreeMap;
  */
 final class JavacTypeRegistrar {
 
-    private static final String NEW_TYPE = "org.julclang.stdlib.annotation.NewType";
 
     /** A record or sealed interface, with its tree when it comes from source. */
     record Declared(TypeElement element, ClassTree tree) {
@@ -302,7 +301,7 @@ final class JavacTypeRegistrar {
     }
 
     private boolean isNewType(TypeElement record) {
-        return facts.hasAnnotation(record, NEW_TYPE);
+        return facts.hasAnnotation(record, JavacNames.NEW_TYPE);
     }
 
     /** The types a record component names: the base type and its type arguments, at any depth. */

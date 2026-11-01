@@ -120,6 +120,17 @@ public final class JavacFacts {
         return element;
     }
 
+    /** {@link #element}, for a tree that may denote nothing, such as a name of an annotation's element. */
+    public Element elementOrNull(Tree tree) {
+        return trees.getElement(path(tree));
+    }
+
+    /** The unit that declares {@code element}, or null for what has no tree. */
+    public CompilationUnitTree unitOf(Element element) {
+        Tree tree = trees.getTree(element);
+        return tree == null ? null : path(tree).getCompilationUnit();
+    }
+
     /** The attributed type of {@code tree}; an error type never reaches JuLC (I12). */
     public TypeMirror type(Tree tree) {
         TypeMirror type = trees.getTypeMirror(path(tree));

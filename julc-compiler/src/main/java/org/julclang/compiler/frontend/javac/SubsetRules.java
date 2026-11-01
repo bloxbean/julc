@@ -30,7 +30,7 @@ import java.util.List;
  * Two more rules are about how the JavaParser frontend reads a name, so only the gate has them
  * ({@link #checkSpellings}): the javac frontend binds a name to its element, and has no such reading.
  * <ul>
- *   <li>A type does not take a name that frontend reads as its own type ({@link SpelledTypes}, {@code JULC0100}).</li>
+ *   <li>A name that frontend reads by its spelling binds, at every use, to what it reads ({@link SpelledTypes}, {@code JULC0100}).</li>
  *   <li>A method does not take a name it reads in place of the method's body ({@link SpelledMethods}, {@code JULC0101}).</li>
  * </ul>
  */
@@ -59,10 +59,11 @@ final class SubsetRules {
     }
 
     /** @throws org.julclang.compiler.CompilerException at the first rule a unit breaks */
-    static void checkSpellings(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries) {
+    static void checkSpellings(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
+                               SpelledTypes.Reading reading) {
         for (var units : List.of(roots, libraries)) {
             for (var unit : units) {
-                SpelledTypes.check(facts, unit);
+                SpelledTypes.check(facts, unit, reading);
                 SpelledMethods.check(facts, unit);
             }
         }

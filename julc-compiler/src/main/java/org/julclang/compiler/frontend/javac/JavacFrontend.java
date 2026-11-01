@@ -10,6 +10,7 @@ import com.sun.source.util.TaskListener;
 import com.sun.source.util.Trees;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.resolve.TypeRegistry;
 
 import javax.lang.model.SourceVersion;
@@ -201,7 +202,7 @@ public final class JavacFrontend {
         if (!attribution.result().isAccepted() || attribution.trees() == null) return attribution.result();
         try {
             var facts = JavacFacts.of(attribution, new TypeRegistry());
-            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries());
+            SubsetRules.checkSpellings(facts, attribution.roots(), attribution.libraries(), reading(roots, pool));
             SubsetRules.check(facts, attribution.roots(), attribution.libraries(), compiled);
             return attribution.result();
         } catch (CompilerException e) {
@@ -211,6 +212,17 @@ public final class JavacFrontend {
             return new JavacResult(rejected, javacVersion(), platform.platformDigest(), platform.stubsDigest(),
                     attribution.result().dropped());
         }
+    }
+
+    /** What the JavaParser frontend reads in this environment, for these units: every one it is given, read by javac or not. */
+    private SpelledTypes.Reading reading(List<Unit> roots, List<Unit> pool) {
+        var texts = new ArrayList<String>(bundled.texts().values());
+        for (var units : List.of(roots, pool)) units.forEach(unit -> texts.add(unit.text()));
+        var registered = new HashSet<String>();
+        JavacUnits.infos(compiler(), platform, texts).forEach(info -> registered.addAll(info.registeredTypes()));
+        var identities = new HashSet<>(platform.stubIdentities());
+        identities.addAll(bundled.digests().keySet());
+        return SpelledTypes.Reading.of(identities, registered);
     }
 
     /**

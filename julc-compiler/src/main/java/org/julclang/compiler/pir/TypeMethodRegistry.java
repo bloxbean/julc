@@ -9,6 +9,7 @@ import org.julclang.core.PlutusData;
 
 import java.math.BigInteger;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Registry mapping (PirType, methodName) to instance method handlers.
@@ -78,6 +79,11 @@ public final class TypeMethodRegistry {
             RequirementsResolver requirements) {
         registry.put(typeKey + "." + method,
                 new MethodRegistration(handler, returnType, requirements));
+    }
+
+    /** The type keys of this registry's rows: a record of one of these names reaches that key's rows by its name. */
+    public Set<String> typeKeys() {
+        return registry.keySet().stream().map(key -> key.substring(0, key.indexOf('.'))).collect(Collectors.toSet());
     }
 
     public Optional<PirTerm> dispatch(PirTerm scope, String method,
