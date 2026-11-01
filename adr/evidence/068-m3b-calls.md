@@ -10,7 +10,8 @@ based at `f3752147`, which is M3a.
 
 This file states the code at `8f2c76b5`. `test` and `wasmSmokeFull` ran there; `pairCaseTest`, `onChainHarnessTest`, `adr068Lowering`,
 `adr068Types` and `adr068Baseline` ran at `4b38ad08`, whose main sources are the same: the commit between adds a test and an argument to
-a test's runner. Later commits change documentation only. M3a's review fixes are not merged in.
+a test's runner. Those results are from before the merge of M3a. [The merge](#the-merge-of-m3a) says what has run since, and the broad
+gates run once more on M3a's final head.
 
 ## What was delivered
 
@@ -56,13 +57,13 @@ a test's runner. Later commits change documentation only. M3a's review fixes are
   container's. Written in a declaration the same types stay rejected, by `pirType`.
 - **`equals` is the receiver's.** The key comes from the receiver's type. Between unrelated static types it stops at `JULC0084`,
   because Java says false and the script would compare representations. `JULC0078` comes with ADR-067 M4's port.
-- **What does not lower though the reference does.** Each is `JULC0084`, and each is a place the reference is wrong or would be:
+- **What does not lower though the reference does.** Each is `JULC0084`, and each is a shape on which the JVM and the reference differ:
   a declared accessor or `toPlutusData` (T31), a `@NewType` component named like a method of its value (`abs` lowers to an absolute
   value), a no-argument method on bytes that is not a component (`hash.toString()`), a wrapper read from a variable (below), a call
   of a varargs helper or library method, and the negation of a type's minimum value.
 - **A hash in a variable.** The reference's `hash` handler is `UnBData`: it takes a variable to hold Data, as a loop's and a lambda's
-  do. Every variable that reaches this slice holds bytes, so `static byte[] h(PubKeyHash p) { return p.hash(); }` fails on-chain
-  where Java returns them, as a byte `@NewType`'s accessor does. `PubKeyHash.fromPlutusData(d)` is the same thing the other way: an
+  do. Every variable that reaches this slice holds bytes, so `static byte[] h(PubKeyHash p) { return p.hash(); }` fails in
+  evaluation where Java returns them, as a byte `@NewType`'s accessor does. `PubKeyHash.fromPlutusData(d)` is the same thing the other way: an
   identity, so Data goes on where bytes are expected. Those stop at `JULC0084`. A read from a typed call, `r.p().hash()`, is decoded,
   and lowers to the reference's bytes.
 - **`contains`** encodes its target by its static type unless the elements decode to integers or bytes (D6, #297). A target that
@@ -70,17 +71,15 @@ a test's runner. Later commits change documentation only. M3a's review fixes are
 
 ### Where the JVM and the reference disagree
 
-The rule of this slice: **where the shape of the tree shows the disagreement, it stops at `JULC0084`, and where it takes a run-time
-value or an analysis of what a body does, it is ported, pinned and reported.** The second kind could stop only by refusing the whole
-method, and the fix belongs in what both frontends share, which is a reference change.
+The rule of this slice: **where the shape of the tree shows the disagreement, `JAVAC` stops at `JULC0084`, with a pin, and the frozen
+frontend does not change. Where it takes a run-time value or an analysis of what a body does, it is ported as it is and pinned.** The
+second kind is a row for the calls slice.
 
 | Shape | JVM | Reference | `JAVAC` |
 |---|---|---|---|
 | `p.hash()` on a parameter, static or `@Param`; a byte `@NewType`'s accessor there; `(r.p()).hash()` | The bytes | Fails: `UnBData` on bytes | Stops |
 | `PubKeyHash.fromPlutusData(d)`, used as bytes | The bytes | Fails: Data where bytes are expected | Stops |
 | `-0x80000000`, `-(-2147483648)`, `-0x8000000000000000L` | The same negative value | The positive one | Stops |
-| `Value.lovelaceOf()` with no ADA | 0 | The first token's quantity | Ported, pinned |
-| `Value.lovelaceOf()` on an empty `Value` | 0 | Fails | Ported, pinned |
 | `a.mod(b)` with `b < 0` | Throws | A value | Ported, pinned |
 | `take(-1)`, `drop(-1)` | Throws | A list | Ported, pinned |
 | A helper with no parameter, whose body fails or traces | Runs when called, each time | Runs once, first, called or not | Ported, pinned |
@@ -177,7 +176,7 @@ Every row is listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lo
 | 2 | `DIFFERENT-provenance` | Provenance change | M3a's rule: for a source with no file, the file is named after the primary type |
 | 1 | `DIFFERENT-bytes` | Representation only | D8: an unused library at `NONE`, as M3a's row, 7 bytes |
 | 1 | `DIFFERENT-bytes` | Semantic fix | `M3bSemanticFixes`: #297, and reads of a list literal typed by javac |
-| 1 | `DIFFERENT-bytes` | Cost change | `M3bFoldedStrings`: adjacent string literals (F940), which goes when that fix lands |
+| | `DIFFERENT-diagnostics` | Diagnostic change | `JULC0102`: a `+` of string constants warns on `JAVAC`, and the reference's table is taken with the gate off, which is where the JavaParser frontend reports it |
 
 D13 asks a policy rejection for docs and release notes too; those are not written yet. The semantic fix's evidence is in-code, as stated
 below.
@@ -383,14 +382,75 @@ nothing in that case, since it had passed before the second runner started; the 
 | H6 | the plugin does not tell the processor | unit test |
 | H7 | the frontend is not a task input | unit test |
 
+## The merge of M3a
+
+`d99a9cd4` and its follow-up merge M3a through `0d505def`. What was not mechanical:
+
+- **`SubsetScan`.** M3a reads a field for its literals, since `UnloweredInitializers` judges what is not lowered, and M3b allows a kind
+  where lowering reaches it. A field the compilation lowers is now a member, as a method is, so `EqualityRules` reads it. Any other
+  field, an initializer block and an annotation are read for their literals. An assignment is then on no list, so `inAnnotation` went.
+- **A method's type.** M3b's `JavacFacts.methodType` takes a parameter through M3a's `parameterType`, so `byte...` reads as its element's
+  type there too, and a local varargs method is a rejection at its signature, not `a call of a varargs method`.
+- **A method read.** `Terms.method` records the element, and `BindingCheck` resolves it as it does a variable. A binder goes by class and
+  name, so `JavacFacts.binderMethod` names one element for interchangeable overloads. A lone method's check binds the class's methods too.
+- **The lints.** `lower/` calls five more `PirHelpers`, none of which takes a source name. A stdlib lookup takes its key from a
+  `CallTarget.Keyed`, which `CallTargets` makes from the owner's identity, and lint 3 now reads the first string past a context.
+- **Tests that met the other side's rules.** A field nothing lowers is `JULC0095`. `Boolean.valueOf(true)` in a `@Param` is accepted.
+  A non-static entry point is rejected before lowering. A `@NewType` of bytes takes the component `value` at the gate, so two fixtures
+  renamed theirs and their case keys change. `"a" + "b"` lowers, and `"\uD83D" + "\uDE00"` is rejected on both frontends.
+- **The tool.** A row that differs only in diagnostics is `DIFFERENT-diagnostics`, which `Diagnostic change` explains. A row that also
+  differs in bytes or params stays `DIFFERENT-bytes`, so a warning cannot cover for bytes.
+
+`M3bFoldedStrings`' accepted entry is gone: M3a's parser option keeps the `+`. Until the gate has run on the merge, the row table in the
+branch is M3a's.
+
+## The stops for M5
+
+Every `JULC0084` a compilation can reach through this slice, by what the default frontend does with the same shape behind the default
+gate. `JavacStopsTest` pins each shape's construct and the default's answer, so a shape that starts to lower, or a default that changes,
+fails there. Stops of a shape the reference gets wrong stay stops on `JAVAC`, and the frozen frontend does not change.
+
+**The default accepts it.** These need a decision: M5 cannot switch the default while they stop.
+
+| Construct | Shapes | JVM against the default frontend |
+|---|---|---|
+| `a wrapper's component read as Data` | `p.hash()` on a parameter or `@Param`; `(r.p()).hash()`; `t.name()` | Java returns the bytes; the default applies `UnBData` to bytes, and evaluation fails |
+| `fromPlutusData on a ledger hash` | `PubKeyHash.fromPlutusData(d)` | The default's identity leaves Data; used as bytes, evaluation fails |
+| `the negation of a type's minimum value` | `-0x80000000`, `-(-2147483648)`, `-0x8000000000000000L` | The JVM wraps to the same negative value; the default gives the positive one |
+| `an equals between unrelated types` | `PubKeyHash.equals(BigInteger)`, `BigInteger.equals(PlutusData)` | Java says false; the default compares representations, and fails on the first. `JULC0078` comes with ADR-067 M4 |
+
+**The default rejects it at the gate (`JULC0101`).** The gate's spelling rules run only for the JavaParser frontend. At M5 `JAVAC` takes
+one of two paths for each: lower what javac bound, or take the rule's code.
+
+| Construct | Shapes |
+|---|---|
+| `a wrapper's component read as Data` | `h.v()` on a `@NewType` of bytes whose component is not `value` |
+| `the method toString of a byte string`, `the method hashCode of a byte string` | `p.toString()`, `p.hashCode()` |
+| `a wrapper's component named like a method of its value` | `@NewType record A(BigInteger abs)`, `@NewType record A(byte[] length)` |
+| `a declared accessor`, `a declared toPlutusData` | An explicit accessor or `toPlutusData` on a record (T31) |
+
+**The default rejects it, with no code.** `JAVAC` needs that rejection, with a code, at M5.
+
+| Construct | Shapes |
+|---|---|
+| `a static call not qualified by a simple class name` | `java.math.BigInteger.valueOf(1)` |
+| `a method with no stdlib lowering` | `Math.floorMod(a, 2L)` |
+| `a text block` | Any text block. The rule that lifts it is a slice's, since `leadingSource` is what reads it |
+
+**A guard behind another rule.** No program reaches these past the rule named, and they stay as fail-closed lines: `an equals on an array`
+(`JULC0087`), `a call of a varargs method` on a local (a `byte...` parameter is rejected at the signature, and any other at its array
+type; a library method's call site reaches it only in I1b), `a method of a subtype of an API type` (`inheritance` stops first, and
+`LoweringAloneTest` reaches it past the scan), and `a component the type does not register`, which no test reaches.
+
+**Constructs a later slice ports.** `VARIABLE` and the other kinds of the worklist, a function argument to `map`, `filter`, `any`, `all`
+and `find`, `a library unit`, `a contract schema` and `debug metadata`. These are not M5 decisions unless a slice leaves one.
+
 ## What this does not establish
 
-- **M3a's review fixes.** This branch is based on M3a as it was. F940's parser option moves `M3bFoldedStrings`' row to identical, and its
-  accepted entry must go. The narrow exception for D14's remedy changes `aParamInitializerIsNotReached`.
 - **Programs with locals.** A covered program is a set of single `return`s. No element is bound twice, and no continuation is
   duplicated, so I13 is still on easy terms.
-- **The silent cases of the table above.** `lovelaceOf` and the rest are pinned, not fixed. The stops are `JULC0084`, which M5's zero-count
-  gate will not accept, so each needs a decision first.
+- **The rows of the table above.** The ported ones are pinned, and go to the calls slice. The stops are `JULC0084`, and M5's zero-count
+  gate does not accept that code, so each is listed in [the stops](#the-stops-for-m5) for its decision.
 - **Library bodies.** Call sites are compared by I1b. No program that reads a library unit compiles, so no library call has run on
   this frontend.
 - **Ledger types on the VM.** The harness has no mapping for `PubKeyHash`, `Value` or a `@NewType` argument, so those paths rest on
