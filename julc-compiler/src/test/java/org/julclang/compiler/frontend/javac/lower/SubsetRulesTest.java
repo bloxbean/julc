@@ -1254,6 +1254,15 @@ class SubsetRulesTest {
         assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
     }
 
+    /** A record compiles as its components on either frontend, so a library's declaration is rejected on both. */
+    @ParameterizedTest
+    @ValueSource(strings = {"record R(long a) { public long a() { return 1; } }", "record R(long a) { public org.julclang.core.PlutusData toPlutusData() { return null; } }"})
+    void aLibrarysRecordDeclaresNoBodyItsDataWouldSkip(String member) {
+        var libraries = List.of(library(member));
+        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAC));
+        assertEquals("JULC0101", code(compiler -> compiler.compile(LIBRARY_CALLER, libraries), CompilerFrontend.JAVAPARSER));
+    }
+
     @Test
     void theMethodRuleNamesTheMethod() {
         var thrown = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod("""

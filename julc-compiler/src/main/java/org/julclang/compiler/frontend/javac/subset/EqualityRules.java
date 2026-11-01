@@ -42,7 +42,7 @@ import java.util.Set;
  *       false, and on-chain {@code EqualsData} compares their representations, which can be equal.</li>
  * </ul>
  * {@code equals} between two types with no class in common does not lower, and is no rule yet: the corpora hold a validator
- * that does this on purpose, so {@code JULC0078} there is a maintainer's decision. A raw receiver read through a cast stops at
+ * that writes it, so {@code JULC0078} there is a maintainer's decision. A raw receiver read through a cast stops at
  * the cast, and {@code ValuesLib} holds one: the cast's slice decides it.
  * Inside a {@code switch} guard ADR-067's evaluator decides constants, and these rules there come with guards.
  */

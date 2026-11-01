@@ -40,6 +40,7 @@ class Adr068ReadsHarnessTest {
                 import org.julclang.core.types.JulcMap;
                 import org.julclang.core.types.Tuple2;
                 import org.julclang.ledger.PlutusDataConvertible;
+                import org.julclang.stdlib.Builtins;
                 import org.julclang.stdlib.annotation.NewType;
 
                 public class Case {
@@ -140,6 +141,63 @@ class Adr068ReadsHarnessTest {
         report.results().forEach((config, result) -> {
             assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
             assertTrue(result.uplc().toString().contains("JULC0055"), report::describe);
+        });
+    }
+
+    // --- A builtin value in Data: the follow-ups' rows, which fail closed ---
+
+    private static final PlutusData LIST = new PlutusData.ListData(List.of(i(1), i(2)));
+    private static final String UN_LIST = "Builtins.unListData(d)";
+
+    /** The JVM returns and the script fails, at every level: pinned, so that a fix or a value here shows. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static boolean m(PlutusData d) { PlutusData p = " + UN_LIST + "; return Builtins.equalsData(p, d); }",
+            "public static boolean m(PlutusData d) { var p = " + UN_LIST + "; return Builtins.equalsData(p, d); }",
+            "public static boolean m(PlutusData d) { PlutusData.ListData p = " + UN_LIST + "; return Builtins.equalsData(p, d); }",
+            "public static boolean m(PlutusData d) { return Builtins.equalsData(" + UN_LIST + ", d); }",
+            "static PlutusData w(PlutusData d) { return " + UN_LIST + "; } public static boolean m(PlutusData d) { return Builtins.equalsData(w(d), d); }",
+            "public static byte[] m(PlutusData d) { PlutusData p = " + UN_LIST + "; return Builtins.serialiseData(p); }",
+            "public static PlutusData m(PlutusData d) { PlutusData p = " + UN_LIST + "; return Builtins.unListData(p); }",
+    })
+    void aBuiltinListInDataFailsClosed(String members) {
+        var report = run(members, LIST);
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == CompilerFrontend.JAVAC) assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static byte[] m(PlutusData d) { return Builtins.encodeUtf8(d); }",
+            "public static boolean m(PlutusData d) { return Builtins.nullList(d); }",
+            "public static PlutusData m(PlutusData a) { return Builtins.mkCons(a, a); }",
+    })
+    void dataWhereABuiltinTakesAListOrTextFailsClosed(String members) {
+        var report = run(members, i(1));
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == CompilerFrontend.JAVAC) assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static boolean m(PlutusData d) { PlutusData p = " + UN_LIST + "; return Builtins.nullList(p); }",
+            "public static PlutusData m(PlutusData d) { PlutusData p = " + UN_LIST + "; return Builtins.headList(p); }",
+    })
+    void aListInDataStaysLegitimate(String members) {
+        var report = run(members, LIST);
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public record R(PlutusData d) { } static PlutusData.ListData h(PlutusData z) { return Builtins.constrFields(z); } public static R m(PlutusData z) { return new R(h(z)); }",
+    })
+    void aHelpersReturnIsAFollowUp(String members) {
+        var report = run(members, new PlutusData.ConstrData(0, List.of(i(1))));
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == CompilerFrontend.JAVAC) assertInstanceOf(Observation.Failure.class, result.uplc(), report::describe);
         });
     }
 
