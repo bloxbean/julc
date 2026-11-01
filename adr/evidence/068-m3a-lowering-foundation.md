@@ -20,7 +20,7 @@ This file states the code at `7afd2b03`. The I1 gate, `adr068Baseline`, `adr068T
 | The lowering: one dispatch, an immutable `Frame`, a `Scope` keyed by element, one builder of source binders, and the families | `frontend/javac/lower/`: `Lowering`, `Frame`, `Scope` (and its `Binder`, which only a `Scope` makes), `Terms`, `Provenance`, `Literals`, `Names`, `Statements` |
 | I13's check, on construction-time provenance: a read's element comes from javac and a binder's from the scope, so a wrong lookup fails it | `lower/BindingCheck.java`, `lower/Provenance.java`, run on every compilation under `julc.verifyBinderNamespace` |
 | ADR-060's namespace check on this frontend | `JavacCompilation.verifyBinderNamespace` |
-| D14: `JULC0088` is emitted. New: `JULC0093`, an unpaired surrogate in a literal; `JULC0096` and `JULC0097` on javac; and the subset's gate rules `JULC0094`, `JULC0095`, `JULC0098` and `JULC0099`, which run once, on javac's trees ([B2](068-m3a-reference-b2.md)) | `diagnostics.json`, `JavacDiscovery`, `SubsetScan`, `validate/UnloweredInitializers`, `subset/UnloweredInitializers` |
+| D14: `JULC0088` is emitted. New: `JULC0093`, an unpaired surrogate in a literal; `JULC0096` and `JULC0097` on javac; and the subset's gate rules `JULC0094`, `JULC0095`, `JULC0098`, `JULC0099`, `JULC0100` and `JULC0101`, which run once, on javac's trees ([B2](068-m3a-reference-b2.md)) | `diagnostics.json`, `JavacDiscovery`, `SubsetScan`, `SubsetRules`, `subset/` |
 | The I1 tool | `julc-difftest`: `adr068Lowering`, `Adr068Lowering`, `Adr068LoweringTest`, `PirCanonical`, and the tables `068/lowering-i1.tsv`, `068/lowering-i1-totals.tsv`, `068/lowering-reference.tsv`, `068/lowering-accepted-differences.tsv` |
 | D10's frontend axis: a verdict is per frontend | `DiffConfig.frontend`, `UplcExecutor`'s cache key, `Adr068LoweringHarnessTest` |
 | The three lints | In `JavacLoweringLintTest`, over attributed sources in every package under `lower/`, each with negative controls that must compile and make it fail. `TreeScanner` is banned from `lower/` on purpose: its Javadoc says why |
@@ -55,10 +55,11 @@ This file states the code at `7afd2b03`. The I1 gate, `adr068Baseline`, `adr068T
 - **The subset's rules run once, at the gate.** `frontend/javac/SubsetRules.java` runs them on javac's trees after `analyze()` succeeds: from
   `JavacGate.check` for a compilation on the default frontend, and first of all from `JavacCompilation` on `frontend=JAVAC`. So there is one
   rule, with one code, one message and one position, and no reading of a spelling. A rule follows the gate's mode: `enforce`, the default,
-  rejects; `report` writes it down; `off` turns it off on the default frontend, as `CompilerOptions.setJavacGate` says. `JavacGate.Compiled`
+  rejects; `report` writes it down, where `julc.javacGate.report` names a directory; `off` turns it off on the default frontend, as `CompilerOptions.setJavacGate` says. `JavacGate.Compiled`
   says what a compilation compiles, and is part of the gate's cache key, since one source reads differently as a validator and as a
   `compileMethod` target. The rules read the units javac read: a root, and a library the program references. A library unit nothing references
-  is not read, so nothing of it can run (D8). Annotations count by name here, as the default frontend reads them, so a user's own annotation
+  is not read, so the rules say nothing of it. On `frontend=JAVAC` such a unit is not compiled (D8); on the default frontend the pool's
+  library units are lowered, read or not. Annotations count by name here, as the default frontend reads them, so a user's own annotation
   of that name decides nothing in its favour.
 - **What a field initializer may hold.** A static field of the compiled class is lowered, and so is a static field of a library's class. Nothing
   lowers any other field: a `@Param`, an instance field, a field of another type. Such a field holds only a literal, a `new byte[]{...}` of literals,
@@ -68,9 +69,18 @@ This file states the code at `7afd2b03`. The I1 gate, `adr068Baseline`, `adr068T
   scan's grows as lowering learns a kind, and says nothing of code lowering never reads. D14's order holds: a `@Param` constant variable is
   `JULC0088`, not `JULC0095`.
 - **An entry point returns `boolean` or `java.lang.Boolean`** (`JULC0094`), by identity, so a user's type named `Boolean` is another type.
-- **A cast to `boolean` or `Boolean` takes a boolean or Data** (`JULC0098`). Its operand, through parentheses and other casts, is `boolean`, `Boolean`,
-  or `PlutusData` and its subtypes. The stdlib, the in-repo and external examples and every corpus hold no `(boolean)(Object)` or `(Boolean)(Object)`, and the 13
-  `(boolean)` and `(Boolean)` casts in the corpus files have a boolean operand.
+- **A value reaches `boolean` through a cast only from a boolean** (`JULC0098`). The operand of a cast to `boolean` or `Boolean`, through parentheses
+  and other casts, is `boolean` or `Boolean`. Data is not: a cast does not decode it. A cast has spellings with no cast tree, the calls lowered to their
+  argument: `PlutusData.cast`, by the method's identity and by the call's resolved type, so `Boolean.class`, `boolean.class` and a `Class<Boolean>` variable
+  are one case, and `X.fromPlutusData` and `BigInteger.valueOf`, by the spelling the lowering reads. The other calls lowered to their argument or receiver
+  cannot yield a boolean: `intValue`, `longValue`, `value`, `hash`, `Builtins.toByteString` and the ledger's `of` have an API type that is not boolean, and a
+  user type's method of those names is `JULC0101`. A target holds a boolean if it is one, has one as a bound, or is a `@NewType` of one. An intersection with
+  `Boolean` is read too, though the platform's stubs stop one at javac today. What holds a `Boolean` in Data, a list, an Optional, a map, a tuple or a record, reads
+  it with a decode, so it fails on anything else, whichever way the program was compiled (`BooleanCarriersTest`). A type variable of a validator's own method does not compile.
+- **Names the JavaParser frontend reads by spelling are the gate's** (`JULC0100`, `JULC0101`). The javac frontend binds a name to its element, so it has neither
+  rule. A type or type parameter does not take a name of `SpelledTypes.NAMES`, which is `resolveClassType`'s cases and the ledger's hash names, and a test holds
+  the two together. A method does not take a name read in place of its body: `SpelledMethods`' Javadoc lists each matcher, and the declaration it stands in for.
+  That closes T31's explicit accessors and `equals`, and T33's user record `PubKeyHash`, on the default frontend: their `.diffcase`s are renamed and expect the rule.
 - **A constructor holds no statement** (`JULC0099`). A value is built from its components alone, so a constructor's body does not run on-chain. With the gate off the default frontend drops such a body. The rule reads any constructor a source declares, compact, canonical or other, on a record or a class, however deep. What javac wrote has no source text and does not count: `super();`, a compact constructor's assignments, a generated constructor. So `R { }` holds nothing. An API type comes in as a class file and is not read: `068-followups.md` states what those constructors do.
 - **A `+` of string literals stays a `+`.** `-XDallowStringFolding=false` keeps the tree as written, so `"a" + "b"` is `PLUS`, and
   `x + "c" + "d"` is two nodes. It is a hidden option, so the supported-javac check parses `"a" + "b"` once per compiler and requires
@@ -124,7 +134,7 @@ M2's lessons are its shape:
   (`DIFFERENT-root-alone` otherwise, which no D13 class can explain). `javac-rejects` and `both-reject-javac-first` hold javac's
   message and position.
 - Every `DIFFERENT` row must be listed once by key in `lowering-accepted-differences.tsv`, with a D13 class that can explain it. A stale entry fails, and `NEEDS A DECISION` is no class.
-- A freeze refuses to lose cases, covered methods or a class's comparisons without `-Padr068.allowShrink=true`, and to write with no table to protect. Classes are ranked by what they compare: `Adr068Lowering.rank`. A rank does not say everything a freeze must refuse, so `Adr068LoweringTest.shrinks` also counts any move out of `javac-rejects`, where javac stopped rejecting a source, and a changed digest or provenance on a row whose class stays, since that row now pins something else. A run refuses `adr/evidence/068` as its output directory, where it would compare its tables with themselves.
+- A freeze refuses to lose cases, covered methods or a class's comparisons without `-Padr068.allowShrink=true`, and to write with no table to protect. Classes are ranked by what they compare: `Adr068Lowering.rank`. A rank does not say everything a freeze must refuse, so `Adr068LoweringTest.shrinks` also counts any move out of `javac-rejects` or `DIFFERENT-javac-rejects`, where a rejection went, a move into a listed class from another listed class or from `both-reject`, and a changed digest or provenance on a row whose class stays, since that row now pins something else. A run refuses `adr/evidence/068` as its output directory, where it would compare its tables with themselves.
 
 The corpus is M2's, the frozen recordings and the head recording, plus M3a's fixtures, because the recorded corpus holds few of the
 slice's shapes in a program it covers, and the rule fixtures and `.diffcase`s of B2.
@@ -188,7 +198,7 @@ All listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lowering-ac
 |---:|---|---|---|
 | 8 | `DIFFERENT-javac-accepts` | Accepted by decision | The ADR-065 I2c escape shapes M0 scheduled. The reference's reader rejects each; `Adr068LoweringHarnessTest` runs each on the JVM and through JAVAC at every level, and they agree. They are in-code cases, not saved `.diffcase` files, which D13 asks for |
 | 4 | `DIFFERENT-javac-accepts` | Accepted by decision | D8's precedence: a root and a pool unit declare one name, so the root's wins and the shadowed unit is not read. The reference says `Duplicate record type`, and M0 marks that row permanent. In `9cf0e1d4` and `b24bd9d4` the two are in one package, so Java refuses the pair in one build and no JVM run of it exists. On all four javac's program equals the reference's of the root alone, at every level, and the gate compares that |
-| 4 | `DIFFERENT-javac-accepts` | Accepted by decision (ADR r11, D8) | A rejection of a library unit the root does not reference, so javac never reads it, and it cannot reach the script: `Library source must not contain validator annotation`, or the role conflict. javac's program equals the reference's of the root alone, at every level |
+| 4 | `DIFFERENT-javac-accepts` | Accepted by decision (ADR r11, D8) | A rejection of a library unit the root does not reference. javac does not read it, so `frontend=JAVAC` does not compile it: `Library source must not contain validator annotation`, or the role conflict. javac's program equals the reference's of the root alone, at every level |
 | 2 | `DIFFERENT-javac-accepts` | Accepted by decision (ADR r11, D13) | A lone surrogate in a comment, which cannot reach a script. M0's inventory marks these permanent; the rule is on literals. The JVM agrees (`Adr068LoweringHarnessTest`) |
 | 1 | `DIFFERENT-javac-accepts` | Accepted by decision (ADR r11, D7) | The `@Param` rule on `BytesData` is about the API's type, and a user record of that name is not it |
 | 10 | `DIFFERENT-javac-rejects` | Policy rejection (ADR r11) | A pin of a gate rule (B2): 4 `.diffcase`s of `JULC0095`, 4 fixtures of `JULC0094`, `JULC0098` and `JULC0099`, and the 2 `.diffcase`s of `JULC0099` for a compact and a secondary constructor. The reference compiles them with the gate off, and on the default frontend the gate rejects them with the same code, words and position as here (`SubsetRulesTest`) |
@@ -216,7 +226,7 @@ All listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lowering-ac
 | The external `julc-examples` at `22b4e00f`, default frontend and gate mode, against `ff3cef58` and `d0cee64b` | 446 tests, 0 failures, 68 skipped, on both: the skips are its DevKit tests, which a scratch clone turns off through their own assumption. So the gate's rules read every source it compiles, and none rejects. Of the 271 tests that record an evaluation, each has the same outcomes, errors and traces on both. By FLAT digest, tests evaluated 24 of the 67 external cases the Value methods moved. The other 43 compile and are not evaluated as compiled here |
 | The gate's determinism | 2 threads and the default write the same bytes, at `ff3cef58`: the gate's byte comparison passes at both |
 | The default path, gate off, against B2 | `adr068Baseline` now fails unless it writes [B2](068-m3a-reference-b2.md)'s files. At `7afd2b03` it passes: every file equal, 11,425 cases |
-| M2's gate, `adr068Types` | 0 rows moved. The 8 pins of B2 are added to `types-m2.tsv`, each an `equal` row. The schemas of the 4 rule fixtures, and one layout, are new since B1's table, and `m2-accepted-differences.tsv` gives them their cases' class, Policy rejection |
+| M2's gate, `adr068Types` | 0 rows moved. The 8 pins of B2 are added to `types-m2.tsv`, each an `equal` row. The schemas of the 4 rule fixtures, and one layout, are newer than B1's table, so each is compared with the reference this run computes |
 
 
 ### Images
@@ -520,6 +530,51 @@ J12 drops the flag, and the check then refuses every compilation (`JULC0089`), w
 | H8: the constructor not named | 1 |
 | H9: the rule at the body, not the constructor | 1 |
 
+**The cast rule, the names, and a freeze.** Each ran at `10523d58` or `e39a9621` over `SubsetRulesTest` and `SubsetRulesAtEveryEntryTest`, or `Adr068LoweringToolTest` for the T rows, after a no-op control through the same script (0 of 388, and 0 of 57). One test failed the control at `10523d58`, so it is taken out of those counts, and I12, M12 and M13, which only it failed, ran again with tests of their own. An intersection with `Boolean` has no mutant, since the platform's stubs stop one at javac. A check that a generated method was exempt could not fail, since such a method has no tree here, so it was removed. `FZ-RULE` is the gate run for T20: with `requireBooleanResults` removed and the 2 `JULC0094` rows deleted from the accepted table, `-Padr068.freeze=true` is refused, moved 2, shrunk 2, and no table is written.
+
+| Mutation | Tests failing |
+|---|---:|
+| I1: calls lowered to their argument not read | 41 |
+| I2: the operand stops at such a call | 2 |
+| I3: Data allowed | 24 |
+| I4: cast only by spelling | 2 |
+| I5: cast only by identity | 1 |
+| I6: fromPlutusData not read | 1 |
+| I7: valueOf not read | 1 |
+| I8: a bound of a type variable not read | 1 |
+| I9: a @NewType of a boolean not read | 2 |
+| I10: a call inside a call not read | 1 |
+| I11: a cast inside a cast not read | 1 |
+| I12: any cast method by name | 1 |
+| N1: a type name not read | 76 |
+| N2: a type parameter not read | 51 |
+| N3: Boolean left out | 43 |
+| N4: a hash name left out | 1 |
+| N5: a nested type not read | 106 |
+| M1: fromPlutusData not read | 33 |
+| M2: toPlutusData not read | 1 |
+| M3: parameters not counted | 1 |
+| M4: a sealed interface not read | 1 |
+| M5: a @NewType instance method not read | 36 |
+| M6: a @NewType of not read | 31 |
+| M7: equals on a record not read | 29 |
+| M8: an explicit accessor not read | 29 |
+| M9: a record Value not read | 2 |
+| M11: a type inside a method not read | 4 |
+| M12: an API method through a variable read | 1 |
+| M13: a call on a type read | 1 |
+| M14: a call through a variable not read | 4 |
+| M15: a library not read for spellings | 11 |
+| M16: the gate has no spelling rules | 134 |
+| M17: the method rule not run | 54 |
+| M18: the type rule not run | 109 |
+| D1: an anonymous class read as lowered | 1 |
+| T20: leaving a listed rejection is no shrink | 1 |
+| T21: a move among listed classes is no shrink | 1 |
+| T22: a move from both-reject is no shrink | 1 |
+| T23: a newer row taken as equal | 1 |
+| T24: a newer row not compared | 1 |
+
 **The gate's own tool, for a freeze.** Each is a change to the tool, with a no-op control through the same script (0 of 53). These are its negative controls for what a compare or a freeze could miss. T8 and T9 survived the first pass, since the injected program also moved the row's coverage, so the two tests now change only what compiles, and each then fails. K25's arm is asked directly: on a whole row `byteDifference` meets a program one side rejects first, as a cell.
 
 | Mutation | `Adr068LoweringToolTest` failing, of 53 |
@@ -546,7 +601,7 @@ J12 drops the flag, and the check then refuses every compilation (`JULC0089`), w
 
 The freeze of this round showed the shrink at work: the 19 rows only javac accepts took a new digest when they gained the map cells, and all 19 were in `lowering-i1-shrunk.tsv`, so that freeze needed `-Padr068.allowShrink=true`.
 
-**Key-based Value methods.** After a no-op control (stdlib 0/151, compiler 0/317), the 25 mutants of `lovelaceOf`, `add`, `subtract`, `negate`, `geqMultiAsset`, `leq` and `eq` each fail `ValuesLibByKeyTest` or a test beside it, including a read by position on both paths, a second implementation of `lovelaceOf`, a key returned twice at both levels, presence by amount, and reversed order. The comparisons' eight include a side's keys skipped, each way, and an absent key not read as 0.
+**Key-based Value methods.** After a no-op control (stdlib 0/155, compiler 0/317), the 27 mutants of `lovelaceOf`, `add`, `subtract`, `negate`, `geqMultiAsset`, `leq` and `eq` each fail `ValuesLibByKeyTest` or a test beside it, including a read by position on both paths, a second implementation of `lovelaceOf`, a key returned twice at both levels, presence by amount, and reversed order. The comparisons' ten include a side's keys skipped, each way, an absent key not read as 0, and the second pass the same way as the first.
 
 **The older mutants.** All 71 ran again at `8ff98e81` or later, or at `3da56ad3` for the seven whose anchors moved, and none survives. They did not run again after that: `lower/` and `codegen/` have not changed since `8ff98e81`, and the rules' mutants are above. D12, A2, D19 and F1 fail the gate alone, as they did. Their counts differ a little from the tables above, since tests and fixtures were added; the tables above are kept as what `fbc37706` showed.
 
@@ -600,7 +655,7 @@ shrink check never ran. The row above changes coverage alone, and fails at the s
 - **Fragments.** Lines and columns are compared at every level; a fragment's text is counted, not compared.
 - **Images and hosts.** The native CLI and the Web Image run the gate with the self-check of `-XDallowStringFolding=false`, below. `wasmSmokeFull` runs the default frontend, so the lowering has not run in a native or Web image, and no host exposes the option. Elci was not rebuilt.
 - **JDK patch releases.** Two JDK builds were not compared. javac's rejection text is now in the rows' digests, so a release that rewords one moves those rows.
-- **DevKit end-to-end tests** ran at `ee1c6b81` on `bloxbean/yaci-cli:0.12.0`, 0 failures counted from JUnit XML: the external `julc-examples` at `22b4e00f`, 446 tests with 11 skipped, and its 54 integration tests on the node with none skipped; `:julc-e2e-tests:test -Pe2e`, 10; `listCaseOnChainTest`, 2; `switchPairCaseOnChainTest`, 2; `nativeConstantsOnChainTest`, 12. By a source scan, which may undercount, 9 integration classes (22 tests) deploy a script that calls `ValuesLib.lovelaceOf`, and none deploys a script that directly calls `add`, `subtract`, `negate`, `eq`, `geq`, `leq` or `geqMultiAsset`, so those rest on VM evaluation alone. A later commit that moves script bytes must run these again; a rule that only rejects does not.
+- **DevKit end-to-end tests** ran at `ee1c6b81` on `bloxbean/yaci-cli:0.12.0`, 0 failures counted from JUnit XML: the external `julc-examples` at `22b4e00f`, 446 tests with 11 skipped, and its 54 integration tests on the node with none skipped; `:julc-e2e-tests:test -Pe2e`, 10; `listCaseOnChainTest`, 2; `switchPairCaseOnChainTest`, 2; `nativeConstantsOnChainTest`, 12. By a source scan, which may undercount, 9 integration classes (22 tests) deploy a script that calls `ValuesLib.lovelaceOf`, and none deploys a script that directly calls `add`, `subtract`, `negate`, `eq`, `geq`, `leq` or `geqMultiAsset`, so those rest on VM evaluation alone. A later commit that moves script bytes must run these again; a rule that only rejects does not. `1ee4ce2f` moves bytes, so they run again after it.
 
 ## What the next slice inherits
 
@@ -611,6 +666,7 @@ shrink check never ran. The row above changes coverage alone, and fails at the s
 - **I13's per-method table** comes with the first duplicated continuation: `Scope.bind` chooses from what is visible, and no element is
   bound twice yet.
 - **`requireNoMethodCall`** has no javac side, since calls are `JULC0084`. Port it with calls, at step 11b.
+- **Calls bind to their element.** `SpelledMethods` lists what the JavaParser frontend reads by spelling ahead of a method's body. The calls slice binds a call to the element javac resolved, so none of those matchers comes across, and `JULC0098`'s three calls lowered to their argument are its to keep.
 - **Statements.** `block` handles an empty body or one `return`, and says so; `generateStatements` is next. Keep the `#_` and `#_if` lets.
 - **Parameter names at the boundary.** `ValidatorAssembly.Parameter` has a source name and a binder name, because the strict transform
   builds on the binder. `Provenance` follows it, and a test builds the shape the locals slice will. Records will exercise that path for real.
