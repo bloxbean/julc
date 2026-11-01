@@ -88,6 +88,7 @@ tasks.register('rediscoveryDiffTest', Test) {
 //       :julc-examples:test -Pjulc.corpus.record=build/julc-corpus --offline --continue --rerun
 //   ./gradlew :julc-difftest:adr068Baseline -Padr068.corpus=build/julc-corpus [-Padr068.corpus.external=<dir>]
 //       [-Padr068.corpus.elci=<dir>] [-Padr068.external=<julc-examples checkout>] [-Padr068.threads=<n>] [-Padr068.out=<dir>] --offline
+// It fails unless what it writes equals the frozen reference; -Padr068.freeze=true writes that instead, at a reference change (D4).
 // The evidence file has the external and Elci recording commands.
 tasks.register('adr068G1Capture', Test) {
     group = 'verification'
@@ -115,10 +116,11 @@ tasks.register('adr068Baseline', Test) {
     // The reference rows are the JavaParser frontend's: every compilation the baseline makes (ledger, harness runs and
     // evaluation replays) has the javac gate off, unless -Padr068.gate=enforce asks for M1b's gate-on check.
     systemProperty 'julc.javacGate', providers.gradleProperty('adr068.gate').orElse('off').get()
-    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.external', 'adr068.out', 'adr068.threads', 'adr068.gate'].each { key ->
+    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.external', 'adr068.out', 'adr068.threads', 'adr068.gate',
+     'adr068.freeze'].each { key ->
         def value = providers.gradleProperty(key)
         if (value.isPresent()) {
-            systemProperty key, key in ['adr068.threads', 'adr068.gate'] ? value.get() : rootProject.file(value.get()).absolutePath
+            systemProperty key, key in ['adr068.threads', 'adr068.gate', 'adr068.freeze'] ? value.get() : rootProject.file(value.get()).absolutePath
         }
     }
     outputs.upToDateWhen { false }
@@ -178,8 +180,9 @@ tasks.named('adr068Types').configure { maxHeapSize = '6g' }
 // full coverage by M3 and M4 (adr/evidence/068-m3a-lowering-foundation.md):
 //   ./gradlew :julc-difftest:adr068Lowering -Padr068.corpus=<M0 recording> [-Padr068.corpus.external=<dir>]
 //       [-Padr068.corpus.elci=<dir>] [-Padr068.corpus.head=<a recording of this head>] [-Padr068.threads=<n>]
-//       [-Padr068.out=<dir>] [-Padr068.freeze=true] [-Padr068.allowShrink=true] --offline --no-watch-fs
-// -Padr068.freeze writes the table instead of comparing with it, and refuses to lose a covered case without allowShrink.
+//       [-Padr068.out=<dir>] [-Padr068.freeze=true] [-Padr068.freezeReference=true] [-Padr068.allowShrink=true] --offline --no-watch-fs
+// -Padr068.freeze writes the table instead of comparing with it, and refuses to lose a comparison, or to write with no table
+// to protect, without allowShrink. -Padr068.freezeReference writes lowering-reference.tsv: only at a reference change (D4).
 tasks.register('adr068Lowering', Test) {
     group = 'verification'
     description = 'ADR-068 I1: the javac frontend against the reference over the corpus'
@@ -193,10 +196,10 @@ tasks.register('adr068Lowering', Test) {
     systemProperty 'adr068.repo', rootDir.absolutePath
     systemProperty 'julc.javacGate', 'off'
     ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.corpus.head', 'adr068.out', 'adr068.threads',
-     'adr068.freeze', 'adr068.allowShrink'].each { key ->
+     'adr068.freeze', 'adr068.freezeReference', 'adr068.allowShrink'].each { key ->
         def value = providers.gradleProperty(key)
         if (value.isPresent()) {
-            systemProperty key, key in ['adr068.threads', 'adr068.freeze', 'adr068.allowShrink'] ? value.get() : rootProject.file(value.get()).absolutePath
+            systemProperty key, key in ['adr068.threads', 'adr068.freeze', 'adr068.freezeReference', 'adr068.allowShrink'] ? value.get() : rootProject.file(value.get()).absolutePath
         }
     }
     testLogging { showStandardStreams = true }

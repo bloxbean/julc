@@ -99,6 +99,11 @@ final class Adr068Corpus {
             this.libraries = List.copyOf(libraries);
         }
 
+        /** This case with no library, under the same key: what the root compiles to by itself (D8). */
+        Case rootAlone() {
+            return new Case(key, entry, method, lookup, target, costProfile, sourceMap, disabledRules, main, List.of());
+        }
+
         /** The tag prefixes: {@code recorded}, {@code diffcase}, … */
         TreeSet<String> parts() {
             var parts = new TreeSet<String>();

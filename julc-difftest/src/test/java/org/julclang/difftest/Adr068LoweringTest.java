@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -20,16 +21,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-068 I1, from M3a to M5: every corpus case on {@code frontend=JAVAC}, classified against B1 and the reference's PIR.
- * Run by {@code ./gradlew :julc-difftest:adr068Lowering}; never part of {@code test}, since it needs the recorded corpora.
- * See {@code adr/evidence/068-m3a-lowering-foundation.md}.
+ * ADR-068 I1, from M3a to M5: every corpus case on {@code frontend=JAVAC}, classified against the reference's PIR and the
+ * frozen reference. Run by {@code ./gradlew :julc-difftest:adr068Lowering}; never part of {@code test}, since it needs the
+ * recorded corpora. See {@code adr/evidence/068-m3a-lowering-foundation.md}.
  * <p>
  * M2's lessons are the shape of this gate. Every row must equal the committed {@code lowering-i1.tsv}, in both directions,
  * so a case that moves to another class, gains or loses a covered method, or leaves the corpus fails. No class is
  * tolerant: a frontend that rejects everything moves every covered row, and rejections have their own classes rather
- * than falling into a passing one. Every {@code DIFFERENT} row must be listed by key in
- * {@code lowering-accepted-differences.tsv}, and a stale entry fails too. {@code -Padr068.freeze=true} writes the table,
- * and refuses to lose covered cases, or cases at all, without {@code -Padr068.allowShrink=true}.
+ * than falling into a passing one. What the gate writes must then equal the committed files byte for byte, totals
+ * included. Every {@code DIFFERENT} row must be listed by key in {@code lowering-accepted-differences.tsv}, with a D13
+ * class that can explain it, and a stale entry fails too.
+ * <p>
+ * The reference is held still by {@code lowering-reference.tsv}: every level's cell, the diagnostics, {@code @Param}
+ * infos, source map and method terms of every case, checked on every row. It changes only by
+ * {@code -Padr068.freezeReference=true}, at a reference change (D4). {@code -Padr068.freeze=true} writes the row table,
+ * and refuses without {@code -Padr068.allowShrink=true} to lose cases, covered methods or a class's comparisons, and to
+ * write a table with none to compare against.
  */
 @Tag("adr068-lowering")
 class Adr068LoweringTest {
@@ -38,23 +45,29 @@ class Adr068LoweringTest {
     private static final Path OUT = Path.of(System.getProperty("adr068.out", REPO.resolve("build/adr068-lowering").toString()));
     private static final Path EVIDENCE = REPO.resolve("adr/evidence/068");
     private static final Path FROZEN = EVIDENCE.resolve("lowering-i1.tsv");
+    private static final Path TOTALS = EVIDENCE.resolve("lowering-i1-totals.tsv");
+    private static final Path REFERENCE = EVIDENCE.resolve("lowering-reference.tsv");
     private static final boolean FREEZE = Boolean.parseBoolean(System.getProperty("adr068.freeze", "false"));
+    private static final boolean FREEZE_REFERENCE = Boolean.parseBoolean(System.getProperty("adr068.freezeReference", "false"));
     private static final boolean ALLOW_SHRINK = Boolean.parseBoolean(System.getProperty("adr068.allowShrink", "false"));
 
     @Test
     void theJavacFrontendAgainstTheReference() throws Exception {
         var corpus = Adr068TypesTest.corpus(REPO);
         corpus.addFixtures("m3a", "julc-difftest/src/test/resources/adr068/m3a-fixtures");
-        var tool = new Adr068Lowering(b1());
+        var tool = new Adr068Lowering(FREEZE_REFERENCE ? null : committedReference());
         var rows = new ConcurrentHashMap<String, Adr068Lowering.Row>();
+        var references = new ConcurrentHashMap<String, String>();
         var parts = new ConcurrentHashMap<String, Integer>();
         int threads = Integer.parseInt(System.getProperty("adr068.threads",
                 String.valueOf(Math.max(1, Runtime.getRuntime().availableProcessors() - 2))));
         var pool = new ForkJoinPool(threads);
         try {
             pool.submit(() -> corpus.sorted().parallelStream().forEach(c -> {
-                var row = tool.classify(c);
+                var classified = tool.classify(c);
+                var row = classified.row();
                 rows.put(c.key, row);
+                references.put(c.key, classified.reference().line());
                 for (String part : c.parts()) parts.merge(part + "\t" + row.kind(), 1, Integer::sum);
             })).get();
         } finally {
@@ -64,10 +77,19 @@ class Adr068LoweringTest {
 
         var lines = new TreeMap<String, String>();
         rows.forEach((key, row) -> lines.put(key, row.line()));
+        var referenceLines = new ArrayList<String>();
+        referenceLines.add("# ADR-068 F925: the reference's results for every case of the lowering corpus, at the reference named"
+                + " in adr/evidence/068-m3a-reference-b2.md. Generated by adr068Lowering -Padr068.freezeReference=true; do not edit.");
+        referenceLines.add(Adr068Lowering.Reference.HEADER);
+        referenceLines.addAll(new TreeMap<>(references).values());
         var summary = summary(rows, parts);
         Files.createDirectories(OUT);
-        Files.write(OUT.resolve("lowering-i1.tsv"), lines.values());
-        Files.write(OUT.resolve("lowering-i1-totals.tsv"), summary);
+        var written = OUT.resolve("lowering-i1.tsv");
+        var writtenTotals = OUT.resolve("lowering-i1-totals.tsv");
+        var writtenReference = OUT.resolve("lowering-reference.tsv");
+        Files.write(written, lines.values());
+        Files.write(writtenTotals, summary);
+        Files.write(writtenReference, referenceLines);
         summary.stream().filter(line -> !line.startsWith("part")).forEach(System.out::println);
 
         var frozen = frozen();
@@ -84,39 +106,49 @@ class Adr068LoweringTest {
         System.out.println("moved\t" + moved.size() + "\nshrunk\t" + shrunk.size());
         moved.stream().limit(20).forEach(line -> System.out.println("moved\t" + line));
 
+        assertTrue(rows.values().stream().noneMatch(row -> row.kind().equals("REFERENCE-DRIFT")),
+                rows.values().stream().filter(row -> row.kind().equals("REFERENCE-DRIFT")).count()
+                        + " rows differ from lowering-reference.tsv: the frozen frontend changed; see lowering-i1-moved.tsv");
         // Every difference is listed, with its D13 class, and every entry is still found.
         assertListed(rows);
         assertTrue(rows.values().stream().anyMatch(Adr068Lowering.Row::fullyCovered), "no case was compared");
-        assertTrue(rows.values().stream().noneMatch(row -> row.kind().equals("REFERENCE-DRIFT")),
-                "the reference is not B1: the frozen frontend changed");
+        if (FREEZE_REFERENCE) {
+            if (Files.exists(REFERENCE)) {
+                var lost = new TreeSet<>(committedReference().keySet());
+                lost.removeAll(references.keySet());
+                assertTrue(ALLOW_SHRINK || lost.isEmpty(), lost.size() + " cases left the reference, for example " + lost.stream().findFirst());
+            }
+            Files.copy(writtenReference, REFERENCE, StandardCopyOption.REPLACE_EXISTING);
+        }
         if (FREEZE) {
-            assertTrue(ALLOW_SHRINK || shrunk.isEmpty(), shrunk.size() + " rows lost coverage or left the corpus; see "
-                    + "lowering-i1-shrunk.tsv, and pass -Padr068.allowShrink=true if that is meant");
-            Files.write(FROZEN, lines.values());
-            Files.write(EVIDENCE.resolve("lowering-i1-totals.tsv"), summary);
+            assertTrue(ALLOW_SHRINK || Files.exists(FROZEN), "no table to protect: pass -Padr068.allowShrink=true if that is meant");
+            assertTrue(ALLOW_SHRINK || shrunk.isEmpty(), shrunk.size() + " rows lost coverage, a comparison, or left the corpus; "
+                    + "see lowering-i1-shrunk.tsv, and pass -Padr068.allowShrink=true if that is meant");
+            Files.copy(written, FROZEN, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(writtenTotals, TOTALS, StandardCopyOption.REPLACE_EXISTING);
             return;
         }
         assertEquals(0, moved.size(), moved.size() + " rows differ from " + FROZEN + ", " + shrunk.size()
-                + " of them losing coverage; see lowering-i1-moved.tsv");
+                + " of them losing coverage or a comparison; see lowering-i1-moved.tsv");
+        assertSameBytes(written, FROZEN);
+        assertSameBytes(writtenTotals, TOTALS);
+        assertSameBytes(writtenReference, REFERENCE);
     }
 
-    /** The committed reference cells, by case and level: the reference is checked against these as it runs. */
-    private static Map<String, Map<String, String>> b1() throws IOException {
-        var cells = new TreeMap<String, Map<String, String>>();
-        List<String> header = null;
-        for (String line : Files.readAllLines(EVIDENCE.resolve("ledger-b1.tsv"))) {
-            if (line.startsWith("#")) continue;
-            var columns = List.of(line.split("\t", -1));
-            if (header == null) {
-                header = columns;
-                continue;
-            }
-            var row = new TreeMap<String, String>();
-            for (var level : Adr068Ledger.LEVELS) row.put(level.name(), columns.get(header.indexOf(level.name())));
-            cells.put(columns.getFirst(), row);
+    /** What the keys do not show: order, a duplicate line, and the totals, which nothing reads. */
+    private static void assertSameBytes(Path written, Path committed) throws IOException {
+        assertEquals(-1, Files.mismatch(written, committed), written + " differs from " + committed);
+    }
+
+    /** The committed reference's lines by case. */
+    private static Map<String, String> committedReference() throws IOException {
+        var lines = new TreeMap<String, String>();
+        if (!Files.exists(REFERENCE)) return lines;
+        for (String line : Files.readAllLines(REFERENCE)) {
+            if (line.startsWith("#") || line.startsWith("case\t")) continue;
+            lines.put(line.substring(0, line.indexOf('\t')), line);
         }
-        assertTrue(cells.size() > 10_000, "the B1 ledger did not load: " + cells.size());
-        return cells;
+        return lines;
     }
 
     private static Map<String, String> frozen() throws IOException {
@@ -127,7 +159,7 @@ class Adr068LoweringTest {
     }
 
     /** Both directions: a committed row not reproduced, and a row the table does not have. */
-    private static List<String> moved(Map<String, String> frozen, Map<String, String> lines) {
+    static List<String> moved(Map<String, String> frozen, Map<String, String> lines) {
         var moved = new ArrayList<String>();
         frozen.forEach((key, line) -> {
             if (!line.equals(lines.get(key))) moved.add(line + "  ->  " + lines.getOrDefault(key, "(not observed)"));
@@ -138,13 +170,13 @@ class Adr068LoweringTest {
         return moved;
     }
 
-    /** A row that left the corpus, or covers fewer methods, or stopped being fully covered. */
-    private static List<String> shrunk(Map<String, String> frozen, Map<String, String> lines) {
+    /** A row that left the corpus, or covers fewer methods, or moved to a class that compares less. */
+    static List<String> shrunk(Map<String, String> frozen, Map<String, String> lines) {
         var shrunk = new ArrayList<String>();
         frozen.forEach((key, line) -> {
             String now = lines.get(key);
             if (now == null || covered(now) < covered(line)
-                    || line.split("\t")[1].equals("i1a-identical") && !now.split("\t")[1].equals("i1a-identical")) {
+                    || Adr068Lowering.rank(line.split("\t")[1]) > Adr068Lowering.rank(now.split("\t")[1])) {
                 shrunk.add(line + "  ->  " + (now == null ? "(not observed)" : now));
             }
         });
@@ -159,13 +191,8 @@ class Adr068LoweringTest {
     private static final Pattern LISTED = Pattern.compile("DIFFERENT.*");
 
     private static void assertListed(Map<String, Adr068Lowering.Row> rows) throws IOException {
-        var accepted = new TreeMap<String, String>();
-        for (String line : Files.readAllLines(EVIDENCE.resolve("lowering-accepted-differences.tsv"))) {
-            if (line.startsWith("#") || line.isBlank()) continue;
-            String[] cells = line.split("\t");
-            assertEquals(3, cells.length, line);
-            accepted.put(cells[0], cells[1]);
-        }
+        var accepted = Adr068Lowering.acceptedDifferences(
+                Files.readAllLines(EVIDENCE.resolve("lowering-accepted-differences.tsv")));
         var found = new TreeMap<String, String>();
         rows.values().forEach(row -> {
             if (LISTED.matcher(row.kind()).matches()) found.put(row.key(), row.kind());

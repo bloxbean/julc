@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -162,10 +163,47 @@ class Adr068BaselineTest {
         write("totals-b0.tsv", "# ADR-068 M0 totals. Generated; do not edit.\n", totals);
         // With -Padr068.gate=enforce javac rejects first, so the reference frontend's sites are not this run's.
         if (System.getProperty("adr068.gate") != null) return;
+        againstTheFrozenReference();
         assertTrue(coverage.uncovered().isEmpty(), "rejection sites with no inventory row: " + coverage.uncovered());
         assertTrue(coverage.uncatalogued().isEmpty(), "inventory rejections no site explains: " + coverage.uncatalogued());
         assertTrue(coverage.contradicted().isEmpty(),
                 "inventory rejections at sites catalogued as unreachable from source: " + coverage.contradicted());
+    }
+
+    /** What the run wrote, under the names M0 gave it, and the frozen reference's file for each. */
+    private static final Map<String, String> REFERENCE_FILES = Map.of(
+            "ledger-b0.tsv", "ledger-b2.tsv",
+            "ledger-b0-semantic.tsv", "ledger-b2-semantic.tsv",
+            "ledger-b0-budget.tsv", "ledger-b2-budget.tsv",
+            "ledger-b0-instantiations.tsv", "ledger-b2-instantiations.tsv",
+            "rejection-inventory-b0.tsv", "rejection-inventory-b2.tsv",
+            "corpus-b0.tsv", "corpus-b2.tsv",
+            "totals-b0.tsv", "totals-b2.tsv");
+
+    /**
+     * The reference must still be B2: every frozen file, byte for byte, so this run fails rather than leaving a person to
+     * compare. The totals' {@code coverage} line counts the rejection-site catalogue, which grows with the javac frontend.
+     * {@code -Padr068.freeze=true} writes the files instead, at a reference change (D4).
+     */
+    private static void againstTheFrozenReference() throws IOException {
+        Path frozen = REPO.resolve("adr/evidence/068");
+        var differences = new ArrayList<String>();
+        for (var file : new TreeMap<>(REFERENCE_FILES).entrySet()) {
+            Path written = OUT.resolve(file.getKey());
+            Path committed = frozen.resolve(file.getValue());
+            if (Boolean.getBoolean("adr068.freeze")) {
+                Files.copy(written, committed, StandardCopyOption.REPLACE_EXISTING);
+            } else if (!Files.exists(committed)) {
+                differences.add(file.getValue() + " is missing");
+            } else if (!withoutCatalogue(written).equals(withoutCatalogue(committed))) {
+                differences.add(file.getValue() + " differs from " + written);
+            }
+        }
+        assertTrue(differences.isEmpty(), "the reference is not B2, so the frozen frontend changed: " + differences);
+    }
+
+    private static List<String> withoutCatalogue(Path file) throws IOException {
+        return Files.readAllLines(file).stream().filter(line -> !line.startsWith("coverage\t")).toList();
     }
 
     @Test
