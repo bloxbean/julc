@@ -78,8 +78,14 @@ This file states the code at `79b7e2ba`. The compiler tests, the I1 gate and `ad
   `Boolean` is read too, though the platform's stubs stop one at javac today. What holds a `Boolean` in Data, a list, an Optional, a map, a tuple or a record, reads
   it with a decode, so it fails on anything else, whichever way the program was compiled (`BooleanCarriersTest`). A type variable of a validator's own method does not compile.
 - **Names the JavaParser frontend reads by spelling are the gate's** (`JULC0100`, `JULC0101`). The javac frontend binds a name to its element, so it has neither
-  rule. A type or type parameter does not take a name of `SpelledTypes.NAMES`, which is `resolveClassType`'s cases and the ledger's hash names, and a test holds
-  the two together. A method does not take a name read in place of its body: `SpelledMethods`' Javadoc lists each matcher, and the declaration it stands in for.
+  rule. `JULC0100` is a rule on a name's use, read from javac's element: a name that frontend reads by its spelling binds, at every use and in every position, to what
+  it reads, so no list of declarations stands between a program and the rule. `SpelledTypes.NAMES` holds `resolveClassType`'s cases, the ledger's hash names, `Math`, and the
+  `java.lang` names the frontend compares; a test holds those to `TypeResolver`, and to `StdlibRegistry`'s keys, short or full. The stdlib's classes and the ledger's types at any
+  depth come from the stubs and the bundled set, and the records, sealed interfaces and libraries of a compilation from javac's parser over every unit offered, so none of those is a list. `SpelledNameLintTest` fails on a
+  comparison of a Java name with a capitalized literal in the frontend that is on no list and on no reviewed entry, which gives the reason it cannot diverge. A declaration of such a
+  name stays rejected where it stands. A record does not take a `TypeMethodRegistry` type key, and two variants of a sealed interface do not share a simple name: neither has a use site to read.
+  A plain class or interface is not registered, so it does not share a name with what is. What that frontend's resolver cannot reach, an inherited member or a static import, is written with its qualifier.
+  The sweep behind the lists read every name comparison of `pir/`, `resolve/`, `validate/`, `JulcCompiler`, `LibraryTypeDescriptions`, `JavaSourceIntrospector` and `StdlibRegistry`. Over `julc-corpus`, `m2-corpus-head`, `corpus-external`, `corpus-elci`, `ext-examples`, `julc-examples-cmp` and this repository, the rule rejects only fixtures written to test it. A variable named like a user's library stays as D4 has it. A method does not take a name read in place of its body: `SpelledMethods`' Javadoc lists each matcher, and the declaration it stands in for.
   That closes T31's explicit accessors and `equals`, and T33's user record `PubKeyHash`, on the default frontend: their `.diffcase`s are renamed and expect the rule.
   A `@NewType`'s component is read the same way, ahead of its generated accessor, so it does not take a name `TypeMethodRegistry` serves on the type it lowers to,
   unless that row lowers to the receiver, or `toPlutusData`. The rows are read, not listed: `value`, `intValue` and `longValue` lower to the receiver on an integer, `value` on bytes,

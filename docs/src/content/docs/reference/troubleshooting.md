@@ -1332,15 +1332,37 @@ something else: a cast does not decode it.
 
 **Fix:** Compute the boolean with a comparison.
 
-### `JULC0100` `The type <name> has a name JuLC reads as its own type, so a program does not declare it`
+### `JULC0100` `JuLC reads <name> as <type>, and here it is <declaration>, so a program does not write it`
 
-**Cause:** A type or a type parameter takes a name JuLC reads by its spelling, ahead of any type a program
-declares: `BigInteger`, `String`, `Boolean`, `PlutusData`, `ConstrData`, `MapData`, `ListData`, `IntData`,
-`BytesData`, `JulcValue`, `JulcG1`, `JulcG2`, `JulcMlResult`, `JulcScalars`, `JulcG1Points`, `JulcG2Points`,
-`List`, `JulcList`, `JulcArray`, `Map`, `JulcMap`, `Tuple2`, `Tuple3`, `AssetEntry`, `Optional`, `PubKeyHash`,
-`ScriptHash`, `ValidatorHash`, `PolicyId`, `TokenName`, `DatumHash`, `TxId`.
+**Cause:** JuLC reads some names by their spelling, so at every use such a name binds to what JuLC reads. That goes for
+every place a name stands: a type, the qualifier of a field or a method, `new`, a cast, `instanceof`, a pattern, a method
+reference, a class literal, a generic argument, an annotation, `throws` and `extends`. It does not matter how the other
+meaning came into scope: a nested or imported type, a variable, a parameter, a field, a lambda parameter, a pattern
+variable, a type parameter, or an inherited member. The names are:
 
-**Fix:** Give the type another name.
+- **One type each, qualified or not:** `BigInteger`, `String`, `Boolean`, `Integer`, `Long`, `Short`, `Byte`,
+  `Character`, `Object`, `Math`, `List`, `Map`, `Optional`, `PlutusData`, `ConstrData`, `MapData`, `ListData`, `IntData`,
+  `BytesData`, `JulcValue`, `JulcG1`, `JulcG2`, `JulcMlResult`, `JulcScalars`, `JulcG1Points`, `JulcG2Points`, `JulcList`,
+  `JulcArray`, `JulcMap`, `Tuple2`, `Tuple3`, `AssetEntry`, `PubKeyHash`, `ScriptHash`, `ValidatorHash`, `PolicyId`,
+  `TokenName`, `DatumHash`, `TxId`, `Builtins`, and the classes of `org.julclang.stdlib.lib`, such as `ListsLib`.
+- **The ledger's types, such as `Value`, `Interval`, `TxOut` or `PubKeyCredential`:** a simple name binds to that type, or
+  to a record, a sealed interface or a library of another unit.
+- **JuLC's annotations, where they stand as annotations:** `Entrypoint`, `Param`, `NewType`, `OnchainLibrary` and the
+  validator annotations.
+
+More forms read a name:
+
+- A class, or an interface that is not sealed, does not share its name with a record, a sealed interface or a library
+  offered to the compilation, read or not. The same goes for a platform type, such as `java.util.Set`, and for a type
+  parameter outside a library.
+- A record or sealed interface reached by inheritance or a static import is written with its qualifier.
+- Two variants of one sealed interface do not share a simple name.
+- A record does not take a type key of JuLC's lowering: `IntegerType`, `ByteStringType`, `StringType`, `DataType`,
+  `RecordType`, `SumType`, `ListType`, `ArrayType`, `OptionalType`, `MapType` or `PairType`.
+- The datum of a three-parameter entry point is written `Optional<...>` exactly when it is one. A type named
+  `OptionalThing`, and a qualified `java.util.Optional<T>`, are rejected there.
+
+**Fix:** Rename the declaration, or write the type JuLC reads.
 
 ### `JULC0101` `<method or component> has a name JuLC reads in place of its body, so a program does not declare it`
 
@@ -1350,7 +1372,9 @@ accessor or `equals` on a record, `equals` on a sealed interface, and `assetOf`,
 and `lovelaceOf` on a record named `Value`. The same goes for a `@NewType`'s component named like a method of
 the type it lowers to, such as `abs` on a `BigInteger` or `length` on a `byte[]` or `String`, for a component
 named `toPlutusData`, and for a `@NewType` of `byte[]` whose component is not `value`, or a call of an inherited
-method such as `hashCode` on one.
+method such as `hashCode` on one. A call named `headList`, `tailList`, `mkCons`, `mkNilData`, `mkNilPairData`,
+`mkPairData`, `unMapData`, `fstPair` or `sndPair` is `Builtins`' own: a method or component of a program does not take
+those names.
 
 **Fix:** Give the method or component another name. `value`, and on a `BigInteger` `intValue` and `longValue`, are
 names of the value itself. Name a `@NewType` of `byte[]`'s component `value`.

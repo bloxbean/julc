@@ -349,7 +349,7 @@ A value is built from its components alone, so a constructor's body does not run
 
 ### 6.19 Some names are JuLC's
 
-A type or type parameter does not take a name JuLC reads as its own type, such as `Boolean`, `BigInteger`, `JulcList` or `PubKeyHash`: `JULC0100`. A method does not take a name JuLC reads in place of its body: `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit accessor or `equals` on a record, and a `@NewType`'s component named like a method of its type, such as `abs` on a `BigInteger`: `JULC0101`. A `@NewType` of `byte[]` names its component `value`.
+A name JuLC reads by its spelling, such as `Boolean`, `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to the type JuLC reads, not to a variable, a type parameter or another type: `JULC0100`. A name of the ledger, such as `Value`, may also be a record or a sealed interface. A plain class does not share its name with a record of the compilation, a record does not take a type key of the lowering such as `ListType`, and a datum is written `Optional<...>` exactly when it is one. A method does not take a name JuLC reads in place of its body: `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a `@NewType`, an explicit accessor or `equals` on a record, and a `@NewType`'s component named like a method of its type, such as `abs` on a `BigInteger`: `JULC0101`. A `@NewType` of `byte[]` names its component `value`. A call named `headList`, `tailList`, `mkCons` and the like is `Builtins`' own.
 
 ## 7. Common errors — root cause and fix
 

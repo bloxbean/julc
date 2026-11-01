@@ -1631,9 +1631,12 @@ following limitations apply:
   whose type, through parentheses and other casts, is `boolean` or `Boolean`. Read a
   boolean out of Data by a typed field. A `@NewType` of a boolean
   is one too.
-- **Some names are JuLC's.** A type or type parameter does not take a name JuLC reads
-  as its own type, such as `Boolean`, `BigInteger`, `JulcList` or `PubKeyHash`
-  (`JULC0100`). A method does not take a name JuLC reads in place of its body (`JULC0101`):
+- **Some names are JuLC's.** A name JuLC reads by its spelling, such as `Boolean`,
+  `BigInteger`, `Math`, `JulcList`, `PubKeyHash` or `Builtins`, binds at every use to
+  the type JuLC reads, not to a variable, a type parameter or another type
+  (`JULC0100`). A name of the ledger, such as `Value`, may also be a record or a sealed
+  interface. A plain class does not share its name with a record of the compilation.
+  A method does not take a name JuLC reads in place of its body (`JULC0101`):
   `fromPlutusData` and `toPlutusData` on any type, `of` or an instance method on a
   `@NewType`, an explicit accessor or `equals` on a record. A `@NewType`'s component
   does not take the name of a method of its type, such as `abs` on a `BigInteger` or

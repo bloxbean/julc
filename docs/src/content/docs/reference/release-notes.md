@@ -57,9 +57,9 @@ JuLC's dialect beyond Java is no longer accepted. Write it as Java:
 - **Subset rules, with their codes:** an entry point returns `boolean` (`JULC0094`). A field
   initializer that nothing lowers holds only a constant, and an initializer block is empty
   (`JULC0095`). A value reaches `boolean` or `Boolean` through a cast only from a boolean
-  (`JULC0098`). A constructor holds no statement (`JULC0099`). A type does not take a name JuLC
-  reads as its own type (`JULC0100`), and a method does not take a name JuLC reads in place of its
-  body (`JULC0101`). The same rule covers a record component: a `@NewType` of `byte[]` names its
+  (`JULC0098`). A constructor holds no statement (`JULC0099`). A name JuLC reads by its spelling
+  binds at every use to the type JuLC reads, not to a variable, a type parameter or another type
+  (`JULC0100`), and a method does not take a name JuLC reads in place of its body (`JULC0101`). The same rule covers a record component: a `@NewType` of `byte[]` names its
   component `value`, so rename `record MyHash(byte[] hash)` to `record MyHash(byte[] value)`.
   They run on javac's trees, so they follow the gate's mode, and `off` turns them off with it.
   See [Compiler Limitations](/getting-started/#16-compiler-limitations).
