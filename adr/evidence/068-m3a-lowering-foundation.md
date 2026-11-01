@@ -7,8 +7,7 @@ FLAT bytes. Everything else stops at `JULC0084`, naming the construct and its po
 The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md). Machine and toolchain as in M0's evidence. Branch
 `wip/068-m3a`, based at `a0527fb1`, with M2's close merged in at `baef03a7`.
 
-This file states the code at `b81b5726`. The I1 gate, `adr068Baseline`, `adr068Types`, `pairCaseTest`, `onChainHarnessTest` and the full suite ran at `803c4564`, whose code is the same. `wasmSmokeFull` ran at `8ff98e81` and the images at `3da56ad3`, before the Value methods changed; those are plain stdlib and handler code. The older mutants ran at `8ff98e81`. Later commits change documentation only. The [B2 reference change](068-m3a-reference-b2.md) is its own file.
-the two commits between add tests. Later commits change documentation only.
+This file states the code at `d0cee64b`. The I1 gate, `adr068Baseline`, `adr068Types`, `pairCaseTest`, `onChainHarnessTest`, the full suite, the images and the external examples ran at that commit, and `wasmSmokeFull` at `8ff98e81`, before the Value methods. Later commits change documentation only.
 
 ## What was delivered
 
@@ -21,7 +20,7 @@ the two commits between add tests. Later commits change documentation only.
 | The lowering: one dispatch, an immutable `Frame`, a `Scope` keyed by element, one builder of source binders, and the families | `frontend/javac/lower/`: `Lowering`, `Frame`, `Scope` (and its `Binder`, which only a `Scope` makes), `Terms`, `Provenance`, `Literals`, `Names`, `Statements` |
 | I13's check, on construction-time provenance: a read's element comes from javac and a binder's from the scope, so a wrong lookup fails it | `lower/BindingCheck.java`, `lower/Provenance.java`, run on every compilation under `julc.verifyBinderNamespace` |
 | ADR-060's namespace check on this frontend | `JavacCompilation.verifyBinderNamespace` |
-| D14: `JULC0088` is emitted. New: `JULC0093`, an unpaired surrogate in a literal; `JULC0096` and `JULC0097` on javac; and on both frontends `JULC0094` and `JULC0095`, the reference change [B2](068-m3a-reference-b2.md) | `diagnostics.json`, `JavacDiscovery`, `SubsetScan`, `validate/UnloweredInitializers`, `subset/UnloweredInitializers` |
+| D14: `JULC0088` is emitted. New: `JULC0093`, an unpaired surrogate in a literal; `JULC0096` and `JULC0097` on javac; and the subset's gate rules `JULC0094`, `JULC0095` and `JULC0098`, which run once, on javac's trees ([B2](068-m3a-reference-b2.md)) | `diagnostics.json`, `JavacDiscovery`, `SubsetScan`, `validate/UnloweredInitializers`, `subset/UnloweredInitializers` |
 | The I1 tool | `julc-difftest`: `adr068Lowering`, `Adr068Lowering`, `Adr068LoweringTest`, `PirCanonical`, and the tables `068/lowering-i1.tsv`, `068/lowering-i1-totals.tsv`, `068/lowering-reference.tsv`, `068/lowering-accepted-differences.tsv` |
 | D10's frontend axis: a verdict is per frontend | `DiffConfig.frontend`, `UplcExecutor`'s cache key, `Adr068LoweringHarnessTest` |
 | The three lints | In `JavacLoweringLintTest`, over attributed sources in every package under `lower/`, each with negative controls that must compile and make it fail. `TreeScanner` is banned from `lower/` on purpose: its Javadoc says why |
@@ -48,17 +47,30 @@ the two commits between add tests. Later commits change documentation only.
   `BindingCheck` found the loss on its first run. A `Var` with no provenance fails the check unless no source name can look like it.
 - **Rejection order.** `JavacCompilation`'s steps are the reference's, numbered as in `JulcCompiler`: the type registration moved
   out of `JavacProgram.analyze` so a missing validator annotation still comes first. The discovery rejections have the reference's
-  code, words and position. `SubsetScan` runs first, in the subset validator's place, so `JULC0084` comes before them in a source
-  with both.
+  code, words and position. The gate's rules come first, as they do on the default frontend. `SubsetScan` runs next, in the subset
+  validator's place, so `JULC0084` comes before the discovery rejections in a source with both.
 - **Annotations and types by identity.** `@Entrypoint`, `@Param` and the validator annotations are matched by `TypeElement`, as
   `@NewType` is (D7). An `Optional` datum is `PirType.OptionalType`, not the spelling `Optional...`, so a user's `OptionalThing` is a
   record and a qualified `java.util.Optional` is optional. A `@Param` rule on `BytesData` is about the API's type.
-- **What a field initializer may hold.** A static field of the compiled class is lowered. Nothing lowers any other field: a `@Param`, an
-  instance field, a field of another type. Such a field holds only a literal, a `new byte[]{...}` of literals, an API constant, a
-  constant variable, or `Boolean.valueOf` of a literal, which is D14's remedy; an initializer block is empty (`JULC0095`). That list is
-  closed and is not `SubsetScan`'s: the scan's grows as lowering learns a kind, and says nothing of code lowering never reads. D14's
-  order holds: a `@Param` constant variable is `JULC0088`, not `JULC0095`.
-- **An entry point returns `boolean` or `Boolean`** (`JULC0094`), by identity on javac.
+- **The subset's rules run once, at the gate.** `frontend/javac/SubsetRules.java` runs them on javac's trees after `analyze()` succeeds: from
+  `JavacGate.check` for a compilation on the default frontend, and first of all from `JavacCompilation` on `frontend=JAVAC`. So there is one
+  rule, with one code, one message and one position, and no reading of a spelling. A rule follows the gate's mode: `enforce`, the default,
+  rejects; `report` writes it down; `off` turns it off on the default frontend, as `CompilerOptions.setJavacGate` says. `JavacGate.Compiled`
+  says what a compilation compiles, and is part of the gate's cache key, since one source reads differently as a validator and as a
+  `compileMethod` target. The rules read the units javac read: a root, and a library the program references. A library unit nothing references
+  is not read, so nothing of it can run (D8). Annotations count by name here, as the default frontend reads them, so a user's own annotation
+  of that name decides nothing in its favour.
+- **What a field initializer may hold.** A static field of the compiled class is lowered, and so is a static field of a library's class. Nothing
+  lowers any other field: a `@Param`, an instance field, a field of another type. Such a field holds only a literal, a `new byte[]{...}` of literals,
+  an API constant, a constant variable, or `Boolean.valueOf` of a literal, which is D14's remedy; an initializer block is empty (`JULC0095`). A
+  constant is what `getConstantValue()` says, so `1 / 0` is none. A constant reached through a dot is reached on a type, and `Boolean.valueOf` is
+  an identifier or a select on a type, because any other expression before the dot would run. That list is closed and is not `SubsetScan`'s: the
+  scan's grows as lowering learns a kind, and says nothing of code lowering never reads. D14's order holds: a `@Param` constant variable is
+  `JULC0088`, not `JULC0095`.
+- **An entry point returns `boolean` or `java.lang.Boolean`** (`JULC0094`), by identity, so a user's type named `Boolean` is another type.
+- **A cast to `boolean` or `Boolean` takes a boolean or Data** (`JULC0098`). Its operand, through parentheses and other casts, is `boolean`, `Boolean`,
+  or `PlutusData` and its subtypes. The stdlib, the in-repo and external examples and every corpus hold no `(boolean)(Object)` or `(Boolean)(Object)`, and the 13
+  `(boolean)` and `(Boolean)` casts in the corpus files have a boolean operand.
 - **A `+` of string literals stays a `+`.** `-XDallowStringFolding=false` keeps the tree as written, so `"a" + "b"` is `PLUS`, and
   `x + "c" + "d"` is two nodes. It is a hidden option, so the supported-javac check parses `"a" + "b"` once per compiler and requires
   `PLUS`, otherwise `JULC0089`. On the JVM that costs nothing measurable cold (javac's start moves into it: 225 ms to the first
@@ -75,8 +87,8 @@ the two commits between add tests. Later commits change documentation only.
 ./gradlew :julc-difftest:adr068Lowering -Padr068.corpus=<M0>/julc-corpus -Padr068.corpus.external=<M0>/corpus-external \
     -Padr068.corpus.elci=<M0>/corpus-elci -Padr068.corpus.head=<M0>/m2-corpus-head -Padr068.out=<dir> --offline --no-watch-fs
 
-# -Padr068.freeze=true writes the row tables, and fails if a row lost coverage, a comparison or left the corpus, or if there is no
-# table to protect, unless -Padr068.allowShrink=true. -Padr068.freezeReference=true writes lowering-reference.tsv, at a reference change.
+# -Padr068.freeze=true writes the row tables, and fails if a row lost coverage or a comparison, left the corpus or javac-rejects, or
+# pins another digest or provenance in the same class, or if there is no table to protect, unless -Padr068.allowShrink=true. -Padr068.freezeReference=true writes lowering-reference.tsv, at a reference change.
 
 # The default path against B2. It fails unless it writes the frozen files; -Padr068.freeze=true writes them, at a reference change.
 ./gradlew :julc-difftest:adr068Baseline -Padr068.corpus=<M0>/julc-corpus -Padr068.corpus.external=<M0>/corpus-external \
@@ -95,9 +107,11 @@ For each case the tool compiles with the reference (the JavaParser frontend, gat
   `PirTerm`, `Constant` and `PlutusData` by the compiler.
 - **The reference is held still.** `lowering-reference.tsv` freezes, for every case of this corpus, each level's cell, the diagnostics, a
   digest of the `@Param` infos, of the source map's positions, and of each method's binder, type and canonical term. Every cell of
-  every row is checked as the row runs, so a change of the frozen frontend is `REFERENCE-DRIFT`, which fails. The cells are in a form
-  the javac frontend's results can be put in too, so a later fast mode can read them instead of recompiling. It is not built.
-- **A crash or a failed I13 check fails the gate.** Only a `CompilerException` is a rejection.
+  every row is checked as the row runs, so a change of the frozen frontend is `REFERENCE-DRIFT`, which fails. The table is a record of
+  the reference and a prefilter for its drift, and nothing more: it holds one source-map setting per case, positions at one level, and no
+  root-alone cells, so a run still compiles the reference, and nothing may read the table in place of that. A cache of the reference side
+  would have to keep all eight cells.
+- **A crash or a failed I13 check fails the gate.** On every path into the javac frontend, only a `CompilerException` is a rejection, by type: `Adr068Lowering.onJavac` and `attempts`. Anything else stops the run, so no accepted entry can read it as a row.
 
 M2's lessons are its shape:
 
@@ -109,7 +123,7 @@ M2's lessons are its shape:
   (`DIFFERENT-root-alone` otherwise, which no D13 class can explain). `javac-rejects` and `both-reject-javac-first` hold javac's
   message and position.
 - Every `DIFFERENT` row must be listed once by key in `lowering-accepted-differences.tsv`, with a D13 class that can explain it. A stale entry fails, and `NEEDS A DECISION` is no class.
-- A freeze refuses to lose cases, covered methods or a class's comparisons without `-Padr068.allowShrink=true`, and to write with no table to protect. Classes are ranked by what they compare: `Adr068Lowering.rank`.
+- A freeze refuses to lose cases, covered methods or a class's comparisons without `-Padr068.allowShrink=true`, and to write with no table to protect. Classes are ranked by what they compare: `Adr068Lowering.rank`. A rank does not say everything a freeze must refuse, so `Adr068LoweringTest.shrinks` also counts any move out of `javac-rejects`, where javac stopped rejecting a source, and a changed digest or provenance on a row whose class stays, since that row now pins something else. A run refuses `adr/evidence/068` as its output directory, where it would compare its tables with themselves.
 
 The corpus is M2's, the frozen recordings and the head recording, plus M3a's fixtures, because the recorded corpus holds few of the
 slice's shapes in a program it covers, and the rule fixtures and `.diffcase`s of B2.
@@ -121,24 +135,25 @@ slice's shapes in a program it covers, and the rule fixtures and `.diffcase`s of
 | `reference-rejects-not-ported` | 497 | The reference rejects; `JULC0084` stands in front of the rule that will reject it |
 | `javac-rejects` | 5,359 | The reference accepts; javac rejects: M0's dialect sources, each with a rewrite (M1) |
 | `both-reject-javac-first` | 1,288 | Both reject, javac first (I2b) |
-| `both-reject` | 56 | Both reject with one code and message, and one position where the reference gave one |
+| `both-reject` | 49 | Both reject with one code and message, and one position where the reference gave one |
 | `ledger-source` | 38 | A ledger file's row, which compares nothing itself |
 | `unreplayable` | 17 | A custom lookup or target, as in the ledger |
 | `DIFFERENT-javac-accepts` | 19 | Listed below |
-| `DIFFERENT-rejection` | 8 | Listed below |
+| `DIFFERENT-rejection` | 9 | Listed below |
+| `DIFFERENT-javac-rejects` | 7 | Listed below |
 | `DIFFERENT-bytes` | 4 | Listed below |
 | `DIFFERENT-provenance` | 2 | Listed below |
-| Total | 17,052 | |
+| Total | 17,053 | |
 
 ### Coverage
 
 | | Covered | Of | |
 |---|---:|---:|---|
-| Programs the reference accepts | 145 | 15,129 | 0.96% |
+| Programs the reference accepts | 145 | 15,136 | 0.96% |
 | Their distinct scripts | 85 | | |
 | Programs of more than one method | 11 | | |
-| Methods the reference lowers, library methods included | 313 | 171,820 | 0.18% |
-| Distinct covered methods | 159 | | |
+| Methods the reference lowers, library methods included | 320 | 171,991 | 0.19% |
+| Distinct covered methods | 160 | | |
 
 **What a number means.** M5's gate is zero `JULC0084`, and this is where that starts: under 1% of programs. Most covered programs are
 `return true` or `return x`.
@@ -175,6 +190,8 @@ All listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lowering-ac
 | 4 | `DIFFERENT-javac-accepts` | Accepted by decision (ADR r11, D8) | A rejection of a library unit the root does not reference, so javac never reads it, and it cannot reach the script: `Library source must not contain validator annotation`, or the role conflict. javac's program equals the reference's of the root alone, at every level |
 | 2 | `DIFFERENT-javac-accepts` | Accepted by decision (ADR r11, D13) | A lone surrogate in a comment, which cannot reach a script. M0's inventory marks these permanent; the rule is on literals. The JVM agrees (`Adr068LoweringHarnessTest`) |
 | 1 | `DIFFERENT-javac-accepts` | Accepted by decision (ADR r11, D7) | The `@Param` rule on `BytesData` is about the API's type, and a user record of that name is not it |
+| 7 | `DIFFERENT-javac-rejects` | Policy rejection (ADR r11) | A pin of a gate rule (B2): 4 `.diffcase`s of `JULC0095` and 3 fixtures of `JULC0094` and `JULC0098`. The reference compiles them with the gate off, and on the default frontend the gate rejects them with the same code, words and position as here (`SubsetRulesTest`) |
+| 1 | `DIFFERENT-rejection` | Diagnostic change (ADR r11) | `reject-record-static-field.diffcase`: uncoded with the gate off, and `JULC0095`, the gate's rule, on javac and at the gate |
 | 5 | `DIFFERENT-rejection` | Diagnostic change | A lone surrogate in a literal: uncoded in the reader, now `JULC0093` at the literal |
 | 3 | `DIFFERENT-rejection` | Diagnostic change | F809: a type rejection with javac's spelling of a name (`java.lang.String`), and a position the reference lacks. Uncoded both ways; the code comes with the subset port |
 | 2 | `DIFFERENT-bytes` | Semantic fix (ADR r11, D7) | A type is what it resolves to. A user record `OptionalThing` is a record, whose Data on the JVM is `Constr 0 [int]`; the reference reads it as optional and takes the field alone. A qualified `java.util.Optional` is optional; the reference needs a datum. Evaluated at every level in `Adr068TypeIdentityTest`, against `ValueMapping`'s Data. No `.diffcase` until records are ported |
@@ -189,25 +206,26 @@ All listed, by key, in [`068/lowering-accepted-differences.tsv`](068/lowering-ac
 | Check | Result |
 |---|---|
 | Byte identity against the reference | 145 rows (143 programs and 2 empty providers), at all four levels, with and without a source map. The 4 `DIFFERENT-bytes` rows are classified above |
-| I1b | 313 methods equal the reference's term and type up to alpha-equivalence, 159 of them distinct: 203 in `i1a-identical` rows and 110 in programs stopped elsewhere |
+| I1b | 320 methods equal the reference's term and type up to alpha-equivalence, 160 of them distinct: 203 in `i1a-identical` rows and 117 in programs stopped elsewhere |
 | I13's binding check | Runs on every compilation in tests, the gate included, and on each method lowered on its own, over construction-time provenance: the read's element from javac, the binder's from the scope. No violation at the head, and a failure fails the gate. A wrong lookup fails it (`aWrongLookupFailsTheCheck`, and mutant J19); a `Var` with no provenance fails it unless it is `#`-named or a method binder |
 | ADR-060 | `GeneratedBinderNameLintTest`, `BinderNameIndependenceTest` and `julc.verifyBinderNamespace` stay green, the last on this frontend too |
 | Evaluation against the JVM | `Adr068LoweringHarnessTest`, 58 tests. 46 run a covered program on the JVM and, at all four levels, through both frontends on the VM: each agrees with the JVM, and value, traces, cost and script size agree between the frontends. None of the 46 is a validator or has a `@Param`, and `PlutusData.UNIT` is not among them; of the corpus's 696 rows with harness inputs, 0 are covered yet. `Adr068TypeIdentityTest` evaluates the two identity fixtures as validators, at all four levels |
 | D14 | `@Param` constant variables are `JULC0088`, with tests for each kind, instance fields and multiple declarators; a `@Param` javac cannot fold compiles to the reference's bytes |
 | The three lints | In `JavacLoweringLintTest`, each with negative controls that make it fail |
+| The external `julc-examples` at `22b4e00f`, default frontend and gate mode, against `ff3cef58` and `d0cee64b` | 446 tests, 0 failures, 68 skipped, on both: the skips are its DevKit tests, which a scratch clone turns off through their own assumption. So the gate's rules read every source it compiles, and none rejects. Of the 271 tests that record an evaluation, each has the same outcomes, errors and traces on both. By FLAT digest, tests evaluated 24 of the 67 external cases the Value methods moved. The other 43 compile and are not evaluated as compiled here |
 | The gate's determinism | 2 threads and the default write the same bytes, at `ff3cef58`: the gate's byte comparison passes at both |
-| The default path, gate off, against B2 | `adr068Baseline` now fails unless it writes [B2](068-m3a-reference-b2.md)'s files. At `803c4564` it passes: every file equal, 11,423 cases |
-| M2's gate, `adr068Types` | 0 rows moved. The 6 pins of B2 are added to `types-m2.tsv`, each an `equal` row |
+| The default path, gate off, against B2 | `adr068Baseline` now fails unless it writes [B2](068-m3a-reference-b2.md)'s files. At `d0cee64b` it passes: every file equal, 11,424 cases |
+| M2's gate, `adr068Types` | 0 rows moved. The 7 pins of B2 are added to `types-m2.tsv`, each an `equal` row. The schemas of the 3 rule fixtures are new since B1's table, and listed in `m2-accepted-differences.tsv` as new cases |
 
 
 ### Images
 
-`-XDallowStringFolding=false` and its check are in every host, since the check runs in the supported-javac check. Both images were built at `3da56ad3` and the code they run has not changed since, apart from the rule's traversal.
+`-XDallowStringFolding=false` and its check are in every host, since the check runs in the supported-javac check. Both images were built at `d0cee64b`.
 
 | Host | Result |
 |---|---|
-| Native CLI, `GRAALVM_HOME=<25.0.2> ./gradlew :julc-cli:nativeCompile` | Builds, 108,011,864 bytes. `julc build` compiles a new project through the gate (`AlwaysSucceeds`, 96 bytes); javac runs in the image, since a `BigInteger` `a + a` fails the build; and a method with `"a" + "b"` builds on the default frontend |
-| Web Image, `:julc-wasm:wasmGateProbe` (GraalVM 25.3, javac 25.0.4.1.1) | Passes, and its lines equal the JVM's: `supported=true`, `FeeGate` accepted at 204 bytes, `OwnerGate` at 269, the dialect `JULC0085`. 26,921,769 bytes |
+| Native CLI, `GRAALVM_HOME=<25.0.2> ./gradlew :julc-cli:nativeCompile` | Builds, 108,011,912 bytes. `julc build` compiles a new project through the gate (`AlwaysSucceeds`, 96 bytes); javac runs in the image, since a `BigInteger` `>` fails the build with `JULC0085`; and the rules run in it, since a cast and a field initializer fail it with `JULC0098` and `JULC0095` |
+| Web Image, `:julc-wasm:wasmGateProbe` (GraalVM 25.3, javac 25.0.4.1.1) | Passes, and its lines equal the JVM's: `supported=true`, `FeeGate` accepted at 204 bytes, `OwnerGate` at 269, the dialect `JULC0085`. 26,963,453 bytes |
 
 The probe failed at first, at the base too: `NoSuchFieldError: variables`. It read the class path's jars without depending on them, so in a fresh tree `julc-tools`' jar was missing, and with it JavaParser's reflection metadata, with nothing said. `f2e5f472` fixes that. No shipped image was affected: `wasmImageFull` takes the jars as inputs.
 
@@ -217,10 +235,10 @@ Counted from JUnit XML.
 
 | Task | Result |
 |---|---|
-| `./gradlew test --offline --continue --rerun --no-watch-fs` | 13,395 tests, 0 failures, 0 errors, 530 skipped. M2's close had 12,923 |
+| `./gradlew test --offline --continue --rerun --no-watch-fs` | 13,576 tests, 0 failures, 0 errors, 530 skipped. M2's close had 12,923 |
 | `:julc-compiler:pairCaseTest --rerun` | 71 tests, 0 failures |
 | `onChainHarnessTest --rerun` | 16 tests, 0 failures |
-| `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1) | `BUILD SUCCESSFUL`; `wasmImageFull` rebuilt; 56 `ok` lines, no `not ok`. It runs the default frontend |
+| `:julc-wasm:wasmSmokeFull --rerun` (GraalVM 25.3.4.1), at `8ff98e81` | `BUILD SUCCESSFUL`; `wasmImageFull` rebuilt; 56 `ok` lines, no `not ok`. It runs the default frontend |
 | `adr068Lowering` | `BUILD SUCCESSFUL`; 0 rows moved, 0 shrunk |
 | `adr068Types` | `BUILD SUCCESSFUL`; 0 rows moved |
 | `adr068Baseline`, gate off | `BUILD SUCCESSFUL`; every frozen file byte-identical to B2's |
@@ -384,15 +402,6 @@ Garbage in the accepted table's class cell, `NEEDS A DECISION`, a duplicate key,
 
 | Mutation | Unit | Tool and harness | Gate |
 |---|---:|---:|---|
-| J1: the rule's default inverted | 3 | 0 | - |
-| J2: the result rule off | 11 | 0 | - |
-| J3: `Boolean` by its name | 1 | 0 | - |
-| J4: the scan stops at a field | 1 | 0 | - |
-| J4b: only a top-level type is checked | 4 | 0 | - |
-| J5: the block rule off | 3 | 0 | - |
-| J6: `valueOf` of any class | 1 | 0 | - |
-| J7: the initializer rule off | 13 | 0 | - |
-| J8: a constant variable not read | 4 | 0 | - |
 | J9: the one-entry rule off | 1 | 0 | - |
 | J10: the one-class rule off | 1 | 0 | - |
 | J11: the static rule off | 1 | 0 | - |
@@ -429,20 +438,102 @@ Garbage in the accepted table's class cell, `NEEDS A DECISION`, a duplicate key,
 | K17: tool: an entry with no D13 class passes | 0 | 1 | - |
 | K18: tool: a class that cannot explain its row | 0 | 1 | - |
 | K19: tool: a case listed twice | 0 | 1 | - |
-| R1: reference: the block rule off | 3 | 0 | - |
-| R2: reference: the field rule off | 10 | 0 | - |
-| R3: reference: the result rule off, one entry point | 8 | 0 | - |
-| R4: reference: the result rule off, a multi-validator | 2 | 0 | - |
-| R5: reference: an instance field counted as lowered | 2 | 0 | - |
-| R6: reference: a library's fields not read | 1 | 0 | - |
 | R7: debug compilation: the source map before the libraries | 1 | 0 | - |
 | R8: compileMethod writes the backend stage lines | 1 | 0 | - |
 
-J1, J4 and J8 survived the first pass, so the rule had tests only for calls and names: `SubsetRulesTest` gained operators, conditionals, `new`, constant variables with an expression, and a type inside a lowered initializer, and each then fails. J12 drops the flag, and the check then refuses every compilation (`JULC0089`), which is the point of it.
+J12 drops the flag, and the check then refuses every compilation (`JULC0089`), which is the point of it.
 
-**Key-based Value methods.** After a no-op control (stdlib 0/115, compiler 0/317), the 17 mutants of `lovelaceOf`, `add`, `subtract` and `negate` each fail `ValuesLibByKeyTest` or a test beside it, including a read by position on both paths, a second implementation of `lovelaceOf`, a key returned twice at both levels, presence by amount, and reversed order.
+**The subset's rules at the gate.** These replace the earlier mutants of the two per-frontend rules, whose code is gone. Each ran at `66cb2b1b` in a throwaway worktree, with `--no-watch-fs` and cleared XML, over `SubsetRulesTest`, `SubsetRulesAtEveryEntryTest`, `JavacGateTest`, `JavacGateReviewTest` and `JavacWalkingSkeletonTest`, after a no-op control through the same script (0 of 212). The first pass left G57: nothing read a library's lowered declaration of two types, so `SubsetRulesTest` gained that test, and it then fails. Two checks of `Boolean.valueOf`, on its parameter count and type, could not fail under any source, since a boolean literal only resolves to the one overload, so they were removed.
 
-**The older mutants, again at this head.** All 71 ran again at `8ff98e81` or later, or at `3da56ad3` for the seven whose anchors moved, and none survives. D12, A2, D19 and F1 fail the gate alone, as they did. Their counts differ a little from the tables above, since tests and fixtures were added; the tables above are kept as what `fbc37706` showed.
+| Mutation | Tests failing, of 212 or 213 |
+|---|---:|
+| G1: entry-point rule not run | 33 |
+| G2: initializer rule not run on a root | 66 |
+| G3: cast rule not run on a root | 29 |
+| G4: library units not read | 16 |
+| G5: initializer rule not run on a library | 17 |
+| G6: cast rule not run on a library | 11 |
+| G7: a library unit as a root | 2 |
+| G8: Boolean by spelling | 5 |
+| G9: annotation by identity | 1 |
+| G10: compileMethod read as a validator | 46 |
+| G11: JavaLibraryProvider read as a validator | 1 |
+| G12: what is compiled not in the key | 1 |
+| G13: the gate does not run the rules | 110 |
+| G14: a rule ignores the mode | 1 |
+| G15: a rule loses its position | 78 |
+| G16: the javac frontend skips the rules: validator | 37 |
+| G17: the javac frontend skips the rules: method | 43 |
+| G18: the scan before the rules | 23 |
+| G19: a method read as a validator on javac | 43 |
+| G20: no rule for a library on javac | 1 |
+| G21: the first type, not class | 1 |
+| G22: one validator annotation | 5 |
+| G23: another class lowered | 6 |
+| G24: a @Param lowered | 16 |
+| G25: an instance field lowered | 39 |
+| G26: a library record lowered | 2 |
+| G27: a library instance field lowered | 13 |
+| G28: a library @Param lowered | 1 |
+| G29: a constant field is no constant | 4 |
+| G30: null allowed | 1 |
+| G31: any unary of a literal | 2 |
+| G32: a minus of anything | 1 |
+| G33: any array | 1 |
+| G34: any name | 1 |
+| G35: any qualifier | 5 |
+| G36: no API constant | 4 |
+| G37: no qualified constant | 2 |
+| G38: a qualifier with no element | 2 |
+| G39: valueOf on any qualifier | 1 |
+| G40: any method of Boolean | 1 |
+| G41: any valueOf | 4 |
+| G42: valueOf of anything | 2 |
+| G43: blocks not read | 20 |
+| G44: method bodies read as initializer blocks | 126 |
+| G45: locals read as fields | 11 |
+| G46: lowered fields read as not lowered | 1 |
+| G47: only the primitive | 2 |
+| G48: stops at the first cast | 5 |
+| G49: stops at parentheses | 2 |
+| G50: no Data | 3 |
+| G51: no boolean | 8 |
+| G52: no subtype of Data | 2 |
+| G53: casts inside a cast not read | 1 |
+| G54: Boolean by spelling, in JavacFacts | 5 |
+| G55: the declaration's common type: @Param | 1 |
+| G56: the declaration's common type: statics | 2 |
+| G57: the declaration's common type: a library | 1 |
+
+**The gate's own tool, for a freeze.** Each is a change to the tool, with a no-op control through the same script (0 of 53). These are its negative controls for what a compare or a freeze could miss. T8 and T9 survived the first pass, since the injected program also moved the row's coverage, so the two tests now change only what compiles, and each then fails. K25's arm is asked directly: on a whole row `byteDifference` meets a program one side rejects first, as a cell.
+
+| Mutation | `Adr068LoweringToolTest` failing, of 53 |
+|---|---:|
+| T1: F980: javac cells at one map setting | 1 |
+| T2: F980: the root alone at one map setting | 1 |
+| T3: F981: a move out of javac-rejects is no shrink | 1 |
+| T4: F982: a changed digest is no shrink | 1 |
+| T5: F982: a changed provenance is no shrink | 1 |
+| T6: F983: a provider cell by the printer | 1 |
+| T7: F983: a specialization by the printer | 1 |
+| T8: F984: a diagnostics difference before the cells | 1 |
+| T9: F984: a params difference before the cells | 1 |
+| T10: F991: a rejection by simple name | 5 |
+| T11: F991: only IllegalStateException fails | 2 |
+| T12: F991: what was thrown is not kept | 1 |
+| T18: F991: an IllegalArgumentException of a program read as a rejection | 1 |
+| T19: F991: a provider's crash read as a rejection | 1 |
+| T13: F992: the evidence directory taken as output | 1 |
+| T14: K21: a rejection position not compared | 1 |
+| T15: K22: a method only javac lowered not reported | 1 |
+| T16: K23: located term sets not compared | 1 |
+| T17: K25: one side with a map not reported | 1 |
+
+The freeze of this round showed the shrink at work: the 19 rows only javac accepts took a new digest when they gained the map cells, and all 19 were in `lowering-i1-shrunk.tsv`, so that freeze needed `-Padr068.allowShrink=true`.
+
+**Key-based Value methods.** After a no-op control (stdlib 0/151, compiler 0/317), the 25 mutants of `lovelaceOf`, `add`, `subtract`, `negate`, `geqMultiAsset`, `leq` and `eq` each fail `ValuesLibByKeyTest` or a test beside it, including a read by position on both paths, a second implementation of `lovelaceOf`, a key returned twice at both levels, presence by amount, and reversed order. The comparisons' eight include a side's keys skipped, each way, and an absent key not read as 0.
+
+**The older mutants.** All 71 ran again at `8ff98e81` or later, or at `3da56ad3` for the seven whose anchors moved, and none survives. They did not run again after that: `lower/` and `codegen/` have not changed since `8ff98e81`, and the rules' mutants are above. D12, A2, D19 and F1 fail the gate alone, as they did. Their counts differ a little from the tables above, since tests and fixtures were added; the tables above are kept as what `fbc37706` showed.
 
 ### The gate's own failure modes
 
@@ -494,11 +585,12 @@ shrink check never ran. The row above changes coverage alone, and fails at the s
 - **Fragments.** Lines and columns are compared at every level; a fragment's text is counted, not compared.
 - **Images and hosts.** The native CLI and the Web Image run the gate with the self-check of `-XDallowStringFolding=false`, below. `wasmSmokeFull` runs the default frontend, so the lowering has not run in a native or Web image, and no host exposes the option. Elci was not rebuilt.
 - **JDK patch releases.** Two JDK builds were not compared. javac's rejection text is now in the rows' digests, so a release that rewords one moves those rows.
-- **DevKit end-to-end tests** were not run. Nothing here changes a script on the default frontend.
+- **DevKit end-to-end tests** were not run, although default-frontend scripts changed: the key-based Value methods moved the bytes of 132 corpus cases and of every script that compiles those methods. What covers them is the VM, through `ValuesLibByKeyTest`'s map model, the stdlib suites and the external examples' tests below.
 
 ## What the next slice inherits
 
 - **Add to `Lowering.expr`** and to `SubsetScan.ALLOWED` together, and allow a kind where lowering reaches it, not everywhere: the scan's Javadoc says how. A field that nothing lowers stays with `UnloweredInitializers`' closed list, whatever lowering learns.
+- **A constructor body has no rule yet.** `UnloweredInitializers` reads field initializers and initializer blocks. Give constructor bodies a rule before expression statements lower.
 - **`SubsetScan` must end as `SubsetValidator`'s rules with their codes** (I2c). Today it stops some things the reference accepts, such as a
   loop in an instance method, because it fails closed.
 - **I13's per-method table** comes with the first duplicated continuation: `Scope.bind` chooses from what is visible, and no element is
@@ -507,5 +599,5 @@ shrink check never ran. The row above changes coverage alone, and fails at the s
 - **Statements.** `block` handles an empty body or one `return`, and says so; `generateStatements` is next. Keep the `#_` and `#_if` lets.
 - **Parameter names at the boundary.** `ValidatorAssembly.Parameter` has a source name and a binder name, because the strict transform
   builds on the binder. `Provenance` follows it, and a test builds the shape the locals slice will. Records will exercise that path for real.
-- **The tables move with every construct.** Regenerate them with `-Padr068.freeze=true` and read the diff: a row may only gain, and `Adr068Lowering.rank` says what a gain is. `lowering-i1.tsv` is the head's table, not a ledger of rows, so a freeze rewrites it and git keeps the history; ADR r11 should say so beside D13's "rows are never edited". `lowering-reference.tsv` moves only with a reference change.
+- **The tables move with every construct.** Regenerate them with `-Padr068.freeze=true` and read the diff: a row may only gain, and `Adr068LoweringTest.shrinks` says what a gain is. `lowering-i1.tsv` is the head's table, not a ledger of rows, so a freeze rewrites it and git keeps the history; ADR r11 should say so beside D13's "rows are never edited". `lowering-reference.tsv` moves only with a reference change.
 - New known issues are in [`068-followups.md`](068-followups.md).
