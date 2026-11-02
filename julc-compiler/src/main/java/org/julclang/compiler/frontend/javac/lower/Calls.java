@@ -24,10 +24,13 @@ import org.julclang.compiler.pir.TypeMethodRegistry;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.DefaultFun;
 
+import javax.lang.model.element.Element;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Lowers a {@link CallTarget}. The reference's shapes are kept, including those that evaluate an operand twice or not in
@@ -150,7 +153,7 @@ final class Calls {
      */
     private boolean isMap(ExpressionTree argument, PirTerm inner) {
         var values = new ArrayList<ExpressionTree>();
-        valuesOf(argument, values);
+        valuesOf(argument, new HashSet<>(), values);
         if (values.size() == 1) {
             try {
                 return typing.of(values.getFirst(), inner) instanceof PirType.MapType;
@@ -167,19 +170,24 @@ final class Calls {
         return map;
     }
 
-    /** What {@code tree} may evaluate to, through parentheses, a choice of terms, a cast that does not decode and a variable. */
-    private void valuesOf(ExpressionTree tree, List<ExpressionTree> values) {
+    /**
+     * What {@code tree} may evaluate to, through parentheses, a choice of terms, a cast that does not decode and a variable,
+     * each variable once. A {@code @Param}'s value is what is applied, not its initializer, so the read ends at it.
+     */
+    private void valuesOf(ExpressionTree tree, Set<Element> read, List<ExpressionTree> values) {
         switch (tree) {
-            case ParenthesizedTree parenthesized -> valuesOf(parenthesized.getExpression(), values);
+            case ParenthesizedTree parenthesized -> valuesOf(parenthesized.getExpression(), read, values);
             case ConditionalExpressionTree conditional -> {
-                valuesOf(conditional.getTrueExpression(), values);
-                valuesOf(conditional.getFalseExpression(), values);
+                valuesOf(conditional.getTrueExpression(), read, values);
+                valuesOf(conditional.getFalseExpression(), read, values);
             }
-            case SwitchExpressionTree selected -> SwitchResults.of(selected).forEach(result -> valuesOf(result, values));
+            case SwitchExpressionTree selected -> SwitchResults.of(selected).forEach(result -> valuesOf(result, read, values));
             case MethodInvocationTree call when targets.classify(call) == CallTarget.Intrinsic.CAST && !toMap(call) ->
-                    valuesOf(call.getArguments().getFirst(), values);
+                    valuesOf(call.getArguments().getFirst(), read, values);
             case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
-                    && facts.initializer(variable) != null -> valuesOf(facts.initializer(variable), values);
+                    && facts.initializer(variable) != null && !facts.hasAnnotation(variable, JavacNames.PARAM) -> {
+                if (read.add(variable)) valuesOf(facts.initializer(variable), read, values);
+            }
             default -> values.add(tree);
         }
     }

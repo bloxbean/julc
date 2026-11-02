@@ -15,12 +15,14 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -493,6 +495,75 @@ class JavacSwitchesTest {
     void aComparisonOfValuesInAGuard(String guard) {
         same(IDENTITY_HELPERS + "static final String TEXT = \"a\"; static long m(S s, boolean c, Boolean big, long k, String str, String oth, JulcList<String> lst, JulcList<BigInteger> l, JulcList<Boolean> lb) "
                 + "{ return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }");
+    }
+
+    private static final String CONSTANTS = "static final String BAD = 2147483647 + 1 < 0 ? \"a\" : \"b\"; static final String ALIAS = \"a\"; ";
+
+    /** Outside D6's plain form a constant string that reaches a term stops: a term of it can read otherwise than Java. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "c && (true ? \"a\" : \"b\") == \"a\"",
+            "hb((true ? \"a\" : \"b\") == \"a\")",
+            "c && (2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"",
+            "c || (2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"",
+            "c && f == \"a\"",
+            "c && BAD == \"a\"",
+            "l.any(x -> (true ? \"a\" : \"b\") == \"a\")",
+    })
+    void aConstantOutsideThePlainFormInAGuard(String guard) {
+        assertEquals("JULC0086", javacCode(IDENTITY_HELPERS + CONSTANTS + "static long m(S s, boolean c, JulcList<BigInteger> l) { final var f = true ? \"a\" : \"b\"; "
+                + "return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }"));
+    }
+
+    /** A guard constant as a whole has Java's value and reaches no term, and the plain form is a value in any guard. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "(true ? \"a\" : \"b\") == \"a\"",
+            "(2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"",
+            "c && \"a\" + \"b\" == \"ab\"",
+            "c && ALIAS == \"a\"",
+            "c && f == \"a\"",
+    })
+    void aConstantThatStaysAValueInAGuard(String guard) {
+        same(IDENTITY_HELPERS + CONSTANTS + "static long m(S s, boolean c) { final String f = \"a\"; return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }");
+    }
+
+    private static String chain(int levels, String link) {
+        var chain = new StringBuilder("var v0 = d; ");
+        for (int i = 1; i <= levels; i++) chain.append("var v").append(i).append(" = ").append(link.replace("V", "v" + (i - 1))).append("; ");
+        return "static long m(boolean c, S s, PlutusData d, JulcMap<BigInteger, BigInteger> a) { " + chain + "%s }";
+    }
+
+    private static final String SIZE = "JulcMap<BigInteger, BigInteger> z = PlutusData.cast(%s, JulcMap.class); return z.size();";
+    private static final String ARMS = "switch (s) { case A q -> V; case B q -> V; default -> V; }";
+
+    /** A cast reads each variable once, so a chain of choices over one value takes no time, and it decodes once. */
+    @Test
+    void aChainOfChoicesIsReadOnce() {
+        var map = new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2))));
+        for (var members : List.of(chain(30, "c ? V : V").formatted(SIZE.formatted("v30")), chain(14, ARMS).formatted(SIZE.formatted("v14")))) {
+            var result = assertTimeoutPreemptively(Duration.ofSeconds(30), () -> outcome(members, constr(1), constr(0, 1), map, map));
+            assertEquals(EvalResult.Success.class, result);
+        }
+    }
+
+    /** A variable read once is still read: what it holds decides, at any depth, and two variables are two values. */
+    @ParameterizedTest
+    @ValueSource(strings = {"c ? v8 : a", "c ? a : v8", "c ? w : w", "c ? v8 : w"})
+    void aChainThatHoldsAMapOnOnePathStops(String value) {
+        assertEquals("JULC0084", javacCode(chain(8, "c ? V : V").formatted("var w = c ? a : d; " + SIZE.formatted(value))));
+    }
+
+    /** A {@code @Param} is what is applied, whatever its initializer holds, so a cast of it decodes that, alone or as one of a choice. */
+    @ParameterizedTest
+    @ValueSource(strings = {"P", "c ? P : d", "c ? P : P"})
+    void aCastOfAParamDecodesWhatIsApplied(String value) {
+        String source = "import java.math.BigInteger; import org.julclang.core.PlutusData; import org.julclang.core.types.JulcMap; import org.julclang.stdlib.annotation.Param; class C { "
+                + "@Param static PlutusData P = PlutusData.UNIT; static long m(boolean c, PlutusData d) { JulcMap<BigInteger, BigInteger> z = PlutusData.cast(" + value + ", JulcMap.class); return z.size(); } }";
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m");
+        var map = new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2))));
+        var evaluated = CompilerTestVm.pv11("Java").evaluateWithArgs(result.program().applyParams(map), List.of(constr(1), map));
+        assertInstanceOf(EvalResult.Success.class, evaluated, evaluated::toString);
     }
 
     /** A lambda in a guard is the guard's to judge for {@code +}, as the reference judges it, so its rule speaks before D6's. */
