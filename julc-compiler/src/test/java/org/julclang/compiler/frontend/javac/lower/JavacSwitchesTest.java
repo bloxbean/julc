@@ -159,6 +159,9 @@ class JavacSwitchesTest {
             "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.isEmpty() -> 1; default -> 3; }; }",
             "static long m(S s, S t, BigInteger n) { return switch (s) { case A a when switch (t) { case A c when c.v().compareTo(n) > 0 -> true; default -> false; } -> 1; default -> 3; }; }",
             "static long m(S s, BigInteger n) { return switch (s) { case A a when !a.v().equals(n) -> 1; default -> 3; }; }",
+            "static long m(S s, Boolean p, boolean q) { return switch (s) { case A a when p == q -> 1; default -> 3; }; }",
+            "static long m(S s, BigInteger n) { var q = new A(n); return switch (s) { case B b when q instanceof A -> 1; default -> 3; }; }",
+            "static long m(S s) { long n = 5; return switch (s) { case A a when n > a.v().signum() -> 1; default -> 3; }; }",
             // Constants in a guard have Java's width.
             "static long m(S s) { return switch (s) { case A a when (2147483647 + 1) < a.v().signum() -> 1; default -> 3; }; }",
             "static long m(S s) { return switch (s) { case A a when K + 1 < a.v().signum() -> 1; default -> 3; }; }",
@@ -228,6 +231,9 @@ class JavacSwitchesTest {
             "static long m(S s) { return switch (s) { case A a -> 2; case null, default -> 3; }; }",
             // Labels.
             "static long m(S s) { return switch (s) { case S t -> 2; }; }",
+            "static long m(S s) { return switch (s) { case C.S t -> 2; }; }",
+            "static long m(S s) { return switch (s) { case Object t -> 2; }; }",
+            "sealed interface W permits V.W { } static final class V { record W() implements C.W { } } static long m(W w) { return switch (w) { case W t -> 2; }; }",
             "static long m(S s) { return switch (s) { case A(BigInteger v) -> 2; default -> 3; }; }",
             "static long m(S s) { return switch (s) { case A(var v) -> 2; default -> 3; }; }",
             // Colon groups that need fall-through.
@@ -276,6 +282,11 @@ class JavacSwitchesTest {
             "record Q(long n) { } static long m(S s, JulcList<Q> l) { return switch (s) { case A a when l.head().n() > 0 -> 1; default -> 3; }; }",
             "static long m(S s) { var xs = JulcList.of(true); return switch (s) { case A a when !xs.head() -> 1; default -> 3; }; }",
             "static long m(S s, PlutusData d) { var v = switch (s) { case A a -> Builtins.tailList(Builtins.unListData(d)); default -> d; }; return JulcList.of(v).size(); }",
+            "static long m(S s) { return switch (s) { case A a when (1L << 1L) > 5 -> 1; default -> 3; }; }",
+            "static long m(S s, Boolean p, Boolean q) { return switch (s) { case A a when p == q -> 1; default -> 3; }; }",
+            "static long big(long a) { return a; } static long big(int a) { return a; } static long m(S s) { return switch (s) { case A a when big(1) > 0 -> 1; default -> 3; }; }",
+            "static final S Z = new A(BigInteger.ONE); static long m(S s) { return switch (s) { case A a when Z instanceof A -> 1; default -> 3; }; }",
+            "static S g(S s) { return s; } static long m(S s) { var q = g(s); return switch (s) { case A a when q instanceof A -> 1; default -> 3; }; }",
             // Statements.
             "static long m(S s) { switch (s) { case A a -> { return 1; } default -> { return 2; } } }",
             "static long m(S s) { switch (s) { default -> { } } return 2; }",

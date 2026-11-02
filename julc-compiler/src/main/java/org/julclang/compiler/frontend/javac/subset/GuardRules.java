@@ -27,7 +27,6 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -90,10 +89,7 @@ final class GuardRules {
         }
         var constant = constants.evaluate(guard);
         if (!constant.constant()) return false;
-        if (constant.value().kind() != GuardConstants.Kind.BOOLEAN) {
-            throw invalid(guard, entry, "a guard must have type boolean or Boolean, but '" + facts.text(guard)
-                    + "' is a constant of type " + constant.value().kind().name().toLowerCase(Locale.ROOT));
-        }
+        // javac rejects a constant false, but for what it does not fold: a shift by a long.
         if (!(Boolean) constant.value().value()) {
             throw invalid(guard, entry, "'" + facts.text(guard) + "' is a constant expression with value false, so the case can never apply");
         }
@@ -258,7 +254,7 @@ final class GuardRules {
                     + "bind it to a local or parameter of that type";
         }
         var declared = facts.types().asElement(facts.type(operand));
-        if (variant.equals(declared) || family.equals(declared)) return null;
+        if (variant.equals(declared) || parents.contains(declared)) return null;
         return "incompatible types: " + facts.text(operand) + " can never be a " + facts.text(target);
     }
 

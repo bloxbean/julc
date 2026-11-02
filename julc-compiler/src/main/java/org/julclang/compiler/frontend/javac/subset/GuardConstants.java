@@ -293,10 +293,9 @@ public final class GuardConstants {
         try {
             var value = evaluate(declaration.getInitializer(), visiting);
             if (!value.constant() || value.unclassifiable() || isVar(declaration)) return value;
+            // The assignment conversion to the declared type, widening included: a long N = 1 is a long. javac has rejected
+            // a narrowing, and char, byte and short are not modelled.
             var type = variable.asType();
-            // The initializer must be assignable without narrowing (JLS 5.2). char, byte and short are not modelled.
-            if (!assignable(type, value.value())) return Result.UNCLASSIFIABLE;
-            // Then the assignment conversion to the declared type, widening included: a long N = 1 is a long.
             return type.getKind().isPrimitive() ? toPrimitive(type.getKind(), value) : value;
         } finally {
             visiting.remove(variable);
