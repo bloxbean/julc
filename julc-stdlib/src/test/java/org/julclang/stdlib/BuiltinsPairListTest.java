@@ -3,6 +3,7 @@ package org.julclang.stdlib;
 import org.julclang.core.PlutusData;
 import org.julclang.stdlib.lib.ValuesLib;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -64,6 +65,7 @@ class BuiltinsPairListTest {
         assertEquals(new PlutusData.ListData(List.of(integer(1))), typed);
         PlutusData data = Builtins.mkNilData();
         assertEquals(new PlutusData.ListData(List.of(integer(1))), Builtins.mkCons(integer(1), data));
+        assertEquals(new PlutusData.ListData(List.of(integer(1), integer(2))), Builtins.mkCons(integer(1), new PlutusData.ListData(List.of(integer(2)))));
     }
 
     @Test
@@ -85,8 +87,9 @@ class BuiltinsPairListTest {
         assertEquals(map(2), Builtins.mapData(Builtins.tailList(map(1, 2))));
     }
 
-    /** What the libraries walk and build, called on the JVM with a map. */
+    /** What the libraries walk and build, called on the JVM with a map. Their loops end on an empty map, so a wrong one runs on. */
     @Test
+    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void theLibrariesOnAMap() {
         var token = new PlutusData.BytesData(new byte[]{1});
         var tokens = new PlutusData.MapData(List.of(new PlutusData.Pair(new PlutusData.BytesData(new byte[]{9}), integer(0)), new PlutusData.Pair(token, integer(7))));
