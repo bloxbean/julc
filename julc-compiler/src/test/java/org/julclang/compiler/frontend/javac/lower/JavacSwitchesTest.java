@@ -20,6 +20,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@code switch} expressions: each program compiles to the reference's bytes at every level, with and without a source map,
@@ -290,9 +291,6 @@ class JavacSwitchesTest {
             "static long m(S s) { var xs = JulcList.of(true); return switch (s) { case A a when !xs.head() -> 1; default -> 3; }; }",
             "static long m(S s, PlutusData d) { var v = switch (s) { case A a -> Builtins.tailList(Builtins.unListData(d)); default -> d; }; return JulcList.of(v).size(); }",
             "static long m(S s) { return switch (s) { case A a when (1L << 1L) > 5 -> 1; default -> 3; }; }",
-            "static boolean m(JulcList<S> xs) { return xs.any(v -> v instanceof A); }",
-            "static long m(JulcList<S> xs) { return xs.filter(v -> v instanceof B).size(); }",
-            "static boolean m(JulcList<S> xs) { return xs.any(v -> { var w = v; return w instanceof A; }); }",
             "static boolean m(JulcList<S> xs) { return xs.any(v -> switch (v) { case A a -> a.v().signum() > 0; default -> false; }); }",
             "static JulcList<BigInteger> m(JulcList<S> xs) { return xs.map(v -> switch (v) { case A a -> a.v(); case B b when b.w().signum() > 0 -> b.w(); default -> BigInteger.ONE; }); }",
             "static long m(S s, Boolean p, Boolean q) { return switch (s) { case A a when p == q -> 1; default -> 3; }; }",
@@ -403,6 +401,21 @@ class JavacSwitchesTest {
     }
 
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
+    /** An inferred parameter of a sealed interface is Data to the reference, so {@code instanceof} on it stops on both. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean m(JulcList<S> xs) { return xs.any(v -> v instanceof A); }",
+            "static long m(JulcList<S> xs) { return xs.filter(v -> v instanceof B).size(); }",
+            "static boolean m(JulcList<S> xs) { return xs.any(v -> { var w = v; return w instanceof A; }); }",
+    })
+    void anInferredElementOfASealedInterfaceHasNoVariant(String members) {
+        for (var frontend : CompilerFrontend.values()) {
+            var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setFrontend(frontend)).compileMethod(source(members), "m"));
+            assertTrue(e.getMessage().contains("Unsupported instanceof pattern"), () -> frontend + ": " + e.getMessage());
+        }
+    }
+
     @Test
     void twoDeclaratorsInAGroup() {
         rejected("static long m(S s) { return switch (s) { case A a: long x = 1, y = 2; yield x + y; default: yield 3; }; }");
