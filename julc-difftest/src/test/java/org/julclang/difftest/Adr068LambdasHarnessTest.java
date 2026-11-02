@@ -516,6 +516,39 @@ class Adr068LambdasHarnessTest {
         assertBothAgree(field + "public static long m(F f) { S r = f.ss().find(v -> switch (v) { case S.A q -> true; default -> false; }); return 1; }", constr(0, xs));
     }
 
+    /** A rejection of the reference's discarded pass, which {@code JAVAC} does not make: the JVM's answer at every level (D13, Accepted by decision). */
+    private static void assertWiderOnJavac(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED,
+                result.verdict().kind(), report::describe));
+        assertJavacAgrees(report);
+    }
+
+    private static final String ON_S = " switch (q) { case S.A a -> a.v().signum() > 0; case S.B b -> false; case S.D d -> false; } ";
+
+    /** {@code JULC0007}: what is read off a parameter at a simple name is Data to the first pass, and the type javac gave it runs. */
+    @Test
+    void aSwitchOnWhatIsReadOffAParameterAtASimpleName() {
+        String type = "public record Rs(S s) { } ";
+        var rs = list(constr(0, a(1)), constr(0, a(-1)), constr(0, constr(2)));
+        assertWiderOnJavac(type + "public static boolean m(JulcList<Rs> rs) { return rs.any(r -> switch (r.s()) { case S.A a -> a.v().signum() > 0; default -> false; }); }", rs);
+        assertWiderOnJavac(type + "public static boolean m(JulcList<Rs> rs) { return rs.any(r -> { var q = r.s(); return" + ON_S + "; }); }", rs);
+        assertWiderOnJavac(type + "public static long m(JulcList<Rs> rs) { return rs.filter(r -> { var q = r.s(); return" + ON_S + "; }).size(); }", rs);
+        assertWiderOnJavac(type + "public static boolean m(JulcList<Rs> rs, " + BIG_LIST + " ys) { return rs.any(r -> ys.any(y -> switch (r.s()) { case S.A a -> a.v().signum() > 0; default -> false; })); }", rs, integers(1));
+        assertAgree(type + "static JulcList<Rs> id(JulcList<Rs> l) { return l; } public static boolean m(JulcList<Rs> rs) { return id(rs).any(r -> switch (r.s()) { case S.A a -> a.v().signum() > 0; default -> false; }); }", rs);
+        String field = "public record Fs(JulcList<S> ss) { } ";
+        assertWiderOnJavac(field + "public static boolean m(JulcList<Fs> fs) { return fs.any(f -> f.ss().any(q ->" + ON_S + ")); }", list(constr(0, list(a(1), a(-1)))));
+    }
+
+    /** {@code JULC0012}: the first pass types what a lambda at a simple name holds as Data, so arms and elements do not agree. */
+    @Test
+    void anElementTypeTheFirstPassDoesNotSee() {
+        var xs = integers(1, 2);
+        assertWiderOnJavac("public static " + BIG_LIST + " m(" + BIG_LIST + " xs) { return xs.map(x -> { var a = JulcArray.of(x, BigInteger.ONE); return a.get(0); }); }", xs);
+        assertWiderOnJavac("public static " + BIG_LIST + " m(JulcList<R> xs) { return xs.map(r -> { var a = JulcArray.of(r.a(), BigInteger.ONE); return a.get(0); }); }", list(r(1, 2)));
+        assertWiderOnJavac("public static " + BIG_LIST + " m(BigInteger a, S s) { var xs = JulcList.of(a); return xs.map(x -> switch (s) { case S.A q -> x; case S.B b -> BigInteger.ONE; case S.D d -> BigInteger.TWO; }); }", integer(5), a(1));
+    }
+
     private static final String MAP_OF_BIG = "JulcMap<BigInteger, BigInteger>";
 
     private static PlutusData mapOf(long key, long value) {
