@@ -317,7 +317,7 @@ One runner in one throwaway worktree. **45 mutants of the new lines: 37 killed o
 - **Freeze.** `adr/evidence/068/lowering-*.tsv`. No `.diffcase` was added, so no reference row is new.
 - **`lowering-accepted-differences.tsv`.** The 38 rows of [`068/m3f-accepted-differences.tsv`](068/m3f-accepted-differences.tsv). Semantic fix asks for a saved `.diffcase`. These rest on JUnit, as asked for this slice: a saved
   `CallbackHelper`, `find` and written-type case each adds a reference row, and the frozen frontend's answer there is the divergence.
-- **`DIFFERENT-pir`** is a class no accepted table has held in numbers: 33 rows, all one rule.
+- **`DIFFERENT-pir`** is a class no accepted table has held in numbers: 33 rows, all one rule. A row's text holds a digest of the type and the term of each method that differs, so a later change to one of them moves the row.
 - **Conflict with the `switch` slice.** `Lowering.dispatch`, `SubsetScan`'s lists, `Frame` and `CallTargets.seen` are touched by both. `Tuples.destination` is untouched: a `return` in a lambda has no target through `Frame.lambda`.
 - **ADR text.**
   - M3's row: this slice.

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -218,6 +219,60 @@ class Adr068LoweringToolTest {
         injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
         var row = injected.row(method("class P { static long m(long a, long b) { return a; } }"));
         assertEquals("DIFFERENT-pir", row.kind(), row::line);
+    }
+
+    private static Adr068Lowering.Row loweredTo(String body) {
+        var injected = new Injected();
+        var other = method("class P { static long m(long a, long b) { return " + body + "; } }");
+        injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+        return injected.row(method("class P { static long m(long a, long b) { return a; } }"));
+    }
+
+    /** A row that pinned no term would pass any later change to the method, so its text holds a digest of the term. */
+    @Test
+    void aRowOfAnotherTermPinsThatTerm() {
+        assertEquals(loweredTo("b").line(), loweredTo("b").line());
+        assertNotEquals(loweredTo("b").line(), loweredTo("a + b").line());
+        assertNotEquals(loweredTo("b").detail(), loweredTo("a + b").detail());
+    }
+
+    @Test
+    void aRowOfAnotherTypePinsThatType() {
+        var injected = new Injected();
+        var row = new ArrayList<String>();
+        for (var type : List.of(new PirType.BoolType(), new PirType.DataType())) {
+            injected.attempts = attempts -> attempts.stream().map(attempt -> new JavacEvidence.Attempt(attempt.binder(), type, attempt.term(), attempt.construct())).toList();
+            row.add(injected.row(method("class P { static long m() { return 1; } }")).line());
+        }
+        assertNotEquals(row.get(0), row.get(1));
+    }
+
+    /** Each method that differs is pinned, not the first alone. */
+    @Test
+    void aRowPinsEveryMethodThatDiffers() {
+        var lines = new ArrayList<String>();
+        for (var body : List.of("b", "a + b")) {
+            var injected = new Injected();
+            var other = method("class P { static long m(long a, long b) { return b; } static long n(long a, long b) { return " + body + "; } }");
+            injected.attempts = attempts -> Adr068Lowering.frontend().attempts(other, new CompilerOptions());
+            lines.add(injected.row(method("class P { static long m(long a, long b) { return a; } static long n(long a, long b) { return a; } }")).line());
+        }
+        assertNotEquals(lines.get(0), lines.get(1));
+    }
+
+    @Test
+    void aMethodOnlyThisFrontendLowersIsPinned() {
+        var lines = new ArrayList<String>();
+        for (var term : List.of(1, 2)) {
+            var injected = new Injected();
+            injected.attempts = attempts -> {
+                var more = new ArrayList<>(attempts);
+                more.add(new JavacEvidence.Attempt("P.extra", attempts.getFirst().type(), new PirTerm.Const(Constant.integer(BigInteger.valueOf(term))), null));
+                return more;
+            };
+            lines.add(injected.row(method("class P { static long m() { return 1; } }")).line());
+        }
+        assertNotEquals(lines.get(0), lines.get(1));
     }
 
     @Test
