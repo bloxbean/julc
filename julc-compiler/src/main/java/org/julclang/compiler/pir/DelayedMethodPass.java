@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.ToLongFunction;
@@ -67,7 +68,10 @@ public final class DelayedMethodPass {
         }
     }
 
-    /** A builtin's kinds, what its arguments must show when those kinds are not enough, and the size of its result. */
+    /**
+     * A builtin's kinds, what its arguments must show when those kinds are not enough, and an upper bound on the size of its
+     * result: by default one more than its arguments', which a builtin here exceeds only if it is {@link Signature#sized}.
+     */
     private record Signature(List<Kind> parameters, Kind result, Predicate<List<Known>> holds,
                              ToLongFunction<List<Known>> size) {
         static Signature of(Kind result, Kind... parameters) {
@@ -109,9 +113,11 @@ public final class DelayedMethodPass {
         for (var fun : List.of(DefaultFun.EqualsByteString, DefaultFun.LessThanByteString, DefaultFun.LessThanEqualsByteString))
             total.put(fun, Signature.of(Kind.BOOL, Kind.BYTES, Kind.BYTES));
         total.put(DefaultFun.LengthOfByteString, Signature.of(Kind.INTEGER, Kind.BYTES));
-        for (var fun : List.of(DefaultFun.Sha2_256, DefaultFun.Sha3_256, DefaultFun.Blake2b_256, DefaultFun.Blake2b_224,
-                DefaultFun.Keccak_256, DefaultFun.Ripemd_160))
-            total.put(fun, Signature.of(Kind.BYTES, Kind.BYTES));
+        // A digest's size is its own, and an empty input gives the same 32 bytes as a long one.
+        for (var fun : List.of(DefaultFun.Sha2_256, DefaultFun.Sha3_256, DefaultFun.Blake2b_256, DefaultFun.Keccak_256))
+            total.put(fun, Signature.of(Kind.BYTES, Kind.BYTES).sized(arguments -> 32));
+        total.put(DefaultFun.Blake2b_224, Signature.of(Kind.BYTES, Kind.BYTES).sized(arguments -> 28));
+        total.put(DefaultFun.Ripemd_160, Signature.of(Kind.BYTES, Kind.BYTES).sized(arguments -> 20));
         total.put(DefaultFun.ReplicateByte, Signature.of(Kind.BYTES, Kind.INTEGER, Kind.INTEGER)
                 .when(arguments -> constantIn(arguments.get(0), REPLICATE_LIMIT) && constantIn(arguments.get(1), 255))
                 .sized(arguments -> ((Constant.IntegerConst) arguments.get(0).constant()).value().longValueExact()));
@@ -145,7 +151,7 @@ public final class DelayedMethodPass {
     public static boolean mayFail(PirTerm term, Map<String, Constant> env) {
         var bound = new HashMap<String, Known>();
         env.forEach((name, constant) -> bound.put(name, Known.of(constant)));
-        return known(term, bound, new HashSet<>()) == null;
+        return known(term, bound, new Reading()) == null;
     }
 
     /** {@link #mayFail(PirTerm, Map)} of a term that takes no argument. */
@@ -154,30 +160,42 @@ public final class DelayedMethodPass {
     }
 
     /**
+     * One reading of a term.
+     *
+     * @param calling the functions being read through, which a cycle would meet again
+     * @param results what each function gave on each argument, by the {@link Known} that holds it, so a function read many
+     *                times is walked once. A null ends the reading, whatever {@code calling} held when it came.
+     */
+    private record Reading(Set<String> calling, Map<Known, Map<List<Known>, Optional<Known>>> results) {
+        Reading() {
+            this(new HashSet<>(), new IdentityHashMap<>());
+        }
+    }
+
+    /**
      * What is known of the value of {@code term}, or null if it may fail.
      *
-     * @param bound   the variables bound to a total term in scope, and what is known of each
-     * @param calling the functions being read through, which a cycle would meet again
+     * @param bound the variables bound to a total term in scope, and what is known of each
      */
-    private static Known known(PirTerm term, Map<String, Known> bound, Set<String> calling) {
+    private static Known known(PirTerm term, Map<String, Known> bound, Reading reading) {
         return switch (term) {
             case PirTerm.Const constant -> Known.of(constant.value());
             case PirTerm.Var variable -> bound.get(variable.name());
             case PirTerm.Lam lam -> Known.of(lam, bound);
             case PirTerm.Builtin _ -> Known.of(Kind.OTHER, 0);
             case PirTerm.Let let -> {
-                var value = known(let.value(), bound, calling);
-                yield value == null ? null : known(let.body(), with(bound, let.name(), value), calling);
+                var value = known(let.value(), bound, reading);
+                yield value == null ? null : known(let.body(), with(bound, let.name(), value), reading);
             }
             case PirTerm.IfThenElse branch -> {
-                var condition = known(branch.cond(), bound, calling);
-                var then = known(branch.thenBranch(), bound, calling);
-                var otherwise = known(branch.elseBranch(), bound, calling);
+                var condition = known(branch.cond(), bound, reading);
+                var then = known(branch.thenBranch(), bound, reading);
+                var otherwise = known(branch.elseBranch(), bound, reading);
                 if (condition == null || condition.kind() != Kind.BOOL || then == null || otherwise == null) yield null;
                 yield Known.of(then.kind() == otherwise.kind() ? then.kind() : Kind.OTHER, Math.max(then.size(), otherwise.size()));
             }
-            case PirTerm.App app -> called(app, bound, calling);
-            case PirTerm.DataConstr constr -> constructed(constr, bound, calling);
+            case PirTerm.App app -> called(app, bound, reading);
+            case PirTerm.DataConstr constr -> constructed(constr, bound, reading);
             default -> null;
         };
     }
@@ -211,7 +229,7 @@ public final class DelayedMethodPass {
     }
 
     /** A builtin in the table, or a bound function, applied to all its arguments, each total. */
-    private static Known called(PirTerm.App app, Map<String, Known> bound, Set<String> calling) {
+    private static Known called(PirTerm.App app, Map<String, Known> bound, Reading reading) {
         var terms = new ArrayDeque<PirTerm>();
         PirTerm head = app;
         while (head instanceof PirTerm.App next) {
@@ -220,13 +238,13 @@ public final class DelayedMethodPass {
         }
         var arguments = new ArrayList<Known>();
         for (var term : terms) {
-            var argument = known(term, bound, calling);
+            var argument = known(term, bound, reading);
             if (argument == null) return null;
-            arguments.add(argument);
+            arguments.add(argument.asArgument());
         }
         if (head instanceof PirTerm.Builtin builtin) return builtinResult(builtin.fun(), arguments);
         return head instanceof PirTerm.Var function && bound.get(function.name()) instanceof Known callee
-                && callee.function() != null ? functionResult(function.name(), callee, arguments, calling) : null;
+                && callee.function() != null ? functionResult(function.name(), callee, arguments, reading) : null;
     }
 
     private static Known builtinResult(DefaultFun fun, List<Known> arguments) {
@@ -237,29 +255,35 @@ public final class DelayedMethodPass {
     }
 
     /** The result of a function's body, with each parameter bound to its argument: all of them, or the call may fail. */
-    private static Known functionResult(String name, Known callee, List<Known> arguments, Set<String> calling) {
-        if (!calling.add(name)) return null;
+    private static Known functionResult(String name, Known callee, List<Known> arguments, Reading reading) {
+        if (!reading.calling().add(name)) return null;
+        var results = reading.results().computeIfAbsent(callee, ignored -> new HashMap<>());
+        var result = results.get(arguments);
+        if (result == null) {
+            result = Optional.ofNullable(bodyResult(callee, arguments, reading));
+            results.put(arguments, result);
+        }
+        reading.calling().remove(name);
+        return result.orElse(null);
+    }
+
+    private static Known bodyResult(Known callee, List<Known> arguments, Reading reading) {
         var scope = callee.scope();
         PirTerm body = callee.function();
         for (var argument : arguments) {
-            if (!(body instanceof PirTerm.Lam lam)) {
-                calling.remove(name);
-                return null;
-            }
-            scope = with(scope, lam.param(), argument.asArgument());
+            if (!(body instanceof PirTerm.Lam lam)) return null;
+            scope = with(scope, lam.param(), argument);
             body = lam.body();
         }
-        var result = body instanceof PirTerm.Lam ? null : known(body, scope, calling);
-        calling.remove(name);
-        return result;
+        return body instanceof PirTerm.Lam ? null : known(body, scope, reading);
     }
 
     /** A constructor is Data when each field is total and of the kind its declared type encodes. */
-    private static Known constructed(PirTerm.DataConstr constr, Map<String, Known> bound, Set<String> calling) {
+    private static Known constructed(PirTerm.DataConstr constr, Map<String, Known> bound, Reading reading) {
         var fields = fieldTypes(constr);
         if (fields == null || fields.size() != constr.fields().size() || constr.tag() < 0) return null;
         for (int i = 0; i < fields.size(); i++) {
-            var field = known(constr.fields().get(i), bound, calling);
+            var field = known(constr.fields().get(i), bound, reading);
             if (field == null || field.kind() != encoded(fields.get(i))) return null;
         }
         return Known.of(Kind.DATA, 0);
@@ -341,7 +365,7 @@ public final class DelayedMethodPass {
         if (!methods.contains(let.name()) && !fields.contains(let.name())) {
             return new PirTerm.Let(let.name(), value, walk(let.body(), total, delayed));
         }
-        var known = known(value, total, new HashSet<>());
+        var known = known(value, total, new Reading());
         if (known != null) return new PirTerm.Let(let.name(), value, walk(let.body(), with(total, let.name(), known), delayed));
         var inner = new HashMap<>(total);
         inner.remove(let.name());

@@ -10,6 +10,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -21,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DelayedMethodPassTest {
@@ -229,6 +231,111 @@ class DelayedMethodPassTest {
             for (int i = 0; i < 2; i++) term = builtin(DefaultFun.AppendByteString, term, term);
             assertFalse(mayFail(term), "32,768 bytes and what the rule adds for each call is no argument yet");
             assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, term)));
+        }
+
+        private static PirTerm doubled(PirTerm start, int times) {
+            var names = new ArrayList<String>();
+            PirTerm read = new PirTerm.Var("a0", BYTES);
+            names.add("a0");
+            for (int i = 1; i <= times; i++) {
+                names.add("a" + i);
+                read = new PirTerm.Var("a" + i, BYTES);
+            }
+            PirTerm term = read;
+            for (int i = times; i > 0; i--) {
+                var previous = new PirTerm.Var(names.get(i - 1), BYTES);
+                term = new PirTerm.Let(names.get(i), builtin(DefaultFun.AppendByteString, previous, previous), term);
+            }
+            return new PirTerm.Let("a0", start, term);
+        }
+
+        private static final List<DefaultFun> HASHES = List.of(DefaultFun.Sha2_256, DefaultFun.Sha3_256, DefaultFun.Blake2b_256,
+                DefaultFun.Blake2b_224, DefaultFun.Keccak_256, DefaultFun.Ripemd_160);
+
+        @Test
+        void aHashIsItsDigestsSizeOnAnEmptyInput() {
+            // 13 doublings reach 262,144 bytes, past what a byte string may be at run time; each hash starts from no bytes.
+            for (var hash : HASHES) {
+                assertTrue(mayFail(doubled(builtin(hash, bytes(0)), 13)), hash + ": read as total, and fails at script start");
+                assertTrue(mayFail(builtin(hash, doubled(builtin(hash, bytes(0)), 12))), hash.name());
+            }
+        }
+
+        @Test
+        void aDoublingOfADigestStaysTotalWithinTheBound() {
+            for (var hash : HASHES) assertFalse(mayFail(doubled(builtin(hash, bytes(0)), 9)), hash + ": at most 16,384 bytes");
+        }
+
+        @Test
+        void eachDigestHasItsOwnSize() {
+            // n doublings of size s are read as 2^n * (s + 1) - 1, and no argument passes 32,768 before the 10th of 32 bytes.
+            for (var hash : List.of(DefaultFun.Sha2_256, DefaultFun.Sha3_256, DefaultFun.Blake2b_256, DefaultFun.Keccak_256)) {
+                assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(hash, bytes(0)), 9))), hash.name());
+                assertTrue(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(hash, bytes(0)), 10))), hash.name());
+            }
+            assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(DefaultFun.Blake2b_224, bytes(0)), 10))));
+            assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(DefaultFun.Ripemd_160, bytes(0)), 10))));
+            // 21,503 or 29,695 bytes, with 11,000 more: one is within the bound, and the other is not.
+            var padded = bytes(11000);
+            assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString,
+                    builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Ripemd_160, bytes(0)), 10), padded))));
+            assertTrue(mayFail(builtin(DefaultFun.LengthOfByteString,
+                    builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Blake2b_224, bytes(0)), 10), padded))));
+        }
+
+        @Test
+        void aDigestOfALongInputIsNoLonger() {
+            var digest = builtin(DefaultFun.Sha2_256, bytes(32768));
+            assertFalse(mayFail(builtin(DefaultFun.AppendByteString, digest, digest)));
+        }
+
+        /** {@code f_i(x) = f_(i-1)(f_(i-1)(x))} for {@code i} up to {@code depth}, and {@code body} of them. */
+        private static PirTerm callTree(int depth, PirTerm first, PirTerm body) {
+            PirTerm term = body;
+            for (int i = depth; i > 0; i--) {
+                var doubled = new PirTerm.Lam("x", INTEGER, call("f" + (i - 1), call("f" + (i - 1), variable("x"))));
+                term = new PirTerm.Let("f" + i, doubled, term);
+            }
+            return new PirTerm.Let("f0", first, term);
+        }
+
+        @Test
+        void aCallTreeIsReadInLinearTime() {
+            var identity = new PirTerm.Lam("x", INTEGER, variable("x"));
+            assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertFalse(mayFail(callTree(64, identity, call("f64", integer(1))))));
+        }
+
+        @Test
+        void aFailureAtTheLeavesOfACallTreeIsFound() {
+            var fails = new PirTerm.Lam("x", INTEGER, new PirTerm.Error(INTEGER));
+            assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertTrue(mayFail(callTree(64, fails, call("f64", integer(1))))));
+        }
+
+        @Test
+        void aCallTreeThatGrowsItsArgumentReachesTheBound() {
+            var grows = new PirTerm.Lam("x", INTEGER, builtin(DefaultFun.AddInteger, variable("x"), integer(1)));
+            assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertTrue(mayFail(callTree(64, grows, call("f64", integer(1))))));
+        }
+
+        @Test
+        void aFunctionReadTwiceIsReadOnEachArgument() {
+            var reads = builtin(DefaultFun.AppendByteString, call("zeros", integer(1)), call("zeros", integer(8193)));
+            assertTrue(mayFail(new PirTerm.Let("zeros", ZEROS, reads)));
+            var bothFine = builtin(DefaultFun.AppendByteString, call("zeros", integer(1)), call("zeros", integer(8192)));
+            assertFalse(mayFail(new PirTerm.Let("zeros", ZEROS, bothFine)));
+            var thenTheFailing = new PirTerm.IfThenElse(new PirTerm.Const(Constant.bool(true)), call("zeros", integer(8192)),
+                    call("zeros", integer(-1)));
+            assertTrue(mayFail(new PirTerm.Let("zeros", ZEROS, thenTheFailing)));
+        }
+
+        @Test
+        void oneFunctionTermIsReadInEachOfItsScopes() {
+            var closes = new PirTerm.Lam("y", INTEGER, builtin(DefaultFun.ReplicateByte, variable("c"), integer(0)));
+            var inFirst = new PirTerm.Let("g", closes, call("g", integer(0)));
+            var inSecond = new PirTerm.Let("g", closes, call("g", integer(0)));
+            var both = new PirTerm.Let("c", integer(1), new PirTerm.Let("a", inFirst,
+                    new PirTerm.Let("c", integer(8193), new PirTerm.Let("b", inSecond, variable("a")))));
+            assertTrue(mayFail(both));
         }
 
         @Test
