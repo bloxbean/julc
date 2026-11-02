@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
@@ -10,12 +11,15 @@ import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * {@code switch} expressions: each program compiles to the reference's bytes at every level, with and without a source map,
@@ -341,5 +345,38 @@ class JavacSwitchesTest {
         String test = "static long m(S s, S t) { return switch (s) { case A a when t instanceof A -> 1; default -> 3; }; }";
         assertInstanceOf(EvalResult.Failure.class, evaluate(test, constr(0, 1), constr(9)));
         assertInstanceOf(EvalResult.Success.class, evaluate(test, constr(0, 1), constr(2)));
+    }
+
+    private static String javacCode(String members) {
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m"));
+        return failure.diagnostics().getFirst().code();
+    }
+
+    /**
+     * D6 in a guard: {@code ==} is ADR-067's, and the rest holds as anywhere, after the guard's own rules. A guard that is
+     * constant as a whole has Java's value and reaches no term, and an arm of a {@code switch} in a guard is ordinary code.
+     */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "JULC0090 | static long m(S s, boolean c) { return switch (s) { case A a when c && (\"a\" + (2147483647 + 1) == \"a-2147483648\") -> 1; default -> 3; }; }",
+            "JULC0090 | static long m(S s) { return switch (s) { case A a when (\"a\" + 1).equals(\"a1\") -> 1; default -> 3; }; }",
+            "JULC0087 | static long m(S s, byte[] b, byte[] c) { return switch (s) { case A a when b.equals(c) -> 1; default -> 3; }; }",
+            "JULC0072 | static long m(S s, String t) { return switch (s) { case A a when t.equals(a.v()) -> 1; default -> 3; }; }",
+            "JULC0084 | static long m(S s, BigInteger n) { return switch (s) { case A a when a.v().equals(s) -> 1; default -> 3; }; }",
+            "JULC0072 | static long m(S s, BigInteger n) { return switch (s) { case A a when a.v() == n -> 1; default -> 3; }; }",
+            "JULC0086 | static long m(S s, S t, BigInteger n) { return switch (s) { case A a when switch (t) { case A b -> b.v() == n; default -> false; } -> 1; default -> 3; }; }",
+            "JULC0086 | static long m(S s, BigInteger n) { return switch (s) { case A a -> a.v() == n ? 1 : 2; default -> 3; }; }",
+            "JULC0090 | static long m(S s) { return switch (s) { case A a -> (\"a\" + 1).equals(\"a1\") ? 1 : 2; default -> 3; }; }",
+    })
+    void equalityInAndAroundAGuard(String code, String members) {
+        assertEquals(code, javacCode(members));
+    }
+
+    /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
+    @Test
+    void twoDeclaratorsInAGroup() {
+        rejected("static long m(S s) { return switch (s) { case A a: long x = 1, y = 2; yield x + y; default: yield 3; }; }");
+        rejected("static long m(S s) { return switch (s) { case A a -> { long x = 1, y = 2; yield x + y; } default -> 3; }; }");
     }
 }
