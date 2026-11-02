@@ -13,7 +13,6 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.frontend.javac.subset.LoopRules;
 import org.julclang.compiler.pir.PirType;
@@ -31,33 +30,37 @@ import java.util.Set;
 /**
  * What a {@code PlutusData} accumulator holds when several travel in a tuple. Its Java type does not say: a builtin leaves a
  * list or a pair list under it, and packing one as Data fails. So this reads what reaches the variable, from what javac bound:
- * its initializer and every assignment to it in the method, through parentheses, conditionals, a {@code switch}, other
- * variables, and the {@code return}s of a helper. A call is the element javac bound, so {@code tailList} is
- * {@code Builtins.tailList} and nothing else.
+ * its start and every assignment to it in the method, through parentheses, conditionals, a {@code switch}, other variables, and
+ * the {@code return}s of a helper. A call is the element javac bound, so {@code tailList} is {@code Builtins.tailList} and
+ * nothing else.
  * <p>
- * A cursor nothing else says of is a list, unless what its head is read as, or a map cursor beside it, says pairs. A variable
- * shown to hold both a list and Data has no one type for the tuple, and it stops. This builds no term, so it has no
- * evaluation order to state.
+ * A variable is a list only if its start and every value that reaches it are shown to be a list of one kind. Anything else is
+ * Data, and travels as Data: nothing known, a mix with Data, a list and pairs. A list that then arrives in it fails on-chain.
+ * A cursor nothing else says of is a list, unless what its head is read as, or a map cursor beside it, says pairs. This builds
+ * no term, so it has no evaluation order to state.
  */
 final class AccumulatorTypes {
 
     private static final PirType MAP = new PirType.MapType(new PirType.DataType(), new PirType.DataType());
     private static final PirType LIST = new PirType.ListType(new PirType.DataType());
     private static final String MAP_DATA = JavacNames.PLUTUS_DATA + ".MapData";
+    private static final String LIST_DATA = JavacNames.PLUTUS_DATA + ".ListData";
 
-    /** What is known of a value. */
+    /** What is shown of a value. {@code SAME} is the variable being read, which says nothing of itself. */
     private enum Held {
-        NOTHING, DATA, PAIR, CURSOR, LIST, PAIRS, BOTH;
+        SAME, DATA, PAIR, CURSOR, LIST, PAIRS;
 
         boolean isList() {
             return this == CURSOR || this == LIST || this == PAIRS;
         }
 
+        /** What a variable that may hold either holds. */
         Held and(Held other) {
-            if (this == NOTHING || this == other) return other;
-            if (other == NOTHING) return this;
-            if (isList() && other.isList()) return ordinal() > other.ordinal() ? this : other;
-            return BOTH;
+            if (this == SAME || this == other) return other;
+            if (other == SAME) return this;
+            if (this == CURSOR && other.isList()) return other;
+            if (other == CURSOR && isList()) return this;
+            return DATA;
         }
     }
 
@@ -78,8 +81,7 @@ final class AccumulatorTypes {
         var result = new ArrayList<>(types);
         var held = new ArrayList<Held>();
         for (int i = 0; i < accumulators.size(); i++) {
-            var what = result.get(i) instanceof PirType.DataType ? reading.variable(accumulators.get(i), new HashSet<>()) : Held.NOTHING;
-            if (what == Held.BOTH) throw NotPorted.at(facts, loop, "an accumulator shown to hold both a list and Data");
+            var what = result.get(i) instanceof PirType.DataType ? reading.variable(accumulators.get(i), new HashSet<>()) : Held.DATA;
             held.add(what);
             if (what == Held.PAIRS) result.set(i, MAP);
             if (what == Held.LIST) result.set(i, LIST);
@@ -103,20 +105,28 @@ final class AccumulatorTypes {
             calls = LoopRules.calls(root);
         }
 
-        /** What {@code variable} is shown to hold. {@code read} holds what is being read, so a cursor says nothing of itself. */
+        /** What {@code variable} is shown to hold. {@code read} holds what is being read. */
         Held variable(Element variable, Set<Element> read) {
-            if (!read.add(variable)) return Held.NOTHING;
-            var held = isMapData(variable) ? Held.PAIRS : Held.NOTHING;
-            if (variable instanceof VariableElement local && facts.initializer(local) != null) {
-                held = held.and(value(facts.initializer(local), read));
-            }
+            if (!read.add(variable)) return Held.SAME;
+            var held = start(variable, read);
             for (var assignment : assignments) {
                 if (assignment.getVariable() instanceof IdentifierTree target && variable.equals(facts.element(target))) {
                     held = held.and(value(assignment.getExpression(), read));
                 }
             }
-            if (held.isList() && isReadAsData(variable)) return Held.BOTH;
             return held == Held.CURSOR && headIsReadAsPair(variable) ? Held.PAIRS : held;
+        }
+
+        /**
+         * What an initializer or a declared type shows. A {@code @Param}'s value is what is applied, and a parameter's is the
+         * caller's, so only what they are declared says anything: {@code ListData} is a list of either kind.
+         */
+        private Held start(Element variable, Set<Element> read) {
+            if (isDeclared(variable, MAP_DATA)) return Held.PAIRS;
+            boolean initialized = variable instanceof VariableElement local && facts.initializer(local) != null
+                    && !facts.hasAnnotation(local, JavacNames.PARAM);
+            var held = initialized ? value(facts.initializer((VariableElement) variable), read) : Held.DATA;
+            return held == Held.DATA && isDeclared(variable, LIST_DATA) ? Held.CURSOR : held;
         }
 
         private Held value(ExpressionTree tree, Set<Element> read) {
@@ -125,56 +135,47 @@ final class AccumulatorTypes {
                 case ConditionalExpressionTree conditional ->
                         value(conditional.getTrueExpression(), read).and(value(conditional.getFalseExpression(), read));
                 case SwitchExpressionTree selected -> {
-                    var held = Held.NOTHING;
+                    var held = Held.SAME;
                     for (var result : SwitchResults.of(selected)) held = held.and(value(result, read));
                     yield held;
                 }
                 case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable -> variable(variable, read);
                 case MethodInvocationTree call -> call(call, read);
-                default -> Held.NOTHING;
+                default -> Held.DATA;
             };
         }
 
         private Held call(MethodInvocationTree call, Set<Element> read) {
-            if (!(facts.element(call.getMethodSelect()) instanceof ExecutableElement method)) return Held.NOTHING;
+            if (!(facts.element(call.getMethodSelect()) instanceof ExecutableElement method)) return Held.DATA;
             if (!isBuiltin(method)) return helper(method, read);
             return switch (method.getSimpleName().toString()) {
                 case "tailList" -> {
                     var list = value(call.getArguments().getFirst(), read);
-                    yield list.isList() ? list : Held.CURSOR;
+                    yield list.isList() || list == Held.SAME ? list : Held.CURSOR;
                 }
-                case "mkCons" -> value(call.getArguments().getFirst(), read) == Held.PAIR ? Held.PAIRS : Held.LIST;
+                case "mkCons" -> {
+                    var tail = value(call.getArguments().getLast(), read);
+                    if (tail == Held.LIST || tail == Held.PAIRS) yield tail;
+                    if (value(call.getArguments().getFirst(), read) == Held.PAIR) yield Held.PAIRS;
+                    yield tail == Held.SAME ? tail : Held.LIST;
+                }
                 case "mkNilData", "unListData", "constrFields" -> Held.LIST;
                 case "mkNilPairData", "unMapData" -> Held.PAIRS;
                 case "mkPairData" -> Held.PAIR;
-                case "iData", "bData", "constrData", "listData", "mapData" -> Held.DATA;
-                default -> Held.NOTHING;
+                default -> Held.DATA;
             };
         }
 
         /** What a method of a source returns, on every path it has. */
         private Held helper(ExecutableElement method, Set<Element> read) {
             MethodTree declaration = facts.declaration(method);
-            if (declaration == null || declaration.getBody() == null || !read.add(method)) return Held.NOTHING;
-            var held = Held.NOTHING;
+            if (declaration == null || declaration.getBody() == null) return Held.DATA;
+            if (!read.add(method)) return Held.SAME;
+            var held = Held.SAME;
             for (var result : LoopRules.returns(declaration)) {
                 if (result.getExpression() != null) held = held.and(value(result.getExpression(), read));
             }
             return held;
-        }
-
-        /** {@code unListData(variable)} and the like take Data, whatever else reaches the variable. */
-        private boolean isReadAsData(Element variable) {
-            for (var call : calls) {
-                if (isDecodeOf(call, variable)) return true;
-            }
-            return false;
-        }
-
-        private boolean isDecodeOf(MethodInvocationTree call, Element variable) {
-            return facts.element(call.getMethodSelect()) instanceof ExecutableElement method && isBuiltin(method)
-                    && List.of("unListData", "unMapData", "unIData", "unBData", "unConstrData").contains(method.getSimpleName().toString())
-                    && isRead(call.getArguments().getFirst(), variable);
         }
 
         /** Whether the element a cursor's head goes to is read as a pair: {@code fstPair} of it, or of a local that holds it. */
@@ -202,9 +203,9 @@ final class AccumulatorTypes {
         }
     }
 
-    private boolean isMapData(Element variable) {
+    private boolean isDeclared(Element variable, String identity) {
         var type = variable.asType();
-        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(MAP_DATA);
+        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(identity);
     }
 
     private boolean isBuiltin(ExecutableElement method) {

@@ -329,18 +329,20 @@ class JavacLoopsTest {
             "static long m(PlutusData d) { PlutusData b = Builtins.unMapData(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData.MapData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData.MapData b = Builtins.unMapData(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.mkNilPairData(); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 0) { c = Builtins.tailList(c); } else { c = Builtins.mkNilData(); } i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.sndPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
-            "static long m(PlutusData d, boolean b) { PlutusData c = d; long i = 0; while (i < 2) { if (b) { i = i + 1; } else { var h = Builtins.headList(c); Builtins.fstPair(h); i = i + 1; } c = Builtins.tailList(c); } return i; }",
-            "static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData l = Builtins.mkNilData(); PlutusData t = e; long i = 0; while (i < 2) { c = Builtins.tailList(c); t = Builtins.tailList(t); l = Builtins.mkCons(Builtins.iData(i), l); l = Builtins.tailList(l); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = Builtins.mkNilPairData(); long i = 0; while (i < 2) { c = Builtins.mkNilPairData(); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long i = 0; while (i < 2) { if (i > 0) { c = Builtins.tailList(c); } else { c = Builtins.mkNilData(); } i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = Builtins.tailList(d); long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = Builtins.tailList(d); long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.sndPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d, boolean b) { PlutusData c = Builtins.tailList(d); long i = 0; while (i < 2) { if (b) { i = i + 1; } else { var h = Builtins.headList(c); Builtins.fstPair(h); i = i + 1; } c = Builtins.tailList(c); } return i; }",
+            "static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData l = Builtins.mkNilData(); PlutusData t = Builtins.tailList(e); long i = 0; while (i < 2) { c = Builtins.tailList(c); t = Builtins.tailList(t); l = Builtins.mkCons(Builtins.iData(i), l); l = Builtins.tailList(l); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData l = Builtins.mkNilPairData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { l = Builtins.mkCons(d, l); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 5) { c = Builtins.mkNilData(); } var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 0) { i = i + 1; } else { c = Builtins.mkNilPairData(); i = i + 2; } } return i; }",
+            "static long m(PlutusData d) { PlutusData c = Builtins.tailList(d); long i = 0; while (i < 2) { if (i > 5) { c = Builtins.mkNilData(); } var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = Builtins.unMapData(d); long i = 0; while (i < 2) { if (i > 0) { i = i + 1; } else { c = Builtins.mkNilPairData(); i = i + 2; } } return i; }",
             "static long m(PlutusData d) { var l = Builtins.unListData(d); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData.ListData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData.ListData l = Builtins.mkNilPairData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
+            "static long m(PlutusData.ListData d) { var c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData.ListData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static PlutusData.MapData h(PlutusData d) { return Builtins.unMapData(d); } static long m(PlutusData d) { PlutusData.MapData b = h(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
     })
     void whatATupleOfAWhileHolds(String members) {
@@ -366,21 +368,6 @@ class JavacLoopsTest {
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
         assertEquals("JULC0041", failure.diagnostics().getFirst().code());
         assertEquals(12, failure.diagnostics().getFirst().line());
-    }
-
-    /** Reaching a list and Data in one variable has no one type for the tuple, so it stops. */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static long m(PlutusData d) { PlutusData cur = d; long i = 0; while (i < 1) { i = i + 1; cur = Builtins.tailList(Builtins.unListData(cur)); } return i; }",
-            "static long m(PlutusData d) { PlutusData cur = Builtins.unListData(d); long i = 0; while (i < 2) { i = i + 1; if (i == 1) { cur = Builtins.tailList(cur); } else { cur = Builtins.iData(i); } } return i; }",
-            "static long m(long n) { PlutusData cur = Builtins.iData(0); long i = 0; while (i < n) { i = i + 1; if (i == 5) { cur = Builtins.mkNilData(); } } return Builtins.unIData(cur).longValue(); }",
-            "static long m(PlutusData d) { PlutusData cur = Builtins.unListData(d); long i = 0; while (i < 1) { i = i + 1; cur = Builtins.tailList(cur); } return Builtins.unIData(cur).longValue(); }",
-            "static boolean m(PlutusData d) { PlutusData cur = Builtins.unListData(d); long i = 0; while (i < 1) { i = i + 1; cur = Builtins.tailList(cur); } return Builtins.nullList(Builtins.unMapData(cur)); }",
-    })
-    void anAccumulatorOfTwoRepresentationsStops(String members) {
-        var failure = assertThrows(NotPorted.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of()));
-        assertEquals("an accumulator shown to hold both a list and Data", failure.construct());
     }
 
     /** A library compiled as a root finds its own method in the reference's pool, which is the library slice's to read. */

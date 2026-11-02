@@ -109,4 +109,49 @@ class Adr068LoopRepresentationsPropertyTest {
         var data = map ? Adr068LoopRepresentationsTest.MAP : Adr068LoopRepresentationsTest.LIST;
         assertAgrees(new DiffCase("cursors", source, "Case", "m", List.of(data, integers(4, 5), integers(1, 2))));
     }
+
+    /** A variable that starts from Data the analysis cannot name, and that a list may reach by any form on a path not taken. */
+    @Property(tries = 200, seed = "20261103")
+    void aStartFromData(@ForAll("plans") List<Integer> choices) {
+        var plan = new Plan(choices);
+        String start = plan.pick(List.of("d", "e", "ds.head()", "b.v()", "id(d)", "xs.isEmpty() ? d : e", "(d)", "Builtins.iData(BigInteger.ONE)",
+                "Builtins.bData(new byte[]{1})", "F"));
+        String list = plan.pick(List.of("Builtins.mkNilData()", "(Builtins.mkNilData())", "Builtins.mkNilPairData()", "Builtins.tailList(Builtins.unListData(l))",
+                "nil()", "G", "Builtins.unMapData(m)", "Builtins.mkCons(d, Builtins.mkNilData())", "Builtins.tailList(c)"));
+        String update = plan.pick(List.of("if (s > 100) { c = %s; }", "c = s > 100 ? %s : c;", "if (s > 100) { PlutusData r = %s; c = r; }",
+                "c = switch (e2) { case S.B q -> %s; default -> c; };", "if (s > 100) { c = h(%s); }"));
+        String sibling = plan.pick(List.of("", "PlutusData f = Builtins.unListData(l); ", "PlutusData f = d; "));
+        String siblingStep = sibling.isEmpty() ? "" : sibling.contains("unListData") ? "if (!Builtins.nullList(f)) { f = Builtins.tailList(f); } " : "f = e; ";
+        String body = update.formatted(list) + " " + siblingStep + "s = s + 1;";
+        String loop = plan.pick(List.of(
+                "while (s < 2) { %s }",
+                "for (var x : xs) { %s }",
+                "for (var x : xs) { %s if (s > 0) { break; } }",
+                "long i = 0; while (i < 2) { i = i + 1; while (s < 2) { %s } }",
+                "for (var x : xs) { long i = 0; while (i < 2) { i = i + 1; %s } }"));
+        String end = plan.pick(List.of("return s;", "return s + (Builtins.equalsData(c, c) ? 1 : 2);", "var w = c; return s + (w.equals(c) ? 1 : 2);", "return s + JulcList.of(c).size();"));
+        String source = """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.stdlib.Builtins;
+
+                public class Case {
+                    public sealed interface S { record A() implements S { } record B() implements S { } }
+                    public record Bx(PlutusData v) { }
+                    static PlutusData F = Builtins.iData(BigInteger.TEN);
+                    static PlutusData G = Builtins.mkNilData();
+                    static PlutusData nil() { return Builtins.mkNilData(); }
+                    static PlutusData id(PlutusData v) { return v; }
+                    static PlutusData h(PlutusData v) { return v; }
+                    public static long m(PlutusData d, PlutusData e, PlutusData l, PlutusData m, JulcList<PlutusData> ds, Bx b, JulcList<BigInteger> xs, S e2) {
+                        PlutusData c = %s; %slong s = 0; %s %s
+                    }
+                }
+                """.formatted(start, sibling, loop.formatted(body), end);
+        var one = new PlutusData.IntData(BigInteger.ONE);
+        var tags = new TagTable(List.of(new TagTable.Entry("Case$S$A", "Case$S", 0), new TagTable.Entry("Case$S$B", "Case$S", 1)));
+        assertAgrees(new DiffCase("data", source, "Case", "m", List.of(one, new PlutusData.IntData(BigInteger.TWO), integers(1, 2), Adr068LoopRepresentationsTest.MAP,
+                new PlutusData.ListData(List.of(one)), new PlutusData.ConstrData(0, List.of(one)), integers(1, 2), new PlutusData.ConstrData(0, List.of())), tags, null));
+    }
 }
