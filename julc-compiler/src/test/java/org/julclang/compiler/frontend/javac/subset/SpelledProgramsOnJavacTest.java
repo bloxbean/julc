@@ -113,7 +113,7 @@ class SpelledProgramsOnJavacTest {
             entry("toString on a ledger hash", stops("the method toString of a byte string")),
             entry("a variant outside the interface, with instanceof", rejects("JULC0092")),
             entry("a variant outside the interface, with a switch", stops("SWITCH_EXPRESSION")),
-            entry("no variant in the interface", rejects("JULC0092")),
+            entry("no variant in the interface", rejects("JULC0101")),
             entry("a switch statement in a root", stops("SWITCH")),
             entry("a switch statement in a library", LIBRARY),
             entry("a pattern switch statement in a library", LIBRARY),

@@ -25,12 +25,15 @@ import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.ElementFilter;
+import java.util.ArrayDeque;
 import java.util.Set;
 
 /**
  * A subset rule ({@code JULC0101}): a program does not declare a method under a name the JavaParser frontend reads by its
  * spelling ahead of the method's body. Each row is a matcher of {@code PirGenerator}'s method calls, which stands in for
- * the call without lowering the body. A method javac generates has no tree to read at this point, so it is exempt.
+ * the call without lowering the body. A method javac generates has no tree to read at this point, so these rows exempt it,
+ * and {@link #checkRecordMembers} reads what the javac frontend needs of one from the elements.
  * <table>
  *   <caption>The matchers, and the declaration each one stands in for</caption>
  *   <tr><td>{@code tryFromPlutusDataIdentity}</td><td>{@code fromPlutusData} of one parameter, on any type</td></tr>
@@ -86,11 +89,59 @@ public final class SpelledMethods {
     }
 
     private static boolean isReadAsComponents(JavacFacts facts, ExecutableElement method) {
-        String name = method.getSimpleName().toString();
         if (!method.getParameters().isEmpty() || method.getModifiers().contains(Modifier.STATIC)) return false;
-        if (name.equals("toPlutusData")) return true;
+        if (isToPlutusData(method)) return true;
         var owner = (TypeElement) method.getEnclosingElement();
-        return owner.getKind() == ElementKind.RECORD && isComponent(facts, owner, name);
+        return owner.getKind() == ElementKind.RECORD && isComponent(facts, owner, method.getSimpleName().toString());
+    }
+
+    private static boolean isToPlutusData(ExecutableElement method) {
+        return method.getSimpleName().contentEquals("toPlutusData") && method.getParameters().isEmpty()
+                && !method.getModifiers().contains(Modifier.STATIC);
+    }
+
+    /**
+     * What {@link #checkDeclarations} cannot read, on the javac frontend, whose records the gate's component rule does not
+     * reach: a method no tree says. A generated accessor that implements an interface's method, and an inherited
+     * {@code toPlutusData}, are what Java calls through that interface, which is not how JuLC reads a record.
+     */
+    public static void checkRecordMembers(JavacFacts facts, CompilationUnitTree unit) {
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitClass(ClassTree tree, Void unused) {
+                if (facts.element(tree) instanceof TypeElement type && type.getKind() == ElementKind.RECORD) {
+                    checkRecordMembers(facts, type, tree);
+                }
+                return super.visitClass(tree, unused);
+            }
+        }.scan(unit, null);
+    }
+
+    private static void checkRecordMembers(JavacFacts facts, TypeElement record, ClassTree tree) {
+        for (var member : ElementFilter.methodsIn(facts.elements().getAllMembers(record))) {
+            if (isToPlutusData(member) && !member.getEnclosingElement().equals(record)) throw reject(facts, member, tree);
+        }
+        for (var component : facts.components(record)) {
+            if (implementsAnInterface(facts, component.getAccessor(), record)) {
+                throw CompilerTypeDiagnostics.methodNameReadBySpelling(
+                        "The component " + record.getSimpleName() + "." + component.getSimpleName(), facts.location(tree));
+            }
+        }
+    }
+
+    /** Whether {@code accessor} implements or overrides a method of an interface of {@code record}, at any depth. */
+    private static boolean implementsAnInterface(JavacFacts facts, ExecutableElement accessor, TypeElement record) {
+        var pending = new ArrayDeque<TypeMirror>(facts.types().directSupertypes(record.asType()));
+        while (!pending.isEmpty()) {
+            var supertype = pending.removeFirst();
+            pending.addAll(facts.types().directSupertypes(supertype));
+            var type = facts.typeElement(supertype);
+            if (type.getKind() != ElementKind.INTERFACE) continue;
+            for (var method : ElementFilter.methodsIn(type.getEnclosedElements())) {
+                if (facts.elements().overrides(accessor, method, record)) return true;
+            }
+        }
+        return false;
     }
 
     public static void check(JavacFacts facts, CompilationUnitTree unit) {

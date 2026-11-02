@@ -2,7 +2,9 @@ package org.julclang.difftest;
 
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -40,6 +42,8 @@ class Adr068ReadsHarnessTest {
                 import org.julclang.core.types.JulcMap;
                 import org.julclang.core.types.Tuple2;
                 import org.julclang.ledger.PlutusDataConvertible;
+                import org.julclang.ledger.PubKeyHash;
+                import org.julclang.ledger.Value;
                 import org.julclang.stdlib.Builtins;
                 import org.julclang.stdlib.annotation.NewType;
 
@@ -243,5 +247,243 @@ class Adr068ReadsHarnessTest {
     void aRecordWithNeitherKeepsLowering(String members) {
         var report = run(members, i(1));
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+    }
+
+    // --- What no tree says: a record's members that javac generates or inherits ---
+
+    /** Asserts every run of {@code frontend} is rejected with {@code code}. */
+    private static void assertRejects(DiffRunner.Report report, CompilerFrontend frontend, String code) {
+        report.results().forEach((config, result) -> {
+            if (config.frontend() != frontend) return;
+            assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+            assertTrue(result.uplc().toString().contains(code), report::describe);
+        });
+    }
+
+    /** Asserts every run of {@code frontend} evaluated and agrees with the JVM: a rejection does not pass this. */
+    private static void assertAgrees(DiffRunner.Report report, CompilerFrontend frontend) {
+        assertEquals(8, report.results().size(), report::describe);
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == frontend) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+        });
+    }
+
+    private static final TagTable SEALED = new TagTable(List.of(new TagTable.Entry("Case$S$A", "Case$S", 0),
+            new TagTable.Entry("Case$S$B", "Case$S", 1)));
+
+    private static DiffRunner.Report tagged(String members, PlutusData... args) {
+        var tags = members.contains("sealed interface S") ? SEALED : TagTable.EMPTY;
+        return RUNNER.run(new DiffCase("reads", program(members), "Case", "m", List.of(args), tags, null));
+    }
+
+    private static final String GENERATED_DATA = "public record X(PlutusData toPlutusData) implements PlutusDataConvertible { } ";
+
+    static List<String> generatedToPlutusData() {
+        return List.of(
+                GENERATED_DATA + "public static X m(PlutusData d) { return new X(d); }",
+                GENERATED_DATA + "public static PlutusData m(PlutusData d) { JulcList<X> l = JulcList.of(new X(d)); return l.toPlutusData(); }",
+                GENERATED_DATA + "public static PlutusData m(PlutusData d) { JulcMap<BigInteger, X> l = JulcMap.empty(); return l.insert(BigInteger.ONE, new X(d)).toPlutusData(); }",
+                GENERATED_DATA + "public record O(X w) { } public static O m(PlutusData d) { return new O(new X(d)); }",
+                GENERATED_DATA + "public static Optional<X> m(PlutusData d) { return Optional.of(new X(d)); }",
+                GENERATED_DATA + "public static boolean m(PlutusData d) { return new X(d).equals(new X(d)); }",
+                GENERATED_DATA + "public static PlutusData m(PlutusData d) { var w = new X(d); return w.toPlutusData(); }",
+                GENERATED_DATA + "public static PlutusData m(PlutusData d) { return d; }",
+                "public sealed interface S { record A(PlutusData toPlutusData) implements S, PlutusDataConvertible { } record B() implements S { } } public static S m(PlutusData d) { return new S.A(d); }",
+                "public sealed interface S extends PlutusDataConvertible { record A(PlutusData toPlutusData) implements S { } record B(PlutusData b, PlutusData toPlutusData) implements S { } } public static S m(PlutusData d) { return new S.A(d); }",
+                "public record X(PlutusData.IntData toPlutusData) implements PlutusDataConvertible { } public static X m(PlutusData d) { return new X(new PlutusData.IntData(BigInteger.ONE)); }",
+                "public record X(PlutusData toPlutusData, BigInteger b) implements PlutusDataConvertible { } public static X m(PlutusData d) { return new X(d, BigInteger.ONE); }",
+                "public record X(PlutusData toPlutusData) implements org.julclang.core.ToPlutusData { } public static PlutusData m(PlutusData d) { JulcList<X> l = JulcList.of(new X(d)); return l.toPlutusData(); }",
+                "public interface D extends PlutusDataConvertible { } public record X(PlutusData toPlutusData) implements D { } public static X m(PlutusData d) { return new X(d); }",
+                "public static PlutusData m(PlutusData d) { record X(PlutusData toPlutusData) implements PlutusDataConvertible { } return new X(d).toPlutusData(); }");
+    }
+
+    @ParameterizedTest
+    @MethodSource("generatedToPlutusData")
+    void aGeneratedToPlutusDataIsRejectedAtTheRecord(String members) {
+        var report = tagged(members, i(5));
+        assertEquals(8, report.results().size(), report::describe);
+        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
+        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
+    }
+
+    /** The reference reads these through the accessor, and the rule is the javac frontend's: its table says so. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public interface I { BigInteger a(); } public record X(BigInteger a) implements I { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
+            "public interface I { default BigInteger a() { return BigInteger.ONE; } } public record X(BigInteger a) implements I { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
+            "public interface I<T> { T a(); } public record X(BigInteger a) implements I<BigInteger> { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
+            "public sealed interface S { BigInteger a(); record A(BigInteger a) implements S { } record B(BigInteger a) implements S { } } public static BigInteger m(BigInteger v) { var x = new S.A(v); return x.a(); }",
+    })
+    void aGeneratedAccessorThatImplementsAnInterfaceIsRejected(String members) {
+        var report = tagged(members, i(5));
+        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
+        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+    }
+
+    @Test
+    void aParameterOfAGeneratedToPlutusDataIsRejected() {
+        var report = run(GENERATED_DATA + "public static X m(X d) { return d; }", new PlutusData.ConstrData(0, List.of(i(5))));
+        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
+        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
+    }
+
+    @Test
+    void anInterfaceAtAnyDepthIsRead() {
+        var report = run("public interface B { BigInteger a(); } public interface I extends B { } public record X(BigInteger a) implements I { }"
+                + " public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }", i(5));
+        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
+    }
+
+    /** Neither names a method of an interface, so each keeps lowering, on both frontends where the reference lowers it. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public interface I { BigInteger b(); } public record X(BigInteger a) { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
+            "public interface I { BigInteger b(BigInteger x); } public record X(BigInteger b) implements Marker { } public interface Marker { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.b(); }",
+            "public sealed interface S { record A(BigInteger a) implements S { } record B(BigInteger b) implements S { } } public static BigInteger m(BigInteger v) { var x = new S.A(v); return x.a(); }",
+            "public record X(BigInteger a) implements Comparable<X> { public int compareTo(X o) { return 0; } } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
+    })
+    void aRecordWhoseAccessorsImplementNothingKeepsLowering(String members) {
+        var report = tagged(members, i(5));
+        assertAgrees(report, CompilerFrontend.JAVAC);
+        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+    }
+
+    // --- Every member a type decides is read through CallTargets.seen ---
+
+    private static PlutusData list(long... values) {
+        var elements = new ArrayList<PlutusData>();
+        for (long value : values) elements.add(i(value));
+        return new PlutusData.ListData(elements);
+    }
+
+    private static PlutusData map(long key, long value) {
+        return new PlutusData.MapData(List.of(new PlutusData.Pair(i(key), i(value))));
+    }
+
+    private static PlutusData bytes(int... values) {
+        var bytes = new byte[values.length];
+        for (int k = 0; k < values.length; k++) bytes[k] = (byte) values[k];
+        return new PlutusData.BytesData(bytes);
+    }
+
+    private static final String EQUALS_V = "var y = %s; return y.equals(v);";
+
+    private static Stream<Arguments> equalsOnAValueWithNoEquals() {
+        var rows = new ArrayList<Arguments>();
+        record Sample(String parameter, PlutusData argument, String map) {
+        }
+        var values = List.of(new Sample("boolean", new PlutusData.ConstrData(1, List.of()), "Boolean"),
+                new Sample("JulcList<BigInteger>", list(1, 2), "JulcList<BigInteger>"),
+                new Sample("JulcMap<BigInteger,BigInteger>", map(1, 2), "JulcMap<BigInteger,BigInteger>"));
+        for (var value : values) {
+            String mapOf = "JulcMap.<BigInteger," + value.map() + ">empty().insert(BigInteger.ONE, v)";
+            for (String source : List.of("JulcList.of(v).head()", "JulcList.of(v).get(0)", "JulcList.of(v, v).tail().head()",
+                    "JulcList.of(v).reverse().head()", "JulcList.of(v).take(1).head()", "JulcList.of(v).drop(0).head()",
+                    "JulcList.of(v).prepend(v).head()", "JulcList.of(v).concat(JulcList.of(v)).head()", mapOf + ".get(BigInteger.ONE)",
+                    mapOf + ".values().head()")) {
+                for (String body : List.of(EQUALS_V, "var y = (%s); return y.equals(v);", "var z = %s; var y = z; return y.equals(v);",
+                        "return (%s).equals(v);")) {
+                    rows.add(Arguments.of("public static boolean m(" + value.parameter() + " v) { " + body.formatted(source) + " }",
+                            value.argument()));
+                }
+            }
+        }
+        return rows.stream();
+    }
+
+    /**
+     * The term holds a builtin value, which {@code EqualsData} fails on, and the registry has no {@code equals} for it. The
+     * reference holds the same read undecoded, as Data, so it evaluates: this is the javac frontend's narrower answer.
+     */
+    @ParameterizedTest
+    @MethodSource("equalsOnAValueWithNoEquals")
+    void equalsOnADecodedValueWithNoEqualsIsAnUnresolvedMember(String members, PlutusData argument) {
+        var report = run(members, argument);
+        assertRejects(report, CompilerFrontend.JAVAC, "JULC0055");
+    }
+
+    private static Stream<Arguments> equalsThatDispatches() {
+        return Stream.of(
+                Arguments.of("public static boolean m(BigInteger v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }", i(5)),
+                Arguments.of("public static boolean m(String v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }", bytes(0x78)),
+                Arguments.of("public static boolean m(PubKeyHash v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }", bytes(1)),
+                Arguments.of("public static boolean m(P v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }",
+                        new PlutusData.ConstrData(0, List.of(i(1)))),
+                Arguments.of("public static boolean m(PlutusData v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }", i(5)),
+                Arguments.of("public static boolean m(Optional<BigInteger> v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }",
+                        new PlutusData.ConstrData(0, List.of(i(5)))),
+                Arguments.of("public static boolean m(Tuple2<BigInteger, BigInteger> v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }",
+                        new PlutusData.ConstrData(0, List.of(i(1), i(2)))),
+                Arguments.of("public static boolean m(Value v) { " + EQUALS_V.formatted("JulcList.of(v).head()") + " }",
+                        new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(), new PlutusData.MapData(
+                                List.of(new PlutusData.Pair(bytes(), i(5)))))))),
+                Arguments.of("public static boolean m(BigInteger v) { return (JulcList.of(v).head()).equals(v); }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { var y = v; return v.equals(y); }", i(5)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("equalsThatDispatches")
+    void equalsOnADecodedValueKeepsItsRow(String members, PlutusData argument) {
+        var report = run(members, argument);
+        assertAgrees(report, CompilerFrontend.JAVAC);
+        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+    }
+
+    private static Stream<Arguments> membersTheReferenceDoesNotSee() {
+        return Stream.of(
+                Arguments.of("public static BigInteger m(byte[] v) { var y = JulcList.of(v).head(); return BigInteger.valueOf(y.length); }", bytes(1)),
+                Arguments.of("public static BigInteger m(byte[] v) { var y = (JulcList.of(v).head()); return BigInteger.valueOf(y.length); }", bytes(1)),
+                Arguments.of("public static BigInteger m(byte[] v) { var z = JulcList.of(v).head(); var y = z; return BigInteger.valueOf(y.length); }", bytes(1)),
+                Arguments.of("public static BigInteger m(byte[] v) { return BigInteger.valueOf(JulcList.of(v).head().length); }", bytes(1)),
+                Arguments.of("public static BigInteger m(byte[] v) { return BigInteger.valueOf(JulcList.of(v).get(0).length); }", bytes(1)),
+                Arguments.of("public static BigInteger m(byte[] v) { return BigInteger.valueOf(JulcList.of(v, v).tail().head().length); }", bytes(1)),
+                Arguments.of("public static boolean m(BigInteger v) { var y = JulcList.of(v).head(); return y.compareTo(v) < 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { var y = (JulcList.of(v).head()); return y.compareTo(v) >= 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { var z = JulcList.of(v).head(); var y = z; return y.compareTo(v) == 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { var y = JulcList.of(v).head(); return 0 > y.compareTo(v); }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { return JulcList.of(v).head().compareTo(v) < 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { return JulcList.of(v, v).tail().head().compareTo(v) != 0; }", i(5)),
+                Arguments.of("public static BigInteger m(BigInteger v) { var y = JulcList.of(v).head(); return BigInteger.valueOf(y.compareTo(v)); }", i(5)),
+                Arguments.of("public static byte[] m(PubKeyHash h) { return JulcList.of(h).head().hash(); }", bytes(1, 2)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("membersTheReferenceDoesNotSee")
+    void aMemberOfAReadTheReferenceDoesNotTypeIsUnresolved(String members, PlutusData argument) {
+        var report = run(members, argument);
+        assertEquals(8, report.results().size(), report::describe);
+        assertRejects(report, CompilerFrontend.JAVAC, "JULC0055");
+        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0055");
+    }
+
+    private static Stream<Arguments> membersTheReferenceSees() {
+        return Stream.of(
+                Arguments.of("public static BigInteger m(JulcList<byte[]> v) { var y = v.head(); return BigInteger.valueOf(y.length); }", new PlutusData.ListData(List.of(bytes(1)))),
+                Arguments.of("public static BigInteger m(JulcList<byte[]> v) { return BigInteger.valueOf(v.head().length); }", new PlutusData.ListData(List.of(bytes(1)))),
+                Arguments.of("static byte[] h(byte[] x) { return x; } public static BigInteger m(byte[] v) { return BigInteger.valueOf(h(v).length); }", bytes(1)),
+                Arguments.of("public static BigInteger m(byte[] v) { return BigInteger.valueOf((v).length); }", bytes(1, 2)),
+                Arguments.of("public static BigInteger m(byte[] v) { return BigInteger.valueOf(Builtins.appendByteString(v, v).length); }", bytes(1)),
+                Arguments.of("public record R(byte[] b) { } public static BigInteger m(byte[] v) { var r = new R(v); return BigInteger.valueOf(r.b().length); }", bytes(1)),
+                Arguments.of("static final byte[] K = new byte[]{1, 2}; public static BigInteger m(byte[] v) { return BigInteger.valueOf(K.length); }", bytes(1)),
+                Arguments.of("public static BigInteger m(String s) { return BigInteger.valueOf(s.getBytes().length); }", bytes(0x78)),
+                Arguments.of("public static boolean m(JulcList<BigInteger> v) { var y = v.head(); return y.compareTo(BigInteger.ONE) < 0; }", list(5)),
+                Arguments.of("public static boolean m(BigInteger v) { return BigInteger.ONE.compareTo(v) < 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { return BigInteger.valueOf(1).compareTo(v) < 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { return v.add(v).compareTo(v) < 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { return v.abs().compareTo(v) < 0; }", i(5)),
+                Arguments.of("static BigInteger h(BigInteger x) { return x; } public static boolean m(BigInteger v) { return h(v).compareTo(v) < 0; }", i(5)),
+                Arguments.of("public static boolean m(BigInteger v) { return (v).compareTo(v) < 0; }", i(5)),
+                Arguments.of("public record R(BigInteger b) { } public static boolean m(BigInteger v) { var r = new R(v); return r.b().compareTo(BigInteger.ONE) < 0; }", i(1)),
+                Arguments.of("public static boolean m(JulcMap<BigInteger, BigInteger> o) { return o.get(BigInteger.ONE).compareTo(BigInteger.ONE) < 0; }", map(1, 1)),
+                Arguments.of("public static boolean m(PlutusData o) { return Builtins.unIData(o).compareTo(BigInteger.ONE) < 0; }", i(1)),
+                Arguments.of("public record R(PubKeyHash h) { } public static byte[] m(PubKeyHash h) { var r = new R(h); return r.h().hash(); }", bytes(1, 2)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("membersTheReferenceSees")
+    void aMemberOfAReadTheReferenceTypesKeepsLowering(String members, PlutusData argument) {
+        var report = run(members, argument);
+        assertAgrees(report, CompilerFrontend.JAVAC);
+        assertAgrees(report, CompilerFrontend.JAVAPARSER);
     }
 }

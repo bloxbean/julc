@@ -292,7 +292,7 @@ public final class JavacCompilation {
     private CompileResult validator(boolean captureDetails) {
         var unit = program.roots().getFirst();
         // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
-        SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
+        SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
         SubsetScan.check(facts, unit, discovery.lowered(discovery.validatorClassOrNull(unit))).forEach(context::report);
@@ -393,7 +393,7 @@ public final class JavacCompilation {
     private CompileResult method(String methodName) {
         var unit = program.roots().getFirst();
         // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
-        SubsetRules.check(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
+        SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
         SubsetScan.check(facts, unit, discovery.lowered(discovery.firstClassOrNull(unit))).forEach(context::report);

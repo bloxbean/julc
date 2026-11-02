@@ -228,6 +228,9 @@ final class Calls {
         var scope = lowering.expr(receiver, frame);
         var type = typing.of(receiver, scope);
         String member = target.component();
+        if (targets.seen(receiver, scope) instanceof PirType.DataType && !(type instanceof PirType.DataType)) {
+            throw CompilerTypeDiagnostics.unresolvedMember(member, facts.location(tree));
+        }
         if (member.equals("value") && typeMethods.contains(TypeKeys.of(type), member)) {
             return dispatch(TypeKeys.of(type), member, scope, type, new Arguments(List.of(), List.of()), tree);
         }
@@ -241,10 +244,7 @@ final class Calls {
         var type = typing.of(receiver, scope);
         var arguments = arguments(tree, frame);
         if (!TypeKeys.accepts(target.key(), type)) throw NotPorted.at(facts, tree, "a method of a subtype of an API type");
-        var seen = targets.seen(receiver, scope);
-        if (!TypeKeys.accepts(target.key(), seen)) {
-            throw CompilerTypeDiagnostics.unresolvedMember(target.method(), facts.location(tree));
-        }
+        var seen = targets.requireSeen(target.key(), target.method(), receiver, scope, tree);
         if (type instanceof PirType.ListType list && target.method().equals("contains")) {
             arguments = encodedTarget(list, arguments);
         }
@@ -268,7 +268,8 @@ final class Calls {
 
     /**
      * {@code equals} is the receiver's: the key is what the receiver is, not the class that declares the method. A read
-     * through what the reference does not type is seen as Data, and holds what javac's element type decoded it to.
+     * through what the reference does not type is seen as Data, and holds what javac's element type decoded it to. So
+     * {@code equals} takes the row of what it holds, and with no such row a value that is not Data has no {@code equals}.
      */
     private PirTerm equality(MethodInvocationTree tree, Frame frame) {
         var receiver = receiver(tree);
@@ -280,7 +281,10 @@ final class Calls {
         var type = decoded ? held : seen;
         var arguments = arguments(tree, frame);
         String key = TypeKeys.of(type);
-        if (!typeMethods.contains(key, "equals")) throw CompilerTypeDiagnostics.unresolvedMember("equals", facts.location(tree));
+        boolean notData = seen instanceof PirType.DataType && !decoded && PirHelpers.wrapEncode(scope, held) != scope;
+        if (notData || !typeMethods.contains(key, "equals")) {
+            throw CompilerTypeDiagnostics.unresolvedMember("equals", facts.location(tree));
+        }
         return dispatch(key, "equals", scope, type, arguments, tree);
     }
 

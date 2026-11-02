@@ -6,6 +6,7 @@ import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
@@ -233,6 +234,16 @@ final class CallTargets {
         boolean known = tree instanceof NewClassTree || tree instanceof MethodInvocationTree call
                 && !(classify(call) instanceof CallTarget.Stdlib || classify(call) instanceof CallTarget.TypeMethod);
         return known ? typing.of(tree, term) : typing.ofVariable(term);
+    }
+
+    /**
+     * {@link #seen}, for a read of {@code member} on a type of the registry's {@code key}. Every member a receiver's type
+     * decides is read through this: {@code JULC0055} where the reference does not see the type, whatever javac knows.
+     */
+    PirType requireSeen(String key, String member, ExpressionTree receiver, PirTerm term, Tree at) {
+        var seen = seen(receiver, term);
+        if (!TypeKeys.accepts(key, seen)) throw CompilerTypeDiagnostics.unresolvedMember(member, facts.location(at));
+        return seen;
     }
 
     /**

@@ -57,7 +57,7 @@ public final class JavacLibraryTypes {
         }
         var program = JavacProgram.analyze(sources.stream().map(JavacFrontend.Unit::of).toList(), List.of());
         program.roots().forEach(unit -> requireLibraries(program.facts(), unit));
-        SubsetRules.check(program.facts(), program.roots(), program.libraries(), JavacGate.Compiled.LIBRARY);
+        SubsetRules.checkOnJavacFrontend(program.facts(), program.roots(), program.libraries(), JavacGate.Compiled.LIBRARY);
         return new JavacLibraryTypes(program.facts()).describe(program.declarations());
     }
 

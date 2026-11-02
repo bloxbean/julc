@@ -67,6 +67,20 @@ final class SubsetRules {
         for (var unit : libraries) library(facts, discovery, unit);
     }
 
+    /**
+     * {@link #check} for a compilation on the javac frontend, with the rule the gate's component rule stands in for on the
+     * other: a record's members that no tree says ({@link SpelledMethods#checkRecordMembers}, {@code JULC0101}).
+     *
+     * @throws org.julclang.compiler.CompilerException at the first rule a unit breaks
+     */
+    static void checkOnJavacFrontend(JavacFacts facts, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
+                                     JavacGate.Compiled compiled) {
+        check(facts, roots, libraries, compiled);
+        for (var units : List.of(roots, libraries)) {
+            for (var unit : units) SpelledMethods.checkRecordMembers(facts, unit);
+        }
+    }
+
     /** What the rules warn of in {@code roots}, in order: the same on both frontends, since they read the same trees. */
     static List<CompilerDiagnostic> warnings(JavacFacts facts, List<CompilationUnitTree> roots) {
         var warnings = new ArrayList<CompilerDiagnostic>();

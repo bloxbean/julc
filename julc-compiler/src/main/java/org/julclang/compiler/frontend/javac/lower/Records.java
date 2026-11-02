@@ -51,13 +51,15 @@ final class Records {
 
     private final JavacFacts facts;
     private final Typing typing;
+    private final CallTargets targets;
     private final Lowering lowering;
     private final Names names;
     private final Tuples tuples;
 
-    Records(JavacFacts facts, Typing typing, Lowering lowering, Names names) {
+    Records(JavacFacts facts, Typing typing, CallTargets targets, Lowering lowering, Names names) {
         this.facts = facts;
         this.typing = typing;
+        this.targets = targets;
         this.lowering = lowering;
         this.names = names;
         this.tuples = new Tuples(facts, typing);
@@ -210,7 +212,8 @@ final class Records {
             throw facts.rejection("Undefined variable: " + qualifier.getName(), qualifier);
         }
         var scope = lowering.expr(expression, frame);
-        if (facts.type(expression).getKind() == TypeKind.ARRAY && typing.of(expression, scope) instanceof PirType.ByteStringType) {
+        if (facts.type(expression).getKind() == TypeKind.ARRAY) {
+            targets.requireSeen(TypeKeys.of(new PirType.ByteStringType()), tree.getIdentifier().toString(), expression, scope, tree);
             return new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString), scope);
         }
         throw CompilerTypeDiagnostics.unresolvedMember(tree.getIdentifier().toString(), facts.location(tree));
