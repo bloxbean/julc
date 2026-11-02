@@ -10,6 +10,7 @@ import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.YieldTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
@@ -83,14 +84,14 @@ final class Statements {
         }
         var exit = new Frame.Exit(isVoid ? null : facts.pirType(returnType, tree.getReturnType()),
                 guardBoolean && returnType.getKind() == TypeKind.BOOLEAN);
-        PirTerm result = block(tree.getBody(), new Frame(scope, exit));
+        PirTerm result = block(tree.getBody(), Frame.body(scope, exit));
 
         // Wrap body in lambda chain: \p1 -> \p2 -> ... -> body
         for (int i = binders.size() - 1; i >= 0; i--) result = terms.lam(binders.get(i), result);
         return terms.at(tree, result);
     }
 
-    private PirTerm block(BlockTree block, Frame frame) {
+    PirTerm block(BlockTree block, Frame frame) {
         var statements = block.getStatements();
         return statements.isEmpty() ? unit() : sequence(statements, 0, frame, null);
     }
@@ -101,6 +102,8 @@ final class Statements {
         return switch (statements.get(index)) {
             // javac rejects a statement after a return.
             case ReturnTree tree -> ret(tree, frame);
+            // A yield is a switch arm's value, and leaves the arm as a return leaves the method.
+            case YieldTree tree -> lowering.expr(tree.getValue(), frame);
             case VariableTree tree -> local(tree, statements, index, frame, cont);
             case ExpressionStatementTree tree -> {
                 var effect = lowering.expr(tree.getExpression(), frame);
@@ -136,13 +139,17 @@ final class Statements {
     /** What the reference has no statement for: a bare block, in a list, is one of these. Each slice ports its own. */
     private CompilerException unsupported(StatementTree tree) {
         return switch (tree.getKind()) {
-            case BLOCK, EMPTY_STATEMENT -> facts.rejection("Unsupported statement: " + statementName(tree), SUPPORTED_STATEMENTS, tree);
+            case BLOCK, EMPTY_STATEMENT, SWITCH -> facts.rejection("Unsupported statement: " + statementName(tree), SUPPORTED_STATEMENTS, tree);
             default -> NotPorted.at(facts, tree);
         };
     }
 
     private static String statementName(StatementTree tree) {
-        return tree.getKind() == Tree.Kind.BLOCK ? "BlockStmt" : "EmptyStmt";
+        return switch (tree.getKind()) {
+            case BLOCK -> "BlockStmt";
+            case SWITCH -> "SwitchStmt";
+            default -> "EmptyStmt";
+        };
     }
 
     /** {@code let x = value in ...}. The type is what the source wrote; for {@code var}, javac's type of the value. */

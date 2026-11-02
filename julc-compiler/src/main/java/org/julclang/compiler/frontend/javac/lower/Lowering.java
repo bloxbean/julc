@@ -14,7 +14,9 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParenthesizedTree;
+import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.UnaryTree;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
@@ -49,6 +51,7 @@ public final class Lowering {
     private final Records records;
     private final Typing typing;
     private final CallTargets targets;
+    private final Switches switches;
 
     /** A lowering with no stdlib: every API call but the intrinsics is rejected, as in the reference. */
     public Lowering(JavacFacts facts, CompilationContext context) {
@@ -64,11 +67,12 @@ public final class Lowering {
         this.names = new Names(facts, terms);
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
-        this.typeTests = new TypeTests(facts, this);
+        this.typeTests = new TypeTests(facts, terms, typing, this);
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests);
         this.operators = new Operators(facts, typing, this);
         this.calls = new Calls(facts, terms, typing, targets, this, context, stdlib, typeMethods);
         this.records = new Records(facts, typing, this, names);
+        this.switches = new Switches(facts, terms, typing, this, statements, targets, typeTests, typeMethods);
     }
 
     public Terms terms() {
@@ -88,7 +92,8 @@ public final class Lowering {
     /** An expression, with a Data-encoding rejection that had no position located at it. */
     PirTerm expr(ExpressionTree tree, Frame frame) {
         try {
-            return dispatch(tree, frame);
+            var exact = frame.inGuard() ? switches.exact(tree) : null;
+            return exact != null ? exact : dispatch(tree, frame);
         } catch (CompilerException e) {
             throw located(e, tree);
         }
@@ -108,6 +113,9 @@ public final class Lowering {
             case MethodInvocationTree t -> terms.at(t, calls.call(t, frame));
             case NewClassTree t -> terms.at(t, records.creation(t, frame));
             case InstanceOfTree t -> terms.at(t, typeTests.instanceOf(t, frame));
+            case SwitchExpressionTree t -> terms.at(t, switches.expression(t, frame));
+            // A guard casts to a primitive type or to Boolean, which is its operand; any other cast is the cast's slice.
+            case TypeCastTree t when frame.inGuard() -> expr(t.getExpression(), frame);
             case AssignmentTree t -> throw reassignment(t.getVariable(), t);
             case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t);
             default -> throw NotPorted.at(facts, tree);

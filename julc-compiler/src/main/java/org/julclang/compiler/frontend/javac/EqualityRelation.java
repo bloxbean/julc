@@ -68,13 +68,17 @@ public final class EqualityRelation {
     }
 
     /**
-     * What {@code tree} can be, by its own type: javac types a conditional in an argument by the parameter, so its branches.
-     * A {@code switch} is typed so too, and it stops at its own construct until its slice reads the arms here.
+     * What {@code tree} can be, by its own type: javac types a conditional in an argument by the parameter, so its branches,
+     * and a {@code switch} so too, so what its arms give.
      */
     public static List<ExpressionTree> operands(ExpressionTree tree) {
         return switch (tree) {
             case ParenthesizedTree parenthesized -> operands(parenthesized.getExpression());
-            case SwitchExpressionTree ignored -> List.of();
+            case SwitchExpressionTree nested -> {
+                var results = new ArrayList<ExpressionTree>();
+                SwitchResults.of(nested).forEach(result -> results.addAll(operands(result)));
+                yield results;
+            }
             case ConditionalExpressionTree conditional -> {
                 var both = new ArrayList<>(operands(conditional.getTrueExpression()));
                 both.addAll(operands(conditional.getFalseExpression()));

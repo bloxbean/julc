@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
@@ -10,6 +11,7 @@ import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.YieldTree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
@@ -97,17 +99,24 @@ final class Tuples {
     }
 
     /**
-     * The written tuple type the value of {@code tree} goes to, through parentheses and conditional branches: a declared
+     * The written tuple type the value of {@code tree} goes to, through parentheses, conditional branches and the arms of a
+     * {@code switch} (F722), a {@code yield} going to the {@code switch} it targets: a declared
      * local or field, a {@code return}, an argument of a method of this class. Null for anything else, a {@code var} for one.
      * The reference takes an assignment's target too: assignments lower with loops, which bring that case.
      */
     private PirType.RecordType destination(NewClassTree tree, Frame frame) {
         Tree child = tree;
         Tree parent = facts.parent(tree);
-        while (parent instanceof ParenthesizedTree
-                || parent instanceof ConditionalExpressionTree conditional && conditional.getCondition() != child) {
-            child = parent;
-            parent = facts.parent(parent);
+        while (true) {
+            if (parent instanceof YieldTree || parent instanceof CaseTree arm && arm.getBody() == child) {
+                child = facts.enclosing(parent, Tree.Kind.SWITCH_EXPRESSION);
+            } else if (parent instanceof ParenthesizedTree
+                    || parent instanceof ConditionalExpressionTree conditional && conditional.getCondition() != child) {
+                child = parent;
+            } else {
+                break;
+            }
+            parent = facts.parent(child);
         }
         var target = writtenAt(parent, child, frame);
         if (target != null) target = facts.registry().resolveNamed(target);

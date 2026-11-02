@@ -4,6 +4,7 @@ import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.BlockTree;
+import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.CompoundAssignmentTree;
@@ -82,11 +83,19 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.PLUS, Tree.Kind.MINUS, Tree.Kind.MULTIPLY, Tree.Kind.DIVIDE, Tree.Kind.REMAINDER,
             Tree.Kind.EQUAL_TO, Tree.Kind.NOT_EQUAL_TO, Tree.Kind.LESS_THAN, Tree.Kind.LESS_THAN_EQUAL,
             Tree.Kind.GREATER_THAN, Tree.Kind.GREATER_THAN_EQUAL, Tree.Kind.CONDITIONAL_AND, Tree.Kind.CONDITIONAL_OR,
-            Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.UNARY_MINUS);
+            Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.UNARY_MINUS,
+            Tree.Kind.SWITCH, Tree.Kind.SWITCH_EXPRESSION, Tree.Kind.CASE, Tree.Kind.YIELD, Tree.Kind.DEFAULT_CASE_LABEL,
+            Tree.Kind.PATTERN_CASE_LABEL, Tree.Kind.CONSTANT_CASE_LABEL);
+
+    /** The kinds only a {@code switch} guard holds: each is {@link GuardRules}' to reject, or a constant that needs no term. */
+    private static final Set<Tree.Kind> IN_A_GUARD = EnumSet.of(Tree.Kind.TYPE_CAST, Tree.Kind.AND, Tree.Kind.OR, Tree.Kind.XOR,
+            Tree.Kind.LEFT_SHIFT, Tree.Kind.RIGHT_SHIFT, Tree.Kind.UNSIGNED_RIGHT_SHIFT, Tree.Kind.UNARY_PLUS,
+            Tree.Kind.BITWISE_COMPLEMENT, Tree.Kind.CHAR_LITERAL, Tree.Kind.FLOAT_LITERAL, Tree.Kind.DOUBLE_LITERAL);
 
     /** The statements a block holds where lowering reaches it; {@code Statements} rejects those the reference rejects. */
     private static final Set<Tree.Kind> STATEMENTS = EnumSet.of(Tree.Kind.RETURN, Tree.Kind.VARIABLE, Tree.Kind.IF,
-            Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.BLOCK, Tree.Kind.EMPTY_STATEMENT, Tree.Kind.LABELED_STATEMENT);
+            Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.BLOCK, Tree.Kind.EMPTY_STATEMENT, Tree.Kind.LABELED_STATEMENT,
+            Tree.Kind.YIELD, Tree.Kind.SWITCH);
 
     /** The compound operators the reference lowers as {@code target op value}; the rest have a rule of their own. */
     private static final Map<Tree.Kind, String> UNLOWERED_COMPOUNDS = Map.of(
@@ -100,6 +109,10 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     private final Set<Tree> lowered;
     private final List<CompilerDiagnostic> warnings = new ArrayList<>();
     private boolean inLowered;
+    /** Above zero in a {@code switch} guard, an arm of a {@code switch} in one included, as a guard's lowering is. */
+    private int guardDepth;
+    /** In a guard, and not in an arm of a {@code switch} in it: {@link GuardRules} reads D6's rules there, in the reference's order. */
+    private boolean equalityDeferred;
 
     private SubsetScan(JavacFacts facts, Set<Tree> lowered) {
         this.facts = facts;
@@ -126,7 +139,33 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     }
 
     private boolean allowed(Tree.Kind kind) {
-        return ALLOWED.contains(kind) || inLowered && WHERE_LOWERED.contains(kind);
+        return ALLOWED.contains(kind) || inLowered && (WHERE_LOWERED.contains(kind) || guardDepth > 0 && IN_A_GUARD.contains(kind));
+    }
+
+    /** A guard is a guard's to judge, whichever rule stops it; an arm in it is ordinary code, as far as D6 goes. */
+    @Override
+    public Void visitCase(CaseTree tree, Void unused) {
+        scan(tree.getLabels(), null);
+        if (tree.getGuard() != null) {
+            boolean deferred = equalityDeferred;
+            guardDepth++;
+            equalityDeferred = true;
+            try {
+                scan(tree.getGuard(), null);
+            } finally {
+                guardDepth--;
+                equalityDeferred = deferred;
+            }
+        }
+        boolean deferred = equalityDeferred;
+        equalityDeferred = false;
+        try {
+            if (tree.getCaseKind() == CaseTree.CaseKind.RULE) scan(tree.getBody(), null);
+            else scan(tree.getStatements(), null);
+        } finally {
+            equalityDeferred = deferred;
+        }
+        return null;
     }
 
     /** A member sets the context of what it holds, so a nested type's members are never in an outer member's. */
@@ -187,10 +226,10 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     }
 
     /** {@code JULC0053}: {@code int a = 1, b = 2;} is two trees at one start, and the last one's text is the whole declaration. */
-    private void requireSingleDeclarator(VariableTree tree, BlockTree block) {
+    private void requireSingleDeclarator(VariableTree tree, List<? extends StatementTree> statements) {
         var at = facts.location(tree);
         VariableTree last = tree;
-        for (var statement : block.getStatements()) {
+        for (var statement : statements) {
             if (statement instanceof VariableTree other && other != tree && startsAt(other, at)) last = other;
         }
         if (last != tree) {
@@ -208,7 +247,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitVariable(VariableTree tree, Void unused) {
         if (!(facts.parent(tree) instanceof ClassTree)) {
-            if (facts.parent(tree) instanceof BlockTree block) requireSingleDeclarator(tree, block);
+            if (facts.parent(tree) instanceof BlockTree block) requireSingleDeclarator(tree, block.getStatements());
+            if (facts.parent(tree) instanceof CaseTree group) requireSingleDeclarator(tree, group.getStatements());
             // A var's type tree is javac's, and says what the initializer's type is, whatever that is.
             if (tree.getType() == null || facts.isGenerated(tree.getType())) {
                 scan(tree.getModifiers(), null);
@@ -350,14 +390,14 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** D6: {@code ==}, {@code !=} and string {@code +} are Java's, not their on-chain lowering's. */
     @Override
     public Void visitBinary(BinaryTree tree, Void unused) {
-        equality.check(tree);
+        if (!equalityDeferred) equality.check(tree);
         return super.visitBinary(tree, unused);
     }
 
     /** D6: an operation that compares by {@code equals} must not reach an array by identity. */
     @Override
     public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
-        equality.check(tree);
+        if (!equalityDeferred) equality.check(tree);
         return super.visitMethodInvocation(tree, unused);
     }
 

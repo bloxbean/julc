@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac.lower;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.ParenthesizedTree;
+import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
@@ -10,6 +11,8 @@ import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.SwitchResults;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TermTypes;
@@ -18,6 +21,7 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -41,7 +45,8 @@ final class Typing {
 
     /**
      * {@code tree}'s static type. A type JuLC has no representation for stops here: nothing can be decided on it. javac types
-     * a conditional in an argument by its parameter, so one that reaches {@code Object} is typed by its operands.
+     * a conditional in an argument by its parameter, so one that reaches {@code Object} is typed by its operands, and a
+     * {@code switch} by its results.
      */
     PirType of(ExpressionTree tree) {
         var type = facts.type(tree);
@@ -50,6 +55,11 @@ final class Typing {
             if (tree instanceof ConditionalExpressionTree conditional) {
                 var operand = of(conditional.getTrueExpression());
                 if (operand.equals(of(conditional.getFalseExpression()))) return operand;
+            }
+            if (tree instanceof SwitchExpressionTree nested) {
+                var results = SwitchResults.of(nested);
+                var result = of(results.getFirst());
+                if (results.stream().allMatch(other -> of(other).equals(result))) return result;
             }
         }
         try {
@@ -94,6 +104,49 @@ final class Typing {
      */
     void recordRead(PirTerm read, PirType declared) {
         termTypes.record(read, declared);
+    }
+
+    /**
+     * Keeps with a lowered {@code switch} the type its arms agree on, which the match alone does not say: read through what
+     * the lowering wraps them in. Arms that differ but are all Data-shaped are Data, which is their encoding; arms that
+     * otherwise differ have no type, and that is what encoding one rejects.
+     */
+    void recordSwitch(PirTerm term) {
+        var leaves = new LinkedHashSet<PirType>();
+        collectArmTypes(term, leaves);
+        if (leaves.isEmpty()) return;
+        if (leaves.size() == 1) {
+            var type = leaves.iterator().next();
+            if (!(type instanceof PirType.DataType)) termTypes.record(term, type);
+        } else if (!leaves.stream().allMatch(Typing::isDataShaped)) {
+            termTypes.record(term, PirHelpers.UNKNOWN);
+        }
+    }
+
+    private void collectArmTypes(PirTerm term, LinkedHashSet<PirType> leaves) {
+        switch (term) {
+            case PirTerm.Error ignored -> {
+            }
+            case PirTerm.DataMatch match -> match.branches().forEach(branch -> collectArmTypes(branch.body(), leaves));
+            case PirTerm.IntegerCase select -> select.branches().forEach(branch -> collectArmTypes(branch, leaves));
+            case PirTerm.IfThenElse branch -> {
+                collectArmTypes(branch.thenBranch(), leaves);
+                collectArmTypes(branch.elseBranch(), leaves);
+            }
+            case PirTerm.Let let -> collectArmTypes(let.body(), leaves);
+            case PirTerm.LetRec letRec -> collectArmTypes(letRec.body(), leaves);
+            case PirTerm.PairMatch match -> collectArmTypes(match.body(), leaves);
+            case PirTerm.ListMatch match -> {
+                collectArmTypes(match.nilBranch(), leaves);
+                collectArmTypes(match.consBranch(), leaves);
+            }
+            default -> leaves.add(facts.registry().resolveNamed(termTypes.infer(term)));
+        }
+    }
+
+    private static boolean isDataShaped(PirType type) {
+        return type instanceof PirType.DataType || type instanceof PirType.RecordType || type instanceof PirType.SumType
+                || type instanceof PirType.OptionalType || type instanceof PirType.NamedTypeRef;
     }
 
     /** Keeps the source types of a lowered {@code JulcArray.of(...)}'s elements with its term (identity). */
