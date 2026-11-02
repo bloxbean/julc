@@ -392,6 +392,10 @@ class Adr068SwitchHarnessTest {
             assertAgree("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> { yield a.v(); } default -> BigInteger.ONE; }); }", integer(1), s);
         }
         assertStopsOnJavac("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> true; default -> false; }); }", "JULC0084", integer(7), a(1));
+        // A yield of a nested switch is that switch's, so it says nothing of what this one gives.
+        for (var s : everyS()) {
+            assertAgree("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> { boolean y = switch (s) { case S.A b -> { yield true; } default -> false; }; yield y ? a.v() : n; } default -> n; }); }", integer(7), s);
+        }
     }
 
     /** #297: {@code contains} in a guard encodes its target by its type, as it does anywhere on this frontend. */
