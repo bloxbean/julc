@@ -84,11 +84,11 @@ final class Typing {
 
     /**
      * A variable's one type, given what javac says it holds and what the reference sees. They part where the reference takes
-     * a decoded value for Data, and the type is then what it holds. Otherwise they are one representation, and the
-     * reference's reading stands, so its term does.
+     * a decoded value for something that is not, and the type is then what it holds. Otherwise they are one representation,
+     * and the reference's reading stands, so its term does.
      */
     static PirType holding(PirType held, PirType seen) {
-        return seen instanceof PirType.DataType && isDecoded(held) ? held : seen;
+        return isDecoded(held) && !isDecoded(seen) ? held : seen;
     }
 
     /** Whether a value of this type is not Data. A record, a sum and {@code Optional} are Data already. */

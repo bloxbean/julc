@@ -1,0 +1,17 @@
+format: 3
+name: an element find returned, in a var that a tuple of accumulators carries
+class: Case
+method: m
+arg: 4161
+arg: 814161
+expect: DIVERGE M5 Value/Value
+jvm: Value 4161 []
+uplc: Value d8799f4161ff []
+note: A variable holds one type, so a tuple of accumulators encodes what find decoded. Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import org.julclang.core.types.JulcList;
+
+public class Case {
+    public static String m(String a, JulcList<String> xs) { var y = xs.find(q -> q.equals(a)); var z = y; long n = 0; while (n < 2) { z = y; n = n + 1; } return z; }
+}

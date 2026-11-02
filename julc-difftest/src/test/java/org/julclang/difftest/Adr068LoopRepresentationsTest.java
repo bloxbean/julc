@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -232,6 +233,37 @@ class Adr068LoopRepresentationsTest {
         var report = BOTH.run(new DiffCase("cursors", cursors(walker("c = Builtins.tailList(c);")), "Case", "m", List.of(LIST, list(integer(1))), TAGS2, null));
         report.results().forEach((config, result) -> assertEquals(
                 config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.MISMATCH : Verdict.Kind.AGREE, result.verdict().kind(), report::describe));
+    }
+
+    /** What {@code find} leaves is the element, so a {@code var} of it holds what was decoded, and a tuple encodes that. */
+    @ParameterizedTest
+    @ValueSource(strings = {"BigInteger", "byte[]", "String", "Boolean"})
+    void aFoundElementInATuple(String type) {
+        String find = "var y = xs.find(q -> true); var z = y; long n = 0; ";
+        for (String loop : List.of("while (n < 2) { z = y; n = n + 1; } ", "for (var u : xs) { z = y; n = n + 1; } ")) {
+            var items = switch (type) {
+                case "BigInteger" -> list(integer(1), integer(2));
+                case "Boolean" -> list(bool(true), bool(false));
+                default -> list(bytes("a"), bytes("b"));
+            };
+            var a = type.equals("BigInteger") ? integer(1) : type.equals("Boolean") ? bool(true) : bytes("a");
+            var report = RUNNER.run(new DiffCase("found", cursors("public static %s m(%s a, JulcList<%s> xs) { %s%sreturn z; }".formatted(type, type, type, find, loop)), "Case", "m", List.of(a, items)));
+            assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        }
+    }
+
+    private static PlutusData bytes(String text) {
+        return new PlutusData.BytesData(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void aFoundElementThatReadsAndAList() {
+        var read = RUNNER.run(new DiffCase("found", cursors("public static BigInteger m(BigInteger a, JulcList<BigInteger> xs) { var y = xs.find(q -> q.equals(a)); var z = y; long n = 0; while (n < 2) { z = y; n = n + 1; } return z; }"),
+                "Case", "m", List.of(integer(2), list(integer(1), integer(2)))));
+        assertTrue(read.all(Verdict.Kind.AGREE), read::describe);
+        var nested = RUNNER.run(new DiffCase("found", cursors("public static JulcList<BigInteger> m(JulcList<JulcList<BigInteger>> xs) { var y = xs.find(q -> true); var z = y; long n = 0; while (n < 2) { z = y; n = n + 1; } return z; }"),
+                "Case", "m", List.of(list(list(integer(1), integer(2))))));
+        assertTrue(nested.all(Verdict.Kind.AGREE), nested::describe);
     }
 
     private static final PlutusData ONE = integer(1);

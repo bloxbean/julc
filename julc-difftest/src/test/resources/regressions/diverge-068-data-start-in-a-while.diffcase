@@ -1,0 +1,18 @@
+format: 3
+name: a variable nothing shows to be a list, that a list may reach
+class: Case
+method: m
+arg: 01
+arg: 00
+expect: DIVERGE M5 Value/Failure
+jvm: Value 00 []
+uplc: Failure []
+note: A variable is a list only if its start and every value that reaches it show one. Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.Builtins;
+
+public class Case {
+    public static long m(PlutusData d, long limit) { PlutusData c = d; long n = 0; while (n < limit) { c = Builtins.mkNilData(); n = n + 1; } return n; }
+}
