@@ -322,14 +322,10 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return null;
     }
 
-    /**
-     * A label is the lowering's rejection, and it comes first of all that its statement holds, but for a {@code break} of it
-     * outside a loop, which is rejected here at the {@code break}, as the reference does.
-     */
+    /** A label is the lowering's rejection, so what its statement holds comes first: the reference's validator runs before lowering. */
     @Override
     public Void visitLabeledStatement(LabeledStatementTree tree, Void unused) {
-        SubsetWalk.all(tree, BreakTree.class).forEach(loopExit -> visitBreak(loopExit, null));
-        return null;
+        return scan(tree.getStatement(), null);
     }
 
     /** javac allows a {@code break} of a {@code switch} statement, which has no lowering, and the reference says so of the {@code break}. */

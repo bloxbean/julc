@@ -220,11 +220,13 @@ public final class LoopRules {
 
     /**
      * {@code JULC0065}: a for-each with no accumulator holds a {@code break}, and its iterable updates a variable. The reference
-     * goes on past the update's own rejection to this one, so it comes before the iterable lowers.
+     * goes on past the update's own rejection to this one, so it comes before the iterable lowers, and a reassignment in the
+     * body, which it goes on to, comes before it.
      */
     public void requireNoUpdateOfTheIterable(EnhancedForLoopTree loop) {
         var found = updates(loop.getExpression());
         if (!found.isEmpty()) {
+            requireNoReassignment(loop);
             var update = found.getFirst();
             throw CompilerTypeDiagnostics.loopUpdatePositionUnsupported(updated(update).getName().toString(), "in the loop iterable", facts.location(update));
         }
