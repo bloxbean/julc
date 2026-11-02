@@ -229,6 +229,7 @@ class JavacSwitchesTest {
             "static long m(S s) { return switch (s) { default -> 1; default -> 2; }; }",
             "static long m(S s) { return switch (s) { case A a -> 1; default: yield 2; }; }",
             "static long m(S s) { return switch (s) { case A a, B b -> 1; default -> 2; }; }",
+            "static long m(S s) { return switch (s) { case A _, B _ -> 1; default -> 2; }; }",
             "static long m(S s, A a) { return switch (s) { case A a -> 1; default -> 2; }; }",
             "static long m(S s) { return switch (s) { case A a when 1 -> 1; default -> 2; }; }",
             "static long m(S s) { long x = 1; x = 2; return switch (s) { case A a when x > 0 -> 1; default -> 2; }; }",
