@@ -17,8 +17,8 @@ unreplayable	17
 coverage	programs	2513	15117
 coverage	distinct programs	978
 coverage	programs of more than one method	1634
-coverage	methods	11708	172429
-coverage	distinct methods	2595
+coverage	methods	11704	172429
+coverage	distinct methods	2593
 provenance	-	2
 provenance	fragment	1589
 provenance	same	922
@@ -26,12 +26,11 @@ first-construct	ENHANCED_FOR_LOOP	3594
 first-construct	WHILE_LOOP	2002
 first-construct	a library unit	1566
 first-construct	TYPE_CAST	233
-first-construct	reference equality	38
+first-construct	(rejected)	50
 first-construct	the exports of library sources	35
 first-construct	a library method	17
 first-construct	a contract schema	15
 first-construct	an equals between unrelated types	14
-first-construct	(rejected)	8
 first-construct	an expression of type java.lang.Object	8
 first-construct	METHOD_INVOCATION	6
 first-construct	fromPlutusData on a ledger type	6

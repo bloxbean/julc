@@ -440,7 +440,7 @@
 0720d628294ecb507ca2937ff587f0bf3aa4a6fe3b7e451f8cd66750f585ff90	both-reject	0/0	-	-	bf239fce544c7042	JULC0091@11:44 A type argument of Tuple2 needs a Data encoding of the native array Array[Integer], which has none
 07239403fc2022d7981c63537b57538ba7aab71153574cc3289c5099ddcbcc8e	javac-rejects	0/18	-	-	ed813fdcb702ce03	JULC0085@24:91 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 072a2208c3ebba096672bd67ac8bda5807d64e33e2f0cdd8c0bd497d11b5c20a	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
-072bb8b4c62b00c46faec556875166d7b712be540dc6652b57c73adf78cc133e	DIFFERENT-javac-rejects	1/2	reference equality	-	46f0421afbb4342d	JULC0086@13:16 redeemer == magicNumber() compares java.math.BigInteger by reference; use equals
+072bb8b4c62b00c46faec556875166d7b712be540dc6652b57c73adf78cc133e	DIFFERENT-javac-rejects	1/2	(rejected)	-	46f0421afbb4342d	JULC0086@13:16 redeemer == magicNumber() compares java.math.BigInteger by reference; use equals
 072c4be9f3fb9677fd6eb269e00c258476c617243603e321e543c0dd5a5cf68a	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 072d0df12fa6e1eaf3f06e784b25255a423103ac214f267dd35ab4a33f38d496	both-reject-javac-first	0/1	-	-	ec25a4b9c858eb60	JULC0085@17:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 0733fb2495a268b4a487f478bb8ad9450f2dfc84eca47fd48c47ea515b143406	not-ported	1/29	a library unit	-	-	
@@ -576,7 +576,7 @@
 0930a57b4ed68c06bd1c1835534a96f23fff68b8a056e7149a1e6b9094b17a80	javac-rejects	0/2	-	-	6dd4029dcff83999	JULC0085@2:30 cannot find symbol   symbol:   class BigInteger   location: class HelperTest (compiler.err.cant.resolve.location)
 0931eaf910117f4084c969621a073ddddb66ee6fc9e7234e77848976aa829255	i1a-identical	4/4	-	fragment	-	
 0935e71f20fb663e07214a74895ffd4641e5b27110fbd5ceb4920bedc126b21a	both-reject-javac-first	0/1	-	-	cd50eb95e184a222	JULC0085@18:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
-09378adfadadbc32de242647d8867b5c946c74e113a1f599aa35c414e31eec6b	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+09378adfadadbc32de242647d8867b5c946c74e113a1f599aa35c414e31eec6b	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 093793dbfe8a0c773821c52c6b54ebc4364dc8519bbfccb2b54d599feb149aca	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
 093f55503413beceea88a163b851c6fd73bd7ad61b2b573c2affc0ee9549ed39	not-ported	0/18	WHILE_LOOP	-	-	
 09404aa4b752bc866a3ad3bfedced69816111b9b0e4d5e0fde78ce3da089de02	not-ported	0/1	WHILE_LOOP	-	-	
@@ -770,7 +770,7 @@
 0c08a7235e14dba80eda2d490a6984a94d7bcab60ca9a254c4a7913b5533d793	not-ported	0/18	WHILE_LOOP	-	-	
 0c148a513a5328086d527820acce16610c60447e0d6434c62faff2be697a0e42	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 0c1617c540e24e920d16e0739b3263c52f4a3be92e61b40c53b1378ac440dbc4	not-ported	3/50	a library unit	-	-	
-0c172b4409ece48aa5714e2f12770bb94892a89642ec3eb2e90113d18e062501	DIFFERENT-javac-rejects	2/3	reference equality	-	28f1e96340e3744a	JULC0086@8:16 x == y compares java.math.BigInteger by reference; use equals
+0c172b4409ece48aa5714e2f12770bb94892a89642ec3eb2e90113d18e062501	DIFFERENT-javac-rejects	2/3	(rejected)	-	28f1e96340e3744a	JULC0086@8:16 x == y compares java.math.BigInteger by reference; use equals
 0c18187c464cea7ba17386b68a56b87442c5ee9cd1249679189938383dce6bd6	reference-rejects-not-ported	1/1	an expression of type java.lang.Object	-	9a0595299c19b5f6	JULC0012@11:97 Cannot resolve type: the type of this value, a switch expression whose arms have different types, which it would Data-encode. Give the arms one t...
 0c1a3ec01368056cfa1612e7ea5a09e2e3d8b32c7245f20c3303a25ae130180e	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 0c1ef3edffacf92d7b2f66f958e42fbaed24b39b1acd7b0c77f3c105ff123e14	javac-rejects	0/1	-	-	49c0ff7346717cd1	JULC0085@5:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -864,7 +864,7 @@
 0d7fff8beeb398161bad8e5b267c331262421f47206da3a225a460ce46106f1d	i1a-identical	1/1	-	same	-	
 0d8006770bb1ca233b7d34b7e34ca883e4e56631c3e9e875bae38b33a2e388d1	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 0d82add6da4aa2c5fa5ea675e31b34686b0f1aef3b9e0444d7d118de0dfdce49	not-ported	1/8	a library unit	-	-	
-0d8c50fc07e4aac907806dfdceb73f929d74d28fe9c6bea4eb0923dccb2a154e	DIFFERENT-javac-rejects	0/1	reference equality	-	265a91728bf107f2	JULC0086@11:16 redeemer == THRESHOLD compares java.math.BigInteger by reference; use equals
+0d8c50fc07e4aac907806dfdceb73f929d74d28fe9c6bea4eb0923dccb2a154e	DIFFERENT-javac-rejects	0/1	(rejected)	-	265a91728bf107f2	JULC0086@11:16 redeemer == THRESHOLD compares java.math.BigInteger by reference; use equals
 0d8fd5c344e2d6126cdd6d9900ce16821fb5e7139e712a74ae556f84fe1241a5	javac-rejects	0/28	-	-	e04c5bfbfb3755a2	JULC0085@8:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 0d90c445e58b8e32f8e0a2671008912419e4c1867fcbe1f6b314246e6723c44e	both-reject	0/0	-	-	5d5198373b342042	JULC0072@12:28 Invalid guard on 'case A x when ((S) (Object) x) instanceof A': '(S) (Object) x' casts to a reference type, and JuLC erases the cast's run-time c...
 0d90fc860ef6d555afefe87113276303d298a62e2d18c415a935512b5d3ba179	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
@@ -1678,7 +1678,7 @@
 197b48f36a5132bdc9bb1f7a7fa6f4a0facee3357278d9b4c9f0f72534ef6b87	i1a-identical	2/2	-	fragment	-	
 19820c902a9d46e5f6f9d719fe65a675ed816b1a94fd1e47137c6f471ed401fd	i1a-identical	1/1	-	fragment	-	
 198479c6a157826d25cf2707379dd63ea57acff98598726637e6e53eaad0ffdd	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-198a8c127459e3fb65ae7339c6b685cfa810116afa2e126d3d3ba4f19dc40726	DIFFERENT-javac-rejects	2/2	-	-	66299a74e6d28d5a	JULC0086@8:16 a == b compares java.lang.String by reference; use equals
+198a8c127459e3fb65ae7339c6b685cfa810116afa2e126d3d3ba4f19dc40726	DIFFERENT-javac-rejects	1/2	(rejected)	-	66299a74e6d28d5a	JULC0086@8:16 a == b compares java.lang.String by reference; use equals
 19903e98d3843878d323d7f2adb5d922947eed2fafec3434dc1782508e805737	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 19924bf54c9f4c590319cd3263f2bfd7e4d4a3e93f33733f4542ab7de389ace2	not-ported	15/28	ENHANCED_FOR_LOOP	-	-	
 19a13c94aca763c59dada6ca3e85a06ab46251bfc2061b82cc6985206442143b	not-ported	0/1	WHILE_LOOP	-	-	
@@ -1857,7 +1857,7 @@
 1c46fe6ffae954370d82fdd2fe65ba363375a547c0a7b9f604b68d0b3d38dea7	not-ported	1/28	a library unit	-	-	
 1c4dd1c0c80f122c3250373163aba64d392e08f54a2da931e88f4a3a509025fb	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 1c531d08258f7ec865574fcd6ef86fd726230d44b5dc3df631f72a2d4c98219b	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
-1c539decd10390403db0db07383c944a06b5ce779305710a004727ff551d005f	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+1c539decd10390403db0db07383c944a06b5ce779305710a004727ff551d005f	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 1c53dc9c181d5cd36144f30e86c50b92419ca8deb11bcbdd36e81ec3c6a6ba39	not-ported	0/12	TYPE_CAST	-	-	
 1c6251e2b2bb6b81199c4ace157094f1650b897611d155a1061c78a562a799c8	not-ported	1/28	a library unit	-	-	
 1c70bb6cce57402fd3d6c9b436a238660c6808ae5d6ecd6855fb889eb86541db	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -2323,7 +2323,7 @@
 229dcdbc43f04497cfc136db51c344563aa64b1307c684db4efee958e39f2dc5	i1a-identical	1/1	-	same	-	
 229f61f8cd03a59225c19fc1853c60ddc18805db4c874a6c53fdf07cb0ba037c	i1a-identical	2/2	-	same	-	
 22a4b3743bb0003b41111fed3171b47dbc8f0740e89703942fa2dcdc0983253d	not-ported	0/18	WHILE_LOOP	-	-	
-22a4edc6909564b4bea61d1685f212168dc5a0c8b77c4a0df90c4bb12dab2b94	DIFFERENT-javac-rejects	2/3	reference equality	-	28f1e96340e3744a	JULC0086@8:16 x == y compares java.math.BigInteger by reference; use equals
+22a4edc6909564b4bea61d1685f212168dc5a0c8b77c4a0df90c4bb12dab2b94	DIFFERENT-javac-rejects	2/3	(rejected)	-	28f1e96340e3744a	JULC0086@8:16 x == y compares java.math.BigInteger by reference; use equals
 22ab4b2b92f7c456e8121575ddaba1e11c258395f0d1ebfefb577f4edd4dace3	not-ported	0/18	WHILE_LOOP	-	-	
 22ad986098bada386d9febfc9b5612eef0ae386d4e700860ffd357d638f4f0b9	not-ported	2/31	ENHANCED_FOR_LOOP	-	-	
 22ae3ebc36fee0953699287ef6c5565b7af954ea49f88f001623511b233db5fe	javac-rejects	0/1	-	-	2a39bedbc840ec79	JULC0085@1:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
@@ -2679,7 +2679,7 @@
 27afe30621d75d06d78b62d4c0ae06bcd94ea572e9749e404061365d92fdccae	not-ported	0/18	WHILE_LOOP	-	-	
 27b0c8f9b5f3a509a9e84d1e2282af364d7c6b190d75add6416838bbdcca496d	not-ported	0/1	WHILE_LOOP	-	-	
 27b3648f0512780bfb74ad6c80a40bf1360e69901ef7b31dc7278f061e6eaa0e	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-27b87de9acc47f2f92182dc1c89ff8d4f230bc42fafeaf9b5c3abd49f838c9d0	DIFFERENT-javac-rejects	0/1	reference equality	-	955e22bb9a5d7a0b	JULC0086@18:16 result == result compares org.julclang.core.PlutusData by reference; use equals
+27b87de9acc47f2f92182dc1c89ff8d4f230bc42fafeaf9b5c3abd49f838c9d0	DIFFERENT-javac-rejects	0/1	(rejected)	-	955e22bb9a5d7a0b	JULC0086@18:16 result == result compares org.julclang.core.PlutusData by reference; use equals
 27bdd15eeeb1064c5dac35ddecb4a2b5c2bea7dd425001a2352def586d7d49f6	javac-rejects	0/1	-	-	02d1456046064ebb	JULC0085@9:13 cannot infer type for local variable f   (lambda expression needs an explicit target-type) (compiler.err.cant.infer.local.var.type)
 27c02eefa3ed47d5ddeb60e30d7424a9e22fc7f3b6196741f89c24bd8b510d9f	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 27c2e8541665bfabe242bc1c4a87bdb512b5b540cb6b874524e67bdc59538694	javac-rejects	0/1	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -2867,7 +2867,7 @@
 2ac57ee358821a7a6abc9b6dc5ae66d04121dc56c9d161c5cf22a1c41a57db2b	not-ported	0/18	WHILE_LOOP	-	-	
 2accb1f1ad34f8c1385dca3f37211e0bffc41a4c039f16c63987fa7f9fc311a1	not-ported	1/1	an equals between unrelated types	-	-	
 2acd068000422906f9119e915ad76a3cb08ef0145fef721bb05fce77c360f967	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
-2ae227df023ea959ad1ee05ecbc83effaedf93e87aa72e4d0be65a6796524aac	DIFFERENT-javac-rejects	1/2	reference equality	-	33be04a9de768c61	JULC0086@8:16 pkh == expected compares java.math.BigInteger by reference; use equals
+2ae227df023ea959ad1ee05ecbc83effaedf93e87aa72e4d0be65a6796524aac	DIFFERENT-javac-rejects	1/2	(rejected)	-	33be04a9de768c61	JULC0086@8:16 pkh == expected compares java.math.BigInteger by reference; use equals
 2ae4065b6c01069a0f4d9b2b64fb54e60c36244107322b82f6019531f6a1b338	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 2af29565f36094950b4a4778febd77aa04453276ee65e09185415ad3838e13eb	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 2af2eade13ce5ce3aa50cffddbd7cc19baa9a232c615216bbe9f7ea4f1564554	i1a-identical	1/1	-	fragment	-	
@@ -2987,7 +2987,7 @@
 2cf0d24a1406205970f35850dee285fbe9eb556485459b1a4641b0889a8dbddb	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 2cf22211058860f6d9d47bf30e777ccef170e6077889bdac0b2abf8c229f1924	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 2cf2aa29e14a430aabf1870ac16984227979e8f403864ebcefe06c74d6f5bdff	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
-2cfdf29654d935e5b6f4c3586425019f3d2decaed038f856bc4824d1ef91935c	DIFFERENT-javac-rejects	0/1	reference equality	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
+2cfdf29654d935e5b6f4c3586425019f3d2decaed038f856bc4824d1ef91935c	DIFFERENT-javac-rejects	0/1	(rejected)	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
 2d103a1bc6541d01644c8ff1a74d9778392e8b1c888386b4d2a1a15268550b1a	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 2d121326965422f737c46560d0d944ccb987dfe5f06b036dbd3821ed4026f372	javac-rejects	0/29	-	-	3050a2ac9a148459	JULC0085@10:18 incompatible types: java.math.BigInteger cannot be converted to long (compiler.err.prob.found.req)
 2d14f639ec281c9f6de2884f6c80c6941895be919d038fd0d974c119d3e5f1dd	not-ported	0/29	WHILE_LOOP	-	-	
@@ -4312,7 +4312,7 @@
 40054c3d7850178dc3f2230223fd81bebe62c8ed934b1d5a5528f91e8f85b2a9	reference-rejects-not-ported	0/0	a library unit	-	e34e691fc9b7f373	JULC0054@7:5 Method within is declared more than once in com.example.lib.Limits; on-chain methods are bound by name, so declarations sharing a name must compile...
 400e481b32efaaa4af5b1d1f79219a123d2b6448dd3aa7a5e6733d65505b1dc1	i1a-identical	2/2	-	same	-	
 400fad2d21df6174b0919dd87c000c79f4e8b52012dfa58e5b61af5c103328e9	i1a-identical	1/1	-	fragment	-	
-4011566b0916e5e81a4191e2267142d5c0cc6c9be0c2311792ab88090ee0a295	DIFFERENT-javac-rejects	1/2	reference equality	-	33be04a9de768c61	JULC0086@8:16 pkh == expected compares java.math.BigInteger by reference; use equals
+4011566b0916e5e81a4191e2267142d5c0cc6c9be0c2311792ab88090ee0a295	DIFFERENT-javac-rejects	1/2	(rejected)	-	33be04a9de768c61	JULC0086@8:16 pkh == expected compares java.math.BigInteger by reference; use equals
 40135e1d6dc5a0e75378f5d7d47ba0a68497e3938e6ca4799d6bc9b4ea24c8f4	javac-rejects	0/4	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 40195df16b14ee4858c46a4cc48bf9baff43679ceb6ef6746b4f64f518ca4f6b	not-ported	1/29	a library unit	-	-	
 401eaf6494be1b04fd822556ebe53d591cb7ec3a1ea88bbf1b0813eb01e1ac33	javac-rejects	0/18	-	-	1cacca9d2c5f35cd	JULC0085@24:63 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
@@ -4485,7 +4485,7 @@
 42985469c9d9d9ccfb0fb0f2e79a323247ba580bdbf4082ed5a8f2f2237c96d1	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 4299e9815527dc6fd19db2b933ca819b2c0d6cdeb2f87ef11629f132da8fce76	reference-rejects-not-ported	2/2	an equals between unrelated types	-	183c0dbbb2ed7291	null@0:0 Probe.java:28:29: Reassignment of switch case-pattern variable 'p1' is not supported   Hint: Copy the pattern variable to a fresh local accumulator ins...
 429a39505f5211c0c9f5a495c5948c65b23f1a985d083625158c406518384105	i1a-identical	2/2	-	fragment	-	
-42a493d7a204b38169b476cf2781d5de83361c5050bbfb0a6945af2593c0b970	DIFFERENT-javac-rejects	2/3	reference equality	-	28f1e96340e3744a	JULC0086@8:16 x == y compares java.math.BigInteger by reference; use equals
+42a493d7a204b38169b476cf2781d5de83361c5050bbfb0a6945af2593c0b970	DIFFERENT-javac-rejects	2/3	(rejected)	-	28f1e96340e3744a	JULC0086@8:16 x == y compares java.math.BigInteger by reference; use equals
 42a5052230ec801109bbf42c5c3af614e1e3d4b8dd2ead6942d496a862a20ea0	javac-rejects	0/25	-	-	e03facf8cf5869a1	JULC0085@4:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 42a67f21f15705b7107aa7efae8069caa69bc38e42663b24c65a96760506b083	not-ported	1/29	a library unit	-	-	
 42a77437b0ae8362d8e2b4aa3ea7ec3fee0bb9597d527e52dd04933e3df8132a	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
@@ -4766,7 +4766,7 @@
 46dfbd642c0c0e7e618a1559490e5bb28755ac4dabcfe7726de117b490b33f63	javac-rejects	0/18	-	-	1cacca9d2c5f35cd	JULC0085@24:63 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 46e781e3265a35e229b82695c3c179b9eb10fe8d9a5993ace2d8d40180760f55	javac-rejects	0/18	-	-	d0f8651e5feade2f	JULC0085@24:64 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 46e85807b2c977325d29b23ae14b6120991852c26b8461d33b0f04cb65e3c04c	not-ported	0/18	WHILE_LOOP	-	-	
-46ea497203bca73a31eec5685451ae8f2ee2203da8ca5deab679f84897d1a48f	DIFFERENT-javac-rejects	0/1	reference equality	-	fff017956ec40ddf	JULC0086@8:16 a == b compares java.math.BigInteger by reference; use equals
+46ea497203bca73a31eec5685451ae8f2ee2203da8ca5deab679f84897d1a48f	DIFFERENT-javac-rejects	0/1	(rejected)	-	fff017956ec40ddf	JULC0086@8:16 a == b compares java.math.BigInteger by reference; use equals
 46ea5a60c7b864434d8ccc3f1bfc5db1c151e6da04853fae5be2a0a683f61cdd	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 46f0dd772a38e4e52ba96bfaf9e36a62814ff31770965ccb2212dfe6534c3a68	javac-rejects	0/28	-	-	e04c5bfbfb3755a2	JULC0085@8:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 46f26a8e5775445330954075183c33594648855908f3b6467fbe68e93fb53f6c	i1a-identical	2/2	-	fragment	-	
@@ -4858,7 +4858,7 @@
 482c560863efb18bc609b6d5c1ed1df3540397873c2f829cfac8b95350000106	not-ported	2/30	a library unit	-	-	
 482f350fc1f57fb4ec44671df2bbe9eaf5bdd338e8470b6637214a1fcb64fb7a	both-reject-javac-first	0/1	-	-	9f09c7a1f3adb8c9	JULC0085@14:16 the switch expression does not cover all possible input values (compiler.err.not.exhaustive)
 48343a87260881c7ed41ae8c2affeab39c8b50be245f5c1fd542c76a280bb99f	both-reject-javac-first	0/0	-	-	92dfdb6eebba1d0d	JULC0085@7:22 cannot find symbol   symbol:   class UnknownTypeName   location: class MyValidator.BadRecord (compiler.err.cant.resolve.location)
-48351170bbb3d66e8705d9eb56fc32984f01e39f709bf0f026e94bd3daeeed5a	DIFFERENT-javac-rejects	1/2	reference equality	-	b5e703678b0c2ab0	JULC0086@9:16 a == b compares byte[] by reference; use equals
+48351170bbb3d66e8705d9eb56fc32984f01e39f709bf0f026e94bd3daeeed5a	DIFFERENT-javac-rejects	1/2	(rejected)	-	b5e703678b0c2ab0	JULC0086@9:16 a == b compares byte[] by reference; use equals
 48378aa6373bb9b8b165de3b9ed7d3da8fdf50601dd56ff5867f698473aed211	not-ported	1/28	a library unit	-	-	
 483c317b6c7680ed37d2a51c263baac4c98e1b6e43979e49c1b057c6029a0aad	not-ported	1/29	a library unit	-	-	
 48493d210d0b3244374c934c5caab63533bea8cb7d14c999ef3516b279d64076	not-ported	0/88	TYPE_CAST	-	-	
@@ -4918,7 +4918,7 @@
 49102e92dca57be04a6eed9dc71caa8106beb1c032df10b165de784b8c914067	both-reject-javac-first	0/1	-	-	3426add8ad42347d	JULC0085@16:13 duplicate default label (compiler.err.duplicate.default.label)
 49104b52313d4b12455ad445ed8af754bc73459d0bb7bb65caf6ab6f0613bd88	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 4915335f8b3028dd7b64a4bd598676bd83c666de079c46bd4740b44876cba8b8	not-ported	1/28	a library unit	-	-	
-491cbdce97406b9028ea94bfac070831de5886995dbb24a76bf7f865f8b3ad65	DIFFERENT-javac-rejects	1/2	reference equality	-	2a10eaac729128da	JULC0086@8:16 credential == expected compares java.math.BigInteger by reference; use equals
+491cbdce97406b9028ea94bfac070831de5886995dbb24a76bf7f865f8b3ad65	DIFFERENT-javac-rejects	1/2	(rejected)	-	2a10eaac729128da	JULC0086@8:16 credential == expected compares java.math.BigInteger by reference; use equals
 491fc8e35f9c252b56f45376e3de797bde86968108eba890aed09f363242d70a	i1a-identical	2/2	-	fragment	-	
 4922859772abaa29aa66e7df61dc8f4c9e141b05eb4150102d6a77e4131a815c	both-reject	1/1	-	-	6c4c0f6e4bfdcc05	JULC0007@17:16 switch expression requires a sealed interface type, got: G, a sealed interface with type parameters; JuLC drops type arguments, so it cannot deci...
 4922e455e5955eff818bec0db51563049c07d75159c0abc89dbcbe23c0fa2dce	i1a-identical	1/1	-	fragment	-	
@@ -5099,7 +5099,7 @@
 4b5b6fffddf81e05dda28e5300d51f9f1ffbfb66344cbd67895b491563341efc	not-ported	0/1	an expression of type java.lang.Object	-	-	
 4b5db5dac81b3388154e4ba7889d85fd909f3334c3c2e2a82e0e26dc4d18e224	javac-rejects	0/1	-	-	ed7571815225d058	JULC0085@5:12 cannot find symbol   symbol:   class BigInteger   location: class ParamClass (compiler.err.cant.resolve.location)
 4b5f18c285b16a823a7fdb0772ffa8f69c8b3111c3b42adf355218efea669c1a	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-4b625a4e459cfc360f20e442a37e6fa102a98d91fd9cf4b3eb8a226284bed5b8	DIFFERENT-javac-rejects	0/1	reference equality	-	80805fa71556fefe	JULC0086@10:16 __rest_0 == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+4b625a4e459cfc360f20e442a37e6fa102a98d91fd9cf4b3eb8a226284bed5b8	DIFFERENT-javac-rejects	0/1	(rejected)	-	80805fa71556fefe	JULC0086@10:16 __rest_0 == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 4b651b601ab1c9bf7c80979c045520d3940dc3d51fe12a53f83a1358725258b7	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 4b73f803324cc2c7c0f4e4aecc6bf3ff7cccbbc0e8ae52fb8b90f4273cd5a795	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 4b7a2e479a4d97280ca385841e9f88704845f0b744e124c41e07f6c4f4f8e3f2	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
@@ -5881,7 +5881,7 @@
 56daea01ea35322c09fddbc107b95dfb31fd222723355c927c4154232446b04a	not-ported	0/18	WHILE_LOOP	-	-	
 56dc638624769621457fd5b4d932c3b7dc3d760bdb41b53d31ca87a3e28d9d10	not-ported	1/28	a library unit	-	-	
 56dc8d13aef4b03672aa32310792fadd0726a34247d7da9b97ca92a8ed1b5bc5	DIFFERENT-bytes	1/1	-	-	a73a885b149e9a3e	NONE with a map A:24e653b3ecce5819b184aac6af993b76:218 / A:f3c097a42210130b11c4abf548d27825:193; BASELINE with a map A:24e653b3ecce5819b184aac6af993b76:218 / A:...
-56dd11a2742ac0146efea81fa80f1145c121ceda839003c6af80dacee975e167	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+56dd11a2742ac0146efea81fa80f1145c121ceda839003c6af80dacee975e167	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 56e69d23e2e0ec456d6392a3bf4dd28317e723e9d1ab1990e5489e50d736558b	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 56ea64aa72b9c5805632a64ee1837d004b7bf2fcb759689aee5800945321bb54	javac-rejects	0/18	-	-	98f2dbdb0b99b621	JULC0085@24:61 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 56eadc553a83d4307c361858d1d2c92260f46d661c13cbadca28f6ace1cc59a2	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -6388,7 +6388,7 @@
 5ecbf7077d5da34cec93480bb901a7d18c8e706c5ec3992759bc814ce792e5ba	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 5ed27686a56beff4e9975ec683f37cca17d414c112dcee7c116d42cf483ac863	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 5ed55085d16a4ba7c3ff6440f3ab941f8646a3d63dae85702eeefdb2cbb97c47	not-ported	0/18	WHILE_LOOP	-	-	
-5ed680e0ce4f7810fb07e699589302f76b575059b8fedc31caa869d6cf0e5fea	DIFFERENT-javac-rejects	1/2	reference equality	-	b92e9c10c13397d3	JULC0086@13:58 double_(redeemer) == ctx compares java.math.BigInteger by reference; use equals
+5ed680e0ce4f7810fb07e699589302f76b575059b8fedc31caa869d6cf0e5fea	DIFFERENT-javac-rejects	1/2	(rejected)	-	b92e9c10c13397d3	JULC0086@13:58 double_(redeemer) == ctx compares java.math.BigInteger by reference; use equals
 5ed91342eefaa4a655ad527a7b3cc9bd2330d6a9975dc2d6be3e0b774386fc84	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
 5ee5b258e7830fdf994abcb48a3ee0c113e80d5b80c01de0de9e69f394a91e08	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
 5ee8f048fa83613502723e6e7465855ebc513561a382d07c2e171865582a6f87	not-ported	1/29	a library unit	-	-	
@@ -6462,7 +6462,7 @@
 5fe57106993a204c037f7b2ac1c1653a5a2cefa72ca4ada540fc0f627dde0d58	not-ported	1/48	a library unit	-	-	
 5fe8058d76289a7bb49f5e45b7942dc5f913940e53ee4cb259855733015150f0	i1a-identical	2/2	-	same	-	
 5fe9539cc42280b3118ce4b0db4be9ce7d38efab58ce2fcf8c228b02aa841e31	i1a-identical	2/2	-	fragment	-	
-5fe9e9db1c64adbd52fbbab4acf79a94ed4fd9edf0558a5bd99125329418bc8d	DIFFERENT-javac-rejects	0/1	reference equality	-	16fadabfcdda9856	JULC0086@13:16 actual == expected compares java.math.BigInteger by reference; use equals
+5fe9e9db1c64adbd52fbbab4acf79a94ed4fd9edf0558a5bd99125329418bc8d	DIFFERENT-javac-rejects	0/1	(rejected)	-	16fadabfcdda9856	JULC0086@13:16 actual == expected compares java.math.BigInteger by reference; use equals
 5ff548aa29069b35b3840ba6d758c94dcbadaa3e386c0f8f1ba257b2dd2227f7	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 5ff9001c343e343e90c4f4a7830bb89b7492df55d9c7f0712a53c2445a0ebbe7	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 5ffadd6ab867a9d09b7ec3d6e03b5e58e97ec8a15727c46f8a0525a782065434	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -7243,7 +7243,7 @@
 6b7340011d93cb03b5c11c9d18fe47a72e13e1297d71e85018c3c366a31bbe57	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 6b775b07208a395cec2d23ab9de784a766a6ce6a63f20ec2f70187d85140e521	javac-rejects	0/29	-	-	304e11f6b708c81f	JULC0085@9:33 incompatible types: java.math.BigInteger cannot be converted to long (compiler.err.prob.found.req)
 6b79378af8f4a7766bada13dd2c0aa860a3c2b06b291246b9ec1949541224450	not-ported	0/1	WHILE_LOOP	-	-	
-6b79d90b9fd73b24fb7d2fa89aea7f9e0f883c95364d0d91a5179f0d4d9e7932	DIFFERENT-javac-rejects	0/1	reference equality	-	30410c1bf33b9ed4	JULC0086@13:16 second == second compares org.julclang.ledger.PubKeyHash by reference; use equals
+6b79d90b9fd73b24fb7d2fa89aea7f9e0f883c95364d0d91a5179f0d4d9e7932	DIFFERENT-javac-rejects	0/1	(rejected)	-	30410c1bf33b9ed4	JULC0086@13:16 second == second compares org.julclang.ledger.PubKeyHash by reference; use equals
 6b7a1989e4e2c7a8a1b0c211eb4f180a9be5943934ec04868d6c6e041eb47426	i1a-identical	5/5	-	fragment	-	
 6b89f9397380a2a5e75c3fc94582424538ddf567a284eee5b01cba2d0ff4ddf5	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 6b90e833cd4a12f5b97a7e148d0974d48e39f709ab1be5d9faedf06c1aa72b6a	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
@@ -7500,7 +7500,7 @@
 6f26fa351ce41d9c799df266ddd900d93025f97a01289b452068d55202ed2c85	both-reject-javac-first	0/1	-	-	ec25a4b9c858eb60	JULC0085@17:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 6f2f14f92185c8a74e041166da52180523b66abe07839d2eb5b20bbec8658a7c	not-ported	1/36	a library unit	-	-	
 6f3d0a8b6d918c314f651de4aa7f94483645d419f81f271ac12f604ac6da8e74	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
-6f3e6de1cb6280739a5267319eec05f45dd498ef5e9d9e4d7179847148035c11	DIFFERENT-javac-rejects	1/1	-	-	a33309a7e755fbe6	JULC0086@11:16 a != b compares java.lang.String by reference; use equals
+6f3e6de1cb6280739a5267319eec05f45dd498ef5e9d9e4d7179847148035c11	DIFFERENT-javac-rejects	0/1	(rejected)	-	a33309a7e755fbe6	JULC0086@11:16 a != b compares java.lang.String by reference; use equals
 6f43039f82591ccbaf9b9a9864bdfe1448ef585fc2033e14a03bffb602337433	not-ported	0/1	WHILE_LOOP	-	-	
 6f45f810e177a2662c80334560f7d465b2ea5f91b1fd55b76cb3f3de263be2d1	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 6f5497be4b5de67d33a693add915ccce554e6d2c752c42eb753e1c7da8bdfe00	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -7558,7 +7558,7 @@
 6fed9b0acc52975048ca3b6f0fa1d969f8c62c674b1576797aefca7c50f1afa0	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 6ff04555985b32ea3ab954964575207b8bd2dc5e4af9a8f69805fd9e5839b9c7	not-ported	0/18	WHILE_LOOP	-	-	
 6ff74d81a27222fb98ae0145143affdd79de0731c9737430934150b67077f52a	not-ported	1/3	a library unit	-	-	
-6ffcdaf43accfb8241c9b8bc54b1a7fbc22b75cd3a125ceaf7dd214ce9d3be2e	DIFFERENT-javac-rejects	0/1	reference equality	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
+6ffcdaf43accfb8241c9b8bc54b1a7fbc22b75cd3a125ceaf7dd214ce9d3be2e	DIFFERENT-javac-rejects	0/1	(rejected)	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
 6ffe25cba9b08ae06725d28edae7f90e7156073192b5306a29b6406f16cecc8a	javac-rejects	0/1	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 70001c2022250a4b56a85edb3c876436bb7b88ce60795377608f786a7ed70697	not-ported	1/28	a library unit	-	-	
 7003ba84cf8d8f460d2f1ec36a1b1291dae12b6916024260e594a7f9939eb696	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -7583,7 +7583,7 @@
 705209a579a1b9c7f7e09a5003d50967c5a0c9aea06e5cd6210edac46fad6512	i1a-identical	2/2	-	fragment	-	
 7073a1486c5892dad797b11f270c8428deb743191554c22d8186d79c17c81f07	i1a-identical	2/2	-	same	-	
 707b7a0365d6a0b7588e44d44e93f661d3ed29d32bda81052f9366a71af1a52d	reference-rejects-not-ported	0/0	ENHANCED_FOR_LOOP	-	09aeb8e49f732c24	null@0:0 Loops.java:9:206: Conditional update to loop-body local 'step' is not supported   Hint: An if/else branch carries only loop accumulators out of the bra...
-707c4a0ef6ff8a439b4816809f513bb24ef037f0f29f9b6bf5131f5f8259c086	DIFFERENT-javac-rejects	1/1	-	-	59fd981eb60c9400	JULC0086@12:16 c == "hello" compares java.lang.String by reference; use equals
+707c4a0ef6ff8a439b4816809f513bb24ef037f0f29f9b6bf5131f5f8259c086	DIFFERENT-javac-rejects	0/1	(rejected)	-	59fd981eb60c9400	JULC0086@12:16 c == "hello" compares java.lang.String by reference; use equals
 7082be29ecc42b8e907609f829a1564de027bcbc49d18052443d84e1cb883aa8	not-ported	0/18	WHILE_LOOP	-	-	
 7083234ca29e8b2888d519851c741b18ceecbba7e2bb6fb015b9dd4e95232280	not-ported	0/48	ENHANCED_FOR_LOOP	-	-	
 7085096563ed4e55052ee86df523b83f3f2801a1e4879a0952b98e608b3029b0	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
@@ -7849,7 +7849,7 @@
 74c4d37f604b1d176b811b93c67c7fb2d79decc43f569b3efc91b4100b3db7fe	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 74cea76b266409410460682d49925288696706fde6fa95e987eb023fc042ea5d	DIFFERENT-javac-rejects	1/1	-	-	e5860fe0062c2d08	JULC0078@9:16 Tuple2.equals compares Probe.R1 with Probe.R2, which Java keeps distinct: on-chain the two can compare equal
 74de21bed87381308e1824fbccce2bf430d3f1d06668de918825e55ab54c6e1f	i1a-identical	2/2	-	same	-	
-74de5f6e3a02a601d065c47749bff912b633f8e066c10d10af3d199550a493e8	DIFFERENT-javac-rejects	0/1	reference equality	-	80805fa71556fefe	JULC0086@10:16 __rest_0 == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+74de5f6e3a02a601d065c47749bff912b633f8e066c10d10af3d199550a493e8	DIFFERENT-javac-rejects	0/1	(rejected)	-	80805fa71556fefe	JULC0086@10:16 __rest_0 == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 74e5a966c93dd54c6943c199d1270c8d978497f813ffa8dd2898202a87016495	both-reject-javac-first	0/0	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 74e5fe4ab8d8f6dcde78ee0a4ff5c943ed4683c9aaaa76f097342d4f1bce288e	i1a-identical	1/1	-	fragment	-	
 74e86b24269170cbb1c450d27f0eac056dedf8c84ce76e52b156df681b3bfcb2	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -8512,7 +8512,7 @@
 7eead7915def76f16007a070668b3e539274fa3854c6bcdcd77982ab0000bd90	i1a-identical	2/2	-	fragment	-	
 7eec7328a37aed50626f92fc5db9e5a6c2a929a131ebdfabdd53f97f7e3a39f0	not-ported	0/18	WHILE_LOOP	-	-	
 7ef1e1587a226715403b09bba049f6c789ccbd5fbe40ca8fd30de39834a1293b	not-ported	4/5	WHILE_LOOP	-	-	
-7ef81a48889fd1e6d2cabe15023a8c93e3b923293e82333bb565ed5dcb361867	DIFFERENT-javac-rejects	0/1	reference equality	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
+7ef81a48889fd1e6d2cabe15023a8c93e3b923293e82333bb565ed5dcb361867	DIFFERENT-javac-rejects	0/1	(rejected)	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
 7ef9ef066a13805fec300357657078a02c43d323941bd77c9487a4ad3be79014	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
 7f04cbe0dd431bda0f1f2dea843d86dbe1f827d8c9bb9a62d89ced9e29cc74e9	reference-rejects-not-ported	0/0	WHILE_LOOP	-	548fc27f9b26670d	null@0:0 Loops.java:9:232: Conditional update to loop-body local 'step' is not supported   Hint: An if/else branch carries only loop accumulators out of the bra...
 7f0854459dac8edc6d5d5b799394641e5e94ba82f2d4bb4c0226771035baf814	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
@@ -9069,7 +9069,7 @@
 8760a17c596316b7977d166181978a5584d4bb5261dac94e2af3c973e6fdbbf6	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 8760b8e7be9721b97ef8801483c602f5a85fda6714726a78e6f07c9584af66b2	javac-rejects	0/18	-	-	89be7c314269ed0b	JULC0085@24:62 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 8765c25ff74db5e0b0b559dc36573873735b407b3f3d70f80bfabcbe6ad68842	i1a-identical	1/1	-	same	-	
-8766a5f6e7b7493ab7844bbdc5acb6749d9ac3964f59308d5f92746916a2ad3e	DIFFERENT-javac-rejects	0/1	reference equality	-	17995f739cc29af9	JULC0086@11:16 a == b compares org.julclang.core.PlutusData by reference; use equals
+8766a5f6e7b7493ab7844bbdc5acb6749d9ac3964f59308d5f92746916a2ad3e	DIFFERENT-javac-rejects	0/1	(rejected)	-	17995f739cc29af9	JULC0086@11:16 a == b compares org.julclang.core.PlutusData by reference; use equals
 8766d66baeb1bdf9cc8dac70126b7ca0733a917c96a822788ca96f627c760a65	not-ported	0/1	WHILE_LOOP	-	-	
 87670ae4fcc1bd346fc18b689babe5bb2f121ac38034554dc5f5d6dc04e36637	not-ported	2/31	ENHANCED_FOR_LOOP	-	-	
 876ea32d2bac5dbbfc0782d0ab75f1a152556603fb1feda4352c07a6c584b643	not-ported	1/48	a library unit	-	-	
@@ -9304,7 +9304,7 @@
 8aa36fa3596e209b1507f06074d6c7b5d965dbe0282411961527fa93b120e36d	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 8aa7610fdc0173f0f33d31cc9dd783220eb9440c7e734518fdbea82a00238930	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 8aa97cf2436b2e8c91391ac2dc6972f57c751c815293dea8baa8cd0efe2b0512	not-ported	0/18	WHILE_LOOP	-	-	
-8aaf1946fda5c8739a9cc1bb9b2a4dc12f7d290ec7f8d340f679cf60a20d2a28	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+8aaf1946fda5c8739a9cc1bb9b2a4dc12f7d290ec7f8d340f679cf60a20d2a28	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 8aafc8f775b36393450a7b3dd2e203f9bd07e5e2517925b96167e4874f4adc18	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 8aafee5ccc5bc1a4c3e72af9a4ea9312d2afbd0b4c1950795787b5ab7cba0653	both-reject-javac-first	0/0	-	-	beb6423c4c31ec1d	JULC0085@3:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 8ab361154e7971b827a7101cb02c59b983a4815b2f8fbcad24d7da963f061cf8	not-ported	1/36	a library unit	-	-	
@@ -9464,7 +9464,7 @@
 8d209f39aa4bad4c53d0bf28780542381fe08fbbdad656fd01bdccd7d72fad35	i1a-identical	2/2	-	fragment	-	
 8d252b58328ae9124494757781b2f443a911a3507d1c48393545d12d6beb8c2b	i1a-identical	2/2	-	fragment	-	
 8d255be4a5f6fc5572dcd6e7de5da94a4abcf31677f3c8cdd3e7ed7348563d7a	both-reject-javac-first	0/0	-	-	c7738e85acfa5277	JULC0085@11:27 integer number too large (compiler.err.int.number.too.large)
-8d2721bd238d5a59ffc9a389ae28d8262cfc0779d1108275ba1849beed5e88b6	DIFFERENT-javac-rejects	1/2	reference equality	-	2a10eaac729128da	JULC0086@8:16 credential == expected compares java.math.BigInteger by reference; use equals
+8d2721bd238d5a59ffc9a389ae28d8262cfc0779d1108275ba1849beed5e88b6	DIFFERENT-javac-rejects	1/2	(rejected)	-	2a10eaac729128da	JULC0086@8:16 credential == expected compares java.math.BigInteger by reference; use equals
 8d27b1510fe726b9932766e6bd7a5b688270839e4e8b2873f2e3ef12869ed1ea	reference-rejects-not-ported	0/0	the exports of library sources	-	ce3219b6ef1b2038	null@0:0 Undefined variable: ValuesLib
 8d29469931c841e10fcdb2d89114ad8979e3ac8cadf0cfa3538599df9cd4e916	not-ported	0/1	WHILE_LOOP	-	-	
 8d29caa46e7f93eaace5053b20128655e6f76e0e1e5353a6f3a0ac0c451d7e69	not-ported	1/28	a library unit	-	-	
@@ -10480,7 +10480,7 @@
 9c161cab05ddd909316846276e973d1b3fa0adf690267c28a433704ac40696c8	not-ported	0/1	WHILE_LOOP	-	-	
 9c16e34a859483a5691eeb8c043b45ff3e878c43e7e4dccdc1a497e7f0b5049b	not-ported	7/88	ENHANCED_FOR_LOOP	-	-	
 9c16f733a5bf02082b44261d8dad41b77adaf49a8dccf419e5a1c8a9db6ef98c	i1a-identical	1/1	-	same	-	
-9c1c350ffd39f96ff18d7acaf87dbebbcd8469305919c5595f31092c153c4a6e	DIFFERENT-javac-rejects	1/2	reference equality	-	15f1824342ff6b58	JULC0086@17:16 abs(redeemer) == abs(ctx) compares java.math.BigInteger by reference; use equals
+9c1c350ffd39f96ff18d7acaf87dbebbcd8469305919c5595f31092c153c4a6e	DIFFERENT-javac-rejects	1/2	(rejected)	-	15f1824342ff6b58	JULC0086@17:16 abs(redeemer) == abs(ctx) compares java.math.BigInteger by reference; use equals
 9c1d12a8208e2478b3d867ea0d65b6e71bbf2d337890e31e3d8f96c9d3133543	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 9c1d44fc5e4e715de0c6ccfb5ef547c38796f808cf07723e8bb449d62f260737	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 9c2228263672b6bd0e3099a6052abd49d963ffddbbf55057140cd5b06306eab4	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
@@ -11122,7 +11122,7 @@ a640895255bf9250cc05b0bee16b476d3c7df02758eca2701ea904584e96975c	i1a-identical	1
 a6425ed4dde3deed487a3cda2bca609b3c5b4f313e50f665ab3364586d31e284	not-ported	0/18	WHILE_LOOP	-	-	
 a6437184cb141f453f5f6adf67354ff56593bd38e93301b1c0d17e209e1bf3c6	reference-rejects-not-ported	0/0	ENHANCED_FOR_LOOP	-	c7db5487e85f82db	null@0:0 Loops.java:9:176: Conditional update to loop-body local 'step' is not supported   Hint: An if/else branch carries only loop accumulators out of the bra...
 a646835f74c453ffdc7b4c5cfbfb4dedded68117d18ae6d69e6d779a6694ff26	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
-a64d1b29da8c22badb602f668a3160f4406e7753c671230e1decaf82adf7a53c	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+a64d1b29da8c22badb602f668a3160f4406e7753c671230e1decaf82adf7a53c	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 a64f128ab246ddebc1d6ed1a670e23ac215dadd979de4268680c11cb027cb07a	not-ported	0/18	WHILE_LOOP	-	-	
 a653c354cc1e3d969987bd3dfc298263742c6d40d1e812febb9ed1b26397e91c	not-ported	0/18	WHILE_LOOP	-	-	
 a65da3c5dd82186b51f2387ddd83f1616377f10f7b70d260c7f7dac2e7892d06	javac-rejects	0/1	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -11339,7 +11339,7 @@ a9641fa51d984969df0b47ec67f4f7747bae2b0ae720649a8e70aa27aace4f90	javac-rejects	0
 a9689acc53c18ae5149081a71b1629f0613f16b0b1b16d6dd5f0ad3b3c0aedde	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 a96943d838b24f0de55404e9e6e46ad208432d90e36ac0ef545adee25a3304c9	javac-rejects	0/2	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 a96afa6e4a4dca408776483036162c52d5f15c324256c2d2eb3c011a942ff524	not-ported	1/12	a library unit	-	-	
-a96f78b6e1399b69b180d6bf0961ff6e96275ca22406bc68adff4341d44403d2	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+a96f78b6e1399b69b180d6bf0961ff6e96275ca22406bc68adff4341d44403d2	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 a9741942f1a53dbae3e4e113e86edaf94caf767b88a20dbe5886b351e7c10946	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
 a975210d16a256f1f84edc86b36a99c47491adf11013d6b544aee6239adc0b57	i1a-identical	1/1	-	fragment	-	
 a97cf784e554b5533512cbf2c136785aca3f507b5dcd0349bc7833ea341d62ae	not-ported	0/18	WHILE_LOOP	-	-	
@@ -11437,7 +11437,7 @@ aaef0d7c6bca8e758d4e357d69d6c53a01ce792b22145c4e700ba06c1b42beac	reference-rejec
 aaf68fa34e8f2f0b162eb475178a271ea97c2c087ccc965af4cb05e9ce166e09	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 aaf738aba99ef512d826e6de0ed5622045e8f9c1f03737fbd67dfb608551be59	both-reject-javac-first	0/47	-	-	121fb1818bce347b	JULC0085@14:191 incompatible types: org.julclang.core.types.JulcG1Points cannot be converted to org.julclang.core.types.JulcG2Points (compiler.err.prob.found.re...
 aafbf321a0ffc9d33f33530fce859eca929bebcb06cd3b17ed5cd8b3ac60885a	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
-ab09852ac090cb59a65c0261a350dcdf22eda8e855ff2fe7c006b8e995be293f	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+ab09852ac090cb59a65c0261a350dcdf22eda8e855ff2fe7c006b8e995be293f	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 ab0b073ec8113e4fec787b4e0f49529b150e961f507d92a782eba4dfa8089a18	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 ab10b12b7f30d706770a5bea51b28c250826d078cc72b43f7732355e6a59bf70	not-ported	0/18	WHILE_LOOP	-	-	
 ab1680d30690a27e67ef1a7518332ef2d7bbb7e7b486a3c0a53dccfee002d824	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -12103,7 +12103,7 @@ b5065e90e8f704e6bdd8eb9e51d8eb5189191e2fe468e0a31fe45e08cd832861	not-ported	0/1	
 b50b1aac3e3aab86841ce5d3fc192dee5fef1262ee85f752c9d0414aeeba1963	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
 b50b1c0f7b699feafa056edcc360be0be775f395a2a49d50628a2716efc01031	both-reject-javac-first	0/1	-	-	ec25a4b9c858eb60	JULC0085@17:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 b50c605b8418aafb1018d37977daff04aa2b7e09e493d6f9b01342aa303e416e	not-ported	1/28	a library unit	-	-	
-b50ccf55670d1f8e38fb8b43ca872ae9fe3e3a5b34d925999a97665321bdd1bc	DIFFERENT-javac-rejects	0/1	reference equality	-	a48578039ef67a15	JULC0086@6:16 a == b compares byte[] by reference; use equals
+b50ccf55670d1f8e38fb8b43ca872ae9fe3e3a5b34d925999a97665321bdd1bc	DIFFERENT-javac-rejects	0/1	(rejected)	-	a48578039ef67a15	JULC0086@6:16 a == b compares byte[] by reference; use equals
 b5122a65bfb1c79ddb68614567a4842a4b69e577cd4854bb2592a1b3f5fc3e79	javac-rejects	0/1	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 b512544addf52406ff42490d3f8f82c2b68c9f2feb4ab14fc58876dec9d08ef2	i1a-identical	2/2	-	fragment	-	
 b523fbfa078bdae6d50a3f865d23434f39821c1e00745cd5b360f0c9038ee826	javac-rejects	0/2	-	-	ed29c0d2325c7a8b	JULC0085@8:35 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
@@ -12500,7 +12500,7 @@ baeb0cb1a5778e3d50526aa8166a79ee5db84f2f1b617bf9ba781fe0d9812ffc	not-ported	0/1	
 baed745da32966a3e9ee730e91513465792779b7ba62174eebb7e7d18bab27b4	javac-rejects	0/18	-	-	98b2e83597ba5b6f	JULC0085@24:72 cannot find symbol   symbol:   method isPresent()   location: class java.math.BigInteger (compiler.err.cant.resolve.location.args)
 baed7b6d93c8785182e4be2c64b568252c3bebeca4eb2b4114702d851dfd88b7	javac-rejects	0/29	-	-	d2997c7b7ad4746b	JULC0085@11:44 incompatible types: java.math.BigInteger cannot be converted to long (compiler.err.prob.found.req)
 baf22ac230b8af5f3d2b1524cb9be63e04b00483dd4cd693c2396a3cc8a324ff	not-ported	1/36	a library unit	-	-	
-bb03b5e9fb9906f3aa74510edfe2765805298d263b5d0fd3632c0741a3178960	DIFFERENT-javac-rejects	0/1	reference equality	-	c599596ddad98d7c	JULC0086@11:16 datum.hash1() != datum.hash2() compares byte[] by reference; use equals
+bb03b5e9fb9906f3aa74510edfe2765805298d263b5d0fd3632c0741a3178960	DIFFERENT-javac-rejects	0/1	(rejected)	-	c599596ddad98d7c	JULC0086@11:16 datum.hash1() != datum.hash2() compares byte[] by reference; use equals
 bb0892babd3e36614879d978fb482d749bf8b2f57f6aeb997884d04c05826f1b	not-ported	1/28	a library unit	-	-	
 bb11da7b01e4c2556f72fb9248e2a61990d9bba64f7cef091373d1f8df0368b4	not-ported	2/37	a library unit	-	-	
 bb1a955132a99817f9fa08b2d3601e1dc15ae6ee8d46e6a11c13b9d2fae34af8	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
@@ -12779,7 +12779,7 @@ bf44727c8e7aed2d84538c8292787b787de0e842933c304889eef510be9644fa	javac-rejects	0
 bf45f70e791e0af14ddfd85ba6819460c78cb4e3572a73a929d43100f42b3296	reference-rejects-not-ported	0/0	DO_WHILE_LOOP	-	90d2450b6178a130	JULC0019@4:65 do-while loops are not supported on-chain
 bf4754e84281837d4bd0ef4bfd5abe198044b3a52a7caa543f53052befa93f1f	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 bf4aa1521425945b1ebfd86ea25ffdb93e96503bca67840ddaea607eead2fad3	javac-rejects	0/28	-	-	e04c5bfbfb3755a2	JULC0085@8:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-bf4afec8817cead25d1981a008de442abb4b2e3240f49018db49fbc233648c30	DIFFERENT-javac-rejects	1/2	reference equality	-	fff017956ec40ddf	JULC0086@8:16 a == b compares java.math.BigInteger by reference; use equals
+bf4afec8817cead25d1981a008de442abb4b2e3240f49018db49fbc233648c30	DIFFERENT-javac-rejects	1/2	(rejected)	-	fff017956ec40ddf	JULC0086@8:16 a == b compares java.math.BigInteger by reference; use equals
 bf4dd8ec0aa0bb734bd115840ded2cc66e8fd67fcd89e95003e9e37d17d53d62	i1a-identical	1/1	-	same	-	
 bf52494818b0b9c1841624d0f8b94b3f4224e5118ded271ec3f78e85ae3721e3	not-ported	0/18	WHILE_LOOP	-	-	
 bf53a13f510e9782dc73ead49fbe18fbe943166c33c413b395942f4ff4f15546	javac-rejects	0/28	-	-	e04c5bfbfb3755a2	JULC0085@8:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -13698,7 +13698,7 @@ cce769a456e57a63360c1463e993d1527141edc3c35d7f29193ae676422d6f10	not-ported	0/29
 cce7d12695c64d36616120d18537859e38ecbbcbe7cfe556a7e825222b35c032	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 ccea6c22de26e07056122a9b0c0a9b2f283e5a77404c5728ecbc59d1e4631c2d	not-ported	1/36	a library unit	-	-	
 cceb3cf808253de6510fc101d505cf76afb793781453a5ee2bbbb939ea7ebeb5	i1a-identical	2/2	-	same	-	
-ccef41d596dc78c40a326c04b620341a9c69098b0d7b0ce4e06503812e0d37d0	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+ccef41d596dc78c40a326c04b620341a9c69098b0d7b0ce4e06503812e0d37d0	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 ccefb4c07d369a17c68d3aee8469efcd190a7caf2e6a0bd5b5d29a6e9f0345a5	i1a-identical	2/2	-	same	-	
 ccf23bc77a5b7670a6c189eca30876ca829d19bbd769cc0fb554784920a7c866	javac-rejects	0/1	-	-	7d33912e916250b4	JULC0085@12:16 cannot find symbol   symbol:   method fromPlutusData(org.julclang.core.PlutusData)   location: class Alternatives.Point (compiler.err.cant.resolv...
 ccf5545e64dc4b68bff38a8939f6fb620530aa6080ae3e8d9650b0af89be6a89	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -13764,7 +13764,7 @@ cde54cd31f451d58cb6b406407308f25f047b034f92bd19a60e92efac381b8f4	not-ported	2/3	
 cde8903fb80fc6570e9881744f5b5c3fcb81acc2bd822006f5ef46ad3bf99757	not-ported	1/28	a library unit	-	-	
 cdeab1ed3407b16d96c63210df0fc70748763aa5d08da23b4091cb5d4ad66854	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 cdf213ee23cc3d6c92c33c0535c663f5e2f37e0c0b4f02edd467e31b739eabda	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
-cdf3cfedeff9909350df16844d223b38aa17fba6ca2c8999e533ef51adad4923	DIFFERENT-javac-rejects	0/1	reference equality	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
+cdf3cfedeff9909350df16844d223b38aa17fba6ca2c8999e533ef51adad4923	DIFFERENT-javac-rejects	0/1	(rejected)	-	6141dfadcecdb471	JULC0086@10:16 sum == BigInteger.valueOf(100) compares java.math.BigInteger by reference; use equals
 cdf5704be0919c0739603812133a88fa40e93721f5f984ea7ba8a95ab443782a	not-ported	1/28	a library unit	-	-	
 cdf64eaec2c826afcedaeb777baf6b255e483c6b0d6df31c59c2284b94d07b3d	javac-rejects	0/2	-	-	932125faad6e0f3c	JULC0085@8:26 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 cdf6fe4f8511aba04666c16f7d92e41aa5325e50d4850605d7c98fd63695d11f	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
@@ -15236,7 +15236,7 @@ e4366f035a068288d62e3c922e1e3107a7a5ec0eb290fa07b310c7ce61a4f8dc	i1a-identical	2
 e4388fd60c075d97310285270b265b0ee2350295c18d18ba8811f08e13f3b4df	both-reject-javac-first	0/0	-	-	6dbbb9ca6bf48ce8	JULC0085@12:13 different case kinds used in the switch (compiler.err.switch.mixing.case.types)
 e443965e6a00e63b39f68ad30f2974ddbf15c85c897fcd0f91027b8754faca65	javac-rejects	0/2	-	-	d2810771981952db	JULC0085@9:31 incompatible types: org.julclang.core.PlutusData cannot be converted to java.math.BigInteger (compiler.err.prob.found.req)
 e444db04ea6c0f2640a472fcb5323a4ebc3d5c885770fec9757592d4b7d6323f	i1a-identical	2/2	-	same	-	
-e4493523ab418724989c120e3bd6d0a8b8fd771c4a1f13cdf8a84761a6be6cca	DIFFERENT-javac-rejects	0/1	reference equality	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
+e4493523ab418724989c120e3bd6d0a8b8fd771c4a1f13cdf8a84761a6be6cca	DIFFERENT-javac-rejects	0/1	(rejected)	-	3eb3f9afb08b62fe	JULC0086@9:16 redeemer == ctx compares java.math.BigInteger by reference; use equals
 e44970629951f21432b09348f129b19d3bdbaa6e26c2ca8d5906ce96f456fc47	javac-rejects	0/2	-	-	c0bf07c6f3e56c41	JULC0085@2:2 cannot find symbol   symbol: class MintingValidator (compiler.err.cant.resolve)
 e4510d9c22dd721693fe4c0caac93fd28a5eb6061c4e42e70cd2de5133f93016	i1a-identical	2/2	-	fragment	-	
 e4552de9b721277aeebc9be9986472aed94bcc4e728927bc28519e21d5e21518	not-ported	1/8	a library unit	-	-	
@@ -15648,7 +15648,7 @@ ea8a22dcd87b63ffe50cb2f08006916bb232ff9c0a901aa6bdb993bcf0bb9713	i1a-identical	1
 ea8e9e986ef7f27410cb0de5af6de4bb8470a128d78da3297369af5ec047e00b	i1a-identical	2/2	-	same	-	
 ea916d634e5404b21ab07d28bf5a3674309fdb57477899ca413d2d58d54f2b47	not-ported	1/29	a library unit	-	-	
 ea946e297fca983354e4899715b3a090855b53285dd62b1940d47c9efa5efee6	not-ported	0/1	WHILE_LOOP	-	-	
-ea96301ba094a7b0495d5236ff392d503714247b78cc2f3e77d3a055d11a0f0b	DIFFERENT-javac-rejects	2/3	reference equality	-	c534398749a20b04	JULC0086@17:16 add(redeemer, ctx) == sub(redeemer, ctx) compares java.math.BigInteger by reference; use equals
+ea96301ba094a7b0495d5236ff392d503714247b78cc2f3e77d3a055d11a0f0b	DIFFERENT-javac-rejects	2/3	(rejected)	-	c534398749a20b04	JULC0086@17:16 add(redeemer, ctx) == sub(redeemer, ctx) compares java.math.BigInteger by reference; use equals
 ea9eb7aa125dbb96f9d3c8f836727e1b33b170937d20cd81a4c95a884f6d8cdd	reference-rejects-not-ported	0/47	a library unit	-	67ea14806df54701	JULC0042@14:18 Method parameter r has opaque type MlResult, which cannot be decoded from a Plutus Data argument
 eaa0254dfc2fcedb5aaee938f149d757999e3456292aa30900f5c8365460bab1	reference-rejects-not-ported	0/0	ENHANCED_FOR_LOOP	-	ab97b2084b0e1daf	JULC0058@4:162 Reassigning local variable 'y' is not supported in a loop that updates no variable declared before the loop
 eaa5c860a17095623453fa32b6767ea9f2b1a28850be9d76d27a149405e054d6	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
@@ -16106,11 +16106,11 @@ f189d3753377c715456d5d42f10cf64aef318ccd2fb7df39bcf539ff44bdbcf2	javac-rejects	0
 f18cd62400c1e95e96d1094e361beecac38eda9f49979f3bdce6adfc851dee22	i1a-identical	1/1	-	same	-	
 f18ff796124ce937f7594fb1569646bebbebdcd35fe8c4a309f9073b39e98446	not-ported	0/18	WHILE_LOOP	-	-	
 f190217960a9016746f49f506c10522a8d3f775890c4a82d9b494edf760fb35a	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
-f191c4dcf9beff52d7db4db58506f4980e3726b88318c595546a8e680b7ac2c7	DIFFERENT-javac-rejects	1/1	-	-	0d23e1792523ff34	JULC0086@11:16 a == b compares java.lang.String by reference; use equals
+f191c4dcf9beff52d7db4db58506f4980e3726b88318c595546a8e680b7ac2c7	DIFFERENT-javac-rejects	0/1	(rejected)	-	0d23e1792523ff34	JULC0086@11:16 a == b compares java.lang.String by reference; use equals
 f192c849c25117528ce8c7bc01db24c11b379f801f26b60efa7bd738441235ec	both-reject-javac-first	0/1	-	-	1943970b85f1e127	JULC0085@16:18 this case label is dominated by a preceding case label (compiler.err.pattern.dominated)
 f198ce266895986c1b3467723815252f32509382dd9394fef4937e680e5afc18	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
 f1a10618241fbc73dea73f379aa9fc290ac608b5538305fb40dfda80dcdd76d0	i1a-identical	2/2	-	fragment	-	
-f1a665c8b8d2ac31be609c9856aa276c3d48e02280487b4eb7ade0ec6ad90424	DIFFERENT-javac-rejects	0/1	reference equality	-	147c184f920c9def	JULC0086@11:16 datum.hash1() == datum.hash2() compares byte[] by reference; use equals
+f1a665c8b8d2ac31be609c9856aa276c3d48e02280487b4eb7ade0ec6ad90424	DIFFERENT-javac-rejects	0/1	(rejected)	-	147c184f920c9def	JULC0086@11:16 datum.hash1() == datum.hash2() compares byte[] by reference; use equals
 f1a7202dfae26038ce1d6daea9d7e53457cfe6580e9f49a442be57dcfcd2ee68	not-ported	2/3	ENHANCED_FOR_LOOP	-	-	
 f1b0c6bbf846f851c7e8498afeabffbab0042ae2c0ebffd692314a862af5df84	not-ported	1/29	a library unit	-	-	
 f1b0ce041cf556548364cfa652e36fa6307060e0e30901ccc17e315017db12f5	not-ported	2/3	WHILE_LOOP	-	-	
@@ -16585,7 +16585,7 @@ f90c3d0a3ab9dfe171f9c0bdfc08870cb82db119d0583ce902f89d78732ab886	not-ported	0/1	
 f91278d35f8fbef1267c58fcb4daae6998e62af5e42d2a4387f9bde3b79abdcb	DIFFERENT-pir	1/30	a library unit	-	cc15e93889023685	HelperCallers.helperCallers differs from the reference: 93b479980c715eb2
 f9132668a33c56f7b4713b047f94f42bb700daf79a63e8b11ee7f4034c8948ef	javac-rejects	0/2	-	-	bf46149addcc837f	JULC0085@8:31 cannot find symbol   symbol:   class PlutusData   location: class Multi (compiler.err.cant.resolve.location)
 f91b20db0bafae475875c66faaf96a4685b35ce9e83fa9e81122bbf52201463d	javac-rejects	0/3	-	-	355a68c59652ee79	JULC0085@3:2 cannot find symbol   symbol: class SpendingValidator (compiler.err.cant.resolve)
-f921a41d37ccae70a263c3728dde1c4e2b43e4216d3172b7a607ceccaf875088	DIFFERENT-javac-rejects	2/3	reference equality	-	a7affabab97c955f	JULC0086@12:16 pkh == expected compares java.math.BigInteger by reference; use equals
+f921a41d37ccae70a263c3728dde1c4e2b43e4216d3172b7a607ceccaf875088	DIFFERENT-javac-rejects	2/3	(rejected)	-	a7affabab97c955f	JULC0086@12:16 pkh == expected compares java.math.BigInteger by reference; use equals
 f923c20193454416434ad53a8502a39d4a96f32d4132721e370dfc9c932ce89c	not-ported	0/1	ENHANCED_FOR_LOOP	-	-	
 f925329924896108f46c1f60a90d677206d70425802fdd56a02a1f6400d9982b	i1a-identical	5/5	-	fragment	-	
 f92b16598e745bff84f1e2a2a01a0f191a88701ee52e6ca2140f0c65661d20ff	not-ported	2/31	WHILE_LOOP	-	-	
