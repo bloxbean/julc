@@ -481,13 +481,13 @@ class DelayedMethodPassTest {
         @Test
         void aBranchThatMayFailEndsTheReading() {
             var yes = new PirTerm.Const(Constant.bool(true));
-            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 30, yes, function(6, new PirTerm.Error(INTEGER))))));
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 40, yes, function(6, new PirTerm.Error(INTEGER))))));
         }
 
         @Test
         void aConditionThatMayFailEndsTheReading() {
             var fails = new PirTerm.Error(new PirType.BoolType());
-            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 30, fails, function(6, variable("x0"))))));
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 40, fails, function(6, variable("x0"))))));
         }
 
         /** An {@code if} counts one branch, so the bound ends no walk of the two: only the memo keeps this linear. */
