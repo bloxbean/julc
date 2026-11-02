@@ -537,6 +537,23 @@ class Adr068SwitchHarnessTest {
         }
     }
 
+    /** JavaParser does not parse a conditional as a guard with no parentheses, and javac does. */
+    @Test
+    void aConditionalGuardWithNoParentheses() {
+        for (var c : List.of(bool(true), bool(false))) {
+            assertWiderOnJavac("public static long m(S s, boolean c, boolean d) { return switch (s) { case S.A a when c ? d : true -> 1; default -> 3; }; }", a(1), c, bool(false));
+        }
+    }
+
+    /** {@code ==} on two {@code Boolean}s compares references, so it stops on {@code JAVAC}. Under a {@code new} the reference takes them as booleans. */
+    @Test
+    void twoBooleansComparedUnderANew() {
+        var members = "public static X m(S s, Boolean p, Boolean q) { return " + underNew("p == q") + "; }";
+        var report = run(members, List.of(a(1), bool(true), bool(true)));
+        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED : Verdict.Kind.AGREE,
+                result.verdict().kind(), report::describe));
+    }
+
     /** A local that shadows a constant field: the reference reads the field through a {@code new}, and {@code JAVAC} the local, as Java does. */
     @Test
     void aLocalThatShadowsAConstantFieldUnderANew() {

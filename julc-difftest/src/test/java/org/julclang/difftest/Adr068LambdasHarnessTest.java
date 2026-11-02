@@ -485,7 +485,19 @@ class Adr068LambdasHarnessTest {
     /** Java's null goes on, and the script fails at the read, which is {@code JulcMap.get}'s and fails closed. */
     @Test
     void aMissThatNothingReadsFailsInTheScript() {
-        var report = run("public static long m(" + BIG_LIST + " xs) { var r = xs.find(x -> x.signum() > 5); return 1; }", List.of(integers(1)));
+        assertMissFailsOnJavac("public static long m(" + BIG_LIST + " xs) { var r = xs.find(x -> x.signum() > 5); return 1; }", integers(1));
+    }
+
+    /** Any read of a miss fails where its value is computed: a declared local read on another path, and an argument nothing reads. */
+    @Test
+    void aMissReadOnAnotherPathFailsInTheScript() {
+        assertMissFailsOnJavac("public static long m(" + BIG_LIST + " xs, boolean c) { BigInteger r = xs.find(x -> x.signum() > 5); if (c) { return r.longValue(); } return 1; }", integers(1), bool(false));
+        assertMissFailsOnJavac("static long h(BigInteger v) { return 1; } public static long m(" + BIG_LIST + " xs) { return h(xs.find(x -> x.signum() > 5)); }", integers(1));
+        assertMissFailsOnJavac("public static long m(" + BIG_LIST + " xs) { PlutusData d = PlutusData.cast(xs.find(x -> x.signum() > 5), PlutusData.class); return 1; }", integers(1));
+    }
+
+    private static void assertMissFailsOnJavac(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
         assertEquals(new Observation.Value(integer(1), List.of()), report.jvm());
         report.results().forEach((config, result) -> {
             var expected = config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.MISMATCH : Verdict.Kind.AGREE;
