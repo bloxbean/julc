@@ -143,7 +143,7 @@ final class Loops {
 
         if (elements.isEmpty()) {
             rules.requireNoReassignment(tree);
-            if (breaks) rules.requireNoBreak(tree, tree.getExpression(), tree.getStatement());
+            if (breaks) rules.requireNoBreak(tree, tree.getStatement());
             var bodyTerm = statements.single(tree.getStatement(), frame.in(scope));
             var result = (PirTerm.LetRec) desugarer.desugarForEach(iterable, item.name(), NO_ACCUMULATOR, Statements.unit(),
                     new PirType.UnitType(), bodyTerm, held);
@@ -204,7 +204,7 @@ final class Loops {
         var elements = accumulators(tree, frame);
 
         if (elements.isEmpty()) {
-            if (breaks) rules.requireNoBreak(tree, tree.getCondition(), tree.getStatement());
+            if (breaks) rules.requireNoBreak(tree, tree.getStatement());
             var test = lowering.expr(condition, frame);
             var bodyTerm = statements.single(tree.getStatement(), frame);
             var result = desugarer.desugarWhile(test, bodyTerm);

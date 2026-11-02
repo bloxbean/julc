@@ -223,17 +223,17 @@ public final class LoopRules {
     /**
      * A loop with no accumulator lowers its body as plain statements, which cannot stop the loop, so its {@code break} is
      * rejected before the body lowers (T26, #273). {@code JULC0065} where the body updates what it did not declare, at the
-     * first such update, which is one the accumulators do not see; otherwise {@code JULC0063} at the {@code break}.
+     * first such update, which is one the accumulators do not see; otherwise {@code JULC0063} at the {@code break}. A
+     * {@code while}'s condition runs before its body, so an update there is reported first. A for-each's iterable has lowered
+     * by now, and an update there is {@code Lowering}'s to reject.
      */
-    public void requireNoBreak(StatementTree loop, Tree header, StatementTree body) {
+    public void requireNoBreak(StatementTree loop, StatementTree body) {
         var found = firstExit(body, BreakTree.class);
         if (found == null) return;
-        // The header runs before the body, so an update there is reported first.
-        var inHeader = updates(header);
+        var inHeader = loop instanceof WhileLoopTree whileLoop ? updates(whileLoop.getCondition()) : List.<Tree>of();
         if (!inHeader.isEmpty()) {
             var update = inHeader.getFirst();
-            String place = loop instanceof WhileLoopTree ? "in the loop condition" : "in the loop iterable";
-            throw CompilerTypeDiagnostics.loopUpdatePositionUnsupported(updated(update).getName().toString(), place, facts.location(update));
+            throw CompilerTypeDiagnostics.loopUpdatePositionUnsupported(updated(update).getName().toString(), "in the loop condition", facts.location(update));
         }
         var declared = new HashSet<String>();
         if (loop instanceof EnhancedForLoopTree forEach) declared.add(forEach.getVariable().getName().toString());
