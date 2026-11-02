@@ -1,27 +1,15 @@
 package org.julclang.compiler.frontend.javac.lower;
 
-import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.CaseTree;
-import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
-import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.LiteralTree;
-import com.sun.source.tree.MemberSelectTree;
-import com.sun.source.tree.MethodInvocationTree;
-import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.SwitchExpressionTree;
-import com.sun.source.tree.TypeCastTree;
-import com.sun.source.tree.UnaryTree;
-import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
-import org.julclang.compiler.frontend.javac.subset.GuardConstants;
-import org.julclang.compiler.frontend.javac.subset.GuardTypes.JType;
 import org.julclang.compiler.frontend.javac.subset.SwitchRules;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -34,7 +22,6 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -64,11 +51,9 @@ final class Switches {
     private final Typing typing;
     private final Lowering lowering;
     private final Statements statements;
-    private final CallTargets targets;
     private final TypeTests typeTests;
-    private final TypeMethodRegistry typeMethods;
     private final SwitchRules rules;
-    private final GuardConstants constants;
+    private final Guards guards;
 
     Switches(JavacFacts facts, Terms terms, Typing typing, Lowering lowering, Statements statements, CallTargets targets,
              TypeTests typeTests, TypeMethodRegistry typeMethods) {
@@ -77,11 +62,14 @@ final class Switches {
         this.typing = typing;
         this.lowering = lowering;
         this.statements = statements;
-        this.targets = targets;
         this.typeTests = typeTests;
-        this.typeMethods = typeMethods;
         this.rules = new SwitchRules(facts);
-        this.constants = rules.constants();
+        this.guards = new Guards(facts, typing, lowering, targets, typeMethods, rules);
+    }
+
+    /** {@link Guards#exact}. */
+    PirTerm exact(ExpressionTree tree) {
+        return guards.exact(tree);
     }
 
     PirTerm expression(SwitchExpressionTree tree, Frame frame) {
@@ -105,7 +93,7 @@ final class Switches {
     private PirType.SumType sumOf(SwitchExpressionTree tree, ExpressionTree selectorTree, PirTerm selector, Frame frame) {
         var type = typing.ofVariable(selector);
         if (type instanceof PirType.SumType sum) return sum;
-        if (referenceType(selectorTree, frame) instanceof PirType.SumType sum) return sum;
+        if (guards.referenceType(selectorTree, frame) instanceof PirType.SumType sum) return sum;
         throw facts.rejection(DiagnosticCodes.SWITCH_REQUIRES_SEALED_INTERFACE, tree, LibraryMethodRegistry.pirTypeName(type));
     }
 
@@ -266,7 +254,7 @@ final class Switches {
         var element = facts.element(arm.pattern().getVariable());
         var scope = frame.scope().bind(element, variantType(constructor));
         var inner = frame.in(scope, frame.patterns().arm(element, fieldNames(constructor), bindings, true));
-        var guard = arm.guard() == null ? null : guard(arm, inner);
+        var guard = arm.guard() == null ? null : guards.guard(arm, inner);
         return new Compiled(arm, scope.lookup(element), guard, body(arm.entry(), inner));
     }
 
@@ -293,104 +281,6 @@ final class Switches {
             if (Scope.sourceName(free).equals(source)) return true;
         }
         return false;
-    }
-
-    /**
-     * A guard's term (ADR-067 D1). Inside it, {@code instanceof} on a sealed type is a total dispatch, and a constant has
-     * Java's width. Its Java type is established from the source, as {@code SwitchRules} says, not by javac alone (I2).
-     */
-    private PirTerm guard(SwitchRules.Arm arm, Frame frame) {
-        var type = rules.guardType(arm, leaf -> leafType(leaf, frame));
-        rules.beforeGuard(arm, leaf -> leafType(leaf, frame));
-        PirTerm guard;
-        try {
-            guard = lowering.expr(arm.guard(), frame.guard());
-        } catch (CompilerException e) {
-            // The reference collects an unresolved member and goes on, so what it says of the guard's type comes first.
-            if (isUnresolvedMember(e)) rules.afterGuard(arm, type, false);
-            throw e;
-        }
-        rules.afterGuard(arm, type, facts.registry().resolveNamed(typing.ofTerm(guard)) instanceof PirType.BoolType);
-        return guard;
-    }
-
-    private static boolean isUnresolvedMember(CompilerException e) {
-        return e.diagnostics().size() == 1 && DiagnosticCodes.UNRESOLVED_MEMBER_ACCESS.code().equals(e.diagnostics().getFirst().code());
-    }
-
-    /** What the reference types a guard's leaf by. An integer whose Java type it does not know it takes to be a {@code BigInteger}. */
-    private JType leafType(ExpressionTree leaf, Frame frame) {
-        PirType type;
-        try {
-            type = facts.registry().resolveNamed(referenceType(leaf, frame));
-        } catch (CompilerException e) {
-            return JType.UNKNOWN;
-        }
-        return switch (type) {
-            case PirType.BoolType ignored -> JType.BOOLEAN;
-            case PirType.IntegerType ignored -> JType.BIGINTEGER;
-            case PirType.StringType ignored -> JType.STRING;
-            case PirType.DataType ignored -> JType.UNKNOWN;
-            default -> JType.OTHER;
-        };
-    }
-
-    /**
-     * The reference's type of an expression, read before it is lowered, which knows less than javac and must not know more
-     * (I2): a variable's binder, a {@code new}, a helper's, a library method's and an accessor's result, what the registry
-     * declares on the receiver it saw, and a literal. Of anything else it says Data.
-     */
-    private PirType referenceType(ExpressionTree tree, Frame frame) {
-        return switch (tree) {
-            case IdentifierTree name -> {
-                var binder = frame.scope().lookup(facts.element(name));
-                yield binder == null ? new PirType.DataType() : facts.registry().resolveNamed(binder.type());
-            }
-            case MethodInvocationTree call -> callType(call, frame);
-            case NewClassTree creation -> typing.of(creation);
-            case LiteralTree literal -> literal.getValue() == null ? new PirType.DataType() : typing.of(literal);
-            case TypeCastTree cast -> {
-                var written = typing.of(cast);
-                yield written instanceof PirType.DataType ? referenceType(cast.getExpression(), frame) : written;
-            }
-            default -> new PirType.DataType();
-        };
-    }
-
-    private PirType callType(MethodInvocationTree call, Frame frame) {
-        return switch (targets.classify(call)) {
-            case CallTarget.Accessor ignored -> typing.of(call);
-            case CallTarget.Wrapper ignored -> typing.of(call);
-            case CallTarget.Local ignored -> typing.of(call);
-            case CallTarget.Library ignored -> typing.of(call);
-            case CallTarget.Intrinsic intrinsic -> intrinsic == CallTarget.Intrinsic.CAST ? typing.of(call) : new PirType.DataType();
-            case CallTarget.TypeMethod target -> declaredReturn(call, target.method(), frame);
-            case CallTarget.Equals ignored -> declaredReturn(call, "equals", frame);
-            default -> new PirType.DataType();
-        };
-    }
-
-    private PirType declaredReturn(MethodInvocationTree call, String method, Frame frame) {
-        var receiver = ((MemberSelectTree) call.getMethodSelect()).getExpression();
-        return typeMethods.resolveReturnType(facts.registry().resolveNamed(referenceType(receiver, frame)), method)
-                .orElseGet(PirType.DataType::new);
-    }
-
-    /**
-     * Inside a guard, an {@code int} or {@code long} constant expression of the verified subset is its Java value, so its
-     * overflow, narrowing casts and constant variables keep Java's width even when the guard as a whole is not constant
-     * (I9): the ordinary lowering evaluates them without it (T6). Null when {@code tree} is not such a constant.
-     */
-    PirTerm exact(ExpressionTree tree) {
-        boolean shape = tree instanceof LiteralTree || tree instanceof UnaryTree || tree instanceof BinaryTree
-                || tree instanceof TypeCastTree || tree instanceof IdentifierTree || tree instanceof MemberSelectTree
-                || tree instanceof ConditionalExpressionTree || tree instanceof ParenthesizedTree;
-        if (!shape) return null;
-        var constant = constants.evaluate(tree);
-        if (!constant.constant() || constant.unclassifiable()) return null;
-        var kind = constant.value().kind();
-        if (kind != GuardConstants.Kind.INT && kind != GuardConstants.Kind.LONG) return null;
-        return new PirTerm.Const(Constant.integer(BigInteger.valueOf(constant.value().asLong())));
     }
 
     // --- An arm's body ---
