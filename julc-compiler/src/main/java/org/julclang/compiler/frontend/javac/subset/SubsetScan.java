@@ -8,6 +8,7 @@ import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.CompoundAssignmentTree;
+import com.sun.source.tree.ConstantCaseLabelTree;
 import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
@@ -140,6 +141,15 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
 
     private boolean allowed(Tree.Kind kind) {
         return ALLOWED.contains(kind) || inLowered && (WHERE_LOWERED.contains(kind) || guardDepth > 0 && IN_A_GUARD.contains(kind));
+    }
+
+    /** {@code case null}: JuLC has no {@code null}, and the rest of what stands for one is not ported. */
+    @Override
+    public Void visitConstantCaseLabel(ConstantCaseLabelTree tree, Void unused) {
+        if (tree.getConstantExpression().getKind() == Tree.Kind.NULL_LITERAL) {
+            throw facts.rejection(DiagnosticCodes.NULL_UNSUPPORTED, tree.getConstantExpression());
+        }
+        return super.visitConstantCaseLabel(tree, unused);
     }
 
     /** A guard is a guard's to judge, whichever rule stops it; an arm in it is ordinary code, as far as D6 goes. */
