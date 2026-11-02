@@ -125,8 +125,9 @@ final class Loops {
         return loop;
     }
 
-    Carried carried(List<Element> elements, Tree loop) {
-        return new Carried(facts, terms, elements, loop);
+    /** {@code elements} as {@code frame} binds them. */
+    Carried carried(List<Element> elements, Tree loop, Frame frame) {
+        return new Carried(facts, terms, elements.stream().map(frame.scope()::lookup).toList(), loop);
     }
 
     // --- For-each ---
@@ -151,27 +152,27 @@ final class Loops {
             terms.loop(result, null, item);
             if (index + 1 >= following.size() && cont == null) return result;
             var rest = statements.sequence(following, index + 1, frame, cont);
-            return new PirTerm.Let(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)), result, rest);
+            return terms.generatedLet(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)), result, rest);
         }
 
-        var carried = carried(elements, tree);
+        var carried = carried(elements, tree, frame);
         var inner = frame.in(scope).updating();
         boolean single = carried.isSingle();
-        String accumulator = single ? carried.only(frame).name() : TUPLE;
-        var type = carried.type(frame);
-        var initial = carried.value(frame);
+        String accumulator = single ? carried.only().name() : TUPLE;
+        var type = carried.type();
+        var initial = carried.value();
         PirTerm result;
         if (breaks) {
             result = desugarer.desugarForEachWithBreak(iterable, item.name(), accumulator, initial, type, (next, value) -> {
                 var bodyTerm = body.breaking(tree.getStatement(), carried, next::apply, inner);
-                return single ? bodyTerm : carried.unpacked(value, inner, bodyTerm);
+                return single ? bodyTerm : carried.unpacked(value, bodyTerm);
             }, held);
         } else {
             var bodyTerm = body.fold(tree.getStatement(), carried, inner);
-            if (!single) bodyTerm = carried.unpacked(terms.generated(TUPLE, Carried.TUPLE), inner, bodyTerm);
+            if (!single) bodyTerm = carried.unpacked(terms.generated(TUPLE, Carried.TUPLE), bodyTerm);
             result = desugarer.desugarForEach(iterable, item.name(), accumulator, initial, type, bodyTerm, held);
         }
-        terms.loop((PirTerm.LetRec) result, single ? carried.only(frame) : null, item);
+        terms.loop((PirTerm.LetRec) result, single ? carried.only() : null, item);
         return after(result, carried, following, index, frame, cont);
     }
 
@@ -184,9 +185,8 @@ final class Loops {
     private PirType held(EnhancedForLoopTree tree) {
         var variable = tree.getVariable();
         var type = facts.element(variable).asType();
-        if (!facts.isInferred(variable)) return facts.registry().resolveNamed(facts.pirType(type, variable.getType()));
         try {
-            return facts.registry().resolveNamed(facts.valueType(type, variable));
+            return facts.registry().resolveNamed(facts.isInferred(variable) ? facts.valueType(type, variable) : facts.pirType(type, variable.getType()));
         } catch (CompilerException e) {
             throw NotPorted.at(facts, variable, "a for-each variable of type " + ArrayIdentityEquality.text(type));
         }
@@ -212,19 +212,18 @@ final class Loops {
             var result = desugarer.desugarWhile(test, bodyTerm);
             if (index + 1 >= following.size() && cont == null) return result;
             var rest = statements.sequence(following, index + 1, frame, cont);
-            return new PirTerm.Let(PirHelpers.hygienicName("#_while", PirHelpers.freeVariables(rest)), result, rest);
+            return terms.generatedLet(PirHelpers.hygienicName("#_while", PirHelpers.freeVariables(rest)), result, rest);
         }
 
-        var carried = carried(elements, tree);
-        return carried.isSingle() ? single(tree, condition, carried, breaks, following, index, frame, cont)
-                : several(tree, condition, carried, elements, breaks, following, index, frame, cont);
+        return elements.size() == 1 ? single(tree, condition, carried(elements, tree, frame), breaks, following, index, frame, cont)
+                : several(tree, condition, elements, breaks, following, index, frame, cont);
     }
 
     private PirTerm single(WhileLoopTree tree, ExpressionTree condition, Carried carried, boolean breaks,
                            List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        var accumulator = carried.only(frame);
+        var accumulator = carried.only();
         var inner = frame.updating();
-        var initial = carried.value(frame);
+        var initial = carried.value();
         PirTerm result;
         if (breaks) {
             var test = lowering.expr(condition, frame);
@@ -239,8 +238,12 @@ final class Loops {
         return after(result, carried, following, index, frame, cont);
     }
 
-    /** Several accumulators, typed for the tuple ({@link AccumulatorTypes}), so what follows the loop reads them at those types. */
-    private PirTerm several(WhileLoopTree tree, ExpressionTree condition, Carried carried, List<Element> elements, boolean breaks,
+    /**
+     * Several accumulators travel at the types of {@link AccumulatorTypes}: the tuple holds them so, and the condition and what
+     * follows the loop read them so. The body reads them as they were declared, as the reference has them there, and they
+     * are what it stores.
+     */
+    private PirTerm several(WhileLoopTree tree, ExpressionTree condition, List<Element> elements, boolean breaks,
                             List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         var declared = new ArrayList<PirType>();
         elements.forEach(element -> declared.add(frame.scope().lookup(element).type()));
@@ -248,16 +251,17 @@ final class Loops {
         var scope = frame.scope();
         for (int i = 0; i < elements.size(); i++) scope = scope.rebind(elements.get(i), types.get(i));
         var typed = frame.in(scope);
-        var initial = carried.value(typed);
+        var carried = carried(elements, tree, typed);
+        var initial = carried.value();
         var test = lowering.expr(condition, typed);
-        var testRead = carried.unpacked(terms.generated(TUPLE, Carried.TUPLE), typed, test);
-        var inner = typed.updating();
+        var testRead = carried.unpacked(terms.generated(TUPLE, Carried.TUPLE), test);
+        var inner = frame.updating();
         PirTerm result;
         if (breaks) {
             result = desugarer.desugarWhileWithAccumulatorAndBreak(testRead, TUPLE, initial, Carried.TUPLE,
-                    (next, value) -> carried.unpacked(value, inner, body.breaking(tree.getStatement(), carried, next::apply, inner)));
+                    (next, value) -> carried.unpacked(value, body.breaking(tree.getStatement(), carried, next::apply, inner)));
         } else {
-            var bodyTerm = carried.unpacked(terms.generated(TUPLE, Carried.TUPLE), inner, body.fold(tree.getStatement(), carried, inner));
+            var bodyTerm = carried.unpacked(terms.generated(TUPLE, Carried.TUPLE), body.fold(tree.getStatement(), carried, inner));
             result = desugarer.desugarWhileWithAccumulator(testRead, bodyTerm, TUPLE, initial, Carried.TUPLE);
         }
         return after(result, carried, following, index, typed, cont);
@@ -269,20 +273,19 @@ final class Loops {
     private PirTerm after(PirTerm result, Carried carried, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         if (index + 1 >= following.size() && cont == null) return result;
         var rest = statements.sequence(following, index + 1, frame, cont);
-        return carried.rebound(result, rebindPreLoopVariables(rest, frame, carried), frame);
+        return carried.rebound(result, rebindPreLoopVariables(rest, frame, carried));
     }
 
     /**
      * {@code let x = x in rest} for each variable visible before the loop that {@code rest} mentions, as the reference writes
      * it: this changes no meaning, and the bytes at the first level hold it. A name is a binder's, a {@code switch} arm's or
      * a static method's, and an accumulator's is not one. {@code rest} is read for these by spelling alone, in the reference's
-     * order, which is the order of the {@code let}s, and a binder of {@code rest} that shadows a field is read as the field,
-     * because the reference gave it the field's name.
+     * order, which is the order of the {@code let}s. A local of {@code rest} that shadows a field has its own name here, where
+     * it has the field's on the reference, so that {@code let} is not written: it can only cost bytes.
      */
     private PirTerm rebindPreLoopVariables(PirTerm rest, Frame frame, Carried carried) {
         var binders = frame.scope().binders();
-        var accumulators = carried.sourceNames();
-        binders.keySet().removeIf(name -> accumulators.contains(Scope.sourceName(name)));
+        carried.names().forEach(binders::remove);
         var candidates = new HashSet<>(binders.keySet());
         frame.patterns().addNamesTo(candidates);
         candidates.addAll(methods);

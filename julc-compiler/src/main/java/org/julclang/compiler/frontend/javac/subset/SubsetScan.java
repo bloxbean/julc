@@ -4,6 +4,7 @@ import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.BlockTree;
+import com.sun.source.tree.BreakTree;
 import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
@@ -312,6 +313,16 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** A label is the lowering's rejection, and it comes first of all that its statement holds. */
     @Override
     public Void visitLabeledStatement(LabeledStatementTree tree, Void unused) {
+        return null;
+    }
+
+    /** javac allows a {@code break} of a {@code switch} statement, which has no lowering, and the reference says so of the {@code break}. */
+    @Override
+    public Void visitBreak(BreakTree tree, Void unused) {
+        if (facts.enclosing(tree, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
+            throw facts.rejection("break is only supported inside for-each or while loops on-chain",
+                    "Use for-each or while with an accumulator and break to exit early", tree);
+        }
         return null;
     }
 

@@ -173,14 +173,17 @@ class LoweringAloneTest {
                 });
     }
 
-    /** A loop stops at the scan first, so only this shows that an {@code if} around one does not lower as another shape. */
+    /** What follows an {@code if} around a loop is bound once, as a function, however the loop stands in its branches (ADR-050). */
     @ParameterizedTest
-    @ValueSource(strings = {"if (a > 0) { while (a > 0) { } }", "if (a > 0) { } else { for (var x : java.util.List.of(a)) { } }",
-            "if (a > 0) { if (a > 1) { while (a > 0) { } } }", "if (a > 0) { if (a > 1) { } else { while (a > 0) { } } }",
-            "if (a > 0) if (a > 1) { } else while (a > 0) { }"})
-    void anIfAroundALoopIsNotPorted(String statement) {
-        withMethod("class P { static long m(long a) { " + statement + " return a; } }", new CompilerOptions(), (facts, lowered) ->
-                assertEquals("an if around a loop", assertThrows(NotPorted.class, lowered::term).construct()));
+    @ValueSource(strings = {"if (a > 0) { while (a > 0) { } }", "if (a > 0) { if (a > 1) { while (a > 0) { } } }",
+            "if (a > 0) { if (a > 1) { } else { while (a > 0) { } } }", "if (a > 0) if (a > 1) { } else while (a > 0) { }"})
+    void whatFollowsAnIfAroundALoopIsBoundOnce(String statement) {
+        withMethod("class P { static long m(long a) { " + statement + " return a; } }", new CompilerOptions(), (facts, lowered) -> {
+            var join = (PirTerm.Let) ((PirTerm.Lam) lowered.term()).body();
+            assertInstanceOf(PirTerm.Lam.class, join.value());
+            assertInstanceOf(PirTerm.IfThenElse.class, join.body());
+            assertTrue(join.name().startsWith("#if-join-"), join.name());
+        });
     }
 
     /**

@@ -19,8 +19,7 @@ final class PreLoopReads {
     static void collect(PirTerm term, Set<String> candidates, Map<String, PirTerm.Var> reads) {
         switch (term) {
             case PirTerm.Var read -> {
-                String name = candidates.contains(read.name()) ? read.name() : Scope.sourceName(read.name());
-                if (candidates.contains(name)) reads.putIfAbsent(name, read);
+                if (candidates.contains(read.name())) reads.putIfAbsent(read.name(), read);
             }
             case PirTerm.Let let -> {
                 collect(let.value(), candidates, reads);

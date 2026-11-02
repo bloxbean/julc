@@ -12,6 +12,7 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
 import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.LambdaExpressionTree;
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.SwitchExpressionTree;
@@ -254,6 +255,11 @@ public final class LoopRules {
             if (updated(tree) != null) found.add(tree);
         }
         return found;
+    }
+
+    /** Every call under {@code root}, in source order, at any depth. */
+    public static List<MethodInvocationTree> calls(Tree root) {
+        return SubsetWalk.all(root, MethodInvocationTree.class);
     }
 
     /** Where an update the accumulators do not see sits in the body. */

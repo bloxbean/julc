@@ -12,9 +12,9 @@ import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.tree.WhileLoopTree;
-import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
+import org.julclang.compiler.frontend.javac.subset.LoopRules;
 import org.julclang.compiler.pir.PirType;
 
 import javax.lang.model.element.Element;
@@ -148,29 +148,17 @@ final class AccumulatorTypes {
     }
 
     private boolean callsAnywhere(Tree body, String builtin) {
-        return !calls(body, builtin).isEmpty();
-    }
-
-    /** Every call of the builtin under {@code root}, at any depth. */
-    private List<MethodInvocationTree> calls(Tree root, String builtin) {
-        var found = new ArrayList<MethodInvocationTree>();
-        new TreeScanner<Void, Void>() {
-            @Override
-            public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
-                if (isBuiltin(call, builtin)) found.add(call);
-                return super.visitMethodInvocation(call, unused);
-            }
-        }.scan(root, null);
-        return found;
+        return LoopRules.calls(body).stream().anyMatch(call -> isBuiltin(call, builtin));
     }
 
     /** Whether the element a cursor's head goes to is read as a pair in {@code body}. */
     private boolean readsPairsOf(StatementTree body, Element cursor) {
         var head = headOf(body, cursor);
         if (head == null) return false;
-        for (String reading : List.of("fstPair", "sndPair")) {
-            for (var call : calls(body, reading)) {
-                if (call.getArguments().getFirst() instanceof IdentifierTree name && facts.element(name).equals(head)) return true;
+        for (var call : LoopRules.calls(body)) {
+            if ((isBuiltin(call, "fstPair") || isBuiltin(call, "sndPair"))
+                    && call.getArguments().getFirst() instanceof IdentifierTree name && facts.element(name).equals(head)) {
+                return true;
             }
         }
         return false;

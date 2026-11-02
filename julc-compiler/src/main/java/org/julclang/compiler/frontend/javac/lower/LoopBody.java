@@ -103,10 +103,10 @@ final class LoopBody {
     }
 
     private PirTerm sequence(List<? extends StatementTree> list, int index, Frame frame, Shape shape) {
-        if (index >= list.size()) return shape.end(shape.carried().value(frame));
+        if (index >= list.size()) return shape.end(shape.carried().value());
         return switch (list.get(index)) {
             case BlockTree block -> sequence(spliced(list, index, block), 0, frame, shape);
-            case BreakTree ignored when shape.breaks() -> shape.carried().value(frame);
+            case BreakTree ignored when shape.breaks() -> shape.carried().value();
             case ExpressionStatementTree statement -> expression(statement.getExpression(), list, index, frame, shape);
             case VariableTree local -> statements.local(local, frame, inner -> sequence(list, index + 1, inner, shape));
             case IfTree branch -> shape.breaks() ? breakingIf(branch, list, index, frame, shape) : foldIf(branch, list, index, frame, shape);
@@ -152,7 +152,7 @@ final class LoopBody {
         boolean endsAtBreak = shape.breaks() && shape.carried().holds(element)
                 && index + 1 < list.size() && list.get(index + 1) instanceof BreakTree;
         if (endsAtBreak && shape.carried().isSingle()) return value;
-        var rest = endsAtBreak ? shape.carried().value(frame) : sequence(list, index + 1, frame, shape);
+        var rest = endsAtBreak ? shape.carried().value() : sequence(list, index + 1, frame, shape);
         return terms.let(binder, value, rest);
     }
 
@@ -171,13 +171,13 @@ final class LoopBody {
         var condition = lowering.expr(Ifs.condition(tree), frame);
         var result = branches(condition, tree, frame, shape);
         if (index + 1 >= list.size()) return result;
-        return shape.carried().rebound(result, sequence(list, index + 1, frame, shape), frame);
+        return shape.carried().rebound(result, sequence(list, index + 1, frame, shape));
     }
 
     /** The {@code if} as a value: each branch's, and with no {@code else} the accumulators as they stand. */
     private PirTerm branches(PirTerm condition, IfTree tree, Frame frame, Shape shape) {
         var thenTerm = branch(tree.getThenStatement(), frame, shape);
-        var elseTerm = tree.getElseStatement() != null ? branch(tree.getElseStatement(), frame, shape) : shape.carried().value(frame);
+        var elseTerm = tree.getElseStatement() != null ? branch(tree.getElseStatement(), frame, shape) : shape.carried().value();
         return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
     }
 
@@ -193,7 +193,7 @@ final class LoopBody {
 
         if (!breaks && (hasRest || carried.isSingle())) {
             var result = branches(condition, tree, frame, shape.fold());
-            return hasRest ? carried.rebound(result, sequence(list, index + 1, frame, shape), frame) : shape.next().apply(result);
+            return hasRest ? carried.rebound(result, sequence(list, index + 1, frame, shape)) : shape.next().apply(result);
         }
         if (!hasRest || elseStatement == null && !Exits.canCompleteNormally(thenStatement)) {
             // At most one path reaches what follows, so it stands in place.
@@ -207,21 +207,21 @@ final class LoopBody {
     /** {@code let join = \value -> rest in if ...}: each path that does not break calls it. */
     private PirTerm joined(PirTerm condition, IfTree tree, PirTerm rest, Frame frame, Shape shape) {
         var carried = shape.carried();
-        var type = carried.type(frame);
+        var type = carried.type();
         var join = terms.generated("#join" + ++joins, new PirType.FunType(type, type));
         var toJoin = new Shape(carried, value -> new PirTerm.App(join, value));
         var thenTerm = branch(tree.getThenStatement(), frame, toJoin);
         var elseTerm = tree.getElseStatement() != null ? branch(tree.getElseStatement(), frame, toJoin)
-                : toJoin.end(carried.value(frame));
-        return terms.generatedLet(join.name(), joinFunction(carried, rest, frame), new PirTerm.IfThenElse(condition, thenTerm, elseTerm));
+                : toJoin.end(carried.value());
+        return terms.generatedLet(join.name(), joinFunction(carried, rest), new PirTerm.IfThenElse(condition, thenTerm, elseTerm));
     }
 
-    private PirTerm joinFunction(Carried carried, PirTerm rest, Frame frame) {
-        if (carried.isSingle()) return terms.lam(carried.only(frame), rest);
+    private PirTerm joinFunction(Carried carried, PirTerm rest) {
+        if (carried.isSingle()) return terms.lam(carried.only(), rest);
         var avoid = PirHelpers.freeVariables(rest);
-        avoid.addAll(carried.names(frame));
+        avoid.addAll(carried.names());
         var tuple = terms.generated(PirHelpers.hygienicName("#join_t", avoid), Carried.TUPLE);
-        return terms.generatedLam(tuple.name(), Carried.TUPLE, carried.unpacked(tuple, frame, rest));
+        return terms.generatedLam(tuple.name(), Carried.TUPLE, carried.unpacked(tuple, rest));
     }
 
     /**
@@ -235,7 +235,7 @@ final class LoopBody {
         var inner = loops.accumulators(loop, frame);
         var result = loops.alone(loop, frame);
         var rest = sequence(list, index + 1, frame, shape);
-        if (inner.isEmpty()) return new PirTerm.Let(PirHelpers.hygienicName("#_nested", PirHelpers.freeVariables(rest)), result, rest);
-        return loops.carried(inner, loop).rebound(result, rest, frame);
+        if (inner.isEmpty()) return terms.generatedLet(PirHelpers.hygienicName("#_nested", PirHelpers.freeVariables(rest)), result, rest);
+        return loops.carried(inner, loop, frame).rebound(result, rest);
     }
 }

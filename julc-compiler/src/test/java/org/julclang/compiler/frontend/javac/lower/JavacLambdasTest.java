@@ -225,12 +225,6 @@ class JavacLambdasTest {
         rejected(members);
     }
 
-    @Test
-    void aLambdaThatHoldsWhatNothingLowersStops() {
-        assertEquals("WHILE_LOOP", ((NotPorted) onJavac("static boolean m(JulcList<BigInteger> xs) { "
-                + "return xs.any(x -> { var y = x; while (y.signum() > 0) { y = y.subtract(BigInteger.ONE); } return true; }); }")).construct());
-    }
-
     /** {@code JULC0087} reads a body as it reads a method. */
     @Test
     void theSubsetsRulesReadABody() {

@@ -196,10 +196,8 @@ class JavacRejectionsTest {
     @CsvSource(delimiter = '|', value = {
             "String instance() { return null; }|NULL_LITERAL",
             "long instance() { int a = 1, b = 2; return a; }|VARIABLE",
-            "long instance() { for (;;) { } }|FOR_LOOP",
             "long instance() { throw new RuntimeException(); }|THROW",
             "long instance() { try { return 1; } finally { } }|TRY",
-            "long instance() { do { } while (true); }|DO_WHILE_LOOP",
             "byte[] instance() { return new byte[2]; }|NEW_ARRAY",
             "long[] instance() { return new long[]{1}; }|NEW_ARRAY",
             "long instance(long[] a) { return a[0]; }|ARRAY_ACCESS",
@@ -285,11 +283,12 @@ class JavacRejectionsTest {
                 class V {
                     @Entrypoint
                     static boolean validate(PlutusData r, ScriptContext c) {
-                        while (true) return true;
+                        assert true;
+                        return true;
                     }
                 }
-                """, "WHILE_LOOP", 10);
+                """, "ASSERT", 10);
         assertEquals("JULC0084", e.diagnostics().getFirst().code());
-        assertTrue(e.getMessage().contains("WHILE_LOOP `while (true) return true;`"), e.getMessage());
+        assertTrue(e.getMessage().contains("ASSERT `assert true;`"), e.getMessage());
     }
 }

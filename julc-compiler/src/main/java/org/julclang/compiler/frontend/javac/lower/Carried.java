@@ -13,10 +13,7 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.Element;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * The accumulators of a loop, as one value: one accumulator is itself, and several travel as a tuple, a list of Data, each
@@ -33,52 +30,49 @@ final class Carried {
 
     private final JavacFacts facts;
     private final Terms terms;
-    private final List<Element> elements;
+    private final List<Binder> binders;
     private final Tree loop;
 
-    Carried(JavacFacts facts, Terms terms, List<Element> elements, Tree loop) {
+    /** @param binders what is carried: the type of each is what it travels at, which a body may read at another */
+    Carried(JavacFacts facts, Terms terms, List<Binder> binders, Tree loop) {
         this.facts = facts;
         this.terms = terms;
-        this.elements = elements;
+        this.binders = binders;
         this.loop = loop;
     }
 
     boolean isSingle() {
-        return elements.size() == 1;
+        return binders.size() == 1;
     }
 
     /** The type of the value the loop hands on. */
-    PirType type(Frame frame) {
-        return isSingle() ? binder(frame, 0).type() : TUPLE;
+    PirType type() {
+        return isSingle() ? binders.getFirst().type() : TUPLE;
     }
 
     /** The accumulator of a loop with one. */
-    Binder only(Frame frame) {
-        return binder(frame, 0);
+    Binder only() {
+        return binders.getFirst();
     }
 
     /** Whether assigning {@code element} is an update of what this carries. */
     boolean holds(Element element) {
-        return elements.contains(element);
+        return binders.stream().anyMatch(binder -> binder.element().equals(element));
     }
 
-    private Binder binder(Frame frame, int index) {
-        return frame.scope().lookup(elements.get(index));
-    }
-
-    /** The accumulators as {@code frame} holds them, as one value. */
-    PirTerm value(Frame frame) {
-        if (isSingle()) return read(frame, 0);
+    /** The accumulators, as one value. */
+    PirTerm value() {
+        if (isSingle()) return read(only());
         PirTerm result = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData), new PirTerm.Const(Constant.unit()));
-        for (int i = elements.size() - 1; i >= 0; i--) {
-            var encoded = encoded(read(frame, i), binder(frame, i).type());
-            result = new PirTerm.App(new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), encoded), result);
+        for (int i = binders.size() - 1; i >= 0; i--) {
+            var binder = binders.get(i);
+            result = new PirTerm.App(new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), encoded(read(binder), binder.type())), result);
         }
         return result;
     }
 
-    private PirTerm read(Frame frame, int index) {
-        return terms.var(elements.get(index), binder(frame, index));
+    private PirTerm read(Binder binder) {
+        return terms.var(binder.element(), binder);
     }
 
     /** A value with no type to encode by has no position of its own, so it takes the loop's (F724). */
@@ -95,18 +89,16 @@ final class Carried {
         }
     }
 
-    /** {@code value}, what the loop or a branch left, bound for {@code rest}: {@code frame}'s binders hold it there. */
-    PirTerm rebound(PirTerm value, PirTerm rest, Frame frame) {
-        return isSingle() ? terms.let(binder(frame, 0), value, rest) : unpacked(value, frame, rest);
+    /** {@code value}, what the loop or a branch left, bound for {@code rest}, where these binders hold it. */
+    PirTerm rebound(PirTerm value, PirTerm rest) {
+        return isSingle() ? terms.let(only(), value, rest) : unpacked(value, rest);
     }
 
     /** {@code body} with each accumulator bound to what {@code tuple} holds of it. */
-    PirTerm unpacked(PirTerm tuple, Frame frame, PirTerm body) {
+    PirTerm unpacked(PirTerm tuple, PirTerm body) {
         // The body and every later accessor are in the tuple binder's scope, so it takes a name neither reads.
         var avoid = PirHelpers.freeVariables(body);
-        var binders = new ArrayList<Binder>();
-        for (int i = 0; i < elements.size(); i++) binders.add(binder(frame, i));
-        binders.forEach(binder -> avoid.add(binder.name()));
+        avoid.addAll(names());
         var tupleVar = terms.generated(PirHelpers.hygienicName("#__t", avoid), TUPLE);
         PirTerm result = body;
         for (int i = binders.size() - 1; i >= 0; i--) {
@@ -118,17 +110,8 @@ final class Carried {
         return terms.generatedLet(tupleVar.name(), tuple, result);
     }
 
-    /** The name each accumulator has in the source. */
-    Set<String> sourceNames() {
-        var names = new HashSet<String>();
-        elements.forEach(element -> names.add(element.getSimpleName().toString()));
-        return names;
-    }
-
-    /** The name of each accumulator in {@code frame}, which a generated binder over them avoids. */
-    List<String> names(Frame frame) {
-        var names = new ArrayList<String>();
-        for (int i = 0; i < elements.size(); i++) names.add(binder(frame, i).name());
-        return names;
+    /** The name of each accumulator, which a generated binder over them avoids. */
+    List<String> names() {
+        return binders.stream().map(Binder::name).toList();
     }
 }

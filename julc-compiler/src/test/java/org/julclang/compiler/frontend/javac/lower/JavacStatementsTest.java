@@ -212,9 +212,7 @@ class JavacStatementsTest {
 
     @Test
     void anEmptyStatementAsABranchIsRejected() {
-        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
-                .compileMethod(source("static long m(boolean c) { if (c) ; return 1; }"), "m", List.of()));
-        assertEquals("Unsupported statement: EmptyStmt", failure.diagnostics().getFirst().message());
+        rejected("static long m(boolean c) { if (c) ; return 1; }");
     }
 
     @Test

@@ -1,8 +1,13 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.CompilerFrontend;
+import org.julclang.compiler.OptimizationLevel;
 import org.julclang.stdlib.StdlibRegistry;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * For-each, {@code while}, {@code break} and accumulators: each program compiles to the reference's bytes at every level,
@@ -67,7 +72,6 @@ class JavacLoopsTest {
             "static final long K = 7; static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + K; } return s + K; }",
             "static long h(long a) { return a; } static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + 1; } return h(s); }",
             "static long m(JulcList<BigInteger> xs) { long s = h(1); for (var x : xs) { s = s + 1; } return h(s); } static long h(long a) { return a; }",
-            "static final long K = 7; static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + 1; } long K = s; return K; }",
             // Several accumulators
             "static long m(JulcList<BigInteger> xs) { long a = 0; long b = 1; for (var x : xs) { a = a + 1; b = b * 2; } return a + b; }",
             "static long m(long n) { long a = 0; long b = 1; while (a < n) { a = a + 1; b = b * 2; } return b; }",
@@ -109,6 +113,8 @@ class JavacLoopsTest {
             "static long h(long a) { return a; } static long m(long n) { long s = 0; while (n > 0) { long j = 0; while (j < n) { j = j + 1; h(j); } n = n - 1; } return s; }",
             "static long m(long n) { long s = 0; while (n > 0) { long t = 0; while (t < 2) { if (t > 0) { s = 1; } t = t + 1; } n = n - 1; } return s; }",
             "static long m(long n, JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { while (s < n) { s = s + 1; break; } } return s; }",
+            "static boolean m(JulcList<BigInteger> xs) { return xs.any(x -> { var y = x; while (y.signum() > 0) { y = y.subtract(BigInteger.ONE); } return true; }); }",
+            "static boolean m(JulcList<BigInteger> xs) { return xs.any(x -> { long s = 0; for (var y : xs) { if (y.equals(x)) { s = s + 1; break; } } return s > 0; }); }",
             // A loop in an if
             "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; if (c) { for (var x : xs) { s = s + 1; } } return s; }",
             "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; long t = 0; if (c) { for (var x : xs) { s = s + 1; t = t + 1; } } else { for (var x : xs) { t = t + 2; } } return s + t; }",
@@ -129,10 +135,27 @@ class JavacLoopsTest {
         same(members);
     }
 
+    /**
+     * A local after a loop that shadows a field has its own name here, where it has the field's on the reference, so the
+     * identity {@code let} that spelling gives it is not written. It is the one difference, and it makes no script larger.
+     */
+    @Test
+    void aLocalThatShadowsAFieldAfterALoop() {
+        var source = source("static final long K = 7; static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + 1; } long K = s; return K; }");
+        var stdlib = StdlibRegistry.defaultRegistry();
+        for (var level : OptimizationLevel.values()) {
+            assertTrue(LoweringFixture.methodSize(source, "m", level, CompilerFrontend.JAVAC, stdlib)
+                    <= LoweringFixture.methodSize(source, "m", level, CompilerFrontend.JAVAPARSER, stdlib), level.toString());
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "static long m(long n) { long i = 0; while (i < n) { i++; } return i; }",
+            "static BigInteger m(BigInteger a) { switch (a.intValue()) { case 1: break; default: break; } return a; }",
             "static long m(long n) { for (long i = 0; i < n; i = i + 1) { } return n; }",
+            "static long m() { return 1; } long instance() { for (;;) { } }",
+            "static long m() { return 1; } long instance() { do { } while (true); }",
             "static long m(long n) { do { n = n - 1; } while (n > 0); return n; }",
             "static long m(JulcList<BigInteger> xs) { for (var x : xs) { return 1; } return 2; }",
             "static long m(long n) { while (n > 0) { return 1; } return 2; }",

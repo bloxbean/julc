@@ -83,6 +83,11 @@ public final class LoweringFixture {
         }
     }
 
+    /** The size of {@code name}'s script at {@code level} on {@code frontend}. */
+    public static int methodSize(String source, String name, OptimizationLevel level, CompilerFrontend frontend, StdlibLookup stdlib) {
+        return UplcFlatEncoder.encodeProgram(method(source, name, level, false, frontend, stdlib).program()).length;
+    }
+
     /** The reference compiles {@code name}, which a test of a difference needs to be sure of. */
     public static void assertReferenceAcceptsMethod(String source, String name) {
         assertEquals(false, method(source, name, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAPARSER).hasErrors());
