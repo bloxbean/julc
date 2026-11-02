@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -24,7 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * What a guard may read, over the three families whose answer turns on what the reference can see: a list method that takes
  * a function, a variable of a {@code switch} in the guard, and an inferred parameter under each receiver. A program is
- * accepted by both frontends, with the JVM's answer and one cost and size, or rejected by both with one code. {@link #SEEN}
+ * accepted by both frontends, with the JVM's answer and one cost and size, or rejected by both with one code, or, at a
+ * simple-name receiver alone, accepted by {@code JAVAC} with the JVM's answer (D13, Accepted by decision). {@link #SEEN}
  * holds both outcomes of each family, so no family goes vacuous.
  */
 class Adr068GuardShapesPropertyTest {
@@ -34,9 +36,12 @@ class Adr068GuardShapesPropertyTest {
     private static final TagTable TAGS = new TagTable(List.of(new TagTable.Entry("Case$S$A", "Case$S", 0),
             new TagTable.Entry("Case$S$B", "Case$S", 1), new TagTable.Entry("Case$S$D", "Case$S", 2)));
 
+    /** The one shape {@code JAVAC} accepts and the reference does not: a lambda whose parameter the guard reads, at a simple-name receiver. */
+    private static final Pattern WIDER_RECEIVER = Pattern.compile("return l\\.(filter|any|all)\\(e ");
+
     private static final List<String> RECEIVERS = List.of("l", "(l)", "h.is()", "ids(l)", "l.tail()", "l.filter(y -> true)");
     private static final List<String> LEAVES = List.of("P.signum() > 0", "P.equals(BigInteger.ONE)", "!P.equals(BigInteger.ONE)",
-            "P.compareTo(BigInteger.ONE) > 0", "P.signum() > 0 && c", "c || P.signum() > 0", "!l.any(z -> z.equals(P))");
+            "P.compareTo(BigInteger.ONE) > 0", "P.signum() > 0 && c", "c || P.signum() > 0", "!l.any(z -> z.equals(P))", "P.longValue() > 0");
     private static final List<String> OPERATIONS = List.of("!R.any(x -> x.signum() > 0)", "R.all(x -> x.signum() > 0) && c",
             "c || R.any(x -> x.signum() > 0)", "R.any(x -> x.signum() > 0) == c", "!R.filter(x -> x.signum() > 0).isEmpty()",
             "R.filter(x -> x.signum() > 0).size() > 0", "!R.map(x -> x.add(x)).isEmpty()", "R.find(x -> x.signum() > 0).signum() > 0");
@@ -121,6 +126,7 @@ class Adr068GuardShapesPropertyTest {
             assertTrue(SEEN.getOrDefault(family + " accepted", 0) >= 5, () -> family + " accepted too rarely: " + SEEN);
             assertTrue(SEEN.getOrDefault(family + " rejected", 0) >= 5, () -> family + " rejected too rarely: " + SEEN);
         }
+        assertTrue(SEEN.getOrDefault("a parameter wider", 0) >= 5, () -> "a parameter wider too rarely: " + SEEN);
     }
 
     private static PlutusData integer(long value) {
@@ -138,9 +144,16 @@ class Adr068GuardShapesPropertyTest {
                 new PlutusData.ConstrData(0, List.of(values)));
         var report = RUNNER.run(new DiffCase("guards", program(shape.family(), shape.body()), "Case", "m", arguments, TAGS, null));
         boolean rejected = report.results().values().stream().anyMatch(result -> result.verdict().kind() == Verdict.Kind.REJECTED);
-        SEEN.merge(shape.family() + (rejected ? " rejected" : " accepted"), 1, Integer::sum);
+        boolean wider = rejected && report.results().entrySet().stream().noneMatch(result -> result.getKey().frontend() == CompilerFrontend.JAVAC
+                && result.getValue().verdict().kind() == Verdict.Kind.REJECTED);
+        SEEN.merge(shape.family() + (wider ? " wider" : rejected ? " rejected" : " accepted"), 1, Integer::sum);
         report.results().forEach((config, result) -> {
             var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));
+            if (wider) {
+                assertTrue(WIDER_RECEIVER.matcher(shape.body()).lookingAt(), report::describe);
+                assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+                return;
+            }
             if (rejected) {
                 assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
                 var code = assertInstanceOf(Observation.Rejected.class, result.uplc(), report::describe).code();

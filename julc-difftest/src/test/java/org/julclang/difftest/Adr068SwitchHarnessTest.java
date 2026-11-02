@@ -44,8 +44,10 @@ class Adr068SwitchHarnessTest {
     private static String program(String members) {
         return """
                 import java.math.BigInteger;
+                import java.util.Optional;
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.types.JulcMap;
                 import org.julclang.core.types.Tuple2;
                 import org.julclang.stdlib.Builtins;
 
@@ -507,14 +509,84 @@ class Adr068SwitchHarnessTest {
     void anInferredParameterInAGuardFollowsTheReceiver() {
         var l = list(1, -1, 3);
         String body = ".filter(x -> switch (s) { case S.A a when x.signum() > 0 -> true; default -> false; }).size(); }";
-        assertRejectedAlike("public static long m(S s, JulcList<BigInteger> l) { return l" + body, "JULC0072", a(1), l);
         for (var s : everyS()) {
+            assertWiderOnJavac("public static long m(S s, JulcList<BigInteger> l) { return l" + body, s, l);
             assertAgree("public static long m(S s, JulcList<BigInteger> l) { return (l)" + body, s, l);
             assertAgree("public static long m(S s, JulcList<BigInteger> l) { return l.tail()" + body, s, l);
             assertAgree("static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } public static long m(S s, JulcList<BigInteger> l) { return ids(l)" + body, s, l);
         }
         assertRejectedAlike("public static long m(S s, JulcList<Boolean> l) { return l.filter(b -> switch (s) { case S.A q when b -> true; default -> false; }).size(); }", "JULC0072", a(1), new PlutusData.ListData(List.of(bool(true))));
         assertFixedOnJavac("public static long m(S s, JulcList<BigInteger> l) { return l.filter((BigInteger x) -> switch (s) { case S.A a when x.signum() > 0 -> true; default -> false; }).size(); }", a(1), l);
+    }
+
+    private static final String WHEN = " -> true; default -> false; }";
+
+    private static PlutusData y(PlutusData s, boolean b) {
+        return constr(1, s, bool(b));
+    }
+
+    /** A guard reads an inferred parameter by the type javac gave it, at a simple name too: what the reference refuses there, and its value is the JVM's. */
+    @Test
+    void aGuardOnAnInferredParameterAtASimpleName() {
+        var l = list(1, -1, 3);
+        var ys = new PlutusData.ListData(List.of(y(a(1), true), y(d(), false)));
+        var nested = new PlutusData.ListData(List.of(list(1), list()));
+        for (var s : everyS()) {
+            for (var body : List.of("l.filter(x -> switch (s) { case S.A a when x.signum() > 0 && c" + WHEN + ").size()", "l.filter(x -> { var w = x; return switch (s) { case S.A a when w.signum() > 0" + WHEN + "; }).size()",
+                    "l.filter(x -> { var w = (x); return switch (s) { case S.A a when w.signum() > 0 && !c" + WHEN + "; }).size()",
+                    "(l.any(x -> switch (s) { case S.A a when c ? x.signum() > 0 : x.signum() < 0" + WHEN + ") ? 1 : 0)",
+                    "(l.any(x -> ids(l).any(y -> switch (s) { case S.A a when x.signum() > 0" + WHEN + ")) ? 1 : 0)",
+                    "(ids(l).any(x -> l.any(y -> switch (s) { case S.A a when y.signum() > 0" + WHEN + ")) ? 1 : 0)")) {
+                for (var c : List.of(bool(true), bool(false))) {
+                    assertWiderOnJavac("static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } public static long m(S s, boolean c, JulcList<BigInteger> l) { return " + body + "; }", s, c, l);
+                }
+            }
+        }
+        assertRejectedAlike("public static boolean m(S s, JulcList<Y> ly) { return ly.any(p -> switch (s) { case S.A a when p.s() instanceof S.A" + WHEN + "); }", "JULC0072", a(1), ys);
+        assertWiderOnJavac("public static boolean m(S s, JulcList<JulcList<BigInteger>> ll) { return ll.any(p -> p.any(y -> switch (s) { case S.A a when y.signum() > 0" + WHEN + ")); }", a(1), nested);
+    }
+
+    /** A guard that is one boolean call off an inferred parameter is a boolean, as it is with the parameter written, and the JVM's answer. */
+    @Test
+    void aBareBooleanCallInAGuard() {
+        var ys = new PlutusData.ListData(List.of(y(a(1), true), y(d(), false)));
+        var lists = new PlutusData.ListData(List.of(list(1), list(), list(-1, 5)));
+        var pairs = new PlutusData.ListData(List.of(constr(0, integer(1), bool(true)), constr(0, integer(2), bool(false))));
+        var maps = new PlutusData.ListData(List.of(new PlutusData.MapData(List.of(new PlutusData.Pair(integer(5), integer(1))))));
+        var options = new PlutusData.ListData(List.of(constr(0, integer(1)), constr(1)));
+        for (var s : List.of(a(1), d())) {
+            assertWiderOnJavac("public static long m(S s, JulcList<Y> ly) { return ly.filter(p -> switch (s) { case S.A a when p.b()" + WHEN + ").size(); }", s, ys);
+            assertWiderOnJavac("public static long m(S s, JulcList<Y> ly) { return ly.filter(p -> { var w = p; return switch (s) { case S.A a when w.b()" + WHEN + "; }).size(); }", s, ys);
+            for (var guard : List.of("p.isEmpty()", "p.any(q -> q.signum() > 0)", "p.contains(BigInteger.ONE)", "p.filter(q -> true).isEmpty()", "p.map(q -> q).isEmpty()")) {
+                assertWiderOnJavac("public static long m(S s, JulcList<JulcList<BigInteger>> ll) { return ll.filter(p -> switch (s) { case S.A a when " + guard + WHEN + ").size(); }", s, lists);
+            }
+            assertWiderOnJavac("public static long m(S s, JulcList<Tuple2<BigInteger, Boolean>> lt) { return lt.filter(p -> switch (s) { case S.A a when p.second()" + WHEN + ").size(); }", s, pairs);
+            assertWiderOnJavac("public static long m(S s, JulcList<JulcMap<BigInteger, BigInteger>> lm) { return lm.filter(p -> switch (s) { case S.A a when p.containsKey(BigInteger.valueOf(5))" + WHEN + ").size(); }", s, maps);
+            assertWiderOnJavac("public static long m(S s, JulcList<Optional<BigInteger>> lo) { return lo.filter(p -> switch (s) { case S.A a when p.isPresent()" + WHEN + ").size(); }", s, options);
+        }
+    }
+
+    private static void assertJavacIsTheJvm(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+        });
+    }
+
+    /** A {@code var} of a conditional or a {@code switch} of a parameter has javac's type too. */
+    @Test
+    void aVarOfAParameterAndAValueInAGuard() {
+        var l = list(1, -1, 3);
+        for (var s : List.of(a(1), d())) {
+            for (var c : List.of(bool(true), bool(false))) {
+                assertJavacIsTheJvm("public static boolean m(S s, boolean c, BigInteger n, JulcList<BigInteger> l) { return l.any(p -> { var w = c ? p : n; return switch (s) { case S.A a when w.signum() > 0" + WHEN + "; }); }", s, c, integer(-1), l);
+                assertJavacIsTheJvm("public static boolean m(S s, boolean c, BigInteger n, JulcList<BigInteger> l) { return l.any(p -> { var w = c ? n : p; return switch (s) { case S.A a when w.signum() > 0" + WHEN + "; }); }", s, c, integer(-1), l);
+            }
+            for (var t : everyS()) {
+                assertJavacIsTheJvm("public static boolean m(S s, S t, BigInteger n, JulcList<BigInteger> l) { return l.any(p -> { var w = switch (t) { case S.A z -> p; default -> n; }; return switch (s) { case S.A a when w.signum() > 0" + WHEN + "; }); }", s, t, integer(-1), l);
+                assertJavacIsTheJvm("public static boolean m(S s, S t, BigInteger n, JulcList<BigInteger> l) { return l.any(p -> { var w = switch (t) { case S.A z -> n; default -> p; }; return switch (s) { case S.A a when w.signum() > 0" + WHEN + "; }); }", s, t, integer(-1), l);
+            }
+        }
     }
 
     @Test

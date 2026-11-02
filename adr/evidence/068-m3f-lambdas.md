@@ -31,7 +31,7 @@ filter(x -> body)       Lam x:Data. let x = decode(x) in body
 | Question | Answer |
 |---|---|
 | What the parameter holds | The type javac gave it, read through `JavacFacts`, written or inferred (`valueType` for an inferred box) |
-| What the body sees | The written type. If none, the element type of the receiver as the reference sees it (`CallTargets.seen`), and Data for an element of a sealed interface at a simple-name receiver, which is what the reference's first pass rejects on (`Lambdas.elementSeen`) |
+| What the body sees | The written type. If none, the element type of the receiver as the reference sees it (`CallTargets.seen`), which is the type javac gave it wherever the reference has one |
 | What is decoded | `BigInteger`, `int`, `long`, `byte[]` and a hash, `boolean`, `String`, a list, a map. A record, a sum, `Optional`, a tuple and `PlutusData` are Data already |
 | What `map` encodes | javac's element type of the result. Where that says only Data, what the term says, since a builtin can leave a list under `PlutusData` |
 | Rejections inside | The body's own. A `return` is the lambda's, so `requireNativeBoundary` does not apply, as in the reference |
@@ -196,18 +196,22 @@ The answer is equal on well-typed Data, which is what the rows claim. A `Data` e
 
 ### The one deliberate widening
 
-The reference lowers a lambda at `NAME.hof(...)` once with its parameter untyped, since the name might be a class, drops that term, and keeps a throw. What it rejects only for that reason `JAVAC` accepts in a lambda's body, with the type javac gave. This is the one deliberate widening in Group 2, and it is D13's "Accepted by decision".
+The reference lowers a lambda at `NAME.hof(...)` once with its parameter untyped, since the name might be a class, drops that term, and keeps a throw. `JAVAC` does not port that pass: an inferred lambda parameter has the type javac gives it, in a body and in a `switch` guard. So every program the reference rejects only because of that pass compiles on `JAVAC` with the JVM's answer. This is the one deliberate widening in Group 2, and it is D13's "Accepted by decision".
 
 | Program, receiver a simple name | Reference | `JAVAC` |
 |---|---|---|
+| `xs.any(v -> switch (v) {...})` on an element of a sealed interface, through a `var`, nested, and in `map`, `filter`, `all` | `JULC0007` | The JVM's answer |
 | `rs.any(r -> switch (r.s()) {...})`, and through a `var q = r.s()`, or a nested `ys.any(...)` | `JULC0007` | The JVM's answer |
 | `fs.any(f -> f.ss().any(q -> switch (q) {...}))` | `JULC0007` | The JVM's answer |
 | `xs.map(x -> { var a = JulcArray.of(x, BigInteger.ONE); return a.get(0); })`, and of `r.a()` | `JULC0012` | The JVM's answer |
 | `var xs = JulcList.of(a); xs.map(x -> switch (s) { case S.A q -> x; ... })` | `JULC0012` | The JVM's answer |
+| `l.filter(x -> switch (s) { case A a when x.signum() > 0 -> ... })`, what is read off `x`, a `var` of either, nested | `JULC0072` | The JVM's answer |
+| A guard that is one boolean call off a parameter: `p.b()`, `p.isEmpty()`, `p.any(...)`, `p.contains(n)`, `p.second()`, `p.isPresent()`, `p.containsKey(n)` | `JULC0072` | The JVM's answer |
+| `var w = c ? p : n` or a `switch` of `p` and `n`, read in a guard | `JULC0072` | The JVM's answer |
 
-Each reads a type javac proved, and porting the rejection means lowering each lambda twice, which is exponential in nesting. `Adr068LambdasHarnessTest.aSwitchOnWhatIsReadOffAParameterAtASimpleName` and `anElementTypeTheFirstPassDoesNotSee` hold each to the JVM at all four levels and require the reference to go on rejecting. With a call as the receiver the reference accepts the same body, and `JAVAC` meets its bytes. No corpus row reaches this, so the tsv has no row for it, and the harness rows stand in place of a `.diffcase`.
+Each reads a type javac proved, and porting the rejection means lowering each lambda twice, which is exponential in nesting. `Adr068LambdasHarnessTest.aSwitchOnAnInferredElementAtASimpleName`, `aSwitchOnWhatIsReadOffAParameterAtASimpleName` and `anElementTypeTheFirstPassDoesNotSee`, and `Adr068SwitchHarnessTest.aGuardOnAnInferredParameterAtASimpleName` and `aBareBooleanCallInAGuard`, hold each to the JVM at all four levels and require the reference to go on rejecting. `Adr068GuardShapesPropertyTest` allows this difference at a simple-name receiver and nowhere else. With a call as the receiver the reference accepts the same body, and the two frontends write one term. A tag that is no constructor reads as the written type's does: `switch` fails, and `if (v instanceof A q)`, whose test compares tags, says no (`JavacSwitchesTest.aTagThatIsNoConstructorFailsInAnElement`, `aTagTestOnAnElementReadsAsTheWrittenType`).
 
-Two rejections of that pass stay, since a decision keeps them: a `switch` directly on an element of a sealed interface at a simple-name receiver (`JULC0007`), and a `switch` guard that reads an untyped parameter (`JULC0072`), with what is read off it and a `var` of either.
+What the reference rejects on every receiver is no part of this and stays: an inferred parameter named as a guard, `when b` (`JULC0072`), `instanceof` on one in a guard (`JULC0072`), and a member its reading cannot find (`JULC0055`).
 
 ## The tests
 

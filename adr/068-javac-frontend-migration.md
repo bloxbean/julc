@@ -845,8 +845,9 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   units, D7's `@Param` on `BytesData`, and a lone surrogate in a comment, which cannot reach a script: `JULC0093` is a
   rule on literals. `reject-record-static-field` and `reject-record-canonical-constructor` are "Diagnostic change"
   rows, to `JULC0095` and `JULC0099` (D15).
-- **One deliberate widening (Group 2).** What the reference rejects only because a throw from its discarded first pass over
-  a lambda at a simple-name receiver stands, `JAVAC` accepts in a lambda's body, with the type javac gave and the JVM's answer.
+- **One deliberate widening (Group 2).** An inferred lambda parameter has the type javac gives it, in a `switch` guard too. So
+  every program the reference rejects only because a throw from its discarded first pass over a lambda at a simple-name
+  receiver stands compiles on `JAVAC`, with the JVM's answer.
   [M3f's evidence](evidence/068-m3f-lambdas.md#the-one-deliberate-widening) lists it. Harness rows stand for the `.diffcase`, as no corpus row reaches it.
 - **Two limits of a `.diffcase` (r12).** A `.diffcase` compiles a method, so the two `Optional` rows about a validator's
   datum cannot show the reference diverging: their cases show the javac frontend meeting the JVM on those types, and

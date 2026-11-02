@@ -513,13 +513,13 @@ class Adr068LambdasHarnessTest {
         assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return PlutusData.cast(xs.find(x -> x.signum() > 5), Optional.class).isPresent(); }", integers(1));
     }
 
-    /** Valid programs on an element of a sealed interface: a simple name as the receiver is the only shape the reference refuses. */
+    /** Valid programs on an element of a sealed interface: a simple name as the receiver is the only shape the reference refuses, and {@code JAVAC} has javac's type there too. */
     @Test
     void aSwitchOnAnElementFollowsTheReceiver() {
         var xs = list(a(1), a(-1), b(1, 2), constr(2));
         String body = ".any(v -> switch (v) { case S.A q -> q.v().signum() > 0; case S.B q -> false; case S.D q -> false; }); }";
         String field = "record F(JulcList<S> ss) { } ";
-        assertRejectedAlike("public static boolean m(JulcList<S> xs) { return xs" + body, "JULC0007", xs);
+        assertWiderOnJavac("public static boolean m(JulcList<S> xs) { return xs" + body, xs);
         assertAgree("public static boolean m(JulcList<S> xs) { return (xs)" + body, xs);
         assertAgree("public static boolean m(JulcList<S> xs) { return xs.tail()" + body, xs);
         assertAgree("public static boolean m(JulcList<S> xs) { return xs.filter(u -> true)" + body, xs);
@@ -534,6 +534,35 @@ class Adr068LambdasHarnessTest {
         report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED,
                 result.verdict().kind(), report::describe));
         assertJavacAgrees(report);
+    }
+
+    /** {@code JULC0007}: an inferred element of a sealed interface has its type at a simple name too. */
+    @Test
+    void aSwitchOnAnInferredElementAtASimpleName() {
+        var xs = list(a(1), a(-1), b(1, 2), constr(2));
+        String on = "switch (v) { case S.A q -> q.v().signum() > 0; case S.B q -> false; case S.D q -> false; }";
+        for (var elements : List.of(xs, list(constr(2)), list())) {
+            assertWiderOnJavac("public static boolean m(JulcList<S> xs) { return xs.any(v -> " + on + "); }", elements);
+            assertWiderOnJavac("public static boolean m(JulcList<S> xs) { var ys = xs; return ys.all(v -> " + on + "); }", elements);
+            assertWiderOnJavac("public static long m(JulcList<S> xs) { return xs.filter(v -> " + on + ").size(); }", elements);
+            assertWiderOnJavac("public static JulcList<Boolean> m(JulcList<S> xs) { return xs.map(v -> " + on + "); }", elements);
+            assertWiderOnJavac("public static boolean m(JulcList<S> xs) { return xs.any(v -> { var w = v; return switch (w) { case S.A q -> true; default -> false; }; }); }", elements);
+        }
+        assertWiderOnJavac("public static " + BIG_LIST + " m(JulcList<S> xs) { return xs.map(v -> switch (v) { case S.A q -> q.v(); case S.B q when q.w().signum() > 0 -> q.w(); default -> BigInteger.ONE; }); }", xs);
+        assertWiderOnJavac("public record F(JulcList<S> ss) { } public static boolean m(JulcList<S> xs, F f) { return xs.any(v -> f.ss().any(w -> " + on + ")); }", xs, constr(0, list(a(1))));
+        assertWiderOnJavac("public static boolean m(JulcList<JulcList<S>> xss) { return xss.any(l -> l.any(v -> " + on + ")); }", list(xs, list()));
+    }
+
+    /** {@code instanceof} on an inferred element: its pattern form reads the tag as the written type does, on both frontends, and with no pattern there is none to read. */
+    @Test
+    void anInstanceofOnAnInferredElement() {
+        var xs = list(a(1), a(-1), b(1, 2), constr(2));
+        for (var elements : List.of(xs, list(constr(2)), list(a(-1)))) {
+            for (var parameter : List.of("v", "(S v)")) {
+                assertAgree("public static boolean m(JulcList<S> xs) { return xs.any(" + parameter + " -> { if (v instanceof S.A q) { return q.v().signum() > 0; } return false; }); }", elements);
+                assertAgree("public static long m(JulcList<S> xs) { return xs.filter(" + parameter + " -> { if (v instanceof S.B q) { return true; } return false; }).size(); }", elements);
+            }
+        }
     }
 
     private static final String ON_S = " switch (q) { case S.A a -> a.v().signum() > 0; case S.B b -> false; case S.D d -> false; } ";
