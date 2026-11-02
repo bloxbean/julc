@@ -14,9 +14,6 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeMirror;
-
 /**
  * A lambda, passed to the list method that applies it (ADR-068 M3). That is the one place a function exists on-chain, since
  * D6 adds no functional local. {@code PirHofBuilders} applies it to each element as Data, so the parameter is decoded by the
@@ -106,22 +103,13 @@ final class Lambdas {
      */
     private PirTerm encoded(PirTerm body, MethodInvocationTree call, LambdaExpressionTree lambda) {
         var type = ((PirType.ListType) typing.of(call)).elemType();
+        if (type instanceof PirType.DataType) type = typing.ofTerm(body);
         var where = lambda.getBody() instanceof ExpressionTree expression ? expression : lambda;
-        if (type instanceof PirType.DataType) {
-            type = typing.ofTerm(body);
-            typing.requireNoPairListEncoded(element(call), type, where);
-        }
         try {
             return type instanceof PirType.DataType ? body : PirHelpers.wrapEncode(body, facts.registry().resolveNamed(type));
         } catch (CompilerException e) {
             throw lowering.located(e, where);
         }
-    }
-
-    /** What Java has an element of {@code call}'s list as. */
-    private TypeMirror element(MethodInvocationTree call) {
-        var type = facts.type(call);
-        return type instanceof DeclaredType list && !list.getTypeArguments().isEmpty() ? list.getTypeArguments().getFirst() : type;
     }
 
     /**

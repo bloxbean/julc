@@ -79,7 +79,7 @@ class Adr068LoopRepresentationsPropertyTest {
         String start = map ? "Builtins.unMapData(d)" : plan.pick(List.of("Builtins.unListData(d)", "Builtins.tailList(Builtins.unListData(d))"));
         String sibling = plan.pick(List.of("", "PlutusData f = Builtins.unListData(e); ", "PlutusData f = e; "));
         String siblingStep = sibling.isEmpty() ? "" : sibling.contains("unListData") ? "if (!Builtins.nullList(f)) { f = Builtins.tailList(f); } " : "f = e; ";
-        String step = plan.pick(List.of("c = Builtins.tailList(c);", "c = (Builtins.tailList(c));", "c = next(c);", "c = nextData(c);",
+        String step = plan.pick(List.of("c = Builtins.tailList(c);", "c = (Builtins.tailList(c));", "c = next(c);",
                 "PlutusData n = Builtins.tailList(c); c = n;", "c = s > 100 ? c : Builtins.tailList(c);",
                 "if (s > 100) { s = 0; } else { c = Builtins.tailList(c); }", "{ c = Builtins.tailList(c); }"));
         String read = plan.pick(List.of("", map ? "s = s + Builtins.unIData(Builtins.fstPair(Builtins.headList(c))).longValue();"
@@ -99,8 +99,7 @@ class Adr068LoopRepresentationsPropertyTest {
                 import org.julclang.stdlib.Builtins;
 
                 public class Case {
-                    static PlutusData.ListData next(PlutusData c) { return Builtins.tailList(c); }
-                    static PlutusData nextData(PlutusData c) { return Builtins.tailList(c); }
+                    static PlutusData next(PlutusData c) { return Builtins.tailList(c); }
                     public static long m(PlutusData d, PlutusData e, JulcList<BigInteger> xs) {
                         PlutusData c = %s; %slong s = 0; %s %s
                     }
@@ -108,6 +107,54 @@ class Adr068LoopRepresentationsPropertyTest {
                 """.formatted(start, sibling, loop.formatted(body), end);
         var data = map ? Adr068LoopRepresentationsTest.MAP : Adr068LoopRepresentationsTest.LIST;
         assertAgrees(new DiffCase("cursors", source, "Case", "m", List.of(data, integers(4, 5), integers(1, 2))));
+    }
+
+    private static PlutusData map(int size) {
+        var entries = new ArrayList<PlutusData.Pair>();
+        for (int i = 0; i < size; i++) {
+            entries.add(new PlutusData.Pair(new PlutusData.IntData(BigInteger.valueOf(i + 1)), new PlutusData.IntData(BigInteger.valueOf(10 * i))));
+        }
+        return new PlutusData.MapData(entries);
+    }
+
+    private static PlutusData count(int size) {
+        var items = new long[size];
+        return integers(items);
+    }
+
+    /** A pair list is a map, on the JVM as on-chain: any map, any number of iterations, walked or built, then every encoding. */
+    @Property(tries = 300, seed = "20261103")
+    void aPairListInEveryEncoding(@ForAll("plans") List<Integer> choices) {
+        var plan = new Plan(choices);
+        int size = plan.pick(List.of(0, 1, 2, 3, 5));
+        int iterations = plan.pick(List.of(0, 1, 2, 3, 4)) % (size + 1);
+        boolean build = plan.pick(List.of(false, false, true));
+        String step = build ? "c = Builtins.mkCons(Builtins.mkPairData(e, e), c);"
+                : plan.pick(List.of("c = Builtins.tailList(c);", "c = (Builtins.tailList(c));", "c = s > 100 ? c : Builtins.tailList(c);", "PlutusData r = Builtins.tailList(c); c = r;", "c = next(c);"));
+        String start = build ? plan.pick(List.of("Builtins.mkNilPairData()", "Builtins.unMapData(d)")) : "Builtins.unMapData(d)";
+        String loop = plan.pick(List.of("while (s < l) { %s s = s + 1; }", "for (var x : xs) { %s s = s + 1; }", "while (s < l) { if (s >= 0) { %s } s = s + 1; }"));
+        String encode = plan.pick(List.of("JulcList.of(c).head()", "JulcList.of((c)).head()", "JulcList.of(f ? c : e).head()", "JulcList.of(w).head()",
+                "ps.prepend(c).head()", "ps.prepend(w).head()", "xs.prepend(BigInteger.ONE).map(q -> w).head()", "Builtins.mapData(c)", "Builtins.mapData(t.first())",
+                "g.insert(c, e).get(c)", "(e.equals(JulcList.of(c).head()) ? d : e)", "(JulcList.of(c).head().equals(e) ? d : e)", "(e.equals(c) ? d : e)", "(ps.prepend(c).contains(c) ? d : e)"));
+        var data = map(size);
+        var other = plan.pick(List.of(new PlutusData.IntData(BigInteger.ONE), map(1), map(Math.max(0, size - iterations)), new PlutusData.ListData(List.of())));
+        String source = """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.core.types.JulcMap;
+                import org.julclang.core.types.Tuple2;
+                import org.julclang.stdlib.Builtins;
+
+                public class Case {
+                    static PlutusData next(PlutusData c) { return Builtins.tailList(c); }
+                    public static PlutusData m(PlutusData d, PlutusData e, JulcList<BigInteger> xs, long l, JulcList<PlutusData> ps, JulcMap<PlutusData, PlutusData> g, boolean f) {
+                        PlutusData c = %s; long s = 0; %s var w = c; var t = new Tuple2<>(c, e); return %s;
+                    }
+                }
+                """.formatted(start, loop.formatted(step), encode);
+        assertAgrees(new DiffCase("pairs", source, "Case", "m", List.of(data, other, count(iterations), new PlutusData.IntData(BigInteger.valueOf(iterations)),
+                new PlutusData.ListData(List.of(map(1))), map(1), new PlutusData.ConstrData(1, List.of()))));
     }
 
     /** A variable that starts from Data the analysis cannot name, and that a list may reach by any form on a path not taken. */

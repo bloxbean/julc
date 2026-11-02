@@ -95,17 +95,6 @@ final class Typing {
                 || type instanceof PirType.StringType || type instanceof PirType.ListType || type instanceof PirType.MapType;
     }
 
-    /** A pair list is not encoded to Data. */
-    void requireNoPairListEncoded(ExpressionTree tree, PirTerm lowered) {
-        if (of(tree) instanceof PirType.DataType) requireNoPairListEncoded(facts.type(tree), of(tree, lowered), tree);
-    }
-
-    /** {@link #requireNoPairListEncoded}, of a value that holds {@code held} and that Java has as {@code java}: a {@code MapData} is a map. */
-    void requireNoPairListEncoded(TypeMirror java, PirType held, Tree at) {
-        boolean map = java.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(java)).equals(JavacNames.PLUTUS_DATA + ".MapData");
-        if (held instanceof PirType.MapType && !map) throw NotPorted.at(facts, at, "a pair list encoded to Data");
-    }
-
     /** What {@code term} says of itself. */
     PirType ofTerm(PirTerm term) {
         return termTypes.infer(term);

@@ -14,7 +14,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -381,9 +380,6 @@ class JavacLoopsTest {
             "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { l = Builtins.mkCons(d, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData c = Builtins.tailList(d); long i = 0; while (i < 2) { if (i > 5) { c = Builtins.mkNilData(); } var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData c = Builtins.unMapData(d); long i = 0; while (i < 2) { if (i > 0) { i = i + 1; } else { c = Builtins.mkNilPairData(); i = i + 2; } } return i; }",
-            "static long m(PlutusData d) { var l = Builtins.unListData(d); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
-            "static long m(PlutusData d) { PlutusData.ListData l = Builtins.mkNilPairData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
-            "static long m(PlutusData.ListData d) { var c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData.ListData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static PlutusData.MapData h(PlutusData d) { return Builtins.unMapData(d); } static long m(PlutusData d) { PlutusData.MapData b = h(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
     })
@@ -410,54 +406,6 @@ class JavacLoopsTest {
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
         assertEquals("JULC0041", failure.diagnostics().getFirst().code());
         assertEquals(12, failure.diagnostics().getFirst().line());
-    }
-
-    private static final String CURSOR = "PlutusData c = Builtins.unMapData(d); long n = 0; while (n < l) { c = Builtins.tailList(c); n = n + 1; } ";
-
-    private static final String FOR_EACH = "PlutusData c = Builtins.unMapData(d); long n = 0; for (var u : xs) { c = Builtins.tailList(c); n = n + 1; } ";
-
-    /** A pair list is not encoded to Data. */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static boolean m(PlutusData d, PlutusData e, JulcList<BigInteger> xs) { " + FOR_EACH + "return JulcList.of(c).head().equals(e); }",
-            "static boolean m(PlutusData d, PlutusData e, long l) { " + CURSOR + "return JulcList.of(c).head().equals(e); }",
-            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "var w = c; return JulcList.of(w).head(); }",
-            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "return JulcList.of((c)).head(); }",
-            "static PlutusData m(PlutusData d, long l, boolean f) { " + CURSOR + "return JulcList.of(f ? c : d).head(); }",
-            "static long m(PlutusData d, JulcList<PlutusData> xs, long l) { " + CURSOR + "return xs.prepend(c).size(); }",
-            "static boolean m(PlutusData d, JulcList<PlutusData> xs, long l) { " + CURSOR + "return xs.contains(c); }",
-            "static long m(PlutusData d, org.julclang.core.types.JulcMap<PlutusData, PlutusData> g, long l) { " + CURSOR + "return g.insert(c, d).size(); }",
-            "static boolean m(PlutusData d, PlutusData e, long l) { " + CURSOR + "return e.equals(c); }",
-            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "var t = new Tuple2<>(c, d); return t.first(); }",
-            "static PlutusData m(PlutusData d, JulcList<BigInteger> xs, long l) { " + CURSOR + "var w = c; return xs.map(q -> w).head(); }",
-            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "PlutusData r = d; long k = 0; while (k < 1) { r = JulcList.of(c).head(); k = k + 1; } return r; }",
-            "static PlutusData m(PlutusData d, long l) { PlutusData c = Builtins.mkNilPairData(); long n = 0; while (n < l) { c = Builtins.mkCons(Builtins.mkPairData(d, d), c); n = n + 1; } return JulcList.of(c).head(); }",
-            "static PlutusData m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = Builtins.mkNilPairData(); long n = 0; for (var u : xs) { c = Builtins.mkCons(Builtins.mkPairData(d, d), c); n = n + 1; } return JulcList.of(c).head(); }",
-            "static PlutusData m(JulcList<PlutusData> ds) { return ds.map(d -> Builtins.mkNilPairData()).head(); }",
-    })
-    void aPairListIsNotEncoded(String members) {
-        var failure = assertThrows(NotPorted.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of()));
-        assertEquals("a pair list encoded to Data", failure.construct());
-    }
-
-    /** What a pair list is read by takes it as it is, and what Java has as a map or as a list is encoded as one. */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "return Builtins.fstPair(Builtins.headList(c)); }",
-            "static boolean m(PlutusData d, JulcList<BigInteger> xs) { " + FOR_EACH + "return Builtins.nullList(c); }",
-            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "return Builtins.mapData(c); }",
-            "static PlutusData m(PlutusData d) { var c = Builtins.unMapData(d); return JulcList.of(c).head(); }",
-            "static PlutusData m(PlutusData d) { return JulcList.of(Builtins.unMapData(d)).head(); }",
-            "static long m(org.julclang.core.types.JulcMap<BigInteger, BigInteger> g) { return JulcList.of(g).size(); }",
-            "static PlutusData m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { c = Builtins.tailList(c); n = n + 1; } return JulcList.of(c).head(); }",
-            "static long m(PlutusData d, JulcList<PlutusData> xs, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { c = Builtins.tailList(c); n = n + 1; } return xs.prepend(c).size(); }",
-            "static PlutusData m(JulcList<PlutusData> ds) { return ds.map(d -> Builtins.unMapData(d)).head(); }",
-            "static PlutusData m(JulcList<PlutusData> ds) { return ds.map(d -> { var q = Builtins.unMapData(d); return q; }).head(); }",
-    })
-    void whatStaysAccepted(String members) {
-        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of()));
     }
 
     /** A library compiled as a root finds its own method in the reference's pool, which is the library slice's to read. */

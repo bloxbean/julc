@@ -1,0 +1,20 @@
+format: 3
+name: a map walked in a for-each, then encoded
+class: Case
+method: m
+arg: a201020304
+arg: 8101
+expect: DIVERGE M5 Value/Failure
+jvm: Value a10304 []
+uplc: Failure []
+note: A pair list stays a map, on the JVM as on-chain. The reference has no list in a for-each. Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Case {
+    public static PlutusData m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = Builtins.unMapData(d); long n = 0; for (var u : xs) { c = Builtins.tailList(c); n = n + 1; } return JulcList.of(c).head(); }
+}

@@ -223,7 +223,7 @@ class Adr068LoopsHarnessTest {
             "public static S m(JulcList<BigInteger> xs) { long n = 0; S s = new S.D(); for (var x : xs) { n = n + 1; s = new S.A(x); } return s; }",
             "public static Tuple2<BigInteger, BigInteger> m(JulcList<BigInteger> xs) { long n = 0; Tuple2<BigInteger, BigInteger> t = new Tuple2<>(BigInteger.ZERO, BigInteger.ONE); for (var x : xs) { n = n + 1; t = new Tuple2<>(x, t.first()); } return t; }",
             "public static BigInteger m(JulcList<BigInteger> xs) { Tuple2<BigInteger, BigInteger> t = new Tuple2<>(BigInteger.ZERO, BigInteger.ONE); for (var x : xs) { t = new Tuple2<>(x, t.first()); } return t.second(); }",
-            "public static PlutusData m(JulcList<BigInteger> xs) { PlutusData.ListData c = Builtins.tailList(Builtins.mkCons(Builtins.iData(0), Builtins.mkNilData())); PlutusData.ListData r = Builtins.mkNilData(); long n = 0; while (n < 2) { n = n + 1; r = Builtins.mkCons(Builtins.iData(n), r); } return Builtins.headList(r); }",
+            "public static PlutusData m(JulcList<BigInteger> xs) { PlutusData c = Builtins.tailList(Builtins.mkCons(Builtins.iData(0), Builtins.mkNilData())); PlutusData r = Builtins.mkNilData(); long n = 0; while (n < 2) { n = n + 1; r = Builtins.mkCons(Builtins.iData(n), r); } return Builtins.headList(r); }",
     })
     void aTupleCarriesEveryRepresentation(String members) {
         for (var xs : List.of(list(1, 2), list(4, 5, 6))) assertAgree(members, xs);

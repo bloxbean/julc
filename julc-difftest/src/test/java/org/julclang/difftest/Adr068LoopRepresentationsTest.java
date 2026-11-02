@@ -4,6 +4,7 @@ import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
@@ -149,6 +150,7 @@ class Adr068LoopRepresentationsTest {
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
                 import org.julclang.core.types.JulcList;
+                import org.julclang.core.types.Tuple2;
                 import org.julclang.stdlib.Builtins;
 
                 public class Case {
@@ -179,7 +181,6 @@ class Adr068LoopRepresentationsTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "public static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long s = 0; long i = 0; while (i < 2) { i = i + 1; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } } return s; }",
-            "static PlutusData.ListData next(PlutusData c) { return Builtins.tailList(c); } public static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long s = 0; while (!Builtins.nullList(c)) { c = next(c); s = s + 1; } return s; }",
             "static PlutusData next(PlutusData c) { return Builtins.tailList(c); } public static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long s = 0; while (!Builtins.nullList(c)) { c = next(c); s = s + 1; } return s; }",
             "public static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long s = 0; while (!Builtins.nullList(c)) { PlutusData n = Builtins.tailList(c); c = n; s = s + 1; } return s; }",
             "public static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long s = 0; while (!Builtins.nullList(c)) { c = (Builtins.tailList(c)); s = s + 1; } return s; }",
@@ -268,6 +269,101 @@ class Adr068LoopRepresentationsTest {
 
     private static final PlutusData ONE = integer(1);
     private static final PlutusData EMPTY = list();
+
+    private static final String SIGNATURE = "PlutusData d, PlutusData e, JulcList<BigInteger> xs, long l, JulcList<PlutusData> ps, org.julclang.core.types.JulcMap<PlutusData, PlutusData> g, boolean f";
+    private static final String WALK = "PlutusData c = Builtins.unMapData(d); long n = 0; while (n < l) { c = Builtins.tailList(c); n = n + 1; } ";
+    private static final String BUILD = "PlutusData c = Builtins.mkNilPairData(); long n = 0; while (n < l) { c = Builtins.mkCons(Builtins.mkPairData(d, d), c); n = n + 1; } ";
+
+    private static PlutusData pairs(int size) {
+        var items = new ArrayList<PlutusData>();
+        for (int i = 1; i <= size; i++) items.addAll(List.of(integer(i), integer(i + 10)));
+        return map(items.toArray(PlutusData[]::new));
+    }
+
+    /** Each encoding on no, one and many iterations, with what is left of the map empty and not, against each kind of value. */
+    private static void assertAMap(String returned, String members, boolean referenceFails) {
+        var source = cursors("public static %s m(%s) { %s }".formatted(returned, SIGNATURE, members));
+        for (int size : List.of(0, 1, 2, 4)) {
+            for (int iterations = 0; iterations <= size; iterations++) {
+                var left = pairs(size - iterations);
+                for (var other : List.of(left, pairs(1), list(constr(0, integer(1), integer(11))), integer(1))) {
+                    var items = new ArrayList<PlutusData>();
+                    for (int i = 0; i < iterations; i++) items.add(integer(i));
+                    var report = BOTH.run(new DiffCase("pairs", source, "Case", "m", List.of(pairs(size), other, list(items.toArray(PlutusData[]::new)),
+                            integer(iterations), list(pairs(1)), pairs(1), bool(true))));
+                    report.results().forEach((config, result) -> {
+                        boolean mayFail = config.frontend() != CompilerFrontend.JAVAC && referenceFails;
+                        if (!mayFail) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+                    });
+                }
+            }
+        }
+    }
+
+    /** A pair list is a map on the JVM as on-chain, so whatever encodes one meets the JVM, on the reference's {@code while} too. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "boolean|return JulcList.of(c).head().equals(e);",
+            "boolean|return e.equals(JulcList.of(c).head());",
+            "boolean|return e.equals(c);",
+            "PlutusData|return JulcList.of(c).head();",
+            "PlutusData|var w = c; return JulcList.of(w).head();",
+            "PlutusData|return JulcList.of((c)).head();",
+            "PlutusData|return JulcList.of(f ? c : d).head();",
+            "PlutusData|return ps.prepend(c).head();",
+            "long|return ps.prepend(c).size();",
+            "long|return g.insert(c, d).size();",
+            "PlutusData|return g.insert(c, d).get(c);",
+            "PlutusData|var w = c; return xs.prepend(BigInteger.ONE).map(q -> w).head();",
+            "PlutusData|PlutusData r = d; long k = 0; while (k < 1) { r = JulcList.of(c).head(); k = k + 1; } return r;",
+            "PlutusData|return Builtins.mapData(c);",
+            "PlutusData|return Builtins.fstPair(Builtins.headList(Builtins.mkCons(Builtins.mkPairData(d, d), c)));",
+            "boolean|return Builtins.nullList(c);",
+    })
+    void aWalkedPairListIsAMap(String returned, String read) {
+        assertAMap(returned, WALK + read, false);
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "PlutusData|return JulcList.of(c).head();",
+            "boolean|return JulcList.of(c).head().equals(e);",
+            "PlutusData|var w = c; return ps.prepend(w).head();",
+    })
+    void aBuiltPairListIsAMap(String returned, String read) {
+        assertAMap(returned, BUILD + read, false);
+    }
+
+    /** The reference has no list in a for-each, and {@code contains} of a value not yet Data is D6's. */
+    @Test
+    void aMapTheReferenceDoesNotCarry() {
+        String each = "PlutusData c = Builtins.unMapData(d); long n = 0; for (var u : xs) { c = Builtins.tailList(c); n = n + 1; } ";
+        assertAMap("boolean", each + "return JulcList.of(c).head().equals(e);", true);
+        assertAMap("PlutusData", each + "return JulcList.of(c).head();", true);
+        assertAMap("PlutusData", "PlutusData c = Builtins.mkNilPairData(); long n = 0; for (var u : xs) { c = Builtins.mkCons(Builtins.mkPairData(d, d), c); n = n + 1; } return JulcList.of(c).head();", true);
+        assertAMap("boolean", WALK + "return ps.contains(c);", true);
+    }
+
+    @Test
+    void aMapInATupleAndALambda() {
+        assertAMap("PlutusData", WALK + "var t = new Tuple2<>(c, d); return Builtins.mapData(t.first());", false);
+        var report = RUNNER.run(new DiffCase("pairs", cursors("public static PlutusData m(JulcList<PlutusData> ds) { return ds.map(d -> Builtins.mkNilPairData()).head(); }"), "Case", "m", List.of(list(ONE))));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        var mapped = BOTH.run(new DiffCase("pairs", cursors("public static PlutusData m(JulcList<PlutusData> ds) { return ds.map(d -> Builtins.unMapData(d)).head(); }"), "Case", "m", List.of(list(pairs(1)))));
+        assertTrue(mapped.all(Verdict.Kind.AGREE), mapped::describe);
+    }
+
+    /** A single pair is Data on the JVM and a native pair on-chain, and encoding one fails on both frontends. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static PlutusData m(PlutusData d) { var c = Builtins.unMapData(d); return JulcList.of(Builtins.headList(c)).head(); }",
+            "public static PlutusData m(PlutusData d) { var h = Builtins.headList(Builtins.unMapData(d)); return JulcList.of(h).head(); }",
+            "public static boolean m(PlutusData d) { var h = Builtins.mkPairData(d, d); return d.equals(h); }",
+    })
+    void aSinglePairFailsOnBoth(String members) {
+        var report = BOTH.run(new DiffCase("pairs", cursors(members), "Case", "m", List.of(pairs(1))));
+        assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), report::describe);
+    }
 
     /** Data the analysis cannot name stays Data where a list may reach it, and no list arrives on these inputs. */
     @ParameterizedTest
