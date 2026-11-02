@@ -272,6 +272,7 @@ class JavacLoopsTest {
             "static byte[] m(PubKeyHash p) { byte[] s = new byte[]{}; for (var o : JulcList.of(p)) { s = o.hash(); } return s; }",
             "static long m(BigInteger a) { long s = 0; for (var x : JulcList.of(a)) { s = x.longValue(); } return s; }",
             "static long m(BigInteger a) { long s = 0; for (var x : JulcList.of(a)) { var y = x; long t = 0; while (t < 2) { t = t + 1; y = x; } s = y.longValue(); } return s; }",
+            "static long m(BigInteger a) { var y = JulcList.of(a).head(); long t = 0; while (t < 2) { t = t + 1; y = y; } return y.longValue(); }",
             "static long m(JulcList<BigInteger> xs) { long s = 0; for (var o : xs.map(x -> x)) { s = o.longValue(); } return s; }",
     })
     void aVariableReadAsTheReferenceSeesIt(String members) {

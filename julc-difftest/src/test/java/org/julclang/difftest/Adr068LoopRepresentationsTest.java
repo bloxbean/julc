@@ -241,6 +241,8 @@ class Adr068LoopRepresentationsTest {
                 true, MAP);
         assertCarried("public static boolean m(BigInteger a) { return JulcList.of(a, a).any(x -> { var y = x; long n = 0; while (n < 2) { n = n + 1; y = x; } return n > 5; }); }",
                 false, integer(1));
+        assertCarried("public static boolean m(BigInteger a) { return JulcList.of(a, a).any(x -> { long n = 0; while (n < 2) { n = n + 1; x = BigInteger.TEN; } return n > 5; }); }",
+                true, integer(1));
     }
 
     /** I2d's fail-closed direction: an element read as Data that holds a boolean has no {@code equals} row, so it is {@code JULC0055}, which is listed for M5. */
