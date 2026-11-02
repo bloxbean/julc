@@ -135,18 +135,20 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 
 ## The I1 gate
 
-`build/m4/i1.sh` against the tables frozen at `e0d6eefc`. The run fails by design at `assertListed` until the integrator adds the 50 rows, and moved rows are checked at the freeze. Nothing shrank: `lowering-i1-shrunk.tsv` is empty. No row has a loop as its first construct.
+`build/m4/i1.sh` against the tables frozen at `e0d6eefc`. The run fails by design at `assertListed` until the integrator adds the rows below, and moved rows are checked at the freeze. Nothing shrank: `lowering-i1-shrunk.tsv` is empty. No row has a loop as its first construct.
 
-The tables below are the merge of `wip/068-m3g2` at `9ab85bc3`, which moved no row of this slice's. The fixes that follow moved none either: every one of the 17,076 cases has the same row before and after them, bytes included, so the corpus holds no program that reaches what they changed. The 11 new `.diffcase`s are cases 17,077 to 17,087. They have no row in `lowering-reference.tsv`, so I1 reports them as `REFERENCE-DRIFT`, `no committed row`, and the freeze must add them.
+The tables below are at `77db3fc5`. The merge of `wip/068-m3g2` at `9ab85bc3` moved no row of this slice's. The fixes after it moved one, `f759f988`, a label's rejection: the other 17,075 cases have the same row before and after them, bytes included, so the corpus holds no program that reaches what they changed.
+
+The 11 new `.diffcase`s are cases 17,077 to 17,087. They have no row in `lowering-reference.tsv`, so I1 reports them as `REFERENCE-DRIFT`, `no committed row`, and the freeze must add them. With that table extended in a throwaway worktree, and nothing frozen here, all 11 are `DIFFERENT-bytes`, every other row is as below, and nothing shrank.
 
 | Class | `e0d6eefc` | M4 |
 |---|---:|---:|
 | `i1a-identical` | 2,513 | 5,950 |
 | `not-ported` | 7,132 | 3,647 |
-| `reference-rejects-not-ported` | 345 | 101 |
+| `reference-rejects-not-ported` | 345 | 100 |
 | `javac-rejects` | 5,359 | 5,359 |
 | `both-reject-javac-first` | 1,288 | 1,288 |
-| `both-reject` | 193 | 435 |
+| `both-reject` | 193 | 436 |
 | `ledger-source` | 38 | 38 |
 | `unreplayable` | 17 | 17 |
 | `DIFFERENT-javac-accepts` | 27 | 27 |
@@ -156,11 +158,12 @@ The tables below are the merge of `wip/068-m3g2` at `9ab85bc3`, which moved no r
 | `DIFFERENT-pir` | 33 | 33 |
 | `DIFFERENT-provenance` | 7 | 7 |
 | `DIFFERENT-diagnostics` | 5 | 5 |
-| Total | 17,076 | 17,076 |
+| `REFERENCE-DRIFT` | 0 | 11 |
+| Total | 17,076 | 17,087 |
 
 ### Every class of moved row
 
-5,635 rows moved, and each of the 17,076 is still present.
+5,636 rows moved, and each of the 17,076 is still present.
 
 | Rows | From | To | Why |
 |---:|---|---|---|
@@ -175,6 +178,7 @@ The tables below are the merge of `wip/068-m3g2` at `9ab85bc3`, which moved no r
 | 3 | `not-ported`, `ENHANCED_FOR_LOOP`, `WHILE_LOOP` | `not-ported`, `debug metadata`, `TYPE_CAST`, `an expression of type java.lang.Object` | A later construct, one row each |
 | 242 | `reference-rejects-not-ported` | `both-reject` | The reference's rejection, now reached: 163 for-each, 76 `while`, and one each of `break`, `for`, `do` |
 | 27 | `reference-rejects-not-ported` | `reference-rejects-not-ported` | Stops at a later construct |
+| 1 | `reference-rejects-not-ported`, `a library unit` | `both-reject` | `f759f988`. A label on a `while`, `JULC0066` with `'break done'` at the `break`, as the reference has it, from `SubsetScan` |
 | 45 | `not-ported` | `DIFFERENT-javac-rejects` | Below |
 | 2 | `DIFFERENT-javac-rejects` | `DIFFERENT-javac-rejects` | More methods covered |
 | 3 | `not-ported` | `DIFFERENT-bytes` | Below |
@@ -184,7 +188,7 @@ The tables below are the merge of `wip/068-m3g2` at `9ab85bc3`, which moved no r
 
 ### New `DIFFERENT-*` rows
 
-[`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv) holds the 50, one row each, in the table's format. It was checked against the run: stale entries 0, unlisted 0 once added.
+[`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv) holds 61, one row each, in the table's format: the corpus's 50 and the new cases' 11. It was checked against the run with the extended reference table: stale entries 0, unlisted 0, no class differs. The reference table goes first, or the 11 are entries the tool cannot find.
 
 | Rows | Class | D13 | Rule |
 |---:|---|---|---|
@@ -193,8 +197,10 @@ The tables below are the merge of `wip/068-m3g2` at `9ab85bc3`, which moved no r
 | 2 | `DIFFERENT-bytes` | Cost change | Decision 1. 136 to 133 bytes and 231 to 228 where the identity `let` survives optimization. Smaller |
 | 1 | `DIFFERENT-bytes` | Cost change, **grows** | Decision 2. `for (var i : JulcList.of(x))` with `i` unread. The table below. A review decision is owed |
 | 2 | `DIFFERENT-rejection` | Diagnostic change | Two errors in one compilation, in one method and in two (D13): the reference collects one and throws the other, and this frontend stops at the first. With the first removed, both say the second alike |
+| 9 | `DIFFERENT-bytes` | Semantic fix | New cases. Each `diverge-068-` the reference fails on-chain, and `JAVAC` agrees with the JVM at all four levels |
+| 2 | `DIFFERENT-bytes` | Cost change, **grows** | New cases. `agree-068-inline-element-in-a-tuple` and `-mapped-`. The second table below. A review decision is owed |
 
-Row `64e378e9`, the one budget that grows, on inputs 3 and 4, one iteration, value and traces agreeing at all four levels. The type's fix did not change it:
+Row `64e378e9`, the one budget that grows in the corpus, on inputs 3 and 4, one iteration, value and traces agreeing at all four levels. The type's fix did not change it:
 
 | Levels | Reference | `JAVAC` | Delta |
 |---|---|---|---|
@@ -203,6 +209,15 @@ Row `64e378e9`, the one budget that grows, on inputs 3 and 4, one iteration, val
 
 The cost is per iteration, and only where the variable is unread. The follow-up "A decode no read needs" can remove it.
 
+The two new rows that grow, each on its case's input, value and traces agreeing at all four levels. A `var` copied from an element holds the type it has, so a tuple of accumulators encodes what was decoded, where the reference carries the element as Data. That is the rule that makes `diverge-068-assigned-element-in-a-tuple` run, and no row of the corpus reaches it:
+
+| Case | Levels | Reference | `JAVAC` | Delta |
+|---|---|---|---|---|
+| `inline` | First | cpu 17,507,843, memory 71,347, 218 bytes | cpu 18,530,053, memory 75,987, 229 bytes | +1,022,210 (+5.8%), +4,640 (+6.5%), +11 |
+| `inline` | Last two | cpu 14,989,776, memory 61,810, 199 bytes | cpu 16,011,986, memory 66,450, 210 bytes | +1,022,210 (+6.8%), +4,640 (+7.5%), +11 |
+| `mapped` | First | cpu 33,438,827, memory 142,383, 439 bytes | cpu 34,355,549, memory 146,559, 451 bytes | +916,722 (+2.7%), +4,176 (+2.9%), +12 |
+| `mapped` | Last two | cpu 25,308,626, memory 110,172, 379 bytes | cpu 26,513,348, memory 116,148, 395 bytes | +1,204,722 (+4.8%), +5,976 (+5.4%), +16 |
+
 ### Coverage
 
 | | Covered | Of | | `e0d6eefc` |
@@ -210,26 +225,26 @@ The cost is per iteration, and only where the variable is unread. The follow-up 
 | Programs the reference accepts | 5,950 | 15,117 | 39.4% | 2,513 |
 | Their distinct scripts | 1,744 | | | 978 |
 | Programs of more than one method | 2,860 | | | 1,634 |
-| Methods | 17,468 | 172,429 | 10.1% | 11,708 |
-| Distinct methods | 3,556 | | | 2,595 |
+| Methods | 17,464 | 172,429 | 10.1% | 11,708 |
+| Distinct methods | 3,554 | | | 2,595 |
 
-What each program first stops at, with `e0d6eefc`'s in brackets: `a library unit` 3,335 (1,566), `TYPE_CAST` 315 (233), `reference equality` 77 (38), `the exports of library sources` 35 (35), `a library method` 23 (17), `an equals
+What each program first stops at, with `e0d6eefc`'s in brackets: `a library unit` 3,334 (1,566), `TYPE_CAST` 315 (233), `(rejected)` 90 (50), `the exports of library sources` 35 (35), `a library method` 23 (17), `an equals
 between unrelated types` 21 (14), `a contract schema` 15 (15), `a call of a library unit's own method` 10 (0). `ENHANCED_FOR_LOOP` was 3,594 and `WHILE_LOOP` 2,002, and neither is on the list now.
 
 ### Rows a library unit leaves stopped
 
-3,335 rows stop at `a library unit` as their first construct, and 1,769 of them moved there from a loop in this slice. By the ADR's M4 row as of r13, a loop that calls a library gets its I1 row when libraries are lowered.
+3,334 rows stop at `a library unit` as their first construct, and 1,769 of them moved there from a loop in this slice. By the ADR's M4 row as of r13, a loop that calls a library gets its I1 row when libraries are lowered.
 
 ### What "every loop method has a row" covers
 
-Every case has a row, and every method is attempted alone, but a row is not always a comparison. Over methods whose reference term holds a `letrec`:
+Every case has a row, and every method is attempted alone, but a row is not always a comparison. Over methods whose reference term holds a `letrec`, by an independent review's tally at `7c52bbc7`, before the merge:
 
 | Methods | Outcome |
 |---:|---|
 | 7,843 (798 distinct) | Compared with the reference's term |
 | 536 (75 distinct) | Stop at `TYPE_CAST` before a comparison |
 | 74 | Stop at an `equals` on an array |
-| 39 | Stop at reference equality |
+| 39 | Stopped at reference equality. The merge makes that rule a rejection, `JULC0086` |
 | 4 | Rejected |
 | 1 | Stops at an expression of type `Object` |
 | 60,993 | No attempt: library methods, and sources javac rejects first |
@@ -244,11 +259,11 @@ This slice ran its own suites and the two modules. `Javac21ParityTest`, ADR-066'
 
 | Run | What | Result |
 |---|---|---|
-| `JavacLoopsTest` | Rows against the reference, bytes at all four levels with and without a source map, and rejections by code, message and position | 196 |
-| `Adr068LoopsHarnessTest` | Against the JVM, through each frontend at every level, on value, traces, failure, cost and size | 76 tests, 465 runs agreed |
+| `JavacLoopsTest` | Rows against the reference, bytes at all four levels with and without a source map, and rejections by code, message and position | 234 |
+| `Adr068LoopsHarnessTest` | Against the JVM, through each frontend at every level, on value, traces, failure, cost and size | 78 tests, 489 runs agreed |
 | `Adr068LoopsPropertyTest` | `LoopPrograms`, a plain Java model, the JVM and both frontends, 300 tries, read back on-chain | No disagreement |
 | `Adr068LoopsFuzzTest` | The same under Jazzer, 12 seeds, replayed by `test` | 793 runs in 61 s, no crash |
-| `Adr068LoopCasesOnJavacTest` | 50 saved cases with a loop on their expectation, and G0's 376 programs on 4 inputs | No disagreement |
+| `Adr068LoopCasesOnJavacTest` | 52 saved cases with a loop on their expectation, and G0's 376 programs on 4 inputs | No disagreement |
 | `LoopBreakContinuationTest` | The loop-break continuation suite, now on both frontends, on two VMs | 3 tests |
 | `Adr068LoopRepresentationsTest` | 10 element types, 9 iterables, a loop variable written two ways, 7 shapes: 1,260 programs, each the JVM's at all four levels. Then each form a list reaches a Data accumulator by, on the reference and `JAVAC` | No disagreement on `JAVAC` |
 | `Adr068LoopRepresentationsPropertyTest` | Both families composed further: 150 elements under chains of variables and loops, 200 cursors by any form in any loop beside any accumulator, against the JVM | No disagreement |
@@ -273,7 +288,7 @@ Of the 1,260, the reference agrees on 1,056. It fails the other 204 with one def
 |---|---|
 | T21: `agree-t21-while-break-first`, `-if-update`, `-never-taken` | Agree at all four levels |
 | T23: `agree-t23-for-each-split-if-else-break-taken`, `-never-taken`, `corpus-input-1`, `-3` | Agree at all four levels |
-| Every saved case with a loop, 51 | 50 on the case's expectation. `reject-g1-291-local-after-loop` stops at `an expression of type java.lang.Object`, `v.equals(switch ...)`, in `JavacStopsTest`, before its loop |
+| Every saved case with a loop, 53, beside the 9 `diverge-068-`, which the reference answers alone and `Adr068SavedCasesOnJavacTest` holds | 52 on the case's expectation. `reject-g1-291-local-after-loop` stops at `an expression of type java.lang.Object`, `v.equals(switch ...)`, in `JavacStopsTest`, before its loop |
 | G0's enumeration, 376 programs on 4 inputs at all four levels | No unexplained verdict |
 | `LoopBreakContinuationTest`'s three tests | Pass on both frontends |
 
@@ -294,12 +309,12 @@ The other loop suites compile by the default frontend, so they were run once in 
 
 ### Whole modules
 
-Both under the machine lock, `--rerun`, from the XML, at `5b83b4fd`'s tree:
+Both under the machine lock, `--rerun`, from the XML, at `a299169f`'s tree:
 
 | Module | Tests | Failures | Errors | Skipped |
 |---|---:|---:|---:|---:|
-| `julc-compiler` | 6,345 | 0 | 0 | 0 |
-| `julc-difftest` | 1,902 | 0 | 0 | 0 |
+| `julc-compiler` | 6,456 | 0 | 0 | 0 |
+| `julc-difftest` | 2,007 | 0 | 0 | 0 |
 
 ## Mutants
 
@@ -367,13 +382,13 @@ The review's four survivors:
 - **Which programs the join's rule has never met.** The generator's nested loops reach two levels, and its accumulators three.
 - **`AccumulatorTypes` beyond what it reads.** A list that reaches a Data accumulator through a helper's parameter, a field, a lambda or a tuple's component says nothing, so the accumulator packs as Data and fails on-chain, as on the reference. A helper's `return` is read, its arguments are not.
 - **A local at a method's level after a loop that hides a field, by cost.** Both frontends agree on value and failure, and `Adr068LoopsPropertyTest` does not compare cost on that shape alone. Its size is pinned in `JavacLoopsTest`.
-- **The 11 new `.diffcase`s in the reference table.** `lowering-reference.tsv` has no row for them, so I1 lists them as `REFERENCE-DRIFT`, `no committed row`, until the freeze. See [the I1 gate](#the-i1-gate).
+- **The 11 new `.diffcase`s in the committed tables.** `lowering-reference.tsv` has no row for them, so I1 lists them as `REFERENCE-DRIFT`, `no committed row`, until the freeze. Their classes come from a scratch table. See [the I1 gate](#the-i1-gate).
 - **I2a's inventory** is still not run on this frontend as an inventory. `JavacLoopsTest` holds each rule to the reference.
 - **Images and DevKit** were not run. The code holds no thread, reflection, file access or `ServiceLoader`.
 
 ## For the integrator
 
-- **Freeze.** `adr/evidence/068/lowering-*.tsv`, and add [`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv)'s rows to `lowering-accepted-differences.tsv`. Nothing shrank.
+- **Freeze.** `adr/evidence/068/lowering-*.tsv`, the reference table first for the 11 new cases, and add [`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv)'s 61 rows to `lowering-accepted-differences.tsv`. Nothing shrank.
 - **ADR text.**
   - M4's row: this slice. Its entry gate and its line on a loop that calls a library are r13's, and M3's library, entry-point and debug items stay open.
   - D6: `==` and `.equals` rows that a loop stopped now show.
