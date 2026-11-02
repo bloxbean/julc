@@ -4,6 +4,7 @@ import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.DefaultUni;
+import org.julclang.core.cbor.PlutusDataCborEncoder;
 import org.julclang.core.source.SourceLocation;
 
 import java.math.BigInteger;
@@ -51,8 +52,8 @@ public final class DelayedMethodPass {
      * function and that function's scope. A function that reaches a parameter is a value of {@link Kind#OTHER}: what a
      * call of a parameter runs is not known.
      *
-     * @param work an upper bound on what evaluating the term runs, in {@link #WORK_LIMIT}'s units. A value held by a
-     *             variable has been evaluated, so reading it runs nothing
+     * @param work a count of what evaluating the term runs, in {@link #WORK_LIMIT}'s units. A value held by a variable has
+     *             been evaluated, so a read counts as a read, whatever the value took
      */
     private record Known(Kind kind, long size, Constant constant, PirTerm.Lam function, Map<String, Known> scope, long work) {
         static Known of(Kind kind, long size) {
@@ -103,11 +104,13 @@ public final class DelayedMethodPass {
     }
 
     /**
-     * The most work a body may do and stay a strict {@code let}. Work counts each application, of a builtin or a function,
-     * as 1, and each byte a builtin's arguments hold as 1, so it bounds what a body costs whatever it is applied to. A body
-     * past it is read as one that may fail. {@code MerklePatriciaForestry.nullHash2}, the largest of the shared bodies a
-     * program uses, does 134. No argument within it reaches what a builtin here refuses: Plutus 1.63.0.0's semantics
-     * variants D and E bound integers to 2^262143 and byte strings to 65,536 bytes ({@code Universe/Cardano.hs}).
+     * The most work a body may do and stay a strict {@code let}. Work counts each constant, read, function, {@code let},
+     * branch, application and constructor it evaluates as 1, and each byte a builtin's arguments or a string field hold as
+     * 1, a value built by a constructor holding its fields' bytes. It is a count of what a body runs, not of what each part
+     * costs: a hash of no bytes costs more than a read. A body past it is read as one that may fail.
+     * {@code MerklePatriciaForestry.nullHash2}, the largest of the shared bodies a program uses, does 141. No argument
+     * within it reaches what a builtin here refuses: Plutus 1.63.0.0's semantics variants D and E bound integers to 2^262143
+     * and byte strings to 65,536 bytes ({@code Universe/Cardano.hs}).
      */
     private static final long WORK_LIMIT = 1024;
 
@@ -203,22 +206,24 @@ public final class DelayedMethodPass {
 
     private static Known evaluated(PirTerm term, Map<String, Known> bound, Reading reading) {
         return switch (term) {
-            case PirTerm.Const constant -> Known.of(constant.value());
-            case PirTerm.Var variable -> bound.get(variable.name());
-            case PirTerm.Lam lam -> Known.of(lam, bound);
+            case PirTerm.Const constant -> Known.of(constant.value()).after(1);
+            case PirTerm.Var variable -> bound.containsKey(variable.name()) ? bound.get(variable.name()).after(1) : null;
+            case PirTerm.Lam lam -> Known.of(lam, bound).after(1);
             case PirTerm.Builtin _ -> Known.of(Kind.OTHER, 0);
             case PirTerm.Let let -> {
                 var value = known(let.value(), bound, reading);
                 var body = value == null ? null : known(let.body(), with(bound, let.name(), value), reading);
-                yield body == null ? null : body.after(value.work());
+                yield body == null ? null : body.after(value.work() + 1);
             }
             case PirTerm.IfThenElse branch -> {
                 var condition = known(branch.cond(), bound, reading);
+                if (condition == null || condition.kind() != Kind.BOOL) yield null;
                 var then = known(branch.thenBranch(), bound, reading);
+                if (then == null) yield null;
                 var otherwise = known(branch.elseBranch(), bound, reading);
-                if (condition == null || condition.kind() != Kind.BOOL || then == null || otherwise == null) yield null;
+                if (otherwise == null) yield null;
                 yield Known.of(then.kind() == otherwise.kind() ? then.kind() : Kind.OTHER, Math.max(then.size(), otherwise.size()))
-                        .after(condition.work() + Math.max(then.work(), otherwise.work()));
+                        .after(condition.work() + Math.max(then.work(), otherwise.work()) + 1);
             }
             case PirTerm.App app -> called(app, bound, reading);
             case PirTerm.DataConstr constr -> constructed(constr, bound, reading);
@@ -250,6 +255,8 @@ public final class DelayedMethodPass {
             case Constant.IntegerConst integer -> integer.value().bitLength() / 8 + 1;
             case Constant.ByteStringConst bytes -> bytes.value().length;
             case Constant.StringConst string -> string.value().getBytes(StandardCharsets.UTF_8).length;
+            case Constant.DataConst data -> PlutusDataCborEncoder.encode(data.value()).length;
+            case Constant.ListConst list -> list.values().stream().mapToLong(DelayedMethodPass::sizeOf).sum();
             default -> 0;
         };
     }
@@ -310,17 +317,19 @@ public final class DelayedMethodPass {
         return body instanceof PirTerm.Lam ? null : known(body, scope, reading);
     }
 
-    /** A constructor is Data when each field is total and of the kind its declared type encodes. */
+    /** A constructor is Data when each field is total and of the kind its declared type encodes. A string field encodes each byte it holds. */
     private static Known constructed(PirTerm.DataConstr constr, Map<String, Known> bound, Reading reading) {
         var fields = fieldTypes(constr);
         if (fields == null || fields.size() != constr.fields().size() || constr.tag() < 0) return null;
+        long size = 1;   // Held at the limit: past it any builtin that reads the value ends the reading, and sharing cannot wrap it round.
         long work = 1;
         for (int i = 0; i < fields.size(); i++) {
             var field = known(constr.fields().get(i), bound, reading);
             if (field == null || field.kind() != encoded(fields.get(i))) return null;
-            work += field.work();
+            size = Math.min(size + field.size(), WORK_LIMIT + 1);
+            work += field.work() + (field.kind() == Kind.STRING ? field.size() : 0);
         }
-        return Known.of(Kind.DATA, 0).after(work);
+        return Known.of(Kind.DATA, size).after(work);
     }
 
     private static List<PirType> fieldTypes(PirTerm.DataConstr constr) {

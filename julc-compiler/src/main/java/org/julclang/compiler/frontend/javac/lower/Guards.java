@@ -78,7 +78,7 @@ final class Guards {
     private JType leafType(ExpressionTree leaf, Frame frame) {
         PirType type;
         try {
-            type = facts.registry().resolveNamed(referenceType(leaf, frame, true));
+            type = facts.registry().resolveNamed(referenceType(leaf, frame));
         } catch (CompilerException e) {
             return JType.UNKNOWN;
         }
@@ -97,38 +97,32 @@ final class Guards {
      * declares on the receiver it saw, and a literal. Of anything else it says Data.
      */
     PirType referenceType(ExpressionTree tree, Frame frame) {
-        return referenceType(tree, frame, false);
-    }
-
-    /** @param firstPass read as a lambda's first pass reads it ({@link CallTargets#untypedInFirstPass}), which is what a guard's leaf is held to */
-    private PirType referenceType(ExpressionTree tree, Frame frame, boolean firstPass) {
         return switch (tree) {
             case IdentifierTree name -> {
                 var binder = frame.scope().lookup(facts.element(name));
-                yield binder == null || firstPass && targets.untypedInFirstPass(name) ? new PirType.DataType()
-                        : facts.registry().resolveNamed(binder.type());
+                yield binder == null ? new PirType.DataType() : facts.registry().resolveNamed(binder.type());
             }
-            case MethodInvocationTree call -> callType(call, frame, firstPass);
+            case MethodInvocationTree call -> callType(call, frame);
             case NewClassTree creation -> typing.of(creation);
             case LiteralTree literal -> literal.getValue() == null ? new PirType.DataType() : typing.of(literal);
             case TypeCastTree cast -> {
                 var written = typing.of(cast);
-                yield written instanceof PirType.DataType ? referenceType(cast.getExpression(), frame, firstPass) : written;
+                yield written instanceof PirType.DataType ? referenceType(cast.getExpression(), frame) : written;
             }
             default -> new PirType.DataType();
         };
     }
 
-    private PirType callType(MethodInvocationTree call, Frame frame, boolean firstPass) {
+    private PirType callType(MethodInvocationTree call, Frame frame) {
         return switch (targets.classify(call)) {
-            case CallTarget.Accessor ignored -> componentType(call, frame, firstPass);
-            case CallTarget.Wrapper ignored -> componentType(call, frame, firstPass);
+            case CallTarget.Accessor ignored -> componentType(call, frame);
+            case CallTarget.Wrapper ignored -> componentType(call, frame);
             case CallTarget.Local ignored -> typing.of(call);
             case CallTarget.Library ignored -> typing.of(call);
             case CallTarget.Intrinsic intrinsic -> intrinsic == CallTarget.Intrinsic.CAST ? typing.of(call) : new PirType.DataType();
-            case CallTarget.TypeMethod target -> declaredReturn(call, target.method(), frame, firstPass);
-            case CallTarget.Equals ignored -> declaredReturn(call, "equals", frame, firstPass);
-            case CallTarget.Hof target -> declaredReturn(call, target.method(), frame, firstPass);
+            case CallTarget.TypeMethod target -> declaredReturn(call, target.method(), frame);
+            case CallTarget.Equals ignored -> declaredReturn(call, "equals", frame);
+            case CallTarget.Hof target -> declaredReturn(call, target.method(), frame);
             default -> new PirType.DataType();
         };
     }
@@ -137,15 +131,15 @@ final class Guards {
      * A component, which the reference reads off what it sees of the receiver. A variable with no binder yet says nothing:
      * the guard's type is read before the guard is lowered, so that is what an arm of a {@code switch} in a guard holds.
      */
-    private PirType componentType(MethodInvocationTree call, Frame frame, boolean firstPass) {
+    private PirType componentType(MethodInvocationTree call, Frame frame) {
         boolean seen = !(call.getMethodSelect() instanceof MemberSelectTree select)
-                || !(referenceType(select.getExpression(), frame, firstPass) instanceof PirType.DataType);
+                || !(referenceType(select.getExpression(), frame) instanceof PirType.DataType);
         return seen ? typing.of(call) : new PirType.DataType();
     }
 
-    private PirType declaredReturn(MethodInvocationTree call, String method, Frame frame, boolean firstPass) {
+    private PirType declaredReturn(MethodInvocationTree call, String method, Frame frame) {
         var receiver = ((MemberSelectTree) call.getMethodSelect()).getExpression();
-        return typeMethods.resolveReturnType(facts.registry().resolveNamed(referenceType(receiver, frame, firstPass)), method)
+        return typeMethods.resolveReturnType(facts.registry().resolveNamed(referenceType(receiver, frame)), method)
                 .orElseGet(PirType.DataType::new);
     }
 

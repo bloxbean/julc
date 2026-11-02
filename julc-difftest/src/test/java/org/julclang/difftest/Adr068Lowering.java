@@ -507,6 +507,7 @@ final class Adr068Lowering {
         String construct = "-";
         String mismatch = null;
         var pir = new ArrayList<String>();
+        var differing = new StringBuilder();
         var attempted = new LinkedHashMap<String, JavacEvidence.Attempt>();
         // Overloads share a binder. The reference stops at the first it cannot accept, having recorded the one before it.
         for (var attempt : attempts) attempted.putIfAbsent(attempt.binder(), attempt);
@@ -523,6 +524,7 @@ final class Adr068Lowering {
             String actual = PirCanonical.of(attempt.term());
             if (!expected.equals(actual) || !entry.getValue().type().equals(attempt.type())) {
                 if (mismatch == null) mismatch = entry.getKey() + " differs from the reference";
+                differing.append(entry.getKey()).append('\n').append(attempt.type()).append('\n').append(actual).append('\n');
                 continue;
             }
             covered++;
@@ -533,10 +535,12 @@ final class Adr068Lowering {
             for (var extra : attempted.values()) {
                 if (extra.term() != null) {
                     mismatch = extra.binder() + " is lowered here and not by the reference";
+                    differing.append(extra.type()).append('\n').append(PirCanonical.of(extra.term())).append('\n');
                     break;
                 }
             }
         }
-        return new Coverage(covered, reference.size(), construct, mismatch, pir);
+        // The terms are in the row, so that a later change to a method that differs moves it.
+        return new Coverage(covered, reference.size(), construct, mismatch == null ? null : mismatch + ": " + digest(differing.toString()), pir);
     }
 }

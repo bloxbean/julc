@@ -29,10 +29,13 @@ import java.util.Set;
 
 /**
  * ADR-068 D6's equality rules: where the JVM and UPLC would mean different things by an expression that javac accepts,
- * the expression is rejected. They apply wherever the subset does, so they are rules of the scan, not of the lowering.
+ * the expression is rejected. The scan applies them wherever the subset does, and {@code Operators} applies
+ * {@link #requireValueEquality} to each {@code ==} it lowers, which is what holds them at every position of a guard.
  * <ul>
  *   <li>{@code JULC0086}: {@code ==} and {@code !=} between references, unless both are constant strings of the plain
- *       form below: their {@code Equals} is value equality on-chain and identity in Java.</li>
+ *       form below: their {@code Equals} is value equality on-chain and identity in Java. In a guard too: a constant
+ *       outside that form stops there unless the whole guard is constant, since a term of it can read otherwise than Java,
+ *       and no guard evaluator takes it over.</li>
  *   <li>{@code JULC0090}: string {@code +} with an operand that is not a {@code String} (#296).</li>
  *   <li>{@code JULC0087}: an operation that compares elements or keys, where the JVM's equality for the compared static
  *       type reaches an array by identity. {@link EqualityOperations} is the table of operations,
@@ -44,17 +47,18 @@ import java.util.Set;
  * {@code equals} between two types with no class in common does not lower, and is no rule yet: the corpora hold a validator
  * that writes it, so {@code JULC0078} there is a maintainer's decision. A raw receiver read through a cast stops at
  * the cast, and {@code ValuesLib} holds one: the cast's slice decides it.
- * Inside a {@code switch} guard ADR-067's evaluator decides {@code ==}, and {@link GuardRules} applies the others to a guard
- * that is not constant, after its own.
+ * Inside a {@code switch} guard the guard's own rules speak first: {@link GuardRules} applies the others to a guard that is
+ * not constant, after its own, and {@code Operators} applies {@link #requireValueEquality} to each {@code ==} that is lowered,
+ * so no position in a guard goes unread.
  */
-final class EqualityRules {
+public final class EqualityRules {
 
     private final JavacFacts facts;
     private final ArrayIdentityEquality arrays;
     private final EqualityOperations operations;
     private final EqualityRelation relation;
 
-    EqualityRules(JavacFacts facts) {
+    public EqualityRules(JavacFacts facts) {
         this.facts = facts;
         this.arrays = facts.arrayEquality();
         this.operations = facts.equalityOperations();
@@ -71,7 +75,7 @@ final class EqualityRules {
     }
 
     /** JLS 15.21: with a primitive operand this is numeric or boolean equality; otherwise it is identity. */
-    private void requireValueEquality(BinaryTree tree) {
+    public void requireValueEquality(BinaryTree tree) {
         var left = facts.type(tree.getLeftOperand());
         var right = facts.type(tree.getRightOperand());
         if (left.getKind().isPrimitive() || right.getKind().isPrimitive()) return;

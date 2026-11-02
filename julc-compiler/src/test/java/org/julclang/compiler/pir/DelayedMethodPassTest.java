@@ -2,6 +2,7 @@ package org.julclang.compiler.pir;
 
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.DefaultUni;
 import org.julclang.core.PlutusData;
 import org.julclang.core.source.SourceLocation;
 import org.junit.jupiter.api.Nested;
@@ -15,6 +16,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.Map;
 import java.util.Set;
 
@@ -70,9 +72,9 @@ class DelayedMethodPassTest {
         return new PirTerm.Const(Constant.unit());
     }
 
-    /** A body that does {@code work}: an append of two constants, with {@code work - 1} bytes between them. */
+    /** A body that does {@code work}, 3 or more: an append of two constants, with {@code work - 3} bytes between them. */
     private static PirTerm doing(int work) {
-        return builtin(DefaultFun.AppendByteString, bytes(work - 1), bytes(0));
+        return builtin(DefaultFun.AppendByteString, bytes(work - 3), bytes(0));
     }
 
     private static final int LIMIT = 1024;
@@ -88,14 +90,14 @@ class DelayedMethodPassTest {
 
         @Test
         void eachByteOfABuiltinsArgumentsCounts() {
-            assertFalse(mayFail(builtin(DefaultFun.Blake2b_256, bytes(LIMIT - 1))));
-            assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, bytes(LIMIT))));
+            assertFalse(mayFail(builtin(DefaultFun.Blake2b_256, bytes(LIMIT - 2))));
+            assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, bytes(LIMIT - 1))));
             assertTrue(mayFail(builtin(DefaultFun.AppendByteString, bytes(LIMIT / 2), bytes(LIMIT / 2))));
         }
 
         @Test
         void anArgumentsWorkCounts() {
-            int input = LIMIT - 34;
+            int input = LIMIT - 35;
             assertFalse(mayFail(builtin(DefaultFun.Blake2b_256, builtin(DefaultFun.Sha2_256, bytes(input)))));
             assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, builtin(DefaultFun.Sha2_256, bytes(input + 1)))));
         }
@@ -109,21 +111,21 @@ class DelayedMethodPassTest {
 
         @Test
         void aLetCountsItsValueAndItsBody() {
-            assertFalse(mayFail(new PirTerm.Let("x", doing(LIMIT / 2), doing(LIMIT / 2))));
-            assertTrue(mayFail(new PirTerm.Let("x", doing(LIMIT / 2), doing(LIMIT / 2 + 1))));
-            assertTrue(mayFail(new PirTerm.Let("x", doing(LIMIT / 2 + 1), doing(LIMIT / 2))));
+            assertFalse(mayFail(new PirTerm.Let("x", doing(LIMIT / 2), doing(LIMIT / 2 - 1))));
+            assertTrue(mayFail(new PirTerm.Let("x", doing(LIMIT / 2), doing(LIMIT / 2))));
+            assertTrue(mayFail(new PirTerm.Let("x", doing(LIMIT / 2 + 1), doing(LIMIT / 2 - 1))));
         }
 
         @Test
         void aBranchCountsItsConditionAndTheLargerSide() {
             var yes = new PirTerm.Const(Constant.bool(true));
-            assertFalse(mayFail(new PirTerm.IfThenElse(yes, doing(LIMIT), doing(LIMIT))));
-            assertTrue(mayFail(new PirTerm.IfThenElse(yes, doing(LIMIT + 1), doing(1))));
+            assertFalse(mayFail(new PirTerm.IfThenElse(yes, doing(LIMIT - 2), doing(LIMIT - 2))));
+            assertTrue(mayFail(new PirTerm.IfThenElse(yes, doing(LIMIT - 1), doing(3))));
             var test = builtin(DefaultFun.EqualsByteString, bytes(LIMIT / 4), bytes(LIMIT / 4 - 1));
-            int rest = LIMIT - LIMIT / 2;
-            assertFalse(mayFail(new PirTerm.IfThenElse(test, doing(rest), doing(1))));
-            assertTrue(mayFail(new PirTerm.IfThenElse(test, doing(rest + 1), doing(1))));
-            assertTrue(mayFail(new PirTerm.IfThenElse(test, doing(1), doing(rest + 1))));
+            int rest = LIMIT - LIMIT / 2 - 3;
+            assertFalse(mayFail(new PirTerm.IfThenElse(test, doing(rest), doing(3))));
+            assertTrue(mayFail(new PirTerm.IfThenElse(test, doing(rest + 1), doing(3))));
+            assertTrue(mayFail(new PirTerm.IfThenElse(test, doing(3), doing(rest + 1))));
         }
 
         @Test
@@ -138,7 +140,7 @@ class DelayedMethodPassTest {
         @Test
         void aCallIsWorkWithNoBuiltinInIt() {
             PirTerm calls = integer(1);
-            for (int i = 0; i < LIMIT; i++) calls = call("f", calls);
+            for (int i = 0; i < (LIMIT - 4) / 2; i++) calls = call("f", calls);
             var identity = new PirTerm.Lam("x", INTEGER, variable("x"));
             assertFalse(mayFail(new PirTerm.Let("f", identity, calls)));
             assertTrue(mayFail(new PirTerm.Let("f", identity, call("f", calls))));
@@ -149,6 +151,99 @@ class DelayedMethodPassTest {
             var type = new PirType.RecordType("R", List.of(new PirType.Field("a", BYTES), new PirType.Field("b", BYTES)));
             assertFalse(mayFail(new PirTerm.DataConstr(0, type, List.of(doing(LIMIT / 2), doing(LIMIT / 2 - 1)))));
             assertTrue(mayFail(new PirTerm.DataConstr(0, type, List.of(doing(LIMIT / 2), doing(LIMIT / 2)))));
+        }
+
+        /** Nothing in this is a builtin: {@code depth} nested branches, each a branch, its condition, and the constant beside it counted once. */
+        private static PirTerm branches(int depth) {
+            var yes = new PirTerm.Const(Constant.bool(true));
+            PirTerm term = yes;
+            for (int i = 0; i < depth; i++) term = new PirTerm.IfThenElse(yes, term, yes);
+            return term;
+        }
+
+        @Test
+        void aBranchIsWorkOfItsOwn() {
+            assertFalse(mayFail(branches((LIMIT - 1) / 2)));
+            assertTrue(mayFail(branches((LIMIT - 1) / 2 + 1)));
+        }
+
+        /** {@code depth} bindings, each of a constant and its {@code let}, around a read. */
+        private static PirTerm bindings(int depth) {
+            PirTerm term = variable("x0");
+            for (int i = depth - 1; i >= 0; i--) term = new PirTerm.Let("x" + i, integer(i), term);
+            return term;
+        }
+
+        @Test
+        void aBindingAndAReadAreWorkOfTheirOwn() {
+            assertFalse(mayFail(bindings((LIMIT - 1) / 2)));
+            assertTrue(mayFail(bindings((LIMIT - 1) / 2 + 1)));
+        }
+
+        private static final PirType DATA = new PirType.DataType();
+        private static final PirType PAIR = new PirType.RecordType("N", List.of(new PirType.Field("a", DATA), new PirType.Field("b", DATA)));
+        private static final PirType LEAF = new PirType.RecordType("L", List.of(new PirType.Field("v", INTEGER)));
+
+        /** {@code t_i = new N(t_(i-1), t_(i-1))}, so a value of {@code 2^depth} leaves, built in a few terms, compared with itself. */
+        private static PirTerm compared(int depth) {
+            var last = new PirTerm.Var("t" + depth, DATA);
+            PirTerm term = builtin(DefaultFun.EqualsData, last, last);
+            for (int i = depth; i > 0; i--) {
+                var below = new PirTerm.Var("t" + (i - 1), DATA);
+                term = new PirTerm.Let("t" + i, new PirTerm.DataConstr(0, PAIR, List.of(below, below)), term);
+            }
+            return new PirTerm.Let("t0", new PirTerm.DataConstr(0, LEAF, List.of(integer(1))), term);
+        }
+
+        @Test
+        void aConstructorHoldsItsFieldsSize() {
+            assertFalse(mayFail(compared(7)));
+            assertTrue(mayFail(compared(8)));
+            assertTrue(mayFail(compared(16)));
+        }
+
+        /** What a Data constant holds is read like a value built at run time, by its encoded bytes. */
+        @Test
+        void aDataConstantHoldsItsBytes() {
+            var small = new PirTerm.Const(Constant.data(new PlutusData.BytesData(new byte[LIMIT / 4])));
+            var large = new PirTerm.Const(Constant.data(new PlutusData.BytesData(new byte[LIMIT / 2])));
+            assertFalse(mayFail(builtin(DefaultFun.EqualsData, small, small)));
+            assertTrue(mayFail(builtin(DefaultFun.EqualsData, large, large)));
+        }
+
+        /** A list constant of Data holds its elements' bytes. */
+        @Test
+        void aListConstantHoldsItsElementsBytes() {
+            PirTerm small = new PirTerm.Const(new Constant.ListConst(DefaultUni.DATA, List.of(Constant.data(new PlutusData.BytesData(new byte[LIMIT / 8])))));
+            PirTerm large = new PirTerm.Const(new Constant.ListConst(DefaultUni.DATA, List.of(Constant.data(new PlutusData.BytesData(new byte[LIMIT / 2])))));
+            assertFalse(mayFail(builtin(DefaultFun.EqualsData, builtin(DefaultFun.ListData, small), builtin(DefaultFun.ListData, small))));
+            assertTrue(mayFail(builtin(DefaultFun.EqualsData, builtin(DefaultFun.ListData, large), builtin(DefaultFun.ListData, large))));
+        }
+
+        private static final PirType TEXTS = new PirType.RecordType("T", List.of(new PirType.Field("a", new PirType.StringType()), new PirType.Field("b", new PirType.StringType())));
+
+        /** A string field encodes each byte it holds, however little reads it. */
+        @Test
+        void aStringFieldIsWorkByItsBytes() {
+            PirTerm field = new PirTerm.Var("s", new PirType.StringType());
+            var two = new PirTerm.DataConstr(0, TEXTS, List.of(field, field));
+            assertFalse(mayFail(new PirTerm.Let("s", text("a".repeat((LIMIT - 5) / 2)), two)));
+            assertTrue(mayFail(new PirTerm.Let("s", text("a".repeat((LIMIT - 5) / 2 + 1)), two)));
+        }
+
+        /** A byte string's encoding takes the same time at any length, so no other field is charged its bytes. */
+        @Test
+        void aBytesFieldIsNotWorkByItsBytes() {
+            var type = new PirType.RecordType("B", List.of(new PirType.Field("a", BYTES)));
+            assertFalse(mayFail(new PirTerm.DataConstr(0, type, List.of(bytes(2 * LIMIT)))));
+        }
+
+        /** A size past the limit does not wrap round to a small one, however deep the sharing. */
+        @Test
+        void aConstructorsSizeDoesNotOverflow() {
+            assertTrue(mayFail(compared(64)));
+            assertTrue(mayFail(compared(70)));
+            assertTrue(mayFail(compared(200)));
         }
     }
 
@@ -347,11 +442,11 @@ class DelayedMethodPassTest {
             }
         }
 
-        /** An append after a digest of no bytes does 2 applications, the digest's bytes and {@code padding}. */
+        /** An append after a digest of no bytes does 2 applications, 2 constants, the digest's bytes and {@code padding}. */
         @ParameterizedTest
         @CsvSource({"Sha2_256, 32", "Sha3_256, 32", "Blake2b_256, 32", "Keccak_256, 32", "Blake2b_224, 28", "Ripemd_160, 20"})
         void eachDigestHasItsOwnSize(DefaultFun hash, int size) {
-            int padding = LIMIT - 2 - size;
+            int padding = LIMIT - 4 - size;
             assertFalse(mayFail(builtin(DefaultFun.AppendByteString, builtin(hash, bytes(0)), bytes(padding))), hash.name());
             assertTrue(mayFail(builtin(DefaultFun.AppendByteString, builtin(hash, bytes(0)), bytes(padding + 1))), hash.name());
         }
@@ -376,8 +471,51 @@ class DelayedMethodPassTest {
         void aCallTreeIsReadInLinearTime() {
             var identity = new PirTerm.Lam("x", INTEGER, variable("x"));
             assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertTrue(mayFail(callTree(64, identity, call("f64", integer(1))))));
-            assertFalse(mayFail(callTree(9, identity, call("f9", integer(1)))), "1,023 calls");
-            assertTrue(mayFail(callTree(10, identity, call("f10", integer(1)))), "2,047 calls");
+            assertFalse(mayFail(callTree(7, identity, call("f7", integer(1)))), "255 calls");
+            assertTrue(mayFail(callTree(8, identity, call("f8", integer(1)))), "511 calls");
+        }
+
+        /**
+         * A function of {@code parameters} integers, each level branching once per parameter with that one grown, over
+         * {@code depth} levels, so the arguments it can meet are a polynomial of degree {@code parameters}. {@code test} is each
+         * branch's condition, and {@code first} the function at the bottom.
+         */
+        private static PirTerm polynomial(int parameters, int depth, PirTerm test, PirTerm first) {
+            var names = IntStream.range(0, parameters).mapToObj(i -> "x" + i).toList();
+            PirTerm term = new PirTerm.Var("f" + depth, new PirType.FunType(INTEGER, INTEGER));
+            for (var ignored : names) term = new PirTerm.App(term, integer(1));
+            for (int level = depth; level > 0; level--) {
+                PirTerm body = null;
+                for (int grown = parameters - 1; grown >= 0; grown--) {
+                    PirTerm next = new PirTerm.Var("f" + (level - 1), new PirType.FunType(INTEGER, INTEGER));
+                    for (int i = 0; i < parameters; i++) {
+                        next = new PirTerm.App(next, i == grown ? builtin(DefaultFun.AddInteger, variable(names.get(i)), integer(1)) : variable(names.get(i)));
+                    }
+                    body = body == null ? next : new PirTerm.IfThenElse(test, next, body);
+                }
+                for (int i = parameters - 1; i >= 0; i--) body = new PirTerm.Lam(names.get(i), INTEGER, body);
+                term = new PirTerm.Let("f" + level, body, term);
+            }
+            return new PirTerm.Let("f0", first, term);
+        }
+
+        private static PirTerm function(int parameters, PirTerm body) {
+            PirTerm term = body;
+            for (int i = parameters - 1; i >= 0; i--) term = new PirTerm.Lam("x" + i, INTEGER, term);
+            return term;
+        }
+
+        /** What may fail ends a reading at once, in a branch too: read on, the arguments of these would take minutes. */
+        @Test
+        void aBranchThatMayFailEndsTheReading() {
+            var yes = new PirTerm.Const(Constant.bool(true));
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 40, yes, function(6, new PirTerm.Error(INTEGER))))));
+        }
+
+        @Test
+        void aConditionThatMayFailEndsTheReading() {
+            var fails = new PirTerm.Error(new PirType.BoolType());
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 40, fails, function(6, variable("x0"))))));
         }
 
         /** An {@code if} counts one branch, so the bound ends no walk of the two: only the memo keeps this linear. */

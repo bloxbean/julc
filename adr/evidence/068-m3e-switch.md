@@ -35,8 +35,7 @@ M0's evidence, with `25.0.2-librca`.
   bound where the reference reads a declaration, and asks `leaf` where the reference does, in the same places. So `when Builtins.equalsData(d, e)` lowers and `when !Builtins.equalsData(d, e)` is `JULC0072`,
   though javac knows both are boolean. `Guards.referenceType` is that leaf: a binder, a `new`, a helper's, a library method's and an accessor's result, what the registry declares on the
   receiver it saw, a list method that takes a function included. A component is read off a receiver the reference sees, so a variable of a `switch` in the guard, which has no binder when the guard's type is read, says nothing.
-  An inferred lambda parameter names no declared type, so `when b` is `JULC0072` on every receiver. A simple name as the receiver of the list method gives the reference a first pass with the parameter untyped, and a throw from it stands: a leaf
-  that roots in such a parameter, through an accessor or a `var`, is unknown (`CallTargets.untypedInFirstPass`). A switch's selector is not held to that pass, which is [the lambdas' one widening](068-m3f-lambdas.md#the-one-deliberate-widening).
+  An inferred lambda parameter names no declared type, so `when b` is `JULC0072` on every receiver. What is read off one has the type javac gave it, in a guard too. A simple name as the receiver gives the reference a first pass that rejects those, which `JAVAC` does not port: [the lambdas' one widening](068-m3f-lambdas.md#the-one-deliberate-widening).
   `PRIMITIVE_INTEGER_METHODS` stays a list of names for the same reason: a `long` from a method off the list is taken for a `BigInteger` there, so `Math.abs(n) > 0` is `JULC0072`.
   Two shapes stay wider than the reference, and are [listed](#where-a-guard-accepts-more-than-the-reference).
 - **A name in a guard's binding rule goes by name.** `JULC0074` for reading a variable named like a guard's pattern variable reads the name, as the reference does, so a field of that name is held to it.
@@ -196,7 +195,7 @@ The 5 survivors of the last pass, each tried on both frontends:
 | `final alone is constant` | A `final` field that is not `static` is read only from an instance method, and a `switch` there stops at `SWITCH_EXPRESSION`. From a static method javac rejects the read |
 | `a class file's field is a constant` | As `a class file's constant` above |
 | `a null type is not inferred` | javac gives an implicit parameter and a `var` a generated type at attribution, and lowering reads attributed trees. The check matches the same check in `GuardTypes` and `GuardConstants` |
-| `a stub's variable has a declaration` | `untypedInFirstPass` reaches a stub's variable only through `var w = ONE` under a static import, which is `Undefined variable: ONE` on both frontends first |
+| `a stub's variable has a declaration` | `untypedInFirstPass`, removed since, reached a stub's variable only through `var w = ONE` under a static import, which is `Undefined variable: ONE` on both frontends first |
 | `a lambda has a receiver` | A lambda at an unqualified call stops first: `Unknown type: Predicate` at the helper's parameter on both frontends |
 
 ## Where a guard accepts more than the reference

@@ -15,11 +15,14 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
+import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -293,8 +296,6 @@ class JavacSwitchesTest {
             "static long m(S s) { var xs = JulcList.of(true); return switch (s) { case A a when !xs.head() -> 1; default -> 3; }; }",
             "static long m(S s, PlutusData d) { var v = switch (s) { case A a -> Builtins.tailList(Builtins.unListData(d)); default -> d; }; return JulcList.of(v).size(); }",
             "static long m(S s) { return switch (s) { case A a when (1L << 1L) > 5 -> 1; default -> 3; }; }",
-            "static boolean m(JulcList<S> xs) { return xs.any(v -> switch (v) { case A a -> a.v().signum() > 0; default -> false; }); }",
-            "static JulcList<BigInteger> m(JulcList<S> xs) { return xs.map(v -> switch (v) { case A a -> a.v(); case B b when b.w().signum() > 0 -> b.w(); default -> BigInteger.ONE; }); }",
             "static long m(S s, Boolean p, Boolean q) { return switch (s) { case A a when p == q -> 1; default -> 3; }; }",
             "static long big(long a) { return a; } static long big(int a) { return a; } static long m(S s) { return switch (s) { case A a when big(1) > 0 -> 1; default -> 3; }; }",
             "static final S Z = new A(BigInteger.ONE); static long m(S s) { return switch (s) { case A a when Z instanceof A -> 1; default -> 3; }; }",
@@ -345,6 +346,53 @@ class JavacSwitchesTest {
         return CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(arguments));
     }
 
+    /** {@link #evaluate} at each level, the one outcome they share. */
+    private static Class<?> outcome(String members, PlutusData... arguments) {
+        var outcomes = new HashSet<Class<?>>();
+        for (var level : OptimizationLevel.values()) {
+            var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)
+                    .setOptimizationLevel(level)).compileMethod(source(members), "m").program();
+            outcomes.add(CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(arguments)).getClass());
+        }
+        assertEquals(1, outcomes.size(), () -> "levels disagree on " + members);
+        return outcomes.iterator().next();
+    }
+
+    private static PlutusData.ListData list(PlutusData... elements) {
+        return new PlutusData.ListData(List.of(elements));
+    }
+
+    /** Data Java cannot build, in an element: an inferred parameter is the written type's, so what a tag that is no constructor does is too. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "v -> switch (v) { case A a -> true; default -> false; }           | (S v) -> switch (v) { case A a -> true; default -> false; }",
+            "v -> switch (v) { case A a when c -> true; default -> false; }    | (S v) -> switch (v) { case A a when c -> true; default -> false; }",
+    })
+    void aTagThatIsNoConstructorFailsInAnElement(String inferred, String written) {
+        String source = "static boolean m(boolean c, JulcList<S> xs) { return xs.any(%s); }";
+        for (var element : List.of(constr(9), constr(3, 1))) {
+            assertEquals(EvalResult.Failure.class, outcome(source.formatted(inferred), constr(1), list(element)));
+            assertEquals(EvalResult.Failure.class, outcome(source.formatted(written), constr(1), list(element)));
+        }
+        assertEquals(EvalResult.Success.class, outcome(source.formatted(inferred), constr(1), list(constr(2))));
+    }
+
+    /** A tag test outside a guard says no to a tag that is no constructor, written or inferred, and a one-constructor sum checks its tag in a guard. */
+    @Test
+    void aTagTestOnAnElementReadsAsTheWrittenType() {
+        String test = "static boolean m(JulcList<S> xs) { return xs.any(%s -> { if (v instanceof A q) { return q.v().signum() > 0; } return true; }); }";
+        for (var parameter : List.of("v", "(S v)")) {
+            String members = test.formatted(parameter);
+            assertEquals(EvalResult.Success.class, outcome(members, list(constr(9))));
+            assertEquals(EvalResult.Success.class, outcome(members, list(constr(0, 1))));
+        }
+        for (var parameter : List.of("o", "(O o)")) {
+            String one = "static boolean m(boolean c, JulcList<O> os) { return os.any(" + parameter + " -> switch (o) { case P p when c -> true; case P p -> false; }); }";
+            assertEquals(EvalResult.Failure.class, outcome(one, constr(1), list(constr(3, 1))));
+            assertEquals(EvalResult.Success.class, outcome(one, constr(1), list(constr(0, 1))));
+        }
+    }
+
     private static PlutusData constr(int tag, long... fields) {
         return new PlutusData.ConstrData(tag, java.util.Arrays.stream(fields).mapToObj(v -> (PlutusData) new PlutusData.IntData(BigInteger.valueOf(v))).toList());
     }
@@ -380,6 +428,148 @@ class JavacSwitchesTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m"));
         return failure.diagnostics().getFirst().code();
+    }
+
+    private static final String IDENTITY_HELPERS = "static boolean hb(boolean z) { return z; } static boolean gt(BigInteger z) { return z.signum() > 0; } ";
+
+    /** {@code ==} on references is D6's at every position of a guard: the lowering stops each one it reaches. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "lst.any(x -> x == str)",
+            "lst.any(x -> x != str)",
+            "lst.any(x -> str == x)",
+            "lst.any(x -> x == \"ab\")",
+            "lst.any(x -> \"ab\" == x)",
+            "lst.any(x -> { var y = x; return y == str; })",
+            "lst.any(x -> { return x == str; })",
+            "lst.filter(x -> x == str).isEmpty()",
+            "!lst.any(x -> x == str)",
+            "c && lst.any(x -> x == str)",
+            "lst.any(x -> l.any(y -> x == str))",
+            "lst.any(x -> (x == str) == c)",
+            "l.any(x -> x == n)",
+            "ls.any(v -> v == t)",
+            "lst.any(x -> hb(x == str))",
+            "hb(lst.any(x -> x == str))",
+            "hb(str == oth)",
+            "hb(str != oth)",
+            "!hb(str == oth)",
+            "hb(str == oth) && s instanceof A",
+            "(hb(str == oth) ? true : false)",
+            "hb(str == \"ab\")",
+            "hb(lst.head() == str)",
+            "gt(str == oth ? BigInteger.ONE : BigInteger.ZERO)",
+            "(switch (str == oth ? s : new D()) { case A q -> true; default -> false; })",
+            "(str == oth ? s : new D()).equals(s)",
+            "(switch (t) { case A q when hb(str == oth) -> true; default -> false; })",
+            "lst.contains(str == oth ? \"ab\" : \"zz\")",
+            "hb(n == n)",
+            "hb(s == t)",
+            "hb(b == b)",
+            "hb(big == big)",
+            "l.any(x -> true) && a.v() == n",
+    })
+    void anIdentityComparisonInAGuard(String guard) {
+        assertEquals("JULC0086", javacCode(IDENTITY_HELPERS + "static long m(S s, S t, boolean c, BigInteger n, byte[] b, Boolean big, String str, String oth, JulcList<String> lst, JulcList<BigInteger> l, JulcList<S> ls) "
+                + "{ return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }"));
+    }
+
+    /** What is no comparison of references, in those positions, stays what it was. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "lst.any(x -> x.equals(str))",
+            "l.any(x -> x.signum() == 1)",
+            "l.any(x -> x.signum() != k)",
+            "lb.any(x -> x == c)",
+            "hb(c == c)",
+            "hb(k == 1)",
+            "hb(big == c)",
+            "hb(str.equals(oth))",
+            "hb(\"a\" == \"a\")",
+            "hb(\"a\" != \"b\")",
+            "hb(\"a\" + \"b\" == \"ab\")",
+            "hb(TEXT == \"a\")",
+            "hb((TEXT) == (\"a\"))",
+            "lst.any(x -> TEXT == \"a\")",
+    })
+    void aComparisonOfValuesInAGuard(String guard) {
+        same(IDENTITY_HELPERS + "static final String TEXT = \"a\"; static long m(S s, boolean c, Boolean big, long k, String str, String oth, JulcList<String> lst, JulcList<BigInteger> l, JulcList<Boolean> lb) "
+                + "{ return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }");
+    }
+
+    private static final String CONSTANTS = "static final String BAD = 2147483647 + 1 < 0 ? \"a\" : \"b\"; static final String ALIAS = \"a\"; ";
+
+    /** Outside D6's plain form a constant string that reaches a term stops: a term of it can read otherwise than Java. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "c && (true ? \"a\" : \"b\") == \"a\"",
+            "hb((true ? \"a\" : \"b\") == \"a\")",
+            "c && (2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"",
+            "c || (2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"",
+            "c && f == \"a\"",
+            "c && BAD == \"a\"",
+            "l.any(x -> (true ? \"a\" : \"b\") == \"a\")",
+    })
+    void aConstantOutsideThePlainFormInAGuard(String guard) {
+        assertEquals("JULC0086", javacCode(IDENTITY_HELPERS + CONSTANTS + "static long m(S s, boolean c, JulcList<BigInteger> l) { final var f = true ? \"a\" : \"b\"; "
+                + "return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }"));
+    }
+
+    /** A guard constant as a whole has Java's value and reaches no term, and the plain form is a value in any guard. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "(true ? \"a\" : \"b\") == \"a\"",
+            "(2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"",
+            "c && \"a\" + \"b\" == \"ab\"",
+            "c && ALIAS == \"a\"",
+            "c && f == \"a\"",
+    })
+    void aConstantThatStaysAValueInAGuard(String guard) {
+        same(IDENTITY_HELPERS + CONSTANTS + "static long m(S s, boolean c) { final String f = \"a\"; return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }");
+    }
+
+    private static String chain(int levels, String link) {
+        var chain = new StringBuilder("var v0 = d; ");
+        for (int i = 1; i <= levels; i++) chain.append("var v").append(i).append(" = ").append(link.replace("V", "v" + (i - 1))).append("; ");
+        return "static long m(boolean c, S s, PlutusData d, JulcMap<BigInteger, BigInteger> a) { " + chain + "%s }";
+    }
+
+    private static final String SIZE = "JulcMap<BigInteger, BigInteger> z = PlutusData.cast(%s, JulcMap.class); return z.size();";
+    private static final String ARMS = "switch (s) { case A q -> V; case B q -> V; default -> V; }";
+
+    /** A cast reads each variable once, so a chain of choices over one value takes no time, and it decodes once. */
+    @Test
+    void aChainOfChoicesIsReadOnce() {
+        var map = new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2))));
+        for (var members : List.of(chain(30, "c ? V : V").formatted(SIZE.formatted("v30")), chain(14, ARMS).formatted(SIZE.formatted("v14")))) {
+            var result = assertTimeoutPreemptively(Duration.ofSeconds(30), () -> outcome(members, constr(1), constr(0, 1), map, map));
+            assertEquals(EvalResult.Success.class, result);
+        }
+    }
+
+    /** A variable read once is still read: what it holds decides, at any depth, and two variables are two values. */
+    @ParameterizedTest
+    @ValueSource(strings = {"c ? v8 : a", "c ? a : v8", "c ? w : w", "c ? v8 : w"})
+    void aChainThatHoldsAMapOnOnePathStops(String value) {
+        assertEquals("JULC0084", javacCode(chain(8, "c ? V : V").formatted("var w = c ? a : d; " + SIZE.formatted(value))));
+    }
+
+    /** A {@code @Param} is what is applied, whatever its initializer holds, so a cast of it decodes that, alone or as one of a choice. */
+    @ParameterizedTest
+    @ValueSource(strings = {"P", "c ? P : d", "c ? P : P"})
+    void aCastOfAParamDecodesWhatIsApplied(String value) {
+        String source = "import java.math.BigInteger; import org.julclang.core.PlutusData; import org.julclang.core.types.JulcMap; import org.julclang.stdlib.annotation.Param; class C { "
+                + "@Param static PlutusData P = PlutusData.UNIT; static long m(boolean c, PlutusData d) { JulcMap<BigInteger, BigInteger> z = PlutusData.cast(" + value + ", JulcMap.class); return z.size(); } }";
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m");
+        var map = new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2))));
+        var evaluated = CompilerTestVm.pv11("Java").evaluateWithArgs(result.program().applyParams(map), List.of(constr(1), map));
+        assertInstanceOf(EvalResult.Success.class, evaluated, evaluated::toString);
+    }
+
+    /** A lambda in a guard is the guard's to judge for {@code +}, as the reference judges it, so its rule speaks before D6's. */
+    @Test
+    void aStringJoinInALambdaInAGuard() {
+        rejected("static long m(S s, String str, JulcList<String> lst) { return switch (s) { case A a when lst.any(x -> (x + 1).equals(str)) -> 1; default -> 2; }; }");
     }
 
     /**
@@ -476,26 +666,7 @@ class JavacSwitchesTest {
         rejected(members);
     }
 
-    /** Where a simple name is the receiver, the reference's first pass has no type for a parameter, so a guard that reads one is rejected. */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; }).size(); }",
-            "static long m(S s, JulcList<BigInteger> l, boolean c) { return l.filter(x -> switch (s) { case A a when x.signum() > 0 && c -> true; default -> false; }).size(); }",
-            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> { var w = x; return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
-            "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter(q -> switch (s) { case A a when q.a().signum() > 0 -> true; default -> false; }).size(); }",
-            "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter(q -> { var w = q.a(); return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
-            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return l.any(x -> ids(k).any(y -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; })); }",
-            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return ids(l).any(x -> k.any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
-            "record G(JulcList<BigInteger> is) { } static boolean m(S s, JulcList<G> l) { return l.any(g -> g.is().any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
-            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> { var w = (x); return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
-            "static boolean m(S s, JulcList<JulcList<BigInteger>> ll) { return ll.any(l -> (l).any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
-            "@NewType record Ni(BigInteger value) { } static long m(S s, JulcList<Ni> l) { return l.filter(n -> switch (s) { case A a when n.value().signum() > 0 -> true; default -> false; }).size(); }",
-    })
-    void aParameterTheFirstPassHasNoTypeForIsNoGuard(String members) {
-        rejected(members);
-    }
-
-    /** With no first pass, or a type written, the parameter has its type in a guard. */
+    /** Where the reference has the parameter's type too, one term on both frontends. */
     @ParameterizedTest
     @ValueSource(strings = {
             "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static long m(S s, JulcList<BigInteger> l) { return ids(l).filter(x -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; }).size(); }",
@@ -554,22 +725,7 @@ class JavacSwitchesTest {
         rejected("sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.OFF -> 1; default -> 2; }; }");
     }
 
-    /**
-     * A simple name as the receiver gives the reference a first pass with the parameter untyped, so a {@code switch} on it is
-     * {@code JULC0007}. Any other receiver has no such pass, and the element keeps its sealed type, nested or not.
-     */
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "static boolean m(JulcList<S> xs) { return xs.any(v -> switch (v) { case A a -> true; default -> false; }); }",
-            "static boolean m(JulcList<S> xs) { var ys = xs; return ys.any(v -> switch (v) { case A a -> true; default -> false; }); }",
-            "static long m(JulcList<S> xs) { return xs.filter(v -> switch (v) { case A a -> true; default -> false; }).size(); }",
-            "record F(JulcList<S> ss) { } static boolean m(JulcList<S> xs, F f) { return xs.any(v -> f.ss().any(w -> switch (v) { case A a -> true; default -> false; })); }",
-            "static boolean m(JulcList<JulcList<S>> xss) { return xss.any(l -> l.any(v -> switch (v) { case A a -> true; default -> false; })); }",
-    })
-    void aSwitchOnAnElementAtASimpleNameIsRejected(String members) {
-        rejected(members);
-    }
-
+    /** An element keeps its sealed type, nested or not, as the reference reads it where the receiver is no simple name. */
     @ParameterizedTest
     @ValueSource(strings = {
             "record F(JulcList<S> ss) { } static boolean m(F f) { return f.ss().any(v -> switch (v) { case A a -> true; default -> false; }); }",
@@ -635,14 +791,14 @@ class JavacSwitchesTest {
     }
 
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
-    /** An inferred parameter of a sealed interface is Data to the reference, so {@code instanceof} on it stops on both. */
+    /** Outside a guard {@code instanceof} needs a pattern, on both frontends, whatever the operand's type. */
     @ParameterizedTest
     @ValueSource(strings = {
             "static boolean m(JulcList<S> xs) { return xs.any(v -> v instanceof A); }",
             "static long m(JulcList<S> xs) { return xs.filter(v -> v instanceof B).size(); }",
             "static boolean m(JulcList<S> xs) { return xs.any(v -> { var w = v; return w instanceof A; }); }",
     })
-    void anInferredElementOfASealedInterfaceHasNoVariant(String members) {
+    void anInstanceofWithNoPatternHasNoVariant(String members) {
         for (var frontend : CompilerFrontend.values()) {
             var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
                     new CompilerOptions().setFrontend(frontend)).compileMethod(source(members), "m"));

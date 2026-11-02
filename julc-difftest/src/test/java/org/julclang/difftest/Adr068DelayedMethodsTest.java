@@ -370,6 +370,47 @@ class Adr068DelayedMethodsTest {
         assertAgree(tree("BigInteger", "x", depth) + "static BigInteger k() { return f" + depth + "(BigInteger.ONE); } public static BigInteger m(BigInteger a) { return a; }", integer(5));
     }
 
+    /** A shared value doubles per constructor, so what compares it is the work, whatever the few terms that built it. */
+    @ParameterizedTest
+    @ValueSource(ints = {12, 14, 16})
+    void aSharedValueComparedNotCalledDoesNotRun(int depth) {
+        var built = new StringBuilder("public record D0(BigInteger v) { } ");
+        for (int i = 1; i <= depth; i++) built.append("public record D").append(i).append("(D").append(i - 1).append(" a, D").append(i - 1).append(" b) { } ");
+        built.append("static boolean k() { D0 t0 = new D0(BigInteger.ONE); ");
+        for (int i = 1; i <= depth; i++) built.append("D").append(i).append(" t").append(i).append(" = new D").append(i).append("(t").append(i - 1).append(", t").append(i - 1).append("); ");
+        built.append("return t").append(depth).append(".equals(t").append(depth).append("); } ");
+        assertAgree(built + "public static BigInteger m(BigInteger a) { return a; }", integer(5));
+        assertAgree(built + "public static long m(boolean c) { return c ? 1 : 2; }", bool(false));
+    }
+
+    /** A string in a record is encoded byte by byte, so a long one read many times is past the limit, not called. */
+    @ParameterizedTest
+    @ValueSource(ints = {16, 100, 400, 1000})
+    void longStringsInRecordsNotCalledDoNotRun(int length) {
+        int fields = 240;
+        var types = new StringBuilder();
+        var values = new StringBuilder();
+        for (int i = 0; i < fields; i++) {
+            types.append(i == 0 ? "" : ", ").append("String f").append(i);
+            values.append(i == 0 ? "" : ", ").append("c");
+        }
+        assertAgree("public record Rc(" + types + ") { } static Rc g(String c) { return new Rc(" + values + "); } static boolean k() { String c = \"" + "a".repeat(length)
+                + "\"; Rc r0 = g(c); Rc r1 = g(c); Rc r2 = g(c); Rc r3 = g(c); return true; } public static BigInteger m(BigInteger a) { return a; }", integer(5));
+    }
+
+    /** A branch is work with no builtin in it, so a long body under a tree of calls is past the limit. */
+    @ParameterizedTest
+    @ValueSource(ints = {1, 20, 100, 200})
+    void aTreeOverLongBranchesNotCalledDoesNotRun(int length) {
+        var branches = "true";
+        for (int i = 0; i < length; i++) branches = "(c ? " + branches + " : false)";
+        var methods = new StringBuilder("static boolean f0(boolean c) { return " + branches + "; } ");
+        for (int i = 1; i <= 8; i++) {
+            methods.append("static boolean f").append(i).append("(boolean c) { return f").append(i - 1).append("(c) ? f").append(i - 1).append("(c) : false; } ");
+        }
+        assertAgree(methods + "static boolean k() { return f8(true); } public static BigInteger m(BigInteger a) { return a; }", integer(5));
+    }
+
     /** A hash of a long input is much work for one application. */
     @Test
     void aFewHashesOfALongInputNotCalledDoNotRun() {

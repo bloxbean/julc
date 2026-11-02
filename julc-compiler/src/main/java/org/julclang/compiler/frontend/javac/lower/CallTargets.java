@@ -7,9 +7,7 @@ import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.NewClassTree;
-import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
-import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
@@ -230,40 +228,6 @@ final class CallTargets {
     private boolean isLoopVariable(ExpressionTree tree) {
         return tree instanceof IdentifierTree && facts.element(tree) instanceof VariableElement variable
                 && facts.declaration(variable) != null && facts.parent(facts.declaration(variable)) instanceof EnhancedForLoopTree;
-    }
-
-    /**
-     * Whether the reference lowers {@code call}'s lambda once with its parameter untyped. A simple name might be a class, so
-     * {@code NAME.hof(...)} is tried as a static call first, which lowers the arguments, finds no method and drops the term.
-     * A throw from that pass is kept.
-     */
-    boolean hasFirstPass(MethodInvocationTree call) {
-        return receiverOf(call) instanceof IdentifierTree;
-    }
-
-    /**
-     * Whether the reference has no type for {@code tree} in the first pass of a lambda around it: an inferred parameter of a
-     * lambda with a first pass, what is read off one, and a {@code var} of either. A guard's leaf is held to that (I2).
-     */
-    boolean untypedInFirstPass(ExpressionTree tree) {
-        return switch (tree) {
-            case ParenthesizedTree parenthesized -> untypedInFirstPass(parenthesized.getExpression());
-            case MethodInvocationTree call when receiverOf(call) != null -> untypedInFirstPass(receiverOf(call));
-            case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
-                    && facts.declaration(variable) != null -> untypedVariable(facts.declaration(variable));
-            default -> false;
-        };
-    }
-
-    private boolean untypedVariable(VariableTree declaration) {
-        if (!facts.isInferred(declaration)) return false;
-        if (declaration.getInitializer() != null) return untypedInFirstPass(declaration.getInitializer());
-        return facts.parent(declaration) instanceof LambdaExpressionTree lambda && facts.parent(lambda) instanceof MethodInvocationTree call
-                && receiverOf(call) != null && (hasFirstPass(call) || untypedInFirstPass(receiverOf(call)));
-    }
-
-    private static ExpressionTree receiverOf(MethodInvocationTree call) {
-        return call.getMethodSelect() instanceof MemberSelectTree select ? select.getExpression() : null;
     }
 
     /** Whether {@code tree} reads a parameter of a lambda around it. */

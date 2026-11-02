@@ -31,7 +31,7 @@ filter(x -> body)       Lam x:Data. let x = decode(x) in body
 | Question | Answer |
 |---|---|
 | What the parameter holds | The type javac gave it, read through `JavacFacts`, written or inferred (`valueType` for an inferred box) |
-| What the body sees | The written type. If none, the element type of the receiver as the reference sees it (`CallTargets.seen`), and Data for an element of a sealed interface at a simple-name receiver, which is what the reference's first pass rejects on (`Lambdas.elementSeen`) |
+| What the body sees | The written type. If none, the element type of the receiver as the reference sees it (`CallTargets.seen`), which is the type javac gave it wherever the reference has one |
 | What is decoded | `BigInteger`, `int`, `long`, `byte[]` and a hash, `boolean`, `String`, a list, a map. A record, a sum, `Optional`, a tuple and `PlutusData` are Data already |
 | What `map` encodes | javac's element type of the result. Where that says only Data, what the term says, since a builtin can leave a list under `PlutusData` |
 | Rejections inside | The body's own. A `return` is the lambda's, so `requireNativeBoundary` does not apply, as in the reference |
@@ -81,6 +81,7 @@ observation and it is not the JVM's. T7 is on D4's accepted list, so this is no 
 | `f.apply(a)` on a local | `Functional interface .apply() is not supported on-chain` | The same, by identity. A qualified `java.util.function.Function` local says the same here, and `Unknown type: Function` there |
 | `C::h` | `Method references (::) are not supported on-chain` | The same, anywhere the scan reads |
 | `var f = x -> x`, `ListsLib.any`, `ListsLib.foldl` | `JULC0085` | `JULC0085` (D6) |
+| `PlutusData.cast(c ? q : d, JulcMap.class)`, and a `switch`, a `var` or a cast to `PlutusData` of either, where one arm is a map and the other is not | The then branch's type decides for both | `JULC0084`: one term cannot decode one arm and leave the other, and a held map must not be decoded twice. [Follow-up](068-followups.md) |
 
 A body holding a loop stops at its construct, and one holding a `switch` lowers it. `yield` and `return` in `Frame.lambda` behave as a lambda's, with and without a source map.
 
@@ -195,18 +196,22 @@ The answer is equal on well-typed Data, which is what the rows claim. A `Data` e
 
 ### The one deliberate widening
 
-The reference lowers a lambda at `NAME.hof(...)` once with its parameter untyped, since the name might be a class, drops that term, and keeps a throw. What it rejects only for that reason `JAVAC` accepts in a lambda's body, with the type javac gave. This is the one deliberate widening in Group 2, and it is D13's "Accepted by decision".
+The reference lowers a lambda at `NAME.hof(...)` once with its parameter untyped, since the name might be a class, drops that term, and keeps a throw. `JAVAC` does not port that pass: an inferred lambda parameter has the type javac gives it, in a body and in a `switch` guard. So every program the reference rejects only because of that pass compiles on `JAVAC` with the JVM's answer. This is the one deliberate widening in Group 2, and it is D13's "Accepted by decision".
 
 | Program, receiver a simple name | Reference | `JAVAC` |
 |---|---|---|
+| `xs.any(v -> switch (v) {...})` on an element of a sealed interface, through a `var`, nested, and in `map`, `filter`, `all` | `JULC0007` | The JVM's answer |
 | `rs.any(r -> switch (r.s()) {...})`, and through a `var q = r.s()`, or a nested `ys.any(...)` | `JULC0007` | The JVM's answer |
 | `fs.any(f -> f.ss().any(q -> switch (q) {...}))` | `JULC0007` | The JVM's answer |
 | `xs.map(x -> { var a = JulcArray.of(x, BigInteger.ONE); return a.get(0); })`, and of `r.a()` | `JULC0012` | The JVM's answer |
 | `var xs = JulcList.of(a); xs.map(x -> switch (s) { case S.A q -> x; ... })` | `JULC0012` | The JVM's answer |
+| `l.filter(x -> switch (s) { case A a when x.signum() > 0 -> ... })`, what is read off `x`, a `var` of either, nested | `JULC0072` | The JVM's answer |
+| A guard that is one boolean call off a parameter: `p.b()`, `p.isEmpty()`, `p.any(...)`, `p.contains(n)`, `p.second()`, `p.isPresent()`, `p.containsKey(n)` | `JULC0072` | The JVM's answer |
+| `var w = c ? p : n` or a `switch` of `p` and `n`, read in a guard | `JULC0072` | The JVM's answer |
 
-Each reads a type javac proved, and porting the rejection means lowering each lambda twice, which is exponential in nesting. `Adr068LambdasHarnessTest.aSwitchOnWhatIsReadOffAParameterAtASimpleName` and `anElementTypeTheFirstPassDoesNotSee` hold each to the JVM at all four levels and require the reference to go on rejecting. With a call as the receiver the reference accepts the same body, and `JAVAC` meets its bytes. No corpus row reaches this, so the tsv has no row for it, and the harness rows stand in place of a `.diffcase`.
+Each reads a type javac proved, and porting the rejection means lowering each lambda twice, which is exponential in nesting. `Adr068LambdasHarnessTest.aSwitchOnAnInferredElementAtASimpleName`, `aSwitchOnWhatIsReadOffAParameterAtASimpleName` and `anElementTypeTheFirstPassDoesNotSee`, and `Adr068SwitchHarnessTest.aGuardOnAnInferredParameterAtASimpleName` and `aBareBooleanCallInAGuard`, hold each to the JVM at all four levels and require the reference to go on rejecting. `Adr068GuardShapesPropertyTest` allows this difference at a simple-name receiver and nowhere else. With a call as the receiver the reference accepts the same body, and the two frontends write one term. A tag that is no constructor reads as the written type's does: `switch` fails, and `if (v instanceof A q)`, whose test compares tags, says no (`JavacSwitchesTest.aTagThatIsNoConstructorFailsInAnElement`, `aTagTestOnAnElementReadsAsTheWrittenType`).
 
-Two rejections of that pass stay, since a decision keeps them: a `switch` directly on an element of a sealed interface at a simple-name receiver (`JULC0007`), and a `switch` guard that reads an untyped parameter (`JULC0072`), with what is read off it and a `var` of either.
+What the reference rejects on every receiver is no part of this and stays: an inferred parameter named as a guard, `when b` (`JULC0072`), `instanceof` on one in a guard (`JULC0072`), and a member its reading cannot find (`JULC0055`).
 
 ## The tests
 
@@ -312,7 +317,7 @@ One runner in one throwaway worktree. **45 mutants of the new lines: 37 killed o
 - **Freeze.** `adr/evidence/068/lowering-*.tsv`. No `.diffcase` was added, so no reference row is new.
 - **`lowering-accepted-differences.tsv`.** The 38 rows of [`068/m3f-accepted-differences.tsv`](068/m3f-accepted-differences.tsv). Semantic fix asks for a saved `.diffcase`. These rest on JUnit, as asked for this slice: a saved
   `CallbackHelper`, `find` and written-type case each adds a reference row, and the frozen frontend's answer there is the divergence.
-- **`DIFFERENT-pir`** is a class no accepted table has held in numbers: 33 rows, all one rule.
+- **`DIFFERENT-pir`** is a class no accepted table has held in numbers: 33 rows, all one rule. A row's text holds a digest of the type and the term of each method that differs, so a later change to one of them moves the row.
 - **Conflict with the `switch` slice.** `Lowering.dispatch`, `SubsetScan`'s lists, `Frame` and `CallTargets.seen` are touched by both. `Tuples.destination` is untouched: a `return` in a lambda has no target through `Frame.lambda`.
 - **ADR text.**
   - M3's row: this slice.

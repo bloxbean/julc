@@ -1045,7 +1045,7 @@
       "category": "TYPE",
       "severity": "error",
       "template": "{0} compares {1} by reference; use equals",
-      "summary": "== and != on BigInteger, byte[], String, boxed values or records is reference equality in Java (JLS 15.21.3), but value equality on-chain (ADR-068 D6). Constant String operands built from literals and string + alone keep their meaning. Emitted by the javac frontend.",
+      "summary": "== and != on BigInteger, byte[], String, boxed values or records is reference equality in Java (JLS 15.21.3), but value equality on-chain (ADR-068 D6). Constant String operands built from literals and string + alone keep their meaning, and any other constant comparison stops too, in a guard unless the guard is constant as a whole. Emitted by the javac frontend.",
       "fix": "Use a.equals(b), or ByteStringLib.equals(a, b) for bytes."
     },
     {

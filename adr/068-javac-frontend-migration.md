@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11) and 2026-11-03 (r12)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11) and 2026-11-02 (r12, r13)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -526,10 +526,12 @@ exceptions D11 lists.
     `char`, boolean or conditional subexpression, **and** the same holds, recursively, for the initializer of every
     constant variable it reaches (alias chains, static, local and imported constants): those have Java's value
     without integer semantics. A constant from a class file (a stub) has no initializer tree; it contributes its
-    `getConstantValue()`, which is Java's exact value. Inside
-    `switch` guards, ADR-067's evaluator decides as today (Java's widths, I9), so `"a" + "b" == "ab"` keeps its
-    meaning there. Any other constant-string comparison (`(2147483647 + 1 < 0 ? "a" : "b") == "a"`, which is true
-    on the JVM and false with unbounded lowering), including one reached only through a constant alias
+    `getConstantValue()`, which is Java's exact value. A `switch` guard constant as a whole keeps ADR-067's evaluator
+    (Java's widths, I9) and reaches no term, so `"a" + "b" == "ab"` keeps its meaning there. In a guard that is not
+    constant as a whole, a constant string outside that form stops at `JULC0086` as a Policy rejection (r13): a guard
+    evaluator cannot be trusted with a constant it would read differently from Java, and the reference does: `c && BAD == "a"`,
+    with `static final String BAD` of the conditional below, takes the other branch. Any other constant-string comparison
+    (`(2147483647 + 1 < 0 ? "a" : "b") == "a"`, which is true on the JVM and false with unbounded lowering), including one reached only through a constant alias
     (`static final String ALIAS = BAD;`), is rejected with `JULC0086`. Tests cover overflow and conditional
     operands, and static, local and imported alias chains.
   - **String `+` with a non-`String` operand** (`"a" + 1`) is valid Java, but JuLC lowers it to `appendString`
@@ -845,8 +847,9 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   units, D7's `@Param` on `BytesData`, and a lone surrogate in a comment, which cannot reach a script: `JULC0093` is a
   rule on literals. `reject-record-static-field` and `reject-record-canonical-constructor` are "Diagnostic change"
   rows, to `JULC0095` and `JULC0099` (D15).
-- **One deliberate widening (Group 2).** What the reference rejects only because a throw from its discarded first pass over
-  a lambda at a simple-name receiver stands, `JAVAC` accepts in a lambda's body, with the type javac gave and the JVM's answer.
+- **One deliberate widening (Group 2).** An inferred lambda parameter has the type javac gives it, in a `switch` guard too. So
+  every program the reference rejects only because a throw from its discarded first pass over a lambda at a simple-name
+  receiver stands compiles on `JAVAC`, with the JVM's answer.
   [M3f's evidence](evidence/068-m3f-lambdas.md#the-one-deliberate-widening) lists it. Harness rows stand for the `.diffcase`, as no corpus row reaches it.
 - **Two limits of a `.diffcase` (r12).** A `.diffcase` compiles a method, so the two `Optional` rows about a validator's
   datum cannot show the reference diverging: their cases show the javac frontend meeting the JVM on those types, and
@@ -854,6 +857,9 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   so D8's rows, which need a pool, cannot be saved: their oracle stays the reference's program of the root alone, in the gate.
 - **Two errors in one method (F946, r12).** A `DIFFERENT-rejection` of two errors in one method is a "Diagnostic change":
   the reference collects `JULC0061` and goes on to the error it throws, and the javac frontend stops at the first.
+- **A row that differs in its PIR (r13).** `DIFFERENT-pir` is a method whose bytes and budgets may agree while its terms do
+  not. "Semantic fix" and "Cost change" explain it, with the evidence of the class. The row's text ends in a digest of the
+  type and term of every method that differs, so another difference moves the row.
 - A case may move between classes only by a new row; rows are never edited. The one exception is a **tool
   correction**: when a frozen value is shown to be an artifact of the ledger tool itself (not of the compiler,
   for example a class-loader identity hash in a JVM failure message), the frozen file may be regenerated at its
@@ -958,8 +964,9 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 - **Source that stops compiling:**
   - JuLC's dialect (D6): `BigInteger` operators, `int` literals as `BigInteger`, implicit imports, `@NewType`
     `of(...)`;
-  - reference equality (outside D6's narrow constant-string case), and `.equals` that would compare an array by
-    identity, through records, sealed variants, containers or type arguments (D6);
+  - reference equality (outside D6's narrow constant-string case, which a guard does not widen: a conditional constant
+    in a guard that is not constant as a whole is `JULC0086` too; compare with `.equals`), and `.equals` that would
+    compare an array by identity, through records, sealed variants, containers or type arguments (D6);
   - a constant-variable `@Param` (D14);
   - string `+` with a non-`String` operand (`JULC0090`, #296), and a `JulcArray` in any Data-encoded position
     (`JULC0091`, #298); both fail at run time today;
@@ -1008,8 +1015,8 @@ milestone's evidence; a skipped check fails the gate.
 | **M0** | Freeze B0 and the corpus: in-repo `julc-examples` validators, the 16 stdlib libraries, ledger sources, `verification/blaster/fixtures`, `verification/c7/fixtures`, every compiler/stdlib/testkit test source, the `.diffcase` set, G0, the G1 fixed-seed corpus, the external `julc-examples`, Elci's smoke and `custom-library`. Build the D13 ledger's reference rows, the I2a rejection inventory, and D6's scan of `.equals` call sites that `JULC0087` would reject. Freeze D4's accepted-divergence list with each pin's ID. Add this ADR as a step of ADR-062, and D4's preview-tracking sentence to `SECURITY.md` | This ADR accepted; the integration's full run green | `adr/evidence/068-javac-frontend-baseline.md` with B0's SHA, the pinned commands, and the generated ledger and inventory | I1, I2a, I7, I11 baselines |
 | **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's comparison rules in both frontends (D4 exception 1, re-freezing the reference as B1); the JuLC collections' `byte[]` value equality on the JVM (D6). D6's dialect rewrite of every in-repo migration source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every migration case accepted by both is byte-identical to B1 (I1a); every migration case javac rejects is a "javac rejection" row whose rewrite is accepted and costs no more, in size and budget, than the order-correct lowering of its dialect original (D4), except where the rewrite writes out a conversion or library call the dialect made implicitly, each listed with its measured cost; a case D6 removes keeps its original rejection row and needs no accepted replacement; negative fixtures stay rejected; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I1, I2b, I2c, I4, I6, I10 |
 | **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases bind to the user's type (their values agree in M3, when they can run); `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
-| **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14) (**ported**, M3a); calls (stdlib, instance dispatch, D6's comparison rules) (**ported**, Group 1; a library call waits for whole-library lowering); records, fields, object creation (**ported**, Group 1); locals, `if`/`else`, `return` (**ported**, Group 1); `instanceof` (**ported**, Group 1); `switch` with ADR-067 M1 guards and the ported `JavaConstants`; lambdas; whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
-| **M4** | Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix) | M3 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
+| **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14) (**ported**, M3a); calls (stdlib, instance dispatch, D6's comparison rules) (**ported**, Group 1; a library call waits for whole-library lowering); records, fields, object creation (**ported**, Group 1); locals, `if`/`else`, `return` (**ported**, Group 1); `instanceof` (**ported**, Group 1); `switch` with ADR-067 M1 guards and the ported `JavaConstants` (**ported**, Group 2); lambdas (**ported**, Group 2); whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
+| **M4** | Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix). A loop that calls a library gets its I1 row when libraries are lowered | M3's Group 2, by the maintainer's decision of r13 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
 | **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
 | **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; `JULC0100` and the gate-only rows of `JULC0101` removed, with a release note (D15); full build; harness gate; Elci coordinated | I8 |
 
@@ -1415,7 +1422,7 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - B4: `String.length` counts UTF-16 code units, and a method with no parameters whose body may fail runs at each call
     (open question 5, closed), on both frontends, under exception 2. This is the fourth reference change
     (`068-m3-reference-b4.md`). The JVM's byte string builtins and list counts follow Plutus 1.63.0.0, which moves no script.
-- **r12** (2026-11-03, M3 Group 1, on repository evidence and the coordinator's decisions; three independent reviews and a
+- **r12** (2026-11-02, M3 Group 1, on repository evidence and the coordinator's decisions; three independent reviews and a
   confirmation round):
   - B3 and B4 stand as the third and fourth reference changes, and Group 1's tables compare with B4
     (`068-m3-reference-b3.md`, `068-m3-reference-b4.md`, `068-m3-group1.md`).
@@ -1434,3 +1441,12 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     errors (F946). D14: a `@Param` is read on the compiled class alone (F909).
   - ADR-067 D5: `JULC0078` is emitted on `frontend=JAVAC` from M3, and is wider than class sets. M3's row marks what
     Group 1 ported.
+- **r13** (2026-11-02, M3 Group 2, on repository evidence and the coordinator's decisions; independent reviews and a
+  confirmation round):
+  - M3's row marks `switch` and lambdas as ported (`068-m3e-switch.md`, `068-m3f-lambdas.md`, `068-m3-group2.md`).
+  - Order, by the maintainer's decision: M4's loops follow Group 2, and libraries with Elci's specialization come after
+    them, in one pass. M4's entry gate is M3's Group 2, and a loop that calls a library gets its I1 row with libraries. M5's
+    entry gate does not change: M4, zero `JULC0084` on the corpus, and a complete I1 ledger.
+  - D13: `DIFFERENT-pir` is named, "Semantic fix" and "Cost change" explain it, and a row pins the terms that differ.
+  - An inferred lambda parameter has the type javac gives it, in a guard too.
+  - D6: in a `switch` guard that is not constant as a whole, a constant string outside the plain form stops at `JULC0086`, a Policy rejection. Each `==` that reaches a term is held to the rule by the lowering.
