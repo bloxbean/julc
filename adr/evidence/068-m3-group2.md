@@ -42,6 +42,8 @@ The two slices' files hold what each delivered.
 | `condition read late` | With the `then` check in place, a null from an inner branch ends the reading at the next branch, so the result is the same |
 | `no branch reads as Data` | With no branch in the argument, the term's own type says Data on every probe that reached the line |
 
+The later fixes ran 26 more, each set with a clean control: 22 killed, one that did not compile and was rewritten and is among those killed, and one that showed a catch was not needed, which went. Two survive: `no branch reads as Data` in its new place, and `param read`, since a `@Param`'s initializer holds a constant of the field's own type, so reading it says what the field says.
+
 ## What this does not establish
 
 - Group 2's lowering holds only for programs with no library call. A library call stays a stop until Group 3.
