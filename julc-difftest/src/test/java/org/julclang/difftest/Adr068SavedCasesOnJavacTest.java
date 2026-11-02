@@ -15,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Saved cases whose answer on {@code frontend=JAVAC} is not the one {@code RegressionCasesTest} replays, on the default
  * frontend. D13 asks a semantic fix and an accepted shape for a {@code .diffcase} on which javac agrees with the JVM: those are
- * the ones named {@code -068-}, and T33's pins (#284, #286), whose values could not run before records. The default frontend's
+ * the ones named {@code -068-}, and T33's pins (#284, #286), whose values could not run before records. A {@code diverge-068-} case
+ * diverges on the default frontend alone, and {@code M5} is what closes it. The default frontend's
  * rejection of each stays in the case's {@code expect}.
  */
 class Adr068SavedCasesOnJavacTest {
@@ -41,7 +42,7 @@ class Adr068SavedCasesOnJavacTest {
     @TestFactory
     Stream<DynamicTest> theyAgreeWithTheJvm() {
         var cases = saved().stream().filter(saved -> name(saved).contains("-068-") || T33_PINS.contains(name(saved))).toList();
-        assertEquals(11 + T33_PINS.size(), cases.size());
+        assertEquals(22 + T33_PINS.size(), cases.size());
         return cases.stream().map(saved -> DynamicTest.dynamicTest(name(saved), () -> {
             var report = RUNNER.run(saved.diffCase());
             assertTrue(report.all(Verdict.Kind.AGREE), report::describe);

@@ -237,7 +237,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
      */
     private void requireNoRejectedStatement(BlockTree tree) {
         for (var statement : SubsetWalk.all(tree, StatementTree.class)) {
-            if (statement instanceof BreakTree || REJECTED_STATEMENTS.contains(statement.getKind())) scan(statement, null);
+            if (statement instanceof BreakTree loopExit) visitBreak(loopExit, null);
+            if (REJECTED_STATEMENTS.contains(statement.getKind())) scan(statement, null);
         }
     }
 

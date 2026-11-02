@@ -1,0 +1,19 @@
+format: 3
+name: a cursor advanced in parentheses
+class: Case
+method: m
+arg: 83010203
+expect: DIVERGE M5 Value/Failure
+jvm: Value 03 []
+uplc: Failure []
+note: What reaches a Data accumulator says it is a list, so the tuple carries one. Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Case {
+    public static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long s = 0; while (!Builtins.nullList(c)) { c = (Builtins.tailList(c)); s = s + 1; } return s; }
+}

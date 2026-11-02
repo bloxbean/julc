@@ -5,6 +5,7 @@ import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -196,6 +197,13 @@ class JavacLoopsTest {
             "static long m(JulcList<BigInteger> xs, boolean c) { for (var x : xs) { if (c) { } else { long t = 0; t = 1; } } return 1; }",
             "static long m(JulcList<BigInteger> xs) { for (var x : xs) { { long t = 0; t = 1; } } return 1; }",
             "static long m(long n) { while ((n = n - 1) > 0) { break; } return n; }",
+            "static long m(JulcList<BigInteger> xs) { JulcList<BigInteger> y = xs; for (var x : (y = xs.tail())) { if (x.signum() > 0) { break; } } return 1; }",
+            "static long m(JulcList<BigInteger> xs) { JulcList<BigInteger> y = xs; for (var x : (y = xs.tail())) { } return 1; }",
+            "static long m(JulcList<BigInteger> xs) { JulcList<BigInteger> y = xs; long s = 0; for (var x : (y = xs.tail())) { s = s + 1; if (s > 1) { break; } } return s; }",
+            "static long m() { return 1; } long f() { long s = 0; for (int i = 0; i < 2; i = i + 1) { s = s + 1; } return s; }",
+            "static long m() { return 1; } long f() { long s = 0; do { s = s + 1; } while (s < 2); return s; }",
+            "static long m() { return 1; } long f(int a) { long s = 0; switch (a) { case 1: break; default: break; } return s; }",
+            "static long m() { return 1; } long f() { long s = 0; if (s > 0) { do { s = s + 1; } while (s < 2); } return s; }",
             "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(S s) { return switch (s) { case A a -> { long i = 0; while (true) { i = i + 1; } } default -> 1; }; }",
             "static long h(JulcList b, JulcList<JulcG1> x) { while (x.isEmpty()) { x = b; } return 1; } static long m() { return 1; }",
             "static long m(long n) { while (n > 0) { n = n - 1; } { return n; } }",
@@ -249,6 +257,32 @@ class JavacLoopsTest {
         rejected(members);
     }
 
+    /** An iterable in parentheses, a conditional or a {@code switch} has no element type to the reference, so its variable reads as Data. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (xs)) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (BigInteger x : (xs)) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs, JulcList<BigInteger> ys, boolean c) { long s = 0; for (var x : c ? xs : ys) { s = s + x.signum(); } return s; }",
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(JulcList<BigInteger> xs, S e) { long s = 0; for (var x : switch (e) { case A a -> xs; default -> xs; }) { s = s + x.longValue(); } return s; }",
+            "record R(BigInteger a) { } static BigInteger m(JulcList<R> xs) { BigInteger s = BigInteger.ZERO; for (var x : (xs)) { s = s.add(x.a()); } return s; }",
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(JulcList<S> xs) { long s = 0; for (var e : (xs)) { s = s + switch (e) { case A a -> 1; default -> 2; }; } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (xs)) { var y = x; s = s + y.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; for (var x : (xs)) { var y = c ? x : x; s = s + y.longValue(); } return s; }",
+    })
+    void anIterableTheReferenceDoesNotRead(String members) {
+        rejected(members);
+    }
+
+    /** What the reference runs on such a variable stays so, and an element that stops being one of these reads as before. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(JulcList<PlutusData> xs) { long s = 0; for (var x : (xs)) { s = s + Builtins.unIData(x).longValue(); } return s; }",
+            "static long m(JulcList<PlutusData> xs) { long s = 0; long t = 0; for (var x : (xs)) { s = s + 1; t = t + Builtins.unIData(x).longValue(); } return s + t; }",
+    })
+    void anIterableTheReferenceDoesNotReadStillRuns(String members) {
+        same(members);
+    }
+
     /** The hash of an element the reference knows to be decoded, a pattern variable as an accumulator, and an update's tuple. */
     @ParameterizedTest
     @ValueSource(strings = {
@@ -288,6 +322,40 @@ class JavacLoopsTest {
     })
     void whatATupleOfAWhileHolds(String members) {
         same(members);
+    }
+
+    /** A native element has no decoding from Data, so the rejection stands at the iterable, not nowhere. */
+    @Test
+    void aNativeElementHasAPosition() {
+        var source = source("static long m(long n) { JulcList<JulcG1> g = JulcList.empty(); long s = 0;\nfor (var x : g) { s = s + 1; } return s; }");
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+        assertEquals("JULC0041", failure.diagnostics().getFirst().code());
+        assertEquals(12, failure.diagnostics().getFirst().line());
+        assertEquals(14, failure.diagnostics().getFirst().column());
+    }
+
+    /** A native value in a tuple is rejected at the loop, where the reference has no position. */
+    @Test
+    void aNativeAccumulatorHasAPosition() {
+        var source = source("static long h(JulcG1 g, long n) { long s = 0;\nwhile (s < n) { s = s + 1; g = g; } return s; } static long m() { return 1; }");
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+        assertEquals("JULC0041", failure.diagnostics().getFirst().code());
+        assertEquals(12, failure.diagnostics().getFirst().line());
+    }
+
+    /** Reaching a list and Data in one variable has no one type for the tuple, so it stops. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(PlutusData d) { PlutusData cur = d; long i = 0; while (i < 1) { i = i + 1; cur = Builtins.tailList(Builtins.unListData(cur)); } return i; }",
+            "static long m(PlutusData d) { PlutusData cur = Builtins.unListData(d); long i = 0; while (i < 2) { i = i + 1; if (i == 1) { cur = Builtins.tailList(cur); } else { cur = Builtins.iData(i); } } return i; }",
+            "static long m(long n) { PlutusData cur = Builtins.iData(0); long i = 0; while (i < n) { i = i + 1; if (i == 5) { cur = Builtins.mkNilData(); } } return Builtins.unIData(cur).longValue(); }",
+    })
+    void anAccumulatorOfTwoRepresentationsStops(String members) {
+        var failure = assertThrows(NotPorted.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of()));
+        assertEquals("an accumulator shown to hold both a list and Data", failure.construct());
     }
 
     /** A library compiled as a root finds its own method in the reference's pool, which is the library slice's to read. */

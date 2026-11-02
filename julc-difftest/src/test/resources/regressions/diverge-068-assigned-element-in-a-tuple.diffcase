@@ -1,0 +1,20 @@
+format: 3
+name: a fresh value assigned to a variable the reference holds as Data, in a tuple
+class: Case
+method: m
+arg: 01
+expect: DIVERGE M5 Value/Failure
+jvm: Value 04 []
+uplc: Failure []
+note: The reference holds the variable as Data and conses the integer. Closed by M5.
+note: A variable holds one type, so a tuple of accumulators encodes what was decoded.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Case {
+    public static long m(BigInteger a) { long s = 0; for (var x : JulcList.of(a, BigInteger.TWO)) { long n = 0; while (n < 2) { n = n + 1; x = BigInteger.TEN; } s = s + n; } return s; }
+}

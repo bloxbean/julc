@@ -1,0 +1,20 @@
+format: 3
+name: a cursor in a while of two accumulators in a for-each, read after it
+class: Case
+method: m
+arg: 83010203
+arg: 820102
+expect: DIVERGE M5 Value/Failure
+jvm: Value 0a []
+uplc: Failure []
+note: What reaches a Data accumulator says it is a list, so the tuple carries one. Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+import java.math.BigInteger;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
+
+public class Case {
+    public static long m(PlutusData d, JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { PlutusData cur = Builtins.unListData(d); long i = 0; while (!Builtins.nullList(cur)) { i = i + 1; cur = Builtins.tailList(cur); } s = s + i + (Builtins.nullList(cur) ? 1 : 2); } return s; }
+}
