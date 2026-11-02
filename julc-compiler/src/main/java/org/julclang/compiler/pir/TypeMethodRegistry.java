@@ -224,11 +224,11 @@ public final class TypeMethodRegistry {
 
         // abs: if x < 0 then 0 - x else x
         reg.register("IntegerType", "abs",
-                (scope, args, scopeType, argTypes) ->
+                (scope, args, scopeType, argTypes) -> PirHelpers.readOnce(scope, new PirType.IntegerType(), x ->
                         new PirTerm.IfThenElse(
-                                PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, zero),
-                                PirHelpers.builtinApp2(DefaultFun.SubtractInteger, zero, scope),
-                                scope),
+                                PirHelpers.builtinApp2(DefaultFun.LessThanInteger, x, zero),
+                                PirHelpers.builtinApp2(DefaultFun.SubtractInteger, zero, x),
+                                x)),
                 scopeType -> new PirType.IntegerType());
 
         // negate: 0 - x
@@ -239,22 +239,14 @@ public final class TypeMethodRegistry {
 
         // max: if a < b then b else a
         reg.register("IntegerType", "max",
-                (scope, args, scopeType, argTypes) -> {
-                    var argPir = args.get(0);
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, argPir),
-                            argPir, scope);
-                },
+                (scope, args, scopeType, argTypes) -> PirHelpers.readOnce(scope, args.get(0), new PirType.IntegerType(), (a, b) ->
+                        new PirTerm.IfThenElse(PirHelpers.builtinApp2(DefaultFun.LessThanInteger, a, b), b, a)),
                 scopeType -> new PirType.IntegerType());
 
         // min: if a <= b then a else b
         reg.register("IntegerType", "min",
-                (scope, args, scopeType, argTypes) -> {
-                    var argPir = args.get(0);
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, scope, argPir),
-                            scope, argPir);
-                },
+                (scope, args, scopeType, argTypes) -> PirHelpers.readOnce(scope, args.get(0), new PirType.IntegerType(), (a, b) ->
+                        new PirTerm.IfThenElse(PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, a, b), a, b)),
                 scopeType -> new PirType.IntegerType());
 
         // equals: EqualsInteger (with Data→Integer coercion on arg)
@@ -306,29 +298,28 @@ public final class TypeMethodRegistry {
                 (scope, args, scopeType, argTypes) -> {
                     var one = new PirTerm.Const(Constant.integer(BigInteger.ONE));
                     var negOne = new PirTerm.Const(Constant.integer(BigInteger.valueOf(-1)));
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, zero),
+                    return PirHelpers.readOnce(scope, new PirType.IntegerType(), x -> new PirTerm.IfThenElse(
+                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, x, zero),
                             negOne,
                             new PirTerm.IfThenElse(
-                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, scope, zero),
+                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, x, zero),
                                     zero,
-                                    one));
+                                    one)));
                 },
                 scopeType -> new PirType.IntegerType());
 
         // compareTo: if a < b then -1 else if a == b then 0 else 1
         reg.register("IntegerType", "compareTo",
                 (scope, args, scopeType, argTypes) -> {
-                    var argPir = args.get(0);
                     var one = new PirTerm.Const(Constant.integer(BigInteger.ONE));
                     var negOne = new PirTerm.Const(Constant.integer(BigInteger.valueOf(-1)));
-                    return new PirTerm.IfThenElse(
-                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, scope, argPir),
+                    return PirHelpers.readOnce(scope, args.get(0), new PirType.IntegerType(), (a, b) -> new PirTerm.IfThenElse(
+                            PirHelpers.builtinApp2(DefaultFun.LessThanInteger, a, b),
                             negOne,
                             new PirTerm.IfThenElse(
-                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, scope, argPir),
+                                    PirHelpers.builtinApp2(DefaultFun.EqualsInteger, a, b),
                                     zero,
-                                    one));
+                                    one)));
                 },
                 scopeType -> new PirType.IntegerType());
         // In an `OP 0` comparison, PirGenerator lowers the comparison itself (ADR-068 D6).

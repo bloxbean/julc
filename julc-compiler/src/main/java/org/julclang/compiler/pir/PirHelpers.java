@@ -184,6 +184,34 @@ public final class PirHelpers {
                 && integer.value().compareTo(BigInteger.valueOf(least)) >= 0;
     }
 
+    /**
+     * {@code body} of an operand it reads more than once. A delayed read runs at each read, and each level of a chain of
+     * such methods would double the one below, so it is bound once ({@link #isMethodRead}). Any other operand goes in as it
+     * is: the handlers keep their shape for those (T13).
+     */
+    public static PirTerm readOnce(PirTerm operand, PirType type, UnaryOperator<PirTerm> body) {
+        return boundOnce("#operand", isMethodRead(operand), operand, type, freeVariables(operand), body);
+    }
+
+    /**
+     * {@code body} of a receiver and an argument it may each read more than once, as {@link #readOnce(PirTerm, PirType, UnaryOperator)}.
+     * The receiver runs first, so a receiver that has an effect is bound ahead of a bound argument.
+     */
+    public static PirTerm readOnce(PirTerm receiver, PirTerm argument, PirType type, BinaryOperator<PirTerm> body) {
+        boolean bindArgument = isMethodRead(argument);
+        boolean bindReceiver = isMethodRead(receiver) || bindArgument && !isTrivialOperand(receiver);
+        var avoid = freeVariables(receiver, argument);
+        return boundOnce("#receiver", bindReceiver, receiver, type, avoid, receiverRead ->
+                boundOnce("#argument", bindArgument, argument, type, avoid, argumentRead -> body.apply(receiverRead, argumentRead)));
+    }
+
+    private static PirTerm boundOnce(String base, boolean bind, PirTerm operand, PirType type, Set<String> avoid,
+                                     UnaryOperator<PirTerm> body) {
+        if (!bind) return body.apply(operand);
+        var read = new PirTerm.Var(hygienicName(base, avoid), type);
+        return new PirTerm.Let(read.name(), operand, body.apply(read));
+    }
+
     private static boolean isTrivialOperand(PirTerm term) {
         return term instanceof PirTerm.Var && !isMethodRead(term) || term instanceof PirTerm.Const;
     }

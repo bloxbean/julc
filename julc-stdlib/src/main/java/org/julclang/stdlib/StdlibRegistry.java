@@ -912,25 +912,26 @@ public final class StdlibRegistry implements StdlibLookup {
         // abs(x) = IfThenElse(LessThanInteger(x, 0), SubtractInteger(0, x), x)
         reg.register("Math", "abs", args -> {
             requireArgs("Math.abs", args, 1);
-            var x = args.get(0);
             var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
-            var ltZero = builtinApp2(DefaultFun.LessThanInteger, x, zero);
-            var negX = builtinApp2(DefaultFun.SubtractInteger, zero, x);
-            return new PirTerm.IfThenElse(ltZero, negX, x);
+            return PirHelpers.readOnce(args.get(0), new PirType.IntegerType(), x -> {
+                var ltZero = builtinApp2(DefaultFun.LessThanInteger, x, zero);
+                var negX = builtinApp2(DefaultFun.SubtractInteger, zero, x);
+                return new PirTerm.IfThenElse(ltZero, negX, x);
+            });
         });
 
         // max(a, b) = IfThenElse(LessThanInteger(a, b), b, a)
         reg.register("Math", "max", args -> {
             requireArgs("Math.max", args, 2);
-            var lt = builtinApp2(DefaultFun.LessThanInteger, args.get(0), args.get(1));
-            return new PirTerm.IfThenElse(lt, args.get(1), args.get(0));
+            return PirHelpers.readOnce(args.get(0), args.get(1), new PirType.IntegerType(), (a, b) ->
+                    new PirTerm.IfThenElse(builtinApp2(DefaultFun.LessThanInteger, a, b), b, a));
         });
 
         // min(a, b) = IfThenElse(LessThanEqualsInteger(a, b), a, b)
         reg.register("Math", "min", args -> {
             requireArgs("Math.min", args, 2);
-            var lte = builtinApp2(DefaultFun.LessThanEqualsInteger, args.get(0), args.get(1));
-            return new PirTerm.IfThenElse(lte, args.get(0), args.get(1));
+            return PirHelpers.readOnce(args.get(0), args.get(1), new PirType.IntegerType(), (a, b) ->
+                    new PirTerm.IfThenElse(builtinApp2(DefaultFun.LessThanEqualsInteger, a, b), a, b));
         });
 
         reg.register("Math", "floorDiv", args -> {
