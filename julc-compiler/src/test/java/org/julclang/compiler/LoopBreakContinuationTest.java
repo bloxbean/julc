@@ -207,9 +207,9 @@ class LoopBreakContinuationTest {
         for (var shape : SHAPES) {
             String source = source(shape);
             var classes = javac(source);
-            for (var level : OptimizationLevel.values()) {
+            for (var level : OptimizationLevel.values()) for (var frontend : CompilerFrontend.values()) {
                 var program = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                        new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "m").program();
+                        new CompilerOptions().setOptimizationLevel(level).setFrontend(frontend)).compileMethod(source, "m").program();
                 for (int k = 0; k < INPUTS.length; k++) {
                     var xs = Arrays.stream(LISTS[k]).mapToObj(BigInteger::valueOf).toList();
                     // A fresh class for each input, so that a static field starts at its initial value.
@@ -222,7 +222,7 @@ class LoopBreakContinuationTest {
                         var result = CompilerTestVm.pv11(vm).evaluateWithArgs(program, args, BUDGET);
                         var actual = result instanceof EvalResult.Success ok ? ok.resultTerm() : result;
                         if (!new Term.Const(Constant.integer((BigInteger) expected)).equals(actual)) {
-                            problems.add(shape[0] + " at " + level + " on " + vm + ", a=" + INPUTS[k][0] + " b=" + INPUTS[k][1]
+                            problems.add(shape[0] + " at " + level + " through " + frontend + " on " + vm + ", a=" + INPUTS[k][0] + " b=" + INPUTS[k][1]
                                     + " xs=" + xs + ": JVM " + expected + ", UPLC " + actual);
                         }
                     }
@@ -237,7 +237,7 @@ class LoopBreakContinuationTest {
         // Each if that breaks binds what follows it once, as a join point, instead of copying it into
         // every branch that falls through. Both branches fall through here (review A, F2: with only
         // one falling through, copying stays linear too), so copying would double the size per if.
-        for (boolean twoAccumulators : new boolean[]{false, true}) {
+        for (boolean twoAccumulators : new boolean[]{false, true}) for (var frontend : CompilerFrontend.values()) {
             var sizes = new ArrayList<Integer>();
             for (int n = 1; n <= 8; n++) {
                 var body = new StringBuilder("BigInteger s = a; BigInteger t = b;\nfor (var x : xs) {\n");
@@ -248,7 +248,8 @@ class LoopBreakContinuationTest {
                     body.append(twoAccumulators ? "t = t.add(BigInteger.ONE);\n" : "s = s.add(BigInteger.ONE);\n");
                 }
                 body.append("}\nreturn s.add(t);");
-                var program = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source(new String[]{"", body.toString()}), "m").program();
+                var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(frontend))
+                        .compileMethod(source(new String[]{"", body.toString()}), "m").program();
                 sizes.add(UplcFlatEncoder.encodeProgram(program).length);
             }
             int step = sizes.get(1) - sizes.get(0);
@@ -281,9 +282,9 @@ class LoopBreakContinuationTest {
         for (var fixture : Map.of("disjoint", disjoint, "after", after).entrySet()) {
             String source = source(new String[]{"", fixture.getValue()}).replace(
                     "import org.julclang.core.types.JulcList;", "import org.julclang.core.types.JulcList;\nimport org.julclang.core.types.JulcArray;");
-            for (var level : OptimizationLevel.values()) {
+            for (var level : OptimizationLevel.values()) for (var frontend : CompilerFrontend.values()) {
                 var bytes = UplcFlatEncoder.encodeProgram(new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                        new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "m").program());
+                        new CompilerOptions().setOptimizationLevel(level).setFrontend(frontend)).compileMethod(source, "m").program());
                 var sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 16);
                 assertEquals(expected.get(fixture.getKey() + "/" + level), sha, fixture.getKey() + " at " + level);
             }

@@ -1,12 +1,19 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
+import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -220,6 +227,19 @@ class JavacLoopsTest {
     })
     void whatAReadOfALoopMeans(String members) {
         same(members);
+    }
+
+    /** A value that a tuple cannot encode. With no type to encode by, the rejection stands at the loop: the reference has no position for it. */
+    @Test
+    void whatATupleCannotHold() {
+        rejected("static long m(long n) { JulcArray<BigInteger> a = JulcArray.of(BigInteger.ONE); long i = 0; while (i < n) { i = i + 1; a = JulcArray.of(BigInteger.TWO); } return i; }");
+        var source = source("sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } }\n"
+                + "static long m(S s, long n) { var x = switch (s) { case S.A a -> a; case S.B b -> BigInteger.ONE; }; long i = 0;\n"
+                + "while (i < n) { i = i + 1; x = x; } return i; }");
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
+        assertEquals("JULC0012", failure.diagnostics().getFirst().code());
+        assertEquals(12, failure.diagnostics().getFirst().line());
     }
 
     /** A tuple's diamond takes its target's components, so a raw target takes only Data. */
