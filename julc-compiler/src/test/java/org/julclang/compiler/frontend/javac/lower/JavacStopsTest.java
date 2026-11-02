@@ -59,6 +59,7 @@ class JavacStopsTest {
             new Stop("a for-each variable of type java.lang.Object", "static long m(JulcList xs) { long s = 0; for (Object o : xs) { s = s + 1; } return s; }", "accepted"),
             new Stop("a for-each variable of type java.lang.Number", "static long m(JulcList<BigInteger> xs) { long s = 0; for (Number o : xs) { s = s + o.longValue(); } return s; }", "accepted"),
             new Stop("a for-each variable of type java.lang.Long", "static long m(long z) { long s = 0; for (Long x : JulcList.of(z)) { s = s + 1; } return s; }", "accepted"),
+            new Stop("a Data component given a native list", "record R(PlutusData d) { } static R m(PlutusData z) { PlutusData c = Builtins.unListData(z); long i = 0; while (i < 1) { c = Builtins.tailList(c); i = i + 1; } return new R(c); }", "accepted"),
             new Stop("a for-each over an array", "static long m(byte[] a) { long s = 0; for (byte b : a) { s = s + 1; } return s; }", "accepted"),
             new Stop("a wrapper's component read as Data", "static byte[] m(PubKeyHash p) { return p.hash(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "record R(PubKeyHash p) { } static byte[] m(R r) { return (r.p()).hash(); }", "accepted"),

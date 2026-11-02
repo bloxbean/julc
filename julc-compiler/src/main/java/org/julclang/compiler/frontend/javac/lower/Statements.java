@@ -215,7 +215,6 @@ final class Statements {
 
     /** What a {@code var} holds where the reference sees Data: javac's type of its initializer, if it has one here. */
     private PirType held(ExpressionTree initializer, PirTerm value, PirType seen) {
-        if (!(seen instanceof PirType.DataType)) return seen;
         try {
             return typing.of(initializer, value);
         } catch (NotPorted e) {

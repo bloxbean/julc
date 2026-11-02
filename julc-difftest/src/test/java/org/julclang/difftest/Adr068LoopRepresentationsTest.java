@@ -198,6 +198,47 @@ class Adr068LoopRepresentationsTest {
                 true, MAP, LIST);
     }
 
+    /** With a parameter as the cursor, only what is assigned says it is a list. */
+    private static String walker(String step) {
+        return """
+                public sealed interface S { record A() implements S { } record B() implements S { } }
+                static PlutusData next(PlutusData c) { return Builtins.tailList(c); }
+                static PlutusData nextOf(PlutusData c, JulcList<BigInteger> xs) { var r = xs.map(x -> { return Builtins.iData(x); }); return Builtins.tailList(c); }
+                static long walk(PlutusData c, JulcList<BigInteger> xs, S e) { long s = 0; while (!Builtins.nullList(c)) { %s s = s + 1; } return s; }
+                public static long m(PlutusData d, JulcList<BigInteger> xs) { return walk(Builtins.unListData(d), xs, new S.A()); }
+                """.formatted(step);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "c = (Builtins.tailList(c));",
+            "c = s > 100 ? c : Builtins.tailList(c);",
+            "c = s < 100 ? Builtins.tailList(c) : c;",
+            "c = switch (e) { case S.A a -> Builtins.tailList(c); case S.B b -> c; };",
+            "c = next(c);",
+            "c = nextOf(c, xs);",
+            "PlutusData n = Builtins.tailList(c); c = n;",
+    })
+    void aParameterCursor(String step) {
+        var report = BOTH.run(new DiffCase("cursors", cursors(walker(step)), "Case", "m", List.of(LIST, list(integer(1))), TAGS2, null));
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+        });
+    }
+
+    private static final TagTable TAGS2 = new TagTable(List.of(new TagTable.Entry("Case$S$A", "Case$S", 0), new TagTable.Entry("Case$S$B", "Case$S", 1)));
+
+    /** A cursor over a pair list and the fields of a constructor travel as what they are, and a lambda's parameter is one type too. */
+    @Test
+    void whatElseACursorIs() {
+        assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.tailList(Builtins.unMapData(d)); long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } return s; }",
+                true, MAP);
+        assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.constrFields(d); long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } return s; }",
+                false, constr(0, integer(1), integer(2)));
+        assertCarried("public static boolean m(BigInteger a) { return JulcList.of(a, a).any(x -> { var y = x; long n = 0; while (n < 2) { n = n + 1; y = x; } return n > 5; }); }",
+                false, integer(1));
+    }
+
     /** I2d's fail-closed direction: an element read as Data that holds a boolean has no {@code equals} row, so it is {@code JULC0055}, which is listed for M5. */
     @Test
     void equalsOnAnElementOfAParenthesizedList() {
