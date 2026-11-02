@@ -250,6 +250,8 @@ This slice ran its own suites and the two modules. `Javac21ParityTest`, ADR-066'
 | `Adr068LoopsFuzzTest` | The same under Jazzer, 12 seeds, replayed by `test` | 793 runs in 61 s, no crash |
 | `Adr068LoopCasesOnJavacTest` | 50 saved cases with a loop on their expectation, and G0's 376 programs on 4 inputs | No disagreement |
 | `LoopBreakContinuationTest` | The loop-break continuation suite, now on both frontends, on two VMs | 3 tests |
+| `Adr068LoopRepresentationsTest` | 10 element types, 9 iterables, a loop variable written two ways, 7 shapes: 1,260 programs, each the JVM's at all four levels. Then each form a list reaches a Data accumulator by, on the reference and `JAVAC` | No disagreement on `JAVAC` |
+| `Adr068LoopRepresentationsPropertyTest` | Both families composed further: 150 elements under chains of variables and loops, 200 cursors by any form in any loop beside any accumulator, against the JVM | No disagreement |
 
 Each shape the property needs was reached: `break` 118 tries, `for` 223, `while` 177, an `else` 86, a local that shadows a field 108, traced 187, a failure 42, failed 31. The harness holds:
 
@@ -262,6 +264,8 @@ Each shape the property needs was reached: `break` 118 tries, `for` 223, `while`
 - A field updated by an entry method, shadowed, and read after.
 
 I13's check ran over all of it, the suites and the corpus: `julc.verifyBinderNamespace` is on in the test tasks, and a loop's accumulator, variable and join are told to it by `Terms.loop`.
+
+Of the 1,260, the reference agrees on 1,056. It fails the other 204 with one defect: a value of another representation than its binder's type says. 132 are `MkCons`, 72 an encoding of what it took for decoded. The 84 that also failed on `JAVAC` before this fix were that `MkCons`, and they are in the same class as the cursors, on "Closed by M5".
 
 ### T21, T23 and G0
 
@@ -349,7 +353,7 @@ So every mutant of these lists is killed. That says the lists are, and not that 
 
 - **Freeze.** `adr/evidence/068/lowering-*.tsv`, and add [`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv)'s rows to `lowering-accepted-differences.tsv`. Nothing shrank.
 - **ADR text.**
-  - M4's row: this slice, with the note that M3's library, entry-point and debug items are open.
+  - M4's row: this slice. Its entry gate and its line on a loop that calls a library are r13's, and M3's library, entry-point and debug items stay open.
   - D6: `==` and `.equals` rows that a loop stopped now show.
   - D11: the table under [what javac decides](#what-javac-decides-d11).
   - I13: a loop binds no element twice, so the per-method table stays unneeded.
