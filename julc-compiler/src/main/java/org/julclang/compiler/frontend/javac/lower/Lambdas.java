@@ -71,7 +71,7 @@ final class Lambdas {
         boolean decodes = isDecoded(held);
         var data = frame.scope().bind(element, decodes ? new PirType.DataType() : seen);
         var scope = decodes ? data.rebind(element, seen) : data;
-        var body = body(lambda, Frame.lambda(scope));
+        var body = body(lambda, frame.lambda(scope));
         if (encodesResult) body = encoded(body, call, lambda);
         if (decodes) body = terms.decoded(element, data.lookup(element), scope.lookup(element), held, body);
         return terms.lam(data.lookup(element), body);

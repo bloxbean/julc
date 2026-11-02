@@ -28,9 +28,12 @@ record Frame(Scope scope, Exit exit, PatternScope patterns, boolean inGuard) {
         return body(scope, new Exit(null, false));
     }
 
-    /** The frame of a lambda's body. A {@code return} there leaves the lambda, so it is no {@code return} of the method (ADR-047). */
-    static Frame lambda(Scope scope) {
-        return new Frame(scope, new Exit(null, false));
+    /**
+     * This frame in a lambda's body. A {@code return} there leaves the lambda, so it is no {@code return} of the method
+     * (ADR-047). The arms and the guard around it hold, as the reference's {@code patternScopes} and {@code guardDepth} do.
+     */
+    Frame lambda(Scope inner) {
+        return new Frame(inner, new Exit(null, false), patterns, inGuard);
     }
 
     /** This frame with {@code inner} visible: a binder's scope, which ends where the term it was built for does. */
