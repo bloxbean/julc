@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -29,7 +30,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Adr068LoopsPropertyTest {
 
     private static final DiffRunner RUNNER = new DiffRunner(configs(), 10_000);
-    private static final List<String> SHAPES = List.of("for (", "while (", "break;", "else {", "{\n        ", "long K =", "saidL(\"", "fail(0)");
+    private static final List<String> SHAPES = List.of("for (", "while (", "break;", "else {", "long K =", "saidL(\"", "fail(0)");
+    /** A bare block: a line that is only its brace. */
+    private static final Pattern BARE_BLOCK = Pattern.compile("(?m)^\\s*\\{$");
+    /** A local at the method's level, where the reference's name for it is the field's, so its identity {@code let} shows. */
+    private static final Pattern HIDES_THE_FIELD = Pattern.compile("(?m)^ {8}long K =");
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
@@ -59,6 +64,7 @@ class Adr068LoopsPropertyTest {
     void everyShapeWasRun() {
         System.out.println("loop programs " + SEEN);
         for (String shape : SHAPES) assertTrue(SEEN.getOrDefault(shape, 0) >= 15, () -> shape + " in too few tries: " + SEEN);
+        assertTrue(SEEN.getOrDefault("bare block", 0) >= 15, SEEN::toString);
         assertTrue(SEEN.getOrDefault("failed", 0) >= 5, SEEN::toString);
         assertTrue(SEEN.getOrDefault("traced", 0) >= 15, SEEN::toString);
     }
@@ -71,6 +77,7 @@ class Adr068LoopsPropertyTest {
         for (String shape : SHAPES) {
             if (body.contains(shape)) SEEN.merge(shape, 1, Integer::sum);
         }
+        if (BARE_BLOCK.matcher(body).find()) SEEN.merge("bare block", 1, Integer::sum);
         if (program.expected().failed()) SEEN.merge("failed", 1, Integer::sum);
         if (!program.expected().traces().isEmpty()) SEEN.merge("traced", 1, Integer::sum);
     }
@@ -86,8 +93,8 @@ class Adr068LoopsPropertyTest {
                     report.jvm(), program::source);
         }
         assertTrue(report.all(Verdict.Kind.AGREE), () -> program.source() + "\n" + report.describe());
-        // A local that shadows a field has its own name here, which saves a let after a loop: JavacLoopsTest states it.
-        if (program.source().contains("long K =")) return;
+        // A local that hides a field after a loop has its own name here, which saves a let: JavacLoopsTest states it.
+        if (HIDES_THE_FIELD.matcher(program.source()).find()) return;
         report.results().forEach((config, result) -> {
             if (config.frontend() == CompilerFrontend.JAVAPARSER) {
                 var javac = report.results().get(new DiffConfig(config.level(), "Java", CompilerFrontend.JAVAC));

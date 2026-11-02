@@ -9,6 +9,7 @@ import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
@@ -128,6 +129,10 @@ class JavacLoopsTest {
             "static long m(long n) { long i = 0; while (i < n) { i = i + 1; long t = i; t = 5; break; } return i; }",
             "static long m(long n) { long i = 0; while (i < n) { i = i + 1; if (i > 5) { break; } if (i > 2) { i = i + 1; } } return i; }",
             "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static long m(JulcList<BigInteger> xs, S s) { return switch (s) { case S.A a -> { long t = 0; for (var x : xs) { t = t + 1; } yield t + a.v().longValue(); } default -> 0; }; }",
+            "static long h(long a) { return a; } static long m(long n, boolean c) { if (c) { while (n < 0) { h(1); } } return n + 1; }",
+            "static long h(long a) { return a; } static long m(long n, boolean c) { if (c) { } else { while (n < 0) { h(1); } } return n + 1; }",
+            "static long h(long a) { return a; } static long m(JulcList<BigInteger> xs, long n, boolean c) { if (c) { for (var x : xs) { h(1); } } return n + 1; }",
+            "static long h(long a) { return a; } static long m(JulcList<BigInteger> xs, long n, boolean c) { if (c) { } else { for (var x : xs) { h(1); } } return n + 1; }",
             // A loop in an if
             "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; if (c) { for (var x : xs) { s = s + 1; } } return s; }",
             "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; long t = 0; if (c) { for (var x : xs) { s = s + 1; t = t + 1; } } else { for (var x : xs) { t = t + 2; } } return s + t; }",
@@ -150,17 +155,27 @@ class JavacLoopsTest {
     }
 
     /**
-     * A local after a loop that shadows a field has its own name here, where it has the field's on the reference, so the
-     * identity {@code let} that spelling gives it is not written. It is the one difference, and it makes no script larger.
+     * A binder after a loop that hides a field has its own name here, where it has the field's on the reference, so the identity
+     * {@code let} that spelling gives it is not written. The same for a local, a for-each's variable and a lambda's parameter,
+     * and each size is exact, with and without a source map, so the difference can neither grow nor go unseen. Each number is
+     * the bytes saved, for each level in order, without a map and then with one.
      */
-    @Test
-    void aLocalThatShadowsAFieldAfterALoop() {
-        var source = source("static final long K = 7; static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + 1; } long K = s; return K; }");
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "static final long K = 7; static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + 1; } long K = s; return K; }|3 3 0 3 0 2 0 2",
+            "static final long K = 7; static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + 1; } for (var K : xs) { s = s + K.longValue(); } return s; }|3 3 0 3 0 3 0 3",
+            "static final long K = 7; static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { s = s + 1; } return xs.any(K -> K.signum() > 0) ? s : 0; }|2 2 0 2 0 3 0 3",
+    })
+    void aBinderThatHidesAFieldAfterALoop(String members, String expected) {
         var stdlib = StdlibRegistry.defaultRegistry();
+        var saved = new StringBuilder();
         for (var level : OptimizationLevel.values()) {
-            assertTrue(LoweringFixture.methodSize(source, "m", level, CompilerFrontend.JAVAC, stdlib)
-                    <= LoweringFixture.methodSize(source, "m", level, CompilerFrontend.JAVAPARSER, stdlib), level.toString());
+            for (boolean sourceMap : List.of(false, true)) {
+                saved.append(LoweringFixture.methodSize(source(members), "m", level, sourceMap, CompilerFrontend.JAVAPARSER, stdlib)
+                        - LoweringFixture.methodSize(source(members), "m", level, sourceMap, CompilerFrontend.JAVAC, stdlib)).append(' ');
+            }
         }
+        assertEquals(expected, saved.toString().trim());
     }
 
     @ParameterizedTest
@@ -197,6 +212,9 @@ class JavacLoopsTest {
             "static long m(JulcList<BigInteger> xs, boolean c) { for (var x : xs) { if (c) { } else { long t = 0; t = 1; } } return 1; }",
             "static long m(JulcList<BigInteger> xs) { for (var x : xs) { { long t = 0; t = 1; } } return 1; }",
             "static long m(long n) { while ((n = n - 1) > 0) { break; } return n; }",
+            "static long m(long n) { done: { if (n > 1) { break done; } } return n; }",
+            "static long m(long n) { done: { Builtins.trace(\"n\", Builtins.iData(n)); } return n; }",
+            "static long m(long n) { done: { while (n > 0) { n = n - 1; break done; } } return n; }",
             "static long m(JulcList<BigInteger> xs) { JulcList<BigInteger> y = xs; for (var x : (y = xs.tail())) { if (x.signum() > 0) { break; } } return 1; }",
             "static long m(JulcList<BigInteger> xs) { JulcList<BigInteger> y = xs; for (var x : (y = xs.tail())) { } return 1; }",
             "static long m(JulcList<BigInteger> xs) { JulcList<BigInteger> y = xs; long s = 0; for (var x : (y = xs.tail())) { s = s + 1; if (s > 1) { break; } } return s; }",
@@ -315,6 +333,7 @@ class JavacLoopsTest {
             "static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData l = Builtins.mkNilData(); PlutusData t = e; long i = 0; while (i < 2) { c = Builtins.tailList(c); t = Builtins.tailList(t); l = Builtins.mkCons(Builtins.iData(i), l); l = Builtins.tailList(l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { l = Builtins.mkCons(d, l); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 5) { c = Builtins.mkNilData(); } var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 0) { i = i + 1; } else { c = Builtins.mkNilPairData(); i = i + 2; } } return i; }",
             "static long m(PlutusData d) { var l = Builtins.unListData(d); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData.ListData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",

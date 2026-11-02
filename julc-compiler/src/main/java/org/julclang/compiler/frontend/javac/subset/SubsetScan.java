@@ -322,9 +322,13 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return null;
     }
 
-    /** A label is the lowering's rejection, and it comes first of all that its statement holds. */
+    /**
+     * A label is the lowering's rejection, and it comes first of all that its statement holds, but for a {@code break} of it
+     * outside a loop, which is rejected here at the {@code break}, as the reference does.
+     */
     @Override
     public Void visitLabeledStatement(LabeledStatementTree tree, Void unused) {
+        SubsetWalk.all(tree, BreakTree.class).forEach(loopExit -> visitBreak(loopExit, null));
         return null;
     }
 
@@ -332,6 +336,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitBreak(BreakTree tree, Void unused) {
         if (facts.enclosing(tree, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
+            if (tree.getLabel() != null) throw facts.rejection(DiagnosticCodes.LABEL_UNSUPPORTED, tree, "break " + tree.getLabel());
             throw facts.rejection("break is only supported inside for-each or while loops on-chain",
                     "Use for-each or while with an accumulator and break to exit early", tree);
         }

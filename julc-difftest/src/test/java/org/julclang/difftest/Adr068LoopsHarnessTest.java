@@ -190,6 +190,8 @@ class Adr068LoopsHarnessTest {
             "public static long m(JulcList<BigInteger> xs, boolean c) { long s = 1; if (c) { long i = 0; while (i < 3) { i = i + 1; s = s + i; } } if (!c) { for (var x : xs) { s = s + 2; } } return s; }",
             "public static long m(JulcList<BigInteger> xs, boolean c) { if (c) { for (var x : xs) { saidL(\"i\", 1); } } return saidL(\"after\", 2); }",
             "public static long m(JulcList<BigInteger> xs, boolean c) { long s = 1; if (c) for (var x : xs) s = s + 1; return s; }",
+            "public static long m(JulcList<BigInteger> xs, boolean c) { if (c) { while (xs.size() > 7) { saidL(\"in\", 1); } } return saidL(\"after\", 2); }",
+            "public static long m(JulcList<BigInteger> xs, boolean c) { if (c) { } else { while (xs.size() > 7) { saidL(\"in\", 1); } } return saidL(\"after\", 2); }",
     })
     void aLoopInAnIf(String members) {
         for (var xs : LISTS) {
