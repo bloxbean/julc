@@ -196,6 +196,7 @@ class JavacLoopsTest {
             "static long m(JulcList<BigInteger> xs, boolean c) { for (var x : xs) { if (c) { } else { long t = 0; t = 1; } } return 1; }",
             "static long m(JulcList<BigInteger> xs) { for (var x : xs) { { long t = 0; t = 1; } } return 1; }",
             "static long m(long n) { while ((n = n - 1) > 0) { break; } return n; }",
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(S s) { return switch (s) { case A a -> { long i = 0; while (true) { i = i + 1; } } default -> 1; }; }",
             "static long h(JulcList b, JulcList<JulcG1> x) { while (x.isEmpty()) { x = b; } return 1; } static long m() { return 1; }",
             "static long m(long n) { while (n > 0) { n = n - 1; } { return n; } }",
             "static long m(JulcList<BigInteger> xs, long s) { for (var x : xs) { s = s + 1; boolean b = (s = 2) > 1; } return s; }",
