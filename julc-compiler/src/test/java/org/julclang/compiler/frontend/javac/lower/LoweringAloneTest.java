@@ -291,6 +291,8 @@ class LoweringAloneTest {
                                 var let = assertInstanceOf(PirTerm.Let.class, lam.body());
                                 names.add(let.name());
                                 assertEquals(new PirType.DataType(), lam.paramType());
+                                var read = assertInstanceOf(PirTerm.Var.class, assertInstanceOf(PirTerm.App.class, let.value()).argument());
+                                assertEquals(new PirType.DataType(), read.type(), "the let reads the Lam, which holds Data");
                                 assertTrue(PirSubstitution.collectFreeVarNames(let.value()).contains("x"));
                             }
                             walk(lam.body());

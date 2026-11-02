@@ -459,6 +459,20 @@ class Adr068LambdasHarnessTest {
                 integers(1, 3));
         assertRejectedAlike("public static byte[] m(JulcList<PubKeyHash> xs) { return xs.find(p -> true).hash(); }", "JULC0055", list(bytes(1, 2)));
         assertFixedOnJavac("public static PubKeyHash m(JulcList<PubKeyHash> xs) { return xs.find(p -> true); }", list(bytes(1, 2)));
+        assertFixedOnJavac("public static boolean m(JulcList<BigInteger> items) { PlutusData found = PlutusData.cast(items.find(x -> x.compareTo(BigInteger.TWO) > 0), PlutusData.class); return Builtins.constrTag(found) == 0; }",
+                integers(1, 3));
+    }
+
+    /** Javac's element type encodes the result, where the term says less than it holds. */
+    @Test
+    void whatAMapEncodesIsJavacsType() {
+        assertFixedOnJavac("public static " + BIG_LIST + " m(" + BIG_LIST + " xs, " + BIG_LIST + " ys) { return xs.map(x -> ys.find(y -> y.equals(x))); }", integers(1, 2), integers(2, 1));
+    }
+
+    /** Only the cast views {@code find}: any other call takes the element. */
+    @Test
+    void anotherCallTakesTheElement() {
+        assertFixedOnJavac("public static BigInteger m(" + BIG_LIST + " xs) { Optional<BigInteger> o = Optional.of(xs.find(x -> true)); return o.get(); }", integers(1));
     }
 
     @Test

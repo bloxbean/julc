@@ -36,6 +36,7 @@ class JavacLambdasTest {
             import java.util.function.Function;
             import java.util.function.Predicate;
             import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcArray;
             import org.julclang.core.types.JulcList;
             import org.julclang.core.types.JulcMap;
             import org.julclang.core.types.Tuple2;
@@ -98,6 +99,7 @@ class JavacLambdasTest {
             "static JulcList<byte[]> m(JulcList<PubKeyHash> xs) { return xs.map(p -> p.hash()); }",
             "static boolean m(TxInfo i, PubKeyHash k) { return i.signatories().any(s -> s.equals(k)); }",
             "static boolean m(JulcList<TokenName> xs, byte[] k) { return xs.any(t -> Builtins.equalsByteString(t.name(), k)); }",
+            "static boolean m(JulcList<PubKeyHash> xs, JulcList<byte[]> ys) { return xs.any(p -> ys.any(q -> Builtins.equalsByteString(p.hash(), q))); }",
             "record R(BigInteger a, BigInteger b) { } static JulcList<BigInteger> m(JulcList<R> xs) { return xs.map(r -> r.a()); }",
             "record R(BigInteger a, BigInteger b) { } static JulcList<R> m(JulcList<R> xs) { return xs.map(r -> new R(r.b(), r.a())); }",
             "record R(BigInteger a, BigInteger b) { } static JulcList<R> m(JulcList<BigInteger> xs, BigInteger k) { return xs.map(x -> new R(x, k)); }",
@@ -215,6 +217,8 @@ class JavacLambdasTest {
             "static boolean m(BigInteger a) { var xs = JulcList.of(a); return xs.any(x -> x.signum() > 0); }",
             "static BigInteger m(BigInteger a, BigInteger k) { var y = JulcList.of(a).head(); if (y.compareTo(k) > 0) { return y; } return k; }",
             "static long m(JulcList<BigInteger> xs) { return xs.any(x -> { int x2 = 1, y = 2; return true; }) ? 1 : 0; }",
+            "static long m(JulcList<BigInteger> xs) { var ys = xs.map(x -> JulcArray.of(x)); return ys.size(); }",
+            "static long m(JulcList<BigInteger> xs) { var ys = xs.map(x -> { return JulcArray.of(x); }); return ys.size(); }",
             "static boolean m(JulcList<BigInteger> xs) { return xs.any(x -> { l: if (true) { return true; } return false; }); }",
     })
     void rejectionsAreTheReferences(String members) {
@@ -250,6 +254,13 @@ class JavacLambdasTest {
     void javacRejectsWhatD6Removed(String members) {
         var failure = onJavac(members);
         assertEquals("JULC0085", failure.diagnostics().getFirst().code(), failure::getMessage);
+    }
+
+    /** The rule names the interface's method: any other call of a functional local is a rejection of the local's type. */
+    @Test
+    void anotherMethodOfAFunctionalLocalIsRejectedAtItsType() {
+        var failure = onJavac("static boolean m(BigInteger a) { Function<BigInteger, BigInteger> f = x -> x; var g = f.andThen(f); return true; }");
+        assertTrue(failure.getMessage().contains("Unknown type: Function"), failure::getMessage);
     }
 
     /** Only a local goes through the reference's rule on a call: a parameter is rejected at its type. */
