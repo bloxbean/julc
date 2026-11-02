@@ -40,6 +40,7 @@ class JavacSwitchesTest {
             import org.julclang.ledger.OutputDatum;
             import org.julclang.ledger.TxOut;
             import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.NewType;
             """;
 
     private static final String TYPES = """
@@ -442,6 +443,8 @@ class JavacSwitchesTest {
             "static long m(S s, R r) { return switch (s) { case A a when (switch(r.s()) { case B i -> i.w().compareTo(i.v()) > 0; default -> false; }) -> 1; default -> 3; }; }",
             "static long m(S s, T t) { return switch (s) { case A a when (switch(t) { case T.Y i -> i.s() instanceof A; default -> false; }) -> 1; default -> 3; }; }",
             "static long m(S s, R r) { return switch (s) { case A a when (r).n().signum() > 0 -> 1; default -> 3; }; }",
+            "@NewType record Ni(BigInteger value) { } sealed interface Wn { record U(Ni n) implements Wn { } record Z() implements Wn { } } "
+                    + "static long m(S s, Wn t) { return switch (s) { case A a when (switch(t) { case Wn.U i -> i.n().value().signum() > 0; default -> false; }) -> 1; default -> 3; }; }",
     })
     void aReadOfWhatHasNoBinderYetIsNoEstablishedType(String members) {
         LoweringFixture.assertSameMethodRejectionAsReference(source(members), "m", StdlibRegistry.defaultRegistry(), LoweringFixture.SPACING);
@@ -484,6 +487,9 @@ class JavacSwitchesTest {
             "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return l.any(x -> ids(k).any(y -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; })); }",
             "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return ids(l).any(x -> k.any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
             "record G(JulcList<BigInteger> is) { } static boolean m(S s, JulcList<G> l) { return l.any(g -> g.is().any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
+            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> { var w = (x); return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
+            "static boolean m(S s, JulcList<JulcList<BigInteger>> ll) { return ll.any(l -> (l).any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
+            "@NewType record Ni(BigInteger value) { } static long m(S s, JulcList<Ni> l) { return l.filter(n -> switch (s) { case A a when n.value().signum() > 0 -> true; default -> false; }).size(); }",
     })
     void aParameterTheFirstPassHasNoTypeForIsNoGuard(String members) {
         rejected(members);
@@ -502,6 +508,7 @@ class JavacSwitchesTest {
             "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return l.any(x -> ids(k).any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
             "record G(JulcList<BigInteger> is) { } static JulcList<G> ids(JulcList<G> l) { return l; } static boolean m(S s, JulcList<G> l) { return ids(l).any(g -> g.is().any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
             "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> switch (s) { case A a when x.equals(BigInteger.ONE) -> true; default -> false; }).size(); }",
+            "@NewType record Ni(BigInteger value) { } static JulcList<Ni> ids(JulcList<Ni> l) { return l; } static long m(S s, JulcList<Ni> l) { return ids(l).filter(n -> switch (s) { case A a when n.value().signum() > 0 -> true; default -> false; }).size(); }",
             "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter(q -> switch (s) { case A a when q.a().equals(BigInteger.ONE) -> true; default -> false; }).size(); }",
             "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter((Q q) -> switch (s) { case A a when q.a().equals(BigInteger.ONE) -> true; default -> false; }).size(); }",
     })
@@ -594,7 +601,7 @@ class JavacSwitchesTest {
             "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(h(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; })); }",
     })
     void aConstantGuardThatReadsALocalThroughANewStops(String members) {
-        LoweringFixture.assertMethodNotPorted(source(members), "m", "a constant guard that reads a local through a new", 26);
+        LoweringFixture.assertMethodNotPorted(source(members), "m", "a constant guard that reads a local through a new", 27);
     }
 
     /** A local on the same side of the {@code new}, no local, no {@code new}, or a guard read at run time on both. */
