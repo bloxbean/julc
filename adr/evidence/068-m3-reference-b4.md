@@ -237,6 +237,9 @@ So no program of the corpus has a method read as an operand of those handlers, a
 
 `ledger-b3-b4-diff.tsv` stays as it is, because neither ledger moved. Regenerating it today gives 11 rows fewer: `ledger-b3.tsv` has carried M3d's 11 saved cases since `14b11ae9`, so they no longer read as added. B3's rows were not touched here, and the totals above count them as B4's.
 
+
+**The bound on work and an operand built on a read** went in after that. MPF: 72 rows, 0 bytes and 0 budget differ. I1, against the run before them: one case moved, the generated sum of literals above, to `REFERENCE-DRIFT`, by 2 bytes at one level, and the table is not frozen here. Each program of the review's probes that agreed with the JVM before agrees, and a tree of hashes, of branches and of calls, each to depth 36, returns when not called.
+
 ## The gates
 
 From a clean tree at `fef83a9d`, through the machine lock, with `--rerun`. Counts are from JUnit XML.
@@ -255,9 +258,9 @@ From a clean tree at `fef83a9d`, through the machine lock, with `--rerun`. Count
 
 ## What this does not establish
 
-- **Two differences stay,** as known issues: argument-first `prepend`, `contains` and `insert`, and duplicated operands in T13's family, which an operand built on a delayed read can be, as can the operand of an `instanceof`. See the follow-ups.
+- **Two differences stay,** as known issues: argument-first `prepend`, `contains` and `insert`, and duplicated operands in T13's family, which an operand with no delayed read in it can be, as can the operand of an `instanceof`. See the follow-ups.
 - **A provider import.** Its method with no parameters stays strict, as above. `mayFail` reads no library through a provider.
-- **The size bound's precision.** `mayFail` adds sizes conservatively, so a total body near the bound may be delayed. It costs a little and is never wrong.
+- **The bound's precision.** `mayFail` adds sizes and work conservatively, so a total body near the bound may be delayed. It costs a little and is never wrong.
 - **The 65,536-byte bound on the JVM,** as above.
 - **Wrapped Java values.** `length` and the delay change no integer. T6 stands.
 - **An on-chain run.** DevKit was not run. The harness's VM is the evidence. Scalus and Truffle ran only through `pairCaseTest` and the VM modules' tests.
