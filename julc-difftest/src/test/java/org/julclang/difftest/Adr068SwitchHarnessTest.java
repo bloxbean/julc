@@ -478,21 +478,46 @@ class Adr068SwitchHarnessTest {
         return new PlutusData.BytesData(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** {@code ==} on references in a lambda in a guard: the JVM compares identity, the reference compares values, and {@code JAVAC} stops at D6. */
-    @Test
-    void anIdentityComparisonInALambdaInAGuard() {
+    private static final String IDENTITY_HELPERS = "static boolean hb(boolean z) { return z; } static boolean gt(BigInteger z) { return z.signum() > 0; } ";
+
+    /** {@code ==} on references in a guard, wherever it stands: the JVM compares identity, the reference compares values, and {@code JAVAC} stops at D6. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "hb(str == oth)", "hb(str != oth)", "!hb(str == oth)", "hb(str == oth) && s instanceof S.A", "(hb(str == oth) ? true : false)",
+            "hb(str == \"ab\")", "hb(lst.head() == str)", "gt(str == oth ? BigInteger.ONE : BigInteger.ZERO)",
+            "(switch (str == oth ? s : new S.D()) { case S.A q -> true; default -> false; })", "(str == oth ? s : new S.D()).equals(s)",
+            "(switch (s) { case S.A q when hb(str == oth) -> true; default -> false; })", "lst.contains(str == oth ? \"ab\" : \"zz\")",
+            "lst.any(x -> x == str)", "lst.any(x -> str == x)", "lst.any(x -> x != str)",
+    })
+    void anIdentityComparisonInAGuard(String guard) {
         var strings = new PlutusData.ListData(List.of(text("ab")));
-        for (var body : List.of("x == str", "str == x", "x != str")) {
-            var report = run("public static long m(S s, String str, JulcList<String> lst) { return switch (s) { case S.A a when lst.any(x -> " + body + ") -> 1; default -> 2; }; }",
-                    List.of(a(1), text("ab"), strings));
-            report.results().forEach((config, result) -> {
-                if (config.frontend() == CompilerFrontend.JAVAC) {
-                    assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
-                    assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
-                } else {
-                    assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
-                }
-            });
+        var report = run(IDENTITY_HELPERS + "public static long m(S s, String str, String oth, JulcList<String> lst) { return switch (s) { case S.A a when " + guard + " -> 1; default -> 2; }; }",
+                List.of(a(1), text("ab"), text("ab"), strings));
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == CompilerFrontend.JAVAC) {
+                assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+                assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
+            } else {
+                assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
+            }
+        });
+    }
+
+    /** The same stop on each other reference: only a string reached a value on the reference. */
+    @ParameterizedTest
+    @ValueSource(strings = {"BigInteger x, BigInteger y", "S x, S y", "byte[] x, byte[] y", "Boolean x, Boolean y"})
+    void anIdentityComparisonOfOtherReferencesInAGuard(String parameters) {
+        var value = parameters.startsWith("BigInteger") ? integer(1) : parameters.startsWith("S") ? a(1) : parameters.startsWith("byte") ? text("ab") : bool(true);
+        assertStopsOnJavac(IDENTITY_HELPERS + "public static long m(S s, " + parameters + ") { return switch (s) { case S.A a when hb(x == y) -> 1; default -> 2; }; }", "JULC0086", a(1), value, value);
+    }
+
+    /** Constant strings and primitives are values in those positions, at every level. */
+    @Test
+    void aComparisonOfValuesInAGuardRuns() {
+        for (var guard : List.of("hb(\"a\" == \"a\")", "hb(\"a\" != \"a\")", "hb(\"a\" + \"b\" == \"ab\")", "hb(n == 1)", "hb(c == true)", "!hb(n != 1)", "(switch (s) { case S.A q when hb(n == 1) -> true; default -> false; })")) {
+            for (var s : everyS()) {
+                assertAgree(IDENTITY_HELPERS + "public static long m(S s, long n, boolean c) { return switch (s) { case S.A a when " + guard + " -> 1; default -> 2; }; }", s, integer(1), bool(true));
+            }
         }
     }
 

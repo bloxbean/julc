@@ -44,17 +44,18 @@ import java.util.Set;
  * {@code equals} between two types with no class in common does not lower, and is no rule yet: the corpora hold a validator
  * that writes it, so {@code JULC0078} there is a maintainer's decision. A raw receiver read through a cast stops at
  * the cast, and {@code ValuesLib} holds one: the cast's slice decides it.
- * Inside a {@code switch} guard ADR-067's evaluator decides {@code ==}, and {@link GuardRules} applies the others to a guard
- * that is not constant, after its own.
+ * Inside a {@code switch} guard the guard's own rules speak first: {@link GuardRules} applies the others to a guard that is
+ * not constant, after its own, and {@code Operators} applies {@link #requireValueEquality} to each {@code ==} that is lowered,
+ * so no position in a guard goes unread.
  */
-final class EqualityRules {
+public final class EqualityRules {
 
     private final JavacFacts facts;
     private final ArrayIdentityEquality arrays;
     private final EqualityOperations operations;
     private final EqualityRelation relation;
 
-    EqualityRules(JavacFacts facts) {
+    public EqualityRules(JavacFacts facts) {
         this.facts = facts;
         this.arrays = facts.arrayEquality();
         this.operations = facts.equalityOperations();
@@ -71,7 +72,7 @@ final class EqualityRules {
     }
 
     /** JLS 15.21: with a primitive operand this is numeric or boolean equality; otherwise it is identity. */
-    private void requireValueEquality(BinaryTree tree) {
+    public void requireValueEquality(BinaryTree tree) {
         var left = facts.type(tree.getLeftOperand());
         var right = facts.type(tree.getRightOperand());
         if (left.getKind().isPrimitive() || right.getKind().isPrimitive()) return;

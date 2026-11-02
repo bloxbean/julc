@@ -13,6 +13,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.subset.EqualityRules;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -49,9 +50,11 @@ final class Operators {
     private final Typing typing;
     private final CallTargets targets;
     private final Lowering lowering;
+    private final EqualityRules equalities;
 
     Operators(JavacFacts facts, Typing typing, CallTargets targets, Lowering lowering) {
         this.facts = facts;
+        this.equalities = new EqualityRules(facts);
         this.typing = typing;
         this.targets = targets;
         this.lowering = lowering;
@@ -128,19 +131,13 @@ final class Operators {
     }
 
     /**
-     * D6: numeric or boolean equality needs a primitive operand. Two references compare by reference in Java, which the
-     * subset rejects, except constant strings, which {@code EqualityRules} has checked.
+     * D6: {@code ==} on references is identity in Java, so every one stops here, wherever it stands: the rule that holds
+     * everywhere else is the rule in a guard, which no reading of a guard's positions could promise. What it lets through is
+     * numeric or boolean equality, or two constant strings.
      */
     private PirTerm equality(BinaryTree tree, PirTerm left, PirTerm right, boolean negate) {
-        var leftType = typing.of(tree.getLeftOperand(), left);
-        boolean primitive = isPrimitive(tree.getLeftOperand()) || isPrimitive(tree.getRightOperand());
-        boolean strings = leftType instanceof PirType.StringType;
-        if (!primitive && !strings) throw NotPorted.at(facts, tree, "reference equality");
-        return PirHelpers.equality(left, right, leftType, negate);
-    }
-
-    private boolean isPrimitive(ExpressionTree tree) {
-        return facts.type(tree).getKind().isPrimitive();
+        equalities.requireValueEquality(tree);
+        return PirHelpers.equality(left, right, typing.of(tree.getLeftOperand(), left), negate);
     }
 
     PirTerm unary(UnaryTree tree, Frame frame) {

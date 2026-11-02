@@ -242,11 +242,17 @@ class LoweringAloneTest {
     @CsvSource(delimiter = '|', value = {
             "static String m(String a) { return a + 1; }                         | a string + with another type",
             "static String m(String a) { return 1 + a; }                         | a string + with another type",
-            "static boolean m(java.math.BigInteger a) { return a == a; }         | reference equality",
             "static boolean m(byte[] a, byte[] b) { return a.equals(b); }        | an equals on an array"})
     void whatTheSubsetRejectsIsNotLoweredHereToo(String method, String construct) {
         withMethod("class P { " + method + " }", new CompilerOptions(), (facts, lowered) ->
                 assertEquals(construct, assertThrows(NotPorted.class, lowered::term).construct()));
+    }
+
+    /** D6's rule is the lowering's too, so no {@code ==} on references reaches a term, read by the scan or not. */
+    @Test
+    void anIdentityComparisonIsNotLoweredHereToo() {
+        withMethod("class P { static boolean m(java.math.BigInteger a) { return a == a; } }", new CompilerOptions(), (facts, lowered) ->
+                assertEquals("JULC0086", assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
     /** A generic library method is a template, which Java cannot call (ADR-059): the reference's rejection, in its words. */

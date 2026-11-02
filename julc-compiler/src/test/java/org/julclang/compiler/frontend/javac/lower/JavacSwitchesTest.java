@@ -428,7 +428,9 @@ class JavacSwitchesTest {
         return failure.diagnostics().getFirst().code();
     }
 
-    /** A lambda's body is ordinary code: {@code ==} on references there is D6's, as it is in an arm of a {@code switch} in a guard. */
+    private static final String IDENTITY_HELPERS = "static boolean hb(boolean z) { return z; } static boolean gt(BigInteger z) { return z.signum() > 0; } ";
+
+    /** {@code ==} on references is D6's at every position of a guard: the lowering stops each one it reaches. */
     @ParameterizedTest
     @ValueSource(strings = {
             "lst.any(x -> x == str)",
@@ -445,29 +447,58 @@ class JavacSwitchesTest {
             "lst.any(x -> (x == str) == c)",
             "l.any(x -> x == n)",
             "ls.any(v -> v == t)",
+            "lst.any(x -> hb(x == str))",
+            "hb(lst.any(x -> x == str))",
+            "hb(str == oth)",
+            "hb(str != oth)",
+            "!hb(str == oth)",
+            "hb(str == oth) && s instanceof A",
+            "(hb(str == oth) ? true : false)",
+            "hb(str == \"ab\")",
+            "hb(lst.head() == str)",
+            "gt(str == oth ? BigInteger.ONE : BigInteger.ZERO)",
+            "(switch (str == oth ? s : new D()) { case A q -> true; default -> false; })",
+            "(str == oth ? s : new D()).equals(s)",
+            "(switch (t) { case A q when hb(str == oth) -> true; default -> false; })",
+            "lst.contains(str == oth ? \"ab\" : \"zz\")",
+            "hb(n == n)",
+            "hb(s == t)",
+            "hb(b == b)",
+            "hb(big == big)",
+            "l.any(x -> true) && a.v() == n",
     })
-    void anIdentityComparisonInALambdaInAGuard(String guard) {
-        assertEquals("JULC0086", javacCode("static long m(S s, S t, boolean c, BigInteger n, String str, JulcList<String> lst, JulcList<BigInteger> l, JulcList<S> ls) "
+    void anIdentityComparisonInAGuard(String guard) {
+        assertEquals("JULC0086", javacCode(IDENTITY_HELPERS + "static long m(S s, S t, boolean c, BigInteger n, byte[] b, Boolean big, String str, String oth, JulcList<String> lst, JulcList<BigInteger> l, JulcList<S> ls) "
                 + "{ return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }"));
     }
 
-    /** What is no comparison of references in a lambda in a guard stays what it was. */
+    /** What is no comparison of references, in those positions, stays what it was. */
     @ParameterizedTest
     @ValueSource(strings = {
             "lst.any(x -> x.equals(str))",
             "l.any(x -> x.signum() == 1)",
             "l.any(x -> x.signum() != k)",
             "lb.any(x -> x == c)",
+            "hb(c == c)",
+            "hb(k == 1)",
+            "hb(big == c)",
+            "hb(str.equals(oth))",
+            "hb(\"a\" == \"a\")",
+            "hb(\"a\" != \"b\")",
+            "hb(\"a\" + \"b\" == \"ab\")",
+            "hb(TEXT == \"a\")",
+            "hb((TEXT) == (\"a\"))",
+            "lst.any(x -> TEXT == \"a\")",
     })
-    void aComparisonOfValuesInALambdaInAGuard(String guard) {
-        same("static long m(S s, boolean c, long k, String str, JulcList<String> lst, JulcList<BigInteger> l, JulcList<Boolean> lb) "
+    void aComparisonOfValuesInAGuard(String guard) {
+        same(IDENTITY_HELPERS + "static final String TEXT = \"a\"; static long m(S s, boolean c, Boolean big, long k, String str, String oth, JulcList<String> lst, JulcList<BigInteger> l, JulcList<Boolean> lb) "
                 + "{ return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }");
     }
 
-    /** After a lambda the guard is still a guard's to judge, so D6's rule does not read a later {@code ==}: the lowering's stop does. */
+    /** A lambda in a guard is the guard's to judge for {@code +}, as the reference judges it, so its rule speaks before D6's. */
     @Test
-    void aGuardGoesOnAfterALambda() {
-        assertEquals("JULC0084", javacCode("static long m(S s, BigInteger n, JulcList<BigInteger> l) { return switch (s) { case A a when l.any(x -> true) && a.v() == n -> 1; default -> 2; }; }"));
+    void aStringJoinInALambdaInAGuard() {
+        rejected("static long m(S s, String str, JulcList<String> lst) { return switch (s) { case A a when lst.any(x -> (x + 1).equals(str)) -> 1; default -> 2; }; }");
     }
 
     /**
