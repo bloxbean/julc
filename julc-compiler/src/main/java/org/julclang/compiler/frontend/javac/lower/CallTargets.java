@@ -118,6 +118,10 @@ final class CallTargets {
             return CallTarget.Intrinsic.CAST;
         }
         if (facts.inLibraryUnit(owner)) return library(identity, name, method);
+        if (facts.hasAnnotation(owner, JavacNames.ONCHAIN_LIBRARY)) {
+            // A library compiled as a root, which the reference finds in its pool as well. The library slice decides it.
+            return new CallTarget.NotLowered("a call of a library unit's own method");
+        }
         if (owner.equals(facts.element(facts.enclosing(tree, Tree.Kind.CLASS, Tree.Kind.RECORD, Tree.Kind.INTERFACE)))
                 || facts.declaredInSource(method)) {
             return new CallTarget.Rejected("Undefined variable: " + qualifier.getName());

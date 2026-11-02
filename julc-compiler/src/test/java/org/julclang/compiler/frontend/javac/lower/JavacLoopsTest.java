@@ -193,6 +193,44 @@ class JavacLoopsTest {
         rejected(members);
     }
 
+    /** What is read off a for-each's variable is what the reference sees of it, whatever javac knows of the element (I2d). */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record R(BigInteger a) { } static BigInteger m(R r) { BigInteger s = BigInteger.ZERO; for (var o : JulcList.of(r)) { s = o.a(); } return s; }",
+            "static byte[] m(PubKeyHash p) { byte[] s = new byte[]{}; for (var o : JulcList.of(p)) { s = o.hash(); } return s; }",
+            "static long m(BigInteger a) { long s = 0; for (var x : JulcList.of(a)) { s = x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var o : xs.map(x -> x)) { s = o.longValue(); } return s; }",
+    })
+    void aVariableReadAsTheReferenceSeesIt(String members) {
+        rejected(members);
+    }
+
+    /** The hash of an element the reference knows to be decoded, a pattern variable as an accumulator, and an update's tuple. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static byte[] m(JulcList<PubKeyHash> xs) { byte[] s = new byte[]{}; for (var o : xs) { s = o.hash(); } return s; }",
+            "static byte[] m(JulcList<PubKeyHash> xs) { byte[] s = new byte[]{}; for (PubKeyHash o : xs) { var h = o; s = Builtins.appendByteString(s, o.hash()); } return s; }",
+            "record R(BigInteger a) { } static long m(JulcList<R> xs) { long s = 0; for (var o : xs) { s = s + o.a().longValue(); } return s; }",
+            "record R(JulcList<BigInteger> ys) { } static long m(R r) { long s = 0; for (var y : r.ys()) { s = s + 1; } return s; }",
+            "static long m(JulcList<JulcList<BigInteger>> xss) { long s = 0; for (var xs : xss) { for (var x : xs) { s = s + 1; } } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs.tail()) { s = s + 1; } return s; }",
+            "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static long m(S s, long n) { if (s instanceof S.A a) { while (n > 0) { a = new S.A(BigInteger.ONE); n = n - 1; } return a.v().longValue(); } return n; }",
+            "static BigInteger m(JulcList<BigInteger> xs) { Tuple2<BigInteger, BigInteger> t = new Tuple2<>(BigInteger.ZERO, BigInteger.ONE); for (var x : xs) { t = new Tuple2<>(x, t.first()); } return t.second(); }",
+            "static boolean m(JulcList<BigInteger> xs) { boolean a = true; for (BigInteger x : xs) { if (a) { boolean b = !a; a = b; } } return a; }",
+    })
+    void whatAReadOfALoopMeans(String members) {
+        same(members);
+    }
+
+    /** A tuple's diamond takes its target's components, so a raw target takes only Data. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean m(JulcList<BigInteger> xs, PlutusData d) { Tuple2 t = new Tuple2(d, d); for (var x : xs) { t = new Tuple2<>(x, x); } return true; }",
+    })
+    void aDiamondAssignedInALoop(String members) {
+        rejected(members);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "static long K = 0; static long m(long n) { long i = 0; while (i < n) { K = K + 1; i = i + 1; } return K; }",
