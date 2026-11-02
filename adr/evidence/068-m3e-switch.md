@@ -175,6 +175,8 @@ One runner in a throwaway worktree, each mutant applied, tested in two stages, a
 |---|---|---|---:|---:|---:|
 | First | before `052fe6f4` | 0 failures of 944 and 110 | 96 | 72 | 23, and 1 did not compile |
 | Rerun of the survivors, with new mutants | `a64bda07` | 0 failures of 975 and 111 | 25 | 19 | 6 |
+| The rules that follow the Group 2 review, first run | `ae7c03c9` | 0 failures of 809 and 99 | 33 | 28 | 5 |
+| Their survivors, with rows added and four more mutants | `7871a460` | 0 failures of 815 and 102 | 9 | 4 | 5 |
 
 Five of the 6 survivors sit behind something that stops first. They were probed through `frontend=JAVAC` against the reference, and no program reached the mutated line. The sixth has its row now:
 
@@ -186,6 +188,16 @@ Five of the 6 survivors sit behind something that stops first. They were probed 
 | `unary is numeric` | `byte`, `short`, `char` and the boxed types are rejected before the guard. `-` and `~` on anything but a constant are `JULC0072` first. `+` on an operand that is no constant, as in `+Math.abs(n) > 0`, stops at `UNARY_PLUS`, `JULC0084`, before the guard's type is read, where the reference gives `JULC0072`. So no accepted program depends on the line |
 | `@Param a constant` | `@Param static final` with a constant is `JULC0088` first (D14), and any other initializer is not constant either way |
 | `a class file's constant` | A class-file field has no declaration, so the check is reached only from a second source unit, and a library unit stops. **Group 3 adds the row when library units lower** |
+
+The 5 survivors of the last pass, each tried on both frontends:
+
+| Mutant | Why no program reaches it |
+|---|---|
+| `final alone is constant` | A `final` field that is not `static` is read only from an instance method, and a `switch` there stops at `SWITCH_EXPRESSION`. From a static method javac rejects the read |
+| `a class file's field is a constant` | As `a class file's constant` above |
+| `a null type is not inferred` | javac gives an implicit parameter and a `var` a generated type at attribution, and lowering reads attributed trees. The check matches the same check in `GuardTypes` and `GuardConstants` |
+| `a stub's variable has a declaration` | `untypedInFirstPass` reaches a stub's variable only through `var w = ONE` under a static import, which is `Undefined variable: ONE` on both frontends first |
+| `a lambda has a receiver` | A lambda at an unqualified call stops first: `Unknown type: Predicate` at the helper's parameter on both frontends |
 
 ## Where a guard accepts more than the reference
 
