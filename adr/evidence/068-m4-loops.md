@@ -336,8 +336,30 @@ Three lines cannot show in bytes. A body, a condition and what follows a `while`
 | A condition reads the declared type | 52 | 5,950 |
 | What follows reads the declared type | 57 | 5,948 |
 
-So every mutant of these lists is killed. That says the lists are, and not that every loop line is tested: an independent review wrote twelve more and four survived, one a `while` with no accumulator that ended a branch and lost what followed. Each now has a row or a reason below. Rows against the reference are the strong gate. The JVM side is a thinner net, which killed few mutants directly, as a row reaches a rule first.
+So every mutant of these lists is killed. That is a claim about the lists, and not that every loop line is tested: an independent review wrote twelve more, and four survived.
 
+### The second round, on what a variable holds and what a tuple carries
+
+Three runs at `52ec2855`, `c3e22523` and `a299169f`, each with four throwaway worktrees and the stages rows, harness and representations, other slices' suites, the generator and saved cases.
+
+| Run | Control | Mutants | Killed | Left |
+|---|---|---|---:|---:|
+| First, 64 mutants of the new lines | 0 failures through three stages. The last stage failed 9 saved cases, which `Adr068LoopCasesOnJavacTest` read on the wrong expectation, so what reached it counts as survived | 64 | 43 | 21 |
+| The 21, less what was removed, with rows, and the review's survivors | 0 failures in all four | 26 | 23 | 3 |
+| The last 3, with rows | The runs above | 3 | 3 | 0 |
+
+Removed for a reason: `held` of a `var` read `seen` first, and the check changed nothing, and a `mkCons` onto a pair list read its tail, and no program of the rows or the corpus needs it, as an initial pair list decides.
+
+Every run of the second round tests both directions of a rule where a rule has two: the value that must carry and the value that must stay, the read that must be rejected and the one that must go on.
+
+The review's four survivors:
+
+| Mutant | Now |
+|---|---|
+| A `while` with no accumulator that ends a branch loses what follows | Killed by rows on both sides of the `if`, for a `while` and a for-each, and held to the JVM in the harness. The code was right |
+| A cursor read as pairs though `mkNilData` reaches it | Killed by a row. The rule is `AccumulatorTypes.variable`'s |
+| A written loop variable read as inferred | Killed by `for (Long x : ...)` in `JavacStopsTest`, whose `Object` and `Number` rows pin the stop too |
+| `Scope.binders` taking the outermost binder of a name | Stands, for a reason: it changes a `Var`'s type in an identity `let`, and only after a second loop in a refined tuple's rest. No script differs, and no corpus row holds the shape. The innermost is the reference's |
 
 ## What this does not establish
 
