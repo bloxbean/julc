@@ -44,8 +44,14 @@ public class JvmCryptoProvider implements CryptoProvider {
         return result;
     }
 
+    /**
+     * As {@code PlutusCore.Crypto.Ed25519} at Plutus 1.63.0.0: a key of another length than 32 bytes or a signature of another
+     * length than 64 is a failure, and false is for what the two of them, as they stand, do not verify.
+     */
     @Override
     public boolean verifyEd25519Signature(byte[] pubKey, byte[] msg, byte[] sig) {
+        if (pubKey.length != 32) throw new IllegalArgumentException("Ed25519 public key must be 32 bytes, got " + pubKey.length);
+        if (sig.length != 64) throw new IllegalArgumentException("Ed25519 signature must be 64 bytes, got " + sig.length);
         try {
             var publicKeyParams = new Ed25519PublicKeyParameters(pubKey, 0);
             var signer = new Ed25519Signer();
