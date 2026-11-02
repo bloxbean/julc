@@ -584,6 +584,7 @@ class Adr068LambdasHarnessTest {
         assertFixedOnJavac("public static boolean m(JulcList<" + MAP_OF_BIG + "> a) { return a.map(y -> y).any(x -> { " + MAP_OF_BIG + " d = PlutusData.cast(x, JulcMap.class); return d.isEmpty(); }); }", list(mapOf(1, 2)));
         assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { " + MAP_OF_BIG + " d = PlutusData.cast(a, JulcMap.class); return d.size(); }", mapOf(1, 2));
         assertBothAgree("public static long m(" + MAP_OF_BIG + " a, BigInteger n) { var y = JulcList.of(a, n).head(); " + MAP_OF_BIG + " d = PlutusData.cast(y, JulcMap.class); return d.size(); }", mapOf(1, 2), integer(1));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a, BigInteger n, boolean c) { " + MAP_OF_BIG + " d = PlutusData.cast(c ? a : n, JulcMap.class); return d.size(); }", mapOf(1, 2), integer(1), bool(true));
     }
 
     /** Java refuses a {@code MapData} as a {@code JulcMap}, and the view reads it: a Data value still decodes, on both frontends. */
