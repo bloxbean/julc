@@ -27,6 +27,7 @@ class JavacLoopsTest {
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
             import org.julclang.core.types.JulcArray;
+            import org.julclang.core.types.JulcG1;
             import org.julclang.core.types.JulcList;
             import org.julclang.core.types.Tuple2;
             import org.julclang.ledger.PubKeyHash;
@@ -195,6 +196,7 @@ class JavacLoopsTest {
             "static long m(JulcList<BigInteger> xs, boolean c) { for (var x : xs) { if (c) { } else { long t = 0; t = 1; } } return 1; }",
             "static long m(JulcList<BigInteger> xs) { for (var x : xs) { { long t = 0; t = 1; } } return 1; }",
             "static long m(long n) { while ((n = n - 1) > 0) { break; } return n; }",
+            "static long m(JulcList b) { JulcList<JulcG1> x = JulcList.empty(); while (x.isEmpty()) { x = b; } return 1; }",
             "static long m(long n) { while (n > 0) { n = n - 1; } { return n; } }",
             "static long m(JulcList<BigInteger> xs, long s) { for (var x : xs) { s = s + 1; boolean b = (s = 2) > 1; } return s; }",
             "static long m(JulcList<BigInteger> xs, long s, long t) { for (var x : xs) { s = s + 1; t = t + 1; boolean b = (s = 2) > 1; } return s; }",
@@ -279,11 +281,25 @@ class JavacLoopsTest {
             "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { l = Builtins.mkCons(d, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 0) { i = i + 1; } else { c = Builtins.mkNilPairData(); i = i + 2; } } return i; }",
+            "static long m(PlutusData d) { var l = Builtins.unListData(d); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData.ListData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
             "static PlutusData.MapData h(PlutusData d) { return Builtins.unMapData(d); } static long m(PlutusData d) { PlutusData.MapData b = h(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
     })
     void whatATupleOfAWhileHolds(String members) {
         same(members);
+    }
+
+    /** A library compiled as a root finds its own method in the reference's pool, which is the library slice's to read. */
+    @Test
+    void aLibraryAsARootStopsAtItsOwnMethod() {
+        LoweringFixture.assertMethodNotPorted("""
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                class L {
+                    static long h(long a) { return a; }
+                    static long m(long a) { return L.h(a); }
+                }
+                """, "m", "a call of a library unit's own method", 5);
     }
 
     /** A value that a tuple cannot encode. With no type to encode by, the rejection stands at the loop: the reference has no position for it. */
