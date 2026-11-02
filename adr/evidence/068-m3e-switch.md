@@ -31,10 +31,14 @@ M0's evidence, with `25.0.2-librca`.
 - **Where a rule lives, and when it runs.** The rules are in `subset/`, and the lowering calls them where the reference calls `SwitchPatternChecker`: `requireLocalUpdates` before the
   selector is lowered, `check` after, and `beforeGuard` and `afterGuard` around a guard. Run from the scan they would change which of two errors comes first (I2a). This reads I12 as: lowering
   builds no term on what a rule rejects, not that every rule ran before lowering began.
-- **Javac knowing a type does not widen a guard (I2).** ADR-067's guard type is established from declarations, and a leaf is asked of the lowering. `GuardTypes` keeps that shape: it reads the element javac
-  bound where the reference reads a declaration, and asks `leaf` where the reference does, in the same places. So `when l.isEmpty()` lowers and `when !Builtins.equalsData(d, e)` is `JULC0072`,
+- **What a guard reads is what the reference reads (I2).** ADR-067's guard type is established from declarations, and a leaf is asked of the lowering. `GuardTypes` keeps that shape: it reads the element javac
+  bound where the reference reads a declaration, and asks `leaf` where the reference does, in the same places. So `when Builtins.equalsData(d, e)` lowers and `when !Builtins.equalsData(d, e)` is `JULC0072`,
   though javac knows both are boolean. `Guards.referenceType` is that leaf: a binder, a `new`, a helper's, a library method's and an accessor's result, what the registry declares on the
-  receiver it saw. `PRIMITIVE_INTEGER_METHODS` stays a list of names for the same reason: a `long` from a method off the list is taken for a `BigInteger` there, so `Math.abs(n) > 0` is `JULC0072`.
+  receiver it saw, a list method that takes a function included. A component is read off a receiver the reference sees, so a variable of a `switch` in the guard, which has no binder when the guard's type is read, says nothing.
+  An inferred lambda parameter names no declared type, so `when b` is `JULC0072` on every receiver. A simple name as the receiver of the list method gives the reference a first pass with the parameter untyped, and a throw from it stands: a leaf
+  that roots in such a parameter, through an accessor or a `var`, is unknown (`CallTargets.untypedInFirstPass`). A switch's selector is not held to that pass, which is [the lambdas' one widening](068-m3f-lambdas.md#the-one-deliberate-widening).
+  `PRIMITIVE_INTEGER_METHODS` stays a list of names for the same reason: a `long` from a method off the list is taken for a `BigInteger` there, so `Math.abs(n) > 0` is `JULC0072`.
+  Two shapes stay wider than the reference, and are [listed](#where-a-guard-accepts-more-than-the-reference).
 - **A name in a guard's binding rule goes by name.** `JULC0074` for reading a variable named like a guard's pattern variable reads the name, as the reference does, so a field of that name is held to it.
 - **The placement of a continuation decides by source name.** The reference asks whether the arm's variable is free in what follows. `Scope` marks a binder beside a static of the name (`a'1`),
   so `Switches.readsName` compares source names, which keeps the join, and the bytes, where F9's program needs them.
@@ -110,7 +114,7 @@ M0's evidence, with `25.0.2-librca`.
 | 1 | `reference-rejects-not-ported` | `DIFFERENT-rejection` | Below |
 | 1 | `DIFFERENT-javac-rejects` | `DIFFERENT-javac-rejects` | `d7b92820`, `JULC0101` on an accessor: covers one more method. The row's class and reason stand |
 
-`DIFFERENT-javac-accepts` and `DIFFERENT-bytes` did not move: nothing widened, and no script differs that did not differ.
+`DIFFERENT-javac-accepts` and `DIFFERENT-bytes` did not move: on the corpus nothing widened, and no script differs that did not differ. Outside it, see [what a guard accepts](#where-a-guard-accepts-more-than-the-reference).
 
 ### Coverage
 
@@ -172,16 +176,31 @@ One runner in a throwaway worktree, each mutant applied, tested in two stages, a
 | First | before `052fe6f4` | 0 failures of 944 and 110 | 96 | 72 | 23, and 1 did not compile |
 | Rerun of the survivors, with new mutants | `a64bda07` | 0 failures of 975 and 111 | 25 | 19 | 6 |
 
-Each of the 6 survivors sits behind something that stops first. They were probed through `frontend=JAVAC` against the reference, and no program reached the mutated line:
+Five of the 6 survivors sit behind something that stops first. They were probed through `frontend=JAVAC` against the reference, and no program reached the mutated line. The sixth has its row now:
 
 | Mutant | Why no program reaches it |
 |---|---|
 | `constant false passes` | javac rejects a guard that is a constant `false` first, with `(1L << 1L) > 5` and `(1 << 1L) > 5` too. The check stays so such a guard still stops if a constant ever reaches it |
 | `operand of any family` | A record is final, so javac rejects the unrelated operand. A non-sealed variant is `JULC0100` at the gate, and a variant of two interfaces is `JULC0084` |
-| `a variant read against its first parent` | The same `JULC0084`. **Group 3 or Group 4 adds the row when that stop lifts** |
-| `unary is numeric` | `byte`, `short`, `char` and the boxed types are rejected before the guard, and each other operand is numeric |
+| `a variant read against its first parent` | Reached: `case S.A a when x instanceof V0`, with `x` of the second parent, passes this line and stops at `JULC0084`, where the mutant gives `JULC0072`. `JavacSwitchesTest.anOperandOfEitherParentOfAVariant` kills it |
+| `unary is numeric` | `byte`, `short`, `char` and the boxed types are rejected before the guard. `-` and `~` on anything but a constant are `JULC0072` first. `+` on an operand that is no constant, as in `+Math.abs(n) > 0`, stops at `UNARY_PLUS`, `JULC0084`, before the guard's type is read, where the reference gives `JULC0072`. So no accepted program depends on the line |
 | `@Param a constant` | `@Param static final` with a constant is `JULC0088` first (D14), and any other initializer is not constant either way |
 | `a class file's constant` | A class-file field has no declaration, so the check is reached only from a second source unit, and a library unit stops. **Group 3 adds the row when library units lower** |
+
+## Where a guard accepts more than the reference
+
+Each program here is outside the corpus, and `Adr068SwitchHarnessTest` holds a row of each to the JVM at all four levels.
+
+| Shape | Reference | `JAVAC` |
+|---|---|---|
+| A read of a local or parameter in a guard under a `new`'s argument: `new X(switch (s) { case S.A a when t instanceof S.A -> ...` with `t` a parameter, `when n > 0` with a `long n`, `(z + 1) < a.v().signum()` with a `final int z` | `JULC0072`: `resolveLocal` stops at a `new` | Reads what javac bound, with the JVM's answer |
+| An unparenthesized conditional, `when c ? d : true` | JavaParser does not parse it | Compiles, with the JVM's answer |
+
+The rule the reference applies at a `new` is that it treats every `new` as an anonymous class body. Three shapes under a `new` stay the other way:
+
+- **A guard that is constant by a local through a `new`** (`final boolean on = true; new X(switch (s) { case S.A a when on -> ...`), which both accept, with other bytes: the reference reads the guard at run time, and it is a constant on `JAVAC`. `JAVAC` stops at `JULC0084`, and where the reference rejects such a guard (`final long z = 5; ... when z > 0`) the rejection is that `JULC0084`. A guard that holds the local and is read at run time on both, `on && c`, compiles to one script.
+- **A local that shadows a constant field**, `boolean ON = c; new X(switch (s) { case S.A a when ON -> ...` beside `static final boolean ON = true`. The reference reads the field, and `JAVAC` the local, as Java does, so `c` false gives the reference another value. `aLocalThatShadowsAConstantFieldUnderANew` pins it, and the follow-ups have the row.
+- **Two `Boolean` parameters compared**, `when p == q` under a `new`: the reference types each by its binder and accepts, and `JAVAC` keeps `JULC0072`, as everywhere else (D6).
 
 ## What this does not establish
 
@@ -203,6 +222,6 @@ Each of the 6 survivors sits behind something that stops first. They were probed
 - **ADR text, I12.** Lowering calls rules of `subset/` where the reference calls its checker. I2a needs that order. `SwitchRules` says so.
 - **Follow-ups to close:** F710, F720, F722 for arms, F807 for `switch`, "A `switch` as a compared operand", and the row of `ADR-067 revision` to narrow. An assignment's target in `Tuples.destination` stays with loops.
 - **Follow-ups the brief names and I could not find.** "Rows of the switch slice" is no heading or row at `edfa707b`. F1024 and F1041 are about lambdas, so they stay with that slice. #297 reaches a guard through `Calls.encodedTarget`, tested with a list of integers.
-- **Follow-ups to add.** `getConstantValue()` gives nothing for a shift by a `long` (`1L << 1L`), though JLS 15.29 and the reference take it for a constant. A guard still sees it as a constant: `when (1L << 1L) > 5` is javac's own constant-`false` rejection on both frontends, `JULC0085` at the gate. A record's field read in a guard, `f.on`, is `JULC0072` here because the reference collects `JULC0055` and goes on: `Guards` holds that one order.
+- **Follow-ups to add.** A record's field read in a guard, `f.on`, is `JULC0072` here because the reference collects `JULC0055` and goes on: `Guards` holds that one order.
 - **The parallel slice.** `Frame` is now `Frame(scope, exit, patterns, inGuard)`, built by `Frame.body` and `initializer`. A lambda's frame keeps both, as the reference keeps `patternScopes` and `guardDepth` in one. `Lowering`, `Terms` and `SubsetScan`'s `WHERE_LOWERED` are the likely merge points.
 - **Shared code.** None of it changed: `TermTypes`, `PirHelpers`, `TypeMethodRegistry` and the JavaParser frontend are as they were. `JavacFacts` gained `declaration`, `unitOfTree`, `encloses` and `text`. `EqualityRelation.operands` reads a `switch`'s arms; only `EqualityRules` calls it, on `frontend=JAVAC`, so no fact reaches the other frontend (I8).

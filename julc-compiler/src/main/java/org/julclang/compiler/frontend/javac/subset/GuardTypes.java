@@ -37,7 +37,7 @@ import java.util.function.Function;
  * The Java type of a guard expression as ADR-067 D4 establishes it, ported from {@code SwitchPatternChecker.sourceType}.
  * javac knows every type here, and that does not widen what a guard may hold (I2): what the reference establishes from a
  * declaration is read from the element javac bound, and what it asks its caller is asked of {@code leaf}, in the same
- * places. So {@code !l.isEmpty()} stays {@code JULC0072} where {@code l.isEmpty()} lowers.
+ * places. So {@code !Builtins.equalsData(d, e)} stays {@code JULC0072} where {@code Builtins.equalsData(d, e)} lowers.
  * <p>
  * Reads types and builds no term, so it has no evaluation order to state.
  */
