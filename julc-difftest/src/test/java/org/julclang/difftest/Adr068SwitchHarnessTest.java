@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -100,6 +101,10 @@ class Adr068SwitchHarnessTest {
         return constr(2);
     }
 
+    private static PlutusData list(long... values) {
+        return new PlutusData.ListData(Arrays.stream(values).mapToObj(Adr068SwitchHarnessTest::integer).toList());
+    }
+
     private static List<PlutusData> everyS() {
         return List.of(a(7), a(0), a(-1), b(1, 2), b(-3, 4), d());
     }
@@ -131,6 +136,14 @@ class Adr068SwitchHarnessTest {
         for (var s : everyS()) {
             for (var t : everyS()) assertAgree(members, s, t);
         }
+    }
+
+    private static void assertRejectedAlike(String members, String code, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> {
+            assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+            assertTrue(result.uplc().toString().contains(code), () -> code + " expected: " + report.describe());
+        });
     }
 
     /** The JVM's answer on {@code JAVAC}, and on the reference at least one level differs: a D13 semantic fix. */
@@ -434,6 +447,119 @@ class Adr068SwitchHarnessTest {
     @Test
     void armsOfTwoTypesStopWhereTheyNeedOne() {
         assertStopsOnJavac("static PlutusData d(BigInteger v) { return Builtins.iData(v); } public static long m(S s) { var v = switch (s) { case S.A a -> a.v(); default -> d(BigInteger.ONE); }; return JulcList.of(v).size(); }", "JULC0084", a(1));
+    }
+
+    @Test
+    void aGuardCombinesAListMethodThatTakesAFunction() {
+        for (var l : List.of(list(), list(1, 2), list(-1, 0), list(-1, 2))) {
+            for (var s : List.of(a(1), d())) {
+                assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when !l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }", s, l);
+                assertAgree("public static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case S.A a when l.all(x -> x.signum() > 0) && c -> 1; default -> 3; }; }", s, l, bool(true));
+                assertAgree("public static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case S.A a when c || l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }", s, l, bool(false));
+                assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when !l.filter(x -> x.signum() > 0).isEmpty() -> 1; default -> 3; }; }", s, l);
+                assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when l.filter(x -> x.signum() > 0).size() > 0 -> 1; default -> 3; }; }", s, l);
+                assertAgree("public static long m(S s, S t, JulcList<BigInteger> l) { return switch (s) { case S.A a when switch (t) { case S.A b -> !l.any(x -> x.signum() > 0); default -> false; } -> 1; default -> 3; }; }", s, s, l);
+            }
+        }
+        assertRejectedAlike("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when !(l).any(x -> x.signum() > 0) -> 1; default -> 3; }; }", "JULC0072", a(1), list(1));
+    }
+
+    @Test
+    void aReadOfWhatHasNoBinderIsRejectedAlike() {
+        assertRejectedAlike("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> i.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }", "JULC0072", a(1), a(2));
+        assertRejectedAlike("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> { var b = i.v().signum() > 0; yield b; } default -> false; }) -> 1; default -> 3; }; }", "JULC0072", a(1), a(2));
+        assertAgreeOnEveryPair("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> a.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }");
+    }
+
+    @Test
+    void anInferredParameterInAGuardFollowsTheReceiver() {
+        var l = list(1, -1, 3);
+        String body = ".filter(x -> switch (s) { case S.A a when x.signum() > 0 -> true; default -> false; }).size(); }";
+        assertRejectedAlike("public static long m(S s, JulcList<BigInteger> l) { return l" + body, "JULC0072", a(1), l);
+        for (var s : everyS()) {
+            assertAgree("public static long m(S s, JulcList<BigInteger> l) { return (l)" + body, s, l);
+            assertAgree("public static long m(S s, JulcList<BigInteger> l) { return l.tail()" + body, s, l);
+            assertAgree("static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } public static long m(S s, JulcList<BigInteger> l) { return ids(l)" + body, s, l);
+        }
+        assertRejectedAlike("public static long m(S s, JulcList<Boolean> l) { return l.filter(b -> switch (s) { case S.A q when b -> true; default -> false; }).size(); }", "JULC0072", a(1), new PlutusData.ListData(List.of(bool(true))));
+        assertFixedOnJavac("public static long m(S s, JulcList<BigInteger> l) { return l.filter((BigInteger x) -> switch (s) { case S.A a when x.signum() > 0 -> true; default -> false; }).size(); }", a(1), l);
+    }
+
+    @Test
+    void aConstantOfAnInterface() {
+        String kinds = "public sealed interface K { boolean ON = true; long N = 3; int M = 2147483647; record U() implements K { } } ";
+        var entries = new ArrayList<>(TAG_ENTRIES);
+        entries.add(new TagTable.Entry("Case$K$U", "Case$K", 0));
+        var tags = new TagTable(entries);
+        for (var members : List.of("public static long m(S s, long x) { return switch (s) { case S.A a when K.ON -> 1; default -> 2; }; }",
+                "public static long m(S s, long x) { return switch (s) { case S.A a when x > K.N -> 1; default -> 2; }; }",
+                "public static long m(S s, long x) { return switch (s) { case S.A a when (K.M + 1) < x -> 1; default -> 2; }; }")) {
+            for (var s : everyS()) {
+                for (long x : List.of(-1L, 3L, 4L)) {
+                    var report = RUNNER.run(new DiffCase("switch", program(kinds + members), "Case", "m", List.of(s, integer(x)), tags, null));
+                    assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+                    AGREED.incrementAndGet();
+                }
+            }
+        }
+    }
+
+    /** A rejection of the reference that {@code JAVAC} does not make: the JVM's answer at every level, and the reference still refuses. */
+    private static void assertWiderOnJavac(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED,
+                result.verdict().kind(), report::describe));
+        AGREED.incrementAndGet();
+    }
+
+    private static String underNew(String guard) {
+        return "new X(switch (s) { case S.A a when " + guard + " -> BigInteger.ONE; default -> BigInteger.TWO; })";
+    }
+
+    @Test
+    void aConstantGuardThatReadsALocalThroughANewStops() {
+        for (var s : List.of(a(1), d())) {
+            assertStopsOnJavac("public static X m(S s) { final boolean on = true; return " + underNew("on") + "; }", "JULC0084", s);
+            assertAgree("public static X m(S s, boolean c) { final boolean on = true; return " + underNew("on && c") + "; }", s, bool(false));
+            assertAgree("public static X m(S s, boolean c) { final boolean on = true; return " + underNew("on && c") + "; }", s, bool(true));
+        }
+    }
+
+    /** What javac binds under a {@code new} and the reference does not see: the reference stops, and {@code JAVAC} is the JVM's unless the guard is a constant. */
+    @Test
+    void aGuardUnderANewReadsWhatJavacBound() {
+        for (var s : List.of(a(1), d())) {
+            assertWiderOnJavac("public static X m(S s, S t) { return " + underNew("t instanceof S.A") + "; }", s, a(2));
+            assertWiderOnJavac("public static X m(S s, long n) { return " + underNew("n > 0") + "; }", s, integer(1));
+            assertStopsOnJavac("public static X m(S s) { final long z = 5; return " + underNew("z > 0") + "; }", "JULC0084", s);
+            assertWiderOnJavac("public static X m(S s) { final int z = 2147483647; return new X(switch (s) { case S.A a when (z + 1) < a.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; }); }", s);
+            assertStopsOnJavac("public static X m(S s) { final String u = \"a\"; return " + underNew("u == \"a\"") + "; }", "JULC0084", s);
+            assertStopsOnJavac("static final boolean OFF = false; public static X m(S s) { final boolean OFF = true; return " + underNew("OFF") + "; }", "JULC0084", s);
+        }
+    }
+
+    /** JavaParser does not parse a conditional as a guard with no parentheses, and javac does. */
+    @Test
+    void aConditionalGuardWithNoParentheses() {
+        for (var c : List.of(bool(true), bool(false))) {
+            assertWiderOnJavac("public static long m(S s, boolean c, boolean d) { return switch (s) { case S.A a when c ? d : true -> 1; default -> 3; }; }", a(1), c, bool(false));
+        }
+    }
+
+    /** {@code ==} on two {@code Boolean}s compares references, so it stops on {@code JAVAC}. Under a {@code new} the reference takes them as booleans. */
+    @Test
+    void twoBooleansComparedUnderANew() {
+        var members = "public static X m(S s, Boolean p, Boolean q) { return " + underNew("p == q") + "; }";
+        var report = run(members, List.of(a(1), bool(true), bool(true)));
+        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED : Verdict.Kind.AGREE,
+                result.verdict().kind(), report::describe));
+    }
+
+    /** A local that shadows a constant field: the reference reads the field through a {@code new}, and {@code JAVAC} the local, as Java does. */
+    @Test
+    void aLocalThatShadowsAConstantFieldUnderANew() {
+        assertFixedOnJavac("static final boolean ON = true; public static X m(S s, boolean c) { boolean ON = c; return " + underNew("ON") + "; }", a(1), bool(false));
+        assertFixedOnJavac("static final boolean ON = true; public static X m(S s, boolean ON) { return " + underNew("ON") + "; }", a(1), bool(false));
     }
 
     @Test

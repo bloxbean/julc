@@ -6,7 +6,9 @@ import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.NewClassTree;
+import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
@@ -19,6 +21,7 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.util.Map;
@@ -212,6 +215,40 @@ final class CallTargets {
      * loop's variable is, and only a read from a call to be decoded. A variable holds bytes, so that term fails on-chain
      * where Java returns them, and it does not lower. A lambda's parameter is the one it knows to be decoded.
      */
+    /**
+     * Whether the reference lowers {@code call}'s lambda once with its parameter untyped. A simple name might be a class, so
+     * {@code NAME.hof(...)} is tried as a static call first, which lowers the arguments, finds no method and drops the term.
+     * A throw from that pass is kept.
+     */
+    boolean hasFirstPass(MethodInvocationTree call) {
+        return receiverOf(call) instanceof IdentifierTree;
+    }
+
+    /**
+     * Whether the reference has no type for {@code tree} in the first pass of a lambda around it: an inferred parameter of a
+     * lambda with a first pass, what is read off one, and a {@code var} of either. A guard's leaf is held to that (I2).
+     */
+    boolean untypedInFirstPass(ExpressionTree tree) {
+        return switch (tree) {
+            case ParenthesizedTree parenthesized -> untypedInFirstPass(parenthesized.getExpression());
+            case MethodInvocationTree call when receiverOf(call) != null -> untypedInFirstPass(receiverOf(call));
+            case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
+                    && facts.declaration(variable) != null -> untypedVariable(facts.declaration(variable));
+            default -> false;
+        };
+    }
+
+    private boolean untypedVariable(VariableTree declaration) {
+        if (!facts.isInferred(declaration)) return false;
+        if (declaration.getInitializer() != null) return untypedInFirstPass(declaration.getInitializer());
+        return facts.parent(declaration) instanceof LambdaExpressionTree lambda && facts.parent(lambda) instanceof MethodInvocationTree call
+                && receiverOf(call) != null && (hasFirstPass(call) || untypedInFirstPass(receiverOf(call)));
+    }
+
+    private static ExpressionTree receiverOf(MethodInvocationTree call) {
+        return call.getMethodSelect() instanceof MemberSelectTree select ? select.getExpression() : null;
+    }
+
     private boolean decodesAgain(String name, ExpressionTree receiver) {
         if (name.equals("value") || isLambdaParameter(receiver)) return false;
         var call = receiver instanceof MethodInvocationTree tree ? tree : null;

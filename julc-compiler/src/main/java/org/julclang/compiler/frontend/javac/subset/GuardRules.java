@@ -20,6 +20,7 @@ import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.GuardTypes.JType;
 
 import javax.lang.model.element.TypeElement;
@@ -93,6 +94,8 @@ final class GuardRules {
         if (!(Boolean) constant.value().value()) {
             throw invalid(guard, entry, "'" + facts.text(guard) + "' is a constant expression with value false, so the case can never apply");
         }
+        // The reference reads no local through a new, so it keeps such a guard as a read at run time, in other bytes (I1).
+        if (constants.readsThroughNew(guard)) throw NotPorted.at(facts, guard, "a constant guard that reads a local through a new");
         return true;
     }
 

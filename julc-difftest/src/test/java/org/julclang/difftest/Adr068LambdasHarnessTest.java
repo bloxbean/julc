@@ -485,7 +485,19 @@ class Adr068LambdasHarnessTest {
     /** Java's null goes on, and the script fails at the read, which is {@code JulcMap.get}'s and fails closed. */
     @Test
     void aMissThatNothingReadsFailsInTheScript() {
-        var report = run("public static long m(" + BIG_LIST + " xs) { var r = xs.find(x -> x.signum() > 5); return 1; }", List.of(integers(1)));
+        assertMissFailsOnJavac("public static long m(" + BIG_LIST + " xs) { var r = xs.find(x -> x.signum() > 5); return 1; }", integers(1));
+    }
+
+    /** Any read of a miss fails where its value is computed: a declared local read on another path, and an argument nothing reads. */
+    @Test
+    void aMissReadOnAnotherPathFailsInTheScript() {
+        assertMissFailsOnJavac("public static long m(" + BIG_LIST + " xs, boolean c) { BigInteger r = xs.find(x -> x.signum() > 5); if (c) { return r.longValue(); } return 1; }", integers(1), bool(false));
+        assertMissFailsOnJavac("static long h(BigInteger v) { return 1; } public static long m(" + BIG_LIST + " xs) { return h(xs.find(x -> x.signum() > 5)); }", integers(1));
+        assertMissFailsOnJavac("public static long m(" + BIG_LIST + " xs) { PlutusData d = PlutusData.cast(xs.find(x -> x.signum() > 5), PlutusData.class); return 1; }", integers(1));
+    }
+
+    private static void assertMissFailsOnJavac(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
         assertEquals(new Observation.Value(integer(1), List.of()), report.jvm());
         report.results().forEach((config, result) -> {
             var expected = config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.MISMATCH : Verdict.Kind.AGREE;
@@ -499,6 +511,87 @@ class Adr068LambdasHarnessTest {
     void aCastViewsWhatFindLeaves() {
         assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return PlutusData.cast(xs.find(x -> x.signum() > 0), Optional.class).isPresent(); }", integers(1));
         assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return PlutusData.cast(xs.find(x -> x.signum() > 5), Optional.class).isPresent(); }", integers(1));
+    }
+
+    /** Valid programs on an element of a sealed interface: a simple name as the receiver is the only shape the reference refuses. */
+    @Test
+    void aSwitchOnAnElementFollowsTheReceiver() {
+        var xs = list(a(1), a(-1), b(1, 2), constr(2));
+        String body = ".any(v -> switch (v) { case S.A q -> q.v().signum() > 0; case S.B q -> false; case S.D q -> false; }); }";
+        String field = "record F(JulcList<S> ss) { } ";
+        assertRejectedAlike("public static boolean m(JulcList<S> xs) { return xs" + body, "JULC0007", xs);
+        assertAgree("public static boolean m(JulcList<S> xs) { return (xs)" + body, xs);
+        assertAgree("public static boolean m(JulcList<S> xs) { return xs.tail()" + body, xs);
+        assertAgree("public static boolean m(JulcList<S> xs) { return xs.filter(u -> true)" + body, xs);
+        assertAgree("static JulcList<S> ids(JulcList<S> s) { return s; } public static boolean m(JulcList<S> xs) { return ids(xs)" + body, xs);
+        assertAgree(field + "public static boolean m(F f) { return f.ss()" + body, constr(0, xs));
+        assertBothAgree(field + "public static long m(F f) { S r = f.ss().find(v -> switch (v) { case S.A q -> true; default -> false; }); return 1; }", constr(0, xs));
+    }
+
+    /** A rejection of the reference's discarded pass, which {@code JAVAC} does not make: the JVM's answer at every level (D13, Accepted by decision). */
+    private static void assertWiderOnJavac(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED,
+                result.verdict().kind(), report::describe));
+        assertJavacAgrees(report);
+    }
+
+    private static final String ON_S = " switch (q) { case S.A a -> a.v().signum() > 0; case S.B b -> false; case S.D d -> false; } ";
+
+    /** {@code JULC0007}: what is read off a parameter at a simple name is Data to the first pass, and the type javac gave it runs. */
+    @Test
+    void aSwitchOnWhatIsReadOffAParameterAtASimpleName() {
+        String type = "public record Rs(S s) { } ";
+        var rs = list(constr(0, a(1)), constr(0, a(-1)), constr(0, constr(2)));
+        assertWiderOnJavac(type + "public static boolean m(JulcList<Rs> rs) { return rs.any(r -> switch (r.s()) { case S.A a -> a.v().signum() > 0; default -> false; }); }", rs);
+        assertWiderOnJavac(type + "public static boolean m(JulcList<Rs> rs) { return rs.any(r -> { var q = r.s(); return" + ON_S + "; }); }", rs);
+        assertWiderOnJavac(type + "public static long m(JulcList<Rs> rs) { return rs.filter(r -> { var q = r.s(); return" + ON_S + "; }).size(); }", rs);
+        assertWiderOnJavac(type + "public static boolean m(JulcList<Rs> rs, " + BIG_LIST + " ys) { return rs.any(r -> ys.any(y -> switch (r.s()) { case S.A a -> a.v().signum() > 0; default -> false; })); }", rs, integers(1));
+        assertAgree(type + "static JulcList<Rs> id(JulcList<Rs> l) { return l; } public static boolean m(JulcList<Rs> rs) { return id(rs).any(r -> switch (r.s()) { case S.A a -> a.v().signum() > 0; default -> false; }); }", rs);
+        String field = "public record Fs(JulcList<S> ss) { } ";
+        assertWiderOnJavac(field + "public static boolean m(JulcList<Fs> fs) { return fs.any(f -> f.ss().any(q ->" + ON_S + ")); }", list(constr(0, list(a(1), a(-1)))));
+    }
+
+    /** {@code JULC0012}: the first pass types what a lambda at a simple name holds as Data, so arms and elements do not agree. */
+    @Test
+    void anElementTypeTheFirstPassDoesNotSee() {
+        var xs = integers(1, 2);
+        assertWiderOnJavac("public static " + BIG_LIST + " m(" + BIG_LIST + " xs) { return xs.map(x -> { var a = JulcArray.of(x, BigInteger.ONE); return a.get(0); }); }", xs);
+        assertWiderOnJavac("public static " + BIG_LIST + " m(JulcList<R> xs) { return xs.map(r -> { var a = JulcArray.of(r.a(), BigInteger.ONE); return a.get(0); }); }", list(r(1, 2)));
+        assertWiderOnJavac("public static " + BIG_LIST + " m(BigInteger a, S s) { var xs = JulcList.of(a); return xs.map(x -> switch (s) { case S.A q -> x; case S.B b -> BigInteger.ONE; case S.D d -> BigInteger.TWO; }); }", integer(5), a(1));
+    }
+
+    private static final String MAP_OF_BIG = "JulcMap<BigInteger, BigInteger>";
+
+    private static PlutusData mapOf(long key, long value) {
+        return new PlutusData.MapData(List.of(new PlutusData.Pair(integer(key), integer(value))));
+    }
+
+    /** Both frontends give the JVM's answer, each at its own cost. */
+    private static void assertBothAgree(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        assertJavacAgrees(report);
+    }
+
+    /** A cast to a map decodes Data, and what javac types as a map is decoded already, whatever the binder says of it. */
+    @Test
+    void aCastToAMapDecodesOnce() {
+        assertBothAgree("public static boolean m(" + MAP_OF_BIG + " a) { var xs = JulcList.of(a); return xs.any(x -> PlutusData.cast(x, JulcMap.class).isEmpty()); }", mapOf(1, 2));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { var xs = JulcList.of(a); return xs.map(x -> { " + MAP_OF_BIG + " d = PlutusData.cast(x, JulcMap.class); return d.size(); }).head(); }", mapOf(1, 2));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { var y = JulcList.of(a).head(); " + MAP_OF_BIG + " d = PlutusData.cast(y, JulcMap.class); return d.size(); }", mapOf(1, 2));
+        assertFixedOnJavac("public static long m(JulcList<" + MAP_OF_BIG + "> xs) { " + MAP_OF_BIG + " d = PlutusData.cast(xs.find(x -> true), JulcMap.class); return d.size(); }", list(mapOf(1, 2)));
+        assertFixedOnJavac("public static boolean m(JulcList<" + MAP_OF_BIG + "> a) { return a.map(y -> y).any(x -> { " + MAP_OF_BIG + " d = PlutusData.cast(x, JulcMap.class); return d.isEmpty(); }); }", list(mapOf(1, 2)));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { " + MAP_OF_BIG + " d = PlutusData.cast(a, JulcMap.class); return d.size(); }", mapOf(1, 2));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a, BigInteger n) { var y = JulcList.of(a, n).head(); " + MAP_OF_BIG + " d = PlutusData.cast(y, JulcMap.class); return d.size(); }", mapOf(1, 2), integer(1));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a, BigInteger n, boolean c) { " + MAP_OF_BIG + " d = PlutusData.cast(c ? a : n, JulcMap.class); return d.size(); }", mapOf(1, 2), integer(1), bool(true));
+    }
+
+    /** Java refuses a {@code MapData} as a {@code JulcMap}, and the view reads it: a Data value still decodes, on both frontends. */
+    @Test
+    void aCastToAMapStillDecodesData() {
+        assertBothDivergeAlike("public static long m(PlutusData x) { JulcMap<PlutusData, PlutusData> d = PlutusData.cast(x, JulcMap.class); return d.size(); }", mapOf(1, 2));
+        assertBothDivergeAlike("public static long m(JulcList<PlutusData> xs) { return xs.map(x -> { JulcMap<PlutusData, PlutusData> d = PlutusData.cast(x, JulcMap.class); return d.size(); }).head(); }", list(mapOf(1, 2)));
     }
 
     // --- What stops ---

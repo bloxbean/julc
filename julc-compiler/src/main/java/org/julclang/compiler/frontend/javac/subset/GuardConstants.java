@@ -16,6 +16,7 @@ import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
@@ -262,6 +263,24 @@ public final class GuardConstants {
                 && isStaticFinal(field) ? field : null;
     }
 
+    /**
+     * Whether a constant {@code tree} reads a local declared outside a {@code new} that the read stands in, at its own name
+     * or in a local's initializer. A local in scope of a read is outside only the {@code new}s the read adds, so the nearest
+     * one tells.
+     */
+    boolean readsThroughNew(ExpressionTree tree) {
+        for (var name : SubsetWalk.all(tree, IdentifierTree.class)) {
+            if (facts.elementOrNull(name) instanceof VariableElement variable && variable.getKind() == ElementKind.LOCAL_VARIABLE) {
+                var declaration = facts.declaration(variable);
+                if (facts.enclosing(name, Tree.Kind.NEW_CLASS) != facts.enclosing(declaration, Tree.Kind.NEW_CLASS)
+                        || readsThroughNew(declaration.getInitializer())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private boolean inUnit(TypeElement type, Tree at) {
         return facts.unitOf(type) != null && facts.unitOf(type) == facts.unitOfTree(at);
     }
@@ -277,12 +296,10 @@ public final class GuardConstants {
         };
     }
 
-    /** As written, so an interface's implicit modifiers are not read, and a {@code @Param} is the applied parameter. */
+    /** With an interface's implicit modifiers, which javac has added. A {@code @Param} is the applied parameter. */
     private boolean isStaticFinal(VariableElement field) {
-        var declaration = facts.declaration(field);
-        if (declaration == null || facts.hasAnnotation(field, JavacNames.PARAM)) return false;
-        var flags = declaration.getModifiers().getFlags();
-        return flags.contains(Modifier.STATIC) && flags.contains(Modifier.FINAL);
+        if (facts.declaration(field) == null || facts.hasAnnotation(field, JavacNames.PARAM)) return false;
+        return field.getModifiers().containsAll(Set.of(Modifier.STATIC, Modifier.FINAL));
     }
 
     private Result initializer(VariableElement variable, Set<Element> visiting) {

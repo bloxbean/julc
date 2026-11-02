@@ -17,6 +17,7 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.YieldTree;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.GuardTypes.JType;
 import org.julclang.compiler.pir.PirType;
 
@@ -67,6 +68,7 @@ public final class SwitchRules {
         boolean guarded = false;
         for (var entry : tree.getCases()) {
             checkGroup(entry);
+            requireOneLabel(entry);
             if (isDefault(entry)) defaultEntry = entry;
             if (!(entry.getLabels().getFirst() instanceof PatternCaseLabelTree label)) continue;
             if (label.getPattern() instanceof DeconstructionPatternTree) {
@@ -87,6 +89,16 @@ public final class SwitchRules {
     /** Whether {@code entry} has a {@code default} label. */
     private static boolean isDefault(CaseTree entry) {
         return entry.getLabels().stream().anyMatch(DefaultCaseLabelTree.class::isInstance);
+    }
+
+    /** {@code JULC0084}: an arm is one type pattern or {@code default}. Nothing lowers another label, so it must not be dropped. */
+    private void requireOneLabel(CaseTree entry) {
+        var labels = entry.getLabels();
+        if (labels.size() > 1) throw NotPorted.at(facts, labels.get(1), "a case label past the first");
+        var label = labels.getFirst();
+        if (!(label instanceof PatternCaseLabelTree || label instanceof DefaultCaseLabelTree)) {
+            throw NotPorted.at(facts, label, "a case label that is no pattern");
+        }
     }
 
     /** {@code JULC0075}: a colon form holds one label a group, and yields on every path: JuLC has no fall-through (#283). */

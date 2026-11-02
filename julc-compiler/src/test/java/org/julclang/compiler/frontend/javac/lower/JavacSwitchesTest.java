@@ -40,6 +40,7 @@ class JavacSwitchesTest {
             import org.julclang.ledger.OutputDatum;
             import org.julclang.ledger.TxOut;
             import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.annotation.NewType;
             """;
 
     private static final String TYPES = """
@@ -229,6 +230,7 @@ class JavacSwitchesTest {
             "static long m(S s) { return switch (s) { default -> 1; default -> 2; }; }",
             "static long m(S s) { return switch (s) { case A a -> 1; default: yield 2; }; }",
             "static long m(S s) { return switch (s) { case A a, B b -> 1; default -> 2; }; }",
+            "static long m(S s) { return switch (s) { case A _, B _ -> 1; default -> 2; }; }",
             "static long m(S s, A a) { return switch (s) { case A a -> 1; default -> 2; }; }",
             "static long m(S s) { return switch (s) { case A a when 1 -> 1; default -> 2; }; }",
             "static long m(S s) { long x = 1; x = 2; return switch (s) { case A a when x > 0 -> 1; default -> 2; }; }",
@@ -398,6 +400,238 @@ class JavacSwitchesTest {
     })
     void equalityInAndAroundAGuard(String code, String members) {
         assertEquals(code, javacCode(members));
+    }
+
+    /** A list method that takes a function is typed by what the registry declares on the receiver the reference sees. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.all(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when l.all(x -> x.signum() > 0) && c -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when c || l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when l.any(x -> x.signum() > 0) == c -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.filter(x -> x.signum() > 0).isEmpty() -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when l.filter(x -> x.signum() > 0).size() > 0 -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.map(x -> x.add(x)).isEmpty() -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when l.filter(x -> true).any(y -> y.signum() > 0) && c -> 1; default -> 3; }; }",
+            "static long m(S s, S t, JulcList<BigInteger> l) { return switch (s) { case A a when switch (t) { case A b -> !l.any(x -> x.signum() > 0); default -> false; } -> 1; default -> 3; }; }",
+            "static boolean m(S s, JulcList<BigInteger> k, JulcList<BigInteger> l) { return k.any(w -> switch (s) { case A a when !l.any(x -> x.signum() > 0) -> true; default -> false; }); }",
+    })
+    void aGuardCombinesAListMethodThatTakesAFunction(String members) {
+        same(members);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !(l).any(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when l.find(x -> x.signum() > 0).signum() > 0 -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when l.map(x -> x.add(x)).head().signum() > 0 -> 1; default -> 3; }; }",
+    })
+    void aReceiverOrResultTheRegistryDoesNotDeclareStaysRejected(String members) {
+        rejected(members);
+    }
+
+    /**
+     * A guard's type is read before it is lowered, so a variable of a {@code switch} in the guard has no binder, and the
+     * reference reads nothing off it. Its message quotes the {@code switch} over several lines, written here as it prints it.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, S t) { return switch (s) { case A a when (switch(t) { case A i -> i.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }",
+            "static long m(S s, S t) { return switch (s) { case A a when (switch(t) { case A i -> i.v().signum() >= 0; default -> false; }) -> 1; default -> 3; }; }",
+            "static long m(S s, S t) { return switch (s) { case A a when (switch(t) { case A i -> { var b = i.v().signum() > 0; yield b; } default -> false; }) -> 1; default -> 3; }; }",
+            "static long m(S s, R r) { return switch (s) { case A a when (switch(r.s()) { case B i -> i.w().compareTo(i.v()) > 0; default -> false; }) -> 1; default -> 3; }; }",
+            "static long m(S s, T t) { return switch (s) { case A a when (switch(t) { case T.Y i -> i.s() instanceof A; default -> false; }) -> 1; default -> 3; }; }",
+            "static long m(S s, R r) { return switch (s) { case A a when (r).n().signum() > 0 -> 1; default -> 3; }; }",
+            "@NewType record Ni(BigInteger value) { } sealed interface Wn { record U(Ni n) implements Wn { } record Z() implements Wn { } } "
+                    + "static long m(S s, Wn t) { return switch (s) { case A a when (switch(t) { case Wn.U i -> i.n().value().signum() > 0; default -> false; }) -> 1; default -> 3; }; }",
+    })
+    void aReadOfWhatHasNoBinderYetIsNoEstablishedType(String members) {
+        LoweringFixture.assertSameMethodRejectionAsReference(source(members), "m", StdlibRegistry.defaultRegistry(), LoweringFixture.SPACING);
+    }
+
+    /** What a variable of the arm or around the switch gives a guard, through as many accessors as it takes. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, S t) { return switch (s) { case A a when (switch (t) { case A i -> a.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }",
+            "static long m(S s, R r) { return switch (s) { case A a when r.n().signum() > 0 -> 1; default -> 3; }; }",
+            "record N(R r) { } static long m(S s, N n) { return switch (s) { case A a when n.r().n().signum() > 0 -> 1; default -> 3; }; }",
+            "static long m(S s, S t) { return switch (s) { case A a when (switch (t) { case A i -> i instanceof A; default -> false; }) -> 1; default -> 3; }; }",
+    })
+    void aReadOfWhatHasABinderKeepsItsType(String members) {
+        same(members);
+    }
+
+    /** An inferred parameter says nothing to a guard by name, whatever the receiver, so it is rejected before the guard is lowered. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, JulcList<Boolean> l) { return l.filter(b -> switch (s) { case A q when b -> true; default -> false; }).size(); }",
+            "static long m(S s, JulcList<Boolean> l) { return l.filter(b -> switch (s) { case A q when !b -> true; default -> false; }).size(); }",
+            "static long m(S s, JulcList<Boolean> l, boolean c) { return l.filter(b -> switch (s) { case A q when b && c -> true; default -> false; }).size(); }",
+            "static long m(S s, JulcList<Boolean> l) { return l.filter(b -> { var w = b; return switch (s) { case A q when w -> true; default -> false; }; }).size(); }",
+            "static JulcList<Boolean> h(JulcList<Boolean> l) { return l; } static long m(S s, JulcList<Boolean> l) { return ids(l).filter(b -> switch (s) { case A q when b -> true; default -> false; }).size(); }",
+            "record F(JulcList<Boolean> bs) { } static long m(S s, F f) { return f.bs().filter(b -> switch (s) { case A q when b -> true; default -> false; }).size(); }",
+    })
+    void anInferredParameterIsNoGuardByItsName(String members) {
+        rejected(members);
+    }
+
+    /** Where a simple name is the receiver, the reference's first pass has no type for a parameter, so a guard that reads one is rejected. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; }).size(); }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return l.filter(x -> switch (s) { case A a when x.signum() > 0 && c -> true; default -> false; }).size(); }",
+            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> { var w = x; return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
+            "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter(q -> switch (s) { case A a when q.a().signum() > 0 -> true; default -> false; }).size(); }",
+            "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter(q -> { var w = q.a(); return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
+            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return l.any(x -> ids(k).any(y -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; })); }",
+            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return ids(l).any(x -> k.any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
+            "record G(JulcList<BigInteger> is) { } static boolean m(S s, JulcList<G> l) { return l.any(g -> g.is().any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
+            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> { var w = (x); return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
+            "static boolean m(S s, JulcList<JulcList<BigInteger>> ll) { return ll.any(l -> (l).any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
+            "@NewType record Ni(BigInteger value) { } static long m(S s, JulcList<Ni> l) { return l.filter(n -> switch (s) { case A a when n.value().signum() > 0 -> true; default -> false; }).size(); }",
+    })
+    void aParameterTheFirstPassHasNoTypeForIsNoGuard(String members) {
+        rejected(members);
+    }
+
+    /** With no first pass, or a type written, the parameter has its type in a guard. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static long m(S s, JulcList<BigInteger> l) { return ids(l).filter(x -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; }).size(); }",
+            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static long m(S s, JulcList<BigInteger> l) { return ids(l).filter(x -> { var w = x; return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
+            "static long m(S s, JulcList<BigInteger> l) { return l.tail().filter(x -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; }).size(); }",
+            "static long m(S s, JulcList<BigInteger> l) { return (l).filter(x -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; }).size(); }",
+            "record F(JulcList<BigInteger> is) { } static long m(S s, F f) { return f.is().filter(x -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; }).size(); }",
+            "record Q(BigInteger a) { } static JulcList<Q> ids(JulcList<Q> l) { return l; } static long m(S s, JulcList<Q> l) { return ids(l).filter(q -> switch (s) { case A a when q.a().signum() > 0 -> true; default -> false; }).size(); }",
+            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return ids(l).any(x -> k.any(y -> switch (s) { case A a when x.signum() > 0 -> true; default -> false; })); }",
+            "static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } static boolean m(S s, JulcList<BigInteger> l, JulcList<BigInteger> k) { return l.any(x -> ids(k).any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
+            "record G(JulcList<BigInteger> is) { } static JulcList<G> ids(JulcList<G> l) { return l; } static boolean m(S s, JulcList<G> l) { return ids(l).any(g -> g.is().any(y -> switch (s) { case A a when y.signum() > 0 -> true; default -> false; })); }",
+            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> switch (s) { case A a when x.equals(BigInteger.ONE) -> true; default -> false; }).size(); }",
+            "static long m(S s, JulcList<BigInteger> l) { return l.filter(x -> { BigInteger w = x; return switch (s) { case A a when w.signum() > 0 -> true; default -> false; }; }).size(); }",
+            "@NewType record Ni(BigInteger value) { } static JulcList<Ni> ids(JulcList<Ni> l) { return l; } static long m(S s, JulcList<Ni> l) { return ids(l).filter(n -> switch (s) { case A a when n.value().signum() > 0 -> true; default -> false; }).size(); }",
+            "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter(q -> switch (s) { case A a when q.a().equals(BigInteger.ONE) -> true; default -> false; }).size(); }",
+            "record Q(BigInteger a) { } static long m(S s, JulcList<Q> l) { return l.filter((Q q) -> switch (s) { case A a when q.a().equals(BigInteger.ONE) -> true; default -> false; }).size(); }",
+    })
+    void aParameterWithItsTypeReadsInAGuard(String members) {
+        same(members);
+    }
+
+    /** A field of an interface is {@code static final} without saying so, as JavaParser and javac both read it. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.ON -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when !Kn.OFF -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, long x) { return switch (s) { case A a when x > Kn.N -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, long x) { return switch (s) { case A a when x > Kn.W -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when (Kn.M + 1) < a.v().signum() -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.TEXT == \"a\" -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.N > 2 && c -> 1; default -> 2; }; }",
+            "static boolean Z = true; static long m(S s) { return switch (s) { case A a when Z -> 1; default -> 2; }; }",
+    })
+    void aConstantOfAnInterface(String members) {
+        same(members);
+    }
+
+    /** A read of a type's field in a guard that is no constant has no binder on either frontend. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.ON && c -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.OFF || c -> 1; default -> 2; }; }",
+            "sealed interface Kn { BigInteger B = BigInteger.ONE; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when a.v().equals(Kn.B) -> 1; default -> 2; }; }",
+            "record Rc(long n) { static long L = 3; } static long m(S s, long x) { return switch (s) { case A a when x > Rc.L -> 1; default -> 2; }; }",
+    })
+    void aFieldOfATypeThatIsNoConstantInAGuard(String members) {
+        for (var frontend : CompilerFrontend.values()) {
+            var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setFrontend(frontend)).compileMethod(source(members), "m"));
+            assertTrue(e.getMessage().contains("Undefined variable"), () -> frontend + ": " + e.getMessage());
+        }
+    }
+
+    @Test
+    void aConstantFalseOfAnInterfaceIsJavacsRejection() {
+        rejected("sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.OFF -> 1; default -> 2; }; }");
+    }
+
+    /**
+     * A simple name as the receiver gives the reference a first pass with the parameter untyped, so a {@code switch} on it is
+     * {@code JULC0007}. Any other receiver has no such pass, and the element keeps its sealed type, nested or not.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean m(JulcList<S> xs) { return xs.any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { var ys = xs; return ys.any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static long m(JulcList<S> xs) { return xs.filter(v -> switch (v) { case A a -> true; default -> false; }).size(); }",
+            "record F(JulcList<S> ss) { } static boolean m(JulcList<S> xs, F f) { return xs.any(v -> f.ss().any(w -> switch (v) { case A a -> true; default -> false; })); }",
+            "static boolean m(JulcList<JulcList<S>> xss) { return xss.any(l -> l.any(v -> switch (v) { case A a -> true; default -> false; })); }",
+    })
+    void aSwitchOnAnElementAtASimpleNameIsRejected(String members) {
+        rejected(members);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record F(JulcList<S> ss) { } static boolean m(F f) { return f.ss().any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "record F(JulcList<S> ss) { } static JulcList<BigInteger> m(F f) { return f.ss().map(v -> switch (v) { case A a -> a.v(); default -> BigInteger.ONE; }); }",
+            "record F(JulcList<S> ss) { } static boolean m(F f) { return f.ss().any(v -> { var w = v; return switch (w) { case A a -> true; default -> false; }; }); }",
+            "static JulcList<S> ids(JulcList<S> s) { return s; } static boolean m(JulcList<S> xs) { return ids(xs).any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { return xs.tail().any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { return xs.filter(u -> true).any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { return (xs).any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "record F(JulcList<S> ss) { } static boolean m(JulcList<BigInteger> xs, F f) { return xs.any(x -> f.ss().any(v -> switch (v) { case A a -> true; default -> false; })); }",
+            "record F(JulcList<S> ss) { } static boolean m(JulcList<S> xs, F f) { return f.ss().any(v -> xs.any(w -> switch (v) { case A a -> true; default -> false; })); }",
+            "record Tr(JulcList<S> kids) { } static JulcList<Boolean> m(Tr n) { return n.kids().map(k -> switch (k) { case A a -> true; default -> false; }); }",
+    })
+    void aSwitchOnAnElementAtAnyOtherReceiverLowers(String members) {
+        same(members);
+    }
+
+    /** The reference reads no local through a {@code new}, so a guard that is constant by one keeps a read at run time, in other bytes. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when (on) -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean off = false; return new X(switch (s) { case A a when !off -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when on && true -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when (boolean) on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final var on = true; return new X(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; final boolean p = on; return new X(switch (s) { case A a when p -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, S t) { final boolean on = true; return new X(switch (s) { case A a -> { final boolean p = on; yield switch (t) { case A b when p -> BigInteger.ONE; default -> BigInteger.TWO; }; } default -> BigInteger.ZERO; }); }",
+            "record X(BigInteger v) { } static X m(S s, S t) { final boolean on = true; return new X(switch (s) { case A a -> switch (t) { case A b when on -> BigInteger.ONE; default -> BigInteger.TWO; }; default -> BigInteger.ZERO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(h(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; })); }",
+    })
+    void aConstantGuardThatReadsALocalThroughANewStops(String members) {
+        LoweringFixture.assertMethodNotPorted(source(members), "m", "a constant guard that reads a local through a new", 27);
+    }
+
+    /** A local on the same side of the {@code new}, no local, no {@code new}, or a guard read at run time on both. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record X(BigInteger v) { } static X m(S s, S t) { return new X(switch (s) { case A a -> { final boolean on = true; yield switch (t) { case A b when on -> BigInteger.ONE; default -> BigInteger.TWO; }; } default -> BigInteger.ZERO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { return new X(switch (s) { case A a when ON -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return switch (s) { case A a when on -> new X(BigInteger.ONE); default -> new X(BigInteger.TWO); }; }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; var v = switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }; return new X(v); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { final boolean on = true; return new X(switch (s) { case A a when on && c -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { final boolean on = true; return new X(switch (s) { case A a when c || on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { final boolean on = true; return new X(switch (s) { case A a when on == c -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { boolean on = true; return new X(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { return new X(switch (s) { case A a when c -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+    })
+    void aGuardReadAtRunTimeOrOnOneSideOfANew(String members) {
+        same(members);
+    }
+
+    /**
+     * An operand of either parent of a variant passes {@code instanceof}'s rule on tags, so what a variant of two interfaces
+     * says, the stop at its type, comes next. Read against its first parent alone, the second would be {@code JULC0072}.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"Pf", "Pg"})
+    void anOperandOfEitherParentOfAVariant(String parent) {
+        String members = "sealed interface Pf permits Vb { } sealed interface Pg permits Vb { } record Vb(BigInteger v) implements Pf, Pg { } "
+                + "static long m(S s, " + parent + " x) { return switch (s) { case A a when x instanceof Vb -> 1; default -> 3; }; }";
+        assertEquals("JULC0084", javacCode(members));
     }
 
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */

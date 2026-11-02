@@ -37,7 +37,7 @@ import java.util.function.Function;
  * The Java type of a guard expression as ADR-067 D4 establishes it, ported from {@code SwitchPatternChecker.sourceType}.
  * javac knows every type here, and that does not widen what a guard may hold (I2): what the reference establishes from a
  * declaration is read from the element javac bound, and what it asks its caller is asked of {@code leaf}, in the same
- * places. So {@code !l.isEmpty()} stays {@code JULC0072} where {@code l.isEmpty()} lowers.
+ * places. So {@code !Builtins.equalsData(d, e)} stays {@code JULC0072} where {@code Builtins.equalsData(d, e)} lowers.
  * <p>
  * Reads types and builds no term, so it has no evaluation order to state.
  */
@@ -181,7 +181,7 @@ public final class GuardTypes {
     private JType name(IdentifierTree name, Function<ExpressionTree, JType> leaf) {
         if (!(facts.elementOrNull(name) instanceof VariableElement variable)) return leaf.apply(name);
         return switch (variable.getKind()) {
-            case PARAMETER -> declared(variable.asType());
+            case PARAMETER -> facts.isInferred(facts.declaration(variable)) ? JType.OTHER : declared(variable.asType());
             case LOCAL_VARIABLE -> {
                 var declaration = facts.declaration(variable);
                 if (declaration.getType() != null && !facts.isGenerated(declaration.getType())) yield declared(variable.asType());
