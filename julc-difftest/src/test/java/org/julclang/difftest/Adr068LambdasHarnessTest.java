@@ -633,6 +633,43 @@ class Adr068LambdasHarnessTest {
         assertStopsOnJavac("public static boolean m(boolean c, " + MAP_OF_BIG + " a, PlutusData d) { var xs = JulcList.of(a); return xs.any(q -> { " + declared + "c ? q : d, JulcMap.class); return z.isEmpty(); }); }", bool(true), mapOf(1, 2), mapOf(3, 4));
     }
 
+    /** A cast that does not decode says nothing of the value, so the decode reads through it: once on Data, never on what is decoded. */
+    @Test
+    void aCastToAMapReadsThroughACast() {
+        String head = "public static long m(boolean c, " + MAP_OF_BIG + " a, PlutusData d, S s) { var y = JulcList.of(a).head(); " + MAP_OF_BIG + " z = PlutusData.cast(";
+        String size = ", JulcMap.class); return z.size(); }";
+        var one = List.of(bool(true), mapOf(1, 2), mapOf(3, 4), a(1));
+        for (var held : List.of("PlutusData.cast(y, PlutusData.class)", "PlutusData.cast(y, Object.class)", "PlutusData.cast((y), PlutusData.class)", "(PlutusData.cast(y, PlutusData.class))",
+                "PlutusData.cast(PlutusData.cast(y, PlutusData.class), PlutusData.class)", "PlutusData.cast(a, PlutusData.class)")) {
+            assertJavacAgrees(run(head + held + size, one));
+        }
+        for (var mixed : List.of("PlutusData.cast(c ? y : d, PlutusData.class)", "c ? PlutusData.cast(y, PlutusData.class) : d", "c ? d : PlutusData.cast(y, PlutusData.class)",
+                "PlutusData.cast(c ? d : a, PlutusData.class)", "PlutusData.cast(switch (s) { case S.A q -> a; default -> d; }, PlutusData.class)")) {
+            assertStopsOnJavac(head + mixed + size, bool(true), mapOf(1, 2), mapOf(3, 4), a(1));
+        }
+        String through = "public static long m(boolean c, " + MAP_OF_BIG + " a, PlutusData d) { var y = JulcList.of(a).head(); var w = PlutusData.cast(c ? y : d, PlutusData.class); " + MAP_OF_BIG + " z = PlutusData.cast(w, JulcMap.class); return z.size(); }";
+        assertStopsOnJavac(through, bool(true), mapOf(1, 2), mapOf(3, 4));
+        assertBothDivergeAlike("public static long m(PlutusData d) { JulcMap<PlutusData, PlutusData> z = PlutusData.cast(PlutusData.cast(d, PlutusData.class), JulcMap.class); return z.size(); }", mapOf(3, 4));
+    }
+
+    /** Two values each decoded once, or each a map, take one term, whatever their type arguments. */
+    @Test
+    void aCastToAMapOfTwoHeldMaps() {
+        String head = "public static long m(boolean c, " + MAP_OF_BIG + " a, PlutusData d) { " + MAP_OF_BIG + " z = PlutusData.cast(";
+        for (var c : List.of(bool(true), bool(false))) {
+            assertJavacAgrees(run(head + "c ? a : a, JulcMap.class); return z.size(); }", List.of(c, mapOf(1, 2), mapOf(3, 4))));
+            assertJavacIsAMap(head + "c ? PlutusData.cast(d, JulcMap.class) : a, JulcMap.class); return z.size(); }", c, mapOf(1, 2), mapOf(3, 4));
+        }
+    }
+
+    /** {@code JAVAC} compiles this and the view reads one entry, which Java's checked cast of a {@code MapData} refuses. */
+    private static void assertJavacIsAMap(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> {
+            if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(new Observation.Value(integer(1), List.of()), result.uplc(), report::describe);
+        });
+    }
+
     /** Each arm holds the same thing, so the one term is right on both paths. */
     @Test
     void aCastToAMapOfOneRepresentationGoesOn() {

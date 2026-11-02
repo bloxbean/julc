@@ -15,6 +15,7 @@ import org.julclang.compiler.LoweringRequirements;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -130,39 +131,63 @@ final class Calls {
         }
         var argument = tree.getArguments().getFirst();
         var inner = lowering.expr(argument, frame);
-        boolean toMap;
+        return toMap(tree) && !isMap(argument, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
+    }
+
+    private boolean toMap(MethodInvocationTree cast) {
         try {
-            toMap = typing.of(tree) instanceof PirType.MapType;
+            return typing.of(cast) instanceof PirType.MapType;
         } catch (NotPorted e) {
-            toMap = false;
+            return false;
         }
-        return toMap && !isMap(argument, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
     }
 
     /**
-     * Whether {@code inner} holds a decoded map. javac's type goes first, since a binder can say Data of a decoded value
-     * ({@link Lambdas}, a {@code var}). Where it has no representation, what the term says of itself does, unless the value
-     * {@link #mayHoldEither} of a map and Data: one term cannot decode one arm and leave the other, so that stops.
+     * Whether {@code inner} holds a decoded map, so a cast to a map decodes a value once, or not at all. javac's type goes
+     * first, since a binder can say Data of a decoded value ({@link Lambdas}, a {@code var}), and it is the type of what
+     * {@link #valuesOf} reaches: a cast that does not decode says nothing of the value. One term cannot decode one value it
+     * may hold and leave another, so a cast of both stops.
      */
     private boolean isMap(ExpressionTree argument, PirTerm inner) {
+        var values = new ArrayList<ExpressionTree>();
+        valuesOf(argument, values);
+        if (values.size() == 1) {
+            try {
+                return typing.of(values.getFirst(), inner) instanceof PirType.MapType;
+            } catch (NotPorted e) {
+                return typing.ofTerm(inner) instanceof PirType.MapType;
+            }
+        }
+        boolean map = holdsMap(values.getFirst());
+        for (var value : values) {
+            if (holdsMap(value) != map) throw NotPorted.at(facts, argument, "a cast to a map of a value that holds another type on one path");
+        }
+        return map;
+    }
+
+    private boolean holdsMap(ExpressionTree value) {
         try {
-            return typing.of(argument, inner) instanceof PirType.MapType;
+            return typing.of(value) instanceof PirType.MapType;
         } catch (NotPorted e) {
-            if (mayHoldEither(argument)) throw NotPorted.at(facts, argument, "a cast to a map of a value that holds another type on one path");
-            return typing.ofTerm(inner) instanceof PirType.MapType;
+            return false;
         }
     }
 
-    /** Whether {@code tree} chooses between terms: a conditional, a {@code switch}, or a {@code var} of either. */
-    private boolean mayHoldEither(ExpressionTree tree) {
-        return switch (tree) {
-            case ParenthesizedTree parenthesized -> mayHoldEither(parenthesized.getExpression());
-            case ConditionalExpressionTree ignored -> true;
-            case SwitchExpressionTree ignored -> true;
+    /** What {@code tree} may evaluate to, through parentheses, a choice of terms, a cast that does not decode and a variable. */
+    private void valuesOf(ExpressionTree tree, List<ExpressionTree> values) {
+        switch (tree) {
+            case ParenthesizedTree parenthesized -> valuesOf(parenthesized.getExpression(), values);
+            case ConditionalExpressionTree conditional -> {
+                valuesOf(conditional.getTrueExpression(), values);
+                valuesOf(conditional.getFalseExpression(), values);
+            }
+            case SwitchExpressionTree selected -> SwitchResults.of(selected).forEach(result -> valuesOf(result, values));
+            case MethodInvocationTree call when targets.classify(call) == CallTarget.Intrinsic.CAST && !toMap(call) ->
+                    valuesOf(call.getArguments().getFirst(), values);
             case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
-                    && facts.initializer(variable) != null -> mayHoldEither(facts.initializer(variable));
-            default -> false;
-        };
+                    && facts.initializer(variable) != null -> valuesOf(facts.initializer(variable), values);
+            default -> values.add(tree);
+        }
     }
 
     // --- Static methods ---

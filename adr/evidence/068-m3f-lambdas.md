@@ -81,7 +81,7 @@ observation and it is not the JVM's. T7 is on D4's accepted list, so this is no 
 | `f.apply(a)` on a local | `Functional interface .apply() is not supported on-chain` | The same, by identity. A qualified `java.util.function.Function` local says the same here, and `Unknown type: Function` there |
 | `C::h` | `Method references (::) are not supported on-chain` | The same, anywhere the scan reads |
 | `var f = x -> x`, `ListsLib.any`, `ListsLib.foldl` | `JULC0085` | `JULC0085` (D6) |
-| `PlutusData.cast(c ? q : d, JulcMap.class)`, and a `switch` or a `var` of either, where one arm is a map and the other is not | The then branch's type decides for both | `JULC0084`: one term cannot decode one arm and leave the other, and a held map must not be decoded twice. [Follow-up](068-followups.md) |
+| `PlutusData.cast(c ? q : d, JulcMap.class)`, and a `switch`, a `var` or a cast to `PlutusData` of either, where one arm is a map and the other is not | The then branch's type decides for both | `JULC0084`: one term cannot decode one arm and leave the other, and a held map must not be decoded twice. [Follow-up](068-followups.md) |
 
 A body holding a loop stops at its construct, and one holding a `switch` lowers it. `yield` and `return` in `Frame.lambda` behave as a lambda's, with and without a source map.
 

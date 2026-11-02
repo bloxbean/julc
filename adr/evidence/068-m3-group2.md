@@ -10,7 +10,7 @@ The two slices' files hold what each delivered.
 |---|---|
 | A lambda's body in a guard is ordinary code for D6: its identity comparison is `JULC0086` | `SubsetScan.visitLambdaExpression` |
 | An inferred lambda parameter has the type javac gives it, in a guard too | `Lambdas`, `Guards`; `068-m3f-lambdas.md` |
-| A cast of a value with no representation, a conditional or a `switch` of mixed values, or a `var` of one, stops at `JULC0084`. A value is decoded once | `Calls` |
+| A cast to a map reads through parentheses, a conditional, a `switch`, a cast that does not decode and a variable to each value it may hold. Where those are a map and another type it stops at `JULC0084`, so no value is decoded twice | `Calls` |
 | Work counts each constant, read, function, `let` and branch as 1, a constructor's value by its size, and a Data constant by its CBOR bytes | `DelayedMethodPass` |
 | A branch that may fail ends the reading of a body | `DelayedMethodPass` |
 | A `DIFFERENT-pir` row pins the type and term of every method that differs | `Adr068Lowering` |
