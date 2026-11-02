@@ -204,6 +204,7 @@ class Adr068LoopRepresentationsTest {
                 public sealed interface S { record A() implements S { } record B() implements S { } }
                 static PlutusData next(PlutusData c) { return Builtins.tailList(c); }
                 static PlutusData nextOf(PlutusData c, JulcList<BigInteger> xs) { var r = xs.map(x -> { return Builtins.iData(x); }); return Builtins.tailList(c); }
+                static PlutusData pick(PlutusData c, boolean stay) { if (stay) { return c; } return Builtins.tailList(c); }
                 static long walk(PlutusData c, JulcList<BigInteger> xs, S e) { long s = 0; while (!Builtins.nullList(c)) { %s s = s + 1; } return s; }
                 public static long m(PlutusData d, JulcList<BigInteger> xs) { return walk(Builtins.unListData(d), xs, new S.A()); }
                 """.formatted(step);
@@ -217,6 +218,7 @@ class Adr068LoopRepresentationsTest {
             "c = switch (e) { case S.A a -> Builtins.tailList(c); case S.B b -> c; };",
             "c = next(c);",
             "c = nextOf(c, xs);",
+            "c = pick(c, s > 100);",
             "PlutusData n = Builtins.tailList(c); c = n;",
     })
     void aParameterCursor(String step) {
@@ -235,6 +237,8 @@ class Adr068LoopRepresentationsTest {
                 true, MAP);
         assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.constrFields(d); long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } return s; }",
                 false, constr(0, integer(1), integer(2)));
+        assertCarried("static long walk(PlutusData c) { long s = 0; while (!Builtins.nullList(c)) { s = s + Builtins.unIData(Builtins.fstPair(Builtins.headList(c))).longValue(); c = Builtins.tailList(c); } return s; } public static long m(PlutusData d) { return walk(Builtins.unMapData(d)); }",
+                true, MAP);
         assertCarried("public static boolean m(BigInteger a) { return JulcList.of(a, a).any(x -> { var y = x; long n = 0; while (n < 2) { n = n + 1; y = x; } return n > 5; }); }",
                 false, integer(1));
     }

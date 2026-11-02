@@ -143,8 +143,7 @@ final class AccumulatorTypes {
                     var list = value(call.getArguments().getFirst(), read);
                     yield list.isList() ? list : Held.CURSOR;
                 }
-                case "mkCons" -> value(call.getArguments().getFirst(), read) == Held.PAIR ? Held.PAIRS
-                        : value(call.getArguments().getLast(), read) == Held.PAIRS ? Held.PAIRS : Held.LIST;
+                case "mkCons" -> value(call.getArguments().getFirst(), read) == Held.PAIR ? Held.PAIRS : Held.LIST;
                 case "mkNilData", "unListData", "constrFields" -> Held.LIST;
                 case "mkNilPairData", "unMapData" -> Held.PAIRS;
                 case "mkPairData" -> Held.PAIR;
