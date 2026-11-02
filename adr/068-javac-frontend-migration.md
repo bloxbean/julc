@@ -855,8 +855,9 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   datum cannot show the reference diverging: their cases show the javac frontend meeting the JVM on those types, and
   `Adr068TypeIdentityTest.theReferenceReadsBothByTheirSpelling` keeps the divergence. And a `.diffcase` holds one source,
   so D8's rows, which need a pool, cannot be saved: their oracle stays the reference's program of the root alone, in the gate.
-- **Two errors in one method (F946, r12).** A `DIFFERENT-rejection` of two errors in one method is a "Diagnostic change":
-  the reference collects `JULC0061` and goes on to the error it throws, and the javac frontend stops at the first.
+- **Two errors in one compilation (F946, r12).** A `DIFFERENT-rejection` of two errors in one compilation, in one method or in
+  two, is a "Diagnostic change": the reference collects `JULC0061` and goes on to the error it throws, and the javac frontend
+  stops at the first. With the first error removed, both frontends must give the second alike.
 - **A row that differs in its PIR (r13).** `DIFFERENT-pir` is a method whose bytes and budgets may agree while its terms do
   not. "Semantic fix" and "Cost change" explain it, with the evidence of the class. The row's text ends in a digest of the
   type and term of every method that differs, so another difference moves the row.

@@ -122,8 +122,8 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 
 ## Decisions to check
 
-1. **A local after a loop that shadows a field has its own name.** The reference's binder there is `K`, so its pre-loop rebinding writes one `let K = K` for what is a local's read. Here the binder is `K'1`, as I13 asks. To write
-   the same `let`, the port would have to know which blocks the reference renames. Two rows of the corpus show it, each smaller by that `let`, and semantic observations are equal. See `JavacLoopsTest.aLocalThatShadowsAFieldAfterALoop`.
+1. **A binder after a loop that hides a field has its own name.** It may be a local, a for-each's variable or a lambda's parameter. The reference's binder there is `K`, so its pre-loop rebinding writes one `let K = K` for what is that binder's read. Here the binder is `K'1`, as I13 asks. To write
+   the same `let`, the port would have to know which blocks the reference renames. Two rows of the corpus show it, each smaller by that `let`, and semantic observations are equal. `JavacLoopsTest.aBinderThatHidesAFieldAfterALoop` pins each shape's saving exactly, at every level, with and without a source map. It saves 2 or 3 bytes, at the first level always, and above it only with a source map.
 2. **An element the reference takes for Data decodes, and its binder says so.** `for (var x : JulcList.of(a, b))` and a for-each over `xs.map(...)` hold Data to the reference, and arithmetic on `x` fails on-chain where Java returns. Here the element decodes
    by javac's type, the binder has that type, and a tuple encodes it. `anElementTheReferenceTakesForData` and `Adr068LoopRepresentationsTest`'s 1,260 programs hold it to the JVM. A member read goes by `Binder.seen`, so the subset does not widen. An element nothing reads costs one `UnIData`: one row of the corpus.
 3. **A library compiled as a root stops at a call of its own method,** `a call of a library unit's own method`. On a root of a library, `MathLib.floorDiv` was `Undefined variable: MathLib`, a rejection with no decision behind it, which
@@ -135,7 +135,9 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 
 ## The I1 gate
 
-`build/m4/i1.sh` against the tables frozen at `e0d6eefc`, whose compare fails on moved rows by design until the integrator freezes. Nothing shrank: `lowering-i1-shrunk.tsv` is empty. No row has a loop as its first construct.
+`build/m4/i1.sh` against the tables frozen at `e0d6eefc`. The run fails by design at `assertListed` until the integrator adds the 50 rows, and moved rows are checked at the freeze. Nothing shrank: `lowering-i1-shrunk.tsv` is empty. No row has a loop as its first construct.
+
+The tables below are the merge of `wip/068-m3g2` at `9ab85bc3`, which moved no row of this slice's. The fixes that follow moved none either: every one of the 17,076 cases has the same row before and after them, bytes included, so the corpus holds no program that reaches what they changed. The 11 new `.diffcase`s are cases 17,077 to 17,087. They have no row in `lowering-reference.tsv`, so I1 reports them as `REFERENCE-DRIFT`, `no committed row`, and the freeze must add them.
 
 | Class | `e0d6eefc` | M4 |
 |---|---:|---:|
@@ -171,7 +173,7 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 | 10 | `not-ported`, `WHILE_LOOP` | `not-ported`, `a call of a library unit's own method` | Decision 3 |
 | 7 | `not-ported`, `ENHANCED_FOR_LOOP` | `not-ported`, `an equals between unrelated types` | A later construct |
 | 3 | `not-ported`, `ENHANCED_FOR_LOOP`, `WHILE_LOOP` | `not-ported`, `debug metadata`, `TYPE_CAST`, `an expression of type java.lang.Object` | A later construct, one row each |
-| 245 | `reference-rejects-not-ported` | `both-reject` | The reference's rejection, now reached: 163 for-each, 76 `while`, and one each of `break`, `for`, `do` |
+| 242 | `reference-rejects-not-ported` | `both-reject` | The reference's rejection, now reached: 163 for-each, 76 `while`, and one each of `break`, `for`, `do` |
 | 27 | `reference-rejects-not-ported` | `reference-rejects-not-ported` | Stops at a later construct |
 | 45 | `not-ported` | `DIFFERENT-javac-rejects` | Below |
 | 2 | `DIFFERENT-javac-rejects` | `DIFFERENT-javac-rejects` | More methods covered |
@@ -189,8 +191,17 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 | 39 | `DIFFERENT-javac-rejects` | Policy rejection (D6) | `==` between `BigInteger`s, in a program a loop stopped before |
 | 6 | `DIFFERENT-javac-rejects` | Policy rejection (D6) | `.equals` on `byte[]`, which M0's scan lists |
 | 2 | `DIFFERENT-bytes` | Cost change | Decision 1. 136 to 133 bytes and 231 to 228 where the identity `let` survives optimization. Smaller |
-| 1 | `DIFFERENT-bytes` | Cost change | Decision 2. 153 to 154 bytes: `for (var i : JulcList.of(x))` with `i` unread |
-| 2 | `DIFFERENT-rejection` | Diagnostic change | Two errors in one program: the reference collects one and throws the other, and this frontend stops at the first (F946) |
+| 1 | `DIFFERENT-bytes` | Cost change, **grows** | Decision 2. `for (var i : JulcList.of(x))` with `i` unread. The table below. A review decision is owed |
+| 2 | `DIFFERENT-rejection` | Diagnostic change | Two errors in one compilation, in one method and in two (D13): the reference collects one and throws the other, and this frontend stops at the first. With the first removed, both say the second alike |
+
+Row `64e378e9`, the one budget that grows, on inputs 3 and 4, one iteration, value and traces agreeing at all four levels. The type's fix did not change it:
+
+| Levels | Reference | `JAVAC` | Delta |
+|---|---|---|---|
+| First two | cpu 4,880,786, memory 19,790, 153 bytes | cpu 4,933,530, memory 20,022, 154 bytes | +52,744 (+1.1%), +232 (+1.2%), +1 |
+| Last two | cpu 4,259,875, memory 17,824, 145 bytes | cpu 4,360,619, memory 18,356, 150 bytes | +100,744 (+2.4%), +532 (+3.0%), +5 |
+
+The cost is per iteration, and only where the variable is unread. The follow-up "A decode no read needs" can remove it.
 
 ### Coverage
 
@@ -207,9 +218,27 @@ between unrelated types` 21 (14), `a contract schema` 15 (15), `a call of a libr
 
 ### Rows a library unit leaves stopped
 
-3,335 rows stop at `a library unit` as their first construct, and 1,769 of them moved there from a loop in this slice. Their loops lower when a method is lowered alone, and I1b compares each such method, but the program waits for Group 3.
+3,335 rows stop at `a library unit` as their first construct, and 1,769 of them moved there from a loop in this slice. By the ADR's M4 row as of r13, a loop that calls a library gets its I1 row when libraries are lowered.
 
-I1b reads the methods of a stopped program too, so a loop in one is held to the reference's term wherever it lowers.
+### What "every loop method has a row" covers
+
+Every case has a row, and every method is attempted alone, but a row is not always a comparison. Over methods whose reference term holds a `letrec`:
+
+| Methods | Outcome |
+|---:|---|
+| 7,843 (798 distinct) | Compared with the reference's term |
+| 536 (75 distinct) | Stop at `TYPE_CAST` before a comparison |
+| 74 | Stop at an `equals` on an array |
+| 39 | Stop at reference equality |
+| 4 | Rejected |
+| 1 | Stops at an expression of type `Object` |
+| 60,993 | No attempt: library methods, and sources javac rejects first |
+
+So the 536 and their like reach no comparison of their loops yet, external validators among them. `CfBetValidator.findContinuingOutput` is one. They wait for the construct that stops them, not for loops.
+
+### D10's set
+
+This slice ran its own suites and the two modules. `Javac21ParityTest`, ADR-066's rediscovery and the G1 campaign on `JAVAC` are the integrator's, in `gates.sh`. In I1, 122 G1 programs are `i1a-identical` and one is `not-ported`, and G0's 376 are identical.
 
 ## Tests
 
@@ -251,7 +280,7 @@ The other loop suites compile by the default frontend, so they were run once in 
 | Tests | Why they do not run yet |
 |---:|---|
 | 45 | The source reads a library, and stops at `a library unit` |
-| 24 | The source compares `BigInteger`s with `==`, which is `JULC0086` (D6). The saved form of these runs in the harness |
+| 24 | The source compares `BigInteger`s with `==`, which is `JULC0086` (D6). Written with `.equals`, all 24 pass on `JAVAC` |
 | 3 | `TYPE_CAST`: `(JulcList<PlutusData>) (Object) redeemer` |
 | 3 | `an equals between unrelated types` |
 | 1 | `LoopFieldUpdateTest.readByAnotherMethodIsRejected`: two errors, and this frontend reports `JULC0061` first (F946) |
@@ -303,7 +332,7 @@ Three lines cannot show in bytes. A body, a condition and what follows a `while`
 | A condition reads the declared type | 52 | 5,950 |
 | What follows reads the declared type | 57 | 5,948 |
 
-So every mutant of the last list is killed: 128 tried, with 13 of their lines gone, and none left standing. The harness and the generator killed few directly, since a row reaches a rule first, and that is the order the stages run in. Each row a survivor asked for is in `JavacLoopsTest`.
+So every mutant of these lists is killed. That says the lists are, and not that every loop line is tested: an independent review wrote twelve more and four survived, one a `while` with no accumulator that ended a branch and lost what followed. Each now has a row or a reason below. Rows against the reference are the strong gate. The JVM side is a thinner net, which killed few mutants directly, as a row reaches a rule first.
 
 
 ## What this does not establish
@@ -311,7 +340,7 @@ So every mutant of the last list is killed: 128 tried, with 13 of their lines go
 - **Loops in a library's body.** A library unit stops, so `ValuesLib`'s and `ContextsLib`'s `while` loops are compared as methods alone, where the corpus compiles them as a root, and never run on this frontend.
 - **Which programs the join's rule has never met.** The generator's nested loops reach two levels, and its accumulators three.
 - **`AccumulatorTypes` beyond what it reads.** A list that reaches a Data accumulator through a helper's parameter, a field, a lambda or a tuple's component says nothing, so the accumulator packs as Data and fails on-chain, as on the reference. A helper's `return` is read, its arguments are not.
-- **A local that shadows a field after a loop, by size.** Both frontends agree on value and failure, and `Adr068LoopsPropertyTest` does not compare cost on such a program.
+- **A local at a method's level after a loop that hides a field, by cost.** Both frontends agree on value and failure, and `Adr068LoopsPropertyTest` does not compare cost on that shape alone. Its size is pinned in `JavacLoopsTest`.
 - **The 11 new `.diffcase`s in the reference table.** `lowering-reference.tsv` has no row for them, so I1 lists them as `REFERENCE-DRIFT`, `no committed row`, until the freeze. See [the I1 gate](#the-i1-gate).
 - **I2a's inventory** is still not run on this frontend as an inventory. `JavacLoopsTest` holds each rule to the reference.
 - **Images and DevKit** were not run. The code holds no thread, reflection, file access or `ServiceLoader`.
