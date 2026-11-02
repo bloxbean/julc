@@ -382,6 +382,48 @@ class JavacSwitchesTest {
         return failure.diagnostics().getFirst().code();
     }
 
+    /** A lambda's body is ordinary code: {@code ==} on references there is D6's, as it is in an arm of a {@code switch} in a guard. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "lst.any(x -> x == str)",
+            "lst.any(x -> x != str)",
+            "lst.any(x -> str == x)",
+            "lst.any(x -> x == \"ab\")",
+            "lst.any(x -> \"ab\" == x)",
+            "lst.any(x -> { var y = x; return y == str; })",
+            "lst.any(x -> { return x == str; })",
+            "lst.filter(x -> x == str).isEmpty()",
+            "!lst.any(x -> x == str)",
+            "c && lst.any(x -> x == str)",
+            "lst.any(x -> l.any(y -> x == str))",
+            "lst.any(x -> (x == str) == c)",
+            "l.any(x -> x == n)",
+            "ls.any(v -> v == t)",
+    })
+    void anIdentityComparisonInALambdaInAGuard(String guard) {
+        assertEquals("JULC0086", javacCode("static long m(S s, S t, boolean c, BigInteger n, String str, JulcList<String> lst, JulcList<BigInteger> l, JulcList<S> ls) "
+                + "{ return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }"));
+    }
+
+    /** What is no comparison of references in a lambda in a guard stays what it was. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "lst.any(x -> x.equals(str))",
+            "l.any(x -> x.signum() == 1)",
+            "l.any(x -> x.signum() != k)",
+            "lb.any(x -> x == c)",
+    })
+    void aComparisonOfValuesInALambdaInAGuard(String guard) {
+        same("static long m(S s, boolean c, long k, String str, JulcList<String> lst, JulcList<BigInteger> l, JulcList<Boolean> lb) "
+                + "{ return switch (s) { case A a when " + guard + " -> 1; default -> 2; }; }");
+    }
+
+    /** After a lambda the guard is still a guard's to judge, so D6's rule does not read a later {@code ==}: the lowering's stop does. */
+    @Test
+    void aGuardGoesOnAfterALambda() {
+        assertEquals("JULC0084", javacCode("static long m(S s, BigInteger n, JulcList<BigInteger> l) { return switch (s) { case A a when l.any(x -> true) && a.v() == n -> 1; default -> 2; }; }"));
+    }
+
     /**
      * D6 in a guard: {@code ==} is ADR-067's, and the rest holds as anywhere, after the guard's own rules. A guard that is
      * constant as a whole has Java's value and reaches no term, and an arm of a {@code switch} in a guard is ordinary code.

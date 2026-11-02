@@ -8,6 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -469,6 +470,37 @@ class Adr068SwitchHarnessTest {
         assertRejectedAlike("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> i.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }", "JULC0072", a(1), a(2));
         assertRejectedAlike("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> { var b = i.v().signum() > 0; yield b; } default -> false; }) -> 1; default -> 3; }; }", "JULC0072", a(1), a(2));
         assertAgreeOnEveryPair("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> a.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }");
+    }
+
+    private static PlutusData text(String value) {
+        return new PlutusData.BytesData(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** {@code ==} on references in a lambda in a guard: the JVM compares identity, the reference compares values, and {@code JAVAC} stops at D6. */
+    @Test
+    void anIdentityComparisonInALambdaInAGuard() {
+        var strings = new PlutusData.ListData(List.of(text("ab")));
+        for (var body : List.of("x == str", "str == x", "x != str")) {
+            var report = run("public static long m(S s, String str, JulcList<String> lst) { return switch (s) { case S.A a when lst.any(x -> " + body + ") -> 1; default -> 2; }; }",
+                    List.of(a(1), text("ab"), strings));
+            report.results().forEach((config, result) -> {
+                if (config.frontend() == CompilerFrontend.JAVAC) {
+                    assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+                    assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
+                } else {
+                    assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
+                }
+            });
+        }
+    }
+
+    @Test
+    void anEqualsInALambdaInAGuardRuns() {
+        var strings = new PlutusData.ListData(List.of(text("ab")));
+        assertAgree("public static long m(S s, String str, JulcList<String> lst) { return switch (s) { case S.A a when lst.any(x -> x.equals(str)) -> 1; default -> 2; }; }", a(1), text("ab"), strings);
+        assertAgree("public static long m(S s, String str, JulcList<String> lst) { return switch (s) { case S.A a when lst.any(x -> x.equals(str)) -> 1; default -> 2; }; }", a(1), text("b"), strings);
+        assertAgree("public static long m(S s, long n, JulcList<BigInteger> l) { return switch (s) { case S.A a when l.any(x -> x.signum() == n) -> 1; default -> 2; }; }", a(1), integer(1), list(1, 2));
+        assertAgree("public static long m(S s, long n, JulcList<BigInteger> l) { return switch (s) { case S.A a when l.any(x -> x.signum() == n) -> 1; default -> 2; }; }", a(1), integer(-1), list(1, 2));
     }
 
     @Test

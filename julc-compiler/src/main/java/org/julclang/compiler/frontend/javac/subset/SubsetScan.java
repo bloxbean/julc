@@ -14,6 +14,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.LabeledStatementTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -183,6 +184,18 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             equalityDeferred = deferred;
         }
         return null;
+    }
+
+    /** A lambda's body is ordinary code, as an arm is, as far as D6 goes: nothing else reads a {@code ==} in it. */
+    @Override
+    public Void visitLambdaExpression(LambdaExpressionTree tree, Void unused) {
+        boolean deferred = equalityDeferred;
+        equalityDeferred = false;
+        try {
+            return super.visitLambdaExpression(tree, unused);
+        } finally {
+            equalityDeferred = deferred;
+        }
     }
 
     /** A member sets the context of what it holds, so a nested type's members are never in an outer member's. */
