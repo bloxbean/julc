@@ -188,14 +188,15 @@ final class Statements {
         }
         var value = lowering.expr(initializer, frame);
         var element = facts.element(tree);
-        PirType type;
+        Scope scope;
         if (facts.isGenerated(tree.getType())) {
-            type = varType(initializer, value);
+            var seen = varType(initializer, value);
+            scope = frame.scope().bind(element, Typing.holding(held(initializer, value, seen), seen), seen);
         } else {
-            type = facts.pirType(element.asType(), tree.getType());
+            var type = facts.pirType(element.asType(), tree.getType());
             typing.requireNativeBoundary("Variable '" + name + "' initializer", typing.of(initializer, value), type, initializer);
+            scope = frame.scope().bind(element, type);
         }
-        var scope = frame.scope().bind(element, type);
         return terms.let(scope.lookup(element), value, rest.apply(frame.in(scope)));
     }
 
@@ -210,6 +211,16 @@ final class Statements {
             throw CompilerTypeDiagnostics.arrayLiteralElementTypesDiffer(elements.get(), facts.location(initializer));
         }
         return targets.seen(initializer, value);
+    }
+
+    /** What a {@code var} holds where the reference sees Data: javac's type of its initializer, if it has one here. */
+    private PirType held(ExpressionTree initializer, PirTerm value, PirType seen) {
+        if (!(seen instanceof PirType.DataType)) return seen;
+        try {
+            return typing.of(initializer, value);
+        } catch (NotPorted e) {
+            return seen;
+        }
     }
 
     private PirTerm ret(ReturnTree tree, Frame frame) {

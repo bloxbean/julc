@@ -75,17 +75,16 @@ final class Carried {
         return terms.var(binder.element(), binder);
     }
 
-    /** A value with no type to encode by has no position of its own, so it takes the loop's (F724). */
+    /** What a value cannot be encoded by has no position of its own, so it takes the loop's. */
     private PirTerm encoded(PirTerm value, PirType type) {
         try {
             return PirHelpers.wrapEncode(value, type);
         } catch (CompilerException e) {
             var diagnostic = e.diagnostics().size() == 1 ? e.diagnostics().getFirst() : null;
-            if (diagnostic == null || diagnostic.line() > 0) throw e;
-            if (DiagnosticCodes.TYPE_RESOLUTION_FAILED.code().equals(diagnostic.code())) {
+            if (diagnostic != null && diagnostic.line() == 0 && DiagnosticCodes.TYPE_RESOLUTION_FAILED.code().equals(diagnostic.code())) {
                 throw CompilerTypeDiagnostics.unknownTypeEncoded(facts.location(loop));
             }
-            throw e;
+            throw diagnostic != null && DiagnosticCodes.NATIVE_TYPE_MISMATCH.code().equals(diagnostic.code()) ? facts.located(e, loop) : e;
         }
     }
 

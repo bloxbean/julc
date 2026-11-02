@@ -3,6 +3,8 @@ package org.julclang.compiler.frontend.javac.lower;
 import com.sun.source.tree.BreakTree;
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
@@ -132,13 +134,15 @@ final class Loops {
 
     private PirTerm forEach(EnhancedForLoopTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         rules.check(tree);
+        boolean breaks = LoopRules.firstExit(tree.getStatement(), BreakTree.class) != null;
+        if (breaks && accumulators.of(tree, frame).isEmpty()) rules.requireNoUpdateOfTheIterable(tree);
         var iterable = lowering.expr(tree.getExpression(), frame);
         requireList(tree);
         var held = held(tree);
         var variable = facts.element(tree.getVariable());
-        var scope = frame.scope().bind(variable, seen(tree, iterable));
+        var seen = seen(tree, iterable);
+        var scope = frame.scope().bind(variable, Typing.holding(held, seen), seen);
         var item = scope.lookup(variable);
-        boolean breaks = LoopRules.firstExit(tree.getStatement(), BreakTree.class) != null;
         var elements = accumulators(tree, frame);
 
         if (elements.isEmpty()) {
@@ -153,7 +157,8 @@ final class Loops {
             return terms.generatedLet(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)), result, rest);
         }
 
-        var carried = carried(elements, tree, frame);
+        var typed = travelling(elements, tree, frame);
+        var carried = carried(elements, tree, typed);
         var inner = frame.in(scope).updating();
         boolean single = carried.isSingle();
         String accumulator = single ? carried.only().name() : TUPLE;
@@ -171,7 +176,7 @@ final class Loops {
             result = desugarer.desugarForEach(iterable, item.name(), accumulator, initial, type, bodyTerm, held);
         }
         terms.loop((PirTerm.LetRec) result, single ? carried.only() : null, item);
-        return after(result, carried, following, index, frame, cont);
+        return after(result, carried, following, index, typed, cont);
     }
 
     /** {@code JulcList} and {@code java.util.List} are lists on-chain. An array is not, and the reference walks its bytes as one, which fails. */
@@ -183,16 +188,29 @@ final class Loops {
     private PirType held(EnhancedForLoopTree tree) {
         var variable = tree.getVariable();
         var type = facts.element(variable).asType();
+        PirType held;
         try {
-            return facts.registry().resolveNamed(facts.isInferred(variable) ? facts.valueType(type, variable) : facts.pirType(type, variable.getType()));
+            held = facts.registry().resolveNamed(facts.isInferred(variable) ? facts.valueType(type, variable) : facts.pirType(type, variable.getType()));
         } catch (CompilerException e) {
             throw NotPorted.at(facts, variable, "a for-each variable of type " + ArrayIdentityEquality.text(type));
         }
+        try {
+            terms.requireDecodes(held);
+        } catch (CompilerException e) {
+            throw facts.located(e, tree.getExpression());
+        }
+        return held;
     }
 
-    /** What the variable reads as to the reference: the element of the iterable as it sees it, whatever is written or javac knows (I2d). */
+    /**
+     * What the variable reads as to the reference, whatever is written or javac knows (I2d): the element of the iterable as
+     * it sees it. It reads the type of a name or a call, and of no other form, so an element of {@code (xs)}, a conditional or a
+     * {@code switch} is Data.
+     */
     private PirType seen(EnhancedForLoopTree tree, PirTerm iterable) {
-        return targets.seen(tree.getExpression(), iterable) instanceof PirType.ListType list ? list.elemType() : new PirType.DataType();
+        var expression = tree.getExpression();
+        boolean read = expression instanceof IdentifierTree || expression instanceof MethodInvocationTree;
+        return read && targets.seen(expression, iterable) instanceof PirType.ListType list ? list.elemType() : new PirType.DataType();
     }
 
     // --- While ---
@@ -237,18 +255,36 @@ final class Loops {
     }
 
     /**
-     * Several accumulators travel at the types of {@link AccumulatorTypes}: the tuple holds them so, and the condition and what
-     * follows the loop read them so. The body reads them as they were declared, as the reference has them there, and they
-     * are what it stores.
+     * {@code frame} with several accumulators at the types they travel at ({@link AccumulatorTypes}): the tuple holds them so, and
+     * what follows the loop reads them so. A body reads them as they were declared, as the reference has them there.
      */
-    private PirTerm several(WhileLoopTree tree, ExpressionTree condition, List<Element> elements, boolean breaks,
-                            List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+    private Frame travelling(List<Element> elements, StatementTree loop, Frame frame) {
+        if (elements.size() < 2) return frame;
         var declared = new ArrayList<PirType>();
         elements.forEach(element -> declared.add(frame.scope().lookup(element).type()));
-        var types = accumulatorTypes.refined(tree, elements, declared, following.subList(0, index));
+        var types = accumulatorTypes.travelling(loop, elements, declared);
         var scope = frame.scope();
         for (int i = 0; i < elements.size(); i++) scope = scope.rebind(elements.get(i), types.get(i));
-        var typed = frame.in(scope);
+        return frame.in(scope);
+    }
+
+    /**
+     * What a nested loop leaves, at the types it travels at for each accumulator {@code rest} reads. One nothing reads keeps
+     * its declared type, so a term that never decodes it stands as in the reference.
+     */
+    Carried nested(List<Element> elements, StatementTree loop, Frame frame, PirTerm rest) {
+        var typed = travelling(elements, loop, frame);
+        var free = PirHelpers.freeVariables(rest);
+        return new Carried(facts, terms, elements.stream().map(element -> {
+            var binder = frame.scope().lookup(element);
+            return free.contains(binder.name()) ? typed.scope().lookup(element) : binder;
+        }).toList(), loop);
+    }
+
+    /** A {@code while} of several accumulators: the condition reads them at the types they travel at. */
+    private PirTerm several(WhileLoopTree tree, ExpressionTree condition, List<Element> elements, boolean breaks,
+                            List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+        var typed = travelling(elements, tree, frame);
         var carried = carried(elements, tree, typed);
         var initial = carried.value();
         var test = lowering.expr(condition, typed);

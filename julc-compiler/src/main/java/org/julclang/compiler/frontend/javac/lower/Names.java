@@ -22,16 +22,22 @@ final class Names {
 
     private final JavacFacts facts;
     private final Terms terms;
+    private final Typing typing;
 
-    Names(JavacFacts facts, Terms terms) {
+    Names(JavacFacts facts, Terms terms, Typing typing) {
         this.facts = facts;
         this.terms = terms;
+        this.typing = typing;
     }
 
     PirTerm identifier(IdentifierTree tree, Frame frame) {
         var element = facts.element(tree);
         var binder = frame.scope().lookup(element);
-        if (binder != null) return terms.var(element, binder);
+        if (binder != null) {
+            var read = terms.var(element, binder);
+            if (!binder.seen().equals(binder.type())) typing.recordRead(read, binder.seen());
+            return read;
+        }
         // javac bound the name to a field no binder stands for: one without an initializer, or another class's. Or to a
         // pattern variable outside the then branch of the if whose whole condition binds it, the one place it lowers.
         boolean unbound = element.getKind() == ElementKind.FIELD || element.getKind() == ElementKind.BINDING_VARIABLE;

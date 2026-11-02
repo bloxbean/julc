@@ -66,7 +66,7 @@ final class Operators {
     /**
      * What an assignment stores (ADR-060): the right-hand side, or {@code target op value}, in Java's order: the target is
      * read first. Integers take every lowered operator and strings take {@code +=}. {@code SubsetScan} has rejected the other
-     * operators, and javac every other operand and operator on these types.
+     * operators, and javac every other operand and operator on these types. The rule reads the target as the reference sees it (I2d).
      */
     PirTerm assigned(ExpressionTree assignment, Scope.Binder target, Frame frame) {
         String name = target.element().getSimpleName().toString();
@@ -77,10 +77,10 @@ final class Operators {
         }
         var compound = (CompoundAssignmentTree) assignment;
         String operator = compoundOperator(compound);
-        boolean string = target.type() instanceof PirType.StringType;
-        if (!(target.type() instanceof PirType.IntegerType) && !string) {
+        boolean string = target.seen() instanceof PirType.StringType;
+        if (!(target.seen() instanceof PirType.IntegerType) && !string) {
             throw facts.locatedRejection("Compound assignment " + operator + " to '" + name + "' of type "
-                            + LibraryMethodRegistry.pirTypeName(target.type()) + " is not supported",
+                            + LibraryMethodRegistry.pirTypeName(target.seen()) + " is not supported",
                     "Compound assignment is supported on integer variables, and += on String variables. "
                             + "Write the update explicitly, e.g. x = x.add(y).", assignment);
         }

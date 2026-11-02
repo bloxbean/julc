@@ -1,25 +1,27 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.AssignmentTree;
-import com.sun.source.tree.BlockTree;
-import com.sun.source.tree.ExpressionStatementTree;
+import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.IfTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.StatementTree;
+import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.tree.WhileLoopTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
+import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.frontend.javac.subset.LoopRules;
 import org.julclang.compiler.pir.PirType;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -27,18 +29,37 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * What a Data-typed accumulator of a {@code while} holds when several travel in a tuple. {@code PlutusData} does not say:
- * a builtin leaves a list or a pair list under it, and packing one as Data would fail, so its type comes from the builtins
- * assigned to it and what stands before the loop. Ported from {@code AccumulatorTypeAnalyzer}, whose reading of a call by
- * its name is, here, the element javac bound: {@code tailList} is {@code Builtins.tailList} and nothing else, and the
- * reference's gate holds a program to the same answer ({@code JULC0101}). This builds no term, so it has no evaluation
- * order to state.
+ * What a {@code PlutusData} accumulator holds when several travel in a tuple. Its Java type does not say: a builtin leaves a
+ * list or a pair list under it, and packing one as Data fails. So this reads what reaches the variable, from what javac bound:
+ * its initializer and every assignment to it in the method, through parentheses, conditionals, a {@code switch}, other
+ * variables, and the {@code return}s of a helper. A call is the element javac bound, so {@code tailList} is
+ * {@code Builtins.tailList} and nothing else.
+ * <p>
+ * A cursor nothing else says of is a list, unless what its head is read as, or a map cursor beside it, says pairs. A variable
+ * shown to hold both a list and Data has no one type for the tuple, and it stops. This builds no term, so it has no
+ * evaluation order to state.
  */
 final class AccumulatorTypes {
 
     private static final PirType MAP = new PirType.MapType(new PirType.DataType(), new PirType.DataType());
     private static final PirType LIST = new PirType.ListType(new PirType.DataType());
     private static final String MAP_DATA = JavacNames.PLUTUS_DATA + ".MapData";
+
+    /** What is known of a value. */
+    private enum Held {
+        NOTHING, DATA, PAIR, CURSOR, LIST, PAIRS, BOTH;
+
+        boolean isList() {
+            return this == CURSOR || this == LIST || this == PAIRS;
+        }
+
+        Held and(Held other) {
+            if (this == NOTHING || this == other) return other;
+            if (other == NOTHING) return this;
+            if (isList() && other.isList()) return ordinal() > other.ordinal() ? this : other;
+            return BOTH;
+        }
+    }
 
     private final JavacFacts facts;
 
@@ -49,132 +70,150 @@ final class AccumulatorTypes {
     /**
      * @param accumulators the loop's, in order
      * @param types        their declared types, in order
-     * @param preceding    the statements before the loop in its list
-     * @return their types
+     * @return the types they travel at
      */
-    List<PirType> refined(WhileLoopTree loop, List<Element> accumulators, List<PirType> types, List<? extends StatementTree> preceding) {
-        var pairLists = pairLists(loop, preceding);
+    List<PirType> travelling(StatementTree loop, List<Element> accumulators, List<PirType> types) {
+        var method = facts.enclosing(loop, Tree.Kind.METHOD);
+        var reading = new Reading(method == null ? loop : method);
         var result = new ArrayList<>(types);
-        var body = loop.getStatement();
+        var held = new ArrayList<Held>();
         for (int i = 0; i < accumulators.size(); i++) {
-            if (!(result.get(i) instanceof PirType.DataType)) continue;
-            var accumulator = accumulators.get(i);
-            boolean tail = assigns(body, accumulator, "tailList");
-            boolean nil = assigns(body, accumulator, "mkNilData");
-            boolean cons = assigns(body, accumulator, "mkCons");
-            if (startsAsPairList(accumulator, preceding, pairLists) || assigns(body, accumulator, "mkNilPairData")) {
-                result.set(i, MAP);
-            } else if (tail || nil || cons) {
-                boolean pairs = cons ? callsAnywhere(body, "mkPairData") : tail && !nil && readsPairsOf(body, accumulator);
-                result.set(i, pairs ? MAP : LIST);
-            }
+            var what = result.get(i) instanceof PirType.DataType ? reading.variable(accumulators.get(i), new HashSet<>()) : Held.NOTHING;
+            if (what == Held.BOTH) throw NotPorted.at(facts, loop, "an accumulator shown to hold both a list and Data");
+            held.add(what);
+            if (what == Held.PAIRS) result.set(i, MAP);
+            if (what == Held.LIST) result.set(i, LIST);
         }
         // A cursor beside a pair list walks one, so it is one too.
-        if (result.stream().anyMatch(type -> type instanceof PirType.MapType)) {
-            for (int i = 0; i < accumulators.size(); i++) {
-                if (result.get(i) instanceof PirType.ListType && assigns(body, accumulators.get(i), "tailList")
-                        && !assigns(body, accumulators.get(i), "mkCons")) {
-                    result.set(i, MAP);
-                }
-            }
+        boolean pairs = result.stream().anyMatch(type -> type instanceof PirType.MapType);
+        for (int i = 0; i < held.size(); i++) {
+            if (held.get(i) == Held.CURSOR) result.set(i, pairs ? MAP : LIST);
         }
         return result;
     }
 
-    /** The variables known to hold a pair list: parameters of the method declared so, and locals before the loop. */
-    private Set<Element> pairLists(WhileLoopTree loop, List<? extends StatementTree> preceding) {
-        var names = new HashSet<Element>();
-        var method = (MethodTree) facts.enclosing(loop, Tree.Kind.METHOD);
-        if (method != null) {
-            for (var parameter : method.getParameters()) {
-                if (isMapData(parameter)) names.add(facts.element(parameter));
+    private final class Reading {
+        private final List<AssignmentTree> assignments = new ArrayList<>();
+        private final List<MethodInvocationTree> calls;
+
+        Reading(Tree root) {
+            for (var update : LoopRules.updates(root)) {
+                if (update instanceof AssignmentTree assignment) assignments.add(assignment);
             }
+            calls = LoopRules.calls(root);
         }
-        for (var statement : preceding) {
-            if (statement instanceof VariableTree local && local.getInitializer() != null) {
-                var value = local.getInitializer();
-                if (isPairListCall(value) || isMapData(local)) names.add(facts.element(local));
+
+        /** What {@code variable} is shown to hold. {@code read} holds what is being read, so a cursor says nothing of itself. */
+        Held variable(Element variable, Set<Element> read) {
+            if (!read.add(variable)) return Held.NOTHING;
+            var held = isMapData(variable) ? Held.PAIRS : Held.NOTHING;
+            if (variable instanceof VariableElement local && facts.initializer(local) != null) {
+                held = held.and(value(facts.initializer(local), read));
             }
+            for (var assignment : assignments) {
+                if (assignment.getVariable() instanceof IdentifierTree target && variable.equals(facts.element(target))) {
+                    held = held.and(value(assignment.getExpression(), read));
+                }
+            }
+            if (held.isList() && isReadAsData(variable)) return Held.BOTH;
+            return held == Held.CURSOR && headIsReadAsPair(variable) ? Held.PAIRS : held;
         }
-        return names;
+
+        private Held value(ExpressionTree tree, Set<Element> read) {
+            return switch (tree) {
+                case ParenthesizedTree parenthesized -> value(parenthesized.getExpression(), read);
+                case ConditionalExpressionTree conditional ->
+                        value(conditional.getTrueExpression(), read).and(value(conditional.getFalseExpression(), read));
+                case SwitchExpressionTree selected -> {
+                    var held = Held.NOTHING;
+                    for (var result : SwitchResults.of(selected)) held = held.and(value(result, read));
+                    yield held;
+                }
+                case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable -> variable(variable, read);
+                case MethodInvocationTree call -> call(call, read);
+                default -> Held.NOTHING;
+            };
+        }
+
+        private Held call(MethodInvocationTree call, Set<Element> read) {
+            if (!(facts.element(call.getMethodSelect()) instanceof ExecutableElement method)) return Held.NOTHING;
+            if (!isBuiltin(method)) return helper(method, read);
+            return switch (method.getSimpleName().toString()) {
+                case "tailList" -> {
+                    var list = value(call.getArguments().getFirst(), read);
+                    yield list.isList() ? list : Held.CURSOR;
+                }
+                case "mkCons" -> value(call.getArguments().getFirst(), read) == Held.PAIR ? Held.PAIRS
+                        : value(call.getArguments().getLast(), read) == Held.PAIRS ? Held.PAIRS : Held.LIST;
+                case "mkNilData", "unListData", "constrFields" -> Held.LIST;
+                case "mkNilPairData", "unMapData" -> Held.PAIRS;
+                case "mkPairData" -> Held.PAIR;
+                case "iData", "bData", "constrData", "listData", "mapData" -> Held.DATA;
+                default -> Held.NOTHING;
+            };
+        }
+
+        /** What a method of a source returns, on every path it has. */
+        private Held helper(ExecutableElement method, Set<Element> read) {
+            MethodTree declaration = facts.declaration(method);
+            if (declaration == null || declaration.getBody() == null || !read.add(method)) return Held.NOTHING;
+            var held = Held.NOTHING;
+            for (var result : LoopRules.returns(declaration)) {
+                if (result.getExpression() != null) held = held.and(value(result.getExpression(), read));
+            }
+            return held;
+        }
+
+        /** {@code unListData(variable)} and the like take Data, whatever else reaches the variable. */
+        private boolean isReadAsData(Element variable) {
+            for (var call : calls) {
+                if (isDecodeOf(call, variable)) return true;
+            }
+            return false;
+        }
+
+        private boolean isDecodeOf(MethodInvocationTree call, Element variable) {
+            return facts.element(call.getMethodSelect()) instanceof ExecutableElement method && isBuiltin(method)
+                    && List.of("unListData", "unMapData", "unIData", "unBData", "unConstrData").contains(method.getSimpleName().toString())
+                    && isRead(call.getArguments().getFirst(), variable);
+        }
+
+        /** Whether the element a cursor's head goes to is read as a pair: {@code fstPair} of it, or of a local that holds it. */
+        private boolean headIsReadAsPair(Element cursor) {
+            var heads = new HashSet<Element>();
+            for (var call : calls) {
+                if (isBuiltinCall(call, "headList") && isRead(call.getArguments().getFirst(), cursor)
+                        && facts.parent(call) instanceof VariableTree local) {
+                    heads.add(facts.element(local));
+                }
+            }
+            for (var call : calls) {
+                if (!isBuiltinCall(call, "fstPair") && !isBuiltinCall(call, "sndPair")) continue;
+                var pair = call.getArguments().getFirst();
+                if (pair instanceof IdentifierTree name && heads.contains(facts.element(name))) return true;
+                if (pair instanceof MethodInvocationTree head && isBuiltinCall(head, "headList") && isRead(head.getArguments().getFirst(), cursor)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean isRead(ExpressionTree tree, Element variable) {
+            return tree instanceof IdentifierTree name && variable.equals(facts.elementOrNull(name));
+        }
     }
 
-    private boolean isMapData(VariableTree variable) {
-        var type = facts.element(variable).asType();
+    private boolean isMapData(Element variable) {
+        var type = variable.asType();
         return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(MAP_DATA);
     }
 
-    private boolean isPairListCall(ExpressionTree tree) {
-        return isBuiltin(tree, "mkNilPairData") || isBuiltin(tree, "unMapData");
+    private boolean isBuiltin(ExecutableElement method) {
+        return method.getEnclosingElement() instanceof TypeElement owner && facts.identity(owner).equals(JavacNames.BUILTINS);
     }
 
-    /** Whether {@code tree} is a call of the builtin {@code name}. */
-    private boolean isBuiltin(ExpressionTree tree, String name) {
-        return tree instanceof MethodInvocationTree call && facts.element(call.getMethodSelect()) instanceof ExecutableElement method
-                && method.getSimpleName().contentEquals(name) && method.getEnclosingElement() instanceof TypeElement owner
-                && facts.identity(owner).equals(JavacNames.BUILTINS);
-    }
-
-    /** The initializer of {@code variable} among {@code preceding}, or null. */
-    private ExpressionTree initializer(Element variable, List<? extends StatementTree> preceding) {
-        for (var statement : preceding) {
-            if (statement instanceof VariableTree local && facts.element(local).equals(variable)) return local.getInitializer();
-        }
-        return null;
-    }
-
-    private boolean startsAsPairList(Element accumulator, List<? extends StatementTree> preceding, Set<Element> pairLists) {
-        if (pairLists.contains(accumulator)) return true;
-        for (var value = initializer(accumulator, preceding); value != null; value = value instanceof IdentifierTree name
-                ? initializer(facts.element(name), preceding) : null) {
-            if (isPairListCall(value) || value instanceof IdentifierTree name && pairLists.contains(facts.element(name))) return true;
-        }
-        return false;
-    }
-
-    /** Whether a statement of {@code body}, in its blocks and branches, sets {@code accumulator} to a call of the builtin. */
-    private boolean assigns(StatementTree body, Element accumulator, String builtin) {
-        return switch (body) {
-            case BlockTree block -> block.getStatements().stream().anyMatch(inner -> assigns(inner, accumulator, builtin));
-            case IfTree branch -> assigns(branch.getThenStatement(), accumulator, builtin)
-                    || branch.getElseStatement() != null && assigns(branch.getElseStatement(), accumulator, builtin);
-            case ExpressionStatementTree statement -> statement.getExpression() instanceof AssignmentTree assignment
-                    && assignment.getVariable() instanceof IdentifierTree target && facts.element(target).equals(accumulator)
-                    && isBuiltin(assignment.getExpression(), builtin);
-            default -> false;
-        };
-    }
-
-    private boolean callsAnywhere(Tree body, String builtin) {
-        return LoopRules.calls(body).stream().anyMatch(call -> isBuiltin(call, builtin));
-    }
-
-    /** Whether the element a cursor's head goes to is read as a pair in {@code body}. */
-    private boolean readsPairsOf(StatementTree body, Element cursor) {
-        var head = headOf(body, cursor);
-        if (head == null) return false;
-        for (var call : LoopRules.calls(body)) {
-            if ((isBuiltin(call, "fstPair") || isBuiltin(call, "sndPair"))
-                    && call.getArguments().getFirst() instanceof IdentifierTree name && facts.element(name).equals(head)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** The first local of {@code statement} initialized to {@code headList(cursor)}, or null. */
-    private Element headOf(StatementTree statement, Element cursor) {
-        return switch (statement) {
-            case VariableTree local when isBuiltin(local.getInitializer(), "headList")
-                    && ((MethodInvocationTree) local.getInitializer()).getArguments().getFirst() instanceof IdentifierTree name
-                    && facts.element(name).equals(cursor) -> facts.element(local);
-            case BlockTree block -> block.getStatements().stream().map(inner -> headOf(inner, cursor))
-                    .filter(found -> found != null).findFirst().orElse(null);
-            case IfTree branch -> {
-                var found = headOf(branch.getThenStatement(), cursor);
-                yield found != null || branch.getElseStatement() == null ? found : headOf(branch.getElseStatement(), cursor);
-            }
-            default -> null;
-        };
+    private boolean isBuiltinCall(MethodInvocationTree call, String name) {
+        return facts.element(call.getMethodSelect()) instanceof ExecutableElement method && isBuiltin(method)
+                && method.getSimpleName().contentEquals(name);
     }
 }

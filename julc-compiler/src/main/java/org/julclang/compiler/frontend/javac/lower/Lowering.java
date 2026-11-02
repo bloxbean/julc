@@ -70,7 +70,7 @@ public final class Lowering {
         this.terms = new Terms(facts, context);
         this.typing = new Typing(facts);
         this.literals = new Literals(facts, terms);
-        this.names = new Names(facts, terms);
+        this.names = new Names(facts, terms, typing);
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
         this.typeTests = new TypeTests(facts, terms, typing, this);
@@ -193,9 +193,7 @@ public final class Lowering {
         // The reference does not know a stdlib call's type, so it names no value.
         var own = targets.isStdlibCall(tree) ? null : nativeArrayOf(tree);
         if (own != null) return nativeArray(tree, own);
-        var at = facts.location(tree);
-        return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(), diagnostic.message(),
-                at.fileName(), at.line(), at.column(), diagnostic.suggestion(), diagnostic.code()));
+        return facts.located(e, tree);
     }
 
     private PirType.ArrayType nativeArrayOf(ExpressionTree tree) {

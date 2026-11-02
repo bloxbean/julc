@@ -230,6 +230,6 @@ final class LoopBody {
         var result = loops.alone(loop, frame);
         var rest = sequence(list, index + 1, frame, shape);
         if (inner.isEmpty()) return terms.generatedLet(PirHelpers.hygienicName("#_nested", PirHelpers.freeVariables(rest)), result, rest);
-        return loops.carried(inner, loop, frame).rebound(result, rest);
+        return loops.nested(inner, loop, frame, rest).rebound(result, rest);
     }
 }

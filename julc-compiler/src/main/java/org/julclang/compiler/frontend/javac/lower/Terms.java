@@ -7,6 +7,7 @@ import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.core.Constant;
 import org.julclang.core.source.SourceLocation;
 
 import javax.lang.model.element.Element;
@@ -86,6 +87,11 @@ public final class Terms {
     /** {@code let binder = what data decodes to in body}: an accumulator out of the tuple it travels in. */
     PirTerm.Let unpacked(Binder binder, PirTerm data, PirTerm body) {
         return let(binder, PirHelpers.wrapDecode(data, binder.type()), body);
+    }
+
+    /** Rejects a type that has no decoding from Data, as a loop's element would when {@code LoopDesugarer} builds it. */
+    void requireDecodes(PirType type) {
+        PirHelpers.wrapDecode(new PirTerm.Const(Constant.unit()), type);
     }
 
     /** {@code let x = x in rest}, for the variable {@code read} reads: one more binder of what that read was built for. */

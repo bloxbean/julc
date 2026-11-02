@@ -220,6 +220,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     public Void visitBlock(BlockTree tree, Void unused) {
         if (facts.parent(tree) instanceof ClassTree) return literalsOf(tree);
         var written = tree.getStatements().stream().filter(statement -> !facts.isGenerated(statement)).toList();
+        if (!inLowered) requireNoRejectedStatement(tree);
         for (var statement : written) {
             boolean read = REJECTED_STATEMENTS.contains(statement.getKind())
                     || (inLowered ? STATEMENTS.contains(statement.getKind()) : statement.getKind() == Tree.Kind.RETURN);
@@ -228,6 +229,16 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         warnUnreachable(tree);
         written.forEach(statement -> scan(statement, null));
         return null;
+    }
+
+    /**
+     * In code nothing lowers the walk stops at the first statement it does not read. What is rejected wherever it stands has
+     * its code even so, in source order.
+     */
+    private void requireNoRejectedStatement(BlockTree tree) {
+        for (var statement : SubsetWalk.all(tree, StatementTree.class)) {
+            if (statement instanceof BreakTree || REJECTED_STATEMENTS.contains(statement.getKind())) scan(statement, null);
+        }
     }
 
     /** One warning a block: javac has rejected a statement after a {@code return} or a {@code break}, so {@code Builtins.error()} is the rest. */

@@ -188,6 +188,11 @@ public final class JavacFacts {
         return trees != null && trees.getTree(variable) instanceof VariableTree declaration ? declaration : null;
     }
 
+    /** The declaration of a method a source declares, or null. */
+    public MethodTree declaration(ExecutableElement method) {
+        return trees != null && trees.getTree(method) instanceof MethodTree declaration ? declaration : null;
+    }
+
     /** The unit {@code tree} stands in. */
     public CompilationUnitTree unitOfTree(Tree tree) {
         return path(tree).getCompilationUnit();
@@ -394,6 +399,15 @@ public final class JavacFacts {
     public CompilerException locatedRejection(String message, String suggestion, Tree where) {
         var at = location(where);
         return new CompilerException(at.fileName() + ":" + at.line() + ":" + at.column() + ": " + message + "\n  Hint: " + suggestion);
+    }
+
+    /** {@code e}, at {@code where} if it is one diagnostic with no position. */
+    public CompilerException located(CompilerException e, Tree where) {
+        if (e.diagnostics().size() != 1 || e.diagnostics().getFirst().line() > 0) return e;
+        var diagnostic = e.diagnostics().getFirst();
+        var at = location(where);
+        return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(), diagnostic.message(),
+                at.fileName(), at.line(), at.column(), diagnostic.suggestion(), diagnostic.code()));
     }
 
     /** A coded rejection at {@code where}, with the catalogue's message and fix. */

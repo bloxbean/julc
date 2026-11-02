@@ -13,6 +13,7 @@ import com.sun.source.tree.IfTree;
 import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.SwitchExpressionTree;
@@ -20,6 +21,7 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.tree.YieldTree;
+import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 
@@ -216,6 +218,18 @@ public final class LoopRules {
         return null;
     }
 
+    /**
+     * {@code JULC0065}: a for-each with no accumulator holds a {@code break}, and its iterable updates a variable. The reference
+     * goes on past the update's own rejection to this one, so it comes before the iterable lowers.
+     */
+    public void requireNoUpdateOfTheIterable(EnhancedForLoopTree loop) {
+        var found = updates(loop.getExpression());
+        if (!found.isEmpty()) {
+            var update = found.getFirst();
+            throw CompilerTypeDiagnostics.loopUpdatePositionUnsupported(updated(update).getName().toString(), "in the loop iterable", facts.location(update));
+        }
+    }
+
     private static List<? extends StatementTree> statementsOf(StatementTree statement) {
         return statement instanceof BlockTree block ? block.getStatements() : List.of(statement);
     }
@@ -224,8 +238,8 @@ public final class LoopRules {
      * A loop with no accumulator lowers its body as plain statements, which cannot stop the loop, so its {@code break} is
      * rejected before the body lowers (T26, #273). {@code JULC0065} where the body updates what it did not declare, at the
      * first such update, which is one the accumulators do not see; otherwise {@code JULC0063} at the {@code break}. A
-     * {@code while}'s condition runs before its body, so an update there is reported first. A for-each's iterable has lowered
-     * by now, and an update there is {@code Lowering}'s to reject.
+     * {@code while}'s condition runs before its body, so an update there is reported first. A for-each's iterable has met
+     * {@link #requireNoUpdateOfTheIterable}.
      */
     public void requireNoBreak(StatementTree loop, StatementTree body) {
         var found = firstExit(body, BreakTree.class);
@@ -253,6 +267,24 @@ public final class LoopRules {
         for (var tree : SubsetWalk.all(root, Tree.class)) {
             if (updated(tree) != null) found.add(tree);
         }
+        return found;
+    }
+
+    /** The {@code return}s of {@code method}, without a lambda's. */
+    public static List<ReturnTree> returns(MethodTree method) {
+        var found = new ArrayList<ReturnTree>();
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitReturn(ReturnTree tree, Void unused) {
+                found.add(tree);
+                return null;
+            }
+
+            @Override
+            public Void visitLambdaExpression(LambdaExpressionTree tree, Void unused) {
+                return null;
+            }
+        }.scan(method.getBody(), null);
         return found;
     }
 

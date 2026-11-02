@@ -80,6 +80,21 @@ final class Typing {
         return facts.registry().resolveNamed(type instanceof PirType.DataType ? termTypes.infer(lowered) : type);
     }
 
+    /**
+     * A variable's one type, given what javac says it holds and what the reference sees. They part where the reference takes
+     * a decoded value for Data, and the type is then what it holds. Otherwise they are one representation, and the
+     * reference's reading stands, so its term does.
+     */
+    static PirType holding(PirType held, PirType seen) {
+        return seen instanceof PirType.DataType && isDecoded(held) ? held : seen;
+    }
+
+    /** Whether a value of this type is not Data. A record, a sum and {@code Optional} are Data already. */
+    static boolean isDecoded(PirType type) {
+        return type instanceof PirType.IntegerType || type instanceof PirType.ByteStringType || type instanceof PirType.BoolType
+                || type instanceof PirType.StringType || type instanceof PirType.ListType || type instanceof PirType.MapType;
+    }
+
     /** What {@code term} says of itself. */
     PirType ofTerm(PirTerm term) {
         return termTypes.infer(term);

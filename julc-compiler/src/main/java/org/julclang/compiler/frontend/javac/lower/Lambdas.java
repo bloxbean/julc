@@ -72,9 +72,9 @@ final class Lambdas {
         }
         PirType held = held(parameter, written);
         PirType seen = written ? held : receiver.elemType();
-        boolean decodes = isDecoded(held);
+        boolean decodes = Typing.isDecoded(held);
         var data = frame.scope().bind(element, decodes ? new PirType.DataType() : seen);
-        var scope = decodes ? data.rebind(element, seen) : data;
+        var scope = decodes ? data.rebind(element, Typing.holding(held, seen), seen) : data;
         var body = body(lambda, frame.lambda(scope));
         if (encodesResult) body = encoded(body, call, lambda);
         if (decodes) body = terms.decoded(element, data.lookup(element), scope.lookup(element), held, body);
@@ -90,12 +90,6 @@ final class Lambdas {
         } catch (CompilerException e) {
             throw NotPorted.at(facts, parameter, "a lambda parameter of type " + ArrayIdentityEquality.text(type));
         }
-    }
-
-    /** Whether an element of this type is not what the body reads. A record, a sum and {@code Optional} are Data already. */
-    private static boolean isDecoded(PirType type) {
-        return type instanceof PirType.IntegerType || type instanceof PirType.ByteStringType || type instanceof PirType.BoolType
-                || type instanceof PirType.StringType || type instanceof PirType.ListType || type instanceof PirType.MapType;
     }
 
     private PirTerm body(LambdaExpressionTree lambda, Frame frame) {
