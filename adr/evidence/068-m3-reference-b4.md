@@ -218,6 +218,23 @@ The first round left 3 others standing, which were test gaps: a re-bound field, 
 
 No fixture moved. On `fef83a9d`, `prepare-artifacts.sh`, without `--update-lock`, passed: the 7 fixtures compiled and the generated lock equals the committed one. Nothing was regenerated.
 
+## Corrections in place, after the confirmation round
+
+`PirHelpers.readOnce`, the digests' sizes and the memo in `mayFail` went in on top of B4, which was not pushed, so they correct it in place. **They move nothing.** Each gate ran with the full recipe above:
+
+| Step | Result |
+|---|---|
+| `adr068Baseline -Padr068.freeze=true` | Every b4 file byte for byte, but the totals' `coverage` line, which goes from 161 to 162 sites with Group 1's `JULC0078` |
+| `adr068Lowering -Padr068.freezeReference=true` | `lowering-reference.tsv` unchanged |
+| `adr068Lowering`, then `-Padr068.freeze=true` | Moved 0, shrunk 0. `lowering-i1.tsv` unchanged, and `allowShrink` was not needed |
+| `adr068Types -Padr068.freeze=true` | `types-m2.tsv`, its totals, and the encoding and blueprint tables unchanged |
+| MPF, the 72 rows above, against `bb985b3d` | **0 bytes and 0 budget differ** |
+| `prepare-artifacts.sh`, without `--update-lock` | Passed: no fixture moved |
+
+So no program of the corpus has a method read as an operand of those handlers, and none has a hash that the old size understated. Those programs are `Adr068DelayedMethodsTest`'s. A chain of `k().abs()`, each level reading the one below, at `PV11_SAFE`, is now linear: 4,197 memory at depth 1, 8,700 at 4, 14,704 at 8, 20,708 at 12 and 26,712 at 16.
+
+`ledger-b3-b4-diff.tsv` stays as it is, because neither ledger moved. Regenerating it today gives 11 rows fewer: `ledger-b3.tsv` has carried M3d's 11 saved cases since `14b11ae9`, so they no longer read as added. B3's rows were not touched here, and the totals above count them as B4's.
+
 ## The gates
 
 From a clean tree at `fef83a9d`, through the machine lock, with `--rerun`. Counts are from JUnit XML.

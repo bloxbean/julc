@@ -217,6 +217,7 @@ One runner in one throwaway worktree. **42 mutants of the new lines: 36 killed o
 
 ## What this does not establish
 
+- **The confirmation matrix on other VMs.** It ran on the Java VM. Scalus and Truffle ran through `pairCaseTest` and the VM modules' tests.
 - **Libraries.** Every library unit still stops, so the rules on a library body and `EqualityRelation` over a library's types ran only through the scan's read of those sources.
 - **Sealed interfaces that share a variant.** Two such interfaces are unrelated by the subtype test, though a value could be of both. A variant of two sealed interfaces stops, so nothing lowers there, and the words `JULC0078` would use are not reached.
 - **A `.equals` with two operand types.** `a.equals(c ? a : b)` with `S a, S.A b` stops, at `an expression of type java.lang.Object`, where the reference lowers it: the conditional is typed by its operands only where they are one type.
@@ -232,6 +233,55 @@ One runner in one throwaway worktree. **42 mutants of the new lines: 36 killed o
 - **I2.** State `CallTargets.seen` as the reading of "the subset does not widen" for member reads.
 - **I4.** A message holds no capture number.
 - **D14.** A `@Param` is read on the compiled class alone (F909). **D7 or I11.** `new` keys a variant by its element (F807). **M3's row.** This group.
+
+## The confirmation round
+
+A confirmation review read the merged group. These are its programs and what each is now. Reference is `frontend=JAVAPARSER`.
+
+| Program | Java | Reference | `JAVAC` before | `JAVAC` now |
+|---|---|---|---|---|
+| `record W(PlutusData toPlutusData) implements PlutusDataConvertible { }`, each of 16 uses | The component | `JULC0101` | The record's components | `JULC0101` |
+| `interface I { BigInteger a(); } record W(BigInteger a) implements I { }` | Agrees | Agrees | Agrees | Agrees |
+| `record W(PlutusData toPlutusData) { }`, on no interface | Agrees | `JULC0101`, by the name | Agrees | Agrees |
+| `y.equals(v)`, `y` a decoded `boolean`, list or map, 120 rows | true | true | Fails at `EqualsData` | `JULC0055`, the accepted difference above |
+| `y.length`, `y.compareTo(v) < 0`, `JulcList.of(h).head().hash()`, 14 rows | Agrees | `JULC0055` | Agrees | `JULC0055` |
+| 24 levels of `k_i() { return k_(i-1)().abs(); }`, and `min`, `max`, `signum`, `compareTo`, `Math.abs`, `max`, `min` | Returns | Budget at depth 16 before; now agrees | The same | Agrees |
+| 13 doublings of a hash in a method not called, each of the 6 hashes | Returns | Fails at script start before; now agrees | The same | Agrees |
+| `f_i(x) { return f_(i-1)(f_(i-1)(x)); }`, depth 36 | Returns | Compile time doubled per level; now agrees | The same | Agrees |
+
+`record X(...)` with a generated accessor of `ToPlutusData.toPlutusData` is keyed on that element, so the rule does not depend on the name, and the gate's rule by the name stays what it was. An interface's default `toPlutusData` in source is a method tree, which `checkDeclarations` reads. The one such default in a class file is `JulcList`'s, whose `Iterable` javac cannot read from the platform image, so a record of it is `JULC0085` first (`JavacRecordMembersTest`).
+
+**The review's 432 differences on `Builtins.sha2_256` were the harness's:** `julc-difftest` installs no `CryptoProvider`, so its JVM side throws before it hashes. No stub of a hash disagrees with Plutus 1.63.0.0: `JvmCryptoProviderTest` runs all six against the VM at 9 sizes. A neighbour did disagree. `JvmCryptoProvider.verifyEd25519Signature` returned false for a key or signature of the wrong length, where `PlutusCore.Crypto.Ed25519` fails. It now throws, and false stays for what then does not verify (`068-m3-reference-b4.md`, "The JVM").
+
+**The review's matrix, rerun at `116fdf08`.** 16 of its input files, the families of these fixes, on the JVM and both frontends at four levels, Java VM only:
+
+| | Inputs | Evaluated | Agree | Other | Rejected | Harness's result mapping |
+|---|---:|---:|---:|---:|---:|---:|
+| `JAVAC` | 29,834 | 68,720 | 68,224 | 496 | 45,236 | 1,728 |
+| Reference | 29,834 | 71,540 | 66,440 | 5,100 | 41,844 | 2,300 |
+
+The 496 `JAVAC` runs, read by family:
+
+| Runs | What |
+|---:|---|
+| 432 | `sha2_256` and its neighbours: the harness's missing provider |
+| 24 | Known and listed: an `instanceof` operand run twice, argument-first `prepend` and `contains` |
+| 20 | A `String` parameter holding invalid UTF-8 |
+| 16 | An `instanceof` chain past the budget: the follow-up row |
+| 4 | `constrData` of a negative tag on the JVM: the follow-up row |
+
+No value differs between `JAVAC` and the JVM. Against the review's own outputs, 174 programs moved from a failure to `JULC0055`, 16 from a value to `JULC0055` beside the reference's, 31 from a failure to agreeing on both frontends, 8 from out of budget to agreeing on both, and 16 of the declarations to `JULC0101`.
+
+**`O8ValueSharingTest`** ran through `:julc-compiler:pairCaseTest`: 8 tests, 0 failures. The class compares Java, Truffle and Scalus itself.
+
+**Mutants of these lines.** One runner in a throwaway clone. 5 no-op controls first, one per scope of tests: 0 failures of 325, 949, 194, 125 and 15. Then 50 mutants: `SpelledMethods` and its callers 8, `requireSeen` and its reads 9, `readOnce` 8 and its handlers 8, `mayFail`'s sizes and memo 11, Ed25519 6.
+
+| Result | Mutants | What |
+|---:|---|---|
+| Killed on the first pass | 47 | Each with 1 to 120 failures |
+| Killed by a new row | 1 | Ripemd's digest sized 16: `eachDigestHasItsOwnSize` had no row from below |
+| Showed a redundant test, now removed | 1 | A wrapper seen as Data that also holds Data ends at `JULC0055` anyway, so the rule reads `seen` alone. The mutant of what stayed was then killed |
+| Equivalent | 1 | The element rule also at the gate: the gate's rule by the name rejects each such program first, with the same code |
 
 ## Decisions
 
