@@ -9,6 +9,7 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
@@ -46,11 +47,13 @@ final class Operators {
 
     private final JavacFacts facts;
     private final Typing typing;
+    private final CallTargets targets;
     private final Lowering lowering;
 
-    Operators(JavacFacts facts, Typing typing, Lowering lowering) {
+    Operators(JavacFacts facts, Typing typing, CallTargets targets, Lowering lowering) {
         this.facts = facts;
         this.typing = typing;
+        this.targets = targets;
         this.lowering = lowering;
     }
 
@@ -182,10 +185,14 @@ final class Operators {
             this.operator = operator;
         }
 
+        /** A receiver the reference reads as anything but an integer has no {@code compareTo} there (I2). */
         PirTerm lower(Frame frame) {
-            var select = (MemberSelectTree) call.getMethodSelect();
-            var x = lowering.expr(select.getExpression(), frame);
+            var receiver = ((MemberSelectTree) call.getMethodSelect()).getExpression();
+            var x = lowering.expr(receiver, frame);
             var y = lowering.expr(call.getArguments().getFirst(), frame);
+            if (!(targets.seen(receiver, x) instanceof PirType.IntegerType)) {
+                throw CompilerTypeDiagnostics.unresolvedMember(COMPARE_TO, facts.location(call));
+            }
             return comparison(operator, x, y);
         }
     }

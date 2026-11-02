@@ -69,7 +69,7 @@ public final class Lowering {
         this.targets = new CallTargets(facts, typing, typeMethods);
         this.typeTests = new TypeTests(facts, this);
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests);
-        this.operators = new Operators(facts, typing, this);
+        this.operators = new Operators(facts, typing, targets, this);
         this.lambdas = new Lambdas(facts, terms, typing, targets, this);
         this.calls = new Calls(facts, terms, typing, targets, lambdas, this, context, stdlib, typeMethods);
         this.records = new Records(facts, typing, this, names);
@@ -144,7 +144,8 @@ public final class Lowering {
             var array = nativeArrayOf(argument);
             if (array != null) return nativeArray(argument, array);
         }
-        var own = nativeArrayOf(tree);
+        // The reference does not know a stdlib call's type, so it names no value.
+        var own = targets.isStdlibCall(tree) ? null : nativeArrayOf(tree);
         if (own != null) return nativeArray(tree, own);
         var at = facts.location(tree);
         return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(), diagnostic.message(),

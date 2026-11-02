@@ -49,8 +49,8 @@ final class Lambdas {
     }
 
     /**
-     * The function of {@code call}, a list method. In parentheses or a conditional the reference has no element type, and
-     * takes the parameter as Data whatever javac says, so that does not lower.
+     * The function of {@code call}, a list method. In parentheses, in a conditional or under {@code var} the reference has no
+     * element type and takes the parameter as Data whatever javac says, so those do not lower.
      *
      * @param receiver      the receiver as the reference sees it
      * @param encodesResult whether the handler conses the result into a list, which is {@code map}'s
@@ -63,6 +63,9 @@ final class Lambdas {
         var parameter = lambda.getParameters().getFirst();
         var element = facts.element(parameter);
         boolean written = !facts.isGenerated(parameter.getType());
+        if (!written && !facts.location(parameter).fragment().equals(parameter.getName().toString())) {
+            throw NotPorted.at(facts, parameter, "a lambda parameter written var");
+        }
         PirType held = held(parameter, written);
         PirType seen = written ? held : receiver.elemType();
         boolean decodes = isDecoded(held);
@@ -70,10 +73,7 @@ final class Lambdas {
         var scope = decodes ? data.rebind(element, seen) : data;
         var body = body(lambda, Frame.lambda(scope));
         if (encodesResult) body = encoded(body, call, lambda);
-        if (decodes) {
-            var read = terms.var(element, data.lookup(element));
-            body = terms.let(scope.lookup(element), PirHelpers.wrapDecode(read, held), body);
-        }
+        if (decodes) body = terms.decoded(element, data.lookup(element), scope.lookup(element), held, body);
         return terms.lam(data.lookup(element), body);
     }
 

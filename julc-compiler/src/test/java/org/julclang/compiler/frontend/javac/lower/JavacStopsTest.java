@@ -27,6 +27,7 @@ class JavacStopsTest {
     private static final String IMPORTS = """
             import java.math.BigInteger;
             import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcList;
             import org.julclang.core.types.JulcMap;
             import org.julclang.core.types.Tuple2;
             import org.julclang.ledger.Address;
@@ -45,6 +46,14 @@ class JavacStopsTest {
     }
 
     private static final List<Stop> STOPS = List.of(
+            new Stop("a function that is no lambda at the call", "static boolean m(JulcList<BigInteger> xs, BigInteger k) { return xs.any((x -> x.equals(k))); }", "accepted"),
+            new Stop("a function that is no lambda at the call", "static boolean m(JulcList<BigInteger> xs, boolean c) { return xs.any(c ? x -> true : x -> false); }", "accepted"),
+            new Stop("a function that is no lambda at the call", "static boolean m(JulcList<BigInteger> xs) { return xs.any(java.util.function.Predicate.isEqual(BigInteger.ONE)); }", "uncoded"),
+            new Stop("a function that is no lambda at the call", "static JulcList<BigInteger> m(JulcList<BigInteger> xs) { return xs.map(java.util.function.Function.identity()); }", "uncoded"),
+            new Stop("a lambda parameter written var", "static boolean m(JulcList<BigInteger> xs) { return xs.any((var x) -> x.signum() > 0); }", "JULC0055"),
+            new Stop("a lambda parameter written var", "static JulcList<BigInteger> m(JulcList<BigInteger> xs) { return xs.map((var x) -> x); }", "accepted"),
+            new Stop("a lambda parameter of type java.lang.Object", "static boolean m(JulcList xs) { return xs.any(x -> true); }", "accepted"),
+            new Stop("LAMBDA_EXPRESSION", "static boolean m(boolean c) { java.util.function.Predicate<BigInteger> p = c ? x -> true : x -> false; return c; }", "uncoded"),
             new Stop("a wrapper's component read as Data", "static byte[] m(PubKeyHash p) { return p.hash(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "record R(PubKeyHash p) { } static byte[] m(R r) { return (r.p()).hash(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "@Param static PubKeyHash K; static byte[] m() { return K.hash(); }", "accepted"),

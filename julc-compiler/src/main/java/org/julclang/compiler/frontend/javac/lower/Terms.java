@@ -65,6 +65,16 @@ public final class Terms {
     }
 
     /**
+     * {@code let binder = decoded(data) in body}: a value that came as Data, read under one name by what follows, which
+     * shadows the binder that read it (ADR-060).
+     *
+     * @param type what {@code data} holds, once decoded
+     */
+    PirTerm.Let decoded(Element element, Binder data, Binder binder, PirType type, PirTerm body) {
+        return let(binder, PirHelpers.wrapDecode(var(element, data), type), body);
+    }
+
+    /**
      * An {@code if} that ran for its effect, then {@code rest}. {@code rest} holds the terms of whatever follows, a
      * builder's among them, so the name is chosen to miss what they read (ADR-060).
      */
