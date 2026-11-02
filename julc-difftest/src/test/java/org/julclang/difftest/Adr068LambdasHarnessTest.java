@@ -501,6 +501,38 @@ class Adr068LambdasHarnessTest {
         assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return PlutusData.cast(xs.find(x -> x.signum() > 5), Optional.class).isPresent(); }", integers(1));
     }
 
+    private static final String MAP_OF_BIG = "JulcMap<BigInteger, BigInteger>";
+
+    private static PlutusData mapOf(long key, long value) {
+        return new PlutusData.MapData(List.of(new PlutusData.Pair(integer(key), integer(value))));
+    }
+
+    /** Both frontends give the JVM's answer, each at its own cost. */
+    private static void assertBothAgree(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        assertJavacAgrees(report);
+    }
+
+    /** A cast to a map decodes Data, and what javac types as a map is decoded already, whatever the binder says of it. */
+    @Test
+    void aCastToAMapDecodesOnce() {
+        assertBothAgree("public static boolean m(" + MAP_OF_BIG + " a) { var xs = JulcList.of(a); return xs.any(x -> PlutusData.cast(x, JulcMap.class).isEmpty()); }", mapOf(1, 2));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { var xs = JulcList.of(a); return xs.map(x -> { " + MAP_OF_BIG + " d = PlutusData.cast(x, JulcMap.class); return d.size(); }).head(); }", mapOf(1, 2));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { var y = JulcList.of(a).head(); " + MAP_OF_BIG + " d = PlutusData.cast(y, JulcMap.class); return d.size(); }", mapOf(1, 2));
+        assertFixedOnJavac("public static long m(JulcList<" + MAP_OF_BIG + "> xs) { " + MAP_OF_BIG + " d = PlutusData.cast(xs.find(x -> true), JulcMap.class); return d.size(); }", list(mapOf(1, 2)));
+        assertFixedOnJavac("public static boolean m(JulcList<" + MAP_OF_BIG + "> a) { return a.map(y -> y).any(x -> { " + MAP_OF_BIG + " d = PlutusData.cast(x, JulcMap.class); return d.isEmpty(); }); }", list(mapOf(1, 2)));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { " + MAP_OF_BIG + " d = PlutusData.cast(a, JulcMap.class); return d.size(); }", mapOf(1, 2));
+        assertBothAgree("public static long m(" + MAP_OF_BIG + " a, BigInteger n) { var y = JulcList.of(a, n).head(); " + MAP_OF_BIG + " d = PlutusData.cast(y, JulcMap.class); return d.size(); }", mapOf(1, 2), integer(1));
+    }
+
+    /** Java refuses a {@code MapData} as a {@code JulcMap}, and the view reads it: a Data value still decodes, on both frontends. */
+    @Test
+    void aCastToAMapStillDecodesData() {
+        assertBothDivergeAlike("public static long m(PlutusData x) { JulcMap<PlutusData, PlutusData> d = PlutusData.cast(x, JulcMap.class); return d.size(); }", mapOf(1, 2));
+        assertBothDivergeAlike("public static long m(JulcList<PlutusData> xs) { return xs.map(x -> { JulcMap<PlutusData, PlutusData> d = PlutusData.cast(x, JulcMap.class); return d.size(); }).head(); }", list(mapOf(1, 2)));
+    }
+
     // --- What stops ---
 
     @Test

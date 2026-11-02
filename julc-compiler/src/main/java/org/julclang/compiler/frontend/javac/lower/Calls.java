@@ -124,17 +124,27 @@ final class Calls {
         if (!(tree.getArguments().get(1) instanceof MemberSelectTree literal && literal.getIdentifier().contentEquals("class"))) {
             throw facts.rejection("PlutusData.cast() second argument must be a literal ClassName.class expression", tree);
         }
-        var inner = lowering.expr(tree.getArguments().getFirst(), frame);
+        var argument = tree.getArguments().getFirst();
+        var inner = lowering.expr(argument, frame);
         boolean toMap;
         try {
             toMap = typing.of(tree) instanceof PirType.MapType;
         } catch (NotPorted e) {
             toMap = false;
         }
-        if (toMap && !(typing.ofTerm(inner) instanceof PirType.MapType)) {
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+        return toMap && !isMap(argument, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
+    }
+
+    /**
+     * Whether {@code inner} holds a decoded map. javac's type goes first, since a binder can say Data of a decoded value
+     * ({@link Lambdas}, a {@code var}). Where javac's type has no representation, what the term says of itself does.
+     */
+    private boolean isMap(ExpressionTree argument, PirTerm inner) {
+        try {
+            return typing.of(argument, inner) instanceof PirType.MapType;
+        } catch (NotPorted e) {
+            return typing.ofTerm(inner) instanceof PirType.MapType;
         }
-        return inner;
     }
 
     // --- Static methods ---
