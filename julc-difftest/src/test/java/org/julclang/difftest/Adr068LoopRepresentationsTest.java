@@ -237,6 +237,8 @@ class Adr068LoopRepresentationsTest {
                 true, MAP);
         assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.constrFields(d); long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } return s; }",
                 false, constr(0, integer(1), integer(2)));
+        assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.constrFields(d); long i = 0; while (i < 2) { i = i + 1; c = c; } return Builtins.nullList(c) ? 1 : 2; }",
+                true, constr(0, integer(1), integer(2)));
         assertCarried("static long walk(PlutusData c) { long s = 0; while (!Builtins.nullList(c)) { s = s + Builtins.unIData(Builtins.fstPair(Builtins.headList(c))).longValue(); c = Builtins.tailList(c); } return s; } public static long m(PlutusData d) { return walk(Builtins.unMapData(d)); }",
                 true, MAP);
         assertCarried("public static boolean m(BigInteger a) { return JulcList.of(a, a).any(x -> { var y = x; long n = 0; while (n < 2) { n = n + 1; y = x; } return n > 5; }); }",
