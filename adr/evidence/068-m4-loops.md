@@ -160,7 +160,7 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 |---:|---|---|---|
 | 39 | `DIFFERENT-javac-rejects` | Policy rejection (D6) | `==` between `BigInteger`s, in a program a loop stopped before |
 | 6 | `DIFFERENT-javac-rejects` | Policy rejection (D6) | `.equals` on `byte[]`, which M0's scan lists |
-| 2 | `DIFFERENT-bytes` | Cost change | Decision 1. 136 to 133 bytes and 231 to 228 at the lowest level. Smaller |
+| 2 | `DIFFERENT-bytes` | Cost change | Decision 1. 136 to 133 bytes and 231 to 228 where the identity `let` survives optimization. Smaller |
 | 1 | `DIFFERENT-bytes` | Cost change | Decision 2. 153 to 154 bytes: `for (var i : JulcList.of(x))` with `i` unread |
 | 2 | `DIFFERENT-rejection` | Diagnostic change | Two errors in one program: the reference collects one and throws the other, and this frontend stops at the first (F946) |
 
@@ -190,7 +190,7 @@ I1b reads the methods of a stopped program too, so a loop in one is held to the 
 | `JavacLoopsTest` | Rows against the reference, bytes at all four levels with and without a source map, and rejections by code, message and position | 196 |
 | `Adr068LoopsHarnessTest` | Against the JVM, through each frontend at every level, on value, traces, failure, cost and size | 76 tests, 465 runs agreed |
 | `Adr068LoopsPropertyTest` | `LoopPrograms`, a plain Java model, the JVM and both frontends, 300 tries, read back on-chain | No disagreement |
-| `Adr068LoopsFuzzTest` | The same under Jazzer, 12 seeds | 793 runs in 61 s, no crash |
+| `Adr068LoopsFuzzTest` | The same under Jazzer, 12 seeds, replayed by `test` | 793 runs in 61 s, no crash |
 | `Adr068LoopCasesOnJavacTest` | 50 saved cases with a loop on their expectation, and G0's 376 programs on 4 inputs | No disagreement |
 | `LoopBreakContinuationTest` | The loop-break continuation suite, now on both frontends, on two VMs | 3 tests |
 
@@ -249,8 +249,8 @@ One runner per throwaway detached worktree, each mutant applied, tested in stage
 | First | `179083fd` | No-op: 0 failures of 986 and 128 | 128 | 67 | 61 |
 | The survivors, with rows added and dead lines removed | `4a94e718` | Rows at that commit: 0 failures of 192 | 53 | 46 | 7 |
 | Their survivors, with rows added | `e78c4d33` | Rows at that commit: 0 failures of 195 | 4 | 4 | 0 |
-| The last row | `HEAD_ROW` | Rows at that commit: 0 failures of 196 | 1 | 1 | 0 |
-| Through I1, on the three types below | `e78c4d33` | The run above | 3 | I1_KILLED | I1_SURVIVED |
+| The last row | `5b83b4fd` | Rows at that commit: 0 failures of 196 | 1 | 1 | 0 |
+| Through I1, on the three types below | `e78c4d33` | The run above | 3 | 3 | 0 |
 
 Thirteen survivors of the first pass showed code no program reaches, and each was removed or narrowed, which is why they left the list:
 
@@ -267,9 +267,16 @@ Thirteen survivors of the first pass showed code no program reaches, and each wa
 
 `header not read` and `no declared map local` came back as new mutants on the new lines, and both are killed.
 
-Three lines cannot show in bytes. A body, a condition and what follows a `while` of several accumulators read a Data accumulator at the reference's type, and that type is on the `Var` alone, so no script differs. I1b compares the `Var`'s type:
+Three lines cannot show in bytes. A body, a condition and what follows a `while` of several accumulators read a Data accumulator at the reference's type, and that type is on the `Var` alone, so `DIFFERENT-bytes` stays 18 under each. I1b compares the `Var`'s type:
 
-I1_TABLE
+| Mutant | `DIFFERENT-pir` | `i1a-identical` |
+|---|---:|---:|
+| None | 33 | 5,950 |
+| A body reads the type it travels at | 77 | 5,947 |
+| A condition reads the declared type | 52 | 5,950 |
+| What follows reads the declared type | 57 | 5,948 |
+
+So every mutant of the last list is killed: 128 tried, with 13 of their lines gone, and none left standing. The harness and the generator killed few directly, since a row reaches a rule first, and that is the order the stages run in. Each row a survivor asked for is in `JavacLoopsTest`.
 
 
 ## What this does not establish
@@ -301,6 +308,7 @@ I1_TABLE
 - **Follow-ups to add.**
   - `Statements.sequence` has no `BreakTree` case: nothing reaches one, and its default stops.
   - "A bare block in a statement list" stands: a bare block in a body with no accumulator is `Unsupported statement: BlockStmt` on both frontends, as at a method's level.
+  - `JulcList<JulcG1> x = JulcList.empty();` is `JULC0041` on the reference, and passes `Statements.local` here, whose type of the initializer is javac's. Found while writing a row of a native boundary in a loop. It has nothing to do with loops, so this slice did not change it. `Statements.local` needs the same reading as `requireSeen` before M5.
 - **Shared code.** Nothing found. No file outside `frontend/javac` changed in `src/main`.
 - **Files of Group 1 and 2 touched:** `Ifs`, `Exits`, `Frame`, `Statements.local` and `single`, `Lowering.dispatch`, `Operators`, `Tuples`, `CallTargets`, `SubsetScan`, `JavacCompilation`.
 - **Tests outside this slice's files:** `JavacRejectionsTest`, `JavacLambdasTest`, `LoweringAloneTest` and `JavacStatementsTest` held rows that said a loop stops, and those moved to the positive form.
