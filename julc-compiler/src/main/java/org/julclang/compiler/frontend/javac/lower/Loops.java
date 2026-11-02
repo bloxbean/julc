@@ -4,6 +4,7 @@ import com.sun.source.tree.BreakTree;
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.StatementTree;
@@ -204,13 +205,21 @@ final class Loops {
 
     /**
      * What the variable reads as to the reference, whatever is written or javac knows (I2d): the element of the iterable as
-     * it sees it. It reads the type of a name or a call, and of no other form, so an element of {@code (xs)}, a conditional or a
-     * {@code switch} is Data.
+     * it sees it. It reads a name, or a call or chain of calls rooted at one ({@link #isRooted}), and of any other form the
+     * element is Data: {@code (xs)}, a conditional, a {@code switch}, and a call on any of those.
      */
     private PirType seen(EnhancedForLoopTree tree, PirTerm iterable) {
         var expression = tree.getExpression();
-        boolean read = expression instanceof IdentifierTree || expression instanceof MethodInvocationTree;
-        return read && targets.seen(expression, iterable) instanceof PirType.ListType list ? list.elemType() : new PirType.DataType();
+        return isRooted(expression) && targets.seen(expression, iterable) instanceof PirType.ListType list ? list.elemType() : new PirType.DataType();
+    }
+
+    /** The reference's walk of a call's receiver: a name, or a call whose receiver is one of these. */
+    private static boolean isRooted(ExpressionTree tree) {
+        return switch (tree) {
+            case IdentifierTree name -> true;
+            case MethodInvocationTree call -> !(call.getMethodSelect() instanceof MemberSelectTree select) || isRooted(select.getExpression());
+            default -> false;
+        };
     }
 
     // --- While ---
