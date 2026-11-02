@@ -482,6 +482,7 @@ class Adr068SwitchHarnessTest {
             assertAgree("static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } public static long m(S s, JulcList<BigInteger> l) { return ids(l)" + body, s, l);
         }
         assertRejectedAlike("public static long m(S s, JulcList<Boolean> l) { return l.filter(b -> switch (s) { case S.A q when b -> true; default -> false; }).size(); }", "JULC0072", a(1), new PlutusData.ListData(List.of(bool(true))));
+        assertFixedOnJavac("public static long m(S s, JulcList<BigInteger> l) { return l.filter((BigInteger x) -> switch (s) { case S.A a when x.signum() > 0 -> true; default -> false; }).size(); }", a(1), l);
     }
 
     @Test
