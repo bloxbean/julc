@@ -380,6 +380,19 @@ class DelayedMethodPassTest {
             assertTrue(mayFail(callTree(10, identity, call("f10", integer(1)))), "2,047 calls");
         }
 
+        /** An {@code if} counts one branch, so the bound ends no walk of the two: only the memo keeps this linear. */
+        @Test
+        void aTreeOfBranchesIsReadInLinearTime() {
+            PirTerm term = call("f64", integer(1));
+            for (int i = 64; i > 0; i--) {
+                var test = builtin(DefaultFun.LessThanInteger, variable("x"), integer(1));
+                var branches = new PirTerm.IfThenElse(test, call("f" + (i - 1), variable("x")), call("f" + (i - 1), variable("x")));
+                term = new PirTerm.Let("f" + i, new PirTerm.Lam("x", INTEGER, branches), term);
+            }
+            var tree = new PirTerm.Let("f0", new PirTerm.Lam("x", INTEGER, variable("x")), term);
+            assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertFalse(mayFail(tree)));
+        }
+
         @Test
         void aFailureAtTheLeavesOfACallTreeIsFound() {
             var fails = new PirTerm.Lam("x", INTEGER, new PirTerm.Error(INTEGER));

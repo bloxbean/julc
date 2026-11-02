@@ -51,9 +51,12 @@ final class TypeTests {
         return instanceOf(tree, frame, () -> lowering.expr(tree.getExpression(), frame));
     }
 
-    /** {@link #instanceOf(InstanceOfTree, Frame)} of {@code operand}, the term of {@code tree}'s operand. */
+    /**
+     * {@link #instanceOf(InstanceOfTree, Frame)} of {@code operand}, the term of {@code tree}'s operand. A guard lowers its
+     * own: {@code GuardRules} takes an operand there only if a declaration types it, which no call of a method does.
+     */
     PirTerm instanceOf(InstanceOfTree tree, Frame frame, Supplier<PirTerm> operand) {
-        if (frame.inGuard()) return totalDispatch(tree, operand);
+        if (frame.inGuard()) return totalDispatch(tree, frame);
         var scrutinee = operand.get();
         var constructor = constructor(tree, variantOf(tree));
         var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
@@ -67,9 +70,9 @@ final class TypeTests {
      * {@code true} for V and {@code false} for the others, so a tag that is no constructor fails and selects no later arm.
      * {@code SwitchRules} has shown the operand is V or that interface, and rejected a pattern the arm could see.
      */
-    private PirTerm totalDispatch(InstanceOfTree tree, Supplier<PirTerm> operand) {
+    private PirTerm totalDispatch(InstanceOfTree tree, Frame frame) {
         var variant = guardVariantOf(tree);
-        var scrutinee = operand.get();
+        var scrutinee = lowering.expr(tree.getExpression(), frame);
         var tested = constructor(tree, variant);
         var parent = facts.sealedParents(variant).getFirst();
         var constructors = ((PirType.SumType) facts.registry().lookupNominal(facts.identity(parent)).orElseThrow()).constructors();

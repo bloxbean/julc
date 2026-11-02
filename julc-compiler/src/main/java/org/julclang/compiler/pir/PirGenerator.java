@@ -3181,7 +3181,7 @@ public class PirGenerator {
 
     private PirTerm generateInstanceOf(InstanceOfExpr ioe, Supplier<PirTerm> operand) {
         if (guardDepth > 0) {
-            return generateGuardInstanceOf(ioe, operand);
+            return generateGuardInstanceOf(ioe);
         }
         // For pattern matching: expr instanceof TypeName varName
         // This is used in if/else chains for ad-hoc matching
@@ -3217,7 +3217,7 @@ public class PirGenerator {
      * sealed interface, {@code true} for V and {@code false} for the others, so a tag that is no constructor fails
      * instead of selecting a later arm (I5). Outside guards, instanceof keeps its tag comparison.
      */
-    private PirTerm generateGuardInstanceOf(InstanceOfExpr ioe, Supplier<PirTerm> operand) {
+    private PirTerm generateGuardInstanceOf(InstanceOfExpr ioe) {
         // A pattern here introduces nothing the arm can see (the checker rejected those, JULC0074): only its type tests.
         var type = ioe.getPattern().map(p -> p instanceof TypePatternExpr tpe ? (com.github.javaparser.ast.type.Type) tpe.getType() : null)
                 .orElse(ioe.getType());
@@ -3236,7 +3236,7 @@ public class PirGenerator {
             throw guardInstanceOfError(ioe, target + " is not a variant of a sealed interface");
         }
         // The checker proved, by declaration, that the operand is this variant or its sealed interface (F51, F62).
-        var scrutinee = operand.get();
+        var scrutinee = generateExpression(ioe.getExpression());
         var constructors = sumType.get().constructors();
         var branches = constructors.stream()
                 .map(c -> new PirTerm.MatchBranch(c.name(), List.of(), List.of(),

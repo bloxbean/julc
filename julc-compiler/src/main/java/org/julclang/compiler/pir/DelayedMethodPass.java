@@ -69,7 +69,7 @@ public final class DelayedMethodPass {
 
         /** This value, with {@code more} run to reach it. */
         Known after(long more) {
-            return more == 0 ? this : new Known(kind, size, constant, function, scope, work + more);
+            return new Known(kind, size, constant, function, scope, work + more);
         }
 
         /** This value as a variable holds it. */
