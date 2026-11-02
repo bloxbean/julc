@@ -1,8 +1,21 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.CompilerFrontend;
+import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerTestVm;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.OptimizationLevel;
+import org.julclang.core.PlutusData;
 import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.EvalResult;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import java.math.BigInteger;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 /**
  * {@code switch} expressions: each program compiles to the reference's bytes at every level, with and without a source map,
@@ -138,6 +151,7 @@ class JavacSwitchesTest {
             "static long m(S s, S t) { return switch (s) { case A a when a.v().signum() > 0 -> switch (t) { case A b when a.v().signum() > 1 -> b.v().signum(); default -> 2; }; default -> 3; }; }",
             "static long m(S s, T t) { return switch (s) { case A a when t instanceof T.X -> 1; default -> 3; }; }",
             "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.isEmpty() -> 1; default -> 3; }; }",
+            "static long m(S s, S t, BigInteger n) { return switch (s) { case A a when switch (t) { case A c when c.v().compareTo(n) > 0 -> true; default -> false; } -> 1; default -> 3; }; }",
             // Constants in a guard have Java's width.
             "static long m(S s) { return switch (s) { case A a when (2147483647 + 1) < a.v().signum() -> 1; default -> 3; }; }",
             "static long m(S s) { return switch (s) { case A a when K + 1 < a.v().signum() -> 1; default -> 3; }; }",
@@ -227,11 +241,81 @@ class JavacSwitchesTest {
             "static long m(S s, boolean c, boolean d) { return switch (s) { case A a when c ^ d -> 1; default -> 3; }; }",
             "static long m(S s, PlutusData d, PlutusData e) { return switch (s) { case A a when !Builtins.equalsData(d, e) -> 1; default -> 3; }; }",
             "static long m(S s, long n) { return switch (s) { case A a when Math.abs(n) > 0 -> 1; default -> 3; }; }",
+            "record F(boolean on) { } static long m(S s) { F f = new F(false); return switch (s) { case A a when f.on -> 1; default -> 3; }; }",
             // Statements.
             "static long m(S s) { switch (s) { case A a -> { return 1; } default -> { return 2; } } }",
             "static long m(S s) { switch (s) { default -> { } } return 2; }",
     })
     void rejectedAsTheReference(String members) {
         rejected(members);
+    }
+
+    private static final String VALIDATOR = """
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
+            import org.julclang.stdlib.annotation.Param;
+
+            @MintingValidator
+            class V {
+                sealed interface Action { record Mint(BigInteger n) implements Action { } record Burn() implements Action { } }
+                @Param static boolean ENABLED = true;
+                @Param static long LIMIT = 5;
+                static final long M = LIMIT;
+                @Entrypoint
+                static boolean validate(Action action, PlutusData ctx) {
+                    return switch (action) {
+                        case Action.Mint m when ENABLED && m.n().signum() > 0 -> true;
+                        case Action.Mint m when m.n().compareTo(BigInteger.valueOf(LIMIT)) < 0 -> false;
+                        case Action.Mint m when LIMIT > 0 && M > 1 -> m.n().signum() == 0;
+                        default -> false;
+                    };
+                }
+            }
+            """;
+
+    /** A {@code @Param} is the applied parameter in a guard, and so is what is read through a constant of it. */
+    @Test
+    void aValidatorsGuardReadsItsParameters() {
+        LoweringFixture.assertSameAsReference(VALIDATOR);
+    }
+
+    /** What Java cannot build: a switch reads Data no strict boundary read. Outcomes are ADR-067's, on this frontend's script. */
+    private static EvalResult evaluate(String members, PlutusData... arguments) {
+        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)
+                .setOptimizationLevel(OptimizationLevel.DEFAULT)).compileMethod(source(members), "m").program();
+        return CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(arguments));
+    }
+
+    private static PlutusData constr(int tag, long... fields) {
+        return new PlutusData.ConstrData(tag, java.util.Arrays.stream(fields).mapToObj(v -> (PlutusData) new PlutusData.IntData(BigInteger.valueOf(v))).toList());
+    }
+
+    @Test
+    void aTagThatIsNoConstructorFailsAndReachesNoDefault() {
+        String plain = "static long m(S s) { return switch (s) { case A a -> 1; default -> 2; }; }";
+        String guarded = "static long m(S s, boolean c) { return switch (s) { case A a when c -> 1; default -> 2; }; }";
+        assertInstanceOf(EvalResult.Failure.class, evaluate(plain, constr(9)));
+        assertInstanceOf(EvalResult.Failure.class, evaluate(guarded, constr(9), constr(1)));
+        assertInstanceOf(EvalResult.Success.class, evaluate(plain, constr(2)));
+    }
+
+    /** F11: a guarded switch of one constructor checks the tag, and the same in a guard's {@code instanceof}. */
+    @Test
+    void aWrongTagOnOneConstructorFails() {
+        String guarded = "static long m(O o, boolean c) { return switch (o) { case P p when c -> 1; case P p -> 2; }; }";
+        assertInstanceOf(EvalResult.Failure.class, evaluate(guarded, constr(3, 1), constr(1)));
+        assertInstanceOf(EvalResult.Success.class, evaluate(guarded, constr(0, 1), constr(1)));
+        String test = "static long m(S s, O o) { return switch (s) { case A a when o instanceof P -> 1; default -> 3; }; }";
+        assertInstanceOf(EvalResult.Failure.class, evaluate(test, constr(0, 1), constr(3, 1)));
+    }
+
+    /** F3: {@code instanceof} in a guard is a total dispatch, and {@code false} is not what a bad tag gives. */
+    @Test
+    void aBadTagInAGuardsInstanceofFails() {
+        String test = "static long m(S s, S t) { return switch (s) { case A a when t instanceof A -> 1; default -> 3; }; }";
+        assertInstanceOf(EvalResult.Failure.class, evaluate(test, constr(0, 1), constr(9)));
+        assertInstanceOf(EvalResult.Success.class, evaluate(test, constr(0, 1), constr(2)));
     }
 }

@@ -520,7 +520,7 @@ public final class JavacFacts {
 
     /** The text of {@code tree} as written, with each run of white space one space: what a message quotes. */
     public String text(Tree tree) {
-        return written(path(tree).getCompilationUnit(), start(tree), end(tree));
+        return end(tree) < 0 ? tree.toString() : written(path(tree).getCompilationUnit(), start(tree), end(tree));
     }
 
     /** Whether a unit declares {@code element}. An API type comes in as a class file, so its members are not. */

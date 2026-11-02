@@ -302,9 +302,20 @@ final class Switches {
     private PirTerm guard(SwitchRules.Arm arm, Frame frame) {
         var type = rules.guardType(arm, leaf -> leafType(leaf, frame));
         rules.beforeGuard(arm, leaf -> leafType(leaf, frame));
-        var guard = lowering.expr(arm.guard(), frame.guard());
+        PirTerm guard;
+        try {
+            guard = lowering.expr(arm.guard(), frame.guard());
+        } catch (CompilerException e) {
+            // The reference collects an unresolved member and goes on, so what it says of the guard's type comes first.
+            if (isUnresolvedMember(e)) rules.afterGuard(arm, type, false);
+            throw e;
+        }
         rules.afterGuard(arm, type, facts.registry().resolveNamed(typing.ofTerm(guard)) instanceof PirType.BoolType);
         return guard;
+    }
+
+    private static boolean isUnresolvedMember(CompilerException e) {
+        return e.diagnostics().size() == 1 && DiagnosticCodes.UNRESOLVED_MEMBER_ACCESS.code().equals(e.diagnostics().getFirst().code());
     }
 
     /** What the reference types a guard's leaf by. An integer whose Java type it does not know it takes to be a {@code BigInteger}. */

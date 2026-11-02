@@ -25,7 +25,6 @@ import org.julclang.compiler.frontend.javac.subset.GuardTypes.JType;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -120,12 +119,13 @@ final class GuardRules {
      * reads them, so a field of that name is held to the rule: lifting that would widen the subset.
      */
     private void requireNoBinding(CaseTree entry, ExpressionTree guard) {
-        var seen = new HashSet<String>();
         var declared = new LinkedHashSet<String>();
-        for (var binding : SubsetWalk.all(guard, BindingPatternTree.class)) {
-            String name = binding.getVariable().getName().toString();
-            if (!seen.add(name)) throw facts.rejection(DiagnosticCodes.PATTERN_VARIABLE_CONFLICT, binding, name, "in this guard");
-            declared.add(name);
+        for (var instanceOf : SubsetWalk.all(guard, InstanceOfTree.class)) {
+            if (instanceOf.getPattern() == null) continue;
+            for (var binding : SubsetWalk.all(instanceOf.getPattern(), BindingPatternTree.class)) {
+                String name = binding.getVariable().getName().toString();
+                if (!declared.add(name)) throw facts.rejection(DiagnosticCodes.PATTERN_VARIABLE_CONFLICT, binding, name, "in this guard");
+            }
         }
         var whenTrue = introducedWhenTrue(guard);
         if (!whenTrue.isEmpty()) {

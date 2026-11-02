@@ -61,9 +61,10 @@ class Adr068SwitchHarnessTest {
                 """.formatted(members);
     }
 
-    private static final TagTable TAGS = new TagTable(List.of(
+    private static final List<TagTable.Entry> TAG_ENTRIES = List.of(
             new TagTable.Entry("Case$S$A", "Case$S", 0), new TagTable.Entry("Case$S$B", "Case$S", 1), new TagTable.Entry("Case$S$D", "Case$S", 2),
-            new TagTable.Entry("Case$O$P", "Case$O", 0), new TagTable.Entry("Case$X", "Case$T", 0), new TagTable.Entry("Case$Y", "Case$T", 1)));
+            new TagTable.Entry("Case$O$P", "Case$O", 0), new TagTable.Entry("Case$X", "Case$T", 0), new TagTable.Entry("Case$Y", "Case$T", 1));
+    private static final TagTable TAGS = new TagTable(TAG_ENTRIES);
 
     private static PlutusData integer(long value) {
         return new PlutusData.IntData(BigInteger.valueOf(value));
@@ -370,5 +371,49 @@ class Adr068SwitchHarnessTest {
             assertAgree("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> { yield a.v(); } default -> BigInteger.ONE; }); }", integer(1), s);
         }
         assertStopsOnJavac("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> true; default -> false; }); }", "JULC0084", integer(7), a(1));
+    }
+
+    /** #297: {@code contains} in a guard encodes its target by its type, as it does anywhere on this frontend. */
+    @Test
+    void aGuardsCollectionOperation() {
+        var list = new PlutusData.ListData(List.of(integer(7), integer(1)));
+        for (var s : everyS()) {
+            assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when l.contains(a.v()) -> 1; default -> 3; }; }", s, list);
+            assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when !l.isEmpty() -> 1; default -> 3; }; }", s, list);
+            assertAgree("public static BigInteger m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when l.size() > 1 -> l.head(); default -> l.tail().head(); }; }", s, list);
+        }
+    }
+
+    /** F807: two variants of one simple name are two branches. The reference's gate rejects the shape, so only this frontend runs it. */
+    @Test
+    void twoVariantsOfOneSimpleName() {
+        String members = """
+                static final class P { public record V(BigInteger a) implements Q { } }
+                static final class W { public record V(BigInteger b, BigInteger c) implements Q { } }
+                public sealed interface Q permits P.V, W.V { }
+                public static long m(Q q) { return switch (q) { case P.V x -> 1; case W.V y -> y.c().longValue(); }; }
+                """;
+        var entries = new ArrayList<>(TAG_ENTRIES);
+        entries.add(new TagTable.Entry("Case$P$V", "Case$Q", 0));
+        entries.add(new TagTable.Entry("Case$W$V", "Case$Q", 1));
+        var tags = new TagTable(entries);
+        for (var q : List.of(constr(0, integer(5)), constr(1, integer(5), integer(9)))) {
+            var report = RUNNER.run(new DiffCase("switch", program(members), "Case", "m", List.of(q), tags, null));
+            report.results().forEach((config, result) -> {
+                if (config.frontend() == CompilerFrontend.JAVAC) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+            });
+        }
+    }
+
+    /** F720: arms of two types have no type of their own, so what needs one stops, and a value that reads each by its own runs. */
+    @Test
+    void armsOfTwoTypesStopWhereTheyNeedOne() {
+        assertStopsOnJavac("static PlutusData d(BigInteger v) { return Builtins.iData(v); } public static long m(S s) { var v = switch (s) { case S.A a -> a.v(); default -> d(BigInteger.ONE); }; return JulcList.of(v).size(); }", "JULC0084", a(1));
+    }
+
+    @Test
+    void aSwitchStatementIsNotInTheSubset() {
+        var report = run("public static long m(S s) { switch (s) { case S.A a -> { return 1; } default -> { return 2; } } }", List.of(a(1)));
+        report.results().forEach((config, result) -> assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe));
     }
 }
