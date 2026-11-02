@@ -501,6 +501,21 @@ class Adr068LambdasHarnessTest {
         assertBothDivergeAlike("public static boolean m(" + BIG_LIST + " xs) { return PlutusData.cast(xs.find(x -> x.signum() > 5), Optional.class).isPresent(); }", integers(1));
     }
 
+    /** Valid programs on an element of a sealed interface: a simple name as the receiver is the only shape the reference refuses. */
+    @Test
+    void aSwitchOnAnElementFollowsTheReceiver() {
+        var xs = list(a(1), a(-1), b(1, 2), constr(2));
+        String body = ".any(v -> switch (v) { case S.A q -> q.v().signum() > 0; case S.B q -> false; case S.D q -> false; }); }";
+        String field = "record F(JulcList<S> ss) { } ";
+        assertRejectedAlike("public static boolean m(JulcList<S> xs) { return xs" + body, "JULC0007", xs);
+        assertAgree("public static boolean m(JulcList<S> xs) { return (xs)" + body, xs);
+        assertAgree("public static boolean m(JulcList<S> xs) { return xs.tail()" + body, xs);
+        assertAgree("public static boolean m(JulcList<S> xs) { return xs.filter(u -> true)" + body, xs);
+        assertAgree("static JulcList<S> ids(JulcList<S> s) { return s; } public static boolean m(JulcList<S> xs) { return ids(xs)" + body, xs);
+        assertAgree(field + "public static boolean m(F f) { return f.ss()" + body, constr(0, xs));
+        assertBothAgree(field + "public static long m(F f) { S r = f.ss().find(v -> switch (v) { case S.A q -> true; default -> false; }); return 1; }", constr(0, xs));
+    }
+
     private static final String MAP_OF_BIG = "JulcMap<BigInteger, BigInteger>";
 
     private static PlutusData mapOf(long key, long value) {

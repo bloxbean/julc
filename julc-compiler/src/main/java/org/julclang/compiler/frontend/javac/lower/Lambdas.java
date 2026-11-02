@@ -67,7 +67,7 @@ final class Lambdas {
             throw NotPorted.at(facts, parameter, "a lambda parameter written var");
         }
         PirType held = held(parameter, written);
-        PirType seen = written ? held : elementSeen(receiver);
+        PirType seen = written ? held : elementSeen(call, receiver);
         boolean decodes = isDecoded(held);
         var data = frame.scope().bind(element, decodes ? new PirType.DataType() : seen);
         var scope = decodes ? data.rebind(element, seen) : data;
@@ -77,10 +77,16 @@ final class Lambdas {
         return terms.lam(data.lookup(element), body);
     }
 
-    /** What an inferred parameter reads as to the reference: an element of a sealed interface is Data, whatever javac knows (I2). */
-    private PirType elementSeen(PirType.ListType receiver) {
-        return facts.registry().resolveNamed(receiver.elemType()) instanceof PirType.SumType ? new PirType.DataType()
-                : receiver.elemType();
+    /**
+     * What an inferred parameter reads as to the reference. Where a simple name is the receiver it lowers the lambda once more
+     * first, untyped ({@link CallTargets#hasFirstPass}), and keeps a throw from that pass, so a {@code switch} on an element of
+     * a sealed interface is {@code JULC0007} there, whatever javac knows (I2). What that pass rejects on any other element
+     * is not ported: the second pass types the parameter, and javac's type is the one Java runs, so the rule is ADR-068's
+     * one deliberate widening.
+     */
+    private PirType elementSeen(MethodInvocationTree call, PirType.ListType receiver) {
+        return targets.hasFirstPass(call) && facts.registry().resolveNamed(receiver.elemType()) instanceof PirType.SumType
+                ? new PirType.DataType() : receiver.elemType();
     }
 
     /** What the parameter holds: the type javac gave it, as a declaration writes it or as javac inferred it. */

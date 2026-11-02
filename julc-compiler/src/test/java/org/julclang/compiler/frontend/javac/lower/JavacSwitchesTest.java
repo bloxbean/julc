@@ -545,6 +545,39 @@ class JavacSwitchesTest {
         rejected("sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.OFF -> 1; default -> 2; }; }");
     }
 
+    /**
+     * A simple name as the receiver gives the reference a first pass with the parameter untyped, so a {@code switch} on it is
+     * {@code JULC0007}. Any other receiver has no such pass, and the element keeps its sealed type, nested or not.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean m(JulcList<S> xs) { return xs.any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { var ys = xs; return ys.any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static long m(JulcList<S> xs) { return xs.filter(v -> switch (v) { case A a -> true; default -> false; }).size(); }",
+            "record F(JulcList<S> ss) { } static boolean m(JulcList<S> xs, F f) { return xs.any(v -> f.ss().any(w -> switch (v) { case A a -> true; default -> false; })); }",
+            "static boolean m(JulcList<JulcList<S>> xss) { return xss.any(l -> l.any(v -> switch (v) { case A a -> true; default -> false; })); }",
+    })
+    void aSwitchOnAnElementAtASimpleNameIsRejected(String members) {
+        rejected(members);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record F(JulcList<S> ss) { } static boolean m(F f) { return f.ss().any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "record F(JulcList<S> ss) { } static JulcList<BigInteger> m(F f) { return f.ss().map(v -> switch (v) { case A a -> a.v(); default -> BigInteger.ONE; }); }",
+            "record F(JulcList<S> ss) { } static boolean m(F f) { return f.ss().any(v -> { var w = v; return switch (w) { case A a -> true; default -> false; }; }); }",
+            "static JulcList<S> ids(JulcList<S> s) { return s; } static boolean m(JulcList<S> xs) { return ids(xs).any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { return xs.tail().any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { return xs.filter(u -> true).any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "static boolean m(JulcList<S> xs) { return (xs).any(v -> switch (v) { case A a -> true; default -> false; }); }",
+            "record F(JulcList<S> ss) { } static boolean m(JulcList<BigInteger> xs, F f) { return xs.any(x -> f.ss().any(v -> switch (v) { case A a -> true; default -> false; })); }",
+            "record F(JulcList<S> ss) { } static boolean m(JulcList<S> xs, F f) { return f.ss().any(v -> xs.any(w -> switch (v) { case A a -> true; default -> false; })); }",
+            "record Tr(JulcList<S> kids) { } static JulcList<Boolean> m(Tr n) { return n.kids().map(k -> switch (k) { case A a -> true; default -> false; }); }",
+    })
+    void aSwitchOnAnElementAtAnyOtherReceiverLowers(String members) {
+        same(members);
+    }
+
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
     /** An inferred parameter of a sealed interface is Data to the reference, so {@code instanceof} on it stops on both. */
     @ParameterizedTest
