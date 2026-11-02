@@ -45,11 +45,27 @@ In the `break` shapes the body makes the recursive call itself, and a `break` is
 | Question | Answer |
 |---|---|
 | What the variable holds | The type javac gave it, as written or inferred. An element decodes by that |
-| What a read of the variable sees | The element of the iterable as the reference sees it (`CallTargets.seen`), so a member read stays `JULC0055` there (I2d) |
+| The binder's type | One type, what it holds, so its reads and every encoding of it agree with what was decoded (`Typing.holding`). The same goes for a `var` and a lambda's parameter. Where the reference sees a value of the same representation, as a list of Data for a list of integers, its reading stands, and with it its term |
+| What a member read sees | `Binder.seen`, kept apart from the type: the element of the iterable as the reference sees it. It reads the type of a name or a call and of no other form, so an element of `(xs)`, a conditional or a `switch` is Data, and a member read stays `JULC0055` or `JULC0007` there (I2d) |
 | Which variables are accumulators | The elements a statement of the body assigns that are visible before the loop, in order of first assignment. No name decides it |
-| What a `while`'s tuple holds | `AccumulatorTypes`: a Data accumulator's builtins say a list or a pair list. The call is the element javac bound |
+| What a tuple holds | `AccumulatorTypes`: what reaches a Data accumulator, in a `while` and a for-each. The next section says how |
 | What the body reads an accumulator as | Its declared type. Only the tuple, the condition and what follows read the refined one, as in the reference |
-| What a nested loop's result is read at | The enclosing frame's types, which are not refined, as in the reference |
+| What a nested loop's result is read at | The types it travelled at, for each accumulator what follows reads. One nothing reads keeps its declared type, so its term stands as in the reference |
+
+### What a tuple carries
+
+A `PlutusData` variable can hold Data, a list or a pair list, and Java's type does not say which. `AccumulatorTypes` reads what reaches it, from what javac bound: its initializer and every assignment to it in the method, at any depth of loops, through parentheses, a conditional, a `switch`, another variable and the `return`s of a helper. The reference's analysis reads direct assignments in the body of a `while` of the loop's own statement list.
+
+| What reaches the variable | It travels as |
+|---|---|
+| `unListData`, `mkNilData`, `constrFields`, `mkCons` of no pair | A list |
+| `unMapData`, `mkNilPairData`, `mkCons` of a pair, a declared `MapData` | A pair list |
+| `tailList` of a list or a pair list | The same |
+| `tailList` of what nothing says | A list, unless its head is read as a pair or a pair list travels beside it. A cursor shown to be a list stays one beside a map cursor |
+| `iData`, `bData`, `constrData`, `listData`, `mapData`, or nothing known | Data |
+| A list, and Data or a read as Data | A stop, `an accumulator shown to hold both a list and Data`. No one type serves the tuple, and both frontends fail these on-chain |
+
+A variable declared at another type keeps it. Nothing else changed: the body reads the accumulator at its declared type, as before, and no corpus row moved.
 
 ### Evaluation order
 
@@ -94,16 +110,28 @@ are evaluated strictly, so a body runs before the next iteration, and the result
 `JULC0056` asks what a method reads. The reference takes free names of the term with identity `let`s removed. Here a read is what javac bound a name to, on the method's tree, so a shadowing local, parameter or pattern variable is
 none by construction, and no term is read. `FieldUpdates` has no state beyond what has lowered, and a call is by binder, which overloads share.
 
+### Stops and differences to name
+
+| Shape | JVM | Reference | `JAVAC` |
+|---|---|---|---|
+| `for (Object o : xs)`, `for (Number o : xs)`, `for (Comparable<BigInteger> x : b)`, a raw `JulcList` with `for (Object x : xs)` | A value | Agrees | `JULC0084`, `a for-each variable of type ...`. A supertype or a raw element has no type to decode by. No corpus row reaches it, so M5's count will not show it |
+| `for (byte b : a)` over an array | A value | Fails on-chain | `JULC0084`, `a for-each over an array` |
+| `static long K;` with `K = K + 1` in a loop with no other update | | `Undefined variable: K` | `Unsupported expression: AssignExpr`. Diagnostic change: both reject, and the reference has no position |
+| A non-entry method whose loop first assigns a local `K` in a bare block, then the field `K` | | `JULC0056` at the local's assignment | `JULC0056` at the field's. Diagnostic change: the field is what the rule is about, and the reference finds it by spelling |
+| `JULC0091` in a tuple | | At 0:0 | At 0:0, the reference's |
+
 ## Decisions to check
 
 1. **A local after a loop that shadows a field has its own name.** The reference's binder there is `K`, so its pre-loop rebinding writes one `let K = K` for what is a local's read. Here the binder is `K'1`, as I13 asks. To write
    the same `let`, the port would have to know which blocks the reference renames. Two rows of the corpus show it, each smaller by that `let`, and semantic observations are equal. See `JavacLoopsTest.aLocalThatShadowsAFieldAfterALoop`.
-2. **An element the reference takes for Data decodes.** `for (var x : JulcList.of(a, b))` and a for-each over `xs.map(...)` hold Data to the reference, and arithmetic on `x` fails on-chain where Java returns. Here the element decodes
-   by javac's type, and `anElementTheReferenceTakesForData` holds it to the JVM. `x.longValue()` on such a variable stays `JULC0055`, so the subset does not widen. An element nothing reads costs one `UnIData`: one row of the corpus.
+2. **An element the reference takes for Data decodes, and its binder says so.** `for (var x : JulcList.of(a, b))` and a for-each over `xs.map(...)` hold Data to the reference, and arithmetic on `x` fails on-chain where Java returns. Here the element decodes
+   by javac's type, the binder has that type, and a tuple encodes it. `anElementTheReferenceTakesForData` and `Adr068LoopRepresentationsTest`'s 1,260 programs hold it to the JVM. A member read goes by `Binder.seen`, so the subset does not widen. An element nothing reads costs one `UnIData`: one row of the corpus.
 3. **A library compiled as a root stops at a call of its own method,** `a call of a library unit's own method`. On a root of a library, `MathLib.floorDiv` was `Undefined variable: MathLib`, a rejection with no decision behind it, which
    ten rows reached once their `while` lowered. The reference finds that method in its pool, so this is the library slice's to answer.
 4. **`if (c) ;`** was a rejection with a diagnostic where the reference has the located text. `Statements.single` now takes the reference's form, and a loop's body uses it too.
-5. **`JULC0012` on a tuple of accumulators has the loop's position** (F724), where the reference has none. No row of the corpus reaches it.
+5. **`JULC0012` and `JULC0041` on a tuple of accumulators have the loop's position** (F724), where the reference has none, and `JULC0041` on a for-each's native element has the iterable's. `JULC0091` keeps the reference's. No row of the corpus reaches them.
+6. **A list in a Data variable is carried on `JAVAC`, and stays a failure on the reference** (D4's cap, "Closed by M5"). Its analysis lives on the JavaParser side, so that frontend is not changed. `diverge-068-cursor-*` pin both answers.
+7. **A list and Data in one variable stop.** The reference fails these on-chain, so nothing that ran stops running. `anAccumulatorOfTwoRepresentationsStops` pins them.
 
 ## The I1 gate
 
@@ -252,11 +280,10 @@ One runner per throwaway detached worktree, each mutant applied, tested in stage
 | The last row | `5b83b4fd` | Rows at that commit: 0 failures of 196 | 1 | 1 | 0 |
 | Through I1, on the three types below | `e78c4d33` | The run above | 3 | 3 | 0 |
 
-Thirteen survivors of the first pass showed code no program reaches, and each was removed or narrowed, which is why they left the list:
+Twelve survivors of the first pass showed code no program reaches, and each was removed or narrowed, which is why they left the list:
 
 | Line | Why no program reaches it |
 |---|---|
-| `in the loop iterable`, a for-each's header in `requireNoBreak` | The iterable lowers before the rule runs, so `Lowering.reassignment` rejects an update there first |
 | `-=` on a `String`, and an integer target's operand type | javac rejects both (D11) |
 | The field rule at an assignment | A field a body updates is an accumulator of that loop, so `Loops.accumulators` has met the rule. Mutating that one now kills |
 | `inLoop` in the walk of an `if`'s branches | An assignment in a branch outside a loop is rejected where it lowers, so the two walks are one |
@@ -283,9 +310,9 @@ So every mutant of the last list is killed: 128 tried, with 13 of their lines go
 
 - **Loops in a library's body.** A library unit stops, so `ValuesLib`'s and `ContextsLib`'s `while` loops are compared as methods alone, where the corpus compiles them as a root, and never run on this frontend.
 - **Which programs the join's rule has never met.** The generator's nested loops reach two levels, and its accumulators three.
-- **`AccumulatorTypes` beyond the corpus.** Each rule has a corpus row or a mutant's verdict, and the rule is the reference's, not a proof that the type is right. A Data accumulator holding a pair list by any other route packs as Data, on both frontends.
+- **`AccumulatorTypes` beyond what it reads.** A list that reaches a Data accumulator through a helper's parameter, a field, a lambda or a tuple's component says nothing, so the accumulator packs as Data and fails on-chain, as on the reference. A helper's `return` is read, its arguments are not.
 - **A local that shadows a field after a loop, by size.** Both frontends agree on value and failure, and `Adr068LoopsPropertyTest` does not compare cost on such a program.
-- **`.diffcase`s.** The fixes rest on JUnit, so no reference row is new. A saved case for decision 2 adds one, and the frozen frontend's answer there is the divergence.
+- **The 11 new `.diffcase`s in the reference table.** `lowering-reference.tsv` has no row for them, so I1 lists them as `REFERENCE-DRIFT`, `no committed row`, until the freeze. See [the I1 gate](#the-i1-gate).
 - **I2a's inventory** is still not run on this frontend as an inventory. `JavacLoopsTest` holds each rule to the reference.
 - **Images and DevKit** were not run. The code holds no thread, reflection, file access or `ServiceLoader`.
 
@@ -307,8 +334,9 @@ So every mutant of the last list is killed: 128 tried, with 13 of their lines go
   - "Loops": `Ifs.ifWithLoop`, `Exits.allPathsReturn`'s last loop, the assignment that is no rejection, block splicing.
 - **Follow-ups to add.**
   - `Statements.sequence` has no `BreakTree` case: nothing reaches one, and its default stops.
+  - `Scope.Binder.seen` keeps the reference's reading for a member read. It goes when M5 ends that reading.
+  - The native-list family: `JulcList<JulcG1> x = JulcList.empty();`, the same with `JulcG2`, `JulcMlResult`, `JulcValue`, `JulcMap<BigInteger, JulcG1>`, and `return x` of one, are `JULC0041` on the reference and accepted here, with the values right, because `Statements.local` takes the initializer's type from javac. `Statements.local` needs the reference's reading before M5, or the family needs a decision.
   - "A bare block in a statement list" stands: a bare block in a body with no accumulator is `Unsupported statement: BlockStmt` on both frontends, as at a method's level.
-  - `JulcList<JulcG1> x = JulcList.empty();` is `JULC0041` on the reference, and passes `Statements.local` here, whose type of the initializer is javac's. Found while writing a row of a native boundary in a loop. It has nothing to do with loops, so this slice did not change it. `Statements.local` needs the same reading as `requireSeen` before M5.
 - **Shared code.** Nothing found. No file outside `frontend/javac` changed in `src/main`.
 - **Files of Group 1 and 2 touched:** `Ifs`, `Exits`, `Frame`, `Statements.local` and `single`, `Lowering.dispatch`, `Operators`, `Tuples`, `CallTargets`, `SubsetScan`, `JavacCompilation`.
 - **Tests outside this slice's files:** `JavacRejectionsTest`, `JavacLambdasTest`, `LoweringAloneTest` and `JavacStatementsTest` held rows that said a loop stops, and those moved to the positive form.

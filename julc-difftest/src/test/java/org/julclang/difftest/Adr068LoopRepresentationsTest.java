@@ -198,6 +198,17 @@ class Adr068LoopRepresentationsTest {
                 true, MAP, LIST);
     }
 
+    /** I2d's fail-closed direction: an element read as Data that holds a boolean has no {@code equals} row, so it is {@code JULC0055}, which is listed for M5. */
+    @Test
+    void equalsOnAnElementOfAParenthesizedList() {
+        var report = RUNNER.run(new DiffCase("equals", cursors("public static long m(JulcList<Boolean> xs) { long s = 0; for (var x : (xs)) { if (x.equals(true)) { s = s + 1; } } return s; }"),
+                "Case", "m", List.of(list(bool(true), bool(false)))));
+        report.results().values().forEach(result -> {
+            assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+            assertTrue(result.uplc().toString().contains("JULC0055"), report::describe);
+        });
+    }
+
     /** What already worked stays so: a map cursor, a built list, and a cursor with no sign of a list, which holds Data. */
     @ParameterizedTest
     @ValueSource(strings = {
