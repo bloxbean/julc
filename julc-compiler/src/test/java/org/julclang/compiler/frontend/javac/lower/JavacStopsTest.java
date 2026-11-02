@@ -74,6 +74,8 @@ class JavacStopsTest {
             new Stop("a static call not qualified by a simple class name", "static BigInteger m() { return java.math.BigInteger.valueOf(1); }", "uncoded"),
             new Stop("a method with no stdlib lowering", "static long m(long a) { return Math.absExact(a); }", "uncoded"),
             new Stop("a text block", "static String m() { return \"\"\"\n  a\"\"\"; }", "uncoded"),
+            new Stop("an expression of type java.lang.Object",
+                    "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static boolean m(S s) { return s.equals(switch (s) { case A a -> a; default -> s; }); }", "accepted"),
             new Stop("a case of a variant of two sealed interfaces",
                     "sealed interface P1 permits R { } sealed interface P2 permits R { } record R() implements P1, P2 { } static long m(P1 p) { return switch (p) { case R r -> 1; }; }", "accepted"),
             new Stop("a case of a variant that is not a plain record",

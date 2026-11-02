@@ -297,6 +297,16 @@ class Adr068SwitchHarnessTest {
         assertAgreeOnEveryPair("public static BigInteger m(S s, S t) { return switch (s) { case S.A a when a.v().signum() >= 0 -> switch (t) { case S.B b when b.w().signum() >= 0 -> a.v().add(b.v().multiply(BigInteger.TEN)); default -> a.v(); }; default -> BigInteger.ZERO; }; }");
     }
 
+    /** Two arms hold a first field each, of other names, so each reads its own decoded field under the other. */
+    @Test
+    void nestedArmsKeepTheirFieldsApart() {
+        for (var s : everyS()) {
+            var o = constr(0, integer(11));
+            assertAgree("public static BigInteger m(O o, S s) { return switch (o) { case O.P p -> switch (s) { case S.A a -> p.x().subtract(a.v()); case S.B b -> b.w().subtract(p.x()); default -> p.x(); }; }; }", o, s);
+            assertAgree("public static BigInteger m(O o, S s) { return switch (o) { case O.P p when p.x().signum() > 0 -> switch (s) { case S.A a when a.v().signum() >= 0 -> p.x().subtract(a.v()); default -> p.x(); }; default -> BigInteger.ZERO; }; }", o, s);
+        }
+    }
+
     // --- Shadowing ---
 
     /** ADR-067 F9: a failed arm's binding must not reach a later arm or {@code default}, or a guard that reads the static. */

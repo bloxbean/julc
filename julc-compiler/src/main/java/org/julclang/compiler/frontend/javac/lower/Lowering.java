@@ -129,13 +129,17 @@ public final class Lowering {
     }
 
     /**
-     * {@code JULC0091} raised where a value is Data-encoded has no position: the innermost expression being lowered gives
-     * it one, the argument of a call whose type holds the native array, or else the expression itself.
+     * {@code JULC0091} and {@code JULC0012} raised where a value is Data-encoded have no position: the innermost expression
+     * being lowered gives it one, the argument of a call whose type holds the native array, or else the expression itself.
      */
     private CompilerException located(CompilerException e, ExpressionTree tree) {
         if (e.diagnostics().size() != 1) return e;
         CompilerDiagnostic diagnostic = e.diagnostics().getFirst();
-        if (diagnostic.line() > 0 || !DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
+        if (diagnostic.line() > 0) return e;
+        if (diagnostic.message() != null && diagnostic.message().contains(CompilerTypeDiagnostics.UNKNOWN_TYPE_ENCODED)) {
+            return CompilerTypeDiagnostics.unknownTypeEncoded(facts.location(tree));
+        }
+        if (!DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
         List<? extends ExpressionTree> arguments = tree instanceof MethodInvocationTree call ? call.getArguments()
                 : tree instanceof NewClassTree creation ? creation.getArguments() : List.of();
         for (var argument : arguments) {

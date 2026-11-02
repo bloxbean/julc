@@ -275,6 +275,7 @@ class JavacSwitchesTest {
             "static long m(S s, byte[] k) { return switch (s) { case A a when Builtins.readBit(k, 0) -> 1; default -> 3; }; }",
             "record Q(long n) { } static long m(S s, JulcList<Q> l) { return switch (s) { case A a when l.head().n() > 0 -> 1; default -> 3; }; }",
             "static long m(S s) { var xs = JulcList.of(true); return switch (s) { case A a when !xs.head() -> 1; default -> 3; }; }",
+            "static long m(S s, PlutusData d) { var v = switch (s) { case A a -> Builtins.tailList(Builtins.unListData(d)); default -> d; }; return JulcList.of(v).size(); }",
             // Statements.
             "static long m(S s) { switch (s) { case A a -> { return 1; } default -> { return 2; } } }",
             "static long m(S s) { switch (s) { default -> { } } return 2; }",
