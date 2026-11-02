@@ -83,6 +83,52 @@ public final class Terms {
         return new PirTerm.Let(PirHelpers.hygienicName("#_if", PirHelpers.freeVariables(rest)), effect, rest);
     }
 
+    /** {@code let binder = what data decodes to in body}: an accumulator out of the tuple it travels in. */
+    PirTerm.Let unpacked(Binder binder, PirTerm data, PirTerm body) {
+        return let(binder, PirHelpers.wrapDecode(data, binder.type()), body);
+    }
+
+    /** {@code let x = x in rest}, for the variable {@code read} reads: one more binder of what that read was built for. */
+    PirTerm.Let rebound(PirTerm.Var read, PirTerm rest) {
+        var value = new PirTerm.Var(read.name(), read.type());
+        var binding = new PirTerm.Let(read.name(), value, rest);
+        var element = provenance.readOf(read);
+        if (element != null) {
+            provenance.read(value, element);
+            provenance.binder(binding, read.name(), element);
+        }
+        return binding;
+    }
+
+    /**
+     * Tells I13's table what a loop built by {@code LoopDesugarer} binds: its accumulator, the read of it the loop ends with,
+     * and a for-each's variable. The desugarer takes these by name, so each is found where it builds them.
+     *
+     * @param accumulator the loop's accumulator, or null if it carries a generated one
+     * @param item        a for-each's variable, or null for a {@code while}
+     */
+    void loop(PirTerm.LetRec loop, Binder accumulator, Binder item) {
+        var function = (PirTerm.Lam) loop.bindings().getFirst().value();
+        if (item != null) {
+            function = (PirTerm.Lam) function.body();
+            var variable = itemLet(((PirTerm.IfThenElse) function.body()).elseBranch(), item.name());
+            provenance.binder(variable, item.name(), item.element());
+        }
+        if (accumulator == null) return;
+        provenance.binder(function, accumulator.name(), accumulator.element());
+        var test = (PirTerm.IfThenElse) function.body();
+        provenance.read((PirTerm.Var) (item != null ? test.thenBranch() : test.elseBranch()), accumulator.element());
+    }
+
+    private static PirTerm.Let itemLet(PirTerm term, String item) {
+        return switch (term) {
+            case PirTerm.Let let when let.name().equals(item) -> let;
+            case PirTerm.App call -> itemLet(call.argument(), item);
+            case PirTerm.ListMatch match -> itemLet(match.consBranch(), item);
+            default -> throw new IllegalStateException("No binder of " + item + " in a loop: " + term.getClass().getSimpleName());
+        };
+    }
+
     /** A branch of a {@code DataMatch} that binds {@code bindings} and, to the scrutinee, the pattern variable of {@code binder}. */
     PirTerm.MatchBranch branch(String constructor, List<String> bindings, List<PirType> types, PirTerm body, Binder binder) {
         var branch = new PirTerm.MatchBranch(constructor, bindings, types, body, binder.name());

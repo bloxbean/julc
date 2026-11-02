@@ -3,6 +3,8 @@ package org.julclang.compiler.frontend.javac.lower;
 import org.julclang.compiler.pir.PirType;
 
 import javax.lang.model.element.Element;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * The binders visible at a point in the PIR being built: an immutable chain, so a scope cannot leak out of a method or
@@ -84,6 +86,13 @@ public final class Scope {
             if (s.binder.element().equals(element)) return s.binder;
         }
         return null;
+    }
+
+    /** The name of every binder visible here. */
+    Set<String> names() {
+        var names = new HashSet<String>();
+        for (Scope s = this; s != EMPTY; s = s.parent) names.add(s.binder.name());
+        return names;
     }
 
     private String freeName(Element element) {

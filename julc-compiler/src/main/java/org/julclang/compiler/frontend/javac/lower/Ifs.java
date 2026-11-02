@@ -7,7 +7,6 @@ import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.StatementTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -17,7 +16,7 @@ import java.util.function.Function;
 
 /**
  * {@code if} statements, in the reference's three shapes, each reviewed against its source in {@code PirGenerator}:
- * {@link #ifWithExit}, {@link #ifWithLoop} and {@link #ifForEffect}.
+ * {@link #ifWithExit}, {@link #ifWithLoop} and {@link #ifForEffect}. A loop's own {@code if}s are {@link LoopBody}'s.
  * <p>
  * <b>Evaluation order.</b> The condition, then one branch, then what follows unless that branch left the method. In
  * {@code ifWithExit} what follows sits inside each branch that falls through, so it runs at most once. In
@@ -41,18 +40,25 @@ final class Ifs {
     private final Statements statements;
     private final TypeTests typeTests;
     private final Lowering lowering;
+    private final Accumulators accumulators;
+    private final Typing typing;
+    /** Numbers the joins of {@link #ifWithLoop}, so one in a branch of another never shadows it. */
+    private int joins;
 
-    Ifs(JavacFacts facts, Terms terms, Statements statements, TypeTests typeTests, Lowering lowering) {
+    Ifs(JavacFacts facts, Terms terms, Statements statements, TypeTests typeTests, Lowering lowering, Accumulators accumulators,
+        Typing typing) {
         this.facts = facts;
         this.terms = terms;
         this.statements = statements;
         this.typeTests = typeTests;
         this.lowering = lowering;
+        this.accumulators = accumulators;
+        this.typing = typing;
     }
 
     /** The {@code if} at {@code index}, which continues with what follows it, then {@code cont}. */
     PirTerm inSequence(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        if (Exits.holdsLoop(tree.getThenStatement()) || holdsLoopInElse(tree)) return ifWithLoop(tree);
+        if (Exits.holdsLoop(tree.getThenStatement()) || holdsLoopInElse(tree)) return ifWithLoop(tree, following, index, frame, cont);
         boolean exits = Exits.holdsExit(tree.getThenStatement())
                 || tree.getElseStatement() != null && Exits.holdsExit(tree.getElseStatement());
         return exits ? ifWithExit(tree, following, index, frame, cont) : ifForEffect(tree, following, index, frame, cont);
@@ -67,7 +73,11 @@ final class Ifs {
      * path that falls through runs it. It is placed in both branches, and {@code let}s nothing, as the reference does.
      */
     private PirTerm ifWithExit(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        var after = statements.sequence(following, index + 1, frame, cont);
+        return terms.at(tree, withContinuation(tree, statements.sequence(following, index + 1, frame, cont), frame));
+    }
+
+    /** The {@code if} with {@code after} placed in each branch that falls through. */
+    private PirTerm withContinuation(IfTree tree, PirTerm after, Frame frame) {
         var condition = condition(tree);
         var pattern = pattern(condition);
         PirTerm result;
@@ -80,16 +90,37 @@ final class Ifs {
             var thenTerm = statements.branch(tree.getThenStatement(), frame, after);
             result = new PirTerm.IfThenElse(test, thenTerm, elseWithExit(tree, frame, after));
         }
-        return terms.at(tree, result);
+        return result;
     }
 
     private PirTerm elseWithExit(IfTree tree, Frame frame, PirTerm after) {
         return tree.getElseStatement() == null ? after : statements.branch(tree.getElseStatement(), frame, after);
     }
 
-    /** ADR-050's join, with loops: nothing reaches it yet, since a loop stops first. */
-    private PirTerm ifWithLoop(IfTree tree) {
-        throw NotPorted.at(facts, tree, "an if around a loop");
+    /**
+     * ADR-050: a branch holds a loop. What follows is bound once, as a function each path that falls through calls, so N
+     * guarded loops in a row do not grow as 2^N. It closes over what no loop changes, and what the branches' loops update
+     * is its argument, read where the branch ends: there the loop's result has been bound to that variable.
+     */
+    private PirTerm ifWithLoop(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
+        var after = statements.sequence(following, index + 1, frame, cont);
+        var join = "#if-join-" + ++joins;
+        var updated = accumulators.ofBranches(tree, frame);
+        PirTerm joinBody = after;
+        PirType joinType = typing.ofTerm(after);
+        for (int i = updated.size() - 1; i >= 0; i--) {
+            var binder = frame.scope().lookup(updated.get(i));
+            joinBody = terms.lam(binder, joinBody);
+            joinType = new PirType.FunType(binder.type(), joinType);
+        }
+        if (updated.isEmpty()) {
+            joinBody = terms.generatedLam("#unit", new PirType.UnitType(), joinBody);
+            joinType = new PirType.FunType(new PirType.UnitType(), joinType);
+        }
+        PirTerm fallThrough = terms.generated(join, joinType);
+        for (var element : updated) fallThrough = new PirTerm.App(fallThrough, terms.var(element, frame.scope().lookup(element)));
+        if (updated.isEmpty()) fallThrough = new PirTerm.App(fallThrough, Statements.unit());
+        return terms.at(tree, terms.generatedLet(join, joinBody, withContinuation(tree, fallThrough, frame)));
     }
 
     /**
@@ -138,7 +169,7 @@ final class Ifs {
     }
 
     /** The expression between an {@code if}'s own parentheses, which javac keeps as a tree. A user's stay. */
-    private static ExpressionTree condition(IfTree tree) {
+    static ExpressionTree condition(IfTree tree) {
         return ((ParenthesizedTree) tree.getCondition()).getExpression();
     }
 

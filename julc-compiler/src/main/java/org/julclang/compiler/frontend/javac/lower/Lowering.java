@@ -27,11 +27,13 @@ import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.subset.FieldUpdates;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.compiler.pir.TypeMethodRegistry;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -55,6 +57,7 @@ public final class Lowering {
     private final Typing typing;
     private final CallTargets targets;
     private final Switches switches;
+    private final FieldUpdates fieldUpdates;
 
     /** A lowering with no stdlib: every API call but the intrinsics is rejected, as in the reference. */
     public Lowering(JavacFacts facts, CompilationContext context) {
@@ -71,7 +74,8 @@ public final class Lowering {
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
         this.typeTests = new TypeTests(facts, terms, typing, this);
-        this.statements = new Statements(facts, terms, typing, this, targets, typeTests);
+        this.fieldUpdates = new FieldUpdates(facts);
+        this.statements = new Statements(facts, terms, typing, this, targets, typeTests, context, fieldUpdates);
         this.operators = new Operators(facts, typing, targets, this);
         this.lambdas = new Lambdas(facts, terms, typing, targets, this);
         this.calls = new Calls(facts, terms, typing, targets, lambdas, this, context, stdlib, typeMethods);
@@ -85,7 +89,19 @@ public final class Lowering {
 
     /** A method: a lambda over its parameters, as the reference's {@code generateMethod} builds it. */
     public PirTerm method(MethodTree tree, Scope scope, boolean guardBoolean) {
-        return statements.method(tree, scope, guardBoolean);
+        var term = statements.method(tree, scope, guardBoolean);
+        fieldUpdates.lowered(tree);
+        return term;
+    }
+
+    /** The methods this compilation runs once per evaluation, which alone may update a field in a loop ({@code JULC0056}). */
+    public void entryMethods(Collection<MethodTree> methods) {
+        fieldUpdates.entries(methods);
+    }
+
+    /** A static method whose binder is now one the reference takes for a variable: a loop after this reads it so. */
+    public void methodLowered(String binder) {
+        statements.methodLowered(binder);
     }
 
     /** A field initializer. */
@@ -126,16 +142,34 @@ public final class Lowering {
             case SwitchExpressionTree t -> terms.at(t, switches.expression(t, frame));
             // A guard casts to a primitive type or to Boolean, which is its operand; any other cast is the cast's slice.
             case TypeCastTree t when frame.inGuard() -> expr(t.getExpression(), frame);
-            case AssignmentTree t -> throw reassignment(t.getVariable(), t);
-            case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t);
+            case AssignmentTree t -> throw reassignment(t.getVariable(), t, frame);
+            case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t, frame);
             default -> throw NotPorted.at(facts, tree);
         };
     }
 
-    /** ADR-062 T20: only a loop updates a variable declared before it, and loops are not ported, so none of these lowers. */
-    private CompilerException reassignment(ExpressionTree target, ExpressionTree assignment) {
-        var info = DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP;
-        return facts.rejection(info, assignment, target.toString());
+    /** What a loop stores for {@code assignment}, an assignment or a compound one, to {@code target}. */
+    PirTerm assigned(ExpressionTree assignment, Scope.Binder target, Frame frame) {
+        return operators.assigned(assignment, target, frame);
+    }
+
+    /**
+     * An assignment no loop body bound as a statement. In a body with accumulators it would drop the update, so it is rejected
+     * rather than lowered to its right-hand side (ADR-062 T20): only a loop updates a variable declared before it.
+     */
+    private CompilerException reassignment(ExpressionTree target, ExpressionTree assignment, Frame frame) {
+        if (frame.bindsUpdates()) {
+            var name = target instanceof IdentifierTree identifier ? "'" + identifier.getName() + "'" : "this target";
+            return facts.locatedRejection("Assignment to " + name + " is not supported at this position",
+                    "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. "
+                            + "In an if/else branch, assign an accumulator or a local declared within that branch; "
+                            + "an assignment inside another expression or statement is not supported.", assignment);
+        }
+        if (facts.enclosing(assignment, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
+            return facts.rejection(DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP, assignment, target.toString());
+        }
+        return facts.rejection("Unsupported expression: AssignExpr",
+                "Variables are immutable on-chain. Use the accumulator pattern in for-each/while loops for mutable state.", assignment);
     }
 
     /**

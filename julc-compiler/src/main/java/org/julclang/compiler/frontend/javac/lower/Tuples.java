@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
@@ -101,8 +102,8 @@ final class Tuples {
     /**
      * The written tuple type the value of {@code tree} goes to, through parentheses, conditional branches and the arms of a
      * {@code switch} (F722), a {@code yield} going to the {@code switch} it targets: a declared
-     * local or field, a {@code return}, an argument of a method of this class. Null for anything else, a {@code var} for one.
-     * The reference takes an assignment's target too: assignments lower with loops, which bring that case.
+     * local or field, a {@code return}, an assignment to a name, an argument of a method of this class. Null for anything
+     * else, a {@code var} for one.
      */
     private PirType.RecordType destination(NewClassTree tree, Frame frame) {
         Tree child = tree;
@@ -128,6 +129,10 @@ final class Tuples {
             case VariableTree variable when variable.getInitializer() == value && !facts.isGenerated(variable.getType()) ->
                     facts.pirType(facts.element(variable).asType(), variable.getType());
             case ReturnTree ignored -> frame.exit().returnType();
+            case AssignmentTree assignment when assignment.getExpression() == value && assignment.getVariable() instanceof IdentifierTree target -> {
+                var binder = frame.scope().lookup(facts.element(target));
+                yield binder == null ? null : binder.type();
+            }
             case MethodInvocationTree call when call.getMethodSelect() instanceof IdentifierTree -> parameterType(call, value);
             default -> null;
         };

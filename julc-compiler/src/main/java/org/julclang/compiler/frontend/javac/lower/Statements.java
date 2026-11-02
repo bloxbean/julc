@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.BlockTree;
+import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IfTree;
@@ -10,12 +11,15 @@ import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.tree.YieldTree;
+import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
+import org.julclang.compiler.frontend.javac.subset.FieldUpdates;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
@@ -25,6 +29,7 @@ import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Method bodies, in the reference's continuation style: a statement list is one term, and each statement holds the ones
@@ -49,17 +54,24 @@ final class Statements {
     private final Lowering lowering;
     private final CallTargets targets;
     private final Ifs ifs;
+    private final Loops loops;
 
     private static final String SUPPORTED_STATEMENTS =
             "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.";
 
-    Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering, CallTargets targets, TypeTests typeTests) {
+    Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering, CallTargets targets, TypeTests typeTests,
+               CompilationContext context, FieldUpdates fieldUpdates) {
         this.facts = facts;
         this.terms = terms;
         this.typing = typing;
         this.lowering = lowering;
         this.targets = targets;
-        this.ifs = new Ifs(facts, terms, this, typeTests, lowering);
+        this.ifs = new Ifs(facts, terms, this, typeTests, lowering, new Accumulators(facts), typing);
+        this.loops = new Loops(facts, terms, typing, targets, lowering, this, context, fieldUpdates);
+    }
+
+    void methodLowered(String binder) {
+        loops.methodLowered(binder);
     }
 
     static PirTerm unit() {
@@ -105,12 +117,14 @@ final class Statements {
             case ReturnTree tree -> ret(tree, frame);
             // A yield is a switch arm's value, and leaves the arm as a return leaves the method.
             case YieldTree tree -> lowering.expr(tree.getValue(), frame);
-            case VariableTree tree -> local(tree, statements, index, frame, cont);
+            case VariableTree tree -> local(tree, frame, inner -> sequence(statements, index + 1, inner, cont));
             case ExpressionStatementTree tree -> {
                 var effect = lowering.expr(tree.getExpression(), frame);
                 yield new PirTerm.Let("#_", effect, sequence(statements, index + 1, frame, cont));
             }
             case IfTree tree -> ifs.inSequence(tree, statements, index, frame, cont);
+            case EnhancedForLoopTree tree -> loops.loop(tree, statements, index, frame, cont);
+            case WhileLoopTree tree -> loops.loop(tree, statements, index, frame, cont);
             case LabeledStatementTree tree -> throw label(tree);
             case StatementTree tree -> throw unsupported(tree);
         };
@@ -121,14 +135,16 @@ final class Statements {
         return sequence(branch instanceof BlockTree block ? block.getStatements() : List.of(branch), 0, frame, cont);
     }
 
-    /** A branch of an {@code if} that holds no {@code return}, as a value. */
+    /** A statement that holds no {@code return} as a value: a branch of an {@code if}, or the body of a loop with no accumulator. */
     PirTerm single(StatementTree statement, Frame frame) {
         return switch (statement) {
             case BlockTree tree -> block(tree, frame);
             case ExpressionStatementTree tree -> lowering.expr(tree.getExpression(), frame);
             case IfTree tree -> ifs.nested(tree, frame);
+            case EnhancedForLoopTree tree -> loops.alone(tree, frame);
+            case WhileLoopTree tree -> loops.alone(tree, frame);
             case LabeledStatementTree tree -> throw label(tree);
-            default -> throw unsupported(statement);
+            default -> throw unsupportedAsValue(statement);
         };
     }
 
@@ -145,7 +161,16 @@ final class Statements {
         };
     }
 
-    private static String statementName(StatementTree tree) {
+    /** A statement with no value: where the reference throws at once, with what it knows in its text. */
+    CompilerException unsupportedAsValue(StatementTree tree) {
+        return switch (tree.getKind()) {
+            case EMPTY_STATEMENT, SWITCH -> facts.locatedRejection("Unsupported statement: " + statementName(tree), SUPPORTED_STATEMENTS, tree);
+            default -> NotPorted.at(facts, tree);
+        };
+    }
+
+    /** The reference's name of a statement it has no lowering for. */
+    static String statementName(StatementTree tree) {
         return switch (tree.getKind()) {
             case BLOCK -> "BlockStmt";
             case SWITCH -> "SwitchStmt";
@@ -154,7 +179,7 @@ final class Statements {
     }
 
     /** {@code let x = value in ...}. The type is what the source wrote; for {@code var}, javac's type of the value. */
-    private PirTerm local(VariableTree tree, List<? extends StatementTree> statements, int index, Frame frame, PirTerm cont) {
+    PirTerm local(VariableTree tree, Frame frame, Function<Frame, PirTerm> rest) {
         String name = tree.getName().toString();
         var initializer = tree.getInitializer();
         if (initializer == null) {
@@ -171,8 +196,7 @@ final class Statements {
             typing.requireNativeBoundary("Variable '" + name + "' initializer", typing.of(initializer, value), type, initializer);
         }
         var scope = frame.scope().bind(element, type);
-        var body = sequence(statements, index + 1, frame.in(scope), cont);
-        return terms.let(scope.lookup(element), value, body);
+        return terms.let(scope.lookup(element), value, rest.apply(frame.in(scope)));
     }
 
     /**

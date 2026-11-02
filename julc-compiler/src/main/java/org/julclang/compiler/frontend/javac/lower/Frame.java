@@ -6,9 +6,11 @@ import org.julclang.compiler.pir.PirType;
  * What lowering needs of the point it is at, passed down and never stored, so no state outlives the construct that set
  * it or leaks on an exception. {@link Exit} is what a {@code return} here does, {@link PatternScope} what the {@code switch}
  * arms around here hold, and {@code inGuard} says this is a {@code switch} guard, an arm of a {@code switch} in one
- * included, where a constant has Java's width and {@code instanceof} is a total dispatch (ADR-067).
+ * included, where a constant has Java's width and {@code instanceof} is a total dispatch (ADR-067). {@code bindsUpdates} says
+ * this is in a loop body that binds every assignment it supports as a statement, so one that reaches an expression cannot be
+ * honoured. It holds through whatever nests in that body, as the reference's accumulator state does.
  */
-record Frame(Scope scope, Exit exit, PatternScope patterns, boolean inGuard) {
+record Frame(Scope scope, Exit exit, PatternScope patterns, boolean inGuard, boolean bindsUpdates) {
 
     /**
      * @param returnType   the declared return type; null in a {@code void} method and in a field initializer
@@ -20,7 +22,7 @@ record Frame(Scope scope, Exit exit, PatternScope patterns, boolean inGuard) {
 
     /** The frame of a method's body. */
     static Frame body(Scope scope, Exit exit) {
-        return new Frame(scope, exit, PatternScope.NONE, false);
+        return new Frame(scope, exit, PatternScope.NONE, false, false);
     }
 
     /** The frame of a field initializer, which no {@code return} can leave. */
@@ -33,21 +35,26 @@ record Frame(Scope scope, Exit exit, PatternScope patterns, boolean inGuard) {
      * (ADR-047). The arms and the guard around it hold, as the reference's {@code patternScopes} and {@code guardDepth} do.
      */
     Frame lambda(Scope inner) {
-        return new Frame(inner, new Exit(null, false), patterns, inGuard);
+        return new Frame(inner, new Exit(null, false), patterns, inGuard, bindsUpdates);
     }
 
     /** This frame with {@code inner} visible: a binder's scope, which ends where the term it was built for does. */
     Frame in(Scope inner) {
-        return new Frame(inner, exit, patterns, inGuard);
+        return new Frame(inner, exit, patterns, inGuard, bindsUpdates);
     }
 
     /** This frame in a {@code switch} arm. */
     Frame in(Scope inner, PatternScope arm) {
-        return new Frame(inner, exit, arm, inGuard);
+        return new Frame(inner, exit, arm, inGuard, bindsUpdates);
     }
 
     /** This frame in a {@code switch} guard. */
     Frame guard() {
-        return new Frame(scope, exit, patterns, true);
+        return new Frame(scope, exit, patterns, true, bindsUpdates);
+    }
+
+    /** This frame in a body with accumulators. */
+    Frame updating() {
+        return new Frame(scope, exit, patterns, inGuard, true);
     }
 }

@@ -110,6 +110,8 @@ public final class JavacCompilation {
         ClassTree type = methodName == null ? discovery.validatorClass(unit) : discovery.firstClass(unit);
         program.registerTypes();
         var parts = new ClassParts(type);
+        lowering.entryMethods(methodName == null ? discovery.methods(type).stream().filter(discovery::isEntrypoint).toList()
+                : discovery.methods(type).stream().filter(method -> method.getName().contentEquals(methodName)).toList());
         var attempts = new ArrayList<MethodAttempt>();
         for (var method : discovery.methods(type)) {
             boolean entry = methodName == null && discovery.isEntrypoint(method);
@@ -120,6 +122,7 @@ public final class JavacCompilation {
                 if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) {
                     BindingCheck.check(parts.bindAround(term), lowering.terms().provenance());
                 }
+                lowering.methodLowered(parts.binder(method));
                 attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method), term, null));
             } catch (NotPorted e) {
                 attempts.add(new MethodAttempt(parts.binder(method), null, null, e.construct()));
@@ -229,6 +232,7 @@ public final class JavacCompilation {
             var body = lowering.method(method, scope, false);
             overloads.check(method.getName().toString(), methodType(method), body, () -> facts.location(method));
             methods.put(binder(method), new ValidatorAssembly.Method(binder(method), body));
+            lowering.methodLowered(binder(method));
             methodElements.put(binder(method), facts.binderMethod((ExecutableElement) facts.element(method)));
         }
 
@@ -311,6 +315,8 @@ public final class JavacCompilation {
         requireNoLibraries();
         // 10. Every static method's type
         parts.declareMethods(type);
+        // The entrypoints run once per evaluation (JULC0056, ADR-060)
+        lowering.entryMethods(entrypoints.stream().map(JavacDiscovery.EntryPoint::method).toList());
 
         // 11b. Compile static field initializers
         var statics = parts.lowerStatics();
@@ -432,6 +438,8 @@ public final class JavacCompilation {
             parameters.add(new ValidatorAssembly.Parameter(name, name, parameterType, at));
         }
 
+        // The target runs once per evaluation (JULC0056, ADR-060)
+        lowering.entryMethods(List.of(target));
         var statics = parts.lowerStatics();
         // Compile ALL static methods (including target) so cross-references work
         var overloads = new OnchainOverloads(type.getSimpleName().toString(), Set.of());

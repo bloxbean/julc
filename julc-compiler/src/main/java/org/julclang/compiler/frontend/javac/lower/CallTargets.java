@@ -1,5 +1,6 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.LambdaExpressionTree;
@@ -213,8 +214,20 @@ final class CallTargets {
     /**
      * Whether the reference applies {@code UnBData} to this read: it takes a hash in a variable to be Data still, as a
      * loop's variable is, and only a read from a call to be decoded. A variable holds bytes, so that term fails on-chain
-     * where Java returns them, and it does not lower. A lambda's parameter is the one it knows to be decoded.
+     * where Java returns them, and it does not lower. A lambda's parameter and a for-each's variable are the ones it knows
+     * to be decoded.
      */
+    private boolean decodesAgain(String name, ExpressionTree receiver) {
+        if (name.equals("value") || isLambdaParameter(receiver) || isLoopVariable(receiver)) return false;
+        var call = receiver instanceof MethodInvocationTree tree ? tree : null;
+        return name.equals("hash") ? call == null || !typedCall(call) : call == null;
+    }
+
+    private boolean isLoopVariable(ExpressionTree tree) {
+        return tree instanceof IdentifierTree && facts.element(tree) instanceof VariableElement variable
+                && facts.declaration(variable) != null && facts.parent(facts.declaration(variable)) instanceof EnhancedForLoopTree;
+    }
+
     /**
      * Whether the reference lowers {@code call}'s lambda once with its parameter untyped. A simple name might be a class, so
      * {@code NAME.hof(...)} is tried as a static call first, which lowers the arguments, finds no method and drops the term.
@@ -247,12 +260,6 @@ final class CallTargets {
 
     private static ExpressionTree receiverOf(MethodInvocationTree call) {
         return call.getMethodSelect() instanceof MemberSelectTree select ? select.getExpression() : null;
-    }
-
-    private boolean decodesAgain(String name, ExpressionTree receiver) {
-        if (name.equals("value") || isLambdaParameter(receiver)) return false;
-        var call = receiver instanceof MethodInvocationTree tree ? tree : null;
-        return name.equals("hash") ? call == null || !typedCall(call) : call == null;
     }
 
     /** Whether {@code tree} reads a parameter of a lambda around it. */

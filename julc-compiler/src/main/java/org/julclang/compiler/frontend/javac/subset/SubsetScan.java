@@ -9,8 +9,10 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ConstantCaseLabelTree;
+import com.sun.source.tree.DoWhileLoopTree;
 import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.LabeledStatementTree;
@@ -74,7 +76,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.UNBOUNDED_WILDCARD, Tree.Kind.EXTENDS_WILDCARD, Tree.Kind.SUPER_WILDCARD,
             Tree.Kind.IDENTIFIER, Tree.Kind.MEMBER_SELECT, Tree.Kind.PARENTHESIZED, Tree.Kind.NEW_ARRAY,
             Tree.Kind.INT_LITERAL, Tree.Kind.LONG_LITERAL, Tree.Kind.BOOLEAN_LITERAL, Tree.Kind.STRING_LITERAL,
-            Tree.Kind.MEMBER_REFERENCE);
+            Tree.Kind.MEMBER_REFERENCE, Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP);
 
     /** The kinds that are subset only where lowering reaches them. */
     private static final Set<Tree.Kind> WHERE_LOWERED = EnumSet.of(
@@ -90,7 +92,9 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.GREATER_THAN, Tree.Kind.GREATER_THAN_EQUAL, Tree.Kind.CONDITIONAL_AND, Tree.Kind.CONDITIONAL_OR,
             Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.UNARY_MINUS,
             Tree.Kind.SWITCH, Tree.Kind.SWITCH_EXPRESSION, Tree.Kind.CASE, Tree.Kind.YIELD, Tree.Kind.DEFAULT_CASE_LABEL,
-            Tree.Kind.PATTERN_CASE_LABEL, Tree.Kind.CONSTANT_CASE_LABEL);
+            Tree.Kind.PATTERN_CASE_LABEL, Tree.Kind.CONSTANT_CASE_LABEL,
+            Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP, Tree.Kind.BREAK, Tree.Kind.CONTINUE,
+            Tree.Kind.PREFIX_INCREMENT, Tree.Kind.PREFIX_DECREMENT, Tree.Kind.POSTFIX_INCREMENT, Tree.Kind.POSTFIX_DECREMENT);
 
     /** The kinds only a {@code switch} guard holds: each is {@link GuardRules}' to reject, or a constant that needs no term. */
     private static final Set<Tree.Kind> IN_A_GUARD = EnumSet.of(Tree.Kind.TYPE_CAST, Tree.Kind.AND, Tree.Kind.OR, Tree.Kind.XOR,
@@ -100,7 +104,10 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** The statements a block holds where lowering reaches it; {@code Statements} rejects those the reference rejects. */
     private static final Set<Tree.Kind> STATEMENTS = EnumSet.of(Tree.Kind.RETURN, Tree.Kind.VARIABLE, Tree.Kind.IF,
             Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.BLOCK, Tree.Kind.EMPTY_STATEMENT, Tree.Kind.LABELED_STATEMENT,
-            Tree.Kind.YIELD, Tree.Kind.SWITCH);
+            Tree.Kind.YIELD, Tree.Kind.SWITCH, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP, Tree.Kind.BREAK, Tree.Kind.CONTINUE);
+
+    /** The statements rejected wherever they stand, lowered or not, with a code of their own. */
+    private static final Set<Tree.Kind> REJECTED_STATEMENTS = EnumSet.of(Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP);
 
     /** The methods of a functional interface, as the reference lists them. */
     private static final Set<String> FUNCTIONAL_METHODS = Set.of("apply", "test", "accept", "get", "run");
@@ -213,7 +220,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         if (facts.parent(tree) instanceof ClassTree) return literalsOf(tree);
         var written = tree.getStatements().stream().filter(statement -> !facts.isGenerated(statement)).toList();
         for (var statement : written) {
-            boolean read = inLowered ? STATEMENTS.contains(statement.getKind()) : statement.getKind() == Tree.Kind.RETURN;
+            boolean read = REJECTED_STATEMENTS.contains(statement.getKind())
+                    || (inLowered ? STATEMENTS.contains(statement.getKind()) : statement.getKind() == Tree.Kind.RETURN);
             if (!read) throw NotPorted.at(facts, statement);
         }
         warnUnreachable(tree);
@@ -221,7 +229,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return null;
     }
 
-    /** One warning a block: javac has rejected a statement after a {@code return}, so {@code Builtins.error()} is the rest. */
+    /** One warning a block: javac has rejected a statement after a {@code return} or a {@code break}, so {@code Builtins.error()} is the rest. */
     private void warnUnreachable(BlockTree tree) {
         var statements = tree.getStatements();
         for (int i = 0; i + 1 < statements.size(); i++) {
@@ -305,6 +313,18 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitLabeledStatement(LabeledStatementTree tree, Void unused) {
         return null;
+    }
+
+    /** A C-style {@code for} has no lowering: a for-each or a {@code while} does what it does. */
+    @Override
+    public Void visitForLoop(ForLoopTree tree, Void unused) {
+        throw facts.rejection(DiagnosticCodes.C_STYLE_FOR_UNSUPPORTED, tree);
+    }
+
+    /** A {@code do}-{@code while} has no lowering: a {@code while} does what it does. */
+    @Override
+    public Void visitDoWhileLoop(DoWhileLoopTree tree, Void unused) {
+        throw facts.rejection(DiagnosticCodes.DO_WHILE_UNSUPPORTED, tree);
     }
 
     /** {@code JULC0052}. The rest of the compound operators are assignments, which are the lowering's to reject. */

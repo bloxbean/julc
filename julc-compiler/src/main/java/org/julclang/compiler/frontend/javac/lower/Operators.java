@@ -1,6 +1,8 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.BinaryTree;
+import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.LiteralTree;
@@ -16,6 +18,7 @@ import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
@@ -55,6 +58,56 @@ final class Operators {
         this.typing = typing;
         this.targets = targets;
         this.lowering = lowering;
+    }
+
+    /**
+     * What an assignment stores (ADR-060): the right-hand side, or {@code target op value}, in Java's order: the target is
+     * read first. Integers take every lowered operator and strings take {@code +=}. {@code SubsetScan} has rejected the others.
+     */
+    PirTerm assigned(ExpressionTree assignment, Scope.Binder target, Frame frame) {
+        String name = target.element().getSimpleName().toString();
+        if (assignment instanceof AssignmentTree plain) {
+            var value = lowering.expr(plain.getExpression(), frame);
+            typing.requireNativeBoundary("Assignment to '" + name + "'", typing.of(plain.getExpression(), value), target.type(), plain.getExpression());
+            return value;
+        }
+        var compound = (CompoundAssignmentTree) assignment;
+        String operator = compoundOperator(compound);
+        boolean string = target.type() instanceof PirType.StringType && compound.getKind() == Tree.Kind.PLUS_ASSIGNMENT;
+        if (!(target.type() instanceof PirType.IntegerType) && !string) {
+            throw facts.locatedRejection("Compound assignment " + operator + " to '" + name + "' of type "
+                            + LibraryMethodRegistry.pirTypeName(target.type()) + " is not supported",
+                    "Compound assignment is supported on integer variables, and += on String variables. "
+                            + "Write the update explicitly, e.g. x = x.add(y).", assignment);
+        }
+        var current = lowering.expr(compound.getVariable(), frame);
+        var operand = lowering.expr(compound.getExpression(), frame);
+        var operandType = typing.of(compound.getExpression(), operand);
+        if (string ? !(operandType instanceof PirType.StringType)
+                : !(operandType instanceof PirType.IntegerType || operandType instanceof PirType.DataType)) {
+            throw facts.locatedRejection("Compound assignment " + operator + " to '" + name + "' needs a "
+                            + LibraryMethodRegistry.pirTypeName(target.type()) + " operand, found " + LibraryMethodRegistry.pirTypeName(operandType),
+                    "Convert the right-hand side to the variable's type first.", compound.getExpression());
+        }
+        if (string) return PirHelpers.builtinApp2(DefaultFun.AppendString, current, operand);
+        return PirHelpers.builtinApp2(switch (compound.getKind()) {
+            case PLUS_ASSIGNMENT -> DefaultFun.AddInteger;
+            case MINUS_ASSIGNMENT -> DefaultFun.SubtractInteger;
+            case MULTIPLY_ASSIGNMENT -> DefaultFun.MultiplyInteger;
+            case DIVIDE_ASSIGNMENT -> DefaultFun.QuotientInteger;
+            case REMAINDER_ASSIGNMENT -> DefaultFun.RemainderInteger;
+            default -> throw NotPorted.at(facts, compound);
+        }, current, operand);
+    }
+
+    private static String compoundOperator(CompoundAssignmentTree tree) {
+        return switch (tree.getKind()) {
+            case PLUS_ASSIGNMENT -> "+=";
+            case MINUS_ASSIGNMENT -> "-=";
+            case MULTIPLY_ASSIGNMENT -> "*=";
+            case DIVIDE_ASSIGNMENT -> "/=";
+            default -> "%=";
+        };
     }
 
     PirTerm binary(BinaryTree tree, Frame frame) {
@@ -152,6 +205,8 @@ final class Operators {
             case LOGICAL_COMPLEMENT -> new PirTerm.IfThenElse(operand, bool(false), bool(true));
             case UNARY_MINUS -> PirHelpers.builtinApp2(DefaultFun.SubtractInteger,
                     new PirTerm.Const(Constant.integer(BigInteger.ZERO)), operand);
+            case PREFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_INCREMENT, POSTFIX_DECREMENT ->
+                    throw facts.rejection("Unsupported unary operator: " + tree.getKind(), "Supported unary operators: ! (logical NOT) and - (negation)", tree);
             default -> throw NotPorted.at(facts, tree);
         };
     }
