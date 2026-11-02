@@ -196,7 +196,7 @@ class JavacLoopsTest {
             "static long m(JulcList<BigInteger> xs, boolean c) { for (var x : xs) { if (c) { } else { long t = 0; t = 1; } } return 1; }",
             "static long m(JulcList<BigInteger> xs) { for (var x : xs) { { long t = 0; t = 1; } } return 1; }",
             "static long m(long n) { while ((n = n - 1) > 0) { break; } return n; }",
-            "static long m(JulcList b) { JulcList<JulcG1> x = JulcList.empty(); while (x.isEmpty()) { x = b; } return 1; }",
+            "static long h(JulcList b, JulcList<JulcG1> x) { while (x.isEmpty()) { x = b; } return 1; } static long m() { return 1; }",
             "static long m(long n) { while (n > 0) { n = n - 1; } { return n; } }",
             "static long m(JulcList<BigInteger> xs, long s) { for (var x : xs) { s = s + 1; boolean b = (s = 2) > 1; } return s; }",
             "static long m(JulcList<BigInteger> xs, long s, long t) { for (var x : xs) { s = s + 1; t = t + 1; boolean b = (s = 2) > 1; } return s; }",
@@ -312,7 +312,7 @@ class JavacLoopsTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
         assertEquals("JULC0012", failure.diagnostics().getFirst().code());
-        assertEquals(12, failure.diagnostics().getFirst().line());
+        assertEquals(13, failure.diagnostics().getFirst().line());
     }
 
     /** A tuple's diamond takes its target's components, so a raw target takes only Data. */
