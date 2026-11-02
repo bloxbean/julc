@@ -51,3 +51,19 @@ The later fixes ran 26 more, each set with a clean control: 22 killed, one that 
 - The over-rejections in "Closed by M5" and `068-followups.md` remain, and M5 reads them with the corpus.
 
 ## Gates
+
+At `9ab85bc3`, the last code of the group, through `build/g2/gates.sh`, with the tree clean before and after:
+
+| Gate | Result |
+|---|---|
+| `:julc-difftest:adr068Baseline`, gate off | 0 |
+| `:julc-difftest:adr068Lowering`, I1 against the frozen table | 0, no row moved |
+| `:julc-difftest:adr068Types` | 0 |
+| `./gradlew test --rerun --continue` | 18,041 tests, 0 failed, 0 errors, 530 skipped, in 1,000 result files |
+| `:julc-compiler:pairCaseTest` | 0 |
+| `:julc-e2e-tests:onChainHarnessTest` | 0, offline |
+| `verification/blaster/scripts/prepare-artifacts.sh` | 0 |
+
+MPF: 72 rows, 0 bytes and 0 budget, at the last change to `DelayedMethodPass`. No DevKit, Elci or image ran on Group 2. The group merged `5a1dd06f`, a change to the Java VM's Ed25519, after these gates; that merge took the VM, Scalus, Truffle and testkit suites, and CI.
+
+Three confirmation rounds followed the reviews. The last fix round, a memo in `Calls.valuesOf` and a stop at a `@Param`, had a read of its diff, its mutants and its tests, and no fourth review.

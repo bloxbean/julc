@@ -24,13 +24,20 @@ public final class VmParityFixtures {
         var api = JulcVmWasm.create();
         var scripts = new LinkedHashMap<String, String>();
         for (String fixture : List.of("divideInteger/divideInteger-neg-pos", "divideInteger/divideInteger-zero",
-                "addInteger/addInteger-01", "trace")) {
+                "addInteger/addInteger-01", "trace",
+                "verifyEd25519Signature/test-vector-01")) {
             String name = fixture.substring(fixture.lastIndexOf('/') + 1);
             scripts.put(name, Files.readString(root.resolve("julc-vm/src/test/resources/conformance/builtin/semantics/"
                     + fixture + "/" + name + ".uplc")));
         }
         scripts.put("auction", HexFormat.of().formatHex(Files.readAllBytes(
                 root.resolve("julc-benchmark/src/jmh/resources/data/auction_1-2.flat"))));
+        scripts.put("ed25519-small-order-part", """
+                (program 1.0.0 [[[(builtin verifyEd25519Signature)
+                 (con bytestring #cdb267ce40c5cd45306fa5d2f29731459387dbf9eb933b7bd5aed9a765b88d4d)]
+                 (con bytestring #e47d62c63f830dc7a6851a0b1f33ae4bb2f507fb6cffec4011eaccd55b53f56c)]
+                 (con bytestring #160a1cb0dc9c0258cd0a7d23e94d8fa878bcb1925f2c64246b2dee1796bed5125ec6bc982a269b723e0668e540911a9a6a58921d6925e434ab10aa7940551a09)])
+                """);
         scripts.put("budget", "(program 1.1.0 (con unit ()))");
         scripts.put("large-data", "(program 1.1.0 (lam x x))");
         scripts.put("explicit-costs", "(program 1.1.0 (con unit ()))");

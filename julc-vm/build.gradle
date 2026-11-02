@@ -6,6 +6,8 @@ description = 'Plutus VM SPI interface and facade (pure Java, no Scala dependenc
 
 dependencies {
     api project(':julc-core')
+    // BloxBean's fork; the same coordinates as cardano-client-lib.
+    implementation 'com.bloxbean.cardano:net-i2p-crypto-eddsa:0.3.1'
 }
 
 publishing {
