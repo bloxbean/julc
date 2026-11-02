@@ -533,6 +533,11 @@ public final class JavacFacts {
         return end(tree) < 0;
     }
 
+    /** Whether {@code declaration} writes no type: a {@code var}, or an inferred parameter of a lambda. */
+    public boolean isInferred(VariableTree declaration) {
+        return declaration.getType() == null || isGenerated(declaration.getType());
+    }
+
     /**
      * The first {@code count} characters of {@code tree}'s source as javac reads them: a Unicode escape is the character it
      * denotes, and a backslash begins one only after an even number of backslashes (JLS 3.3). What a token is spelled with

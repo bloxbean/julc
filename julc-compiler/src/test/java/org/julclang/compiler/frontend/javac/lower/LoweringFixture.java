@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,6 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * what it is meant to accept, so a fixture cannot go vacuous.
  */
 public final class LoweringFixture {
+
+    /** Reads a message with its white space collapsed: the reference quotes a {@code switch} over several lines, javac's text on one. */
+    public static final UnaryOperator<String> SPACING = text -> text.replaceAll("\\s+", " ");
 
     private LoweringFixture() {
     }
@@ -116,10 +120,19 @@ public final class LoweringFixture {
         assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend, stdlib));
     }
 
+    /** {@link #assertSameMethodRejectionAsReference(String, String, StdlibLookup)}, with both messages read through {@code message}. */
+    public static void assertSameMethodRejectionAsReference(String source, String name, StdlibLookup stdlib, UnaryOperator<String> message) {
+        assertSameRejection(frontend -> method(source, name, OptimizationLevel.DEFAULT, false, frontend, stdlib), message);
+    }
+
     static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile) {
+        assertSameRejection(compile, UnaryOperator.identity());
+    }
+
+    private static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile, UnaryOperator<String> message) {
         var reference = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAPARSER));
         var javac = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAC));
-        assertEquals(error(reference), error(javac), () -> javac.getMessage());
+        assertEquals(message.apply(error(reference)), message.apply(error(javac)), () -> javac.getMessage());
     }
 
     private static String error(CompilerException e) {

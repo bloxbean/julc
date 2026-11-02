@@ -181,7 +181,7 @@ public final class GuardTypes {
     private JType name(IdentifierTree name, Function<ExpressionTree, JType> leaf) {
         if (!(facts.elementOrNull(name) instanceof VariableElement variable)) return leaf.apply(name);
         return switch (variable.getKind()) {
-            case PARAMETER -> declared(variable.asType());
+            case PARAMETER -> facts.isInferred(facts.declaration(variable)) ? JType.OTHER : declared(variable.asType());
             case LOCAL_VARIABLE -> {
                 var declaration = facts.declaration(variable);
                 if (declaration.getType() != null && !facts.isGenerated(declaration.getType())) yield declared(variable.asType());

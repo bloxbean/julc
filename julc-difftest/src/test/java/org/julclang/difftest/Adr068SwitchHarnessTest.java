@@ -465,6 +465,26 @@ class Adr068SwitchHarnessTest {
     }
 
     @Test
+    void aReadOfWhatHasNoBinderIsRejectedAlike() {
+        assertRejectedAlike("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> i.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }", "JULC0072", a(1), a(2));
+        assertRejectedAlike("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> { var b = i.v().signum() > 0; yield b; } default -> false; }) -> 1; default -> 3; }; }", "JULC0072", a(1), a(2));
+        assertAgreeOnEveryPair("public static long m(S s, S t) { return switch (s) { case S.A a when (switch (t) { case S.A i -> a.v().signum() > 0; default -> false; }) -> 1; default -> 3; }; }");
+    }
+
+    @Test
+    void anInferredParameterInAGuardFollowsTheReceiver() {
+        var l = list(1, -1, 3);
+        String body = ".filter(x -> switch (s) { case S.A a when x.signum() > 0 -> true; default -> false; }).size(); }";
+        assertRejectedAlike("public static long m(S s, JulcList<BigInteger> l) { return l" + body, "JULC0072", a(1), l);
+        for (var s : everyS()) {
+            assertAgree("public static long m(S s, JulcList<BigInteger> l) { return (l)" + body, s, l);
+            assertAgree("public static long m(S s, JulcList<BigInteger> l) { return l.tail()" + body, s, l);
+            assertAgree("static JulcList<BigInteger> ids(JulcList<BigInteger> l) { return l; } public static long m(S s, JulcList<BigInteger> l) { return ids(l)" + body, s, l);
+        }
+        assertRejectedAlike("public static long m(S s, JulcList<Boolean> l) { return l.filter(b -> switch (s) { case S.A q when b -> true; default -> false; }).size(); }", "JULC0072", a(1), new PlutusData.ListData(List.of(bool(true))));
+    }
+
+    @Test
     void aSwitchStatementIsNotInTheSubset() {
         var report = run("public static long m(S s) { switch (s) { case S.A a -> { return 1; } default -> { return 2; } } }", List.of(a(1)));
         report.results().forEach((config, result) -> assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe));

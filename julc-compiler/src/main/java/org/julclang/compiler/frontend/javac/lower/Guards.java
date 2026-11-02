@@ -94,13 +94,15 @@ final class Guards {
     /**
      * The reference's type of an expression, read before it is lowered, which knows less than javac and must not know more
      * (I2): a variable's binder, a {@code new}, a helper's, a library method's and an accessor's result, what the registry
-     * declares on the receiver it saw, and a literal. Of anything else it says Data.
+     * declares on the receiver it saw, and a literal. Of anything else it says Data, and of what the first pass of a lambda
+     * has no type for ({@link CallTargets#untypedInFirstPass}), which is the pass a throw here is kept from.
      */
     PirType referenceType(ExpressionTree tree, Frame frame) {
         return switch (tree) {
             case IdentifierTree name -> {
                 var binder = frame.scope().lookup(facts.element(name));
-                yield binder == null ? new PirType.DataType() : facts.registry().resolveNamed(binder.type());
+                yield binder == null || targets.untypedInFirstPass(name) ? new PirType.DataType()
+                        : facts.registry().resolveNamed(binder.type());
             }
             case MethodInvocationTree call -> callType(call, frame);
             case NewClassTree creation -> typing.of(creation);
@@ -115,8 +117,8 @@ final class Guards {
 
     private PirType callType(MethodInvocationTree call, Frame frame) {
         return switch (targets.classify(call)) {
-            case CallTarget.Accessor ignored -> typing.of(call);
-            case CallTarget.Wrapper ignored -> typing.of(call);
+            case CallTarget.Accessor ignored -> componentType(call, frame);
+            case CallTarget.Wrapper ignored -> componentType(call, frame);
             case CallTarget.Local ignored -> typing.of(call);
             case CallTarget.Library ignored -> typing.of(call);
             case CallTarget.Intrinsic intrinsic -> intrinsic == CallTarget.Intrinsic.CAST ? typing.of(call) : new PirType.DataType();
@@ -125,6 +127,16 @@ final class Guards {
             case CallTarget.Hof target -> declaredReturn(call, target.method(), frame);
             default -> new PirType.DataType();
         };
+    }
+
+    /**
+     * A component, which the reference reads off what it sees of the receiver. A variable with no binder yet says nothing:
+     * the guard's type is read before the guard is lowered, so that is what an arm of a {@code switch} in a guard holds.
+     */
+    private PirType componentType(MethodInvocationTree call, Frame frame) {
+        boolean seen = !(call.getMethodSelect() instanceof MemberSelectTree select)
+                || !(referenceType(select.getExpression(), frame) instanceof PirType.DataType);
+        return seen ? typing.of(call) : new PirType.DataType();
     }
 
     private PirType declaredReturn(MethodInvocationTree call, String method, Frame frame) {
