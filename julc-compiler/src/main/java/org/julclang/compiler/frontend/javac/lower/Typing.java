@@ -34,8 +34,6 @@ import java.util.Set;
  */
 final class Typing {
 
-    private static final String PAIR_LIST_ENCODED = "a pair list encoded to Data";
-
     private final JavacFacts facts;
     private final TermTypes termTypes = new TermTypes();
     /** Terms whose type no tree says: a diamond's, worked out here. */
@@ -97,20 +95,15 @@ final class Typing {
                 || type instanceof PirType.StringType || type instanceof PirType.ListType || type instanceof PirType.MapType;
     }
 
-    /** A pair list is not encoded to Data. A {@code MapData} is one Java has as a map: that is what encoding it gives. */
+    /** A pair list is not encoded to Data. */
     void requireNoPairListEncoded(ExpressionTree tree, PirTerm lowered) {
-        if (of(tree, lowered) instanceof PirType.MapType) requireMap(tree, tree);
+        if (of(tree) instanceof PirType.DataType) requireNoPairListEncoded(facts.type(tree), of(tree, lowered), tree);
     }
 
-    /** {@link #requireNoPairListEncoded}, of a result whose type only its term says. */
-    void requireNoPairListEncoded(PirType type, Tree at) {
-        if (type instanceof PirType.MapType) throw NotPorted.at(facts, at, PAIR_LIST_ENCODED);
-    }
-
-    private void requireMap(ExpressionTree tree, Tree at) {
-        var type = facts.type(tree);
-        boolean map = type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.PLUTUS_DATA + ".MapData");
-        if (!map && of(tree) instanceof PirType.DataType) throw NotPorted.at(facts, at, PAIR_LIST_ENCODED);
+    /** {@link #requireNoPairListEncoded}, of a value that holds {@code held} and that Java has as {@code java}: a {@code MapData} is a map. */
+    void requireNoPairListEncoded(TypeMirror java, PirType held, Tree at) {
+        boolean map = java.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(java)).equals(JavacNames.PLUTUS_DATA + ".MapData");
+        if (held instanceof PirType.MapType && !map) throw NotPorted.at(facts, at, "a pair list encoded to Data");
     }
 
     /** What {@code term} says of itself. */
