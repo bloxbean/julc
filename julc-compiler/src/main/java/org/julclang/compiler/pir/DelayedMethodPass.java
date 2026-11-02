@@ -216,9 +216,11 @@ public final class DelayedMethodPass {
             }
             case PirTerm.IfThenElse branch -> {
                 var condition = known(branch.cond(), bound, reading);
+                if (condition == null || condition.kind() != Kind.BOOL) yield null;
                 var then = known(branch.thenBranch(), bound, reading);
+                if (then == null) yield null;
                 var otherwise = known(branch.elseBranch(), bound, reading);
-                if (condition == null || condition.kind() != Kind.BOOL || then == null || otherwise == null) yield null;
+                if (otherwise == null) yield null;
                 yield Known.of(then.kind() == otherwise.kind() ? then.kind() : Kind.OTHER, Math.max(then.size(), otherwise.size()))
                         .after(condition.work() + Math.max(then.work(), otherwise.work()) + 1);
             }

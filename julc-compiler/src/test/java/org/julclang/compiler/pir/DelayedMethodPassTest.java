@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.Map;
 import java.util.Set;
 
@@ -444,6 +445,49 @@ class DelayedMethodPassTest {
             assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertTrue(mayFail(callTree(64, identity, call("f64", integer(1))))));
             assertFalse(mayFail(callTree(7, identity, call("f7", integer(1)))), "255 calls");
             assertTrue(mayFail(callTree(8, identity, call("f8", integer(1)))), "511 calls");
+        }
+
+        /**
+         * A function of {@code parameters} integers, each level branching once per parameter with that one grown, over
+         * {@code depth} levels, so the arguments it can meet are a polynomial of degree {@code parameters}. {@code test} is each
+         * branch's condition, and {@code first} the function at the bottom.
+         */
+        private static PirTerm polynomial(int parameters, int depth, PirTerm test, PirTerm first) {
+            var names = IntStream.range(0, parameters).mapToObj(i -> "x" + i).toList();
+            PirTerm term = new PirTerm.Var("f" + depth, new PirType.FunType(INTEGER, INTEGER));
+            for (var ignored : names) term = new PirTerm.App(term, integer(1));
+            for (int level = depth; level > 0; level--) {
+                PirTerm body = null;
+                for (int grown = parameters - 1; grown >= 0; grown--) {
+                    PirTerm next = new PirTerm.Var("f" + (level - 1), new PirType.FunType(INTEGER, INTEGER));
+                    for (int i = 0; i < parameters; i++) {
+                        next = new PirTerm.App(next, i == grown ? builtin(DefaultFun.AddInteger, variable(names.get(i)), integer(1)) : variable(names.get(i)));
+                    }
+                    body = body == null ? next : new PirTerm.IfThenElse(test, next, body);
+                }
+                for (int i = parameters - 1; i >= 0; i--) body = new PirTerm.Lam(names.get(i), INTEGER, body);
+                term = new PirTerm.Let("f" + level, body, term);
+            }
+            return new PirTerm.Let("f0", first, term);
+        }
+
+        private static PirTerm function(int parameters, PirTerm body) {
+            PirTerm term = body;
+            for (int i = parameters - 1; i >= 0; i--) term = new PirTerm.Lam("x" + i, INTEGER, term);
+            return term;
+        }
+
+        /** What may fail ends a reading at once, in a branch too: read on, the arguments of these would take minutes. */
+        @Test
+        void aBranchThatMayFailEndsTheReading() {
+            var yes = new PirTerm.Const(Constant.bool(true));
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 30, yes, function(6, new PirTerm.Error(INTEGER))))));
+        }
+
+        @Test
+        void aConditionThatMayFailEndsTheReading() {
+            var fails = new PirTerm.Error(new PirType.BoolType());
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertTrue(mayFail(polynomial(6, 30, fails, function(6, variable("x0"))))));
         }
 
         /** An {@code if} counts one branch, so the bound ends no walk of the two: only the memo keeps this linear. */
