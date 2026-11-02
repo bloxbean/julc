@@ -89,7 +89,7 @@ final class GuardRules {
         }
         var constant = constants.evaluate(guard);
         if (!constant.constant()) return false;
-        // javac rejects a constant false, but for what it does not fold: a shift by a long.
+        // javac rejects a constant false first. This stays so that such a guard stops if one ever gets past it.
         if (!(Boolean) constant.value().value()) {
             throw invalid(guard, entry, "'" + facts.text(guard) + "' is a constant expression with value false, so the case can never apply");
         }
