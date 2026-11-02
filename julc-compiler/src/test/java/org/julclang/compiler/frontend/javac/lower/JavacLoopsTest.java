@@ -383,6 +383,8 @@ class JavacLoopsTest {
             "static long m(PlutusData d) { var l = Builtins.unListData(d); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
             "static long m(PlutusData.ListData d) { var c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData.ListData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData.ListData d, PlutusData e) { PlutusData c = d; PlutusData g = Builtins.unMapData(e); long i = 0; while (i < 2) { c = Builtins.tailList(c); g = Builtins.tailList(g); i = i + 1; } return i; }",
+            "static PlutusData id(PlutusData v) { return v; } static long m(PlutusData d) { PlutusData c = Builtins.mkNilData(); long i = 0; while (i < 2) { c = Builtins.mkCons(d, id(c)); i = i + 1; } return i; }",
             "static PlutusData.MapData h(PlutusData d) { return Builtins.unMapData(d); } static long m(PlutusData d) { PlutusData.MapData b = h(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
     })
     void whatATupleOfAWhileHolds(String members) {

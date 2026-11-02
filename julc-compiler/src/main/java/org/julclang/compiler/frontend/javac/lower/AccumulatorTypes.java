@@ -118,13 +118,12 @@ final class AccumulatorTypes {
         }
 
         /**
-         * What an initializer or a declared type shows. A {@code @Param}'s value is what is applied, and a parameter's is the
-         * caller's, so only what they are declared says anything: {@code ListData} is a list of either kind.
+         * What an initializer or a declared type shows. A parameter's value is the caller's, so only what it is declared says
+         * anything, and {@code ListData} is a list of either kind. A {@code @Param}'s initializer can only be a literal.
          */
         private Held start(Element variable, Set<Element> read) {
             if (isDeclared(variable, MAP_DATA)) return Held.PAIRS;
-            boolean initialized = variable instanceof VariableElement local && facts.initializer(local) != null
-                    && !facts.hasAnnotation(local, JavacNames.PARAM);
+            boolean initialized = variable instanceof VariableElement local && facts.initializer(local) != null;
             var held = initialized ? value(facts.initializer((VariableElement) variable), read) : Held.DATA;
             return held == Held.DATA && isDeclared(variable, LIST_DATA) ? Held.CURSOR : held;
         }
@@ -151,7 +150,7 @@ final class AccumulatorTypes {
             return switch (method.getSimpleName().toString()) {
                 case "tailList" -> {
                     var list = value(call.getArguments().getFirst(), read);
-                    yield list.isList() || list == Held.SAME ? list : Held.CURSOR;
+                    yield list.isList() ? list : Held.CURSOR;
                 }
                 case "mkCons" -> {
                     var tail = value(call.getArguments().getLast(), read);

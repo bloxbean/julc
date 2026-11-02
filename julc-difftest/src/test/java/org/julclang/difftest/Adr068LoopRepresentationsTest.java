@@ -164,7 +164,11 @@ class Adr068LoopRepresentationsTest {
 
     /** On {@code JAVAC} the JVM's answer at every level. Where {@code referenceFails}, the reference is shown not to reach it. */
     private static void assertCarried(String members, boolean referenceFails, PlutusData... args) {
-        var report = BOTH.run(new DiffCase("cursors", cursors(members), "Case", "m", List.of(args)));
+        assertCarried(members, referenceFails, TagTable.EMPTY, args);
+    }
+
+    private static void assertCarried(String members, boolean referenceFails, TagTable tags, PlutusData... args) {
+        var report = BOTH.run(new DiffCase("cursors", cursors(members), "Case", "m", List.of(args), tags, null));
         boolean referenceAgrees = true;
         for (var entry : report.results().entrySet()) {
             if (entry.getKey().frontend() == CompilerFrontend.JAVAC) {
@@ -414,6 +418,27 @@ class Adr068LoopRepresentationsTest {
         var report = RUNNER.run(new DiffCase("data", cursors("public static long m(PlutusData d) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < 1) { c = Builtins.tailList(c); n = n + 1; } return Builtins.unIData(c).longValue(); }"),
                 "Case", "m", List.of(LIST)));
         assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() != Verdict.Kind.REJECTED), report::describe);
+    }
+
+    /** Each thing the analysis reads, on a program whose list would fail if it were read otherwise. */
+    @Test
+    void whatShowsAList() {
+        assertCarried(walkerOf("public static long m(PlutusData d, long l, S e) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { c = switch (e) { case S.A q -> Builtins.tailList(c); case S.B q -> Builtins.tailList(c); }; n = n + 1; } return n; }"),
+                true, TAGS2, LIST, integer(1), constr(1));
+        assertCarried("static PlutusData rec(PlutusData d, long n) { if (n > 0) { return rec(d, n - 1); } return Builtins.unListData(d); } public static long m(PlutusData d) { PlutusData c = rec(d, 2); long n = 0; while (n < 1) { c = (Builtins.tailList(c)); n = n + 1; } return n; }",
+                true, LIST);
+        assertCarried("static PlutusData hp(PlutusData d) { return Builtins.headList(Builtins.unMapData(d)); } public static long m(PlutusData d) { PlutusData m = Builtins.unMapData(d); PlutusData c = Builtins.mkCons(hp(d), m); long n = 0; while (n < 1) { c = (Builtins.tailList(c)); n = n + 1; } return Builtins.nullList(c) ? 1 : 2; }",
+                true, MAP);
+        assertCarried("static PlutusData hp(PlutusData d) { return Builtins.headList(Builtins.unMapData(d)); } public static long m(PlutusData d) { PlutusData c = Builtins.unMapData(d); long n = 0; while (n < 1) { c = Builtins.mkCons(hp(d), c); n = n + 1; } return n; }",
+                false, MAP);
+    }
+
+    /** What is not a list reaching a list start makes it Data, and it fails on entry, by a constant as by a builtin. */
+    @Test
+    void aConstantMixesToo() {
+        var fails = RUNNER.run(new DiffCase("data", cursors("public static long m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { if (n > 100) { c = PlutusData.UNIT; } else { c = Builtins.tailList(c); } n = n + 1; } return n; }"),
+                "Case", "m", List.of(LIST, integer(0))));
+        assertTrue(fails.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), fails::describe);
     }
 
     /** A list and Data in one variable is Data, so a start that is a list fails on entry and a start that is Data runs. */
