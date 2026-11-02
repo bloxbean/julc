@@ -572,6 +572,10 @@ playground and Elci's library provider do not, and ADR-065's javac frontend is a
 
 ### D5. Cross-type `equals`
 
+**Status of `JULC0078` (ADR-068 r12).** It is emitted on `frontend=JAVAC` from ADR-068's M3, for what `EqualityRelation`
+decides (ADR-068 D6), which is wider than the class sets below: it follows type arguments, and it takes a collection
+operation as well as `equals`. Its template names the operation and both types.
+
 For a call `r.equals(a)`, JuLC computes, for each operand, the set of runtime classes its Java static type can denote
 — but only from sources where JuLC knows that type exactly (r3, F1). A class set is **known** only when the operand
 is one of:

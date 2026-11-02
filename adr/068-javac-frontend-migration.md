@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9) and 2026-11-01 (r10, r11)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11) and 2026-11-03 (r12)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -196,13 +196,19 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
     language level is `-source 21` (D3), so javac itself rejects Java 22–25 syntax (module imports, unnamed `_`
     variables and patterns, compact source files, statements before `this(...)`); M1 adds one rejection test per
     such feature.
+  - **I2d (r12).** For a member read, "the subset does not widen" means `CallTargets.seen`: what a member is looked up
+    on, and what a `var` binds, is the type the reference gives the expression, whatever javac knows. The reference
+    resolves a name, a `new`, and the result of a helper, a library method or an accessor, and of anything else it reads
+    the term. So parentheses, a conditional, `var p = o` and a chained read follow from one rule, in both directions. What
+    a read decodes to stays javac's.
 - **I3. Names bind as Java binds them.** Each source name lowers to a `Var` that, under PIR's name scoping, resolves
   to the binder allocated for the `Element` javac binds the name to. Tested by I13's binding check.
 - **I4. Determinism.** For a given JuLC release, the same sources give the same bytes on every host, under D3's
   supported-javac rule. Traversal and registration follow source order (`ClassTree.getMembers()`), library
   units follow FQCN order, and no lowering decision depends on `ANALYZE` event order or hash iteration. CI checks
   the shipped blobs across hosts (JVM, native, Wasm) separately from blobs regenerated on two JDK 25 patch
-  releases (D3).
+  releases (D3). A diagnostic holds no capture number (r12): `ArrayIdentityEquality.text` prints a capture without
+  javac's number, in every message that prints a type.
 - **I5. Public API shape.** These keep their signatures and behaviour contracts:
   - `JulcCompiler.compile(String, List<String>)`, `compileMethod`, `compileContract`, the path-based entry points;
   - the testkit's `JulcEval.forSource` and `forClass`;
@@ -470,6 +476,8 @@ exceptions D11 lists.
     builtins and accessors.
   - **User factories.** `fromPlutusData` on a user record or sealed interface. `PlutusData.cast` views Data as that type
     on-chain; it is an unchecked representation cast, not a JVM decoder, and throws `ClassCastException` there.
+    A ledger type's `fromPlutusData` is the reference's identity, which checks nothing where the JVM decodes or throws. On
+    `frontend=JAVAC` it is `JULC0084` until the entry points' slice brings the strict boundary check (r12).
 - **Comparisons through `compareTo` (closes #146 for this form).** Where the javac frontend sees
   `a.compareTo(b) OP 0` or `0 OP a.compareTo(b)`, with the call resolved to
   `java.math.BigInteger.compareTo(java.math.BigInteger)`, `OP` one of `<`, `<=`, `>`, `>=`, `==`, `!=`, and `0`
@@ -533,7 +541,7 @@ exceptions D11 lists.
     short-circuit case.
   - Other reference equality (§15.21.3: `BigInteger`, `byte[]`, `String`, boxed values, records) is rejected with
     `JULC0086` (`REFERENCE_EQUALITY_UNSUPPORTED`); the fix is `.equals`, or `ByteStringLib.equals(a, b)` for
-    bytes.
+    bytes. On `frontend=JAVAC` `==` between native values reaches this rule first, so `JULC0041` stands behind `JULC0086`.
   - **Equality that would compare an array by identity** is rejected with `JULC0087`
     (`ARRAY_EQUALS_UNSUPPORTED`; T4, T5). The check applies to **every operation whose JVM implementation compares
     elements or keys**, and M3 derives the table from that rule over the supported signatures. Today that is:
@@ -630,6 +638,33 @@ exceptions D11 lists.
     Contract tests cover membership, lookup, delete, duplicates, whole-collection equality and hashing (including
     in a `HashSet`), and mutation. This is an **off-chain behaviour change of julc-core** (Compatibility, release
     notes); a JVM test that relied on identity matching changes its result, towards the on-chain one.
+  - **Equality between related types (r12).** Java's `equals` starts from the classes, and on-chain a comparison reads
+    representations, so `5` and `5L`, a `String` and its bytes, a hash and `byte[]`, and two records with the same fields
+    can be equal there and not in Java. On `frontend=JAVAC`, `EqualityRelation` says whether Java's `equals` can hold
+    between two static types, on javac's types, through type arguments:
+
+    | Types | Verdict |
+    |---|---|
+    | A primitive | Its box |
+    | Two declared types | Related if one is a subtype of the other by class, and each type argument of the wider is related to the same argument of the narrower seen as that class |
+    | `Object`, a raw type, a type variable, a wildcard with no upper bound | Unresolved |
+    | `Object` as a type argument | Related: only inference gives one, as in `x.equals(Optional.empty())`, since a declared `Optional<Object>` has no representation |
+    | Two arrays | Related at one type |
+    | An intersection | By its bounds: one unrelated bound decides |
+
+    Every row of the table above takes the verdict, against the argument it compares:
+
+    | Case | On `frontend=JAVAC` |
+    |---|---|
+    | A collection operation between unrelated types | `JULC0078` |
+    | `.equals` of unrelated type arguments | `JULC0078` |
+    | `.equals` between types with no class in common | `JULC0084`, `an equals between unrelated types`. It stays a stop until M5, because of an external validator (`UVerifyProxy.java:70`, `txId.equals(utxoRefTxId)` with `byte[]`) |
+    | A raw `JulcList` or `JulcMap` receiver | `JULC0087`, as "any type the check cannot resolve" |
+    | A raw receiver that is a cast | Stops at `TYPE_CAST`, where `ValuesLib.java:43` holds one |
+    | An operand the check cannot read | `JULC0087` |
+
+    **The cost.** An empty `Optional` or collection equals an empty one of any argument, so two such values are unrelated
+    although Java can answer true. The rule stays on the types, and those programs fail closed.
   - These are policy rejections in D13, with their rejection tests; ADR-062 T3, T4 and T5 are updated in M3.
 
 ### D7. Types from javac
@@ -647,6 +682,10 @@ component may spell its type `java.math.BigInteger`.
 `PirType.OptionalType`, not a spelling, so a user's `OptionalThing` is a record and a qualified `java.util.Optional` is
 optional. A `@Param` rule on `BytesData` is about the API's type, so a user's record of that name is accepted. Each is
 a D13 row in [M3a's evidence](evidence/068-m3a-lowering-foundation.md).
+
+`new` keys a variant by its element, not by its name (F807, r12). A tag, a field type and an encoding come from the
+`TypeElement`, so `permits X.A, Y.A` gives two constructors named `A`, each with its own. The reference finds a constructor
+by name, and the gate rejects that shape on the default frontend.
 
 ### D8. Libraries and the source pool
 
@@ -803,6 +842,12 @@ Each milestone appends the javac frontend's row and, for every difference, one c
   units, D7's `@Param` on `BytesData`, and a lone surrogate in a comment, which cannot reach a script: `JULC0093` is a
   rule on literals. `reject-record-static-field` and `reject-record-canonical-constructor` are "Diagnostic change"
   rows, to `JULC0095` and `JULC0099` (D15).
+- **Two limits of a `.diffcase` (r12).** A `.diffcase` compiles a method, so the two `Optional` rows about a validator's
+  datum cannot show the reference diverging: their cases show the javac frontend meeting the JVM on those types, and
+  `Adr068TypeIdentityTest.theReferenceReadsBothByTheirSpelling` keeps the divergence. And a `.diffcase` holds one source,
+  so D8's rows, which need a pool, cannot be saved: their oracle stays the reference's program of the root alone, in the gate.
+- **Two errors in one method (F946, r12).** A `DIFFERENT-rejection` of two errors in one method is a "Diagnostic change":
+  the reference collects `JULC0061` and goes on to the error it throws, and the javac frontend stops at the first.
 - A case may move between classes only by a new row; rows are never edited. The one exception is a **tool
   correction**: when a frozen value is shown to be an artifact of the ledger tool itself (not of the compiler,
   for example a class-loader identity hash in a JVM failure message), the frozen file may be regenerated at its
@@ -826,6 +871,9 @@ than `String` are never constant variables, so their `@Param` fields are unaffec
 ADR-067's `@Param` guard tests move to the accepted spellings. Constants depending on a `@Param` are then not
 constants for javac either.
 
+A `@Param` is read on the compiled class alone (F909, r12). In another class it is inert on both frontends: it is no
+parameter, and a read through the type is `Undefined variable`, so the field has no value to be wrong about.
+
 ### D15. Subset rules run once, on javac's trees, at the gate
 
 A rule that depends on what javac resolved runs on javac's trees after `analyze()` succeeds
@@ -841,19 +889,29 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 | `JULC0098` | The operand of a cast to `boolean` or `Boolean` is a boolean, including `PlutusData.cast` and the other calls lowered to their argument | Both |
 | `JULC0099` | A constructor holds no statement | Both |
 | `JULC0100` | A name the JavaParser frontend reads by spelling binds, at every use, to what it reads | The gate only |
-| `JULC0101` | A method does not take a name that frontend reads in place of the method's body, and a call on a `@NewType` or on what lowers to bytes is its accessor | The gate only |
+| `JULC0101` | A method does not declare `toPlutusData` or a record's accessor, because JuLC compiles a record as its components | Both, from `SubsetRules.check` (r12) |
+| `JULC0101` | The rest: a method does not take a name that frontend reads in place of the method's body, and a call on a `@NewType` or on what lowers to bytes is its accessor | The gate only |
+| `JULC0078` | D6's related types: a collection operation between unrelated types, and `.equals` of unrelated type arguments | `frontend=JAVAC`, from M3 (r12) |
 | `JULC0092` | Existing (I11). The gate also applies it where a sealed interface's variants, read as `TypeRegistrar` reads them, differ from javac's list | Both |
 
 - **Modes.** A rule follows the gate's mode on the default frontend: `enforce`, the default, rejects; `report` writes it
   down; `off` turns it off. The first group has no gate to turn off on `frontend=JAVAC`.
-- **`JULC0100` and `JULC0101`** describe the JavaParser frontend, since javac binds a name to its element. So they have
-  no place on `frontend=JAVAC`, and they leave with that frontend at M6. Their lists are derived or held to the code by
+- **`JULC0100` and most of `JULC0101`** describe the JavaParser frontend, since javac binds a name to its element. So
+  those have no place on `frontend=JAVAC`, and they leave with that frontend at M6. Two rows of `JULC0101` are not of that
+  kind (r12): JuLC compiles a record as its components, so a declared `toPlutusData` or an explicit accessor is never what
+  a script's Data is, on either frontend. `SpelledMethods.checkDeclarations` reads both from `SubsetRules.check`, on every
+  frontend, and `JULC0080` is the rule planned for the rest of a record's body. What stays gate-only: all of `JULC0100`, and
+  the rest of `JULC0101`: `fromPlutusData` and `of` declarations, `equals` on a record or sealed interface, instance methods
+  and calls on a `@NewType`, a component named like a method, the accumulator names, and calls through an `Optional` or on
+  bytes. One shape stays open at this revision: a component named `toPlutusData` that implements an interface's method has
+  no declaration to read, so `frontend=JAVAC` still lowers that record. Their lists are derived or held to the code by
   `SpelledNameLintTest`. They cover a `@NewType`'s component too: it does not take a name `TypeMethodRegistry` serves on
   the type it lowers to, a `@NewType` of `byte[]` names its component `value`, no record component is named `equals` or
   `toPlutusData`, and a `@NewType` does not declare `of`, even where a given declaration would have been harmless.
   Over-rejection is the accepted cost until M6.
 - **What else the gate reads.** `JULC0100` also rejects `new` with a class body, an `instanceof` whose operand's static
-  type is not the variant or its sealed interface, and a name in a guard that javac binds to an inherited member. It
+  type is not the variant or its sealed interface (on `frontend=JAVAC` that `instanceof` is a stop, `an instanceof of an
+  operand outside the variant's sealed interface`), and a name in a guard that javac binds to an inherited member. It
   takes every class offered to a compilation, annotated or not, at any depth, as `LibraryCompiler` compiles it. A
   variable does not take the name of one, and a type of the unnamed package does not take the name of another type
   or of a package of the compilation.
@@ -944,10 +1002,10 @@ milestone's evidence; a skipped check fails the gate.
 | **M0** | Freeze B0 and the corpus: in-repo `julc-examples` validators, the 16 stdlib libraries, ledger sources, `verification/blaster/fixtures`, `verification/c7/fixtures`, every compiler/stdlib/testkit test source, the `.diffcase` set, G0, the G1 fixed-seed corpus, the external `julc-examples`, Elci's smoke and `custom-library`. Build the D13 ledger's reference rows, the I2a rejection inventory, and D6's scan of `.equals` call sites that `JULC0087` would reject. Freeze D4's accepted-divergence list with each pin's ID. Add this ADR as a step of ADR-062, and D4's preview-tracking sentence to `SECURITY.md` | This ADR accepted; the integration's full run green | `adr/evidence/068-javac-frontend-baseline.md` with B0's SHA, the pinned commands, and the generated ledger and inventory | I1, I2a, I7, I11 baselines |
 | **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's comparison rules in both frontends (D4 exception 1, re-freezing the reference as B1); the JuLC collections' `byte[]` value equality on the JVM (D6). D6's dialect rewrite of every in-repo migration source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every migration case accepted by both is byte-identical to B1 (I1a); every migration case javac rejects is a "javac rejection" row whose rewrite is accepted and costs no more, in size and budget, than the order-correct lowering of its dialect original (D4), except where the rewrite writes out a conversion or library call the dialect made implicitly, each listed with its measured cost; a case D6 removes keeps its original rejection row and needs no accepted replacement; negative fixtures stay rejected; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I1, I2b, I2c, I4, I6, I10 |
 | **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases bind to the user's type (their values agree in M3, when they can run); `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
-| **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14); calls (stdlib, library, instance dispatch, D6's comparison rules); records, fields, object creation; locals, `if`/`else`, `return`; `instanceof`; `switch` with ADR-067 M1 guards and the ported `JavaConstants`; lambdas; whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
+| **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14) (**ported**, M3a); calls (stdlib, instance dispatch, D6's comparison rules) (**ported**, Group 1; a library call waits for whole-library lowering); records, fields, object creation (**ported**, Group 1); locals, `if`/`else`, `return` (**ported**, Group 1); `instanceof` (**ported**, Group 1); `switch` with ADR-067 M1 guards and the ported `JavaConstants`; lambdas; whole-library lowering and Elci's specialization (D8); entry points and `@Param`; debug metadata. Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix) | M3 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
 | **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
-| **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; `JULC0100` and `JULC0101` removed, with a release note (D15); full build; harness gate; Elci coordinated | I8 |
+| **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; `JULC0100` and the gate-only rows of `JULC0101` removed, with a release note (D15); full build; harness gate; Elci coordinated | I8 |
 
 ## Verification strategy
 
@@ -1350,3 +1408,21 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - B4: `String.length` counts UTF-16 code units, and a method with no parameters whose body may fail runs at each call
     (open question 5, closed), on both frontends, under exception 2. This is the fourth reference change
     (`068-m3-reference-b4.md`). The JVM's byte string builtins and list counts follow Plutus 1.63.0.0, which moves no script.
+- **r12** (2026-11-03, M3 Group 1, on repository evidence and the coordinator's decisions; three independent reviews and a
+  confirmation round):
+  - B3 and B4 stand as the third and fourth reference changes, and Group 1's tables compare with B4
+    (`068-m3-reference-b3.md`, `068-m3-reference-b4.md`, `068-m3-group1.md`).
+  - D6: `EqualityRelation` decides whether Java's `equals` can hold between two static types, through type arguments.
+    `JULC0078` takes a collection operation and type arguments. A raw `JulcList` or `JulcMap` receiver is `JULC0087`. A
+    ledger `fromPlutusData` is `JULC0084` until the entry points' slice, and on `frontend=JAVAC` `JULC0086` comes ahead of
+    `JULC0041`.
+  - `.equals` with no common class stays a stop until M5, because of an external validator.
+  - D15: "`JULC0100` and `JULC0101` have no place on `frontend=JAVAC`" was wrong for two rows of `JULC0101`. A declared
+    `toPlutusData` and an explicit accessor are read from `SubsetRules.check`, on every frontend. All of `JULC0100` stays
+    gate-only, and so does the rest of `JULC0101`. M6 removes the gate-only rows. D15's table gains `JULC0078`.
+  - I2d names `CallTargets.seen` as the reading of "the subset does not widen" for member reads. I4: a message holds no
+    capture number.
+  - D7: `new` keys a variant by its element (F807). D13: two limits of a `.diffcase`, and a `DIFFERENT-rejection` of two
+    errors (F946). D14: a `@Param` is read on the compiled class alone (F909).
+  - ADR-067 D5: `JULC0078` is emitted on `frontend=JAVAC` from M3, and is wider than class sets. M3's row marks what
+    Group 1 ported.
