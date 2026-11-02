@@ -96,10 +96,8 @@ final class Carried {
 
     /** {@code body} with each accumulator bound to what {@code tuple} holds of it. */
     PirTerm unpacked(PirTerm tuple, PirTerm body) {
-        // The body and every later accessor are in the tuple binder's scope, so it takes a name neither reads.
-        var avoid = PirHelpers.freeVariables(body);
-        avoid.addAll(names());
-        var tupleVar = terms.generated(PirHelpers.hygienicName("#__t", avoid), TUPLE);
+        // The body and every later accessor are in the tuple binder's scope, so it takes a name the body does not read.
+        var tupleVar = terms.generated(PirHelpers.hygienicName("#__t", PirHelpers.freeVariables(body)), TUPLE);
         PirTerm result = body;
         for (int i = binders.size() - 1; i >= 0; i--) {
             PirTerm accessor = tupleVar;
@@ -110,7 +108,7 @@ final class Carried {
         return terms.generatedLet(tupleVar.name(), tuple, result);
     }
 
-    /** The name of each accumulator, which a generated binder over them avoids. */
+    /** The name of each accumulator. */
     List<String> names() {
         return binders.stream().map(Binder::name).toList();
     }

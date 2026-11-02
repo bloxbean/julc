@@ -127,6 +127,7 @@ class JavacLoopsTest {
             "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; if (c) { for (var x : xs) { s = s + 1; } } return s; }",
             "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; long t = 0; if (c) { for (var x : xs) { s = s + 1; t = t + 1; } } else { for (var x : xs) { t = t + 2; } } return s + t; }",
             "static long m(JulcList<BigInteger> xs, boolean c) { if (c) { for (var x : xs) { } } return 1; }",
+            "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; if (c) { } else { for (var x : xs) { s = s + 1; } } return s; }",
             "static long m(JulcList<BigInteger> xs, boolean c) { if (c) { for (var x : xs) { } return 2; } return 1; }",
             "static long m(JulcList<BigInteger> xs, boolean c, boolean d) { long s = 0; if (c) { if (d) { for (var x : xs) { s = s + 1; } } } return s; }",
             "static long m(JulcList<BigInteger> xs, boolean c, boolean d) { long s = 0; if (c) { for (var x : xs) { s = s + 1; } } if (d) { for (var x : xs) { s = s + 2; } } return s; }",
@@ -173,6 +174,13 @@ class JavacLoopsTest {
             "static long m(long n) { outer: while (n > 0) { n = n - 1; } return n; }",
             "static long m(long n) { outer: while (n > 0) { while (n > 1) { n = n - 1; break outer; } n = 0; } return n; }",
             "static long m(long n) { outer: while (n > 0) { n = n - 1; continue outer; } return n; }",
+            "static long m(JulcList<BigInteger> xs) { for (var x : xs) { BigInteger y = (x = BigInteger.ONE); break; } return 1; }",
+            "static long m(JulcList<BigInteger> xs) { for (var x : xs) { long t = 0; long u = (t = 1); break; } return 1; }",
+            "static long m(long z) { while (z > 0) { long t = 0; long u = (t = 1); break; } return 1; }",
+            "static long m(JulcList<BigInteger> xs, long z) { for (var x : xs) { for (var y : xs) { long u = (z = 1); } break; } return z; }",
+            "static long m(JulcList<BigInteger> xs, long z) { for (var x : xs) { long u = (z = 1); break; } return z; }",
+            "static long K = 0; static long m(JulcList<BigInteger> xs) { for (var x : xs) { boolean b = xs.any(y -> { K = 1; return true; }); break; } return 1; }",
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(JulcList<BigInteger> xs, S s, long z) { for (var x : xs) { long u = switch (s) { case A a -> { z = 1; yield 1; } default -> 2; }; break; } return z; }",
             "static long m(long n, JulcList<BigInteger> xs) { while (n > 0) { long t = 0; if (n > 1) { for (var x : xs) { t = t + 1; } } n = n - t - 1; } return n; }",
             "static long m(long n) { while (n > 0) { long t = 0; if (n > 1) { long i = 0; while (i < 2) { i = i + 1; t = t + 1; } } n = n - t - 1; } return n; }",
             "static long m(long n) { while (n > 0) { long t = 0; if (n > 1) { } else { t = 1; } n = n - t - 1; } return n; }",
@@ -242,6 +250,26 @@ class JavacLoopsTest {
             "static boolean m(JulcList<BigInteger> xs) { boolean a = true; for (BigInteger x : xs) { if (a) { boolean b = !a; a = b; } } return a; }",
     })
     void whatAReadOfALoopMeans(String members) {
+        same(members);
+    }
+
+    /** What a Data accumulator of a {@code while} travels as, by the builtins assigned to it and what stands before the loop. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(PlutusData d) { PlutusData c = Builtins.unMapData(d); long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData b = Builtins.unMapData(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData.MapData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData.MapData b = Builtins.unMapData(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.mkNilPairData(); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 0) { c = Builtins.tailList(c); } else { c = Builtins.mkNilData(); } i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.sndPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d, boolean b) { PlutusData c = d; long i = 0; while (i < 2) { if (b) { i = i + 1; } else { var h = Builtins.headList(c); Builtins.fstPair(h); i = i + 1; } c = Builtins.tailList(c); } return i; }",
+            "static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData l = Builtins.mkNilData(); PlutusData t = e; long i = 0; while (i < 2) { c = Builtins.tailList(c); t = Builtins.tailList(t); l = Builtins.mkCons(Builtins.iData(i), l); l = Builtins.tailList(l); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { l = Builtins.mkCons(d, l); i = i + 1; } return i; }",
+    })
+    void whatATupleOfAWhileHolds(String members) {
         same(members);
     }
 

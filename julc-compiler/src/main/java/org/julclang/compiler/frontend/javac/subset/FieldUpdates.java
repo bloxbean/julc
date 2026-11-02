@@ -1,7 +1,6 @@
 package org.julclang.compiler.frontend.javac.subset;
 
 import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
@@ -26,8 +25,9 @@ import java.util.Set;
  * only where the method runs once per evaluation, an entry method that nothing calls, with the loop outside any lambda, and
  * no other method reads the field. {@link #require} rejects what the update shows, as it lowers, and {@link #lowered} what
  * the methods show, after each one, so every pair of an update and a read is seen in whatever order they lower. A read is
- * what javac bound a name to, so a local, a parameter or a pattern variable that shadows the field is none. A call is by
- * binder, which overloads share. javac rejects an update of a {@code final} field first (D11).
+ * what javac bound a simple name to, so a local, a parameter or a pattern variable that shadows the field is none, and a
+ * read through the class name is {@code Undefined variable} first. A call is by binder, which overloads share. javac rejects
+ * an update of a {@code final} field first (D11).
  * <p>
  * A compilation holds one of these, as it holds one of the reference's generator: its state is what has lowered so far.
  */
@@ -97,8 +97,7 @@ public final class FieldUpdates {
     private Lowered named(MethodTree method) {
         var reads = new HashSet<Element>();
         var calls = new HashSet<String>();
-        for (var name : SubsetWalk.all(method, Tree.class)) {
-            if (!(name instanceof IdentifierTree || name instanceof MemberSelectTree)) continue;
+        for (var name : SubsetWalk.all(method, IdentifierTree.class)) {
             var element = facts.elementOrNull(name);
             if (element instanceof ExecutableElement called) calls.add(binderOf(called));
             else if (element != null) reads.add(element);

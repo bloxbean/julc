@@ -218,9 +218,7 @@ final class LoopBody {
 
     private PirTerm joinFunction(Carried carried, PirTerm rest) {
         if (carried.isSingle()) return terms.lam(carried.only(), rest);
-        var avoid = PirHelpers.freeVariables(rest);
-        avoid.addAll(carried.names());
-        var tuple = terms.generated(PirHelpers.hygienicName("#join_t", avoid), Carried.TUPLE);
+        var tuple = terms.generated(PirHelpers.hygienicName("#join_t", PirHelpers.freeVariables(rest)), Carried.TUPLE);
         return terms.generatedLam(tuple.name(), Carried.TUPLE, carried.unpacked(tuple, rest));
     }
 
