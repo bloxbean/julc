@@ -614,6 +614,18 @@ class JavacSwitchesTest {
         same(members);
     }
 
+    /**
+     * An operand of either parent of a variant passes {@code instanceof}'s rule on tags, so what a variant of two interfaces
+     * says, the stop at its type, comes next. Read against its first parent alone, the second would be {@code JULC0072}.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"Pf", "Pg"})
+    void anOperandOfEitherParentOfAVariant(String parent) {
+        String members = "sealed interface Pf permits Vb { } sealed interface Pg permits Vb { } record Vb(BigInteger v) implements Pf, Pg { } "
+                + "static long m(S s, " + parent + " x) { return switch (s) { case A a when x instanceof Vb -> 1; default -> 3; }; }";
+        assertEquals("JULC0084", javacCode(members));
+    }
+
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
     /** An inferred parameter of a sealed interface is Data to the reference, so {@code instanceof} on it stops on both. */
     @ParameterizedTest
