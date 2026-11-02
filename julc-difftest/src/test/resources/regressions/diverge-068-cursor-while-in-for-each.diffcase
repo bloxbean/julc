@@ -5,7 +5,7 @@ method: m
 arg: 83010203
 arg: 820102
 expect: DIVERGE M5 Value/Failure
-jvm: Value 0a []
+jvm: Value 08 []
 uplc: Failure []
 note: What reaches a Data accumulator says it is a list, so the tuple carries one. Closed by M5.
 note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
