@@ -21,7 +21,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * M4's exit on {@code frontend=JAVAC}: every saved case with a loop, T21's and T23's among them, and G0's bounded grammar, which
  * is its loops' shapes, each on the reference's expectation. A saved case that {@code JAVAC} cannot answer the same way names
- * why, in {@link #ANSWERED_OTHERWISE}.
+ * why, in {@link #ANSWERED_OTHERWISE}, and {@code diverge-068-} cases are the reference's alone: {@code Adr068SavedCasesOnJavacTest}
+ * holds them to the JVM.
  */
 class Adr068LoopCasesOnJavacTest {
 
@@ -39,7 +40,8 @@ class Adr068LoopCasesOnJavacTest {
     @TestFactory
     Stream<DynamicTest> everySavedCaseWithALoop() {
         var cases = RegressionStore.load(Path.of("src/test/resources/regressions")).stream().filter(Adr068LoopCasesOnJavacTest::holdsALoop)
-                .filter(saved -> !ANSWERED_OTHERWISE.containsKey(saved.file().getFileName().toString())).toList();
+                .filter(saved -> !ANSWERED_OTHERWISE.containsKey(saved.file().getFileName().toString()))
+                .filter(saved -> !saved.file().getFileName().toString().startsWith("diverge-068-")).toList();
         assertTrue(cases.size() >= 50, "too few saved loops: " + cases.size());
         return cases.stream().map(saved -> DynamicTest.dynamicTest(saved.file().getFileName().toString(), () -> {
             var report = RUNNER.run(saved.diffCase());
