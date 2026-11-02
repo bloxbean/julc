@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -100,6 +101,10 @@ class Adr068SwitchHarnessTest {
         return constr(2);
     }
 
+    private static PlutusData list(long... values) {
+        return new PlutusData.ListData(Arrays.stream(values).mapToObj(Adr068SwitchHarnessTest::integer).toList());
+    }
+
     private static List<PlutusData> everyS() {
         return List.of(a(7), a(0), a(-1), b(1, 2), b(-3, 4), d());
     }
@@ -131,6 +136,14 @@ class Adr068SwitchHarnessTest {
         for (var s : everyS()) {
             for (var t : everyS()) assertAgree(members, s, t);
         }
+    }
+
+    private static void assertRejectedAlike(String members, String code, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> {
+            assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe);
+            assertTrue(result.uplc().toString().contains(code), () -> code + " expected: " + report.describe());
+        });
     }
 
     /** The JVM's answer on {@code JAVAC}, and on the reference at least one level differs: a D13 semantic fix. */
@@ -434,6 +447,21 @@ class Adr068SwitchHarnessTest {
     @Test
     void armsOfTwoTypesStopWhereTheyNeedOne() {
         assertStopsOnJavac("static PlutusData d(BigInteger v) { return Builtins.iData(v); } public static long m(S s) { var v = switch (s) { case S.A a -> a.v(); default -> d(BigInteger.ONE); }; return JulcList.of(v).size(); }", "JULC0084", a(1));
+    }
+
+    @Test
+    void aGuardCombinesAListMethodThatTakesAFunction() {
+        for (var l : List.of(list(), list(1, 2), list(-1, 0), list(-1, 2))) {
+            for (var s : List.of(a(1), d())) {
+                assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when !l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }", s, l);
+                assertAgree("public static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case S.A a when l.all(x -> x.signum() > 0) && c -> 1; default -> 3; }; }", s, l, bool(true));
+                assertAgree("public static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case S.A a when c || l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }", s, l, bool(false));
+                assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when !l.filter(x -> x.signum() > 0).isEmpty() -> 1; default -> 3; }; }", s, l);
+                assertAgree("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when l.filter(x -> x.signum() > 0).size() > 0 -> 1; default -> 3; }; }", s, l);
+                assertAgree("public static long m(S s, S t, JulcList<BigInteger> l) { return switch (s) { case S.A a when switch (t) { case S.A b -> !l.any(x -> x.signum() > 0); default -> false; } -> 1; default -> 3; }; }", s, s, l);
+            }
+        }
+        assertRejectedAlike("public static long m(S s, JulcList<BigInteger> l) { return switch (s) { case S.A a when !(l).any(x -> x.signum() > 0) -> 1; default -> 3; }; }", "JULC0072", a(1), list(1));
     }
 
     @Test

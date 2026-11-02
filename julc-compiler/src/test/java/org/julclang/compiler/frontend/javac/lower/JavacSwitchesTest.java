@@ -400,6 +400,35 @@ class JavacSwitchesTest {
         assertEquals(code, javacCode(members));
     }
 
+    /** A list method that takes a function is typed by what the registry declares on the receiver the reference sees. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.all(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when l.all(x -> x.signum() > 0) && c -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when c || l.any(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when l.any(x -> x.signum() > 0) == c -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.filter(x -> x.signum() > 0).isEmpty() -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when l.filter(x -> x.signum() > 0).size() > 0 -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.map(x -> x.add(x)).isEmpty() -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l, boolean c) { return switch (s) { case A a when l.filter(x -> true).any(y -> y.signum() > 0) && c -> 1; default -> 3; }; }",
+            "static long m(S s, S t, JulcList<BigInteger> l) { return switch (s) { case A a when switch (t) { case A b -> !l.any(x -> x.signum() > 0); default -> false; } -> 1; default -> 3; }; }",
+            "static boolean m(S s, JulcList<BigInteger> k, JulcList<BigInteger> l) { return k.any(w -> switch (s) { case A a when !l.any(x -> x.signum() > 0) -> true; default -> false; }); }",
+    })
+    void aGuardCombinesAListMethodThatTakesAFunction(String members) {
+        same(members);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !(l).any(x -> x.signum() > 0) -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when l.find(x -> x.signum() > 0).signum() > 0 -> 1; default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when l.map(x -> x.add(x)).head().signum() > 0 -> 1; default -> 3; }; }",
+    })
+    void aReceiverOrResultTheRegistryDoesNotDeclareStaysRejected(String members) {
+        rejected(members);
+    }
+
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
     /** An inferred parameter of a sealed interface is Data to the reference, so {@code instanceof} on it stops on both. */
     @ParameterizedTest

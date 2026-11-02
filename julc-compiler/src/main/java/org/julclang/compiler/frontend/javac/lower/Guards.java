@@ -122,6 +122,7 @@ final class Guards {
             case CallTarget.Intrinsic intrinsic -> intrinsic == CallTarget.Intrinsic.CAST ? typing.of(call) : new PirType.DataType();
             case CallTarget.TypeMethod target -> declaredReturn(call, target.method(), frame);
             case CallTarget.Equals ignored -> declaredReturn(call, "equals", frame);
+            case CallTarget.Hof target -> declaredReturn(call, target.method(), frame);
             default -> new PirType.DataType();
         };
     }
