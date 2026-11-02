@@ -170,6 +170,7 @@ If Codex cannot run, a milestone closes on independent Claude reviewers, and its
 |---|---|---|
 | `558c5f58` and M3a's final head | The spelled-name rules (`JULC0100`, `JULC0101`), with the last closures | Codex's safety filter stopped the task after 1m28s. No findings came back |
 | `edfa707b` | Group 1 and B4: `EqualityRelation` and `JULC0078`, `CallTargets.seen`, `JULC0101` at the declaration, `DelayedMethodPass` and `mayFail`, `String.length` | The group closed on independent Claude reviewers and a confirmation round. No Codex pass has run at this head |
+| Group 2's final head, in `068-m3-group2.md` | `switch` and its guards, lambdas, `DelayedMethodPass` and its work limit | The maintainer chose to run Codex later; the group closes on independent Claude reviewers |
 
 ## Future stdlib enhancements (after ADR-068 is complete)
 
