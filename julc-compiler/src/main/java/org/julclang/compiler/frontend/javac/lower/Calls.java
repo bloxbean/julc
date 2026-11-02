@@ -45,6 +45,7 @@ final class Calls {
     private final Terms terms;
     private final Typing typing;
     private final CallTargets targets;
+    private final Lambdas lambdas;
     private final Lowering lowering;
     private final CompilationContext context;
     private final StdlibLookup stdlib;
@@ -52,12 +53,13 @@ final class Calls {
     /** The library methods called so far, as signatures: the same coercions as a compiled method's, no bodies. */
     private final LibraryMethodRegistry librarySites;
 
-    Calls(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, Lowering lowering, CompilationContext context,
-          StdlibLookup stdlib, TypeMethodRegistry typeMethods) {
+    Calls(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, Lambdas lambdas, Lowering lowering,
+          CompilationContext context, StdlibLookup stdlib, TypeMethodRegistry typeMethods) {
         this.facts = facts;
         this.terms = terms;
         this.typing = typing;
         this.targets = targets;
+        this.lambdas = lambdas;
         this.lowering = lowering;
         this.context = context;
         this.stdlib = stdlib;
@@ -75,7 +77,7 @@ final class Calls {
             case CallTarget.Wrapper target -> wrapper(target, tree, frame);
             case CallTarget.TypeMethod target -> typeMethod(target, tree, frame);
             case CallTarget.Equals ignored -> equality(tree, frame);
-            case CallTarget.Hof ignored -> throw NotPorted.at(facts, tree.getArguments().getFirst());
+            case CallTarget.Hof target -> hof(target, tree, frame);
             case CallTarget.Unresolved target ->
                     throw CompilerTypeDiagnostics.unresolvedMember(target.member(), facts.location(tree));
             case CallTarget.Rejected target -> throw facts.rejection(target.message(), tree);
@@ -229,7 +231,9 @@ final class Calls {
         var scope = lowering.expr(receiver, frame);
         var type = typing.of(receiver, scope);
         String member = target.component();
-        if (targets.seen(receiver, scope) instanceof PirType.DataType) {
+        // What find leaves is an Optional to the reference, which has no member of an element.
+        var seen = targets.seen(receiver, scope);
+        if (seen instanceof PirType.DataType || seen instanceof PirType.OptionalType) {
             throw CompilerTypeDiagnostics.unresolvedMember(member, facts.location(tree));
         }
         if (member.equals("value") && typeMethods.contains(TypeKeys.of(type), member)) {
@@ -250,6 +254,26 @@ final class Calls {
             arguments = encodedTarget(list, arguments);
         }
         var result = dispatch(target.key(), target.method(), scope, type, arguments, tree);
+        typeMethods.resolveReturnType(seen, target.method()).ifPresent(declared -> typing.recordRead(result, declared));
+        return result;
+    }
+
+    /**
+     * A list method that takes a function: the receiver, then the lambda, which the handler applies to each element.
+     * {@link Lambdas} states the order. The reference reads the receiver as it reads a registry method's.
+     */
+    private PirTerm hof(CallTarget.Hof target, MethodInvocationTree tree, Frame frame) {
+        var receiver = receiver(tree);
+        var scope = lowering.expr(receiver, frame);
+        var type = typing.of(receiver, scope);
+        if (!(targets.seen(receiver, scope) instanceof PirType.ListType seen)) {
+            throw CompilerTypeDiagnostics.unresolvedMember(target.method(), facts.location(tree));
+        }
+        var function = lambdas.function(tree, seen, target.method().equals("map"), frame);
+        var arguments = new Arguments(List.of(function), List.of(typing.ofTerm(function)));
+        var dispatched = dispatch(CallTarget.Hof.KEY, target.method(), scope, type, arguments, tree);
+        var result = target.method().equals("find") && lambdas.readsElement(tree)
+                ? PirHelpers.fieldExtraction(dispatched, 0, typing.of(tree)) : dispatched;
         typeMethods.resolveReturnType(seen, target.method()).ifPresent(declared -> typing.recordRead(result, declared));
         return result;
     }

@@ -2,11 +2,13 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.BinaryTree;
+import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.InstanceOfTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -45,6 +47,7 @@ public final class Lowering {
     private final TypeTests typeTests;
     private final Statements statements;
     private final Operators operators;
+    private final Lambdas lambdas;
     private final Calls calls;
     private final Records records;
     private final Typing typing;
@@ -67,7 +70,8 @@ public final class Lowering {
         this.typeTests = new TypeTests(facts, this);
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests);
         this.operators = new Operators(facts, typing, targets, this);
-        this.calls = new Calls(facts, terms, typing, targets, this, context, stdlib, typeMethods);
+        this.lambdas = new Lambdas(facts, terms, typing, targets, this);
+        this.calls = new Calls(facts, terms, typing, targets, lambdas, this, context, stdlib, typeMethods);
         this.records = new Records(facts, typing, targets, this, names);
     }
 
@@ -83,6 +87,11 @@ public final class Lowering {
     /** A field initializer. */
     public PirTerm initializer(ExpressionTree tree, Scope scope) {
         return expr(tree, Frame.initializer(scope));
+    }
+
+    /** A block, as a lambda's body is one. */
+    PirTerm block(BlockTree tree, Frame frame) {
+        return statements.block(tree, frame);
     }
 
     /** An expression, with a Data-encoding rejection that had no position located at it. */
@@ -108,6 +117,7 @@ public final class Lowering {
             case MethodInvocationTree t -> terms.at(t, calls.call(t, frame));
             case NewClassTree t -> terms.at(t, records.creation(t, frame));
             case InstanceOfTree t -> terms.at(t, typeTests.instanceOf(t, frame));
+            case LambdaExpressionTree t -> throw lambdas.outsideCall(t);
             case AssignmentTree t -> throw reassignment(t.getVariable(), t);
             case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t);
             default -> throw NotPorted.at(facts, tree);
@@ -124,7 +134,7 @@ public final class Lowering {
      * {@code JULC0091} raised where a value is Data-encoded has no position: the innermost expression being lowered gives
      * it one, the argument of a call whose type holds the native array, or else the expression itself.
      */
-    private CompilerException located(CompilerException e, ExpressionTree tree) {
+    CompilerException located(CompilerException e, ExpressionTree tree) {
         if (e.diagnostics().size() != 1) return e;
         CompilerDiagnostic diagnostic = e.diagnostics().getFirst();
         if (diagnostic.line() > 0 || !DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
@@ -134,7 +144,8 @@ public final class Lowering {
             var array = nativeArrayOf(argument);
             if (array != null) return nativeArray(argument, array);
         }
-        var own = nativeArrayOf(tree);
+        // The reference does not know a stdlib call's type, so it names no value.
+        var own = targets.isStdlibCall(tree) ? null : nativeArrayOf(tree);
         if (own != null) return nativeArray(tree, own);
         var at = facts.location(tree);
         return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(), diagnostic.message(),

@@ -13,6 +13,7 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.LiteralTree;
+import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
@@ -32,11 +33,13 @@ import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.source.SourceLocation;
 
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -68,11 +71,12 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.PRIMITIVE_TYPE, Tree.Kind.ARRAY_TYPE, Tree.Kind.PARAMETERIZED_TYPE, Tree.Kind.TYPE_PARAMETER,
             Tree.Kind.UNBOUNDED_WILDCARD, Tree.Kind.EXTENDS_WILDCARD, Tree.Kind.SUPER_WILDCARD,
             Tree.Kind.IDENTIFIER, Tree.Kind.MEMBER_SELECT, Tree.Kind.PARENTHESIZED, Tree.Kind.NEW_ARRAY,
-            Tree.Kind.INT_LITERAL, Tree.Kind.LONG_LITERAL, Tree.Kind.BOOLEAN_LITERAL, Tree.Kind.STRING_LITERAL);
+            Tree.Kind.INT_LITERAL, Tree.Kind.LONG_LITERAL, Tree.Kind.BOOLEAN_LITERAL, Tree.Kind.STRING_LITERAL,
+            Tree.Kind.MEMBER_REFERENCE);
 
     /** The kinds that are subset only where lowering reaches them. */
     private static final Set<Tree.Kind> WHERE_LOWERED = EnumSet.of(
-            Tree.Kind.METHOD_INVOCATION, Tree.Kind.CONDITIONAL_EXPRESSION, Tree.Kind.NEW_CLASS,
+            Tree.Kind.METHOD_INVOCATION, Tree.Kind.CONDITIONAL_EXPRESSION, Tree.Kind.NEW_CLASS, Tree.Kind.LAMBDA_EXPRESSION,
             Tree.Kind.IF, Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.LABELED_STATEMENT, Tree.Kind.EMPTY_STATEMENT,
             Tree.Kind.INSTANCE_OF, Tree.Kind.BINDING_PATTERN, Tree.Kind.DECONSTRUCTION_PATTERN,
             Tree.Kind.ASSIGNMENT, Tree.Kind.PLUS_ASSIGNMENT, Tree.Kind.MINUS_ASSIGNMENT, Tree.Kind.MULTIPLY_ASSIGNMENT,
@@ -87,6 +91,9 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** The statements a block holds where lowering reaches it; {@code Statements} rejects those the reference rejects. */
     private static final Set<Tree.Kind> STATEMENTS = EnumSet.of(Tree.Kind.RETURN, Tree.Kind.VARIABLE, Tree.Kind.IF,
             Tree.Kind.EXPRESSION_STATEMENT, Tree.Kind.BLOCK, Tree.Kind.EMPTY_STATEMENT, Tree.Kind.LABELED_STATEMENT);
+
+    /** The methods of a functional interface, as the reference lists them. */
+    private static final Set<String> FUNCTIONAL_METHODS = Set.of("apply", "test", "accept", "get", "run");
 
     /** The compound operators the reference lowers as {@code target op value}; the rest have a rule of their own. */
     private static final Map<Tree.Kind, String> UNLOWERED_COMPOUNDS = Map.of(
@@ -357,8 +364,30 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** D6: an operation that compares by {@code equals} must not reach an array by identity. */
     @Override
     public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
+        requireNoFunctionalCall(tree);
         equality.check(tree);
         return super.visitMethodInvocation(tree, unused);
+    }
+
+    /** A function exists on-chain only as the argument of the list method that applies it, and a local holds none. */
+    private void requireNoFunctionalCall(MethodInvocationTree tree) {
+        if (tree.getMethodSelect() instanceof MemberSelectTree select && select.getExpression() instanceof IdentifierTree receiver
+                && FUNCTIONAL_METHODS.contains(select.getIdentifier().toString())
+                && facts.element(receiver).getKind() == ElementKind.LOCAL_VARIABLE && isFunctional(facts.type(receiver))) {
+            throw facts.rejection("Functional interface ." + select.getIdentifier() + "() is not supported on-chain",
+                    "Call the method directly instead of through a function reference", tree);
+        }
+    }
+
+    /** Whether {@code type} is a functional interface of the JDK's, by identity. */
+    private boolean isFunctional(TypeMirror type) {
+        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).startsWith(JavacNames.FUNCTIONS);
+    }
+
+    /** Outside the subset, wherever it stands. */
+    @Override
+    public Void visitMemberReference(MemberReferenceTree tree, Void unused) {
+        throw facts.rejection("Method references (::) are not supported on-chain", "Use a regular static method call instead", tree);
     }
 
     /** A UPLC string is Unicode text: a surrogate must be the high half of a pair followed by its low half. */

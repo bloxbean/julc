@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SpelledProgramsOnJavacTest {
 
     /** What {@code frontend=JAVAC} does with a program. */
-    private sealed interface Answer permits Stops, Rejects, Agrees {
+    private sealed interface Answer permits Stops, Rejects, Agrees, Views {
     }
 
     /** {@code JULC0084}, at this construct. */
@@ -65,6 +65,10 @@ class SpelledProgramsOnJavacTest {
 
     /** It compiles, and evaluates to what the JVM returns. */
     private record Agrees() implements Answer {
+    }
+
+    /** It compiles, to the reference's bytes, and the JVM throws: the one such row, D6's view. */
+    private record Views() implements Answer {
     }
 
     private static Answer stops(String construct) {
@@ -207,6 +211,20 @@ class SpelledProgramsOnJavacTest {
 
     private static final String INTEGER_IMPORT = "import java.math.BigInteger;\n";
 
+    private static final String LIST = "org.julclang.core.types.JulcList.of(java.math.BigInteger.ONE, java.math.BigInteger.TWO)";
+    private static final PlutusData ELEMENTS = PlutusData.list(integer(1), integer(2));
+    /** D6: {@code PlutusData.cast} is an unchecked view, and Java throws where the script reads the {@code Optional}. */
+    private static final Answer AGREES_NOT = new Views();
+
+    private static String lambdas(String members) {
+        return "import java.math.BigInteger;\nimport java.util.Optional;\nimport org.julclang.core.PlutusData;\nimport org.julclang.core.types.JulcList;\nclass P {\n"
+                + members + "}\n";
+    }
+
+    private static String onList(String call) {
+        return oracle(call.formatted(LIST));
+    }
+
     /** The programs of this slice that can run now, each over a sealed value passed as Data. */
     private static Stream<Case> runnable() {
         return Stream.of(
@@ -237,6 +255,54 @@ class SpelledProgramsOnJavacTest {
                 new Case("the same with a component of another name", AGREES, OPTIONAL_DATUM.replace("Datum(boolean isPresent)", "Datum(boolean flag)"),
                         List.of(), oracle("V.validate(java.util.Optional.of(new V.Datum(true)), org.julclang.core.PlutusData.UNIT, org.julclang.core.PlutusData.UNIT)"),
                         List.of(spending(PlutusData.constr(0, PlutusData.constr(0, PlutusData.constr(1))))), true),
+                call("a lambda's parameter named like a stdlib class", lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { return xs.any(Builtins -> Builtins.signum() > 0); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a lambda's parameter named like its own type", lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { return xs.any(BigInteger -> BigInteger.signum() > 0); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a lambda's parameter named like the list library", lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { return xs.map(ListsLib -> ListsLib.add(ListsLib)).size() > 0; }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a lambda's parameter named like a static field", lambdas("""
+                          static final BigInteger K = BigInteger.TEN;
+                          static boolean m(JulcList<BigInteger> xs) { return xs.any(K -> K.signum() > 1); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a lambda's parameter named like a method it calls", lambdas("""
+                          static boolean positive(BigInteger a) { return a.signum() > 0; }
+                          static boolean m(JulcList<BigInteger> xs) { return xs.all(positive -> positive(positive)); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a lambda's local named like a stdlib class", lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { return xs.any(x -> { var JulcList = x.add(x); return JulcList.signum() > 0; }); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a static method named like a list method", lambdas("""
+                          static boolean any(BigInteger a) { return a.signum() < 0; }
+                          static boolean m(JulcList<BigInteger> xs) { return xs.any(x -> any(x)); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a record's component named like a list method", lambdas("""
+                          record R(JulcList<BigInteger> map) { }
+                          static boolean m(JulcList<BigInteger> xs) { var r = new R(xs); return r.map().any(x -> x.signum() > 0); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a record's component named hash, in a lambda", lambdas("""
+                          record R(byte[] hash) { }
+                          static boolean m(JulcList<BigInteger> xs) { var r = new R(new byte[]{1}); return xs.any(x -> r.hash().length > 0); }
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a variant's name in a lambda, beside a parameter of that name", lambdas("""
+                          sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } }
+                          static boolean m(JulcList<BigInteger> xs, S s) { return xs.any(A -> { if (s instanceof S.A v) { return true; } return false; }); }
+                        """), oracle("P.m(%s, new P.S.A(java.math.BigInteger.ONE))".formatted(LIST)), ELEMENTS, PlutusData.constr(0, integer(1))),
+                new Case("a lambda in parentheses", stops("a function that is no lambda at the call"), lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { return xs.any((x -> x.signum() > 0)); }
+                        """), List.of(), null, List.of(), false),
+                new Case("a lambda's parameter written var", stops("a lambda parameter written var"), lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { return xs.any((var x) -> x.signum() > 0); }
+                        """), List.of(), null, List.of(), false),
+                new Case("find read through a view of an Optional", AGREES_NOT, lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { return PlutusData.cast(xs.find(x -> true), Optional.class).isPresent(); }
+                        """), List.of(), null, List.of(ELEMENTS), false),
+                call("find at its element", lambdas("""
+                          static boolean m(JulcList<BigInteger> xs) { BigInteger r = xs.find(x -> x.signum() > 0); return r.signum() > 0; }
+                        """), onList("P.m(%s)"), ELEMENTS),
                 call("a local named like a library method's class", """
                         import java.math.BigInteger;
                         class P {
@@ -279,13 +345,14 @@ class SpelledProgramsOnJavacTest {
                 assertEquals(code, failure.diagnostics().getFirst().code(), failure::getMessage);
             }
             case Agrees ignored -> assertEquals(jvm(program, directory), script(program), program.label());
+            case Views ignored -> assertEquals("true", script(program), program.label());
         }
     }
 
     /** Evaluation meets the JVM on this many programs: a table of stops alone would prove nothing. */
     @Test
     void somethingRuns() {
-        assertTrue(programs().filter(program -> program.answer() instanceof Agrees).count() >= 9);
+        assertTrue(programs().filter(program -> program.answer() instanceof Agrees).count() >= 20);
     }
 
     // --- The script ---

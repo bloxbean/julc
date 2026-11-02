@@ -228,7 +228,8 @@ class JavacLoweringLintTest {
             @Override
             public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
                 if (trees.getElement(new TreePath(getCurrentPath(), tree.getMethodSelect())) instanceof ExecutableElement method
-                        && (isHelper(method) || namesAGeneratedBinder(method) && !generated(tree.getArguments().getFirst()))) {
+                        && (isHelper(method) && !(file().equals("Terms.java") && isDecode(method))
+                        || namesAGeneratedBinder(method) && !generated(tree.getArguments().getFirst()))) {
                     violation(tree);
                 }
                 return super.visitMethodInvocation(tree, null);
@@ -245,6 +246,11 @@ class JavacLoweringLintTest {
     private static boolean isHelper(ExecutableElement method) {
         return qualified(method.getEnclosingElement()).equals("org.julclang.compiler.pir.PirHelpers")
                 && !PIR_HELPERS.contains(method.getSimpleName().toString());
+    }
+
+    /** A decoded binder takes a read of the binder under it, so a decode is {@code Terms}' alone, as a binder is. */
+    private static boolean isDecode(ExecutableElement method) {
+        return method.getSimpleName().contentEquals("wrapDecode");
     }
 
     private static boolean generated(ExpressionTree name) {

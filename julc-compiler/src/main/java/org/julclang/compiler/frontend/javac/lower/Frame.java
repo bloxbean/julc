@@ -21,6 +21,11 @@ record Frame(Scope scope, Exit exit) {
         return new Frame(scope, new Exit(null, false));
     }
 
+    /** The frame of a lambda's body. A {@code return} there leaves the lambda, so it is no {@code return} of the method (ADR-047). */
+    static Frame lambda(Scope scope) {
+        return new Frame(scope, new Exit(null, false));
+    }
+
     /** This frame with {@code inner} visible: a binder's scope, which ends where the term it was built for does. */
     Frame in(Scope inner) {
         return new Frame(inner, exit);

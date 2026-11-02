@@ -32,6 +32,8 @@ public final class JavacNames {
     public static final String TUPLE3 = TYPES + "Tuple3";
 
     public static final String BUILTINS = "org.julclang.stdlib.Builtins";
+    /** The package of the JDK's functional interfaces. */
+    public static final String FUNCTIONS = "java.util.function.";
 
     private static final String ANNOTATIONS = "org.julclang.stdlib.annotation.";
     public static final String ENTRYPOINT = ANNOTATIONS + "Entrypoint";

@@ -64,6 +64,14 @@ public final class Scope {
         return new Scope(this, new Binder(element, freeName(element), type));
     }
 
+    /**
+     * This scope with {@code element} bound again, at {@code type}, under the name it has here: a decoded view of a value,
+     * which shadows the binder it reads. A binder that rebinds a source name keeps it (ADR-060).
+     */
+    public Scope rebind(Element element, PirType type) {
+        return new Scope(this, new Binder(element, lookup(element).name(), type));
+    }
+
     /** The binder of {@code element}, or null if none is visible. */
     public Binder lookup(Element element) {
         for (Scope s = this; s != EMPTY; s = s.parent) {

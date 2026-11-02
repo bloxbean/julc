@@ -9,6 +9,7 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
@@ -184,6 +185,7 @@ final class Operators {
             this.operator = operator;
         }
 
+        /** A receiver the reference reads as anything but an integer has no {@code compareTo} there (I2). */
         PirTerm lower(Frame frame) {
             var receiver = ((MemberSelectTree) call.getMethodSelect()).getExpression();
             var x = lowering.expr(receiver, frame);

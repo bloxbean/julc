@@ -2,6 +2,7 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.NewClassTree;
@@ -154,7 +155,7 @@ final class CallTargets {
         }
         String key = TypeKeys.of(identity);
         if (key == null) return notInRegistry(tree, name, receiver);
-        if (key.equals("ListType") && HOF_METHODS.contains(name)) return new CallTarget.Hof(name);
+        if (key.equals(CallTarget.Hof.KEY) && HOF_METHODS.contains(name)) return new CallTarget.Hof(name);
         return typeMethods.contains(key, name) ? new CallTarget.TypeMethod(key, name) : notInRegistry(tree, name, receiver);
     }
 
@@ -208,13 +209,25 @@ final class CallTargets {
 
     /**
      * Whether the reference applies {@code UnBData} to this read: it takes a hash in a variable to be Data still, as a
-     * loop's variable is, and only a read from a call to be decoded. Every variable that reaches this slice holds bytes,
-     * so that term fails on-chain where Java returns them, and it does not lower.
+     * loop's variable is, and only a read from a call to be decoded. A variable holds bytes, so that term fails on-chain
+     * where Java returns them, and it does not lower. A lambda's parameter is the one it knows to be decoded.
      */
     private boolean decodesAgain(String name, ExpressionTree receiver) {
-        if (name.equals("value")) return false;
+        if (name.equals("value") || isLambdaParameter(receiver)) return false;
         var call = receiver instanceof MethodInvocationTree tree ? tree : null;
         return name.equals("hash") ? call == null || !typedCall(call) : call == null;
+    }
+
+    /** Whether {@code tree} reads a parameter of a lambda around it. */
+    private boolean isLambdaParameter(ExpressionTree tree) {
+        if (!(tree instanceof IdentifierTree)) return false;
+        var element = facts.element(tree);
+        for (var at = facts.enclosing(tree, Tree.Kind.LAMBDA_EXPRESSION); at != null; at = facts.enclosing(at, Tree.Kind.LAMBDA_EXPRESSION)) {
+            if (((LambdaExpressionTree) at).getParameters().stream().anyMatch(parameter -> facts.element(parameter).equals(element))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Whether {@code tree} is a call of an API static method, whose result's type the reference does not know. */
@@ -232,7 +245,8 @@ final class CallTargets {
      */
     PirType seen(ExpressionTree tree, PirTerm term) {
         boolean known = tree instanceof NewClassTree || tree instanceof MethodInvocationTree call
-                && !(classify(call) instanceof CallTarget.Stdlib || classify(call) instanceof CallTarget.TypeMethod);
+                && !(classify(call) instanceof CallTarget.Stdlib || classify(call) instanceof CallTarget.TypeMethod
+                || classify(call) instanceof CallTarget.Hof);
         return known ? typing.of(tree, term) : typing.ofVariable(term);
     }
 
@@ -257,6 +271,7 @@ final class CallTargets {
             case CallTarget.Wrapper ignored -> true;
             case CallTarget.Library ignored -> true;
             case CallTarget.TypeMethod ignored -> true;
+            case CallTarget.Hof ignored -> true;
             case CallTarget.Equals ignored -> true;
             case CallTarget.Intrinsic intrinsic -> intrinsic != CallTarget.Intrinsic.TO_DATA;
             default -> false;
