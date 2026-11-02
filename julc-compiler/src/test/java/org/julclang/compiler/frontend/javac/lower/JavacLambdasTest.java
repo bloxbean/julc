@@ -227,8 +227,6 @@ class JavacLambdasTest {
 
     @Test
     void aLambdaThatHoldsWhatNothingLowersStops() {
-        assertEquals("SWITCH_EXPRESSION", ((NotPorted) onJavac("static JulcList<BigInteger> m(JulcList<BigInteger> xs) { "
-                + "return xs.map(x -> switch (x.signum()) { case 0 -> x; default -> BigInteger.ONE; }); }")).construct());
         assertEquals("WHILE_LOOP", ((NotPorted) onJavac("static boolean m(JulcList<BigInteger> xs) { "
                 + "return xs.any(x -> { var y = x; while (y.signum() > 0) { y = y.subtract(BigInteger.ONE); } return true; }); }")).construct());
     }

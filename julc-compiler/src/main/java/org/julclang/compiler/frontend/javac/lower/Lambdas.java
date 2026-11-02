@@ -67,7 +67,7 @@ final class Lambdas {
             throw NotPorted.at(facts, parameter, "a lambda parameter written var");
         }
         PirType held = held(parameter, written);
-        PirType seen = written ? held : receiver.elemType();
+        PirType seen = written ? held : elementSeen(receiver);
         boolean decodes = isDecoded(held);
         var data = frame.scope().bind(element, decodes ? new PirType.DataType() : seen);
         var scope = decodes ? data.rebind(element, seen) : data;
@@ -75,6 +75,12 @@ final class Lambdas {
         if (encodesResult) body = encoded(body, call, lambda);
         if (decodes) body = terms.decoded(element, data.lookup(element), scope.lookup(element), held, body);
         return terms.lam(data.lookup(element), body);
+    }
+
+    /** What an inferred parameter reads as to the reference: an element of a sealed interface is Data, whatever javac knows (I2). */
+    private PirType elementSeen(PirType.ListType receiver) {
+        return facts.registry().resolveNamed(receiver.elemType()) instanceof PirType.SumType ? new PirType.DataType()
+                : receiver.elemType();
     }
 
     /** What the parameter holds: the type javac gave it, as a declaration writes it or as javac inferred it. */

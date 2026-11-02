@@ -72,6 +72,13 @@ class JavacSwitchesTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+            // A lambda reads the arm and the guard around it, and a switch reads a lambda's parameter.
+            "static long m(S s, JulcList<BigInteger> xs) { return switch (s) { case A a -> xs.map(x -> x.add(a.v())).size(); default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> xs) { return switch (s) { case B b -> xs.filter(x -> x.compareTo(b.w()) > 0).size(); default -> 3; }; }",
+            "static long m(S s, JulcList<BigInteger> xs) { return switch (s) { case A a when xs.any(x -> x.equals(a.v())) -> 1; default -> 3; }; }",
+            "static boolean m(JulcList<S> xs) { return xs.any((S v) -> switch (v) { case A a -> a.v().signum() > 0; default -> false; }); }",
+            "static JulcList<BigInteger> m(JulcList<S> xs) { return xs.map((S v) -> switch (v) { case A a -> a.v(); case B b when b.w().signum() > 0 -> b.w(); default -> BigInteger.ONE; }); }",
+            "static boolean m(JulcList<S> xs, S y) { return xs.any(v -> v.equals(y)); }",
             // Arms and defaults, in every place the reference reads them.
             "static BigInteger m(S s) { return switch (s) { case A a -> a.v(); case B b -> b.w(); case D d -> BigInteger.ONE; }; }",
             "static BigInteger m(S s) { return switch (s) { case A a -> a.v(); default -> BigInteger.ONE; }; }",
@@ -283,6 +290,11 @@ class JavacSwitchesTest {
             "static long m(S s) { var xs = JulcList.of(true); return switch (s) { case A a when !xs.head() -> 1; default -> 3; }; }",
             "static long m(S s, PlutusData d) { var v = switch (s) { case A a -> Builtins.tailList(Builtins.unListData(d)); default -> d; }; return JulcList.of(v).size(); }",
             "static long m(S s) { return switch (s) { case A a when (1L << 1L) > 5 -> 1; default -> 3; }; }",
+            "static boolean m(JulcList<S> xs) { return xs.any(v -> v instanceof A); }",
+            "static long m(JulcList<S> xs) { return xs.filter(v -> v instanceof B).size(); }",
+            "static boolean m(JulcList<S> xs) { return xs.any(v -> { var w = v; return w instanceof A; }); }",
+            "static boolean m(JulcList<S> xs) { return xs.any(v -> switch (v) { case A a -> a.v().signum() > 0; default -> false; }); }",
+            "static JulcList<BigInteger> m(JulcList<S> xs) { return xs.map(v -> switch (v) { case A a -> a.v(); case B b when b.w().signum() > 0 -> b.w(); default -> BigInteger.ONE; }); }",
             "static long m(S s, Boolean p, Boolean q) { return switch (s) { case A a when p == q -> 1; default -> 3; }; }",
             "static long big(long a) { return a; } static long big(int a) { return a; } static long m(S s) { return switch (s) { case A a when big(1) > 0 -> 1; default -> 3; }; }",
             "static final S Z = new A(BigInteger.ONE); static long m(S s) { return switch (s) { case A a when Z instanceof A -> 1; default -> 3; }; }",
