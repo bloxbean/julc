@@ -1,9 +1,12 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.ParenthesizedTree;
+import com.sun.source.tree.SwitchExpressionTree;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTargetDiagnostics;
@@ -20,6 +23,7 @@ import org.julclang.compiler.pir.TypeMethodRegistry;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.DefaultFun;
 
+import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.List;
@@ -137,14 +141,28 @@ final class Calls {
 
     /**
      * Whether {@code inner} holds a decoded map. javac's type goes first, since a binder can say Data of a decoded value
-     * ({@link Lambdas}, a {@code var}). Where javac's type has no representation, what the term says of itself does.
+     * ({@link Lambdas}, a {@code var}). Where it has no representation, what the term says of itself does, unless the value
+     * {@link #mayHoldEither} of a map and Data: one term cannot decode one arm and leave the other, so that stops.
      */
     private boolean isMap(ExpressionTree argument, PirTerm inner) {
         try {
             return typing.of(argument, inner) instanceof PirType.MapType;
         } catch (NotPorted e) {
+            if (mayHoldEither(argument)) throw NotPorted.at(facts, argument, "a cast to a map of a value that holds another type on one path");
             return typing.ofTerm(inner) instanceof PirType.MapType;
         }
+    }
+
+    /** Whether {@code tree} chooses between terms: a conditional, a {@code switch}, or a {@code var} of either. */
+    private boolean mayHoldEither(ExpressionTree tree) {
+        return switch (tree) {
+            case ParenthesizedTree parenthesized -> mayHoldEither(parenthesized.getExpression());
+            case ConditionalExpressionTree ignored -> true;
+            case SwitchExpressionTree ignored -> true;
+            case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
+                    && facts.initializer(variable) != null -> mayHoldEither(facts.initializer(variable));
+            default -> false;
+        };
     }
 
     // --- Static methods ---

@@ -584,7 +584,38 @@ class Adr068LambdasHarnessTest {
         assertFixedOnJavac("public static boolean m(JulcList<" + MAP_OF_BIG + "> a) { return a.map(y -> y).any(x -> { " + MAP_OF_BIG + " d = PlutusData.cast(x, JulcMap.class); return d.isEmpty(); }); }", list(mapOf(1, 2)));
         assertBothAgree("public static long m(" + MAP_OF_BIG + " a) { " + MAP_OF_BIG + " d = PlutusData.cast(a, JulcMap.class); return d.size(); }", mapOf(1, 2));
         assertBothAgree("public static long m(" + MAP_OF_BIG + " a, BigInteger n) { var y = JulcList.of(a, n).head(); " + MAP_OF_BIG + " d = PlutusData.cast(y, JulcMap.class); return d.size(); }", mapOf(1, 2), integer(1));
-        assertBothAgree("public static long m(" + MAP_OF_BIG + " a, BigInteger n, boolean c) { " + MAP_OF_BIG + " d = PlutusData.cast(c ? a : n, JulcMap.class); return d.size(); }", mapOf(1, 2), integer(1), bool(true));
+    }
+
+    /** One term cannot decode one arm and leave the other, so what holds a map on one path and Data on another stops, however it is read. */
+    @Test
+    void aCastToAMapOfAMixedValueStops() {
+        String held = "var y = JulcList.of(a).head(); ";
+        String size = " JulcMap.class); return z.size(); }";
+        String declared = MAP_OF_BIG + " z = PlutusData.cast(";
+        String head = "public static long m(boolean c, " + MAP_OF_BIG + " a, PlutusData d, BigInteger n, S s) { ";
+        for (var c : List.of(bool(true), bool(false))) {
+            for (var body : List.of(held + declared + "c ? y : d," + size, held + declared + "(c ? y : d)," + size, held + declared + "((c ? d : y))," + size,
+                    declared + "c ? a : n," + size, declared + "c ? n : a," + size, declared + "c ? d : a," + size,
+                    held + "var w = c ? y : d; " + declared + "w," + size, "var w = c ? a : n; " + declared + "w," + size,
+                    declared + "switch (s) { case S.A q -> a; default -> d; }," + size)) {
+                assertStopsOnJavac(head + body, c, mapOf(1, 2), mapOf(3, 4), integer(1), a(1));
+            }
+        }
+        assertStopsOnJavac("public static boolean m(boolean c, " + MAP_OF_BIG + " a, PlutusData d) { var xs = JulcList.of(a); return xs.any(q -> { " + declared + "c ? q : d, JulcMap.class); return z.isEmpty(); }); }", bool(true), mapOf(1, 2), mapOf(3, 4));
+    }
+
+    /** Each arm holds the same thing, so the one term is right on both paths. */
+    @Test
+    void aCastToAMapOfOneRepresentationGoesOn() {
+        String cast = " z = PlutusData.cast(";
+        String pure = "public static long m(boolean c, " + MAP_OF_BIG + " a, " + MAP_OF_BIG + " b) { " + MAP_OF_BIG + cast + "c ? a : b, JulcMap.class); return z.size(); }";
+        String lambda = "public static boolean m(boolean c, " + MAP_OF_BIG + " a) { var xs = JulcList.of(a); return xs.any(q -> { " + MAP_OF_BIG + cast + "c ? q : a, JulcMap.class); return z.isEmpty(); }); }";
+        var two = new PlutusData.MapData(List.of(new PlutusData.Pair(integer(1), integer(2)), new PlutusData.Pair(integer(3), integer(4))));
+        for (var c : List.of(bool(true), bool(false))) {
+            assertBothAgree(pure, c, mapOf(1, 2), two);
+            assertJavacAgrees(run(lambda, List.of(c, mapOf(1, 2))));
+            assertBothDivergeAlike("public static long m(boolean c, PlutusData d, PlutusData e) { JulcMap<PlutusData, PlutusData>" + cast + "c ? d : e, JulcMap.class); return z.size(); }", c, mapOf(1, 2), two);
+        }
     }
 
     /** Java refuses a {@code MapData} as a {@code JulcMap}, and the view reads it: a Data value still decodes, on both frontends. */
