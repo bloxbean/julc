@@ -503,6 +503,47 @@ class Adr068SwitchHarnessTest {
         }
     }
 
+    /** A rejection of the reference that {@code JAVAC} does not make: the JVM's answer at every level, and the reference still refuses. */
+    private static void assertWiderOnJavac(String members, PlutusData... args) {
+        var report = run(members, List.of(args));
+        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.AGREE : Verdict.Kind.REJECTED,
+                result.verdict().kind(), report::describe));
+        AGREED.incrementAndGet();
+    }
+
+    private static String underNew(String guard) {
+        return "new X(switch (s) { case S.A a when " + guard + " -> BigInteger.ONE; default -> BigInteger.TWO; })";
+    }
+
+    @Test
+    void aConstantGuardThatReadsALocalThroughANewStops() {
+        for (var s : List.of(a(1), d())) {
+            assertStopsOnJavac("public static X m(S s) { final boolean on = true; return " + underNew("on") + "; }", "JULC0084", s);
+            assertAgree("public static X m(S s, boolean c) { final boolean on = true; return " + underNew("on && c") + "; }", s, bool(false));
+            assertAgree("public static X m(S s, boolean c) { final boolean on = true; return " + underNew("on && c") + "; }", s, bool(true));
+        }
+    }
+
+    /** What javac binds under a {@code new} and the reference does not see: the reference stops, and {@code JAVAC} is the JVM's unless the guard is a constant. */
+    @Test
+    void aGuardUnderANewReadsWhatJavacBound() {
+        for (var s : List.of(a(1), d())) {
+            assertWiderOnJavac("public static X m(S s, S t) { return " + underNew("t instanceof S.A") + "; }", s, a(2));
+            assertWiderOnJavac("public static X m(S s, long n) { return " + underNew("n > 0") + "; }", s, integer(1));
+            assertStopsOnJavac("public static X m(S s) { final long z = 5; return " + underNew("z > 0") + "; }", "JULC0084", s);
+            assertWiderOnJavac("public static X m(S s) { final int z = 2147483647; return new X(switch (s) { case S.A a when (z + 1) < a.v().signum() -> BigInteger.ONE; default -> BigInteger.TWO; }); }", s);
+            assertStopsOnJavac("public static X m(S s) { final String u = \"a\"; return " + underNew("u == \"a\"") + "; }", "JULC0084", s);
+            assertStopsOnJavac("static final boolean OFF = false; public static X m(S s) { final boolean OFF = true; return " + underNew("OFF") + "; }", "JULC0084", s);
+        }
+    }
+
+    /** A local that shadows a constant field: the reference reads the field through a {@code new}, and {@code JAVAC} the local, as Java does. */
+    @Test
+    void aLocalThatShadowsAConstantFieldUnderANew() {
+        assertFixedOnJavac("static final boolean ON = true; public static X m(S s, boolean c) { boolean ON = c; return " + underNew("ON") + "; }", a(1), bool(false));
+        assertFixedOnJavac("static final boolean ON = true; public static X m(S s, boolean ON) { return " + underNew("ON") + "; }", a(1), bool(false));
+    }
+
     @Test
     void aSwitchStatementIsNotInTheSubset() {
         var report = run("public static long m(S s) { switch (s) { case S.A a -> { return 1; } default -> { return 2; } } }", List.of(a(1)));

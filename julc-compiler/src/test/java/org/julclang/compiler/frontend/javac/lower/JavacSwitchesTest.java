@@ -579,6 +579,41 @@ class JavacSwitchesTest {
         same(members);
     }
 
+    /** The reference reads no local through a {@code new}, so a guard that is constant by one keeps a read at run time, in other bytes. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when (on) -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean off = false; return new X(switch (s) { case A a when !off -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when on && true -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(switch (s) { case A a when (boolean) on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final var on = true; return new X(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; final boolean p = on; return new X(switch (s) { case A a when p -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, S t) { final boolean on = true; return new X(switch (s) { case A a -> { final boolean p = on; yield switch (t) { case A b when p -> BigInteger.ONE; default -> BigInteger.TWO; }; } default -> BigInteger.ZERO; }); }",
+            "record X(BigInteger v) { } static X m(S s, S t) { final boolean on = true; return new X(switch (s) { case A a -> switch (t) { case A b when on -> BigInteger.ONE; default -> BigInteger.TWO; }; default -> BigInteger.ZERO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(h(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; })); }",
+    })
+    void aConstantGuardThatReadsALocalThroughANewStops(String members) {
+        LoweringFixture.assertMethodNotPorted(source(members), "m", "a constant guard that reads a local through a new", 26);
+    }
+
+    /** A local on the same side of the {@code new}, no local, no {@code new}, or a guard read at run time on both. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "record X(BigInteger v) { } static X m(S s, S t) { return new X(switch (s) { case A a -> { final boolean on = true; yield switch (t) { case A b when on -> BigInteger.ONE; default -> BigInteger.TWO; }; } default -> BigInteger.ZERO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { return new X(switch (s) { case A a when ON -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return switch (s) { case A a when on -> new X(BigInteger.ONE); default -> new X(BigInteger.TWO); }; }",
+            "record X(BigInteger v) { } static X m(S s) { final boolean on = true; var v = switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }; return new X(v); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { final boolean on = true; return new X(switch (s) { case A a when on && c -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { final boolean on = true; return new X(switch (s) { case A a when c || on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { final boolean on = true; return new X(switch (s) { case A a when on == c -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s) { boolean on = true; return new X(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+            "record X(BigInteger v) { } static X m(S s, boolean c) { return new X(switch (s) { case A a when c -> BigInteger.ONE; default -> BigInteger.TWO; }); }",
+    })
+    void aGuardReadAtRunTimeOrOnOneSideOfANew(String members) {
+        same(members);
+    }
+
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
     /** An inferred parameter of a sealed interface is Data to the reference, so {@code instanceof} on it stops on both. */
     @ParameterizedTest
