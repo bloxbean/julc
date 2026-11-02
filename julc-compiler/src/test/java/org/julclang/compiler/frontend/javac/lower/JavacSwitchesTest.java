@@ -158,6 +158,7 @@ class JavacSwitchesTest {
             "static long m(S s, T t) { return switch (s) { case A a when t instanceof T.X -> 1; default -> 3; }; }",
             "static long m(S s, JulcList<BigInteger> l) { return switch (s) { case A a when !l.isEmpty() -> 1; default -> 3; }; }",
             "static long m(S s, S t, BigInteger n) { return switch (s) { case A a when switch (t) { case A c when c.v().compareTo(n) > 0 -> true; default -> false; } -> 1; default -> 3; }; }",
+            "static long m(S s, BigInteger n) { return switch (s) { case A a when !a.v().equals(n) -> 1; default -> 3; }; }",
             // Constants in a guard have Java's width.
             "static long m(S s) { return switch (s) { case A a when (2147483647 + 1) < a.v().signum() -> 1; default -> 3; }; }",
             "static long m(S s) { return switch (s) { case A a when K + 1 < a.v().signum() -> 1; default -> 3; }; }",
@@ -270,6 +271,10 @@ class JavacSwitchesTest {
             "static long m(S s, PlutusData d, PlutusData e) { return switch (s) { case A a when !Builtins.equalsData(d, e) -> 1; default -> 3; }; }",
             "static long m(S s, long n) { return switch (s) { case A a when Math.abs(n) > 0 -> 1; default -> 3; }; }",
             "record F(boolean on) { } static long m(S s) { F f = new F(false); return switch (s) { case A a when f.on -> 1; default -> 3; }; }",
+            "static long m(S s, byte[] k, byte[] n, byte[] g) { return switch (s) { case A a when Builtins.verifyEd25519Signature(k, n, g) -> 1; default -> 3; }; }",
+            "static long m(S s, byte[] k) { return switch (s) { case A a when Builtins.readBit(k, 0) -> 1; default -> 3; }; }",
+            "record Q(long n) { } static long m(S s, JulcList<Q> l) { return switch (s) { case A a when l.head().n() > 0 -> 1; default -> 3; }; }",
+            "static long m(S s) { var xs = JulcList.of(true); return switch (s) { case A a when !xs.head() -> 1; default -> 3; }; }",
             // Statements.
             "static long m(S s) { switch (s) { case A a -> { return 1; } default -> { return 2; } } }",
             "static long m(S s) { switch (s) { default -> { } } return 2; }",

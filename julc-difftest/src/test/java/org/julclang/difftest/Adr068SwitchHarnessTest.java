@@ -2,6 +2,7 @@ package org.julclang.difftest;
 
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.core.PlutusData;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -9,6 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,6 +24,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Adr068SwitchHarnessTest {
 
     private static final DiffRunner RUNNER = new DiffRunner(configs(), 10_000);
+    /** Programs run, each at eight configurations, whose every verdict was {@code AGREE}. */
+    private static final AtomicInteger AGREED = new AtomicInteger();
+
+    @AfterAll
+    static void whatRan() {
+        System.out.println("switch harness: " + AGREED + " runs agreed");
+        assertTrue(AGREED.get() >= 700, "too few runs agreed: " + AGREED);
+    }
 
     private static List<DiffConfig> configs() {
         var configs = new ArrayList<>(DiffConfig.allLevels());
@@ -110,6 +120,7 @@ class Adr068SwitchHarnessTest {
                 assertEquals(result.measurement(), javac.measurement(), "cost at " + config);
             }
         });
+        AGREED.incrementAndGet();
     }
 
     private static void assertAgreeOnEvery(String members) {

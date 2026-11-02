@@ -95,7 +95,7 @@ public final class GuardTypes {
             case MemberSelectTree select -> field(select, leaf);
             case MethodInvocationTree call -> call(call, leaf);
             case SwitchExpressionTree nested -> nested(nested, leaf);
-            case NewClassTree creation -> declared(facts.type(creation.getIdentifier())) == JType.BOOLEAN_BOX ? JType.BOOLEAN_BOX : JType.OTHER;
+            case NewClassTree creation -> declared(facts.type(creation)) == JType.BOOLEAN_BOX ? JType.BOOLEAN_BOX : JType.OTHER;
             case LambdaExpressionTree ignored -> JType.OTHER;
             default -> leaf.apply(tree);
         };
