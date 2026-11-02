@@ -93,9 +93,7 @@ final class AccumulatorTypes {
         for (var statement : preceding) {
             if (statement instanceof VariableTree local && local.getInitializer() != null) {
                 var value = local.getInitializer();
-                if (isPairListCall(value) || isMapData(local) || value instanceof IdentifierTree name && names.contains(facts.element(name))) {
-                    names.add(facts.element(local));
-                }
+                if (isPairListCall(value) || isMapData(local)) names.add(facts.element(local));
             }
         }
         return names;

@@ -2,14 +2,14 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import org.julclang.compiler.pir.PirTerm;
 
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * The reads a term makes of some names, in the order the reference's {@code collectReferencedVars} meets them. It reads
- * spelling and not scope, as there: a binder inside the term hides nothing, but for a {@code PairMatch}'s. {@link Loops}
- * orders its {@code let}s by this, so the bytes follow it. Walking a term has no evaluation order to state.
+ * spelling and not scope, as there: a binder inside the term hides nothing. A {@code PairMatch}'s binders, which there hide
+ * their names, are generated, and no candidate is one. {@link Loops} orders its {@code let}s by this, so the bytes follow
+ * it. Walking a term has no evaluation order to state.
  */
 final class PreLoopReads {
 
@@ -46,10 +46,7 @@ final class PreLoopReads {
             }
             case PirTerm.PairMatch match -> {
                 collect(match.scrutinee(), candidates, reads);
-                var inner = new HashSet<>(candidates);
-                inner.remove(match.firstName());
-                inner.remove(match.secondName());
-                collect(match.body(), inner, reads);
+                collect(match.body(), candidates, reads);
             }
             case PirTerm.ListMatch match -> {
                 collect(match.scrutinee(), candidates, reads);

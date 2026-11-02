@@ -10,7 +10,6 @@ import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.subset.LoopRules;
 
 import javax.lang.model.element.Element;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -37,11 +36,14 @@ final class Accumulators {
         return List.copyOf(found);
     }
 
-    /** What the loops in an {@code if}'s branches update of what is visible around it, which the branches hand on (ADR-050). */
+    /**
+     * What the loops in an {@code if}'s branches update of what is visible around it, which the branches hand on (ADR-050).
+     * An update there outside a loop is rejected where it lowers.
+     */
     List<Element> ofBranches(IfTree tree, Frame frame) {
         var found = new LinkedHashSet<Element>();
-        inBranch(tree, false, frame, found);
-        return new ArrayList<>(found);
+        collect(tree, frame, found);
+        return List.copyOf(found);
     }
 
     private static StatementTree body(StatementTree loop) {
@@ -62,21 +64,6 @@ final class Accumulators {
             case BlockTree block -> block.getStatements().forEach(inner -> collect(inner, frame, found));
             case WhileLoopTree loop -> collect(loop.getStatement(), frame, found);
             case EnhancedForLoopTree loop -> collect(loop.getStatement(), frame, found);
-            default -> {
-            }
-        }
-    }
-
-    private void inBranch(StatementTree statement, boolean inLoop, Frame frame, Set<Element> found) {
-        switch (statement) {
-            case BlockTree block -> block.getStatements().forEach(inner -> inBranch(inner, inLoop, frame, found));
-            case IfTree branch -> {
-                inBranch(branch.getThenStatement(), inLoop, frame, found);
-                if (branch.getElseStatement() != null) inBranch(branch.getElseStatement(), inLoop, frame, found);
-            }
-            case EnhancedForLoopTree loop -> inBranch(loop.getStatement(), true, frame, found);
-            case WhileLoopTree loop -> inBranch(loop.getStatement(), true, frame, found);
-            case ExpressionStatementTree expression when inLoop -> add(expression, frame, found);
             default -> {
             }
         }

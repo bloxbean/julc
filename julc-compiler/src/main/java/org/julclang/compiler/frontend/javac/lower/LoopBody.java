@@ -13,14 +13,11 @@ import com.sun.source.tree.WhileLoopTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
-import org.julclang.compiler.frontend.javac.subset.FieldUpdates;
 import org.julclang.compiler.frontend.javac.subset.LoopRules;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 
-import javax.lang.model.element.ElementKind;
-import javax.lang.model.element.VariableElement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.UnaryOperator;
@@ -75,17 +72,15 @@ final class LoopBody {
     private final Lowering lowering;
     private final Statements statements;
     private final Loops loops;
-    private final FieldUpdates fieldUpdates;
     /** Numbers the joins, so a nested one never shadows the one around it. */
     private int joins;
 
-    LoopBody(JavacFacts facts, Terms terms, Lowering lowering, Statements statements, Loops loops, FieldUpdates fieldUpdates) {
+    LoopBody(JavacFacts facts, Terms terms, Lowering lowering, Statements statements, Loops loops) {
         this.facts = facts;
         this.terms = terms;
         this.lowering = lowering;
         this.statements = statements;
         this.loops = loops;
-        this.fieldUpdates = fieldUpdates;
     }
 
     /** A body with no {@code break}: its value is {@code carried} as the body leaves it. */
@@ -156,14 +151,15 @@ final class LoopBody {
         return terms.let(binder, value, rest);
     }
 
-    /** What an assignment stores. A name with no binder is a field no binder stands for, which is not a variable here. */
+    /**
+     * What an assignment stores. A name with no binder is a field no binder stands for, which is not a variable here. A field
+     * with a binder is an accumulator of this loop, so {@link Loops#accumulators} has met it.
+     */
     private PirTerm assigned(ExpressionTree assignment, IdentifierTree target, Scope.Binder binder, Frame frame) {
         if (binder == null) {
             throw facts.locatedRejection("Assignment to undeclared variable '" + target.getName() + "'",
                     "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.", assignment);
         }
-        var element = facts.element(target);
-        if (element.getKind() == ElementKind.FIELD) fieldUpdates.require((VariableElement) element, assignment);
         return lowering.assigned(assignment, binder, frame);
     }
 

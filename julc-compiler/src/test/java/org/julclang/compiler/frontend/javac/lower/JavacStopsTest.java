@@ -55,6 +55,7 @@ class JavacStopsTest {
             new Stop("a lambda parameter of type java.lang.Object", "static boolean m(JulcList xs) { return xs.any(x -> true); }", "accepted"),
             new Stop("LAMBDA_EXPRESSION", "record R(BigInteger a) { java.util.function.Predicate<BigInteger> h() { return x -> true; } } static boolean m(R r) { return true; }", "accepted"),
             new Stop("LAMBDA_EXPRESSION", "static boolean m(boolean c) { java.util.function.Predicate<BigInteger> p = c ? x -> true : x -> false; return c; }", "uncoded"),
+            new Stop("a for-each over an array", "static long m(byte[] a) { long s = 0; for (byte b : a) { s = s + 1; } return s; }", "accepted"),
             new Stop("a wrapper's component read as Data", "static byte[] m(PubKeyHash p) { return p.hash(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "record R(PubKeyHash p) { } static byte[] m(R r) { return (r.p()).hash(); }", "accepted"),
             new Stop("a wrapper's component read as Data", "@Param static PubKeyHash K; static byte[] m() { return K.hash(); }", "accepted"),

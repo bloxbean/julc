@@ -62,7 +62,8 @@ final class Operators {
 
     /**
      * What an assignment stores (ADR-060): the right-hand side, or {@code target op value}, in Java's order: the target is
-     * read first. Integers take every lowered operator and strings take {@code +=}. {@code SubsetScan} has rejected the others.
+     * read first. Integers take every lowered operator and strings take {@code +=}. {@code SubsetScan} has rejected the other
+     * operators, and javac every other operand and operator on these types.
      */
     PirTerm assigned(ExpressionTree assignment, Scope.Binder target, Frame frame) {
         String name = target.element().getSimpleName().toString();
@@ -73,7 +74,7 @@ final class Operators {
         }
         var compound = (CompoundAssignmentTree) assignment;
         String operator = compoundOperator(compound);
-        boolean string = target.type() instanceof PirType.StringType && compound.getKind() == Tree.Kind.PLUS_ASSIGNMENT;
+        boolean string = target.type() instanceof PirType.StringType;
         if (!(target.type() instanceof PirType.IntegerType) && !string) {
             throw facts.locatedRejection("Compound assignment " + operator + " to '" + name + "' of type "
                             + LibraryMethodRegistry.pirTypeName(target.type()) + " is not supported",
@@ -83,8 +84,7 @@ final class Operators {
         var current = lowering.expr(compound.getVariable(), frame);
         var operand = lowering.expr(compound.getExpression(), frame);
         var operandType = typing.of(compound.getExpression(), operand);
-        if (string ? !(operandType instanceof PirType.StringType)
-                : !(operandType instanceof PirType.IntegerType || operandType instanceof PirType.DataType)) {
+        if (string && !(operandType instanceof PirType.StringType)) {
             throw facts.locatedRejection("Compound assignment " + operator + " to '" + name + "' needs a "
                             + LibraryMethodRegistry.pirTypeName(target.type()) + " operand, found " + LibraryMethodRegistry.pirTypeName(operandType),
                     "Convert the right-hand side to the variable's type first.", compound.getExpression());

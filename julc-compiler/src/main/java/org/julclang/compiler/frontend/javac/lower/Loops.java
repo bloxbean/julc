@@ -84,7 +84,7 @@ final class Loops {
         this.desugarer = new LoopDesugarer(context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
                 && context.optimizationLevel().pv11SafeRulesEnabled()
                 && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS));
-        this.body = new LoopBody(facts, terms, lowering, statements, this, fieldUpdates);
+        this.body = new LoopBody(facts, terms, lowering, statements, this);
     }
 
     void methodDeclared(String binder) {
