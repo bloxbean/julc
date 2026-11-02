@@ -103,8 +103,11 @@ final class Lambdas {
      */
     private PirTerm encoded(PirTerm body, MethodInvocationTree call, LambdaExpressionTree lambda) {
         var type = ((PirType.ListType) typing.of(call)).elemType();
-        if (type instanceof PirType.DataType) type = typing.ofTerm(body);
         var where = lambda.getBody() instanceof ExpressionTree expression ? expression : lambda;
+        if (type instanceof PirType.DataType) {
+            type = typing.ofTerm(body);
+            typing.requireNoPairListEncoded(type, where);
+        }
         try {
             return type instanceof PirType.DataType ? body : PirHelpers.wrapEncode(body, facts.registry().resolveNamed(type));
         } catch (CompilerException e) {

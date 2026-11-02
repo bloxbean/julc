@@ -78,6 +78,7 @@ final class Tuples {
                 type = target.fields().get(i).type();
                 if (type instanceof PirType.DataType) requireData(name, arguments.get(i), fields.get(i));
             } else {
+                typing.requireNoPairListEncoded(arguments.get(i), fields.get(i));
                 type = typing.of(arguments.get(i), fields.get(i));
             }
             components.add(new PirType.Field(written.fields().get(i).name(), type));

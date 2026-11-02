@@ -25,6 +25,8 @@ import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
@@ -101,12 +103,20 @@ final class Calls {
     private Arguments arguments(MethodInvocationTree tree, Frame frame) {
         var lowered = new ArrayList<PirTerm>();
         var types = new ArrayList<PirType>();
+        boolean encodes = encodes(tree);
         for (var argument : tree.getArguments()) {
             var term = lowering.expr(argument, frame);
+            if (encodes) typing.requireNoPairListEncoded(argument, term);
             lowered.add(term);
             types.add(typing.of(argument, term));
         }
         return new Arguments(lowered, types);
+    }
+
+    /** A builtin takes its argument as it is. Everything else encodes it by the type it is given. */
+    private boolean encodes(MethodInvocationTree tree) {
+        return !(facts.element(tree.getMethodSelect()) instanceof ExecutableElement method
+                && method.getEnclosingElement() instanceof TypeElement owner && facts.identity(owner).equals(JavacNames.BUILTINS));
     }
 
     private void requireAvailable(LoweringRequirements requirements, MethodInvocationTree tree) {
@@ -122,6 +132,7 @@ final class Calls {
             case TO_DATA -> {
                 var receiver = receiver(tree);
                 var scope = lowering.expr(receiver, frame);
+                typing.requireNoPairListEncoded(receiver, scope);
                 yield PirHelpers.wrapEncode(scope, typing.of(receiver, scope));
             }
         };

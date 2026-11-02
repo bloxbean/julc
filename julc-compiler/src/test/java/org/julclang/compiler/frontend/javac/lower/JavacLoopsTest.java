@@ -14,6 +14,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -260,6 +261,20 @@ class JavacLoopsTest {
             "static long m(String s) { long i = 0; while (i < 2) { i += s; } return i; }",
             "static String m(String s, long n) { long i = 0; while (i < n) { s += n; i = i + 1; } return s; }",
             "static String m(String s, long n) { while (n > 0) { s += 1; n = n - 1; } return s; }",
+            "static long m(JulcList<BigInteger> xs, boolean c) { JulcList<BigInteger> y = xs; for (var x : (y = xs.tail())) { x = BigInteger.ONE; if (c) { break; } } return 0; }",
+            "static long m(JulcList<BigInteger> xs, boolean c) { JulcList<BigInteger> y = xs; for (var x : (y = xs.tail())) { long q = 0; q = 1; if (c) { break; } } return 0; }",
+            "static long m(JulcList<BigInteger> xs, boolean c) { JulcList<BigInteger> y = xs; for (var x : (y = xs.tail())) { if (c) { break; } } return 0; }",
+            "static long m(long n) { done: for (int i = 0; i < 1; i = i + 1) { n = 1; } return n; }",
+            "static long m(long n) { done: for (int i = 0; i < 1; i = i + 1) { break; } return n; }",
+            "static long m(long n) { done: for (int i = 0; i < 1; i = i + 1) { break done; } return n; }",
+            "static long m(long n) { done: do { n = 1; } while (n < 0); return n; }",
+            "static long m(long n) { done: do { break done; } while (n < 0); return n; }",
+            "static long m(long n) { done: { for (int i = 0; i < 1; i = i + 1) { n = 1; } } return n; }",
+            "static long m(long n) { done: { do { n = 1; } while (n < 0); } return n; }",
+            "static long m(long n) { done: { break done; } return n; }",
+            "static long m(long n) { done: { if (n > 0) { break done; } } return n; }",
+            "static long m(long n) { done: while (n > 0) { n = n - 1; } return n; }",
+            "static long m(long n) { a: b: { break a; } return n; }",
     })
     void rejections(String members) {
         rejected(members);
@@ -290,6 +305,17 @@ class JavacLoopsTest {
             "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(JulcList<S> xs) { long s = 0; for (var e : (xs)) { s = s + switch (e) { case A a -> 1; default -> 2; }; } return s; }",
             "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (xs)) { var y = x; s = s + y.longValue(); } return s; }",
             "static long m(JulcList<BigInteger> xs, boolean c) { long s = 0; for (var x : (xs)) { var y = c ? x : x; s = s + y.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (xs).tail()) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : ((xs)).tail()) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (((xs))).tail().tail()) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (xs).reverse()) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (xs).take(1)) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (xs).filter(q -> true)) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs, JulcList<BigInteger> ys, boolean c) { long s = 0; for (var x : (c ? xs : ys).tail()) { s = s + x.longValue(); } return s; }",
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(JulcList<BigInteger> xs, S e) { long s = 0; for (var x : (switch (e) { case A a -> xs; default -> xs; }).tail()) { s = s + x.longValue(); } return s; }",
+            "static JulcList<BigInteger> idn(JulcList<BigInteger> ww) { return ww; } static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : (idn(xs)).tail()) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<byte[]> xs) { long s = 0; for (var x : (xs).tail()) { s = s + x.length; } return s; }",
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(JulcList<S> xs) { long s = 0; for (var e : (xs).tail()) { s = s + switch (e) { case A a -> 1; default -> 2; }; } return s; }",
     })
     void anIterableTheReferenceDoesNotRead(String members) {
         rejected(members);
@@ -300,8 +326,24 @@ class JavacLoopsTest {
     @ValueSource(strings = {
             "static long m(JulcList<PlutusData> xs) { long s = 0; for (var x : (xs)) { s = s + Builtins.unIData(x).longValue(); } return s; }",
             "static long m(JulcList<PlutusData> xs) { long s = 0; long t = 0; for (var x : (xs)) { s = s + 1; t = t + Builtins.unIData(x).longValue(); } return s + t; }",
+            "static long m(JulcList<PlutusData> xs) { long s = 0; for (var x : (xs).tail()) { s = s + Builtins.unIData(x).longValue(); } return s; }",
+            "static long m(JulcList<PlutusData> xs, JulcList<PlutusData> ys, boolean c) { long s = 0; for (var x : (c ? xs : ys).tail()) { s = s + Builtins.unIData(x).longValue(); } return s; }",
     })
     void anIterableTheReferenceDoesNotReadStillRuns(String members) {
+        same(members);
+    }
+
+    /** A call on a name, a chain of calls rooted at one, and a static call are read, in parentheses or not. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs.tail()) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs.tail().tail()) { s = s + x.longValue(); } return s; }",
+            "static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : xs.tail().take(1)) { s = s + x.longValue(); } return s; }",
+            "static JulcList<BigInteger> idn(JulcList<BigInteger> ww) { return ww; } static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : idn(xs)) { s = s + x.longValue(); } return s; }",
+            "static JulcList<BigInteger> idn(JulcList<BigInteger> ww) { return ww; } static long m(JulcList<BigInteger> xs) { long s = 0; for (var x : idn(xs).tail()) { s = s + x.longValue(); } return s; }",
+            "record W(JulcList<BigInteger> xs) { } static long m(W w) { long s = 0; for (var x : w.xs().tail()) { s = s + x.longValue(); } return s; }",
+    })
+    void aRootedCallIsRead(String members) {
         same(members);
     }
 
@@ -368,6 +410,51 @@ class JavacLoopsTest {
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
         assertEquals("JULC0041", failure.diagnostics().getFirst().code());
         assertEquals(12, failure.diagnostics().getFirst().line());
+    }
+
+    private static final String CURSOR = "PlutusData c = Builtins.unMapData(d); long n = 0; while (n < l) { c = Builtins.tailList(c); n = n + 1; } ";
+
+    private static final String FOR_EACH = "PlutusData c = Builtins.unMapData(d); long n = 0; for (var u : xs) { c = Builtins.tailList(c); n = n + 1; } ";
+
+    /** A pair list is not encoded to Data. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static boolean m(PlutusData d, PlutusData e, JulcList<BigInteger> xs) { " + FOR_EACH + "return JulcList.of(c).head().equals(e); }",
+            "static boolean m(PlutusData d, PlutusData e, long l) { " + CURSOR + "return JulcList.of(c).head().equals(e); }",
+            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "var w = c; return JulcList.of(w).head(); }",
+            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "return JulcList.of((c)).head(); }",
+            "static PlutusData m(PlutusData d, long l, boolean f) { " + CURSOR + "return JulcList.of(f ? c : d).head(); }",
+            "static long m(PlutusData d, JulcList<PlutusData> xs, long l) { " + CURSOR + "return xs.prepend(c).size(); }",
+            "static boolean m(PlutusData d, JulcList<PlutusData> xs, long l) { " + CURSOR + "return xs.contains(c); }",
+            "static long m(PlutusData d, org.julclang.core.types.JulcMap<PlutusData, PlutusData> g, long l) { " + CURSOR + "return g.insert(c, d).size(); }",
+            "static boolean m(PlutusData d, PlutusData e, long l) { " + CURSOR + "return e.equals(c); }",
+            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "var t = new Tuple2<>(c, d); return t.first(); }",
+            "static PlutusData m(PlutusData d, JulcList<BigInteger> xs, long l) { " + CURSOR + "var w = c; return xs.map(q -> w).head(); }",
+            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "PlutusData r = d; long k = 0; while (k < 1) { r = JulcList.of(c).head(); k = k + 1; } return r; }",
+            "static PlutusData m(PlutusData d, long l) { PlutusData c = Builtins.mkNilPairData(); long n = 0; while (n < l) { c = Builtins.mkCons(Builtins.mkPairData(d, d), c); n = n + 1; } return JulcList.of(c).head(); }",
+            "static PlutusData m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = Builtins.mkNilPairData(); long n = 0; for (var u : xs) { c = Builtins.mkCons(Builtins.mkPairData(d, d), c); n = n + 1; } return JulcList.of(c).head(); }",
+    })
+    void aPairListIsNotEncoded(String members) {
+        var failure = assertThrows(NotPorted.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of()));
+        assertEquals("a pair list encoded to Data", failure.construct());
+    }
+
+    /** What a pair list is read by takes it as it is, and what Java has as a map or as a list is encoded as one. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "return Builtins.fstPair(Builtins.headList(c)); }",
+            "static boolean m(PlutusData d, JulcList<BigInteger> xs) { " + FOR_EACH + "return Builtins.nullList(c); }",
+            "static PlutusData m(PlutusData d, long l) { " + CURSOR + "return Builtins.mapData(c); }",
+            "static PlutusData m(PlutusData d) { var c = Builtins.unMapData(d); return JulcList.of(c).head(); }",
+            "static PlutusData m(PlutusData d) { return JulcList.of(Builtins.unMapData(d)).head(); }",
+            "static long m(org.julclang.core.types.JulcMap<BigInteger, BigInteger> g) { return JulcList.of(g).size(); }",
+            "static PlutusData m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { c = Builtins.tailList(c); n = n + 1; } return JulcList.of(c).head(); }",
+            "static long m(PlutusData d, JulcList<PlutusData> xs, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { c = Builtins.tailList(c); n = n + 1; } return xs.prepend(c).size(); }",
+    })
+    void whatStaysAccepted(String members) {
+        assertDoesNotThrow(() -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of()));
     }
 
     /** A library compiled as a root finds its own method in the reference's pool, which is the library slice's to read. */
