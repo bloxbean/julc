@@ -652,6 +652,17 @@ class Adr068LambdasHarnessTest {
         assertBothDivergeAlike("public static long m(PlutusData d) { JulcMap<PlutusData, PlutusData> z = PlutusData.cast(PlutusData.cast(d, PlutusData.class), JulcMap.class); return z.size(); }", mapOf(3, 4));
     }
 
+    /** A choice with a read of no one type in it shows no decode, so it stops, whatever else the value may hold beside it. */
+    @Test
+    void aCastToAMapOfAReadWithNoOneType() {
+        String head = "public static long m(boolean c, " + MAP_OF_BIG + " a, PlutusData d, BigInteger n, S s) { var y = JulcList.of(a, n).head(); " + MAP_OF_BIG + " z = PlutusData.cast(";
+        String size = ", JulcMap.class); return z.size(); }";
+        var arguments = new PlutusData[]{bool(true), mapOf(1, 2), mapOf(3, 4), integer(1), a(1)};
+        for (var choice : List.of("c ? a : y", "c ? y : d", "switch (s) { case S.A q -> a; default -> y; }", "switch (s) { case S.A q -> d; default -> y; }")) {
+            assertStopsOnJavac(head + choice + size, arguments);
+        }
+    }
+
     /** Two values each decoded once, or each a map, take one term, whatever their type arguments. */
     @Test
     void aCastToAMapOfTwoHeldMaps() {

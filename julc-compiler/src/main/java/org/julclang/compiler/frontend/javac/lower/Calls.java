@@ -158,19 +158,13 @@ final class Calls {
                 return typing.ofTerm(inner) instanceof PirType.MapType;
             }
         }
-        boolean map = holdsMap(values.getFirst());
+        boolean map = typing.of(values.getFirst()) instanceof PirType.MapType;
         for (var value : values) {
-            if (holdsMap(value) != map) throw NotPorted.at(facts, argument, "a cast to a map of a value that holds another type on one path");
+            if (typing.of(value) instanceof PirType.MapType != map) {
+                throw NotPorted.at(facts, argument, "a cast to a map of a value that holds another type on one path");
+            }
         }
         return map;
-    }
-
-    private boolean holdsMap(ExpressionTree value) {
-        try {
-            return typing.of(value) instanceof PirType.MapType;
-        } catch (NotPorted e) {
-            return false;
-        }
     }
 
     /** What {@code tree} may evaluate to, through parentheses, a choice of terms, a cast that does not decode and a variable. */
