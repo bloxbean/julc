@@ -182,14 +182,14 @@ final class Adr068Lowering {
 
     /** D13's classes, each with the rows it can explain. A row class not listed under one cannot be accepted. */
     private static final Map<String, Set<String>> D13 = Map.of(
-            "Semantic fix", Set.of("DIFFERENT-bytes"),
+            "Semantic fix", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"),
             "UPLC-only semantic fix", Set.of("DIFFERENT-bytes"),
             "Policy rejection", Set.of("DIFFERENT-javac-rejects"),
             "Accepted by decision", Set.of("DIFFERENT-javac-accepts"),
             "Diagnostic change", Set.of("DIFFERENT-rejection", "DIFFERENT-diagnostics"),
             "Provenance change", Set.of("DIFFERENT-provenance"),
             "Representation only", Set.of("DIFFERENT-bytes"),
-            "Cost change", Set.of("DIFFERENT-bytes"));
+            "Cost change", Set.of("DIFFERENT-bytes", "DIFFERENT-pir"));
 
     private static final Pattern ACCEPTED_CLASS = Pattern.compile("([^:(]+?)(?: \\(.*?\\))?: \\S.*");
 
