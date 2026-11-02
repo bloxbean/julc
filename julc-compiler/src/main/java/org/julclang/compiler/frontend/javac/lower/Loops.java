@@ -68,8 +68,8 @@ final class Loops {
     private final AccumulatorTypes accumulatorTypes;
     private final LoopDesugarer desugarer;
     private final LoopBody body;
-    /** The binders of the methods lowered so far, which to the reference are variables that a loop rebinds. */
-    private final Set<String> loweredMethods = new HashSet<>();
+    /** The binders of the class's static methods, which to the reference are variables that a loop rebinds. */
+    private final Set<String> methods = new HashSet<>();
 
     Loops(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, Lowering lowering, Statements statements,
           CompilationContext context, FieldUpdates fieldUpdates) {
@@ -89,8 +89,8 @@ final class Loops {
         this.body = new LoopBody(facts, terms, lowering, statements, this, fieldUpdates);
     }
 
-    void methodLowered(String binder) {
-        loweredMethods.add(binder);
+    void methodDeclared(String binder) {
+        methods.add(binder);
     }
 
     /** The loop at {@code index} of {@code following}, which continues with what follows it, then {@code cont}. */
@@ -274,19 +274,25 @@ final class Loops {
 
     /**
      * {@code let x = x in rest} for each variable visible before the loop that {@code rest} mentions, as the reference writes
-     * it, which fixes nothing here and which the bytes at the first level hold. A name is a binder's, a {@code switch} arm's
-     * or a lowered method's, an accumulator's is not one of these, and {@code rest} is read for it by spelling alone, in the
-     * reference's order, since that order is the order of the {@code let}s.
+     * it: this changes no meaning, and the bytes at the first level hold it. A name is a binder's, a {@code switch} arm's or
+     * a static method's, and an accumulator's is not one. {@code rest} is read for these by spelling alone, in the reference's
+     * order, which is the order of the {@code let}s, and a binder of {@code rest} that shadows a field is read as the field,
+     * because the reference gave it the field's name.
      */
     private PirTerm rebindPreLoopVariables(PirTerm rest, Frame frame, Carried carried) {
-        var candidates = new HashSet<>(frame.scope().names());
+        var binders = frame.scope().binders();
+        var accumulators = carried.sourceNames();
+        binders.keySet().removeIf(name -> accumulators.contains(Scope.sourceName(name)));
+        var candidates = new HashSet<>(binders.keySet());
         frame.patterns().addNamesTo(candidates);
-        candidates.addAll(loweredMethods);
-        candidates.removeAll(carried.names(frame));
+        candidates.addAll(methods);
         var reads = new LinkedHashMap<String, PirTerm.Var>();
         PreLoopReads.collect(rest, candidates, reads);
         PirTerm result = rest;
-        for (Map.Entry<String, PirTerm.Var> read : reads.entrySet()) result = terms.rebound(read.getValue(), result);
+        for (Map.Entry<String, PirTerm.Var> read : reads.entrySet()) {
+            var binder = binders.get(read.getKey());
+            result = binder != null ? terms.let(binder, terms.var(binder.element(), binder), result) : terms.rebound(read.getValue(), result);
+        }
         return result;
     }
 }

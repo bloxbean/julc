@@ -14,7 +14,9 @@ import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.Element;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The accumulators of a loop, as one value: one accumulator is itself, and several travel as a tuple, a list of Data, each
@@ -114,6 +116,13 @@ final class Carried {
             result = terms.unpacked(binders.get(i), accessor, result);
         }
         return terms.generatedLet(tupleVar.name(), tuple, result);
+    }
+
+    /** The name each accumulator has in the source. */
+    Set<String> sourceNames() {
+        var names = new HashSet<String>();
+        elements.forEach(element -> names.add(element.getSimpleName().toString()));
+        return names;
     }
 
     /** The name of each accumulator in {@code frame}, which a generated binder over them avoids. */

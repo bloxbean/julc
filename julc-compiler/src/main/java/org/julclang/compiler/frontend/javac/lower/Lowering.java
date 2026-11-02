@@ -99,9 +99,9 @@ public final class Lowering {
         fieldUpdates.entries(methods);
     }
 
-    /** A static method whose binder is now one the reference takes for a variable: a loop after this reads it so. */
-    public void methodLowered(String binder) {
-        statements.methodLowered(binder);
+    /** A static method of the class, whose binder the reference holds among its variables. */
+    public void methodDeclared(String binder) {
+        statements.methodDeclared(binder);
     }
 
     /** A field initializer. */

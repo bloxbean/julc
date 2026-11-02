@@ -113,6 +113,7 @@ public final class JavacCompilation {
         lowering.entryMethods(methodName == null ? discovery.methods(type).stream().filter(discovery::isEntrypoint).toList()
                 : discovery.methods(type).stream().filter(method -> method.getName().contentEquals(methodName)).toList());
         var attempts = new ArrayList<MethodAttempt>();
+        parts.declareMethods(type);
         for (var method : discovery.methods(type)) {
             boolean entry = methodName == null && discovery.isEntrypoint(method);
             if (!discovery.isStatic(method) && !entry) continue;
@@ -122,7 +123,6 @@ public final class JavacCompilation {
                 if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) {
                     BindingCheck.check(parts.bindAround(term), lowering.terms().provenance());
                 }
-                lowering.methodLowered(parts.binder(method));
                 attempts.add(new MethodAttempt(parts.binder(method), parts.methodType(method), term, null));
             } catch (NotPorted e) {
                 attempts.add(new MethodAttempt(parts.binder(method), null, null, e.construct()));
@@ -185,7 +185,10 @@ public final class JavacCompilation {
         /** Step 10: every static method's type, before any body is lowered, so a bad signature is reported first. */
         void declareMethods(ClassTree type) {
             for (var method : discovery.methods(type)) {
-                if (discovery.isStatic(method)) methodType(method);
+                if (discovery.isStatic(method)) {
+                    methodType(method);
+                    lowering.methodDeclared(binder(method));
+                }
             }
         }
 
@@ -232,7 +235,6 @@ public final class JavacCompilation {
             var body = lowering.method(method, scope, false);
             overloads.check(method.getName().toString(), methodType(method), body, () -> facts.location(method));
             methods.put(binder(method), new ValidatorAssembly.Method(binder(method), body));
-            lowering.methodLowered(binder(method));
             methodElements.put(binder(method), facts.binderMethod((ExecutableElement) facts.element(method)));
         }
 

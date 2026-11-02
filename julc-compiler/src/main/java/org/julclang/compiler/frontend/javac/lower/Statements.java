@@ -70,8 +70,8 @@ final class Statements {
         this.loops = new Loops(facts, terms, typing, targets, lowering, this, context, fieldUpdates);
     }
 
-    void methodLowered(String binder) {
-        loops.methodLowered(binder);
+    void methodDeclared(String binder) {
+        loops.methodDeclared(binder);
     }
 
     static PirTerm unit() {
