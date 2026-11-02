@@ -67,7 +67,7 @@ final class Statements {
         this.lowering = lowering;
         this.targets = targets;
         this.ifs = new Ifs(facts, terms, this, typeTests, lowering, new Accumulators(facts), typing);
-        this.loops = new Loops(facts, terms, typing, targets, lowering, this, context, fieldUpdates);
+        this.loops = new Loops(facts, terms, targets, lowering, this, context, fieldUpdates);
     }
 
     void methodDeclared(String binder) {

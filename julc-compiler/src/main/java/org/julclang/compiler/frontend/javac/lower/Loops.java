@@ -58,7 +58,6 @@ final class Loops {
 
     private final JavacFacts facts;
     private final Terms terms;
-    private final Typing typing;
     private final CallTargets targets;
     private final Lowering lowering;
     private final Statements statements;
@@ -71,11 +70,10 @@ final class Loops {
     /** The binders of the class's static methods, which to the reference are variables that a loop rebinds. */
     private final Set<String> methods = new HashSet<>();
 
-    Loops(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, Lowering lowering, Statements statements,
+    Loops(JavacFacts facts, Terms terms, CallTargets targets, Lowering lowering, Statements statements,
           CompilationContext context, FieldUpdates fieldUpdates) {
         this.facts = facts;
         this.terms = terms;
-        this.typing = typing;
         this.targets = targets;
         this.lowering = lowering;
         this.statements = statements;

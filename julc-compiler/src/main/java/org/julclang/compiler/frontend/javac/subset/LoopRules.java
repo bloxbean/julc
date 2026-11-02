@@ -20,7 +20,6 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.tree.YieldTree;
-import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 
