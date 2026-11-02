@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import org.julclang.compiler.CompilationContext;
@@ -215,7 +216,10 @@ final class Calls {
         var fields = record.fields();
         for (int i = 0; i < fields.size(); i++) {
             if (fields.get(i).name().equals(target.component())) {
-                return PirHelpers.fieldExtraction(scope, i, fields.get(i).type());
+                var decoded = receiver instanceof IdentifierTree name
+                        ? frame.patterns().binding(facts.element(name), target.component(), i) : null;
+                return decoded != null ? terms.generated(decoded, fields.get(i).type())
+                        : PirHelpers.fieldExtraction(scope, i, fields.get(i).type());
             }
         }
         throw NotPorted.at(facts, tree, "a component the type does not register");

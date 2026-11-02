@@ -12,6 +12,7 @@ import org.julclang.core.source.SourceLocation;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import java.util.IdentityHashMap;
+import java.util.List;
 
 /**
  * The only code that builds a {@code Var}, {@code Lam} or {@code Let} for a source element (ADR-068 I13), and the only recorder of
@@ -80,6 +81,43 @@ public final class Terms {
      */
     PirTerm.Let afterEffect(PirTerm effect, PirTerm rest) {
         return new PirTerm.Let(PirHelpers.hygienicName("#_if", PirHelpers.freeVariables(rest)), effect, rest);
+    }
+
+    /** A branch of a {@code DataMatch} that binds {@code bindings} and, to the scrutinee, the pattern variable of {@code binder}. */
+    PirTerm.MatchBranch branch(String constructor, List<String> bindings, List<PirType> types, PirTerm body, Binder binder) {
+        var branch = new PirTerm.MatchBranch(constructor, bindings, types, body, binder.name());
+        provenance.binder(branch, binder.name(), binder.element());
+        return branch;
+    }
+
+    /** A branch that binds no name, with the field types a {@code default} placed in it leaves undecoded. */
+    PirTerm.MatchBranch generatedBranch(String constructor, List<PirType> types, PirTerm body) {
+        return new PirTerm.MatchBranch(constructor, List.of(), types, body);
+    }
+
+    /** A branch that binds {@code bindings}, and {@code scrutinee} to the value matched: each a {@code #} name. */
+    PirTerm.MatchBranch guardedBranch(String constructor, List<String> bindings, List<PirType> types, PirTerm body, String scrutinee) {
+        return new PirTerm.MatchBranch(constructor, bindings, types, body, generatedName(scrutinee));
+    }
+
+    /** A read of a binder the lowering generated, which no source name can be (ADR-060). */
+    PirTerm.Var generated(String name, PirType type) {
+        return new PirTerm.Var(generatedName(name), type);
+    }
+
+    /** {@code let name = value in body}, for a generated name. */
+    PirTerm.Let generatedLet(String name, PirTerm value, PirTerm body) {
+        return new PirTerm.Let(generatedName(name), value, body);
+    }
+
+    /** A lambda over a generated name. */
+    PirTerm.Lam generatedLam(String name, PirType type, PirTerm body) {
+        return new PirTerm.Lam(generatedName(name), type, body);
+    }
+
+    private static String generatedName(String name) {
+        if (!PirHelpers.isGeneratedName(name)) throw new IllegalArgumentException("Not a generated name: " + name);
+        return name;
     }
 
     /** A binder the assembly built for {@code element}: a static field's, a {@code @Param}'s or a method's. */

@@ -51,8 +51,8 @@ final class Ifs {
     /** The {@code if} at {@code index}, which continues with what follows it, then {@code cont}. */
     PirTerm inSequence(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         if (Exits.holdsLoop(tree.getThenStatement()) || holdsLoopInElse(tree)) return ifWithLoop(tree);
-        boolean exits = Exits.holdsReturn(tree.getThenStatement())
-                || tree.getElseStatement() != null && Exits.holdsReturn(tree.getElseStatement());
+        boolean exits = Exits.holdsExit(tree.getThenStatement())
+                || tree.getElseStatement() != null && Exits.holdsExit(tree.getElseStatement());
         return exits ? ifWithExit(tree, following, index, frame, cont) : ifForEffect(tree, following, index, frame, cont);
     }
 
@@ -61,7 +61,7 @@ final class Ifs {
     }
 
     /**
-     * A branch leaves the method. What follows becomes each branch's continuation, so a path that returns skips it and a
+     * A branch leaves the method, or the {@code switch} arm. What follows becomes each branch's continuation, so a path that returns skips it and a
      * path that falls through runs it. It is placed in both branches, and {@code let}s nothing, as the reference does.
      */
     private PirTerm ifWithExit(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
@@ -91,7 +91,7 @@ final class Ifs {
     }
 
     /**
-     * No branch leaves the method: the {@code if} runs for its effect, under a {@code let}, and what follows runs after it.
+     * No branch leaves: the {@code if} runs for its effect, under a {@code let}, and what follows runs after it.
      * As the last thing a statement list does, it is the list's value.
      */
     private PirTerm ifForEffect(IfTree tree, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {

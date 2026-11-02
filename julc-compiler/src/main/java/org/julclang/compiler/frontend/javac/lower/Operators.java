@@ -9,6 +9,7 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
@@ -76,8 +77,16 @@ final class Operators {
             case NOT_EQUAL_TO -> equality(tree, left, right, true);
             case CONDITIONAL_AND -> new PirTerm.IfThenElse(left, right, bool(false));
             case CONDITIONAL_OR -> new PirTerm.IfThenElse(left, bool(true), right);
+            // Only a guard reaches these, on booleans: the rest of a guard's int and long arithmetic is a rule's.
+            case AND -> throw unsupported("BINARY_AND", tree);
+            case OR -> throw unsupported("BINARY_OR", tree);
+            case XOR -> throw unsupported("XOR", tree);
             default -> throw NotPorted.at(facts, tree);
         };
+    }
+
+    private CompilerException unsupported(String operator, BinaryTree tree) {
+        return facts.rejection("Unsupported operator: " + operator, "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||", tree);
     }
 
     private static PirTerm bool(boolean value) {

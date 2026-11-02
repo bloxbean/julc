@@ -16,7 +16,9 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParenthesizedTree;
+import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.UnaryTree;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
@@ -52,6 +54,7 @@ public final class Lowering {
     private final Records records;
     private final Typing typing;
     private final CallTargets targets;
+    private final Switches switches;
 
     /** A lowering with no stdlib: every API call but the intrinsics is rejected, as in the reference. */
     public Lowering(JavacFacts facts, CompilationContext context) {
@@ -67,12 +70,13 @@ public final class Lowering {
         this.names = new Names(facts, terms);
         var typeMethods = TypeMethodRegistry.defaultRegistry();
         this.targets = new CallTargets(facts, typing, typeMethods);
-        this.typeTests = new TypeTests(facts, this);
+        this.typeTests = new TypeTests(facts, terms, typing, this);
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests);
         this.operators = new Operators(facts, typing, targets, this);
         this.lambdas = new Lambdas(facts, terms, typing, targets, this);
         this.calls = new Calls(facts, terms, typing, targets, lambdas, this, context, stdlib, typeMethods);
         this.records = new Records(facts, typing, targets, this, names);
+        this.switches = new Switches(facts, terms, typing, this, statements, targets, typeTests, typeMethods);
     }
 
     public Terms terms() {
@@ -97,7 +101,8 @@ public final class Lowering {
     /** An expression, with a Data-encoding rejection that had no position located at it. */
     PirTerm expr(ExpressionTree tree, Frame frame) {
         try {
-            return dispatch(tree, frame);
+            var exact = frame.inGuard() ? switches.exact(tree) : null;
+            return exact != null ? exact : dispatch(tree, frame);
         } catch (CompilerException e) {
             throw located(e, tree);
         }
@@ -118,6 +123,9 @@ public final class Lowering {
             case NewClassTree t -> terms.at(t, records.creation(t, frame));
             case InstanceOfTree t -> terms.at(t, typeTests.instanceOf(t, frame));
             case LambdaExpressionTree t -> throw lambdas.outsideCall(t);
+            case SwitchExpressionTree t -> terms.at(t, switches.expression(t, frame));
+            // A guard casts to a primitive type or to Boolean, which is its operand; any other cast is the cast's slice.
+            case TypeCastTree t when frame.inGuard() -> expr(t.getExpression(), frame);
             case AssignmentTree t -> throw reassignment(t.getVariable(), t);
             case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t);
             default -> throw NotPorted.at(facts, tree);
@@ -131,13 +139,17 @@ public final class Lowering {
     }
 
     /**
-     * {@code JULC0091} raised where a value is Data-encoded has no position: the innermost expression being lowered gives
-     * it one, the argument of a call whose type holds the native array, or else the expression itself.
+     * {@code JULC0091} and {@code JULC0012} raised where a value is Data-encoded have no position: the innermost expression
+     * being lowered gives it one, the argument of a call whose type holds the native array, or else the expression itself.
      */
     CompilerException located(CompilerException e, ExpressionTree tree) {
         if (e.diagnostics().size() != 1) return e;
         CompilerDiagnostic diagnostic = e.diagnostics().getFirst();
-        if (diagnostic.line() > 0 || !DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
+        if (diagnostic.line() > 0) return e;
+        if (diagnostic.message() != null && diagnostic.message().contains(CompilerTypeDiagnostics.UNKNOWN_TYPE_ENCODED)) {
+            return CompilerTypeDiagnostics.unknownTypeEncoded(facts.location(tree));
+        }
+        if (!DiagnosticCodes.NATIVE_ARRAY_NOT_DATA_ENCODABLE.code().equals(diagnostic.code())) return e;
         List<? extends ExpressionTree> arguments = tree instanceof MethodInvocationTree call ? call.getArguments()
                 : tree instanceof NewClassTree creation ? creation.getArguments() : List.of();
         for (var argument : arguments) {

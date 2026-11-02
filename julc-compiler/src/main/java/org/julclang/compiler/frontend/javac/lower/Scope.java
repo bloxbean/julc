@@ -45,6 +45,12 @@ public final class Scope {
         }
     }
 
+    /** The source name a binder's name stands for: {@code name'k} is {@code name}. */
+    static String sourceName(String binder) {
+        int mark = binder.indexOf(MARK);
+        return mark < 0 ? binder : binder.substring(0, mark);
+    }
+
     private static final Scope EMPTY = new Scope(null, null);
 
     private final Scope parent;

@@ -183,6 +183,24 @@ public final class JavacFacts {
         return trees != null && trees.getTree(variable) instanceof VariableTree declaration ? declaration.getInitializer() : null;
     }
 
+    /** The declaration of a variable a source declares, or null: a stub has none. */
+    public VariableTree declaration(VariableElement variable) {
+        return trees != null && trees.getTree(variable) instanceof VariableTree declaration ? declaration : null;
+    }
+
+    /** The unit {@code tree} stands in. */
+    public CompilationUnitTree unitOfTree(Tree tree) {
+        return path(tree).getCompilationUnit();
+    }
+
+    /** Whether the class {@code owner} is declared around {@code tree}, at any depth. */
+    public boolean encloses(Element owner, Tree tree) {
+        for (TreePath path = path(tree).getParentPath(); path != null; path = path.getParentPath()) {
+            if (path.getLeaf() instanceof ClassTree && owner.equals(trees.getElement(path))) return true;
+        }
+        return false;
+    }
+
     /** The {@code JULC0087} predicate, over this task's types and source records (ADR-068 D6). */
     public ArrayIdentityEquality arrayEquality() {
         return new ArrayIdentityEquality(types, elements, trees);
@@ -492,8 +510,17 @@ public final class JavacFacts {
     }
 
     private static String fragment(CompilationUnitTree unit, long start, long end) {
-        String text = text(unit).substring((int) start, (int) end).strip().replaceAll("\\s+", " ");
+        String text = written(unit, start, end);
         return text.length() > FRAGMENT_LIMIT ? text.substring(0, FRAGMENT_LIMIT - 3) + "..." : text;
+    }
+
+    private static String written(CompilationUnitTree unit, long start, long end) {
+        return text(unit).substring((int) start, (int) end).strip().replaceAll("\\s+", " ");
+    }
+
+    /** The text of {@code tree} as written, with each run of white space one space: what a message quotes. */
+    public String text(Tree tree) {
+        return end(tree) < 0 ? tree.toString() : written(path(tree).getCompilationUnit(), start(tree), end(tree));
     }
 
     /** Whether a unit declares {@code element}. An API type comes in as a class file, so its members are not. */

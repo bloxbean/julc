@@ -6,6 +6,7 @@ import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.YieldTree;
 
 import java.util.List;
 
@@ -19,13 +20,17 @@ final class Exits {
     private Exits() {
     }
 
-    /** Whether {@code statement} holds a {@code return} of the enclosing method, at any depth of blocks and branches. */
-    static boolean holdsReturn(StatementTree statement) {
+    /**
+     * Whether {@code statement} leaves the method or the enclosing {@code switch} arm, at any depth of blocks and branches: a
+     * {@code return}, or a {@code yield}. A {@code switch} in an expression holds its own.
+     */
+    static boolean holdsExit(StatementTree statement) {
         return switch (statement) {
             case ReturnTree ignored -> true;
-            case BlockTree block -> block.getStatements().stream().anyMatch(Exits::holdsReturn);
-            case IfTree branch -> holdsReturn(branch.getThenStatement())
-                    || branch.getElseStatement() != null && holdsReturn(branch.getElseStatement());
+            case YieldTree ignored -> true;
+            case BlockTree block -> block.getStatements().stream().anyMatch(Exits::holdsExit);
+            case IfTree branch -> holdsExit(branch.getThenStatement())
+                    || branch.getElseStatement() != null && holdsExit(branch.getElseStatement());
             default -> false;
         };
     }
@@ -46,11 +51,20 @@ final class Exits {
      * goes before what it collected here. The case of a loop as the last statement comes with loops.
      */
     static boolean allPathsReturn(List<? extends StatementTree> statements) {
+        return allPaths(statements, ReturnTree.class);
+    }
+
+    /** The same check of a {@code switch} arm's block, for a {@code yield}. */
+    static boolean allPathsYield(List<? extends StatementTree> statements) {
+        return allPaths(statements, YieldTree.class);
+    }
+
+    private static boolean allPaths(List<? extends StatementTree> statements, Class<? extends StatementTree> exit) {
         for (var statement : statements) {
-            if (statement instanceof ReturnTree || statement instanceof LabeledStatementTree) return true;
+            if (exit.isInstance(statement) || statement instanceof LabeledStatementTree) return true;
             if (statement instanceof IfTree branch && branch.getElseStatement() != null
-                    && allPathsReturn(blockStatements(branch.getThenStatement()))
-                    && allPathsReturn(blockStatements(branch.getElseStatement()))) {
+                    && allPaths(blockStatements(branch.getThenStatement()), exit)
+                    && allPaths(blockStatements(branch.getElseStatement()), exit)) {
                 return true;
             }
         }
