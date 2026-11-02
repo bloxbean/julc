@@ -52,19 +52,21 @@ it rebuilds. It adds no name a source can reach: the unit's binder is `#_`.
 | A constant, also one the folds left, a lambda, a bare builtin | Always |
 | A variable | It is bound to a total term, in the term or by an enclosing field or method. A parameter holds what is known of its argument |
 | `let`, `if` | Each part is total, and an `if`'s condition is a boolean |
-| A listed builtin | Every argument is total, of the kind it takes, and at most 32,768 bytes |
+| A listed builtin | Every argument is total and of the kind it takes |
 | `ReplicateByte(n, b)` | Also, `n` is a constant in 0..8192 and `b` a constant in 0..255 |
 | `ConstrData(t, ...)` | Also, `t` is a constant from 0 up |
 | A constructor | Each field is total and of the kind its declared type encodes, and the tag is not negative |
 | A call of a bound, non-recursive function, with all its arguments | Its body is total, with what is known of each argument in scope |
 | A call of a recursive function, an unknown one or a parameter; a trace; anything else | Never |
 
-The 32,768 is why `add`, `append` and the hashes are in the table with a bound: in Plutus 1.63.0.0 semantics variants D and E take integers up to 2^262143 and byte strings
-up to 65,536 bytes (`Universe/Cardano.hs`), and fail past them. The size of a value is an upper bound the function adds up as it goes, and a hash has the size of its digest whatever its input, so a short input does not understate it. A reading walks a function once per argument, so a tree of calls is linear in its depth. `ConstrData` takes a `Word64` tag at those variants. A trace is not
+Each row also holds only within a bound on work, so a term of more than 1,024 is read as one that may fail. Work is an upper bound on what the term runs: 1 for each application, of a builtin or a function, and 1 for each byte a builtin's arguments hold. A `let` adds its value and its body, an `if` its condition and the larger branch, and a constructor its fields. A variable holds a value that has run, so reading it adds nothing. A function's result is kept with its work, so each call counts though the body is walked once.
+
+That bound is why `add`, `append` and the hashes can be listed: in Plutus 1.63.0.0 semantics variants D and E take integers up to 2^262143 and byte strings
+up to 65,536 bytes (`Universe/Cardano.hs`), and fail past them, and no argument within 1,024 bytes reaches those. The size of a value is an upper bound the function adds up as it goes, and a hash has the size of its digest whatever its input, so a short input does not understate it. A reading walks a function once per argument, so a tree of calls is linear in its depth. `ConstrData` takes a `Word64` tag at those variants. A trace is not
 a failure, but a `let` would show it at another time than Java does.
 
-**What stays strict.** A body shown total stays one shared `let`, which nothing can tell from Java. `MerklePatriciaForestry.nullHash`, `nullHash2`, `nullHash4`, `nullHash8`,
-`IntervalLib.always` and `never` keep their sharing and bytes. A library reached through a provider import (ADR-059) is linked by the backend as a definition, so a method with
+**What stays strict.** A body shown total and small stays one shared `let`. Its value and its failure are Java's, and only the budget can tell it from Java's call: it runs once, at script start, whether or not it is called, so a method not called still costs its body. That is why the body must be small. The largest tree of calls, of branches and of hashes that stays strict costs at most 0.55% of a transaction's CPU and 2.22% of its memory, so a program pays that for each such method, and a body past the bound is delayed and costs what Java's call costs. Against that, `nullHash2`, `nullHash4` and `nullHash8` do 134, the most of any strict method in the corpus but one. `MerklePatriciaForestry.nullHash`, `nullHash2`, `nullHash4`, `nullHash8`,
+`IntervalLib.always` and `never` keep their sharing and bytes. The one strict method in the corpus past the bound is a generated sum of literals that is the program's entry, of 47,225: it is delayed, and at one of the four levels it grows by 2 bytes. A library reached through a provider import (ADR-059) is linked by the backend as a definition, so a method with
 no parameters there still runs once when the program starts, whether or not it is called, and fails the program if it fails. No such method in the stdlib's on-chain libraries is delayed, so this reaches only another library.
 A read of a `@Param` field is delayed by the rule, though it cannot fail once bound: its binding is a decode, which is not total.
 

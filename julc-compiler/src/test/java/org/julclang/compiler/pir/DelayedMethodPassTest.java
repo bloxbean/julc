@@ -7,6 +7,7 @@ import org.julclang.core.source.SourceLocation;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigInteger;
@@ -67,6 +68,88 @@ class DelayedMethodPassTest {
 
     private static PirTerm unit() {
         return new PirTerm.Const(Constant.unit());
+    }
+
+    /** A body that does {@code work}: an append of two constants, with {@code work - 1} bytes between them. */
+    private static PirTerm doing(int work) {
+        return builtin(DefaultFun.AppendByteString, bytes(work - 1), bytes(0));
+    }
+
+    private static final int LIMIT = 1024;
+
+    @Nested
+    class Work {
+
+        @Test
+        void aBodyUpToTheLimitIsTotalAndOnePastItIsNot() {
+            assertFalse(mayFail(doing(LIMIT)));
+            assertTrue(mayFail(doing(LIMIT + 1)));
+        }
+
+        @Test
+        void eachByteOfABuiltinsArgumentsCounts() {
+            assertFalse(mayFail(builtin(DefaultFun.Blake2b_256, bytes(LIMIT - 1))));
+            assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, bytes(LIMIT))));
+            assertTrue(mayFail(builtin(DefaultFun.AppendByteString, bytes(LIMIT / 2), bytes(LIMIT / 2))));
+        }
+
+        @Test
+        void anArgumentsWorkCounts() {
+            int input = LIMIT - 34;
+            assertFalse(mayFail(builtin(DefaultFun.Blake2b_256, builtin(DefaultFun.Sha2_256, bytes(input)))));
+            assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, builtin(DefaultFun.Sha2_256, bytes(input + 1)))));
+        }
+
+        @Test
+        void aBoundValueCountsOnceHoweverOftenItIsRead() {
+            var read = new PirTerm.Var("x", BYTES);
+            assertFalse(mayFail(new PirTerm.Let("x", builtin(DefaultFun.Blake2b_256, bytes(LIMIT / 2)),
+                    builtin(DefaultFun.AppendByteString, read, read))));
+        }
+
+        @Test
+        void aLetCountsItsValueAndItsBody() {
+            assertFalse(mayFail(new PirTerm.Let("x", doing(LIMIT / 2), doing(LIMIT / 2))));
+            assertTrue(mayFail(new PirTerm.Let("x", doing(LIMIT / 2), doing(LIMIT / 2 + 1))));
+            assertTrue(mayFail(new PirTerm.Let("x", doing(LIMIT / 2 + 1), doing(LIMIT / 2))));
+        }
+
+        @Test
+        void aBranchCountsItsConditionAndTheLargerSide() {
+            var yes = new PirTerm.Const(Constant.bool(true));
+            assertFalse(mayFail(new PirTerm.IfThenElse(yes, doing(LIMIT), doing(LIMIT))));
+            assertTrue(mayFail(new PirTerm.IfThenElse(yes, doing(LIMIT + 1), doing(1))));
+            var test = builtin(DefaultFun.EqualsByteString, bytes(LIMIT / 4), bytes(LIMIT / 4 - 1));
+            int rest = LIMIT - LIMIT / 2;
+            assertFalse(mayFail(new PirTerm.IfThenElse(test, doing(rest), doing(1))));
+            assertTrue(mayFail(new PirTerm.IfThenElse(test, doing(rest + 1), doing(1))));
+            assertTrue(mayFail(new PirTerm.IfThenElse(test, doing(1), doing(rest + 1))));
+        }
+
+        @Test
+        void aCallCountsItsBodyEachTimeThoughItIsWalkedOnce() {
+            var body = new PirTerm.Lam("x", INTEGER, doing(LIMIT / 4));
+            var four = new PirTerm.Let("a", call("f", integer(1)), new PirTerm.Let("b", call("f", integer(1)), new PirTerm.Let("c", call("f", integer(1)), call("f", integer(1)))));
+            var two = new PirTerm.Let("a", call("f", integer(1)), call("f", integer(1)));
+            assertFalse(mayFail(new PirTerm.Let("f", body, two)));
+            assertTrue(mayFail(new PirTerm.Let("f", body, four)));
+        }
+
+        @Test
+        void aCallIsWorkWithNoBuiltinInIt() {
+            PirTerm calls = integer(1);
+            for (int i = 0; i < LIMIT; i++) calls = call("f", calls);
+            var identity = new PirTerm.Lam("x", INTEGER, variable("x"));
+            assertFalse(mayFail(new PirTerm.Let("f", identity, calls)));
+            assertTrue(mayFail(new PirTerm.Let("f", identity, call("f", calls))));
+        }
+
+        @Test
+        void aConstructorCountsItsFields() {
+            var type = new PirType.RecordType("R", List.of(new PirType.Field("a", BYTES), new PirType.Field("b", BYTES)));
+            assertFalse(mayFail(new PirTerm.DataConstr(0, type, List.of(doing(LIMIT / 2), doing(LIMIT / 2 - 1)))));
+            assertTrue(mayFail(new PirTerm.DataConstr(0, type, List.of(doing(LIMIT / 2), doing(LIMIT / 2)))));
+        }
     }
 
     @Nested
@@ -134,11 +217,6 @@ class DelayedMethodPassTest {
             // The body's x is the one in scope where it was defined, not the caller's.
             assertFalse(mayFail(new PirTerm.Let("x", integer(1), new PirTerm.Let("f", new PirTerm.Lam("a", INTEGER, builtin(DefaultFun.AddInteger, variable("x"), variable("a"))),
                     new PirTerm.Let("x", bytes(1), call("f", integer(2)))))));
-        }
-
-        @Test
-        void anArgumentAtTheLimit() {
-            assertFalse(mayFail(builtin(DefaultFun.Blake2b_256, bytes(32768))));
         }
     }
 
@@ -227,10 +305,10 @@ class DelayedMethodPassTest {
 
         @Test
         void sizesAddUp() {
-            PirTerm term = bytes(8192);
+            PirTerm term = bytes(100);
             for (int i = 0; i < 2; i++) term = builtin(DefaultFun.AppendByteString, term, term);
-            assertFalse(mayFail(term), "32,768 bytes and what the rule adds for each call is no argument yet");
-            assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, term)));
+            assertFalse(mayFail(term), "805 of work");
+            assertTrue(mayFail(builtin(DefaultFun.Blake2b_256, term)), "and 403 more to read it");
         }
 
         private static PirTerm doubled(PirTerm start, int times) {
@@ -263,33 +341,25 @@ class DelayedMethodPassTest {
 
         @Test
         void aDoublingOfADigestStaysTotalWithinTheBound() {
-            for (var hash : HASHES) assertFalse(mayFail(doubled(builtin(hash, bytes(0)), 9)), hash + ": at most 16,384 bytes");
+            for (var hash : HASHES) {
+                assertFalse(mayFail(doubled(builtin(hash, bytes(0)), 4)), hash.name());
+                assertTrue(mayFail(doubled(builtin(hash, bytes(0)), 5)), hash.name());
+            }
         }
 
-        @Test
-        void eachDigestHasItsOwnSize() {
-            // n doublings of size s are read as 2^n * (s + 1) - 1, and no argument passes 32,768 before the 10th of 32 bytes.
-            for (var hash : List.of(DefaultFun.Sha2_256, DefaultFun.Sha3_256, DefaultFun.Blake2b_256, DefaultFun.Keccak_256)) {
-                assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(hash, bytes(0)), 9))), hash.name());
-                assertTrue(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(hash, bytes(0)), 10))), hash.name());
-            }
-            assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(DefaultFun.Blake2b_224, bytes(0)), 10))));
-            assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString, doubled(builtin(DefaultFun.Ripemd_160, bytes(0)), 10))));
-            // 21,503 or 29,695 bytes, with 11,000 more: one is within the bound, and the other is not.
-            var padded = bytes(11000);
-            assertFalse(mayFail(builtin(DefaultFun.LengthOfByteString,
-                    builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Ripemd_160, bytes(0)), 10), padded))));
-            assertTrue(mayFail(builtin(DefaultFun.LengthOfByteString,
-                    builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Blake2b_224, bytes(0)), 10), padded))));
-            assertTrue(mayFail(builtin(DefaultFun.LengthOfByteString,
-                    builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Ripemd_160, bytes(0)), 10), bytes(11300)))),
-                    "20 bytes, with 11,300 more: past the bound, as a smaller digest would not be");
+        /** An append after a digest of no bytes does 2 applications, the digest's bytes and {@code padding}. */
+        @ParameterizedTest
+        @CsvSource({"Sha2_256, 32", "Sha3_256, 32", "Blake2b_256, 32", "Keccak_256, 32", "Blake2b_224, 28", "Ripemd_160, 20"})
+        void eachDigestHasItsOwnSize(DefaultFun hash, int size) {
+            int padding = LIMIT - 2 - size;
+            assertFalse(mayFail(builtin(DefaultFun.AppendByteString, builtin(hash, bytes(0)), bytes(padding))), hash.name());
+            assertTrue(mayFail(builtin(DefaultFun.AppendByteString, builtin(hash, bytes(0)), bytes(padding + 1))), hash.name());
         }
 
         @Test
         void aDigestOfALongInputIsNoLonger() {
-            var digest = builtin(DefaultFun.Sha2_256, bytes(32768));
-            assertFalse(mayFail(builtin(DefaultFun.AppendByteString, digest, digest)));
+            var digest = new PirTerm.Var("d", BYTES);
+            assertFalse(mayFail(new PirTerm.Let("d", builtin(DefaultFun.Sha2_256, bytes(900)), builtin(DefaultFun.AppendByteString, digest, digest))));
         }
 
         /** {@code f_i(x) = f_(i-1)(f_(i-1)(x))} for {@code i} up to {@code depth}, and {@code body} of them. */
@@ -305,7 +375,9 @@ class DelayedMethodPassTest {
         @Test
         void aCallTreeIsReadInLinearTime() {
             var identity = new PirTerm.Lam("x", INTEGER, variable("x"));
-            assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertFalse(mayFail(callTree(64, identity, call("f64", integer(1))))));
+            assertTimeoutPreemptively(Duration.ofSeconds(60), () -> assertTrue(mayFail(callTree(64, identity, call("f64", integer(1))))));
+            assertFalse(mayFail(callTree(9, identity, call("f9", integer(1)))), "1,023 calls");
+            assertTrue(mayFail(callTree(10, identity, call("f10", integer(1)))), "2,047 calls");
         }
 
         @Test
@@ -324,7 +396,7 @@ class DelayedMethodPassTest {
         void aFunctionReadTwiceIsReadOnEachArgument() {
             var reads = builtin(DefaultFun.AppendByteString, call("zeros", integer(1)), call("zeros", integer(8193)));
             assertTrue(mayFail(new PirTerm.Let("zeros", ZEROS, reads)));
-            var bothFine = builtin(DefaultFun.AppendByteString, call("zeros", integer(1)), call("zeros", integer(8192)));
+            var bothFine = new PirTerm.Let("a", call("zeros", integer(1)), call("zeros", integer(8192)));
             assertFalse(mayFail(new PirTerm.Let("zeros", ZEROS, bothFine)));
             var thenTheFailing = new PirTerm.IfThenElse(new PirTerm.Const(Constant.bool(true)), call("zeros", integer(8192)),
                     call("zeros", integer(-1)));
@@ -419,6 +491,19 @@ class DelayedMethodPassTest {
             var outer = assertInstanceOf(PirTerm.Let.class, lower(term, "C.k", "C.j"));
             var inner = assertInstanceOf(PirTerm.Let.class, outer.body());
             assertEquals(new PirTerm.Lam("#_", new PirType.UnitType(), read()), inner.value());
+        }
+
+        @Test
+        void aBodyPastTheLimitIs() {
+            var lowered = assertInstanceOf(PirTerm.Let.class, lower(new PirTerm.Let("C.k", doing(LIMIT + 1), variable("C.k")), "C.k"));
+            assertEquals(new PirTerm.Lam("#_", new PirType.UnitType(), doing(LIMIT + 1)), lowered.value());
+            assertEquals(read(), lowered.body());
+        }
+
+        @Test
+        void aMethodReadingABodyAtTheLimitIsNot() {
+            var term = new PirTerm.Let("C.k", doing(LIMIT), new PirTerm.Let("C.j", doing(LIMIT), variable("C.k")));
+            assertSame(term, lower(term, "C.k", "C.j"));
         }
 
         @Test

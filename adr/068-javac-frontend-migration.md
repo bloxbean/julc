@@ -1035,11 +1035,12 @@ milestone's evidence; a skipped check fails the gate.
 4. **When ADR-061 decides its representation,** is it inserted between javac trees and PIR for statements (D2)?
    Lean: yes, as ADR-061's own migration.
 5. **Methods with no parameters.** *Decided at B4:* a method with no parameters whose body may fail or trace is delayed,
-   and each read of its binder is a call, so it runs at each call and only if it is called, as in Java. A body shown to be
-   total stays a shared strict `let`, so `MerklePatriciaForestry.nullHash*` and `IntervalLib.always` keep their sharing and
+   and each read of its binder is a call, so it runs at each call and only if it is called, as in Java. So is a body whose
+   work is not shown to be small, since a strict `let` runs at script start. A body shown to be total and small stays a
+   shared strict `let`, so `MerklePatriciaForestry.nullHash*` and `IntervalLib.always` keep their sharing and
    their bytes. `DelayedMethodPass.mayFail` decides, over the PIR term, and only what it can show is total is total: constants,
-   variables bound to a total term, listed builtins on arguments of their kinds and within the bounds both of the
-   target's variants take, a partial builtin only where constants show its range, and a call of a bound, non-recursive
+   variables bound to a total term, listed builtins on arguments of their kinds, a partial builtin only where constants
+   show its range, and a call of a bound, non-recursive
    function, read through its body with what is known of each argument. A recursive function, an unknown one, a parameter,
    a trace and anything else may fail. The pass runs on the assembled term, because a call site can come before the
    method's body is lowered, after the literal folds, so a body they reduce to a constant stays shared. A library reached

@@ -339,6 +339,55 @@ class Adr068DelayedMethodsTest {
         assertAgree(methods + "static BigInteger k() { return f36(BigInteger.ONE); } public static BigInteger m(boolean c) { return c ? k() : BigInteger.TWO; }", bool(false));
     }
 
+    private static String tree(String type, String first, int depth) {
+        var methods = new StringBuilder("static " + type + " f0(" + type + " x) { return " + first + "; } ");
+        for (int i = 1; i <= depth; i++) {
+            methods.append("static ").append(type).append(" f").append(i).append("(").append(type).append(" x) { return f").append(i - 1).append("(f").append(i - 1).append("(x)); } ");
+        }
+        return methods.toString();
+    }
+
+    /** A body that cannot fail and does much is delayed: a method not called costs the script nothing, at any depth. */
+    @ParameterizedTest
+    @ValueSource(ints = {6, 16, 17, 18, 20, 36})
+    void aTreeOfHashesNotCalledDoesNotRun(int depth) {
+        var methods = tree("byte[]", "Builtins.blake2b_256(x)", depth) + "static byte[] k() { return f" + depth + "(new byte[]{1}); } ";
+        assertAgree(methods + "public static BigInteger m(BigInteger a) { return a; }", integer(5));
+        assertAgree(methods + "public static long m(boolean c) { return c ? k().length : 0L; }", bool(false));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {14, 15, 18, 36})
+    void aTreeOfBranchesNotCalledDoesNotRun(int depth) {
+        assertAgree(tree("BigInteger", "x.compareTo(BigInteger.ONE) < 0 ? x : x", depth)
+                + "static BigInteger k() { return f" + depth + "(BigInteger.ONE); } public static BigInteger m(BigInteger a) { return a; }", integer(5));
+    }
+
+    /** Calls are work too, with no builtin among them. */
+    @ParameterizedTest
+    @ValueSource(ints = {14, 16, 18, 36})
+    void aTreeOfCallsNotCalledDoesNotRun(int depth) {
+        assertAgree(tree("BigInteger", "x", depth) + "static BigInteger k() { return f" + depth + "(BigInteger.ONE); } public static BigInteger m(BigInteger a) { return a; }", integer(5));
+    }
+
+    /** A hash of a long input is much work for one application. */
+    @Test
+    void aFewHashesOfALongInputNotCalledDoNotRun() {
+        var doubled = new StringBuilder("static byte[] y() { byte[] a0 = Builtins.blake2b_256(Builtins.emptyByteString()); ");
+        for (int i = 1; i <= 9; i++) doubled.append("byte[] a").append(i).append(" = Builtins.appendByteString(a").append(i - 1).append(", a").append(i - 1).append("); ");
+        doubled.append("return a9; } ");
+        assertAgree(doubled + tree("byte[]", "Builtins.blake2b_256(Builtins.appendByteString(x, y()))", 9)
+                + "static byte[] k() { return f9(new byte[]{1}); } public static BigInteger m(BigInteger a) { return a; }", integer(5));
+    }
+
+    /** Past the limit a body is delayed, so it runs when called and as often as it is called, as in Java. */
+    @Test
+    void aBodyPastTheLimitRunsWhenCalled() {
+        var methods = tree("BigInteger", "x.add(BigInteger.ONE)", 8) + "static BigInteger k() { return f8(BigInteger.ONE); } ";
+        assertAgree(methods + "public static BigInteger m() { return k().add(k()); }");
+        assertAgree(methods + "public static long m(boolean c) { return c ? k().longValue() : 2; }", bool(true));
+    }
+
     /** It runs, so what the script accepts and rejects is Java's. */
     @ParameterizedTest
     @ValueSource(strings = {"k().signum()", "k().compareTo(a)", "a.compareTo(k())", "k().abs().longValue()", "k().min(a).longValue()"})

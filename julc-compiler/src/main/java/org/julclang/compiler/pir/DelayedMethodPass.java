@@ -22,8 +22,9 @@ import java.util.function.ToLongFunction;
 
 /**
  * A method with no parameters is a value, so a {@code let} would run its body once at script start, whether or not it is
- * called. Java runs it at each call. A body that cannot fail may stay a shared {@code let}, because nothing tells the two
- * apart. Any other body becomes a function of a unit, and each read of its binder a call (ADR-068, open question 5).
+ * called. Java runs it at each call. A body that cannot fail and does little work may stay a shared {@code let}: its value
+ * and its failure are Java's, and what it costs at script start is small ({@link #WORK_LIMIT}). Any other body becomes a
+ * function of a unit, and each read of its binder a call (ADR-068, open question 5).
  * <p>
  * <b>Why this runs on the assembled term.</b> Both frontends lower a call of such a method to a read of its binder, and
  * a call site can come before the method's body is lowered, so no call site knows yet whether the body may fail. By
@@ -49,22 +50,35 @@ public final class DelayedMethodPass {
      * What is known of a total term's value: its kind, an upper bound on its size in bytes, and its constant, or its
      * function and that function's scope. A function that reaches a parameter is a value of {@link Kind#OTHER}: what a
      * call of a parameter runs is not known.
+     *
+     * @param work an upper bound on what evaluating the term runs, in {@link #WORK_LIMIT}'s units. A value held by a
+     *             variable has been evaluated, so reading it runs nothing
      */
-    private record Known(Kind kind, long size, Constant constant, PirTerm.Lam function, Map<String, Known> scope) {
+    private record Known(Kind kind, long size, Constant constant, PirTerm.Lam function, Map<String, Known> scope, long work) {
         static Known of(Kind kind, long size) {
-            return new Known(kind, size, null, null, null);
+            return new Known(kind, size, null, null, null, 0);
         }
 
         static Known of(Constant constant) {
-            return new Known(kindOf(constant), sizeOf(constant), constant, null, null);
+            return new Known(kindOf(constant), sizeOf(constant), constant, null, null, 0);
         }
 
         static Known of(PirTerm.Lam function, Map<String, Known> scope) {
-            return new Known(Kind.OTHER, 0, null, function, scope);
+            return new Known(Kind.OTHER, 0, null, function, scope, 0);
+        }
+
+        /** This value, with {@code more} run to reach it. */
+        Known after(long more) {
+            return more == 0 ? this : new Known(kind, size, constant, function, scope, work + more);
+        }
+
+        /** This value as a variable holds it. */
+        Known held() {
+            return after(-work);
         }
 
         Known asArgument() {
-            return function == null ? this : of(Kind.OTHER, 0);
+            return function == null ? held() : of(Kind.OTHER, 0);
         }
     }
 
@@ -89,10 +103,13 @@ public final class DelayedMethodPass {
     }
 
     /**
-     * The largest integer or byte string, in bytes, that every builtin here takes on every target. Plutus 1.63.0.0's
-     * semantics variants D and E bound integers to 2^262143 and byte strings to 65,536 bytes ({@code Universe/Cardano.hs}).
+     * The most work a body may do and stay a strict {@code let}. Work counts each application, of a builtin or a function,
+     * as 1, and each byte a builtin's arguments hold as 1, so it bounds what a body costs whatever it is applied to. A body
+     * past it is read as one that may fail. {@code MerklePatriciaForestry.nullHash2}, the largest of the shared bodies a
+     * program uses, does 134. No argument within it reaches what a builtin here refuses: Plutus 1.63.0.0's semantics
+     * variants D and E bound integers to 2^262143 and byte strings to 65,536 bytes ({@code Universe/Cardano.hs}).
      */
-    private static final long ARGUMENT_LIMIT = 32768;
+    private static final long WORK_LIMIT = 1024;
 
     /** {@code maximumOutputLength} in Plutus 1.63.0.0's {@code PlutusCore/Bitwise.hs}. */
     private static final long REPLICATE_LIMIT = 8192;
@@ -144,7 +161,8 @@ public final class DelayedMethodPass {
 
     /**
      * Whether evaluating {@code term} may do anything but return a value: fail, or trace, which a {@code let} would do at
-     * another time than Java does. A variable the term does not bind, and {@code env} does not hold, may fail.
+     * another time than Java does, or run past {@link #WORK_LIMIT}, which a {@code let} would charge a script that does not
+     * call it. A variable the term does not bind, and {@code env} does not hold, may fail.
      *
      * @param env the constant argument of each parameter in scope
      */
@@ -173,11 +191,17 @@ public final class DelayedMethodPass {
     }
 
     /**
-     * What is known of the value of {@code term}, or null if it may fail.
+     * What is known of the value of {@code term}, or null if it may fail. The work of a term includes its parts', so a term
+     * past {@link #WORK_LIMIT} ends the reading, and no count grows past it.
      *
      * @param bound the variables bound to a total term in scope, and what is known of each
      */
     private static Known known(PirTerm term, Map<String, Known> bound, Reading reading) {
+        var value = evaluated(term, bound, reading);
+        return value == null || value.work() > WORK_LIMIT ? null : value;
+    }
+
+    private static Known evaluated(PirTerm term, Map<String, Known> bound, Reading reading) {
         return switch (term) {
             case PirTerm.Const constant -> Known.of(constant.value());
             case PirTerm.Var variable -> bound.get(variable.name());
@@ -185,14 +209,16 @@ public final class DelayedMethodPass {
             case PirTerm.Builtin _ -> Known.of(Kind.OTHER, 0);
             case PirTerm.Let let -> {
                 var value = known(let.value(), bound, reading);
-                yield value == null ? null : known(let.body(), with(bound, let.name(), value), reading);
+                var body = value == null ? null : known(let.body(), with(bound, let.name(), value), reading);
+                yield body == null ? null : body.after(value.work());
             }
             case PirTerm.IfThenElse branch -> {
                 var condition = known(branch.cond(), bound, reading);
                 var then = known(branch.thenBranch(), bound, reading);
                 var otherwise = known(branch.elseBranch(), bound, reading);
                 if (condition == null || condition.kind() != Kind.BOOL || then == null || otherwise == null) yield null;
-                yield Known.of(then.kind() == otherwise.kind() ? then.kind() : Kind.OTHER, Math.max(then.size(), otherwise.size()));
+                yield Known.of(then.kind() == otherwise.kind() ? then.kind() : Kind.OTHER, Math.max(then.size(), otherwise.size()))
+                        .after(condition.work() + Math.max(then.work(), otherwise.work()));
             }
             case PirTerm.App app -> called(app, bound, reading);
             case PirTerm.DataConstr constr -> constructed(constr, bound, reading);
@@ -202,7 +228,7 @@ public final class DelayedMethodPass {
 
     private static Map<String, Known> with(Map<String, Known> bound, String name, Known value) {
         var inner = new HashMap<>(bound);
-        inner.put(name, value);
+        inner.put(name, value.held());
         return inner;
     }
 
@@ -237,21 +263,27 @@ public final class DelayedMethodPass {
             head = next.function();
         }
         var arguments = new ArrayList<Known>();
+        long work = 1;
         for (var term : terms) {
             var argument = known(term, bound, reading);
             if (argument == null) return null;
+            work += argument.work();
             arguments.add(argument.asArgument());
         }
-        if (head instanceof PirTerm.Builtin builtin) return builtinResult(builtin.fun(), arguments);
-        return head instanceof PirTerm.Var function && bound.get(function.name()) instanceof Known callee
-                && callee.function() != null ? functionResult(function.name(), callee, arguments, reading) : null;
+        Known result = null;
+        if (head instanceof PirTerm.Builtin builtin) {
+            result = builtinResult(builtin.fun(), arguments);
+        } else if (head instanceof PirTerm.Var function && bound.get(function.name()) instanceof Known callee && callee.function() != null) {
+            result = functionResult(function.name(), callee, arguments, reading);
+        }
+        return result == null ? null : result.after(work);
     }
 
     private static Known builtinResult(DefaultFun fun, List<Known> arguments) {
         var signature = TOTAL_BUILTINS.get(fun);
         if (signature == null || !signature.parameters().equals(arguments.stream().map(Known::kind).toList())) return null;
-        if (arguments.stream().anyMatch(argument -> argument.size() > ARGUMENT_LIMIT) || !signature.holds().test(arguments)) return null;
-        return Known.of(signature.result(), signature.size().applyAsLong(arguments));
+        if (!signature.holds().test(arguments)) return null;
+        return Known.of(signature.result(), signature.size().applyAsLong(arguments)).after(arguments.stream().mapToLong(Known::size).sum());
     }
 
     /** The result of a function's body, with each parameter bound to its argument: all of them, or the call may fail. */
@@ -282,11 +314,13 @@ public final class DelayedMethodPass {
     private static Known constructed(PirTerm.DataConstr constr, Map<String, Known> bound, Reading reading) {
         var fields = fieldTypes(constr);
         if (fields == null || fields.size() != constr.fields().size() || constr.tag() < 0) return null;
+        long work = 1;
         for (int i = 0; i < fields.size(); i++) {
             var field = known(constr.fields().get(i), bound, reading);
             if (field == null || field.kind() != encoded(fields.get(i))) return null;
+            work += field.work();
         }
-        return Known.of(Kind.DATA, 0);
+        return Known.of(Kind.DATA, 0).after(work);
     }
 
     private static List<PirType> fieldTypes(PirTerm.DataConstr constr) {
