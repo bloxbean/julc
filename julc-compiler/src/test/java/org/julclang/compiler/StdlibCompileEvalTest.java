@@ -677,7 +677,7 @@ class StdlibCompileEvalTest {
                                 Builtins.mkCons(PlutusData.cast(val1, PlutusData.class), Builtins.mkNilData())));
                             PlutusData out2 = Builtins.constrData(0, Builtins.mkCons(Builtins.iData(2),
                                 Builtins.mkCons(PlutusData.cast(val2, PlutusData.class), Builtins.mkNilData())));
-                            PlutusData outputs = Builtins.mkCons(out1, Builtins.mkCons(out2, Builtins.mkNilData()));
+                            PlutusData.ListData outputs = Builtins.mkCons(out1, Builtins.mkCons(out2, Builtins.mkNilData()));
 
                             // Multi-acc while loop: boolean found + list remaining
                             boolean found = false;
@@ -6167,7 +6167,7 @@ class StdlibCompileEvalTest {
                     @OnchainLibrary
                     public class MyLib {
                         public static long countElements(PlutusData list) {
-                            PlutusData cursor = Builtins.unListData(list);
+                            var cursor = Builtins.unListData(list);
                             long count = 0;
                             while (!Builtins.nullList(cursor)) {
                                 count = count + 1;

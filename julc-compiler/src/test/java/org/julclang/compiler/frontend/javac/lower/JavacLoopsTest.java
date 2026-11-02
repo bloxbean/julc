@@ -380,6 +380,8 @@ class JavacLoopsTest {
             "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { l = Builtins.mkCons(d, l); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData c = Builtins.tailList(d); long i = 0; while (i < 2) { if (i > 5) { c = Builtins.mkNilData(); } var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData d) { PlutusData c = Builtins.unMapData(d); long i = 0; while (i < 2) { if (i > 0) { i = i + 1; } else { c = Builtins.mkNilPairData(); i = i + 2; } } return i; }",
+            "static long m(PlutusData d) { var l = Builtins.unListData(d); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
+            "static long m(PlutusData.ListData d) { var c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static long m(PlutusData.ListData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
             "static PlutusData.MapData h(PlutusData d) { return Builtins.unMapData(d); } static long m(PlutusData d) { PlutusData.MapData b = h(d); PlutusData c = b; long i = 0; while (i < 2) { c = Builtins.tailList(c); i = i + 1; } return i; }",
     })

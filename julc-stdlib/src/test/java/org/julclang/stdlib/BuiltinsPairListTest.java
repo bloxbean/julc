@@ -38,7 +38,10 @@ class BuiltinsPairListTest {
     @Test
     void tailOfAListIsAList() {
         var list = new PlutusData.ListData(List.of(integer(1), integer(2)));
-        assertEquals(new PlutusData.ListData(List.of(integer(2))), Builtins.tailList(list));
+        PlutusData.ListData typed = Builtins.tailList(list);
+        assertEquals(new PlutusData.ListData(List.of(integer(2))), typed);
+        PlutusData data = list;
+        assertEquals(new PlutusData.ListData(List.of(integer(2))), Builtins.tailList(data));
     }
 
     @Test
@@ -57,7 +60,10 @@ class BuiltinsPairListTest {
     void consOntoAListIsAList() {
         var pair = Builtins.mkPairData(integer(1), integer(11));
         assertEquals(new PlutusData.ListData(List.of(pair)), Builtins.mkCons(pair, Builtins.mkNilData()));
-        assertEquals(new PlutusData.ListData(List.of(integer(1))), Builtins.mkCons(integer(1), Builtins.mkNilData()));
+        PlutusData.ListData typed = Builtins.mkCons(integer(1), Builtins.mkNilData());
+        assertEquals(new PlutusData.ListData(List.of(integer(1))), typed);
+        PlutusData data = Builtins.mkNilData();
+        assertEquals(new PlutusData.ListData(List.of(integer(1))), Builtins.mkCons(integer(1), data));
     }
 
     @Test

@@ -808,7 +808,7 @@ class JulcMapTest {
                         while (!cursor.isEmpty()) {
                             var entry = cursor.head();
                             PlutusData key = entry.key();
-                            PlutusData keys = Builtins.unListData(keyList);
+                            var keys = Builtins.unListData(keyList);
                             boolean matched = false;
                             while (!Builtins.nullList(keys)) {
                                 PlutusData k = Builtins.headList(keys);

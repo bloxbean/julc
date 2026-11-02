@@ -79,6 +79,12 @@ public final class Builtins {
         return new PlutusData.ListData(new ArrayList<>(items.subList(1, items.size())));
     }
 
+    /** {@link #tailList(PlutusData)}: what Java has as a list stays one. */
+    public static PlutusData.ListData tailList(PlutusData.ListData list) {
+        var items = list.items();
+        return new PlutusData.ListData(new ArrayList<>(items.subList(1, items.size())));
+    }
+
     /** Return true if the list is empty. */
     public static boolean nullList(PlutusData list) {
         return toList(list).isEmpty();
@@ -95,6 +101,14 @@ public final class Builtins {
         var items = new ArrayList<PlutusData>();
         items.add(elem);
         items.addAll(toList(list));
+        return new PlutusData.ListData(items);
+    }
+
+    /** {@link #mkCons(PlutusData, PlutusData)}: what Java has as a list stays one. */
+    public static PlutusData.ListData mkCons(PlutusData elem, PlutusData.ListData list) {
+        var items = new ArrayList<PlutusData>();
+        items.add(elem);
+        items.addAll(list.items());
         return new PlutusData.ListData(items);
     }
 
