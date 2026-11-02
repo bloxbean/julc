@@ -3,12 +3,20 @@ package org.julclang.compiler.frontend.javac.lower;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerTarget;
+import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.core.PlutusData;
 import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.EvalOptions;
+import org.julclang.vm.EvalResult;
+import org.julclang.vm.ExBudget;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -133,7 +141,7 @@ class JavacLambdasTest {
         same(members);
     }
 
-    /** A validator's source map guards its boolean {@code return}s in the reference, and a lambda's is not one when no {@code return} is written. */
+    /** A {@code @Param} read in a lambda, in a validator. */
     @Test
     void aValidatorWithAParameterInTheLambda() {
         LoweringFixture.assertSameAsReference(IMPORTS + """
@@ -150,6 +158,42 @@ class JavacLambdasTest {
                     }
                 }
                 """);
+    }
+
+    /**
+     * With a source map, an entry point's boolean {@code return} fails rather than returning false. A lambda's is no
+     * {@code return} of the method, but the reference's flag stays on inside it: a lambda that returns false fails the script
+     * there and only there, and one that returns anything else is applied as a boolean. So this program accepts, as Java does,
+     * with no map on either frontend and with one on this frontend alone.
+     */
+    @Test
+    void aLambdasReturnIsNoReturnOfTheEntryPoint() {
+        String validator = IMPORTS + """
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData datum, PlutusData redeemer, PlutusData ctx) {
+                        JulcList<BigInteger> xs = JulcList.of(BigInteger.ONE, BigInteger.TWO);
+                        return xs.filter(x -> { return false; }).isEmpty();
+                    }
+                }
+                """;
+        assertTrue(accepts(validator, CompilerFrontend.JAVAC, true));
+        assertTrue(accepts(validator, CompilerFrontend.JAVAC, false));
+        assertTrue(accepts(validator, CompilerFrontend.JAVAPARSER, false));
+        assertFalse(accepts(validator, CompilerFrontend.JAVAPARSER, true), "the reference with a map: on the Closed by M5 list");
+    }
+
+    private static boolean accepts(String validator, CompilerFrontend frontend, boolean sourceMap) {
+        var options = new CompilerOptions().setFrontend(frontend).setSourceMapEnabled(sourceMap);
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compile(validator);
+        var ref = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+        var context = PlutusData.constr(0, PlutusData.constr(0), PlutusData.constr(0),
+                PlutusData.constr(1, ref, PlutusData.constr(0, PlutusData.integer(1))));
+        return CompilerTestVm.pv11("Java").evaluateWithArgs(result.program(), CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), List.of(context),
+                new ExBudget(1_000_000_000L, 5_000_000L), EvalOptions.DEFAULT) instanceof EvalResult.Success;
     }
 
     // --- Rejections ---
