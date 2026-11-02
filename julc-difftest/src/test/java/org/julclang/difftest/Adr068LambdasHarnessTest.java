@@ -373,15 +373,25 @@ class Adr068LambdasHarnessTest {
         assertFixedOnJavac("public static JulcList<JulcMap<BigInteger, BigInteger>> m(JulcList<JulcMap<BigInteger, BigInteger>> xs) { return xs.map(l -> l); }", list(map));
     }
 
-    /** ADR-043's fixtures: the parameter is a list now, at every level, on both paths through the helper. */
+    private static final String CALLBACK_HELPER = "static boolean helper(" + BIG_LIST + " xs, BigInteger k) { if (k.equals(BigInteger.ONE)) { return xs.get(0).equals(BigInteger.ZERO); } "
+            + "if (k.equals(BigInteger.TWO)) { return xs.get(1).equals(BigInteger.ZERO); } return true; } "
+            + "public static boolean m(JulcList<JulcList<BigInteger>> groups, BigInteger k) { return groups.any(xs -> helper(xs, k)); }";
+
+    /** ADR-043's {@code CALLBACK_HELPER}: the parameter is a list now, at every level, on each path through the helper. */
     @ParameterizedTest
-    @ValueSource(longs = {0, 1, 2})
+    @ValueSource(longs = {1, 2})
     void aListParameterPassedOn(long k) {
-        String helper = "static boolean helper(" + BIG_LIST + " xs, BigInteger k) { if (k.equals(BigInteger.ONE)) { return xs.get(0).equals(BigInteger.ZERO); } "
-                + "if (k.equals(BigInteger.TWO)) { return xs.get(1).equals(BigInteger.ZERO); } return true; } ";
-        var groups = list(integers(0, 1), integers(1, 0));
-        var report = run(helper + "public static boolean m(JulcList<JulcList<BigInteger>> groups, BigInteger k) { return groups.any(xs -> helper(xs, k)); }",
-                List.of(groups, integer(k)));
+        assertFixedOnJavac(CALLBACK_HELPER, list(integers(0, 1), integers(1, 0)), integer(k));
+    }
+
+    /** The path that does not read the list agrees on both frontends, and {@code JAVAC} pays for one decode per element. */
+    @Test
+    void aListParameterNotRead() {
+        assertJavacAgrees(run(CALLBACK_HELPER, List.of(list(integers(0, 1), integers(1, 0)), integer(0))));
+        var report = run("static BigInteger pick(" + BIG_LIST + " xs, BigInteger k) { if (k.equals(BigInteger.ONE)) { return xs.get(0); } return BigInteger.ZERO; } "
+                + "public static long m(JulcList<JulcList<BigInteger>> groups) { return groups.filter(xs -> pick(xs, BigInteger.ZERO).equals(BigInteger.ZERO)).size(); }",
+                List.of(list(integers(1), integers(2))));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
         assertJavacAgrees(report);
     }
 

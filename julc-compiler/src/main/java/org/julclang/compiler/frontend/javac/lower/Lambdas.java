@@ -80,7 +80,7 @@ final class Lambdas {
     /** What the parameter holds: the type javac gave it, as a declaration writes it or as javac inferred it. */
     private PirType held(VariableTree parameter, boolean written) {
         var type = facts.element(parameter).asType();
-        if (written) return facts.pirType(type, parameter.getType());
+        if (written) return facts.registry().resolveNamed(facts.pirType(type, parameter.getType()));
         try {
             return facts.registry().resolveNamed(facts.valueType(type, parameter));
         } catch (CompilerException e) {
