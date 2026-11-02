@@ -283,6 +283,7 @@ class Adr068ReadsHarnessTest {
                 GENERATED_DATA + "public static X m(PlutusData d) { return new X(d); }",
                 GENERATED_DATA + "public static PlutusData m(PlutusData d) { JulcList<X> l = JulcList.of(new X(d)); return l.toPlutusData(); }",
                 GENERATED_DATA + "public static PlutusData m(PlutusData d) { JulcMap<BigInteger, X> l = JulcMap.empty(); return l.insert(BigInteger.ONE, new X(d)).toPlutusData(); }",
+                "public interface H { PlutusData toPlutusData(); } public record X(PlutusData toPlutusData) implements H { } public static X m(PlutusData d) { return new X(d); }",
                 GENERATED_DATA + "public record O(X w) { } public static O m(PlutusData d) { return new O(new X(d)); }",
                 GENERATED_DATA + "public static Optional<X> m(PlutusData d) { return Optional.of(new X(d)); }",
                 GENERATED_DATA + "public static boolean m(PlutusData d) { return new X(d).equals(new X(d)); }",
@@ -306,17 +307,18 @@ class Adr068ReadsHarnessTest {
         assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
     }
 
-    /** The reference reads these through the accessor, and the rule is the javac frontend's: its table says so. */
+    /** A generated accessor that implements another method is the component it reads, which is what Java's record holds. */
     @ParameterizedTest
     @ValueSource(strings = {
             "public interface I { BigInteger a(); } public record X(BigInteger a) implements I { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
+            "public interface I { BigInteger a(); } public record X(BigInteger a) implements I { } public static X m(BigInteger v) { return new X(v); }",
             "public interface I { default BigInteger a() { return BigInteger.ONE; } } public record X(BigInteger a) implements I { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
             "public interface I<T> { T a(); } public record X(BigInteger a) implements I<BigInteger> { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
             "public sealed interface S { BigInteger a(); record A(BigInteger a) implements S { } record B(BigInteger a) implements S { } } public static BigInteger m(BigInteger v) { var x = new S.A(v); return x.a(); }",
     })
-    void aGeneratedAccessorThatImplementsAnInterfaceIsRejected(String members) {
+    void aGeneratedAccessorOfAnotherInterfaceKeepsLowering(String members) {
         var report = tagged(members, i(5));
-        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
+        assertAgrees(report, CompilerFrontend.JAVAC);
         assertAgrees(report, CompilerFrontend.JAVAPARSER);
     }
 
@@ -327,11 +329,12 @@ class Adr068ReadsHarnessTest {
         assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
     }
 
+    /** The rule keys on {@code ToPlutusData}'s method, and the gate's reads the name: this one is not Java's Data. */
     @Test
-    void anInterfaceAtAnyDepthIsRead() {
-        var report = run("public interface B { BigInteger a(); } public interface I extends B { } public record X(BigInteger a) implements I { }"
-                + " public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }", i(5));
-        assertRejects(report, CompilerFrontend.JAVAC, "JULC0101");
+    void aToPlutusDataThatIsNotTheInterfacesLowersOnJavac() {
+        var report = run("public record X(PlutusData toPlutusData) { } public static X m(PlutusData d) { return new X(d); }", i(5));
+        assertAgrees(report, CompilerFrontend.JAVAC);
+        assertRejects(report, CompilerFrontend.JAVAPARSER, "JULC0101");
     }
 
     /** Neither names a method of an interface, so each keeps lowering, on both frontends where the reference lowers it. */

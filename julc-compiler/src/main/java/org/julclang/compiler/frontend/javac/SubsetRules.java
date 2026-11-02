@@ -69,7 +69,7 @@ final class SubsetRules {
 
     /**
      * {@link #check} for a compilation on the javac frontend, with the rule the gate's component rule stands in for on the
-     * other: a record's members that no tree says ({@link SpelledMethods#checkRecordMembers}, {@code JULC0101}).
+     * other: a {@code toPlutusData} that a component generates, which no tree says ({@link SpelledMethods#checkRecordMembers}, {@code JULC0101}).
      *
      * @throws org.julclang.compiler.CompilerException at the first rule a unit breaks
      */

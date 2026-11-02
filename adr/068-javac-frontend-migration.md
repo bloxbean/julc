@@ -199,8 +199,11 @@ to the same PIR and type are accepted (`OnchainOverloads.java:12`); others are `
   - **I2d (r12).** For a member read, "the subset does not widen" means `CallTargets.seen`: what a member is looked up
     on, and what a `var` binds, is the type the reference gives the expression, whatever javac knows. The reference
     resolves a name, a `new`, and the result of a helper, a library method or an accessor, and of anything else it reads
-    the term. So parentheses, a conditional, `var p = o` and a chained read follow from one rule, in both directions. What
-    a read decodes to stays javac's.
+    the term. So parentheses, a conditional, `var p = o` and a chained read follow from one rule, in both directions, for
+    a registry method, a wrapper's component, `.length` and `compareTo` in the `OP 0` form. What a read decodes to stays
+    javac's, so `equals` on a read seen as Data takes the row of what it holds, and with no such row, on a value that is
+    not Data, it is `JULC0055`. That rejection is narrower than the reference, whose answer there agrees with Java's: it
+    fails closed, and it is listed for M5.
 - **I3. Names bind as Java binds them.** Each source name lowers to a `Var` that, under PIR's name scoping, resolves
   to the binder allocated for the `Element` javac binds the name to. Tested by I13's binding check.
 - **I4. Determinism.** For a given JuLC release, the same sources give the same bytes on every host, under D3's
@@ -821,7 +824,7 @@ Each milestone appends the javac frontend's row and, for every difference, one c
 |---|---|---|
 | **Semantic fix** | Semantic observations differ, and the javac frontend agrees with the JVM where the reference did not | An issue; a saved `.diffcase` on which the javac frontend agrees and the reference diverges |
 | **UPLC-only semantic fix** | Semantic observations differ on a case with no JVM counterpart (malformed Data, ADR-067's UPLC-only checks) | The decision that defines the outcome; the UPLC-only test asserting it |
-| **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, D15, I11) | The decision; a rejection test with the code; docs and release notes |
+| **Policy rejection** | The javac frontend rejects a case the reference accepted, by a decision of this ADR (D6, D11, D14, D15, I2d, I11) | The decision; a rejection test with the code; docs and release notes |
 | **javac rejection** | javac rejects a migration case (dialect, D6) | The rewritten Java source, which gets its own row; a case D6 removes keeps its rejection row and has none |
 | **Accepted by decision** | The javac frontend accepts a case the reference rejected (escape shapes, javac 25's switch shapes, ADR-067 M2a/M2b record patterns) | The decision; a `.diffcase` per shape on which the javac frontend agrees with the JVM |
 | **Diagnostic change** | Both reject, with a different code, message or position | For a coded JuLC rejection, only a decision this ADR names or I2b's javac-first rejection; for an uncoded one, its new code (I2a) A row that differs only in its diagnostics, such as a warning one frontend reports with the gate off, is `DIFFERENT-diagnostics`, and this class explains it; a row that also differs in bytes or params stays `DIFFERENT-bytes`. |
@@ -890,6 +893,7 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 | `JULC0099` | A constructor holds no statement | Both |
 | `JULC0100` | A name the JavaParser frontend reads by spelling binds, at every use, to what it reads | The gate only |
 | `JULC0101` | A method does not declare `toPlutusData` or a record's accessor, because JuLC compiles a record as its components | Both, from `SubsetRules.check` (r12) |
+| `JULC0101` | A record's generated accessor does not implement `ToPlutusData.toPlutusData`: `SpelledMethods.checkRecordMembers` reads that element, because javac gives the accessor no tree. A generated accessor of any other method lowers | `frontend=JAVAC` (r12) |
 | `JULC0101` | The rest: a method does not take a name that frontend reads in place of the method's body, and a call on a `@NewType` or on what lowers to bytes is its accessor | The gate only |
 | `JULC0078` | D6's related types: a collection operation between unrelated types, and `.equals` of unrelated type arguments | `frontend=JAVAC`, from M3 (r12) |
 | `JULC0092` | Existing (I11). The gate also applies it where a sealed interface's variants, read as `TypeRegistrar` reads them, differ from javac's list | Both |
@@ -903,8 +907,7 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
   frontend, and `JULC0080` is the rule planned for the rest of a record's body. What stays gate-only: all of `JULC0100`, and
   the rest of `JULC0101`: `fromPlutusData` and `of` declarations, `equals` on a record or sealed interface, instance methods
   and calls on a `@NewType`, a component named like a method, the accumulator names, and calls through an `Optional` or on
-  bytes. One shape stays open at this revision: a component named `toPlutusData` that implements an interface's method has
-  no declaration to read, so `frontend=JAVAC` still lowers that record. Their lists are derived or held to the code by
+  bytes. Their lists are derived or held to the code by
   `SpelledNameLintTest`. They cover a `@NewType`'s component too: it does not take a name `TypeMethodRegistry` serves on
   the type it lowers to, a `@NewType` of `byte[]` names its component `value`, no record component is named `equals` or
   `toPlutusData`, and a `@NewType` does not declare `of`, even where a given declaration would have been harmless.
@@ -1419,7 +1422,8 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
   - `.equals` with no common class stays a stop until M5, because of an external validator.
   - D15: "`JULC0100` and `JULC0101` have no place on `frontend=JAVAC`" was wrong for two rows of `JULC0101`. A declared
     `toPlutusData` and an explicit accessor are read from `SubsetRules.check`, on every frontend. All of `JULC0100` stays
-    gate-only, and so does the rest of `JULC0101`. M6 removes the gate-only rows. D15's table gains `JULC0078`.
+    gate-only, and so does the rest of `JULC0101`, but for a generated accessor that implements `ToPlutusData.toPlutusData`,
+    which `frontend=JAVAC` reads from the elements. M6 removes the gate-only rows. D15's table gains `JULC0078`.
   - I2d names `CallTargets.seen` as the reading of "the subset does not widen" for member reads. I4: a message holds no
     capture number.
   - D7: `new` keys a variant by its element (F807). D13: two limits of a `.diffcase`, and a `DIFFERENT-rejection` of two

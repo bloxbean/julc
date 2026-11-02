@@ -60,7 +60,7 @@ it rebuilds. It adds no name a source can reach: the unit's binder is `#_`.
 | A call of a recursive function, an unknown one or a parameter; a trace; anything else | Never |
 
 The 32,768 is why `add`, `append` and the hashes are in the table with a bound: in Plutus 1.63.0.0 semantics variants D and E take integers up to 2^262143 and byte strings
-up to 65,536 bytes (`Universe/Cardano.hs`), and fail past them. The size of a value is an upper bound the function adds up as it goes. `ConstrData` takes a `Word64` tag at those variants. A trace is not
+up to 65,536 bytes (`Universe/Cardano.hs`), and fail past them. The size of a value is an upper bound the function adds up as it goes, and a hash has the size of its digest whatever its input, so a short input does not understate it. A reading walks a function once per argument, so a tree of calls is linear in its depth. `ConstrData` takes a `Word64` tag at those variants. A trace is not
 a failure, but a `let` would show it at another time than Java does.
 
 **What stays strict.** A body shown total stays one shared `let`, which nothing can tell from Java. `MerklePatriciaForestry.nullHash`, `nullHash2`, `nullHash4`, `nullHash8`,
@@ -69,7 +69,7 @@ no parameters there still runs once when the program starts, whether or not it i
 A read of a `@Param` field is delayed by the rule, though it cannot fail once bound: its binding is a decode, which is not total.
 
 **A read is not a variable.** A handler that takes a read as having no effect would run the call twice, or out of order. `PirHelpers.isMethodRead` tells them apart by the method
-namespace, and `failingBelow` and `swappedInOrder` bind such a read once. `Adr068DelayedMethodsTest` runs `take`, `drop`, `mod`, `>`, `>=` and `compareTo` with a traced read as receiver, argument and both.
+namespace, and `failingBelow` and `swappedInOrder` bind such a read once. So does `PirHelpers.readOnce`, in the handlers that duplicate an operand: `abs`, `min`, `max`, `signum`, `compareTo` outside the `OP 0` form, and `Math.abs`, `max` and `min`. Without it a chain of such methods, each reading the one below, doubles per level. A receiver with an effect is bound ahead of a bound argument, to keep Java's order. Any other operand goes in as it did (T13). `Adr068DelayedMethodsTest` runs `take`, `drop`, `mod`, `>`, `>=`, `compareTo`, `abs`, `min`, `max`, `signum` and the `Math` delegates with a traced read as receiver, argument and both, and chains of 24 levels of each.
 
 **MPF.** 18 programs at each of the 4 levels, 72 rows, each method that reads a `nullHash*` over proofs of branches, leaves and forks, with the pass off and on: **0 bytes and 0 budget differ.**
 
@@ -103,10 +103,13 @@ Each stub was read against Plutus **1.63.0.0** (commit `ac40fae4`), the release 
 | `consByteString` | `Default/Builtins.hs:1250`: `Word8` at variants C and E, which Plutus V3 uses | `(byte)` | Throws outside 0..255 |
 | `replicateByte` | `Bitwise.hs:576`, `:85`: length 0..8192; `Default/Builtins.hs:2222`: a `Word8` | `(int)`, `(byte)` | Throws outside both |
 | `decodeUtf8`, `decodeUtf8String` | `Default/Builtins.hs:1580`: `BS.isValidUtf8` | No check | Throws on invalid bytes |
+| `verifyEd25519Signature`, in `JvmCryptoProvider` | `Crypto/Ed25519.hs`: fails on a key that is not 32 bytes or a signature that is not 64 | False, and a longer key read by its first 32 bytes | Throws on both; false for what then does not verify |
 
 The Java VM agrees with each of these, read against the same files and run against the stubs at their edges (`Adr068ThrowingMethodsTest`). `JulcArrayList.take` and `drop` throw on any negative count, and both `get`s throw on an index past an `int`.
 
-**The JVM stubs do not model the 65,536-byte bound.** Variants D and E fail on a byte string past it (`Universe/Cardano.hs`), and a stub takes one. It is the one difference between these stubs and the file above that remains.
+`JvmCryptoProviderTest` runs that row and each of the six hashes against the VM. The confirmation review's 432 differences on `Builtins.sha2_256` were the harness's: `julc-difftest` installs no `CryptoProvider`, so the JVM side throws `UnsupportedOperationException` before it hashes. With a provider each hash equals the script's at 9 sizes from 0 to 1,024 bytes. `verifyEcdsaSecp256k1Signature` and `verifySchnorrSecp256k1Signature` are not implemented by that provider, so they throw on the JVM, as the BLS stubs do.
+
+**The JVM stubs do not model the 65,536-byte bound.** Variants D and E fail on a byte string past it (`Universe/Cardano.hs`), and a stub takes one. Of the stubs in the table above it is the one difference that remains. Outside that table, `constrData` takes a negative tag on the JVM and fails in the script: see the follow-ups.
 
 ## Commands
 
@@ -197,7 +200,7 @@ Each row ran on the JVM and through both frontends at every level, unless it say
 | `j()` calling a failing `k()`, not called | Returns | **Fails** | Returns |
 | `k() { return k() + 1; }`, not called | Returns | Not run | Returns |
 | `a.take(k())`, `b.mod(k())`, `k() > x`, a traced `k` | Once, in order | Once, at start | Once, in order |
-| `k().signum()`, `k().compareTo(a)`, a traced `k` | Once | Once, at start | **Twice**, T13 |
+| `k().signum()`, `k().compareTo(a)`, `k().abs()`, `Math.max(k(), a)`, a traced `k` | Once | Once, at start | Once, in order |
 | The same, `k` fails | Throws | Fails | Fails |
 | A method used only in a library, JavaParser frontend | As Java | At start | As Java |
 | The same, javac frontend | | `JULC0084` | `JULC0084`: a library unit stops |
@@ -233,7 +236,7 @@ From a clean tree at `fef83a9d`, through the machine lock, with `--rerun`. Count
 
 ## What this does not establish
 
-- **Two differences stay,** as known issues: argument-first `prepend`, `contains` and `insert`, and duplicated operands in T13's family, which a delayed read can now be. See the follow-ups.
+- **Two differences stay,** as known issues: argument-first `prepend`, `contains` and `insert`, and duplicated operands in T13's family, which an operand built on a delayed read can be, as can the operand of an `instanceof`. See the follow-ups.
 - **A provider import.** Its method with no parameters stays strict, as above. `mayFail` reads no library through a provider.
 - **The size bound's precision.** `mayFail` adds sizes conservatively, so a total body near the bound may be delayed. It costs a little and is never wrong.
 - **The 65,536-byte bound on the JVM,** as above.

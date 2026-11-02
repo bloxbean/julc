@@ -26,7 +26,6 @@ import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
-import java.util.ArrayDeque;
 import java.util.Set;
 
 /**
@@ -89,59 +88,37 @@ public final class SpelledMethods {
     }
 
     private static boolean isReadAsComponents(JavacFacts facts, ExecutableElement method) {
+        String name = method.getSimpleName().toString();
         if (!method.getParameters().isEmpty() || method.getModifiers().contains(Modifier.STATIC)) return false;
-        if (isToPlutusData(method)) return true;
+        if (name.equals("toPlutusData")) return true;
         var owner = (TypeElement) method.getEnclosingElement();
-        return owner.getKind() == ElementKind.RECORD && isComponent(facts, owner, method.getSimpleName().toString());
-    }
-
-    private static boolean isToPlutusData(ExecutableElement method) {
-        return method.getSimpleName().contentEquals("toPlutusData") && method.getParameters().isEmpty()
-                && !method.getModifiers().contains(Modifier.STATIC);
+        return owner.getKind() == ElementKind.RECORD && isComponent(facts, owner, name);
     }
 
     /**
      * What {@link #checkDeclarations} cannot read, on the javac frontend, whose records the gate's component rule does not
-     * reach: a method no tree says. A generated accessor that implements an interface's method, and an inherited
-     * {@code toPlutusData}, are what Java calls through that interface, which is not how JuLC reads a record.
+     * reach: a component whose generated accessor implements {@link JavacNames#TO_PLUTUS_DATA}'s method. Java's Data for such
+     * a record is that component, and JuLC's is the record of its components. Only that method changes a record's encoding: a
+     * generated accessor of any other method is the component it reads.
      */
     public static void checkRecordMembers(JavacFacts facts, CompilationUnitTree unit) {
+        var type = facts.elements().getTypeElement(JavacNames.TO_PLUTUS_DATA);
+        if (type == null) return;
+        var data = ElementFilter.methodsIn(type.getEnclosedElements()).getFirst();
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
-                if (facts.element(tree) instanceof TypeElement type && type.getKind() == ElementKind.RECORD) {
-                    checkRecordMembers(facts, type, tree);
+                if (facts.element(tree) instanceof TypeElement record && record.getKind() == ElementKind.RECORD) {
+                    for (var component : facts.components(record)) {
+                        if (facts.elements().overrides(component.getAccessor(), data, record)) {
+                            throw CompilerTypeDiagnostics.methodNameReadBySpelling(
+                                    "The component " + record.getSimpleName() + "." + component.getSimpleName(), facts.location(tree));
+                        }
+                    }
                 }
                 return super.visitClass(tree, unused);
             }
         }.scan(unit, null);
-    }
-
-    private static void checkRecordMembers(JavacFacts facts, TypeElement record, ClassTree tree) {
-        for (var member : ElementFilter.methodsIn(facts.elements().getAllMembers(record))) {
-            if (isToPlutusData(member) && !member.getEnclosingElement().equals(record)) throw reject(facts, member, tree);
-        }
-        for (var component : facts.components(record)) {
-            if (implementsAnInterface(facts, component.getAccessor(), record)) {
-                throw CompilerTypeDiagnostics.methodNameReadBySpelling(
-                        "The component " + record.getSimpleName() + "." + component.getSimpleName(), facts.location(tree));
-            }
-        }
-    }
-
-    /** Whether {@code accessor} implements or overrides a method of an interface of {@code record}, at any depth. */
-    private static boolean implementsAnInterface(JavacFacts facts, ExecutableElement accessor, TypeElement record) {
-        var pending = new ArrayDeque<TypeMirror>(facts.types().directSupertypes(record.asType()));
-        while (!pending.isEmpty()) {
-            var supertype = pending.removeFirst();
-            pending.addAll(facts.types().directSupertypes(supertype));
-            var type = facts.typeElement(supertype);
-            if (type.getKind() != ElementKind.INTERFACE) continue;
-            for (var method : ElementFilter.methodsIn(type.getEnclosedElements())) {
-                if (facts.elements().overrides(accessor, method, record)) return true;
-            }
-        }
-        return false;
     }
 
     public static void check(JavacFacts facts, CompilationUnitTree unit) {

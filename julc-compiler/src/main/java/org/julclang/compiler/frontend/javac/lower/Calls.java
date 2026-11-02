@@ -31,7 +31,8 @@ import java.util.List;
  * diagnostics. UPLC evaluates a builtin's arguments left to right, and {@link TypeMethodRegistry}'s and the stdlib's
  * handlers choose that order: most apply the receiver and then the arguments, as Java does. Not all: {@code prepend},
  * {@code insert} and {@code contains} evaluate their argument first, and {@code abs}, {@code min}, {@code max},
- * {@code signum} and {@code compareTo} evaluate an operand more than once (#146). A helper's arguments are applied left to
+ * {@code signum} and {@code compareTo} evaluate an operand more than once (#146), unless it is a read of a method
+ * ({@code PirHelpers.readOnce}). A helper's arguments are applied left to
  * right. The order D6 fixes is {@link Operators}'.
  */
 final class Calls {

@@ -28,8 +28,10 @@ same fields can be equal. `EqualityRelation.between` answers:
 | Two arrays | Related at one type |
 | An intersection | By its bounds: one unrelated bound decides |
 
-An empty `Optional` or collection equals an empty one of any argument, so two such values are unrelated although Java can answer true. The rule stays on the types, and those
-programs fail closed. The property test states this as the one exception.
+The rule stays on the types, so there are two places where two values are unrelated although Java can answer true, and those programs fail closed:
+
+- An empty `Optional` or collection equals an empty one of any argument. The property test holds this: it counts such pairs and finds no other.
+- A type argument no component uses: with `record X<T>(BigInteger v)`, an `X<String>` and an `X<Long>` of one value are equal, and the reference says true. `JAVAC` says `JULC0078`. `new X<>(a)` against `X<String>` agrees. The property test's types have no such record. See the follow-ups.
 
 A conditional operand is read by its branches, as javac types it by the parameter. A `switch` is typed the same way, and stops at its own construct until its slice reads the arms.
 
@@ -61,7 +63,18 @@ parentheses, a conditional, `var p = o` and a chained read all follow from one r
 | `var x = (w.l()); x.head().y()` | `JULC0055` | `JULC0055` |
 
 What a read decodes to stays javac's: `var xs = JulcList.of(true); return xs.head();` is still the D13 semantic fix. A `var` of a decoded read is seen as Data, so a member of it is
-`JULC0055`, and `equals` on it dispatches on what it holds.
+`JULC0055`, and `equals` on it takes the row of what it holds.
+
+Every member a type decides reads `seen` through `CallTargets.requireSeen`: a registry method, `.length` on bytes, and `compareTo` in the `OP 0` form, which `Operators` lowers without the registry. A wrapper's component is `JULC0055` on a read seen as Data. So these follow the rule too:
+
+| Program | Reference | `JAVAC` |
+|---|---|---|
+| `var y = JulcList.of(v).head(); return y.length;`, and `JulcList.of(v).head().length` | `JULC0055` | `JULC0055` |
+| `var y = JulcList.of(v).head(); return y.compareTo(v) < 0;`, and `0 > y.compareTo(v)`, and direct | `JULC0055` | `JULC0055` |
+| `JulcList.of(h).head().hash()` | `JULC0055` | `JULC0055` |
+| `var y = JulcList.of(v).head(); return y.equals(v);` with a `boolean`, a list or a map | Evaluates, as Java | `JULC0055` |
+
+**An accepted difference.** The last row is the one place `JAVAC` is narrower than the reference here. The registry has no `equals` for those types, and the term holds a builtin value, which `EqualsData` fails on. It is what `JAVAC` answered at `fc9e9716`. The reference holds the read undecoded, as Data, so it evaluates, and **its answer agrees with Java's**. `JAVAC` fails closed. The D13 class is Policy rejection, under I2d, and the rejection test is `Adr068ReadsHarnessTest.equalsOnADecodedValueWithNoEqualsIsAnUnresolvedMember`. No program of the corpus has this shape, so no row of `lowering-accepted-differences.tsv` names it. It is in the over-rejections for M5.
 
 `var e = c ? a : b` with two variants now binds what the term says, as the reference does, and lowers. A use of it that needs its javac type, `instanceof` or `equals`, stops or is
 rejected as on the operand itself.
