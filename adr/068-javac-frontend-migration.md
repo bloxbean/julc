@@ -526,10 +526,12 @@ exceptions D11 lists.
     `char`, boolean or conditional subexpression, **and** the same holds, recursively, for the initializer of every
     constant variable it reaches (alias chains, static, local and imported constants): those have Java's value
     without integer semantics. A constant from a class file (a stub) has no initializer tree; it contributes its
-    `getConstantValue()`, which is Java's exact value. Inside
-    `switch` guards, ADR-067's evaluator decides as today (Java's widths, I9), so `"a" + "b" == "ab"` keeps its
-    meaning there. Any other constant-string comparison (`(2147483647 + 1 < 0 ? "a" : "b") == "a"`, which is true
-    on the JVM and false with unbounded lowering), including one reached only through a constant alias
+    `getConstantValue()`, which is Java's exact value. A `switch` guard constant as a whole keeps ADR-067's evaluator
+    (Java's widths, I9) and reaches no term, so `"a" + "b" == "ab"` keeps its meaning there. In a guard that is not
+    constant as a whole, a constant string outside that form stops at `JULC0086` as a Policy rejection (r13): a guard
+    evaluator cannot be trusted with a constant it would read differently from Java, and the reference does: `c && BAD == "a"`,
+    with `static final String BAD` of the conditional below, takes the other branch. Any other constant-string comparison
+    (`(2147483647 + 1 < 0 ? "a" : "b") == "a"`, which is true on the JVM and false with unbounded lowering), including one reached only through a constant alias
     (`static final String ALIAS = BAD;`), is rejected with `JULC0086`. Tests cover overflow and conditional
     operands, and static, local and imported alias chains.
   - **String `+` with a non-`String` operand** (`"a" + 1`) is valid Java, but JuLC lowers it to `appendString`
@@ -962,8 +964,9 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 - **Source that stops compiling:**
   - JuLC's dialect (D6): `BigInteger` operators, `int` literals as `BigInteger`, implicit imports, `@NewType`
     `of(...)`;
-  - reference equality (outside D6's narrow constant-string case), and `.equals` that would compare an array by
-    identity, through records, sealed variants, containers or type arguments (D6);
+  - reference equality (outside D6's narrow constant-string case, which a guard does not widen: a conditional constant
+    in a guard that is not constant as a whole is `JULC0086` too; compare with `.equals`), and `.equals` that would
+    compare an array by identity, through records, sealed variants, containers or type arguments (D6);
   - a constant-variable `@Param` (D14);
   - string `+` with a non-`String` operand (`JULC0090`, #296), and a `JulcArray` in any Data-encoded position
     (`JULC0091`, #298); both fail at run time today;
@@ -1446,3 +1449,4 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     entry gate does not change: M4, zero `JULC0084` on the corpus, and a complete I1 ledger.
   - D13: `DIFFERENT-pir` is named, "Semantic fix" and "Cost change" explain it, and a row pins the terms that differ.
   - An inferred lambda parameter has the type javac gives it, in a guard too.
+  - D6: in a `switch` guard that is not constant as a whole, a constant string outside the plain form stops at `JULC0086`, a Policy rejection. Each `==` that reaches a term is held to the rule by the lowering.

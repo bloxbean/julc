@@ -131,9 +131,10 @@ final class Operators {
     }
 
     /**
-     * D6: {@code ==} on references is identity in Java, so every one stops here, wherever it stands: the rule that holds
-     * everywhere else is the rule in a guard, which no reading of a guard's positions could promise. What it lets through is
-     * numeric or boolean equality, or two constant strings.
+     * D6: {@code ==} on references is identity in Java, so every one that reaches a term stops here, wherever it stands: no
+     * reading of a guard's positions could promise that. What it lets through is numeric or boolean equality, or two
+     * constant strings of D6's plain form. A guard constant as a whole has Java's value and reaches no term, and a constant
+     * of any other form in a guard stops, as a term of it can read otherwise than Java.
      */
     private PirTerm equality(BinaryTree tree, PirTerm left, PirTerm right, boolean negate) {
         equalities.requireValueEquality(tree);

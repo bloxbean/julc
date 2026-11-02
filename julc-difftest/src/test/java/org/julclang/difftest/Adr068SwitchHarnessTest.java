@@ -503,6 +503,39 @@ class Adr068SwitchHarnessTest {
         });
     }
 
+    private static final String CONSTANTS = "static final String BAD = 2147483647 + 1 < 0 ? \"a\" : \"b\"; ";
+
+    /** Outside D6's plain form a constant in a guard that is not constant as a whole stops, where the reference has Java's value here. */
+    @ParameterizedTest
+    @ValueSource(strings = {"c && (true ? \"a\" : \"b\") == \"a\"", "hb((true ? \"a\" : \"b\") == \"a\")", "c && (2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"",
+            "c || (2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"", "c && f == \"a\""})
+    void aConstantOutsideThePlainFormStopsInAGuard(String guard) {
+        var report = run(IDENTITY_HELPERS + "public static long m(S s, boolean c) { final var f = true ? \"a\" : \"b\"; return switch (s) { case S.A a when " + guard + " -> 1; default -> 2; }; }", List.of(a(1), bool(true)));
+        report.results().forEach((config, result) -> {
+            assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED : Verdict.Kind.AGREE, result.verdict().kind(), report::describe);
+            if (config.frontend() == CompilerFrontend.JAVAC) assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
+        });
+    }
+
+    /** A field of that form is read with unbounded integers, so the reference takes the other branch, and {@code JAVAC} stops. */
+    @Test
+    void aConstantFieldTheReferenceMisreadsInAGuard() {
+        var report = run(CONSTANTS + "public static long m(S s, boolean c) { return switch (s) { case S.A a when c && BAD == \"a\" -> 1; default -> 2; }; }", List.of(a(1), bool(true)));
+        report.results().forEach((config, result) -> {
+            assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED : Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);
+            if (config.frontend() == CompilerFrontend.JAVAC) assertTrue(result.uplc().toString().contains("JULC0086"), report::describe);
+        });
+    }
+
+    /** A guard constant as a whole has Java's value on both frontends, and so has the plain form in any guard. */
+    @ParameterizedTest
+    @ValueSource(strings = {"(true ? \"a\" : \"b\") == \"a\"", "(2147483647 + 1 < 0 ? \"a\" : \"b\") == \"a\"", "c && \"a\" + \"b\" == \"ab\"", "c && f == \"a\""})
+    void aConstantInAGuardKeepsJavasValue(String guard) {
+        for (var c : List.of(bool(true), bool(false))) {
+            assertAgree("public static long m(S s, boolean c) { final String f = \"a\"; return switch (s) { case S.A a when " + guard + " -> 1; default -> 2; }; }", a(1), c);
+        }
+    }
+
     /** The same stop on each other reference: only a string reached a value on the reference. */
     @ParameterizedTest
     @ValueSource(strings = {"BigInteger x, BigInteger y", "S x, S y", "byte[] x, byte[] y", "Boolean x, Boolean y"})

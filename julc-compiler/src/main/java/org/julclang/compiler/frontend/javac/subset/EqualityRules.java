@@ -29,10 +29,13 @@ import java.util.Set;
 
 /**
  * ADR-068 D6's equality rules: where the JVM and UPLC would mean different things by an expression that javac accepts,
- * the expression is rejected. They apply wherever the subset does, so they are rules of the scan, not of the lowering.
+ * the expression is rejected. The scan applies them wherever the subset does, and {@code Operators} applies
+ * {@link #requireValueEquality} to each {@code ==} it lowers, which is what holds them at every position of a guard.
  * <ul>
  *   <li>{@code JULC0086}: {@code ==} and {@code !=} between references, unless both are constant strings of the plain
- *       form below: their {@code Equals} is value equality on-chain and identity in Java.</li>
+ *       form below: their {@code Equals} is value equality on-chain and identity in Java. In a guard too: a constant
+ *       outside that form stops there unless the whole guard is constant, since a term of it can read otherwise than Java,
+ *       and no guard evaluator takes it over.</li>
  *   <li>{@code JULC0090}: string {@code +} with an operand that is not a {@code String} (#296).</li>
  *   <li>{@code JULC0087}: an operation that compares elements or keys, where the JVM's equality for the compared static
  *       type reaches an array by identity. {@link EqualityOperations} is the table of operations,

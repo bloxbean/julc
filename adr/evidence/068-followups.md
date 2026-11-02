@@ -162,6 +162,7 @@ From M3a's close, a misreading in the JavaParser frontend alone is listed here, 
 | `Optional`, `Tuple2`, `Tuple3`: `equals` at different type arguments | Group 1 review | `Adr068EqualityHarnessTest`, `B12` to `lists` |
 | `==` on references in a `switch` guard, in a lambda, an argument, a selector or a receiver: the reference compares values where Java compares identity, and `JAVAC` stops at `JULC0086` as anywhere else in a body | Group 2 review | `Adr068SwitchHarnessTest.anIdentityComparisonInAGuard` |
 | `PlutusData.cast(c ? d : a, JulcMap.class)`, a map in the else branch: the reference takes the term's type from the then branch, so the map is decoded twice where the JVM returns, and `JAVAC` stops, through an inner cast too | Group 2 review | `Adr068LambdasHarnessTest.aCastToAMapOfAMixedValueStops`, as the JVM's answer once the stop above is lifted |
+| `c && BAD == "a"` with `static final String BAD = 2147483647 + 1 < 0 ? "a" : "b"`: the reference lowers the field's initializer with unbounded integers, so a read in a guard takes the other branch of Java's, and `JAVAC` stops at `JULC0086` | Group 2 review | `Adr068SwitchHarnessTest.aConstantFieldTheReferenceMisreadsInAGuard` |
 
 ## Codex read owed
 
