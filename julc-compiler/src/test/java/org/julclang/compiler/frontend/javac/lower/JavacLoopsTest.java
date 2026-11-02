@@ -391,6 +391,28 @@ class JavacLoopsTest {
         same(members);
     }
 
+    /** A direct assignment is the reference's reading whatever the start, so these are its bytes. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { c = Builtins.mkNilPairData(); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 0) { c = Builtins.tailList(c); } else { c = Builtins.mkNilData(); } i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { var h = Builtins.headList(c); Builtins.sndPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d, boolean b) { PlutusData c = d; long i = 0; while (i < 2) { if (b) { i = i + 1; } else { var h = Builtins.headList(c); Builtins.fstPair(h); i = i + 1; } c = Builtins.tailList(c); } return i; }",
+            "static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData t = e; long i = 0; while (i < 2) { c = Builtins.tailList(c); t = Builtins.tailList(t); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData l = Builtins.mkNilData(); long i = 0; while (i < 2) { PlutusData p = Builtins.mkPairData(d, d); l = Builtins.mkCons(p, l); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 5) { c = Builtins.mkNilData(); } var h = Builtins.headList(c); Builtins.fstPair(h); c = Builtins.tailList(c); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData c = d; long i = 0; while (i < 2) { if (i > 0) { i = i + 1; } else { c = Builtins.mkNilPairData(); i = i + 2; } } return i; }",
+            "static long m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { if (n > 0) { c = Builtins.iData(BigInteger.valueOf(n)); } else { c = Builtins.tailList(c); } n = n + 1; } return n; }",
+            "static long m(PlutusData c, long n) { long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + n; } return s; }",
+            "static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData f = Builtins.unListData(e); long i = 0; while (i < 2) { c = Builtins.tailList(c); f = Builtins.tailList(f); i = i + 1; } return i; }",
+            "static long m(PlutusData d) { long i = 0; while (i < 2) { PlutusData c = d; long j = 0; while (j < 2) { c = Builtins.tailList(c); j = j + 1; } i = i + 1; } return i; }",
+            "static long m(PlutusData d) { PlutusData b = Builtins.unMapData(d); long i = 0; while (i < 2) { PlutusData c = b; long j = 0; while (j < 2) { c = Builtins.tailList(c); j = j + 1; } i = i + 1; } return i; }",
+    })
+    void aDirectAssignmentIsTheReferencesReading(String members) {
+        same(members);
+    }
+
     /** A native element has no decoding from Data, so the rejection stands at the iterable, not nowhere. */
     @Test
     void aNativeElementHasAPosition() {

@@ -78,19 +78,22 @@ class Adr068LoopRepresentationsPropertyTest {
         boolean map = plan.pick(List.of(false, true));
         String start = map ? "Builtins.unMapData(d)" : plan.pick(List.of("Builtins.unListData(d)", "Builtins.tailList(Builtins.unListData(d))"));
         String sibling = plan.pick(List.of("", "PlutusData f = Builtins.unListData(e); ", "PlutusData f = e; "));
-        String siblingStep = sibling.isEmpty() ? "" : sibling.contains("unListData") ? "if (!Builtins.nullList(f)) { f = Builtins.tailList(f); } " : "f = e; ";
+        String siblingStep = sibling.isEmpty() ? "" : sibling.contains("unListData") ? "if (!Builtins.nullList(f)) { f = (Builtins.tailList(f)); } " : "f = e; ";
         String step = plan.pick(List.of("c = Builtins.tailList(c);", "c = (Builtins.tailList(c));", "c = next(c);",
                 "PlutusData n = Builtins.tailList(c); c = n;", "c = s > 100 ? c : Builtins.tailList(c);",
                 "if (s > 100) { s = 0; } else { c = Builtins.tailList(c); }", "{ c = Builtins.tailList(c); }"));
         String read = plan.pick(List.of("", map ? "s = s + Builtins.unIData(Builtins.fstPair(Builtins.headList(c))).longValue();"
                 : "s = s + Builtins.unIData(Builtins.headList(c)).longValue();"));
         String body = read + " " + step + " " + siblingStep + "s = s + 1;";
-        String loop = plan.pick(List.of(
+        var loops = new ArrayList<>(List.of(
                 "while (!Builtins.nullList(c)) { %s }",
-                "long i = 0; while (i < 2) { i = i + 1; while (!Builtins.nullList(c)) { %s } }",
-                "for (var x : xs) { if (Builtins.nullList(c)) { break; } %s }",
-                "for (var x : xs) { while (!Builtins.nullList(c)) { %s } }",
-                "for (var x : xs) { PlutusData r = c; while (!Builtins.nullList(r)) { r = Builtins.tailList(r); s = s + 1; } }"));
+                "for (var x : xs) { if (Builtins.nullList(c)) { break; } %s }"));
+        // A nested while reads as the reference does, which is a list, so a pair list there fails on both.
+        if (!map) {
+            loops.addAll(List.of("long i = 0; while (i < 2) { i = i + 1; while (!Builtins.nullList(c)) { %s } }", "for (var x : xs) { while (!Builtins.nullList(c)) { %s } }",
+                    "for (var x : xs) { PlutusData r = c; while (!Builtins.nullList(r)) { r = Builtins.tailList(r); s = s + 1; } }"));
+        }
+        String loop = plan.pick(loops);
         String end = plan.pick(List.of("return s;", "return s + (Builtins.nullList(c) ? 1 : 2);"));
         String source = """
                 import java.math.BigInteger;
@@ -165,10 +168,10 @@ class Adr068LoopRepresentationsPropertyTest {
                 "Builtins.bData(new byte[]{1})", "F"));
         String list = plan.pick(List.of("Builtins.mkNilData()", "(Builtins.mkNilData())", "Builtins.mkNilPairData()", "Builtins.tailList(Builtins.unListData(l))",
                 "nil()", "G", "Builtins.unMapData(m)", "Builtins.mkCons(d, Builtins.mkNilData())", "Builtins.tailList(c)"));
-        String update = plan.pick(List.of("if (s > 100) { c = %s; }", "c = s > 100 ? %s : c;", "if (s > 100) { PlutusData r = %s; c = r; }",
+        String update = plan.pick(List.of("if (s > 100) { c = (%s); }", "c = s > 100 ? %s : c;", "if (s > 100) { PlutusData r = %s; c = r; }",
                 "c = switch (e2) { case S.B q -> %s; default -> c; };", "if (s > 100) { c = h(%s); }"));
         String sibling = plan.pick(List.of("", "PlutusData f = Builtins.unListData(l); ", "PlutusData f = d; "));
-        String siblingStep = sibling.isEmpty() ? "" : sibling.contains("unListData") ? "if (!Builtins.nullList(f)) { f = Builtins.tailList(f); } " : "f = e; ";
+        String siblingStep = sibling.isEmpty() ? "" : sibling.contains("unListData") ? "if (!Builtins.nullList(f)) { f = (Builtins.tailList(f)); } " : "f = e; ";
         String body = update.formatted(list) + " " + siblingStep + "s = s + 1;";
         String loop = plan.pick(List.of(
                 "while (s < 2) { %s }",

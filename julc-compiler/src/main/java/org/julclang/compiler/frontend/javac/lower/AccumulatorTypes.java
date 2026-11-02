@@ -11,6 +11,7 @@ import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.WhileLoopTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.SwitchResults;
@@ -34,10 +35,12 @@ import java.util.Set;
  * the {@code return}s of a helper. A call is the element javac bound, so {@code tailList} is {@code Builtins.tailList} and
  * nothing else.
  * <p>
- * A variable is a list only if its start and every value that reaches it are shown to be a list of one kind. Anything else is
- * Data, and travels as Data: nothing known, a mix with Data, a list and pairs. A list that then arrives in it fails on-chain.
- * A cursor nothing else says of is a list, unless what its head is read as, or a map cursor beside it, says pairs. This builds
- * no term, so it has no evaluation order to state.
+ * A variable is what the reference reads it as when that says a list or a map ({@link ReferenceAccumulatorTypes}), so this only
+ * adds to the reference's reading, and a program that runs on the reference keeps it. Otherwise it is a list only if its start
+ * and every value that reaches it are shown to be a list of one kind. Anything else is Data, and travels as Data: nothing known,
+ * a mix with Data, a list and pairs. A list that then arrives in it fails on-chain. A cursor nothing else says of is a list,
+ * unless what its head is read as, or a map cursor beside it, says pairs. This builds no term, so it has no evaluation order to
+ * state.
  */
 final class AccumulatorTypes {
 
@@ -65,20 +68,23 @@ final class AccumulatorTypes {
     }
 
     private final JavacFacts facts;
+    private final ReferenceAccumulatorTypes reference;
 
     AccumulatorTypes(JavacFacts facts) {
         this.facts = facts;
+        this.reference = new ReferenceAccumulatorTypes(facts);
     }
 
     /**
+     * @param preceding    what stands before the loop in the list it is lowered from
      * @param accumulators the loop's, in order
      * @param types        their declared types, in order
      * @return the types they travel at
      */
-    List<PirType> travelling(StatementTree loop, List<Element> accumulators, List<PirType> types) {
+    List<PirType> travelling(StatementTree loop, List<? extends StatementTree> preceding, List<Element> accumulators, List<PirType> types) {
         var method = facts.enclosing(loop, Tree.Kind.METHOD);
         var reading = new Reading(method == null ? loop : method);
-        var result = new ArrayList<>(types);
+        var result = new ArrayList<>(loop instanceof WhileLoopTree tree ? reference.refined(tree, accumulators, types, preceding) : types);
         var held = new ArrayList<Held>();
         for (int i = 0; i < accumulators.size(); i++) {
             var what = result.get(i) instanceof PirType.DataType ? reading.variable(accumulators.get(i), new HashSet<>()) : Held.DATA;

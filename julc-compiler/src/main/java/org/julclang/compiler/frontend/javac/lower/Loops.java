@@ -158,7 +158,7 @@ final class Loops {
             return terms.generatedLet(PirHelpers.hygienicName("#_forEach", PirHelpers.freeVariables(rest)), result, rest);
         }
 
-        var typed = travelling(elements, tree, frame);
+        var typed = travelling(elements, tree, List.of(), frame);
         var carried = carried(elements, tree, typed);
         var inner = frame.in(scope).updating();
         boolean single = carried.isSingle();
@@ -267,11 +267,11 @@ final class Loops {
      * {@code frame} with several accumulators at the types they travel at ({@link AccumulatorTypes}): the tuple holds them so, and
      * what follows the loop reads them so. A body reads them as they were declared, as the reference has them there.
      */
-    private Frame travelling(List<Element> elements, StatementTree loop, Frame frame) {
+    private Frame travelling(List<Element> elements, StatementTree loop, List<? extends StatementTree> preceding, Frame frame) {
         if (elements.size() < 2) return frame;
         var declared = new ArrayList<PirType>();
         elements.forEach(element -> declared.add(frame.scope().lookup(element).type()));
-        var types = accumulatorTypes.travelling(loop, elements, declared);
+        var types = accumulatorTypes.travelling(loop, preceding, elements, declared);
         var scope = frame.scope();
         for (int i = 0; i < elements.size(); i++) scope = scope.rebind(elements.get(i), types.get(i));
         return frame.in(scope);
@@ -282,7 +282,7 @@ final class Loops {
      * its declared type, so a term that never decodes it stands as in the reference.
      */
     Carried nested(List<Element> elements, StatementTree loop, Frame frame, PirTerm rest) {
-        var typed = travelling(elements, loop, frame);
+        var typed = travelling(elements, loop, List.of(), frame);
         var free = PirHelpers.freeVariables(rest);
         return new Carried(facts, terms, elements.stream().map(element -> {
             var binder = frame.scope().lookup(element);
@@ -293,7 +293,7 @@ final class Loops {
     /** A {@code while} of several accumulators: the condition reads them at the types they travel at. */
     private PirTerm several(WhileLoopTree tree, ExpressionTree condition, List<Element> elements, boolean breaks,
                             List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
-        var typed = travelling(elements, tree, frame);
+        var typed = travelling(elements, tree, following.subList(0, index), frame);
         var carried = carried(elements, tree, typed);
         var initial = carried.value();
         var test = lowering.expr(condition, typed);

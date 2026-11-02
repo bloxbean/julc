@@ -200,11 +200,11 @@ class Adr068LoopRepresentationsTest {
                 true, LIST, list(integer(1), integer(2)));
         assertCarried("public static long m(PlutusData d, JulcList<BigInteger> xs) { long s = 0; for (var x : xs) { PlutusData cur = Builtins.unListData(d); long i = 0; while (!Builtins.nullList(cur)) { i = i + 1; cur = Builtins.tailList(cur); } s = s + i + (Builtins.nullList(cur) ? 1 : 2); } return s; }",
                 true, LIST, list(integer(1), integer(2)));
-        assertCarried("public static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData f = Builtins.unListData(e); long s = 0; while (!Builtins.nullList(c)) { s = s + 1; c = Builtins.tailList(c); f = Builtins.tailList(f); } return s; }",
+        assertCarried("public static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData f = Builtins.unListData(e); long s = 0; while (!Builtins.nullList(c)) { s = s + 1; c = Builtins.tailList(c); f = (Builtins.tailList(f)); } return s; }",
                 true, MAP, LIST);
     }
 
-    /** A parameter shows nothing, so a list that arrives in one is carried as Data. */
+    /** A parameter shows nothing, so where the reference reads no direct assignment, a list that arrives in one is carried as Data. */
     private static String walker(String step) {
         return """
                 public sealed interface S { record A() implements S { } record B() implements S { } }
@@ -230,14 +230,6 @@ class Adr068LoopRepresentationsTest {
     void aListInAParameterFails(String step) {
         var report = BOTH.run(new DiffCase("cursors", cursors(walker(step)), "Case", "m", List.of(LIST, list(integer(1))), TAGS2, null));
         assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), report::describe);
-    }
-
-    /** The reference reads the assignment and takes the parameter for a list, and {@code JAVAC} goes by what is shown. */
-    @Test
-    void anAssignmentAloneShowsNothing() {
-        var report = BOTH.run(new DiffCase("cursors", cursors(walker("c = Builtins.tailList(c);")), "Case", "m", List.of(LIST, list(integer(1))), TAGS2, null));
-        report.results().forEach((config, result) -> assertEquals(
-                config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.MISMATCH : Verdict.Kind.AGREE, result.verdict().kind(), report::describe));
     }
 
     /** What {@code find} leaves is the element, so a {@code var} of it holds what was decoded, and a tuple encodes that. */
@@ -375,7 +367,6 @@ class Adr068LoopRepresentationsTest {
             "public static long m(PlutusData c, JulcList<BigInteger> xs, long l) { long n = 0; for (var u : xs) { c = Builtins.tailList(c); n = n + 1; } return n; }",
             "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; for (var u : xs) { c = Builtins.mkNilData(); n = n + 1; } return n; }",
             "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { c = (Builtins.mkNilData()); n = n + 1; } return n; }",
-            "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { c = Builtins.mkNilData(); n = n + 1; } return n; }",
             "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { c = n > 100 ? Builtins.mkNilData() : c; n = n + 1; } return n; }",
             "static PlutusData nil() { return Builtins.mkNilData(); } public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = d; long n = 0; while (n < l) { if (n > 100) { c = nil(); } n = n + 1; } return n; }",
             "public static long m(PlutusData d, JulcList<BigInteger> xs, long l) { PlutusData c = xs.isEmpty() ? d : d; long n = 0; for (var u : xs) { c = Builtins.mkNilData(); n = n + 1; } return n; }",
@@ -390,8 +381,6 @@ class Adr068LoopRepresentationsTest {
     @ValueSource(strings = {
             "public static long m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = d; long n = 0; for (var u : xs) { if (n > 100) { c = Builtins.mkNilData(); } n = n + 1; } return n; }",
             "public static boolean m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = d; long n = 0; for (var u : xs) { if (n > 100) { c = Builtins.mkNilData(); } n = n + 1; } return Builtins.equalsData(c, d); }",
-            "public static long m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = d; long n = 0; while (n < 2) { if (n > 100) { c = Builtins.mkNilData(); } n = n + 1; } return n; }",
-            "public static long m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = Builtins.iData(BigInteger.ONE); long n = 0; while (n < 2) { if (n > 100) { c = Builtins.tailList(d); } n = n + 1; } return n; }",
             "static PlutusData F = Builtins.mkNilData(); public static long m(PlutusData d, JulcList<BigInteger> xs) { PlutusData c = d; long n = 0; while (n < 1) { if (n > 0) { c = F; } n = n + 1; } return n; }",
     })
     void aGuardedListStaysData(String members) {
@@ -433,24 +422,75 @@ class Adr068LoopRepresentationsTest {
                 false, MAP);
     }
 
-    /** What is not a list reaching a list start makes it Data, and it fails on entry, by a constant as by a builtin. */
-    @Test
-    void aConstantMixesToo() {
-        var fails = RUNNER.run(new DiffCase("data", cursors("public static long m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { if (n > 100) { c = PlutusData.UNIT; } else { c = Builtins.tailList(c); } n = n + 1; } return n; }"),
-                "Case", "m", List.of(LIST, integer(0))));
-        assertTrue(fails.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), fails::describe);
+    /** The reference reads a direct assignment in a {@code while}, whatever the start, and {@code JAVAC} never reads less. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long walk(PlutusData c, long n) { long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + n; } return s; } public static long m(PlutusData d) { return walk(Builtins.unListData(d), 1); }",
+            "static boolean walk(PlutusData c) { while (!Builtins.nullList(c)) { c = Builtins.tailList(c); } return Builtins.nullList(c); } public static boolean m(PlutusData d) { return walk(Builtins.unListData(d)); }",
+            "static long walk(PlutusData c, long n) { long s = 0; PlutusData f = Builtins.mkNilData(); while (!Builtins.nullList(c)) { c = Builtins.tailList(c); f = Builtins.mkCons(Builtins.iData(BigInteger.valueOf(n)), f); s = s + n; } return s; } public static long m(PlutusData d) { return walk(Builtins.unListData(d), 1); }",
+    })
+    void aListInAParameterByADirectAssignment(String members) {
+        var report = BOTH.run(new DiffCase("cursors", cursors(members), "Case", "m", List.of(LIST)));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
     }
 
-    /** A list and Data in one variable is Data, so a start that is a list fails on entry and a start that is Data runs. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "static long walk(PlutusData c) { long s = 0; while (!Builtins.nullList(c)) { var h = Builtins.headList(c); s = s + Builtins.unIData(Builtins.fstPair(h)).longValue(); c = Builtins.tailList(c); } return s; } public static long m(PlutusData d) { return walk(Builtins.unMapData(d)); }",
+            "static long walk(PlutusData c) { long s = 0; while (!Builtins.nullList(c)) { var h = Builtins.headList(c); s = s + Builtins.unIData(Builtins.sndPair(h)).longValue(); c = Builtins.tailList(c); } return s; } public static long m(PlutusData d) { return walk(Builtins.unMapData(d)); }",
+            "static boolean walk(PlutusData c) { while (!Builtins.nullList(c)) { c = Builtins.tailList(c); } return Builtins.nullList(c); } public static boolean m(PlutusData d) { return walk(Builtins.unMapData(d)); }",
+    })
+    void aPairListInAParameterByADirectAssignment(String members) {
+        var report = BOTH.run(new DiffCase("cursors", cursors(members), "Case", "m", List.of(MAP)));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+    }
+
+    /** A list start keeps the reference's reading though Data is assigned on a path not taken, and fails where it is taken. */
     @Test
-    void aMixIsData() {
-        var fails = RUNNER.run(new DiffCase("data", cursors("public static long m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { if (n > 100) { c = Builtins.iData(BigInteger.valueOf(n)); } else { c = Builtins.tailList(c); } n = n + 1; } return n; }"),
-                "Case", "m", List.of(LIST, integer(0))));
+    void aMixKeepsTheReferencesReading() {
+        String members = "public static long m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { if (n > 0) { c = Builtins.iData(BigInteger.valueOf(n)); } else { c = Builtins.tailList(c); } n = n + 1; } return n; }";
+        var runs = BOTH.run(new DiffCase("data", cursors(members), "Case", "m", List.of(LIST, integer(1))));
+        assertTrue(runs.all(Verdict.Kind.AGREE), runs::describe);
+        var fails = BOTH.run(new DiffCase("data", cursors(members), "Case", "m", List.of(LIST, integer(2))));
         assertTrue(fails.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), fails::describe);
-        var runs = BOTH.run(new DiffCase("data", cursors(walkerOf("""
+        var data = BOTH.run(new DiffCase("data", cursors(walkerOf("""
                 public static long m(PlutusData d, long l, S e) { PlutusData c = Builtins.iData(BigInteger.ONE); long n = 0; while (n < l) { c = switch (e) { case S.A q -> Builtins.tailList(Builtins.unListData(d)); case S.B q -> c; }; n = n + 1; } return n; }
                 """)), "Case", "m", List.of(LIST, integer(1), constr(1)), TAGS2, null));
-        assertTrue(runs.all(Verdict.Kind.AGREE), runs::describe);
+        assertTrue(data.all(Verdict.Kind.AGREE), data::describe);
+    }
+
+    /** Where the reference reads Data, a list and what is not one are Data, so a list start fails on both. */
+    @Test
+    void aMixTheReferenceDoesNotReadIsData() {
+        for (String other : List.of("Builtins.iData(BigInteger.valueOf(n))", "PlutusData.UNIT")) {
+            var report = BOTH.run(new DiffCase("data", cursors("public static long m(PlutusData d, long l) { PlutusData c = Builtins.unListData(d); long n = 0; while (n < l) { if (n > 100) { c = (%s); } else { c = (Builtins.tailList(c)); } n = n + 1; } return n; }".formatted(other)),
+                    "Case", "m", List.of(LIST, integer(0))));
+            assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), report::describe);
+        }
+    }
+
+    /** A direct assignment on a Data start is the reference's reading, and its failure on entry, which fails closed. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static long m(PlutusData d, long l) { PlutusData c = d; long n = 0; while (n < l) { c = Builtins.mkNilData(); n = n + 1; } return n; }",
+            "public static long m(PlutusData d, long l) { PlutusData c = d; long n = 0; while (n < l) { if (n > 100) { c = Builtins.mkNilData(); } n = n + 1; } return n; }",
+            "public static long m(PlutusData d, long l) { PlutusData c = Builtins.iData(BigInteger.ONE); long n = 0; while (n < l) { if (n > 100) { c = Builtins.tailList(d); } n = n + 1; } return n; }",
+    })
+    void aDirectAssignmentOnADataStartIsTheReferencesFailure(String members) {
+        var report = BOTH.run(new DiffCase("data", cursors(members), "Case", "m", List.of(ONE, integer(0))));
+        assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), report::describe);
+    }
+
+    /** Where the reference's reading is the other kind of list, it stands, and the start fails on entry on both. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); PlutusData f = Builtins.unListData(e); long s = 0; while (!Builtins.nullList(c)) { s = s + 1; c = Builtins.tailList(c); f = Builtins.tailList(f); } return s; }",
+            "public static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.tailList(Builtins.unMapData(d)); long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } return s; }",
+            "public static long m(PlutusData d, PlutusData e) { PlutusData c = Builtins.unMapData(d); long s = 0; long i = 0; while (i < 2) { i = i + 1; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } } return s; }",
+    })
+    void theReferencesReadingOfTheOtherKindStands(String members) {
+        var report = BOTH.run(new DiffCase("cursors", cursors(members), "Case", "m", List.of(MAP, LIST)));
+        assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), report::describe);
     }
 
     private static String walkerOf(String method) {
@@ -462,8 +502,6 @@ class Adr068LoopRepresentationsTest {
     /** A cursor over a pair list and the fields of a constructor travel as what they are, and a lambda's parameter is one type too. */
     @Test
     void whatElseACursorIs() {
-        assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.tailList(Builtins.unMapData(d)); long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } return s; }",
-                true, MAP);
         assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.constrFields(d); long s = 0; while (!Builtins.nullList(c)) { c = Builtins.tailList(c); s = s + 1; } return s; }",
                 false, constr(0, integer(1), integer(2)));
         assertCarried("public static long m(PlutusData d) { PlutusData c = Builtins.constrFields(d); long i = 0; while (i < 2) { i = i + 1; c = c; } return Builtins.nullList(c) ? 1 : 2; }",

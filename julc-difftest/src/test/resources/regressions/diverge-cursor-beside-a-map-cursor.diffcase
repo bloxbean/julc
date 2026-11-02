@@ -7,8 +7,7 @@ arg: 83010203
 expect: DIVERGE M5 Value/Failure
 jvm: Value 02 []
 uplc: Failure []
-note: What reaches a Data accumulator says it is a list, so the tuple carries one. Closed by M5.
-note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+note: Beside a map cursor a direct tailList is read as a pair list, on both frontends, so a list there fails. It fails closed.
 ---
 import java.math.BigInteger;
 import org.julclang.core.PlutusData;
