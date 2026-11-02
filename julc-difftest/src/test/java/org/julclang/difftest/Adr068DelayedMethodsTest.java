@@ -383,6 +383,21 @@ class Adr068DelayedMethodsTest {
         assertAgree(built + "public static long m(boolean c) { return c ? 1 : 2; }", bool(false));
     }
 
+    /** A string in a record is encoded byte by byte, so a long one read many times is past the limit, not called. */
+    @ParameterizedTest
+    @ValueSource(ints = {16, 100, 400, 1000})
+    void longStringsInRecordsNotCalledDoNotRun(int length) {
+        int fields = 240;
+        var types = new StringBuilder();
+        var values = new StringBuilder();
+        for (int i = 0; i < fields; i++) {
+            types.append(i == 0 ? "" : ", ").append("String f").append(i);
+            values.append(i == 0 ? "" : ", ").append("c");
+        }
+        assertAgree("public record Rc(" + types + ") { } static Rc g(String c) { return new Rc(" + values + "); } static boolean k() { String c = \"" + "a".repeat(length)
+                + "\"; Rc r0 = g(c); Rc r1 = g(c); Rc r2 = g(c); Rc r3 = g(c); return true; } public static BigInteger m(BigInteger a) { return a; }", integer(5));
+    }
+
     /** A branch is work with no builtin in it, so a long body under a tree of calls is past the limit. */
     @ParameterizedTest
     @ValueSource(ints = {1, 20, 100, 200})

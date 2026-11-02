@@ -2,6 +2,7 @@ package org.julclang.compiler.pir;
 
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.DefaultUni;
 import org.julclang.core.PlutusData;
 import org.julclang.core.source.SourceLocation;
 import org.junit.jupiter.api.Nested;
@@ -208,6 +209,33 @@ class DelayedMethodPassTest {
             var large = new PirTerm.Const(Constant.data(new PlutusData.BytesData(new byte[LIMIT / 2])));
             assertFalse(mayFail(builtin(DefaultFun.EqualsData, small, small)));
             assertTrue(mayFail(builtin(DefaultFun.EqualsData, large, large)));
+        }
+
+        /** A list constant of Data holds its elements' bytes. */
+        @Test
+        void aListConstantHoldsItsElementsBytes() {
+            PirTerm small = new PirTerm.Const(new Constant.ListConst(DefaultUni.DATA, List.of(Constant.data(new PlutusData.BytesData(new byte[LIMIT / 8])))));
+            PirTerm large = new PirTerm.Const(new Constant.ListConst(DefaultUni.DATA, List.of(Constant.data(new PlutusData.BytesData(new byte[LIMIT / 2])))));
+            assertFalse(mayFail(builtin(DefaultFun.EqualsData, builtin(DefaultFun.ListData, small), builtin(DefaultFun.ListData, small))));
+            assertTrue(mayFail(builtin(DefaultFun.EqualsData, builtin(DefaultFun.ListData, large), builtin(DefaultFun.ListData, large))));
+        }
+
+        private static final PirType TEXTS = new PirType.RecordType("T", List.of(new PirType.Field("a", new PirType.StringType()), new PirType.Field("b", new PirType.StringType())));
+
+        /** A string field encodes each byte it holds, however little reads it. */
+        @Test
+        void aStringFieldIsWorkByItsBytes() {
+            PirTerm field = new PirTerm.Var("s", new PirType.StringType());
+            var two = new PirTerm.DataConstr(0, TEXTS, List.of(field, field));
+            assertFalse(mayFail(new PirTerm.Let("s", text("a".repeat((LIMIT - 5) / 2)), two)));
+            assertTrue(mayFail(new PirTerm.Let("s", text("a".repeat((LIMIT - 5) / 2 + 1)), two)));
+        }
+
+        /** A byte string's encoding takes the same time at any length, so no other field is charged its bytes. */
+        @Test
+        void aBytesFieldIsNotWorkByItsBytes() {
+            var type = new PirType.RecordType("B", List.of(new PirType.Field("a", BYTES)));
+            assertFalse(mayFail(new PirTerm.DataConstr(0, type, List.of(bytes(2 * LIMIT)))));
         }
 
         /** A size past the limit does not wrap round to a small one, however deep the sharing. */

@@ -52,8 +52,8 @@ public final class DelayedMethodPass {
      * function and that function's scope. A function that reaches a parameter is a value of {@link Kind#OTHER}: what a
      * call of a parameter runs is not known.
      *
-     * @param work an upper bound on what evaluating the term runs, in {@link #WORK_LIMIT}'s units. A value held by a
-     *             variable has been evaluated, so a read counts as a read, whatever the value took
+     * @param work a count of what evaluating the term runs, in {@link #WORK_LIMIT}'s units. A value held by a variable has
+     *             been evaluated, so a read counts as a read, whatever the value took
      */
     private record Known(Kind kind, long size, Constant constant, PirTerm.Lam function, Map<String, Known> scope, long work) {
         static Known of(Kind kind, long size) {
@@ -105,11 +105,12 @@ public final class DelayedMethodPass {
 
     /**
      * The most work a body may do and stay a strict {@code let}. Work counts each constant, read, function, {@code let},
-     * branch, application and constructor it evaluates as 1, and each byte a builtin's arguments hold as 1, a value built
-     * by a constructor holding its fields' bytes. So it bounds the steps a body runs and what its builtins read. A body past
-     * it is read as one that may fail. {@code MerklePatriciaForestry.nullHash2}, the largest of the shared bodies a program
-     * uses, does 141. No argument within it reaches what a builtin here refuses: Plutus 1.63.0.0's semantics variants D and
-     * E bound integers to 2^262143 and byte strings to 65,536 bytes ({@code Universe/Cardano.hs}).
+     * branch, application and constructor it evaluates as 1, and each byte a builtin's arguments or a string field hold as
+     * 1, a value built by a constructor holding its fields' bytes. It is a count of what a body runs, not of what each part
+     * costs: a hash of no bytes costs more than a read. A body past it is read as one that may fail.
+     * {@code MerklePatriciaForestry.nullHash2}, the largest of the shared bodies a program uses, does 141. No argument
+     * within it reaches what a builtin here refuses: Plutus 1.63.0.0's semantics variants D and E bound integers to 2^262143
+     * and byte strings to 65,536 bytes ({@code Universe/Cardano.hs}).
      */
     private static final long WORK_LIMIT = 1024;
 
@@ -255,6 +256,7 @@ public final class DelayedMethodPass {
             case Constant.ByteStringConst bytes -> bytes.value().length;
             case Constant.StringConst string -> string.value().getBytes(StandardCharsets.UTF_8).length;
             case Constant.DataConst data -> PlutusDataCborEncoder.encode(data.value()).length;
+            case Constant.ListConst list -> list.values().stream().mapToLong(DelayedMethodPass::sizeOf).sum();
             default -> 0;
         };
     }
@@ -315,7 +317,7 @@ public final class DelayedMethodPass {
         return body instanceof PirTerm.Lam ? null : known(body, scope, reading);
     }
 
-    /** A constructor is Data when each field is total and of the kind its declared type encodes. */
+    /** A constructor is Data when each field is total and of the kind its declared type encodes. A string field encodes each byte it holds. */
     private static Known constructed(PirTerm.DataConstr constr, Map<String, Known> bound, Reading reading) {
         var fields = fieldTypes(constr);
         if (fields == null || fields.size() != constr.fields().size() || constr.tag() < 0) return null;
@@ -325,7 +327,7 @@ public final class DelayedMethodPass {
             var field = known(constr.fields().get(i), bound, reading);
             if (field == null || field.kind() != encoded(fields.get(i))) return null;
             size = Math.min(size + field.size(), WORK_LIMIT + 1);
-            work += field.work();
+            work += field.work() + (field.kind() == Kind.STRING ? field.size() : 0);
         }
         return Known.of(Kind.DATA, size).after(work);
     }
