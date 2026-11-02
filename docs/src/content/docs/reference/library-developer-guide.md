@@ -146,11 +146,11 @@ Builtins.unMapData(data)        // MapData -> pair-list
 
 // List primitives
 Builtins.headList(list)         // first element
-Builtins.tailList(list)         // all but first
+Builtins.tailList(list)         // all but first; a pair list stays a map on the JVM
 Builtins.nullList(list)         // is empty?
-Builtins.mkCons(elem, list)     // prepend element
+Builtins.mkCons(elem, list)     // prepend element; onto a pair list, a pair, and it stays a map
 Builtins.mkNilData()            // empty data list
-Builtins.mkNilPairData()        // empty pair list
+Builtins.mkNilPairData()        // empty pair list: an empty MapData on the JVM
 
 // Pair primitives
 Builtins.fstPair(pair)          // first of pair

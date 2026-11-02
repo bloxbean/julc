@@ -70,8 +70,11 @@ public final class Builtins {
         return toList(list).getFirst();
     }
 
-    /** Return all elements except the first. */
-    public static PlutusData.ListData tailList(PlutusData list) {
+    /** Return all elements except the first. A map stays a map, as a pair list on-chain does. */
+    public static PlutusData tailList(PlutusData list) {
+        if (list instanceof PlutusData.MapData map) {
+            return new PlutusData.MapData(new ArrayList<>(map.entries().subList(1, map.entries().size())));
+        }
         var items = toList(list);
         return new PlutusData.ListData(new ArrayList<>(items.subList(1, items.size())));
     }
@@ -81,8 +84,14 @@ public final class Builtins {
         return toList(list).isEmpty();
     }
 
-    /** Prepend an element to a Data list. */
-    public static PlutusData.ListData mkCons(PlutusData elem, PlutusData list) {
+    /** Prepend an element to a Data list. Onto a map the element must be a pair, and a map stays a map, as a pair list on-chain does. */
+    public static PlutusData mkCons(PlutusData elem, PlutusData list) {
+        if (list instanceof PlutusData.MapData map) {
+            var entries = new ArrayList<PlutusData.Pair>();
+            entries.add(new PlutusData.Pair(fstPair(elem), sndPair(elem)));
+            entries.addAll(map.entries());
+            return new PlutusData.MapData(entries);
+        }
         var items = new ArrayList<PlutusData>();
         items.add(elem);
         items.addAll(toList(list));
@@ -119,9 +128,9 @@ public final class Builtins {
         return new PlutusData.ConstrData(0, List.of(fst, snd)); // Pair encoding
     }
 
-    /** Create an empty list of pairs (for map construction). */
-    public static PlutusData.ListData mkNilPairData() {
-        return new PlutusData.ListData(List.of()); // Empty pair list
+    /** Create an empty list of pairs: an empty map. */
+    public static PlutusData.MapData mkNilPairData() {
+        return new PlutusData.MapData(List.of());
     }
 
     // =========================================================================
@@ -175,8 +184,8 @@ public final class Builtins {
     }
 
     /**
-     * Wrap a list of pairs as MapData, as the builtin does. {@code unMapData} gives a MapData here, while {@code tailList},
-     * {@code mkCons} and {@code mkNilPairData} give a ListData of pairs, so both are lists of pairs.
+     * Wrap a list of pairs as MapData, as the builtin does. A pair list is a MapData here, as on-chain. A ListData of pairs,
+     * which {@code mkCons} builds onto {@code mkNilData}, is one too.
      */
     public static PlutusData.MapData mapData(PlutusData map) {
         if (map instanceof PlutusData.MapData md) {
@@ -1126,7 +1135,7 @@ public final class Builtins {
     }
 
     /** @see #tailList(PlutusData) */
-    public static PlutusData.ListData tailList(Object list) {
+    public static PlutusData tailList(Object list) {
         return tailList(asPlutusData(list));
     }
 

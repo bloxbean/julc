@@ -284,7 +284,7 @@ public class ContextsLib {
 
     /** Get the nth element from a list by chaining tailList/headList. */
     public static PlutusData listIndex(PlutusData.ListData list, BigInteger n) {
-        var current = list;
+        PlutusData current = list;
         var idx = n;
         while (idx.compareTo(BigInteger.ZERO) > 0) {
             current = Builtins.tailList(current);

@@ -70,7 +70,7 @@ PlutusData wrappedBig = Builtins.iData(BigInteger.valueOf(1000000));
 PlutusData wrappedBytes = Builtins.bData(new byte[]{0x01, 0x02, 0x03});
 
 // Construct a ConstrData from tag + fields list
-PlutusData.ListData fields = Builtins.mkCons(Builtins.iData(1), Builtins.mkNilData());
+PlutusData fields = Builtins.mkCons(Builtins.iData(1), Builtins.mkNilData());
 PlutusData.ConstrData constr = Builtins.constrData(0, fields);
 
 // Wrap a ListData
@@ -367,7 +367,7 @@ class ListBuilder {
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         // Build a list [3, 2, 1] by prepending in reverse order
-        PlutusData.ListData list = Builtins.mkNilData();
+        PlutusData list = Builtins.mkNilData();
         list = Builtins.mkCons(Builtins.iData(1), list);
         list = Builtins.mkCons(Builtins.iData(2), list);
         list = Builtins.mkCons(Builtins.iData(3), list);
@@ -408,7 +408,7 @@ class ListTraversal {
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        PlutusData.ListData nums = Builtins.mkNilData();
+        PlutusData nums = Builtins.mkNilData();
         nums = Builtins.mkCons(Builtins.iData(10), nums);
         nums = Builtins.mkCons(Builtins.iData(20), nums);
         nums = Builtins.mkCons(Builtins.iData(30), nums);
@@ -1429,7 +1429,7 @@ class RecursiveList {
 
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-        PlutusData.ListData nums = Builtins.mkNilData();
+        PlutusData nums = Builtins.mkNilData();
         nums = Builtins.mkCons(Builtins.iData(10), nums);
         nums = Builtins.mkCons(Builtins.iData(50), nums);
         nums = Builtins.mkCons(Builtins.iData(3), nums);
@@ -1583,7 +1583,7 @@ class TailRecursive {
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         BigInteger fact5 = factAcc(BigInteger.valueOf(5), BigInteger.ONE);
 
-        PlutusData.ListData nums = Builtins.mkNilData();
+        PlutusData nums = Builtins.mkNilData();
         nums = Builtins.mkCons(Builtins.iData(10), nums);
         nums = Builtins.mkCons(Builtins.iData(20), nums);
         BigInteger sum = sumAcc(nums, BigInteger.ZERO);
