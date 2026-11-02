@@ -71,6 +71,7 @@ class JavacLambdasTest {
             "static boolean m(JulcList<BigInteger> xs) { return PlutusData.cast(xs.find(x -> x.signum() > 0), Optional.class).isPresent(); }",
             "static boolean m(JulcList<BigInteger> xs) { return xs.any(x -> true); }",
             "static boolean m(JulcList<BigInteger> xs) { return xs.any(y -> y.signum() > 0); }",
+            "static boolean m(JulcList<BigInteger> xs) { return xs.any((y) -> y.signum() > 0); }",
             "static boolean m(JulcList<BigInteger> xs) { return xs.tail().any(x -> x.signum() > 0); }",
             "static boolean m(JulcMap<BigInteger, BigInteger> a) { return a.keys().any(x -> x.signum() > 0); }",
             "static boolean m(JulcMap<BigInteger, BigInteger> a) { return a.values().all(x -> x.signum() > 0); }",
@@ -249,6 +250,21 @@ class JavacLambdasTest {
     void javacRejectsWhatD6Removed(String members) {
         var failure = onJavac(members);
         assertEquals("JULC0085", failure.diagnostics().getFirst().code(), failure::getMessage);
+    }
+
+    /** Only a local goes through the reference's rule on a call: a parameter is rejected at its type. */
+    @Test
+    void aParameterOfAFunctionalTypeIsRejectedAtItsType() {
+        var failure = onJavac("static boolean m(Predicate<BigInteger> p, BigInteger a) { return p.test(a); }");
+        assertTrue(failure.getMessage().contains("Unknown type: Predicate"), failure::getMessage);
+    }
+
+    /** What the reference types by what is written and javac by the element: a member the receiver's reading cannot find lowers. */
+    @Test
+    void aWrittenTypeIsWhatTheBodySees() {
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
+        assertFalse(compiler.compileMethod(source("static boolean m(BigInteger a) { var xs = JulcList.of(a); return xs.any((BigInteger x) -> x.signum() > 0); }"), "m")
+                .hasErrors());
     }
 
     /** The type of a local that holds a function is no type of the subset: the reference's rejection, with javac's name. */

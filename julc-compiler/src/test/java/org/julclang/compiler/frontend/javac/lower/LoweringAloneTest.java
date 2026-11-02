@@ -13,6 +13,7 @@ import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
 import org.junit.jupiter.api.Test;
@@ -267,6 +268,52 @@ class LoweringAloneTest {
             var failure = assertThrows(CompilerException.class, () -> lowering.method(methods.getFirst(), Scope.empty(), false));
             assertTrue(failure.getMessage().contains("Generic library method lib.L.f cannot be called from Java yet"), failure::getMessage);
             return null;
+        });
+    }
+
+    /** ADR-060: a decoded parameter keeps its name, the {@code let} reads the {@code Lam} under it, and each is built for the element. */
+    @Test
+    void aDecodedParameterIsOneNameOverTwoBinders() {
+        withMethod("""
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcList;
+                class C {
+                    static boolean m(JulcList<BigInteger> xs) { return xs.any(x -> x.signum() > 0); }
+                }
+                """, new CompilerOptions(), (facts, lowered) -> {
+            var term = lowered.term();
+            var names = new ArrayList<String>();
+            new Object() {
+                void walk(PirTerm at) {
+                    switch (at) {
+                        case PirTerm.Lam lam -> {
+                            if (lam.param().equals("x")) {
+                                var let = assertInstanceOf(PirTerm.Let.class, lam.body());
+                                names.add(let.name());
+                                assertEquals(new PirType.DataType(), lam.paramType());
+                                assertTrue(PirSubstitution.collectFreeVarNames(let.value()).contains("x"));
+                            }
+                            walk(lam.body());
+                        }
+                        case PirTerm.LetRec rec -> {
+                            rec.bindings().forEach(binding -> walk(binding.value()));
+                            walk(rec.body());
+                        }
+                        case PirTerm.App app -> {
+                            walk(app.function());
+                            walk(app.argument());
+                        }
+                        case PirTerm.IfThenElse branch -> {
+                            walk(branch.cond());
+                            walk(branch.thenBranch());
+                            walk(branch.elseBranch());
+                        }
+                        default -> { }
+                    }
+                }
+            }.walk(term);
+            assertEquals(List.of("x"), names);
+            BindingCheck.check(term, lowered.lowering().terms().provenance());
         });
     }
 

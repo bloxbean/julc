@@ -267,7 +267,6 @@ final class Calls {
         var receiver = receiver(tree);
         var scope = lowering.expr(receiver, frame);
         var type = typing.of(receiver, scope);
-        if (!TypeKeys.accepts(CallTarget.Hof.KEY, type)) throw NotPorted.at(facts, tree, "a method of a subtype of an API type");
         if (!(targets.seen(receiver, scope) instanceof PirType.ListType seen)) {
             throw CompilerTypeDiagnostics.unresolvedMember(target.method(), facts.location(tree));
         }
