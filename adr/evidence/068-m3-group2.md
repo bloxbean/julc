@@ -8,7 +8,7 @@ The two slices' files hold what each delivered.
 
 | Rule | Where |
 |---|---|
-| A lambda's body in a guard is ordinary code for D6: its identity comparison is `JULC0086` | `SubsetScan.visitLambdaExpression` |
+| `==` on references is D6's at every position that reaches a term, in a guard too: `JULC0086`, unless both operands are constant strings of D6's plain form. A guard constant as a whole has Java's value and reaches no term | `Operators.equality` |
 | An inferred lambda parameter has the type javac gives it, in a guard too | `Lambdas`, `Guards`; `068-m3f-lambdas.md` |
 | A cast to a map reads through parentheses, a conditional, a `switch`, a cast that does not decode and a variable to each value it may hold. Where those are a map and another type it stops at `JULC0084`, so no value is decoded twice | `Calls` |
 | Work counts each constant, read, function, `let` and branch as 1, a constructor's value by its size, and a Data constant by its CBOR bytes | `DelayedMethodPass` |
@@ -17,13 +17,20 @@ The two slices' files hold what each delivered.
 
 ## What moved
 
-- **I1.** After the fixes, 33 rows moved, all `DIFFERENT-pir`, and only in their text and digest: 14 `CallbackHelper`, 18
+- **I1, the first freeze.** 33 rows moved, all `DIFFERENT-pir`, and only in their text and digest: 14 `CallbackHelper`, 18
   `HelperCallers`, 1 `CallbackValidator`. No new `DIFFERENT-*` row, and no bytes moved. The freeze took
   `-Padr068.allowShrink=true`, because a row's digest changed.
+- **I1, the second freeze.** 42 rows moved, all `DIFFERENT-javac-rejects`, with the same diagnostic, text and digest, since a
+  method's attempt now ends at the rule on `==`. 38 change `reference equality` to `(rejected)`. 4 lose a covered method,
+  `198a8c12` 2/2 to 1/2, and `6f3e6de1`, `707c4a0e`, `f191c4dc` 1/1 to 0/1, so covered methods go from 11,708 to 11,704. No
+  bytes moved.
 - **MPF.** 72 rows, 0 bytes and 0 budget against the last head. `nullHash2` reads 141 against `WORK_LIMIT` 1024.
 - **Accepted programs.** 458 new programs over 3 inputs, 1,374 runs: 1,329 equal the JVM. The other 45 are T7, a later
   element failing because `any` does not stop. The grid of accepted programs has 394 `BYTES≠`, before and after.
 - **The work limit.** The figures are in `068-m3-reference-b4.md`, per method. They are the largest found, not a ceiling.
+  The largest strict body is 12.98% of a transaction's CPU and 15.04% of its memory. A body newly past the limit is delayed,
+  by the delay rule, so a program that calls it in a loop pays it at each call, and its bytes and cost move on the reference
+  too: no corpus program does.
 - **Compile time.** `poly-6-30` compiles in 74 ms, from 11.7 s.
 
 ## Mutation evidence
