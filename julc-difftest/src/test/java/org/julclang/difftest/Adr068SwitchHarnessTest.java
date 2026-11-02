@@ -485,6 +485,25 @@ class Adr068SwitchHarnessTest {
     }
 
     @Test
+    void aConstantOfAnInterface() {
+        String kinds = "public sealed interface K { boolean ON = true; long N = 3; int M = 2147483647; record U() implements K { } } ";
+        var entries = new ArrayList<>(TAG_ENTRIES);
+        entries.add(new TagTable.Entry("Case$K$U", "Case$K", 0));
+        var tags = new TagTable(entries);
+        for (var members : List.of("public static long m(S s, long x) { return switch (s) { case S.A a when K.ON -> 1; default -> 2; }; }",
+                "public static long m(S s, long x) { return switch (s) { case S.A a when x > K.N -> 1; default -> 2; }; }",
+                "public static long m(S s, long x) { return switch (s) { case S.A a when (K.M + 1) < x -> 1; default -> 2; }; }")) {
+            for (var s : everyS()) {
+                for (long x : List.of(-1L, 3L, 4L)) {
+                    var report = RUNNER.run(new DiffCase("switch", program(kinds + members), "Case", "m", List.of(s, integer(x)), tags, null));
+                    assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+                    AGREED.incrementAndGet();
+                }
+            }
+        }
+    }
+
+    @Test
     void aSwitchStatementIsNotInTheSubset() {
         var report = run("public static long m(S s) { switch (s) { case S.A a -> { return 1; } default -> { return 2; } } }", List.of(a(1)));
         report.results().forEach((config, result) -> assertEquals(Verdict.Kind.REJECTED, result.verdict().kind(), report::describe));

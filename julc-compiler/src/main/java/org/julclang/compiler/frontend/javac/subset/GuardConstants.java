@@ -277,12 +277,10 @@ public final class GuardConstants {
         };
     }
 
-    /** As written, so an interface's implicit modifiers are not read, and a {@code @Param} is the applied parameter. */
+    /** With an interface's implicit modifiers, which javac has added. A {@code @Param} is the applied parameter. */
     private boolean isStaticFinal(VariableElement field) {
-        var declaration = facts.declaration(field);
-        if (declaration == null || facts.hasAnnotation(field, JavacNames.PARAM)) return false;
-        var flags = declaration.getModifiers().getFlags();
-        return flags.contains(Modifier.STATIC) && flags.contains(Modifier.FINAL);
+        if (facts.declaration(field) == null || facts.hasAnnotation(field, JavacNames.PARAM)) return false;
+        return field.getModifiers().containsAll(Set.of(Modifier.STATIC, Modifier.FINAL));
     }
 
     private Result initializer(VariableElement variable, Set<Element> visiting) {

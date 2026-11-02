@@ -508,6 +508,43 @@ class JavacSwitchesTest {
         same(members);
     }
 
+    /** A field of an interface is {@code static final} without saying so, as JavaParser and javac both read it. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.ON -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when !Kn.OFF -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, long x) { return switch (s) { case A a when x > Kn.N -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, long x) { return switch (s) { case A a when x > Kn.W -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when (Kn.M + 1) < a.v().signum() -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.TEXT == \"a\" -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.N > 2 && c -> 1; default -> 2; }; }",
+            "static boolean Z = true; static long m(S s) { return switch (s) { case A a when Z -> 1; default -> 2; }; }",
+    })
+    void aConstantOfAnInterface(String members) {
+        same(members);
+    }
+
+    /** A read of a type's field in a guard that is no constant has no binder on either frontend. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.ON && c -> 1; default -> 2; }; }",
+            "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.OFF || c -> 1; default -> 2; }; }",
+            "sealed interface Kn { BigInteger B = BigInteger.ONE; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when a.v().equals(Kn.B) -> 1; default -> 2; }; }",
+            "record Rc(long n) { static long L = 3; } static long m(S s, long x) { return switch (s) { case A a when x > Rc.L -> 1; default -> 2; }; }",
+    })
+    void aFieldOfATypeThatIsNoConstantInAGuard(String members) {
+        for (var frontend : CompilerFrontend.values()) {
+            var e = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setFrontend(frontend)).compileMethod(source(members), "m"));
+            assertTrue(e.getMessage().contains("Undefined variable"), () -> frontend + ": " + e.getMessage());
+        }
+    }
+
+    @Test
+    void aConstantFalseOfAnInterfaceIsJavacsRejection() {
+        rejected("sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when Kn.OFF -> 1; default -> 2; }; }");
+    }
+
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */
     /** An inferred parameter of a sealed interface is Data to the reference, so {@code instanceof} on it stops on both. */
     @ParameterizedTest
