@@ -796,21 +796,21 @@ public class PirGenerator {
      */
     private PirTerm generateInstanceOfIfCps(InstanceOfExpr ioe, TypePatternExpr tpe,
             Statement thenStmt, PirTerm elseTerm, Supplier<PirTerm> cont) {
-        var condTerm = generateInstanceOf(ioe);
-        var varType = typeResolver.resolve(tpe.getType());
-        var scrutineeTerm = generateExpression(ioe.getExpression());
-        var thenTerm = loopBody.withBindingRenamed(thenStmt, tpe.getName().asString(), (varName, renamed) -> {
-            symbolTable.pushScope();
-            try {
-                symbolTable.define(varName, varType);
-                var thenBody = generateBranchWithCont(renamed, cont);
-                return new PirTerm.Let(varName, scrutineeTerm, thenBody);
-            } finally {
-                symbolTable.popScope();
-            }
+        return PirHelpers.readOnce(generateExpression(ioe.getExpression()), new PirType.DataType(), scrutinee -> {
+            var condTerm = generateInstanceOf(ioe, () -> scrutinee);
+            var varType = typeResolver.resolve(tpe.getType());
+            var thenTerm = loopBody.withBindingRenamed(thenStmt, tpe.getName().asString(), (varName, renamed) -> {
+                symbolTable.pushScope();
+                try {
+                    symbolTable.define(varName, varType);
+                    var thenBody = generateBranchWithCont(renamed, cont);
+                    return new PirTerm.Let(varName, scrutinee, thenBody);
+                } finally {
+                    symbolTable.popScope();
+                }
+            });
+            return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
         });
-
-        return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
     }
 
     /**
@@ -819,20 +819,21 @@ public class PirGenerator {
      */
     private PirTerm generateInstanceOfIf(InstanceOfExpr ioe, TypePatternExpr tpe,
             Statement thenStmt, PirTerm elseTerm) {
-        var condTerm = generateInstanceOf(ioe);
+        return PirHelpers.readOnce(generateExpression(ioe.getExpression()), new PirType.DataType(), scrutinee -> {
+            var condTerm = generateInstanceOf(ioe, () -> scrutinee);
 
-        var varName = tpe.getName().asString();
-        var varType = typeResolver.resolve(tpe.getType());
+            var varName = tpe.getName().asString();
+            var varType = typeResolver.resolve(tpe.getType());
 
-        // Generate then-block with pattern variable bound to scrutinee
-        symbolTable.pushScope();
-        symbolTable.define(varName, varType);
-        var scrutineeTerm = generateExpression(ioe.getExpression());
-        var thenBody = generateStatement(thenStmt);
-        var thenTerm = new PirTerm.Let(varName, scrutineeTerm, thenBody);
-        symbolTable.popScope();
+            // Generate then-block with pattern variable bound to scrutinee
+            symbolTable.pushScope();
+            symbolTable.define(varName, varType);
+            var thenBody = generateStatement(thenStmt);
+            var thenTerm = new PirTerm.Let(varName, scrutinee, thenBody);
+            symbolTable.popScope();
 
-        return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
+            return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
+        });
     }
 
     PirTerm generateStatement(Statement stmt) {
@@ -3175,13 +3176,17 @@ public class PirGenerator {
     }
 
     private PirTerm generateInstanceOf(InstanceOfExpr ioe) {
+        return generateInstanceOf(ioe, () -> generateExpression(ioe.getExpression()));
+    }
+
+    private PirTerm generateInstanceOf(InstanceOfExpr ioe, Supplier<PirTerm> operand) {
         if (guardDepth > 0) {
-            return generateGuardInstanceOf(ioe);
+            return generateGuardInstanceOf(ioe, operand);
         }
         // For pattern matching: expr instanceof TypeName varName
         // This is used in if/else chains for ad-hoc matching
         // For now, just check the constructor tag
-        var scrutinee = generateExpression(ioe.getExpression());
+        var scrutinee = operand.get();
         var patternType = ioe.getPattern();
         if (patternType.isPresent() && patternType.get() instanceof com.github.javaparser.ast.expr.TypePatternExpr tpe) {
             var typeName = tpe.getType().asClassOrInterfaceType().getNameAsString();
@@ -3212,7 +3217,7 @@ public class PirGenerator {
      * sealed interface, {@code true} for V and {@code false} for the others, so a tag that is no constructor fails
      * instead of selecting a later arm (I5). Outside guards, instanceof keeps its tag comparison.
      */
-    private PirTerm generateGuardInstanceOf(InstanceOfExpr ioe) {
+    private PirTerm generateGuardInstanceOf(InstanceOfExpr ioe, Supplier<PirTerm> operand) {
         // A pattern here introduces nothing the arm can see (the checker rejected those, JULC0074): only its type tests.
         var type = ioe.getPattern().map(p -> p instanceof TypePatternExpr tpe ? (com.github.javaparser.ast.type.Type) tpe.getType() : null)
                 .orElse(ioe.getType());
@@ -3231,7 +3236,7 @@ public class PirGenerator {
             throw guardInstanceOfError(ioe, target + " is not a variant of a sealed interface");
         }
         // The checker proved, by declaration, that the operand is this variant or its sealed interface (F51, F62).
-        var scrutinee = generateExpression(ioe.getExpression());
+        var scrutinee = operand.get();
         var constructors = sumType.get().constructors();
         var branches = constructors.stream()
                 .map(c -> new PirTerm.MatchBranch(c.name(), List.of(), List.of(),

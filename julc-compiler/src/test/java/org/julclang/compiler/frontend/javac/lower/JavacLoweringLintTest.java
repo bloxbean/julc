@@ -73,7 +73,7 @@ class JavacLoweringLintTest {
     private static final Set<String> NAMED_FIRST = Set.of(PIR_TERM + "Var", PIR_TERM + "Lam", PIR_TERM + "Let", PIR_TERM + "Binding");
     /** What {@code lower/} may call of {@code PirHelpers}: none of it takes a source name. */
     private static final Set<String> PIR_HELPERS = Set.of("isGeneratedName", "builtinApp2", "swappedInOrder", "equality",
-            "fieldExtraction", "wrapEncode", "freeVariables", "hygienicName");
+            "fieldExtraction", "wrapEncode", "freeVariables", "hygienicName", "readOnce");
 
     private static final String FACTS = JavacFacts.class.getName();
     private static final Set<String> LOOKUPS = Set.of(

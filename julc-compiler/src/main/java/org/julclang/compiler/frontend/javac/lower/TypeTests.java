@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * {@code instanceof} (ADR-068 I12): a comparison of constructor tags. The variant and its tag are what javac bound, by
@@ -28,8 +29,8 @@ import java.util.Set;
  * Java tests the value's class.
  * <p>
  * <b>Evaluation order.</b> The operand is evaluated once, then the test. As in the reference, {@code if (e instanceof V v)}
- * lowers {@code e} a second time for {@code v}, so where the test holds {@code e} runs twice: a trace in it shows twice.
- * In a guard the operand is evaluated once, by the dispatch.
+ * reads {@code e} a second time for {@code v}, so where the test holds {@code e} runs twice, and a trace in it shows twice,
+ * unless it holds a read of a method, which {@code Ifs} binds once. In a guard the operand is evaluated once, by the dispatch.
  */
 final class TypeTests {
 
@@ -47,8 +48,13 @@ final class TypeTests {
 
     /** {@code FstPair(UnConstrData(operand)) == tag}. In a guard, {@link #totalDispatch}. */
     PirTerm instanceOf(InstanceOfTree tree, Frame frame) {
-        if (frame.inGuard()) return totalDispatch(tree, frame);
-        var scrutinee = lowering.expr(tree.getExpression(), frame);
+        return instanceOf(tree, frame, () -> lowering.expr(tree.getExpression(), frame));
+    }
+
+    /** {@link #instanceOf(InstanceOfTree, Frame)} of {@code operand}, the term of {@code tree}'s operand. */
+    PirTerm instanceOf(InstanceOfTree tree, Frame frame, Supplier<PirTerm> operand) {
+        if (frame.inGuard()) return totalDispatch(tree, operand);
+        var scrutinee = operand.get();
         var constructor = constructor(tree, variantOf(tree));
         var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
                 new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scrutinee));
@@ -61,9 +67,9 @@ final class TypeTests {
      * {@code true} for V and {@code false} for the others, so a tag that is no constructor fails and selects no later arm.
      * {@code SwitchRules} has shown the operand is V or that interface, and rejected a pattern the arm could see.
      */
-    private PirTerm totalDispatch(InstanceOfTree tree, Frame frame) {
+    private PirTerm totalDispatch(InstanceOfTree tree, Supplier<PirTerm> operand) {
         var variant = guardVariantOf(tree);
-        var scrutinee = lowering.expr(tree.getExpression(), frame);
+        var scrutinee = operand.get();
         var tested = constructor(tree, variant);
         var parent = facts.sealedParents(variant).getFirst();
         var constructors = ((PirType.SumType) facts.registry().lookupNominal(facts.identity(parent)).orElseThrow()).constructors();

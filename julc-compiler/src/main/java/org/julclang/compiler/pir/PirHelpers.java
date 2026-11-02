@@ -185,12 +185,13 @@ public final class PirHelpers {
     }
 
     /**
-     * {@code body} of an operand it reads more than once. A delayed read runs at each read, and each level of a chain of
-     * such methods would double the one below, so it is bound once ({@link #isMethodRead}). Any other operand goes in as it
-     * is: the handlers keep their shape for those (T13).
+     * {@code body} of an operand it evaluates more than once, ahead of all else and on every path. A delayed read runs at
+     * each read, and each level of a chain of such methods would double the one below, so an operand that
+     * {@link #holdsMethodRead holds a read} is bound once, where {@code body} would have run it, which moves no failure. Any
+     * other operand goes in as it is: the handlers keep their shape for those (T13).
      */
     public static PirTerm readOnce(PirTerm operand, PirType type, UnaryOperator<PirTerm> body) {
-        return boundOnce("#operand", isMethodRead(operand), operand, type, freeVariables(operand), body);
+        return boundOnce("#operand", holdsMethodRead(operand), operand, type, freeVariables(operand), body);
     }
 
     /**
@@ -198,8 +199,8 @@ public final class PirHelpers {
      * The receiver runs first, so a receiver that has an effect is bound ahead of a bound argument.
      */
     public static PirTerm readOnce(PirTerm receiver, PirTerm argument, PirType type, BinaryOperator<PirTerm> body) {
-        boolean bindArgument = isMethodRead(argument);
-        boolean bindReceiver = isMethodRead(receiver) || bindArgument && !isTrivialOperand(receiver);
+        boolean bindArgument = holdsMethodRead(argument);
+        boolean bindReceiver = holdsMethodRead(receiver) || bindArgument && !isTrivialOperand(receiver);
         var avoid = freeVariables(receiver, argument);
         return boundOnce("#receiver", bindReceiver, receiver, type, avoid, receiverRead ->
                 boundOnce("#argument", bindArgument, argument, type, avoid, argumentRead -> body.apply(receiverRead, argumentRead)));
@@ -223,7 +224,20 @@ public final class PirHelpers {
      * it has an effect, and a term that reads it twice runs the body twice.
      */
     public static boolean isMethodRead(PirTerm term) {
-        return term instanceof PirTerm.Var variable && variable.name().indexOf('.') >= 0;
+        return term instanceof PirTerm.Var variable && variable.name().indexOf('.') > 0;
+    }
+
+    /**
+     * Whether {@link #isMethodRead a read} is anywhere in {@code term}. The binder of a method with parameters is a function,
+     * and calling it is no read of a value, so such a call alone does not count.
+     */
+    private static boolean holdsMethodRead(PirTerm term) {
+        var holds = new boolean[] {isMethodRead(term) && !(((PirTerm.Var) term).type() instanceof PirType.FunType)};
+        mapChildren(term, child -> {
+            holds[0] |= holdsMethodRead(child);
+            return child;
+        });
+        return holds[0];
     }
 
     /**

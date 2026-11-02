@@ -85,7 +85,10 @@ class Adr068CallsHarnessTest {
 
     /** Every frontend at every level agrees with the JVM, and the frontends with each other on value, cost and size. */
     static void assertAgree(String members, PlutusData... args) {
-        var report = run(members, List.of(args));
+        assertAgree(run(members, List.of(args)));
+    }
+
+    static void assertAgree(DiffRunner.Report report) {
         assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
         assertEquals(8, report.results().size());
         var byLevel = report.results().entrySet().stream()
@@ -242,7 +245,10 @@ class Adr068CallsHarnessTest {
 
     /** The frontends agree with each other and not with the JVM: the reference's shape, ported, and reported. */
     static void assertBothDivergeAlike(String members, PlutusData... args) {
-        var report = run(members, List.of(args));
+        assertBothDivergeAlike(run(members, List.of(args)));
+    }
+
+    static void assertBothDivergeAlike(DiffRunner.Report report) {
         var observations = new HashSet<>();
         report.results().forEach((config, result) -> {
             assertEquals(Verdict.Kind.MISMATCH, result.verdict().kind(), report::describe);

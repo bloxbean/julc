@@ -267,7 +267,7 @@ The 496 `JAVAC` runs, read by family:
 | 432 | `sha2_256` and its neighbours: the harness's missing provider |
 | 24 | Known and listed: an `instanceof` operand run twice, argument-first `prepend` and `contains` |
 | 20 | A `String` parameter holding invalid UTF-8 |
-| 16 | An `instanceof` chain past the budget: the follow-up row |
+| 16 | An `instanceof` chain past the budget: the follow-up row, since closed for an operand that holds a read of a method |
 | 4 | `constrData` of a negative tag on the JVM: the follow-up row |
 
 No value differs between `JAVAC` and the JVM. Against the review's own outputs, 174 programs moved from a failure to `JULC0055`, 16 from a value to `JULC0055` beside the reference's, 31 from a failure to agreeing on both frontends, 8 from out of budget to agreeing on both, and 16 of the declarations to `JULC0101`.

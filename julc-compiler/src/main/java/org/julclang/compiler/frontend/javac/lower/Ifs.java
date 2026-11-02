@@ -8,7 +8,9 @@ import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.StatementTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirType;
 
 import java.util.List;
 import java.util.function.Function;
@@ -119,16 +121,20 @@ final class Ifs {
         return tree.getElseStatement() == null ? Statements.unit() : statements.single(tree.getElseStatement(), frame);
     }
 
-    /** {@code if (test) { let v = operand in then } else elseTerm}: {@code v} is in scope in the then branch alone. */
+    /**
+     * {@code if (test) { let v = operand in then } else elseTerm}: {@code v} is in scope in the then branch alone. The test
+     * evaluates the operand first, so the operand can be bound ahead of it ({@link PirHelpers#readOnce}).
+     */
     private PirTerm patternIf(InstanceOfTree test, BindingPatternTree pattern, PirTerm elseTerm, Frame frame,
                               Function<Frame, PirTerm> then) {
-        var condition = typeTests.instanceOf(test, frame);
-        var scrutinee = lowering.expr(test.getExpression(), frame);
-        var variable = pattern.getVariable();
-        var element = facts.element(variable);
-        var scope = frame.scope().bind(element, facts.pirType(element.asType(), variable.getType()));
-        var thenTerm = terms.let(scope.lookup(element), scrutinee, then.apply(frame.in(scope)));
-        return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
+        return PirHelpers.readOnce(lowering.expr(test.getExpression(), frame), new PirType.DataType(), scrutinee -> {
+            var condition = typeTests.instanceOf(test, frame, () -> scrutinee);
+            var variable = pattern.getVariable();
+            var element = facts.element(variable);
+            var scope = frame.scope().bind(element, facts.pirType(element.asType(), variable.getType()));
+            var thenTerm = terms.let(scope.lookup(element), scrutinee, then.apply(frame.in(scope)));
+            return new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
+        });
     }
 
     /** The expression between an {@code if}'s own parentheses, which javac keeps as a tree. A user's stay. */

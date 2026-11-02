@@ -1,5 +1,10 @@
 package org.julclang.difftest;
 
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
@@ -17,6 +22,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.Collections;
 import java.util.List;
 
 import static org.julclang.difftest.Adr068CallsHarnessTest.assertAgree;
@@ -149,20 +155,67 @@ class Adr068DelayedMethodsTest {
         assertAgree(TRACED + "public static long m(BigInteger a) { return " + body + "; }", integer(1));
     }
 
+    /** An operand built on a read is bound as the read is, so what it is built on runs once, and in order. */
+    @ParameterizedTest
+    @ValueSource(strings = {"k().abs().abs().longValue()", "k().negate().abs().longValue()", "k().add(a).abs().longValue()", "k().add(a).signum()",
+            "k().add(a).compareTo(a)", "a.compareTo(k().add(a))", "a.max(k().add(a)).longValue()", "a.min(k().negate()).longValue()",
+            "k().add(a).max(a).longValue()", "k().max(j()).max(k().min(j())).abs().longValue()", "k().add(j()).max(j().add(k())).longValue()",
+            "said(\"R\", a).max(k().add(a)).longValue()", "said(\"R\", a).add(k()).abs().longValue()", "k().add(said(\"A\", a)).abs().longValue()",
+            "said(\"R\", a).compareTo(k().negate())", "(a.signum() > 0 ? k() : j()).abs().longValue()"})
+    void anOperandBuiltOnADelayedReadRunsOnce(String body) {
+        assertAgree(TRACED + "public static long m(BigInteger a) { return " + body + "; }", integer(1));
+        assertAgree(TRACED + "public static long m(BigInteger a) { return " + body + "; }", integer(-20));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Math.abs(q() + 1L)", "Math.max(q() + 1L, a)", "Math.max(a, q() + 1L)", "Math.min(q() * 2L, r() + 1L)", "Math.abs(Math.abs(q()))",
+            "Math.max(saidL(\"L\", a), q() + 1L)"})
+    void anOperandBuiltOnADelayedReadRunsOnceInAMathDelegate(String body) {
+        assertAgree("static long q() { return saidL(\"Q\", 3); } static long r() { return saidL(\"R\", -4); } "
+                + "public static long m(long a) { return " + body + "; }", integer(1));
+    }
+
+    private static final String FAILING = "static BigInteger k() { return fail(BigInteger.ONE); } static BigInteger j() { return said(\"J\", BigInteger.TWO); } ";
+
+    /** Binding such an operand moves no failure: it fails where it ran before, after what ran ahead of it. */
+    @ParameterizedTest
+    @ValueSource(strings = {"k().add(a).abs().longValue()", "k().negate().signum()", "a.max(k().negate()).longValue()", "a.compareTo(k().add(a))",
+            "j().add(a).max(k().add(a)).longValue()", "said(\"R\", a).max(k().add(a)).longValue()", "said(\"R\", a).add(k()).abs().longValue()",
+            "j().add(k()).abs().longValue()", "k().add(j()).abs().longValue()"})
+    void aBuiltOperandFailsAsItRuns(String body) {
+        assertAgree(FAILING + "public static long m(BigInteger a) { return " + body + "; }", integer(1));
+    }
+
+    /** ... and an operand not reached is not run: the binding sits where the handler's term does. */
+    @ParameterizedTest
+    @ValueSource(strings = {"c ? k().add(a).abs().longValue() : 2", "c ? 2 : a.max(k().negate()).longValue()", "c && k().negate().signum() > 0 ? 1 : 2",
+            "!c || k().add(a).compareTo(a) > 0 ? 1 : 2", "a.max(c ? k().add(a) : a).longValue()"})
+    void aBuiltOperandNotReachedIsNotRun(String body) {
+        String method = FAILING + "public static long m(boolean c, BigInteger a) { return " + body + "; }";
+        assertAgree(method, bool(false), integer(1));
+        assertAgree(method, bool(true), integer(1));
+    }
+
     /** No delayed read among the operands: T13's documented behaviour, which this does not touch. */
     @ParameterizedTest
     @ValueSource(strings = {"said(\"R\", a).abs().longValue()", "said(\"R\", a).signum()", "said(\"R\", a).compareTo(b)", "said(\"R\", a).max(b).longValue()",
-            "b.max(said(\"A\", a)).longValue()"})
+            "b.max(said(\"A\", a)).longValue()", "said(\"R\", a).add(b).abs().longValue()", "said(\"R\", a).add(b).signum()"})
     void anOperandThatIsNoDelayedReadRunsAsItDid(String body) {
         assertBothDivergeAlike("public static long m(BigInteger a, BigInteger b) { return " + body + "; }", integer(3), integer(1));
     }
 
+    private static final String DECODED = "Builtins.unIData(Builtins.iData(BigInteger.ONE))";
+
     private static String chain(int depth, String first, String link) {
+        return chain(first, Collections.nCopies(depth, link));
+    }
+
+    private static String chain(String first, List<String> links) {
         var methods = new StringBuilder("static BigInteger k0() { return " + first + "; } ");
-        for (int i = 1; i <= depth; i++) {
-            methods.append("static BigInteger k").append(i).append("() { return ").append(link.formatted("k" + (i - 1) + "()")).append("; } ");
+        for (int i = 1; i <= links.size(); i++) {
+            methods.append("static BigInteger k").append(i).append("() { return ").append(links.get(i - 1).formatted("k" + (i - 1) + "()")).append("; } ");
         }
-        return methods + "public static BigInteger m(BigInteger a) { return k" + depth + "(); }";
+        return methods + "public static BigInteger m(BigInteger a) { return k" + links.size() + "(); }";
     }
 
     /** A level of a chain reads the level below once, so the chain is linear: at this depth a doubling is past any budget. */
@@ -170,11 +223,85 @@ class Adr068DelayedMethodsTest {
     @ValueSource(strings = {"%s.abs()", "%s.max(BigInteger.ONE)", "%s.min(BigInteger.ONE)", "BigInteger.ONE.max(%s)",
             "BigInteger.valueOf(%s.signum())", "BigInteger.valueOf(%s.compareTo(BigInteger.ONE))", "BigInteger.valueOf(BigInteger.ONE.compareTo(%s))"})
     void aChainOfDelayedMethodsIsLinear(String link) {
-        assertAgree(chain(24, "Builtins.unIData(Builtins.iData(BigInteger.ONE))", link), integer(1));
+        assertAgree(chain(24, DECODED, link), integer(1));
+    }
+
+    private static final List<String> BUILT_LINKS = List.of("%s.abs().abs()", "%s.negate().abs()", "%s.add(BigInteger.ONE).abs()",
+            "%s.add(BigInteger.ONE).max(BigInteger.ONE)", "%s.max(BigInteger.ONE).max(BigInteger.TWO)", "BigInteger.ONE.max(%s.add(BigInteger.ONE))",
+            "BigInteger.valueOf(%s.add(BigInteger.ONE).signum())", "BigInteger.valueOf(%s.negate().signum())",
+            "BigInteger.valueOf(%s.add(BigInteger.ONE).compareTo(BigInteger.ONE))", "BigInteger.valueOf(BigInteger.ONE.compareTo(%s.negate()))");
+
+    /** So is a chain whose operands are built on the level below. */
+    @Test
+    void aChainOfBuiltOperandsIsLinear() {
+        for (var link : BUILT_LINKS) assertAgree(chain(24, DECODED, link), integer(1));
+    }
+
+    @Provide
+    Arbitrary<List<String>> mixedLinks() {
+        return Arbitraries.of(BUILT_LINKS).list().ofMinSize(16).ofMaxSize(28);
+    }
+
+    @Property(tries = 12)
+    void aMixOfBuiltOperandsIsLinear(@ForAll("mixedLinks") List<String> links) {
+        assertAgree(chain(DECODED, links), integer(1));
+    }
+
+    private static final String SUM = "sealed interface S permits A, B { } record A(BigInteger x) implements S { } record B(BigInteger y) implements S { } ";
+
+    private static final TagTable TAGS = TagTable.of(new TagTable.Entry("Case$A", "Case$S", 0), new TagTable.Entry("Case$B", "Case$S", 1));
+
+    private static DiffRunner.Report runSum(String members, PlutusData... args) {
+        return Adr068CallsHarnessTest.RUNNER.run(new DiffCase("m3b", Adr068CallsHarnessTest.program(members), "Case", "m", List.of(args), TAGS, null));
+    }
+
+    private static String instanceChain(int depth, String link) {
+        var methods = new StringBuilder(SUM + "static S k0() { return new A(" + DECODED + "); } ");
+        for (int i = 1; i <= depth; i++) {
+            methods.append("static S k").append(i).append("() { ").append(link.formatted("k" + (i - 1) + "()")).append(" } ");
+        }
+        return methods + "public static boolean m(BigInteger a) { if (k" + depth + "() instanceof A q) { return true; } return false; }";
+    }
+
+    /** An {@code if} on a pattern reads its operand once, in the test, so a chain of them is linear too. */
+    @ParameterizedTest
+    @ValueSource(strings = {"if (%s instanceof A q) { return q; } return new B(BigInteger.ONE);",
+            "if (%s instanceof A q) { return new A(q.x().abs()); } else { return new B(BigInteger.ONE); }",
+            "if (%s instanceof B q) { return q; } return new A(BigInteger.TWO);"})
+    void aChainOfPatternsIsLinear(String link) {
+        assertAgree(runSum(instanceChain(24, link), integer(1)));
+    }
+
+    private static final String KS = SUM + "static S k() { return new A(said(\"K\", BigInteger.TEN)); } static S j() { return new B(said(\"J\", BigInteger.TWO)); } "
+            + "static S pick(S s) { return s; } static S fails() { return new A(fail(BigInteger.ONE)); } ";
+
+    /** Once, in order, and as the branches run: an exit and no exit are two shapes, on both frontends. */
+    @ParameterizedTest
+    @ValueSource(strings = {"if (k() instanceof A q) { return q.x(); } return a;", "if (j() instanceof A q) { return q.x(); } return a;",
+            "if (k() instanceof A q) { return q.x(); } else { return a; }", "if (j() instanceof B q) { return q.y(); } else { return a; }",
+            "if (pick(k()) instanceof A q) { return q.x(); } return a;", "if (fails() instanceof A q) { return q.x(); } return a;",
+            "if (k() instanceof A p) { if (j() instanceof B q) { return p.x().add(q.y()); } } return a;",
+            "if (j() instanceof A p) { return p.x(); } else if (k() instanceof A q) { return q.x(); } return a;",
+            "if (a.signum() < 0) { if (fails() instanceof A q) { return q.x(); } } return a;",
+            "if (k() instanceof A q) { said(\"T\", q.x()); } return a;", "if (j() instanceof A q) { said(\"T\", q.x()); } return a;",
+            "if (k() instanceof A q) { said(\"T\", q.x()); } else { said(\"E\", a); } return a;",
+            "if (j() instanceof A q) { said(\"T\", q.x()); } else { said(\"E\", a); } return a;",
+            "if (fails() instanceof A q) { said(\"T\", q.x()); } return a;", "if (a.signum() < 0) { if (fails() instanceof A q) { said(\"T\", q.x()); } } return a;"})
+    void aPatternReadsItsOperandOnce(String body) {
+        assertAgree(runSum(KS + "public static BigInteger m(BigInteger a) { " + body + " }", integer(1)));
+        assertAgree(runSum(KS + "public static BigInteger m(BigInteger a) { " + body + " }", integer(-1)));
+    }
+
+    /** No read in the operand: it runs as it did, in the test and in the binding. */
+    @Test
+    void aPatternOnAnOperandThatIsNoReadRunsAsItDid() {
+        assertBothDivergeAlike(runSum(KS + "static S made(BigInteger v) { return new A(said(\"M\", v)); } "
+                + "public static BigInteger m(BigInteger a) { if (made(a) instanceof A q) { return q.x(); } return a; }", integer(1)));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Math.abs(%s)", "Math.max(%s, 1L)", "Math.min(%s, 1L)", "Math.max(1L, %s)", "Math.min(1L, %s)"})
+    @ValueSource(strings = {"Math.abs(%s)", "Math.max(%s, 1L)", "Math.min(%s, 1L)", "Math.max(1L, %s)", "Math.min(1L, %s)", "Math.abs(%s + 1L)",
+            "Math.max(%s + 1L, 1L)", "Math.min(1L, %s - 1L)", "Math.abs(Math.abs(%s))"})
     void aChainThroughMathIsLinear(String link) {
         var methods = new StringBuilder("static long k0() { return Builtins.unIData(Builtins.iData(BigInteger.ONE)).longValue(); } ");
         for (int i = 1; i <= 24; i++) {

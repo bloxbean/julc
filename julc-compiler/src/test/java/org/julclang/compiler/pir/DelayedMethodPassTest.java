@@ -499,6 +499,36 @@ class DelayedMethodPassTest {
         assertTrue(PirHelpers.isMethodRead(variable("org.example.Lib.k")));
         assertFalse(PirHelpers.isMethodRead(variable("k")));
         assertFalse(PirHelpers.isMethodRead(variable("#k")));
+        assertFalse(PirHelpers.isMethodRead(variable(".amount")), "a member the frontend has not resolved");
         assertFalse(PirHelpers.isMethodRead(integer(1)));
+    }
+
+    private static PirTerm once(PirTerm operand) {
+        return PirHelpers.readOnce(operand, INTEGER, read -> read);
+    }
+
+    @Test
+    void anOperandThatHoldsAReadIsBound() {
+        assertInstanceOf(PirTerm.Let.class, once(variable("C.k")));
+        assertInstanceOf(PirTerm.Let.class, once(builtin(DefaultFun.AddInteger, variable("C.k"), integer(1))));
+        assertInstanceOf(PirTerm.Let.class, once(call("C.f", variable("C.k"))));
+        assertInstanceOf(PirTerm.Let.class, once(new PirTerm.Let("x", variable("C.k"), variable("x"))));
+    }
+
+    @Test
+    void anOperandThatHoldsNoReadGoesInAsItIs() {
+        for (var operand : List.of(variable("x"), integer(1), call("C.f", variable("x")), builtin(DefaultFun.AddInteger, call("C.f", integer(1)), integer(1)),
+                new PirTerm.App(variable(".amount"), variable("x")))) {
+            assertSame(operand, once(operand));
+        }
+    }
+
+    @Test
+    void aReceiverWithAnEffectIsBoundAheadOfABoundArgument() {
+        var receiver = builtin(DefaultFun.AddInteger, variable("x"), integer(1));
+        var argument = builtin(DefaultFun.AddInteger, variable("C.k"), integer(1));
+        var bound = assertInstanceOf(PirTerm.Let.class, PirHelpers.readOnce(receiver, argument, INTEGER, (a, b) -> b));
+        assertEquals(receiver, bound.value());
+        assertEquals(argument, assertInstanceOf(PirTerm.Let.class, bound.body()).value());
     }
 }
