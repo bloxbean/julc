@@ -31,7 +31,7 @@ filter(x -> body)       Lam x:Data. let x = decode(x) in body
 | Question | Answer |
 |---|---|
 | What the parameter holds | The type javac gave it, read through `JavacFacts`, written or inferred (`valueType` for an inferred box) |
-| What the body sees | The written type. If none, the element type of the receiver as the reference sees it (`CallTargets.seen`) |
+| What the body sees | The written type. If none, the element type of the receiver as the reference sees it (`CallTargets.seen`), and Data for an element of a sealed interface at a simple-name receiver, which is what the reference's first pass rejects on (`Lambdas.elementSeen`) |
 | What is decoded | `BigInteger`, `int`, `long`, `byte[]` and a hash, `boolean`, `String`, a list, a map. A record, a sum, `Optional`, a tuple and `PlutusData` are Data already |
 | What `map` encodes | javac's element type of the result. Where that says only Data, what the term says, since a builtin can leave a list under `PlutusData` |
 | Rejections inside | The body's own. A `return` is the lambda's, so `requireNativeBoundary` does not apply, as in the reference |
@@ -82,7 +82,7 @@ observation and it is not the JVM's. T7 is on D4's accepted list, so this is no 
 | `C::h` | `Method references (::) are not supported on-chain` | The same, anywhere the scan reads |
 | `var f = x -> x`, `ListsLib.any`, `ListsLib.foldl` | `JULC0085` | `JULC0085` (D6) |
 
-A body holding a `switch`, or a loop, stops at its construct. `JavacLambdasTest.aLambdaThatHoldsWhatNothingLowersStops` pins both.
+A body holding a loop stops at its construct, and one holding a `switch` lowers it. `yield` and `return` in `Frame.lambda` behave as a lambda's, with and without a source map.
 
 ## The I1 gate
 
@@ -124,7 +124,7 @@ A body holding a `switch`, or a loop, stops at its construct. `JavacLambdasTest.
 | 6 | `reference-rejects-not-ported` | `both-reject` | The reference's rejection, now reached: `JULC0055`, `JULC0091`, a method reference |
 | 3 | `reference-rejects-not-ported` | `reference-rejects-not-ported` | `LAMBDA_EXPRESSION` to `WHILE_LOOP` (2), `SWITCH_EXPRESSION` (1) |
 
-`DIFFERENT-javac-accepts` did not move, so no row widened.
+`DIFFERENT-javac-accepts` did not move, so no row of the corpus widened. Programs outside it do: see [the one deliberate widening](#the-one-deliberate-widening).
 
 ### Coverage
 
@@ -159,7 +159,7 @@ The 38 rows are in [`068/m3f-accepted-differences.tsv`](068/m3f-accepted-differe
 | Rows | Class | D13 class | What | Evidence |
 |---:|---|---|---|---|
 | 15 | `DIFFERENT-pir` | Semantic fix (F1042) | `CallbackHelper.callbackHelper` (14), `CallbackValidator.validate`, ADR-043's fixture. A list element reaches the helper as Data in the reference, and the helper fails where Java reads it | `aListParameterPassedOn`. No `.diffcase`: see [For the integrator](#for-the-integrator) |
-| 18 | `DIFFERENT-pir` | Cost change | `HelperCallers.helperCallers`, the same decode on a path that does not read the list. Equal answers. Two elements: +211,866 CPU, +1,064 memory, +4 bytes at each level | `aListParameterNotRead`. A budget grows, so this needs a review decision |
+| 18 | `DIFFERENT-pir` | Cost change | `HelperCallers.helperCallers`, the same decode on a path that does not read the list. Equal answers on well-typed Data. The cost differs by level: [below](#the-helpercallers-rows) | `aListParameterNotRead`. A budget grows, so this needs a review decision, taken with the numbers below |
 | 2 | `DIFFERENT-bytes` | Semantic fix (F1023) | `0ca6d2ac`, `62fc817a`: `Builtins.constrTag` of what `find` gave. The JVM throws, the reference returns true, `JAVAC` fails | `findIsItsElement` |
 | 1 | `DIFFERENT-bytes` | Semantic fix, on no issue yet | `56dc8d13`, with a source map only. Below | `aLambdasReturnIsNoReturnOfTheEntryPoint` |
 | 2 | `DIFFERENT-javac-rejects` | Policy rejection (D6, T4) | `06e57ccf`, `47eaa37f`: `JULC0087`, `equals` on `byte[]` in a lambda of an external example | `theSubsetsRulesReadABody` |
@@ -177,6 +177,36 @@ script, and a `return` of any other type is applied as a boolean. With no map th
 | Semantic fix (F1024, F1041) | `(BigInteger b) -> ...` and each other written type that decodes |
 | Semantic fix (F1042) | `xss.any(l -> l.isEmpty())`, `xss.map(l -> l)`, `l.head()`, `l.map(...)`, a `JulcMap` element |
 | Cost change | A lambda over a receiver the reference reads as Data, whose body does not read the parameter: `JulcList.of(a).any(x -> true)` decodes it, 88 bytes against 83 at `NONE` |
+
+### The `HelperCallers` rows
+
+Accepted as D13 Cost change. `helperCallers` over two inner lists, CPU / memory / script bytes against the reference, in `OptimizationLevel`'s order:
+
+| Input | First | Second | Third | Fourth |
+|---|---:|---:|---:|---:|
+| Inner lists of 1, `k=0` | +211,866 / +1,064 / +4 | +211,866 / +1,064 / +5 | +211,866 / +1,064 / +5 | +602,218 / +2,889 / -78 |
+| Inner lists of 6, `k=0` | the same | the same | the same | +850,598 / +2,899 / -78 |
+| Inner lists of 2, `k=1` | the same | the same | the same | +396,421 / +690 / -78 |
+| Inner lists of 2, `k=2` | the same | the same | the same | -286,783 / -2,145 / -78 |
+
+At the first three levels each element pays one decode, 105,933 CPU and 532 memory. At the fourth, the decode makes the helper's parameter a proven list at the callback's call, so `ListIndexPromotionPass` promotes inside the helper. The two reads sit behind different branches, so `ListToArray` stands at the helper's entry: a path that reads no index pays for the array, which grows with the list, and a path that reads pays less. The script is 78 bytes smaller. `HELPER_CALLERS`' failure out of range reads `IndexArray` on `JAVAC`, within ADR-043's failure contract, and the follow-ups have the fixture's row.
+
+The answer is equal on well-typed Data, which is what the rows claim. A `Data` element that is no list fails at the decode where the reference passes it on unread: Java cannot build that value, so it has no answer to compare, and the script fails closed. The decode cannot be left out here: a helper's convention is a decoded list, application is strict, and whether the helper reads it depends on `k`.
+
+### The one deliberate widening
+
+The reference lowers a lambda at `NAME.hof(...)` once with its parameter untyped, since the name might be a class, drops that term, and keeps a throw. What it rejects only for that reason `JAVAC` accepts in a lambda's body, with the type javac gave. This is the one deliberate widening in Group 2, and it is D13's "Accepted by decision".
+
+| Program, receiver a simple name | Reference | `JAVAC` |
+|---|---|---|
+| `rs.any(r -> switch (r.s()) {...})`, and through a `var q = r.s()`, or a nested `ys.any(...)` | `JULC0007` | The JVM's answer |
+| `fs.any(f -> f.ss().any(q -> switch (q) {...}))` | `JULC0007` | The JVM's answer |
+| `xs.map(x -> { var a = JulcArray.of(x, BigInteger.ONE); return a.get(0); })`, and of `r.a()` | `JULC0012` | The JVM's answer |
+| `var xs = JulcList.of(a); xs.map(x -> switch (s) { case S.A q -> x; ... })` | `JULC0012` | The JVM's answer |
+
+Each reads a type javac proved, and porting the rejection means lowering each lambda twice, which is exponential in nesting. `Adr068LambdasHarnessTest.aSwitchOnWhatIsReadOffAParameterAtASimpleName` and `anElementTypeTheFirstPassDoesNotSee` hold each to the JVM at all four levels and require the reference to go on rejecting. With a call as the receiver the reference accepts the same body, and `JAVAC` meets its bytes. No corpus row reaches this, so the tsv has no row for it, and the harness rows stand in place of a `.diffcase`.
+
+Two rejections of that pass stay, since a decision keeps them: a `switch` directly on an element of a sealed interface at a simple-name receiver (`JULC0007`), and a `switch` guard that reads an untyped parameter (`JULC0072`), with what is read off it and a `var` of either.
 
 ## The tests
 
@@ -255,7 +285,7 @@ One runner in one throwaway worktree. **45 mutants of the new lines: 37 killed o
 ## What this does not establish
 
 - **Libraries.** A library unit still stops, so a lambda in a library body runs through this code only when that slice lands.
-- **`switch` in a body**, and a loop's. The `switch` slice's merge must check that a body's `switch` lowers in `Frame.lambda`: a `yield` and a `return` there are the lambda's.
+- **A loop in a body.** It stops, so a `yield` or a `return` there is not exercised.
 - **A miss nothing reads.** See [decisions](#decisions).
 - **`Value` and the larger ledger records as elements** are covered by I1's identical rows and a few JUnit rows, and not by the harness.
 - **Debug metadata** still stops. The reference marks a decoded parameter unsupported in its metadata, which that slice ports.
@@ -264,9 +294,8 @@ One runner in one throwaway worktree. **45 mutants of the new lines: 37 killed o
 
 ## Decisions
 
-1. **A `find` that finds nothing, and nothing reads.** `var r = xs.find(p); return 1;` returns 1 on the JVM, and in the reference, and fails on `JAVAC` at the field, since a `let` is strict. This is the one
-   program here where `JAVAC` answers otherwise and the reference does not. It fails closed, and it is what `JulcMap.get` does (the follow-ups' `java.util.Map.get` row). F1023's plan is to follow the declared
-   result, and null has no representation, so a read has to fail somewhere. `aMissThatNothingReadsFailsInTheScript` pins it. An expression statement is exempt. The alternative is one line: stop at `JULC0084` wherever
+1. **A `find` that finds nothing.** Any read of a miss fails where the read's value is computed, on every path. That takes in a strict `let` on a path that does not use it, a declared local read elsewhere (`BigInteger r = xs.find(p); if (c) { return r.longValue(); } return 1;` with `c` false), a helper's argument the helper does not read, and `PlutusData.cast(xs.find(p), PlutusData.class)`. The JVM and the reference return from each. `xs.contains(xs.find(p))` and `xs.find(p) + "b"` go on on the JVM alone. Null checks are rejected on both frontends, so the first of these is the natural form. It fails closed, and it is what `JulcMap.get` does (the follow-ups' `java.util.Map.get` row). F1023's plan is to follow the declared
+   result, and null has no representation, so a read has to fail somewhere. `aMissThatNothingReadsFailsInTheScript` pins it. An expression statement is exempt, and so is the cast of decision 2. The alternative is one line: stop at `JULC0084` wherever
    the element is read, which keeps every answer and gives up `find` outside the view.
 2. **`PlutusData.cast(xs.find(p), Optional.class)` stays the reference's.** Java throws on every such program, `NullPointerException` or `ClassCastException`, and the script gives a value, so a JVM test does not test it. D6
    calls the cast an unchecked view, and M1b's rewrite of `.isPresent()` wrote these sources, so about 1,200 corpus sources depend on it. A stop keeps them `not-ported` and M5 would have to rewrite them to `any`.
@@ -288,7 +317,7 @@ One runner in one throwaway worktree. **45 mutants of the new lines: 37 killed o
 - **ADR text.**
   - M3's row: this slice.
   - D6, "Local functions": add that a lambda stands only at a list method. D6, the `PlutusData.cast` sentence: add `find`'s view.
-  - D13: the Cost change rows need a review decision.
+  - D13: the Cost change rows have a review decision, on [the numbers by level](#the-helpercallers-rows).
   - ADR-043: decision 3.
 - **Follow-ups.**
   - Close F1023, and F1024 and F1041 for lambdas. Close the lambda half of F1022 and F1042. A for-each over a `map` stays for M4.
