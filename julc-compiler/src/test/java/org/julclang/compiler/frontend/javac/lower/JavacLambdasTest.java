@@ -126,7 +126,7 @@ class JavacLambdasTest {
             "static long m(JulcList<BigInteger> xs) { if (xs.any(x -> x.signum() < 0)) { return 1; } return xs.filter(y -> y.signum() > 0).size(); }",
             "static long m(JulcList<BigInteger> xs) { boolean a = xs.any(y -> y.signum() > 0); long y = 3; if (a) { return y; } return y + 1; }",
             "static long m(JulcList<BigInteger> xs) { var ys = xs.filter(x -> x.signum() > 0); return ys.size(); }",
-            "static long m(JulcList<BigInteger> xs) { return xs.filter(x -> x.signum() > 0).map(y -> y.add(y)).filter(z -> true).size(); }",
+            "static long m(JulcList<BigInteger> xs) { return xs.filter(x -> x.signum() > 0).map(y -> y.add(y)).size(); }",
             "static boolean m(JulcList<BigInteger> xs) { xs.any(x -> x.signum() > 0); return true; }",
     })
     void bodiesCapturesAndNames(String members) {

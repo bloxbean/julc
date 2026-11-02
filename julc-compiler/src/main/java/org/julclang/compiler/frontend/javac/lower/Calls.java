@@ -230,6 +230,10 @@ final class Calls {
         var scope = lowering.expr(receiver, frame);
         var type = typing.of(receiver, scope);
         String member = target.component();
+        // What find leaves is an Optional to the reference, which has no member of an element.
+        if (targets.seen(receiver, scope) instanceof PirType.OptionalType) {
+            throw CompilerTypeDiagnostics.unresolvedMember(member, facts.location(tree));
+        }
         if (member.equals("value") && typeMethods.contains(TypeKeys.of(type), member)) {
             return dispatch(TypeKeys.of(type), member, scope, type, new Arguments(List.of(), List.of()), tree);
         }
@@ -269,12 +273,9 @@ final class Calls {
         }
         var function = lambdas.function(tree, seen, target.method().equals("map"), frame);
         var arguments = new Arguments(List.of(function), List.of(typing.ofTerm(function)));
-        var result = dispatch(CallTarget.Hof.KEY, target.method(), scope, type, arguments, tree);
-        if (target.method().equals("find") && lambdas.readsElement(tree)) {
-            var element = PirHelpers.fieldExtraction(result, 0, typing.of(tree));
-            typing.recordRead(element, new PirType.DataType());
-            return element;
-        }
+        var dispatched = dispatch(CallTarget.Hof.KEY, target.method(), scope, type, arguments, tree);
+        var result = target.method().equals("find") && lambdas.readsElement(tree)
+                ? PirHelpers.fieldExtraction(dispatched, 0, typing.of(tree)) : dispatched;
         typeMethods.resolveReturnType(seen, target.method()).ifPresent(declared -> typing.recordRead(result, declared));
         return result;
     }
