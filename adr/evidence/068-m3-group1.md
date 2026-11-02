@@ -8,9 +8,10 @@ frozen frontend or its tables, apart from 11 saved cases joining them. Machine a
 | Rule | Where | What it does |
 |---|---|---|
 | Relatedness | `EqualityRelation`, used by `subset/EqualityRules` | Whether Java's `equals` can hold between two static types, on javac's types, through type arguments |
-| One reading of a type | `CallTargets.seen`, used by `Calls` and `Statements.varType` | What the reference gives an expression: what a member is looked up on, and what a `var` binds |
+| One reading of a type | `CallTargets.seen` and `requireSeen`, used by `Calls`, `Operators`, `Records` and `Statements.varType` | What the reference gives an expression: what a member is looked up on, and what a `var` binds |
 | A read keeps what the registry declares | `Calls.typeMethod`, `Typing.recordRead` | The port of `PirGenerator.java:1635-1636`: the result of a registry method carries the type declared on the receiver seen |
 | A declaration stops where it stands | `SpelledMethods.checkDeclarations`, from `SubsetRules.check` | `JULC0101` for a declared `toPlutusData` or accessor, on every frontend |
+| A generated `toPlutusData` stops at its record | `SpelledMethods.checkRecordMembers`, from `SubsetRules.checkOnJavacFrontend` | `JULC0101` on `frontend=JAVAC`, for a component whose generated accessor implements `ToPlutusData.toPlutusData`, by the element |
 | Only a diamond keeps its tuple type | `Records.tuple`, `Tuples.isDiamond` | The reference records a diamond's type, and no other |
 | A stable message | `ArrayIdentityEquality.text` | A capture is printed without javac's number, in every message that prints a type |
 

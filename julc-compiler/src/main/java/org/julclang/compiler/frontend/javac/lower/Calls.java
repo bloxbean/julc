@@ -229,7 +229,7 @@ final class Calls {
         var scope = lowering.expr(receiver, frame);
         var type = typing.of(receiver, scope);
         String member = target.component();
-        if (targets.seen(receiver, scope) instanceof PirType.DataType && !(type instanceof PirType.DataType)) {
+        if (targets.seen(receiver, scope) instanceof PirType.DataType) {
             throw CompilerTypeDiagnostics.unresolvedMember(member, facts.location(tree));
         }
         if (member.equals("value") && typeMethods.contains(TypeKeys.of(type), member)) {

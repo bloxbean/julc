@@ -281,6 +281,9 @@ class DelayedMethodPassTest {
                     builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Ripemd_160, bytes(0)), 10), padded))));
             assertTrue(mayFail(builtin(DefaultFun.LengthOfByteString,
                     builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Blake2b_224, bytes(0)), 10), padded))));
+            assertTrue(mayFail(builtin(DefaultFun.LengthOfByteString,
+                    builtin(DefaultFun.AppendByteString, doubled(builtin(DefaultFun.Ripemd_160, bytes(0)), 10), bytes(11300)))),
+                    "20 bytes, with 11,300 more: past the bound, as a smaller digest would not be");
         }
 
         @Test
