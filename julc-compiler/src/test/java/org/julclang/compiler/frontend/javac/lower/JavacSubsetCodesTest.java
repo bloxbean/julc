@@ -219,6 +219,19 @@ class JavacSubsetCodesTest {
 
     // --- JULC0087's words ---
 
+    /** A type the check cannot read, a type variable or a raw type argument, is told as such, not as an array. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "class F { static <T> boolean m(JulcList<T> xs, T x) { return xs.contains(x); } }",
+            "class F { static boolean m(java.util.Optional<BigInteger> a, java.util.Optional b) { return java.util.Objects.equals(a, b); } }"})
+    void aTypeTheCheckCannotReadIsToldAsSuch(String body) {
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var diagnostic = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(IMPORTS + body, "m"))
+                .diagnostics().getFirst();
+        assertEquals("JULC0087", diagnostic.code(), diagnostic.message());
+        assertTrue(diagnostic.message().endsWith(", whose equality on the JVM cannot be shown to compare by value"), diagnostic.message());
+    }
+
     @Test
     void anArrayAndWhatTheCheckCannotReadAreToldApart() {
         var array = IMPORTS + "class F { static boolean m(byte[] a, byte[] b) { return a.equals(b); } }";
