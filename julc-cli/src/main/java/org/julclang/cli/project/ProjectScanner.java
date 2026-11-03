@@ -40,6 +40,7 @@ public final class ProjectScanner {
 
         try (Stream<Path> paths = Files.walk(srcDir)) {
             paths.filter(Files::isRegularFile)
+                    .sorted()
                     .forEach(p -> {
                         try {
                             String fileName = p.getFileName().toString();

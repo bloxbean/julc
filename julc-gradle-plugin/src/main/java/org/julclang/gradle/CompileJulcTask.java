@@ -24,6 +24,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -244,9 +246,11 @@ public abstract class CompileJulcTask extends DefaultTask {
         return files;
     }
 
+    /** In name order: a file system lists a directory in any order, and the library {@code let}s follow this one (I4). */
     private void collectJavaFiles(File dir, List<File> result) {
         File[] children = dir.listFiles();
         if (children == null) return;
+        Arrays.sort(children, Comparator.comparing(File::getName));
         for (File child : children) {
             if (child.isDirectory()) {
                 collectJavaFiles(child, result);
