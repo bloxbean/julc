@@ -2,16 +2,18 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.Tree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 
+import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
 import java.math.BigInteger;
 
 /**
@@ -42,10 +44,23 @@ final class Names {
         // javac bound the name to a field no binder stands for: one without an initializer, or another class's. Or to a
         // pattern variable outside the then branch of the if whose whole condition binds it, the one place it lowers.
         boolean unbound = element.getKind() == ElementKind.FIELD || element.getKind() == ElementKind.BINDING_VARIABLE;
-        if (unbound && !tree.getName().contentEquals("this") && !tree.getName().contentEquals("super")) {
-            throw facts.rejection(DiagnosticCodes.UNDEFINED_VARIABLE, tree, tree.getName());
+        if (tree.getName().contentEquals("this") || tree.getName().contentEquals("super")) {
+            throw facts.rejection(DiagnosticCodes.THIS_OR_SUPER_UNSUPPORTED, tree, tree.getName());
         }
-        throw NotPorted.at(facts, tree);
+        // A local read in its own initializer: javac accepts it only where definite assignment shows the read never runs,
+        // as in boolean j = (true || j), so it is a term that never runs (ADR-068 M5).
+        if (!unbound && element.getKind() == ElementKind.LOCAL_VARIABLE && inOwnInitializer(tree, element)) {
+            return new PirTerm.Error(facts.pirType(element.asType(), tree));
+        }
+        throw facts.rejection(DiagnosticCodes.UNDEFINED_VARIABLE, tree, tree.getName());
+    }
+
+    private boolean inOwnInitializer(Tree tree, Element element) {
+        var declaration = facts.declaration((VariableElement) element);
+        for (Tree at = tree; at != null; at = facts.parent(at)) {
+            if (at == declaration) return true;
+        }
+        return false;
     }
 
     /**

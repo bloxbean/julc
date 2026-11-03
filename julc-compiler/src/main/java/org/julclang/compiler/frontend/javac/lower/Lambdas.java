@@ -1,18 +1,25 @@
 package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.BlockTree;
+import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.ParenthesizedTree;
+import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
-import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
 
 /**
  * A lambda, passed to the list method that applies it (ADR-068 M3). That is the one place a function exists on-chain, since
@@ -53,24 +60,37 @@ final class Lambdas {
     }
 
     /**
-     * The function of {@code call}, a list method. In parentheses, in a conditional or under {@code var} the reference has no
-     * element type and takes the parameter as Data whatever javac says, so those do not lower.
+     * The function of {@code call}, a list method: a lambda written at the call, in parentheses or not, or a conditional of
+     * such functions, which is the function its condition picks (ADR-068 M5: the reference takes such a parameter as Data
+     * whatever javac says; here it has javac's type, as Java). A parameter written {@code var} is inferred, and one javac
+     * types {@code Object}, of a raw list, holds the element as the list has it: Data. Any other function, a call or a name,
+     * is {@code JULC0125}: the reference has no such value either.
      *
      * @param receiver      the receiver as the reference sees it
      * @param encodesResult whether the handler conses the result into a list, which is {@code map}'s
      */
     PirTerm function(MethodInvocationTree call, PirType.ListType receiver, boolean encodesResult, Frame frame) {
-        var argument = call.getArguments().getFirst();
+        return function(call, call.getArguments().getFirst(), receiver, encodesResult, frame);
+    }
+
+    private PirTerm function(MethodInvocationTree call, ExpressionTree argument, PirType.ListType receiver, boolean encodesResult,
+                             Frame frame) {
+        if (argument instanceof ParenthesizedTree parenthesized) {
+            return function(call, parenthesized.getExpression(), receiver, encodesResult, frame);
+        }
+        if (argument instanceof ConditionalExpressionTree conditional) {
+            var condition = lowering.expr(conditional.getCondition(), frame);
+            return new PirTerm.IfThenElse(condition, function(call, conditional.getTrueExpression(), receiver, encodesResult, frame),
+                    function(call, conditional.getFalseExpression(), receiver, encodesResult, frame));
+        }
         if (!(argument instanceof LambdaExpressionTree lambda)) {
-            throw NotPorted.at(facts, argument, "a function that is no lambda at the call");
+            throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, argument,
+                    "a function that is not a lambda written at the call, " + facts.location(argument).fragment());
         }
         var parameter = lambda.getParameters().getFirst();
         var element = facts.element(parameter);
-        boolean written = !facts.isGenerated(parameter.getType());
-        if (!written && !facts.location(parameter).fragment().equals(parameter.getName().toString())) {
-            throw NotPorted.at(facts, parameter, "a lambda parameter written var");
-        }
-        PirType held = held(parameter, written);
+        boolean written = !facts.isInferred(parameter);
+        PirType held = held(parameter, written, receiver);
         PirType seen = written ? held : receiver.elemType();
         boolean decodes = Typing.isDecoded(held);
         var data = frame.scope().bind(element, decodes ? new PirType.DataType() : seen);
@@ -86,15 +106,25 @@ final class Lambdas {
         return function;
     }
 
-    /** What the parameter holds: the type javac gave it, as a declaration writes it or as javac inferred it. */
-    private PirType held(VariableTree parameter, boolean written) {
+    /**
+     * What the parameter holds: the type javac gave it, as a declaration writes it or as javac inferred it. An inferred
+     * {@code Object}, the element of a raw list, holds what the list holds, Data; any other type with no representation is
+     * {@code JULC0012}.
+     */
+    private PirType held(VariableTree parameter, boolean written, PirType.ListType receiver) {
         var type = facts.element(parameter).asType();
         if (written) return facts.registry().resolveNamed(facts.pirType(type, parameter.getType()));
         try {
             return facts.registry().resolveNamed(facts.valueType(type, parameter));
         } catch (CompilerException e) {
-            throw NotPorted.at(facts, parameter, "a lambda parameter of type " + ArrayIdentityEquality.text(type));
+            if (isObject(type) && receiver.elemType() instanceof PirType.DataType) return new PirType.DataType();
+            throw facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, parameter,
+                    "a lambda parameter of type " + ArrayIdentityEquality.text(type));
         }
+    }
+
+    private boolean isObject(TypeMirror type) {
+        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.OBJECT);
     }
 
     private PirTerm body(LambdaExpressionTree lambda, Frame frame) {
@@ -137,6 +167,11 @@ final class Lambdas {
         if (facts.parent(tree) instanceof VariableTree variable && !facts.isGenerated(variable.getType())) {
             facts.pirType(facts.element(variable).asType(), variable.getType());
         }
-        return NotPorted.at(facts, tree);
+        // Held for later, through a conditional or parentheses, it is stored: the reference's own rule (JULC0022). Elsewhere it
+        // is the reference's unsupported expression (I2a).
+        Tree at = facts.parent(tree);
+        while (at instanceof ConditionalExpressionTree || at instanceof ParenthesizedTree) at = facts.parent(at);
+        if (at instanceof VariableTree) return facts.rejection(DiagnosticCodes.LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED, tree);
+        return facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "a lambda outside a call that takes it, " + facts.location(tree).fragment());
     }
 }

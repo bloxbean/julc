@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -268,8 +269,9 @@ class JavacLedgerFromDataTest {
     /** A ledger type whose shape holds a map, a {@code Value} among them, is not decoded on-chain. */
     @ParameterizedTest
     @ValueSource(strings = {"Value", "TxOut", "TxInInfo", "TxInfo", "ScriptContext", "Committee", "GovernanceAction"})
-    void aTypeThatHoldsAMapStops(String type) {
-        var stop = assertInstanceOf(NotPorted.class, assertThrows(CompilerException.class, () -> run(source(type), OptimizationLevel.DEFAULT)));
-        assertEquals("fromPlutusData on a ledger type that holds a map", stop.construct());
+    void aTypeThatHoldsAMapIsNotDecoded(String type) {
+        var rejection = assertThrows(CompilerException.class, () -> run(source(type), OptimizationLevel.DEFAULT));
+        assertFalse(rejection instanceof NotPorted, rejection::getMessage);
+        assertEquals("JULC0128", rejection.diagnostics().getFirst().code(), rejection::getMessage);
     }
 }

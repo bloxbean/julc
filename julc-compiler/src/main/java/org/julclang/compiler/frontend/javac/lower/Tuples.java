@@ -16,7 +16,6 @@ import com.sun.source.tree.YieldTree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
@@ -90,7 +89,7 @@ final class Tuples {
         PirType type;
         try {
             type = typing.of(argument, field);
-        } catch (NotPorted e) {
+        } catch (Typing.Unrepresented e) {
             return;
         }
         boolean data = type instanceof PirType.DataType || type instanceof PirType.RecordType

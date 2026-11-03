@@ -846,12 +846,15 @@ class JavacTypesTest {
             assertEquals(CompilerFrontend.JAVAPARSER, new CompilerOptions().getFrontend());
         }
 
-        /** The reference accepts {@link #VALIDATOR}, so {@code JULC0084} here says nothing went to it (I8). */
+        /**
+         * The reference accepts {@link #VALIDATOR}, so a rejection here says nothing went to it (I8): until ADR-068 M5 a stop,
+         * {@code JULC0084}, and since then the cast's own code, {@code JULC0124}.
+         */
         private static void assertNotPorted(Executable compile) {
             var e = assertThrows(CompilerException.class, compile);
             var diagnostic = e.diagnostics().getFirst();
-            assertEquals(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code(), diagnostic.code(), e.getMessage());
-            assertTrue(diagnostic.message().contains("a cast to short `(short) 1`"), diagnostic.message());
+            assertEquals(DiagnosticCodes.PRIMITIVE_TYPE_UNSUPPORTED.code(), diagnostic.code(), e.getMessage());
+            assertTrue(diagnostic.message().contains("Unsupported primitive type: short"), diagnostic.message());
             assertEquals(8, diagnostic.line(), "the construct's line");
         }
 

@@ -100,19 +100,19 @@ class SpelledProgramsOnJavacTest {
             entry("a nested class beside an annotated library", UNDEFINED_VARIABLE),
             entry("a member reached through a qualifier that inherits it", AGREES),
             entry("the same in a type argument", AGREES),
-            entry("an annotation type as a qualifier, beside a record of its name", stops("ANNOTATION_TYPE")),
+            entry("an annotation type as a qualifier, beside a record of its name", AGREES),
             entry("a library of the root used from a pool unit, beside a pool library of its name", UNDEFINED_VARIABLE),
             entry("a library record's type parameter beside a record of its name", UNDEFINED),
             entry("the same with an integer", UNDEFINED),
             entry("a generic method of a library compiled as the root", rejects("JULC0087")),
-            entry("new with a class body", stops("a new with a class body")),
+            entry("new with a class body", rejects("JULC0109")),
             entry("a guard reads an inherited type", AGREES),
             entry("a guard reads an inherited field", UNDEFINED_VARIABLE),
             entry("a class of the unnamed package named like a package of the compilation", AGREES),
             entry("a record of the unnamed package beside a pool record of its name", AGREES),
             entry("a record of the unnamed package beside a library of its name", RECORD_MEMBER),
             entry("a record of the unnamed package beside a @NewType of its name", RECORD_MEMBER),
-            entry("instanceof through a widening cast", stops("an instanceof of an operand outside the variant's sealed interface")),
+            entry("instanceof through a widening cast", rejects("JULC0126")),
             entry("a datum read through its Optional", AGREES),
             entry("isPresent on an Optional of a record with that component", AGREES),
             entry("isEmpty on an Optional of a record with that component", AGREES),
@@ -121,8 +121,8 @@ class SpelledProgramsOnJavacTest {
             entry("an inherited default method of a @NewType of a string", rejects("JULC0055")),
             entry("a static field read on a @NewType", RECORD_MEMBER),
             entry("an inherited constant read on a @NewType", rejects("JULC0055")),
-            entry("clone on a byte array", stops("the method clone of a byte string")),
-            entry("toString on a ledger hash", stops("the method toString of a byte string")),
+            entry("clone on a byte array", rejects("JULC0055")),
+            entry("toString on a ledger hash", rejects("JULC0055")),
             entry("a variant outside the interface, with instanceof", rejects("JULC0092")),
             entry("a variant outside the interface, with a switch", rejects("JULC0092")),
             entry("no variant in the interface", rejects("JULC0092")),
@@ -130,7 +130,7 @@ class SpelledProgramsOnJavacTest {
             entry("a switch statement in a library", STATEMENT),
             entry("a pattern switch statement in a library", STATEMENT),
             entry("a call of a generic sibling in a library", rejects("JULC0024")),
-            entry("a nested class of a library calling its outer class", stops("a call of g that is not a static method of this class")),
+            entry("a nested class of a library calling its outer class", rejects("JULC0024")),
             entry("an operator a library cannot lower", rejects("JULC0118")),
             entry("instanceof on a qualified variant, a member holding its last name", AGREES),
             entry("instanceof on a qualified variant, an import holding its last name", AGREES),
@@ -236,7 +236,7 @@ class SpelledProgramsOnJavacTest {
     /** The programs of this slice that can run now, each over a sealed value passed as Data. */
     private static Stream<Case> runnable() {
         return Stream.of(
-                new Case("a widening cast over a parameter", stops("an instanceof of an operand outside the variant's sealed interface"), """
+                new Case("a widening cast over a parameter", rejects("JULC0126"), """
                         import java.math.BigInteger;
                         class P {
                           sealed interface S { record A(BigInteger v) implements S { } record C(BigInteger v) implements S { } }
@@ -299,12 +299,12 @@ class SpelledProgramsOnJavacTest {
                           sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } }
                           static boolean m(JulcList<BigInteger> xs, S s) { return xs.any(A -> { if (s instanceof S.A v) { return true; } return false; }); }
                         """), oracle("P.m(%s, new P.S.A(java.math.BigInteger.ONE))".formatted(LIST)), ELEMENTS, PlutusData.constr(0, integer(1))),
-                new Case("a lambda in parentheses", stops("a function that is no lambda at the call"), lambdas("""
+                call("a lambda in parentheses", lambdas("""
                           static boolean m(JulcList<BigInteger> xs) { return xs.any((x -> x.signum() > 0)); }
-                        """), List.of(), null, List.of(), false),
-                new Case("a lambda's parameter written var", stops("a lambda parameter written var"), lambdas("""
+                        """), onList("P.m(%s)"), ELEMENTS),
+                call("a lambda's parameter written var", lambdas("""
                           static boolean m(JulcList<BigInteger> xs) { return xs.any((var x) -> x.signum() > 0); }
-                        """), List.of(), null, List.of(), false),
+                        """), onList("P.m(%s)"), ELEMENTS),
                 new Case("find read through a view of an Optional", AGREES_NOT, lambdas("""
                           static boolean m(JulcList<BigInteger> xs) { return PlutusData.cast(xs.find(x -> true), Optional.class).isPresent(); }
                         """), List.of(), null, List.of(ELEMENTS), false),

@@ -102,8 +102,8 @@ class JavacSubsetCodesTest {
 
     /** An array initializer with no {@code new} has no rule of the reference's own: it stays a stop. */
     @Test
-    void aBareArrayInitializerStaysAStop() {
-        LoweringFixture.assertMethodNotPorted(IMPORTS + "class F { static long m() { long[] a = {1, 2}; return 1; } }", "m", "NEW_ARRAY", 5);
+    void aBareArrayInitializerIsAnArray() {
+        LoweringFixture.assertMethodRejected(IMPORTS + "class F { static long m() { long[] a = {1, 2}; return 1; } }", "m", "JULC0014", 5);
     }
 
     // --- F946: every error of a scan, the first first ---

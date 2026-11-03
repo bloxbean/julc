@@ -194,8 +194,8 @@ class JavacNamesTest {
     }
 
     @Test
-    void aMethodNotPortedStopsTheProgramEvenUnused() {
-        assertMethodNotPorted("""
+    void aMethodRejectedRejectsTheProgramEvenUnused() {
+        LoweringFixture.assertMethodRejected("""
                 class P {
                     static long helper(long a) {
                         long b = (short) a;
@@ -203,7 +203,7 @@ class JavacNamesTest {
                     }
                     static long m() { return 1; }
                 }
-                """, "m", "a cast to short", 3);
+                """, "m", "JULC0124", 3);
     }
 
     /** An initializer is lowered whether or not it is read, so its rejection stops the program, with the reference's words. */

@@ -168,8 +168,8 @@ class LoweringAloneTest {
                     var field = facts.elements().getTypeElement("P").getEnclosedElements().stream()
                             .filter(e -> e.getKind() == ElementKind.FIELD).findFirst().orElseThrow();
                     var scope = Scope.empty().bind(field, new PirType.DataType());
-                    assertEquals("an instanceof of an operand outside the variant's sealed interface",
-                            assertThrows(NotPorted.class, () -> lowered.lowering().method(lowered.method(), scope, false)).construct());
+                    assertEquals("JULC0126", assertThrows(CompilerException.class,
+                            () -> lowered.lowering().method(lowered.method(), scope, false)).diagnostics().getFirst().code());
                 });
     }
 
@@ -235,19 +235,19 @@ class LoweringAloneTest {
     @Test
     void anArrayOtherThanALiteralByteArrayIsNotPortedHereToo() {
         withMethod("class P { static byte[] m() { return new byte[2]; } }", new CompilerOptions(), (facts, lowered) ->
-                assertEquals("NEW_ARRAY", assertThrows(NotPorted.class, lowered::term).construct()));
+                assertEquals("JULC0014", assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
         withMethod("class P { static byte[] m(boolean b) { return b ? new byte[2] : new byte[]{1}; } }", new CompilerOptions(), (facts, lowered) ->
-                assertEquals("NEW_ARRAY", assertThrows(NotPorted.class, lowered::term).construct()));
+                assertEquals("JULC0014", assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
     /** Each of these is the subset's rule in a compilation; lowering must still build no term on what the rule stops. */
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
-            "static String m(String a) { return a + 1; }                         | a string + with another type",
-            "static String m(String a) { return 1 + a; }                         | a string + with another type"})
-    void whatTheSubsetRejectsIsNotLoweredHereToo(String method, String construct) {
+            "static String m(String a) { return a + 1; }                         | JULC0090",
+            "static String m(String a) { return 1 + a; }                         | JULC0090"})
+    void whatTheSubsetRejectsIsNotLoweredHereToo(String method, String code) {
         withMethod("class P { " + method + " }", new CompilerOptions(), (facts, lowered) ->
-                assertEquals(construct, assertThrows(NotPorted.class, lowered::term).construct()));
+                assertEquals(code, assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
     /** On an array {@code equals} is the scan's {@code JULC0087}, and the lowering's too, in the scan's words. */
@@ -363,8 +363,8 @@ class LoweringAloneTest {
                     }
                     static long m(S s) { return s.length(); }
                 }
-                """, new CompilerOptions(), (facts, lowered) -> assertEquals("a method of a subtype of an API type",
-                assertThrows(NotPorted.class, lowered::term).construct()));
+                """, new CompilerOptions(), (facts, lowered) -> assertEquals("JULC0055",
+                assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
     }
 
     /** A field's initializer, where a type the subset rejects has not stopped the lowering first. */
@@ -382,8 +382,8 @@ class LoweringAloneTest {
                 }
             }.scan(program.roots().getFirst(), null);
             var lowering = new Lowering(facts, CompilationContext.pv11Defaults());
-            assertEquals("NEW_ARRAY", assertThrows(NotPorted.class,
-                    () -> lowering.initializer(initializers.getFirst(), Scope.empty())).construct());
+            assertEquals("JULC0014", assertThrows(CompilerException.class,
+                    () -> lowering.initializer(initializers.getFirst(), Scope.empty())).diagnostics().getFirst().code());
             return null;
         });
     }

@@ -5,8 +5,8 @@ import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -42,7 +42,9 @@ final class Literals {
             // A char has no on-chain representation, as the reference says of its type (JULC0124). Floating point and null
             // are rejected by their own rules before lowering.
             case CHAR_LITERAL -> throw facts.unsupportedPrimitive("char", tree);
-            default -> throw NotPorted.at(facts, tree);
+            case FLOAT_LITERAL, DOUBLE_LITERAL -> throw facts.rejection(DiagnosticCodes.FLOATING_POINT_UNSUPPORTED, tree);
+            case NULL_LITERAL -> throw facts.rejection(DiagnosticCodes.NULL_UNSUPPORTED, tree);
+            default -> throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());
         };
     }
 
@@ -60,7 +62,8 @@ final class Literals {
 
     /** A text block is not a string literal of the subset: the reference does not lower one. */
     private PirTerm string(LiteralTree tree) {
-        if (facts.leadingSource(tree, 3).equals("\"\"\"")) throw NotPorted.at(facts, tree, "a text block");
+        // The reference does not lower a text block: "Unsupported expression: TextBlockLiteralExpr" (I2a).
+        if (facts.leadingSource(tree, 3).equals("\"\"\"")) throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "a text block");
         return new PirTerm.Const(Constant.string((String) tree.getValue()));
     }
 
@@ -72,7 +75,7 @@ final class Literals {
         var type = facts.type(tree);
         if (tree.getType() == null || tree.getInitializers() == null
                 || !(type instanceof ArrayType array && array.getComponentType().getKind() == TypeKind.BYTE)) {
-            throw NotPorted.at(facts, tree);
+            throw facts.rejection(DiagnosticCodes.ARRAY_UNSUPPORTED, tree);
         }
         var elements = tree.getInitializers();
         byte[] bytes = new byte[elements.size()];
@@ -89,6 +92,6 @@ final class Literals {
                 && literal.getKind() == Tree.Kind.INT_LITERAL) {
             return (byte) -((Number) literal.getValue()).intValue();
         }
-        throw NotPorted.at(facts, element);
+        throw facts.rejection(DiagnosticCodes.ARRAY_UNSUPPORTED, element);
     }
 }

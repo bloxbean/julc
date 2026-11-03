@@ -10,9 +10,9 @@ import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.TypeCastTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -39,7 +39,7 @@ import java.util.Set;
  *   <li>A cast between {@code int} and {@code long} has Java's value: {@code (int)} of a {@code long} keeps its low 32 bits,
  *       as two's complement; widening and a cast to the same type are the operand. The reference erases the narrowing, which
  *       differs from Java only out of range (D4's cap, the follow-ups' "Closed by M5").</li>
- *   <li>A cast to {@code byte}, {@code short} or {@code char} has no representation, and stops (I8).</li>
+ *   <li>A cast to {@code byte}, {@code short} or {@code char} has no representation, as its type: {@code JULC0124}.</li>
  * </ul>
  * The operand is evaluated once, before what the cast does to it. A guard's casts are {@link Lowering}'s, under ADR-067.
  */
@@ -71,9 +71,8 @@ final class Casts {
 
     private PirTerm primitive(TypeCastTree tree, TypeMirror target, ExpressionTree operand, Frame frame) {
         var kind = target.getKind();
-        if (kind != TypeKind.INT && kind != TypeKind.LONG && kind != TypeKind.BOOLEAN) {
-            throw NotPorted.at(facts, tree, "a cast to " + target);
-        }
+        // byte, short and char have no representation, as their types (JULC0124); floating point is the scan's.
+        if (kind != TypeKind.INT && kind != TypeKind.LONG && kind != TypeKind.BOOLEAN) throw facts.unsupportedPrimitive(target, tree);
         var inner = lowering.expr(operand, frame);
         // Java has no narrowing from a boxed Long: (int) of one is javac's error.
         return kind == TypeKind.INT && facts.type(operand).getKind() == TypeKind.LONG ? narrowToInt(inner) : inner;
@@ -141,14 +140,16 @@ final class Casts {
         if (values.size() == 1) {
             try {
                 return typing.of(values.getFirst(), inner) instanceof PirType.MapType;
-            } catch (NotPorted e) {
+            } catch (Typing.Unrepresented e) {
                 return typing.ofTerm(inner) instanceof PirType.MapType;
             }
         }
         boolean map = typing.of(values.getFirst()) instanceof PirType.MapType;
         for (var value : values) {
             if (typing.of(value) instanceof PirType.MapType != map) {
-                throw NotPorted.at(facts, argument, "a cast to a map of a value that holds another type on one path");
+                // One term cannot decode a map on one path and leave another type on the other: the value has no one type.
+                throw facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, argument,
+                        "a value cast to a map that holds a map on one path and another type on another");
             }
         }
         return map;
@@ -178,7 +179,8 @@ final class Casts {
                     // A var assigned again may hold another value than its initializer's: a map by its type holds a map
                     // whatever was assigned, and Data may hold either, so it stops.
                     if (!(typing.of(name) instanceof PirType.MapType)) {
-                        throw NotPorted.at(facts, name, "a cast to a map of a variable assigned after its declaration");
+                        throw facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, name,
+                                "a variable cast to a map that is assigned after its declaration, so it may hold a map or not");
                     }
                     values.add(name);
                 } else if (read.add(variable)) {

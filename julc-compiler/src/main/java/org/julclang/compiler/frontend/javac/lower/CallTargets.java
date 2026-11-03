@@ -58,7 +58,7 @@ final class CallTargets {
      * A method has one lambda per declared parameter, and a call of a varargs method has any number of arguments, so
      * neither a helper nor a library method lowers. The stdlib's variadic methods build their own terms.
      */
-    private static final CallTarget VARARGS = new CallTarget.NotLowered("a call of a varargs method");
+    private static final CallTarget VARARGS = new CallTarget.Rejected(DiagnosticCodes.EXPRESSION_UNSUPPORTED, "a call of a varargs method");
 
     private final JavacFacts facts;
     private final Typing typing;
@@ -98,7 +98,8 @@ final class CallTargets {
             }
             return method.isVarArgs() ? VARARGS : new CallTarget.Local(facts.identity(owner) + "." + name(method), method);
         }
-        return new CallTarget.NotLowered("a call of " + name(method) + " that is not a static method of this class");
+        // The reference binds a simple name to a static method of the class it lowers, and names anything else unknown (I2a).
+        return new CallTarget.Rejected(DiagnosticCodes.UNKNOWN_METHOD_ON_TYPE, name(method));
     }
 
     /**
@@ -109,7 +110,8 @@ final class CallTargets {
      */
     private CallTarget qualifiedByName(MemberSelectTree select, ExecutableElement method, TypeElement owner) {
         if (!(facts.element(select.getExpression()) instanceof TypeElement)) {
-            return new CallTarget.NotLowered("a static call not qualified by a simple class name");
+            // A static method through an expression: the reference reads a member of that value, which has none.
+            return new CallTarget.Rejected(DiagnosticCodes.STATIC_CALL_QUALIFIED_CLASS_NAME, select.toString());
         }
         if (facts.identity(owner).equals(JavacNames.JULC_MAP) && name(method).equals("of")) {
             return new CallTarget.Rejected(DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY);
@@ -135,7 +137,8 @@ final class CallTargets {
                 var type = facts.pirType(method.getReturnType(), tree);
                 // A map may repeat a key, and the JVM's value holds each key once, so its Data is not that value; a Value
                 // is a map, and its type here a record of it.
-                return facts.holdsMap(type) ? new CallTarget.NotLowered("fromPlutusData on a ledger type that holds a map")
+                return facts.holdsMap(type) ? new CallTarget.Rejected(DiagnosticCodes.DATA_VIEW_UNSUPPORTED, identity + ".fromPlutusData",
+                        "a ledger type that holds a map, whose Data can repeat a key the JVM's map holds once")
                         : new CallTarget.FromData(type);
             }
         }
@@ -181,19 +184,21 @@ final class CallTargets {
         String identity = facts.identity(owner);
         if (name.equals("toPlutusData") && tree.getArguments().isEmpty()) {
             // The reference encodes the value and ignores what a record declares: T31 again.
-            return isApi(identity) ? CallTarget.Intrinsic.TO_DATA : new CallTarget.NotLowered("a declared toPlutusData");
+            return isApi(identity) ? CallTarget.Intrinsic.TO_DATA
+                    : new CallTarget.Rejected(DiagnosticCodes.METHOD_NAME_READ_BY_SPELLING, facts.identity(owner) + ".toPlutusData");
         }
         if (isAccessor(method, owner)) {
             // A record reads a component from a constructor, and this Data has none.
             if (LedgerLayouts.NOT_CONSTRUCTOR_DATA.contains(identity)) {
-                return new CallTarget.NotLowered("a component of a ledger type whose Data is no constructor");
+                return new CallTarget.Rejected(DiagnosticCodes.DATA_VIEW_UNSUPPORTED, identity + "." + name,
+                        "a component of a ledger type whose Data is a map, not a constructor");
             }
             return accessor(name, receiver);
         }
         String key = TypeKeys.of(identity);
-        if (key == null) return notInRegistry(tree, name, receiver);
+        if (key == null) return notInRegistry(name);
         if (key.equals(CallTarget.Hof.KEY) && HOF_METHODS.contains(name)) return new CallTarget.Hof(name);
-        return typeMethods.contains(key, name) ? new CallTarget.TypeMethod(key, name) : notInRegistry(tree, name, receiver);
+        return typeMethods.contains(key, name) ? new CallTarget.TypeMethod(key, name) : notInRegistry(name);
     }
 
     private static boolean isApi(String identity) {
@@ -239,13 +244,6 @@ final class CallTargets {
      * names that mean the component.
      */
     private CallTarget wrapper(String name, PirType type, ExpressionTree receiver) {
-        boolean component = name.equals("value") || name.equals("hash");
-        if (typeMethods.contains(TypeKeys.of(type), name) && !component) {
-            return new CallTarget.NotLowered("a wrapper's component named like a method of its value");
-        }
-        if (type instanceof PirType.ByteStringType && decodesAgain(name, receiver)) {
-            return new CallTarget.NotLowered("a wrapper's component read as Data");
-        }
         return new CallTarget.Wrapper(name);
     }
 
@@ -338,11 +336,11 @@ final class CallTargets {
     }
 
     /**
-     * No lowering on this receiver. The reference reads an unregistered no-argument method on bytes as an accessor of a
-     * Data-wrapped hash, whatever the method: on the JVM {@code hash.toString()} is a string, so it does not lower here.
+     * No lowering on this receiver: {@code JULC0055}. The reference reads an unregistered no-argument method on bytes as an
+     * accessor of a Data-wrapped hash, whatever the method, where on the JVM {@code hash.toString()} is a string; the gate
+     * rejects {@code toString} and {@code hashCode} there ({@code JULC0101}), and no such method has an on-chain value.
      */
-    private CallTarget notInRegistry(MethodInvocationTree tree, String name, ExpressionTree receiver) {
-        boolean bytes = tree.getArguments().isEmpty() && typing.of(receiver) instanceof PirType.ByteStringType;
-        return bytes ? new CallTarget.NotLowered("the method " + name + " of a byte string") : new CallTarget.Unresolved(name);
+    private CallTarget notInRegistry(String name) {
+        return new CallTarget.Unresolved(name);
     }
 }

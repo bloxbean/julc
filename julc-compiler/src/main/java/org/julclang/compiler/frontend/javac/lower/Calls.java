@@ -13,7 +13,6 @@ import org.julclang.compiler.LoweringRequirements;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -88,7 +87,6 @@ final class Calls {
             case CallTarget.Unresolved target ->
                     throw CompilerTypeDiagnostics.unresolvedMember(target.member(), facts.location(tree));
             case CallTarget.Rejected target -> throw facts.rejection(target.info(), tree, target.arguments());
-            case CallTarget.NotLowered target -> throw NotPorted.at(facts, tree, target.construct());
         };
     }
 
@@ -155,7 +153,8 @@ final class Calls {
         if (target.className().equals("JulcMap") && target.method().equals("of")) {
             throw CompilerTypeDiagnostics.julcMapOfOffChainOnly(facts.location(tree));
         }
-        throw NotPorted.at(facts, tree, "a method with no stdlib lowering");
+        // The reference resolves no such method and names it uncoded (I2a).
+        throw facts.rejection(DiagnosticCodes.UNKNOWN_METHOD_ON_TYPE, tree, target.className() + "." + target.method());
     }
 
     /**
@@ -171,7 +170,8 @@ final class Calls {
             boolean bytesData = parameter.getKind() == TypeKind.DECLARED
                     && facts.identity(facts.typeElement(parameter)).equals(JavacNames.BYTES_DATA);
             if (bytesData && !(arguments.types().get(i) instanceof PirType.ByteStringType)) {
-                throw NotPorted.at(facts, tree.getArguments().get(i), "an argument of " + target.method() + " that is Data");
+                throw facts.rejection(DiagnosticCodes.DATA_VIEW_UNSUPPORTED, tree.getArguments().get(i), target.className() + "." + target.method(),
+                        "the argument is Data where the builtin takes bytes; unBData converts it");
             }
         }
     }
@@ -283,7 +283,7 @@ final class Calls {
                         : PirHelpers.fieldExtraction(scope, i, fields.get(i).type());
             }
         }
-        throw NotPorted.at(facts, tree, "a component the type does not register");
+        throw CompilerTypeDiagnostics.unresolvedMember(target.component(), facts.location(tree));
     }
 
     /**
@@ -304,6 +304,8 @@ final class Calls {
         if (member.equals("value") && typeMethods.contains(TypeKeys.of(type), member)) {
             return dispatch(TypeKeys.of(type), member, scope, type, new Arguments(List.of(), List.of()), tree);
         }
+        // A byte string's component is its bytes. Of another value, the reference looks the name up among the value's methods and
+        // rejects it there (JULC0055), or reads a method: this keeps its rejection, so as not to accept what it refuses.
         if (type instanceof PirType.ByteStringType) return scope;
         throw CompilerTypeDiagnostics.unresolvedMember(member, facts.location(tree));
     }
@@ -313,7 +315,7 @@ final class Calls {
         var scope = lowering.expr(receiver, frame);
         var type = typing.of(receiver, scope);
         var arguments = arguments(tree, frame);
-        if (!TypeKeys.accepts(target.key(), type)) throw NotPorted.at(facts, tree, "a method of a subtype of an API type");
+        if (!TypeKeys.accepts(target.key(), type)) throw CompilerTypeDiagnostics.unresolvedMember(target.method(), facts.location(tree));
         var seen = targets.requireSeen(target.key(), target.method(), receiver, scope, tree);
         if (type instanceof PirType.ListType list && target.method().equals("contains")) {
             arguments = encodedTarget(list, arguments);

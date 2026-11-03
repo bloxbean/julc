@@ -65,9 +65,11 @@ class JavacOperatorsTest {
     @ParameterizedTest
     @ValueSource(strings = {"-0x80000000", "-(0x80000000)", "-((0x80000000))", "-020000000000", "-0b10000000000000000000000000000000",
             "-(-2147483648)", "- -2147483648", "-0x8000000000000000L", "-(-9223372036854775808L)", "- -9223372036854775808L"})
-    void theNegationOfAMinimumValueStops(String body) {
-        assertEquals("the negation of a type's minimum value",
-                assertInstanceOf(NotPorted.class, javac("static long m() { return " + body + "; }")).construct());
+    void theNegationOfAMinimumValueIsJavas(String body) {
+        // Java's negation wraps a type's minimum value to itself (JLS 15.15.4); the reference gives the positive one (M5).
+        // Adr068M5bHarnessTest holds the value to the JVM's at every level.
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                .compileMethod(source("static long m() { return " + body + "; }"), "m", List.of());
     }
 
     @ParameterizedTest

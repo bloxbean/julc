@@ -7,9 +7,9 @@ import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.SwitchExpressionTree;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.frontend.javac.subset.SwitchRules;
 import org.julclang.compiler.pir.PirHelpers;
@@ -106,14 +106,15 @@ final class Switches {
                 && sum.equals(facts.registry().lookupNominal(facts.identity(sealed)).orElse(null))) {
             return sealed;
         }
-        throw NotPorted.at(facts, selectorTree, "a selector of another type than its sealed interface");
+        // The reference's rule, with javac's type of the selector (JULC0007).
+        throw facts.rejection(DiagnosticCodes.SWITCH_REQUIRES_SEALED_INTERFACE, selectorTree, ArrayIdentityEquality.text(type));
     }
 
     /** A variant's constructor, with the stops of {@code instanceof}: a tag means something only for a plain record of one sum. */
     private int branchOf(SwitchRules.Arm arm, TypeElement sealed) {
         var variant = arm.variant();
         if (variant.getKind() != ElementKind.RECORD || facts.hasAnnotation(variant, JavacNames.NEW_TYPE)) {
-            throw NotPorted.at(facts, arm.pattern(), "a case of a variant that is not a plain record");
+            throw RecordDeclarations.notPlainRecord(facts, arm.pattern(), variant, sealed);
         }
         var parents = facts.sealedParents(variant);
         if (parents.size() > 1) throw RecordDeclarations.twoSealedParents(facts, arm.pattern(), variant, parents);
@@ -291,7 +292,7 @@ final class Switches {
             return switch (entry.getBody()) {
                 case ExpressionTree value -> lowering.expr(value, frame);
                 case BlockTree block -> block(block, frame);
-                default -> throw NotPorted.at(facts, entry.getBody());
+                default -> throw facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, entry.getBody(), facts.location(entry.getBody()).fragment());
             };
         }
         List<? extends StatementTree> group = entry.getStatements();

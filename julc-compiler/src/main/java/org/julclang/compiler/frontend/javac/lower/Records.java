@@ -12,7 +12,6 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -75,7 +74,7 @@ final class Records {
         var nominal = facts.registry().lookupNominal(facts.identity(type)).orElse(null);
         var arguments = tree.getArguments();
         if (record && facts.hasAnnotation(type, JavacNames.NEW_TYPE)) {
-            if (!facts.sealedParents(type).isEmpty()) throw NotPorted.at(facts, tree, "a new of a @NewType that is a variant");
+            if (!facts.sealedParents(type).isEmpty()) throw RecordDeclarations.notPlainRecord(facts, tree, type, facts.sealedParents(type).getFirst());
             return lowering.expr(arguments.getFirst(), frame);
         }
         if (nominal instanceof PirType.ByteStringType && arguments.size() == 1) {
@@ -86,7 +85,7 @@ final class Records {
         if (Tuples.isTuple(identity)) return tuple(tree, type, frame);
         if (LedgerLayouts.NOT_CONSTRUCTOR_DATA.contains(identity)) {
             // On the JVM its Data is a map; the reference builds a constructor, which every reader of a Value fails on.
-            throw NotPorted.at(facts, tree, "a new of a ledger type whose Data is no constructor");
+            throw facts.rejection(DiagnosticCodes.DATA_VIEW_UNSUPPORTED, tree, "new " + identity, "its Data is a map, not a constructor");
         }
         if (record && nominal instanceof PirType.RecordType recordType) {
             return constructed(tree, type, recordType, 0, frame);
@@ -111,14 +110,15 @@ final class Records {
         try {
             return new PirTerm.Const(Constant.integer(new BigInteger((String) literal.getValue())));
         } catch (NumberFormatException e) {
-            throw NotPorted.at(facts, tree, "a new BigInteger of a string that is no integer");
+            // javac takes any string, and the reference throws as it folds it: no value on either side (I2a).
+            throw facts.rejection(DiagnosticCodes.INTEGER_LITERAL_INVALID, literal, "\"" + literal.getValue() + "\"", "it is not a decimal integer");
         }
     }
 
     /** The tag is the variant's place in what javac says the interface permits, which is the order the registry took. */
     private PirTerm variant(NewClassTree tree, TypeElement variant, Frame frame) {
-        if (variant.getKind() != ElementKind.RECORD) throw NotPorted.at(facts, tree, "a new of a variant that is not a record");
         var parents = facts.sealedParents(variant);
+        if (variant.getKind() != ElementKind.RECORD) throw RecordDeclarations.notPlainRecord(facts, tree, variant, parents.getFirst());
         if (parents.size() > 1) throw RecordDeclarations.twoSealedParents(facts, tree, variant, parents);
         var parent = parents.getFirst();
         var sum = (PirType.SumType) facts.registry().lookupNominal(facts.identity(parent)).orElseThrow();
@@ -157,7 +157,8 @@ final class Records {
             var term = typing.ofTerm(fields.get(i));
             if (components.get(i).type() instanceof PirType.DataType
                     && (term instanceof PirType.ListType || term instanceof PirType.MapType || leavesAPair(argument))) {
-                throw NotPorted.at(facts, argument, "a Data component given a native list");
+                throw facts.rejection(DiagnosticCodes.DATA_VIEW_UNSUPPORTED, argument, facts.location(argument).fragment(),
+                        "a component of type Data given a native list or pair; listData or mapData makes it Data");
             }
         }
     }
@@ -192,7 +193,7 @@ final class Records {
     private PirType typeOf(ExpressionTree argument, PirTerm field) {
         try {
             return typing.of(argument, field);
-        } catch (NotPorted e) {
+        } catch (Typing.Unrepresented e) {
             return null;
         }
     }
@@ -211,13 +212,15 @@ final class Records {
      * the reference, so a type or a package is {@code Undefined variable} and a variable's member is {@code JULC0055}.
      */
     PirTerm member(MemberSelectTree tree, Frame frame) {
-        if (tree.getIdentifier().contentEquals("class")) throw NotPorted.at(facts, tree);
+        if (tree.getIdentifier().contentEquals("class")) throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());
         var constant = names.constant(tree);
         if (constant != null) return constant;
         var expression = tree.getExpression();
         if (expression instanceof IdentifierTree qualifier
                 && (facts.element(qualifier) instanceof TypeElement || facts.element(qualifier) instanceof PackageElement)) {
-            if (API_CONSTANT_OWNERS.contains(qualifier.getName().toString())) throw NotPorted.at(facts, tree);
+            if (API_CONSTANT_OWNERS.contains(qualifier.getName().toString())) {
+                throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());
+            }
             throw facts.rejection(DiagnosticCodes.UNDEFINED_VARIABLE, qualifier, qualifier.getName());
         }
         var scope = lowering.expr(expression, frame);

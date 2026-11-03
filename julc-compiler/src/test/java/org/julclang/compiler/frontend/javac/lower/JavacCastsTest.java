@@ -118,8 +118,7 @@ class JavacCastsTest {
     @ParameterizedTest
     @ValueSource(strings = {"byte", "short", "char"})
     void aCastToANarrowerTypeStops(String type) {
-        LoweringFixture.assertMethodNotPorted(method("static long m(long x) { return (" + type + ") x; }"), "m",
-                "a cast to " + type, 8);
+        LoweringFixture.assertMethodRejected(method("static long m(long x) { return (" + type + ") x; }"), "m", "JULC0124", 8);
     }
 
     /**
@@ -136,7 +135,7 @@ class JavacCastsTest {
             "static boolean m(JulcList<PlutusData> ds) { var i = 0L; for (var e : ds) { i += 1; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) i; return m.isEmpty(); }",
     })
     void aCastToAMapOfAVarAssignedAgainStops(String members) {
-        LoweringFixture.assertMethodNotPorted(method(members), "m", "a cast to a map of a variable assigned after its declaration", 8);
+        LoweringFixture.assertMethodRejected(method(members), "m", "JULC0012", 8);
     }
 
     /**
@@ -157,8 +156,8 @@ class JavacCastsTest {
     /** A {@code var} is read through its initializer, so one that holds a decoded map on one path and Data on the other stops. */
     @Test
     void aVarOfAMapOnOnePathStops() {
-        LoweringFixture.assertMethodNotPorted(method("static boolean m(boolean b, JulcMap<PlutusData, PlutusData> x, PlutusData d) { var p = b ? (PlutusData)(Object) x : d; JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }"),
-                "m", "a cast to a map of a value that holds another type on one path", 8);
+        LoweringFixture.assertMethodRejected(method("static boolean m(boolean b, JulcMap<PlutusData, PlutusData> x, PlutusData d) { var p = b ? (PlutusData)(Object) x : d; JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }"),
+                "m", "JULC0012", 8);
     }
 
     /**

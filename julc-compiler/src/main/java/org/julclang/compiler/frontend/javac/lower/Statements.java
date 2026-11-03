@@ -18,7 +18,6 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
 import org.julclang.compiler.frontend.javac.subset.FieldUpdates;
 import org.julclang.compiler.pir.PirTerm;
@@ -163,7 +162,7 @@ final class Statements {
     private CompilerException unsupported(StatementTree tree) {
         return switch (tree.getKind()) {
             case BLOCK, EMPTY_STATEMENT, SWITCH -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, statementName(tree));
-            default -> NotPorted.at(facts, tree);
+            default -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, facts.location(tree).fragment());
         };
     }
 
@@ -171,7 +170,7 @@ final class Statements {
     CompilerException unsupportedAsValue(StatementTree tree) {
         return switch (tree.getKind()) {
             case EMPTY_STATEMENT, SWITCH -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, statementName(tree));
-            default -> NotPorted.at(facts, tree);
+            default -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, facts.location(tree).fragment());
         };
     }
 
@@ -225,7 +224,7 @@ final class Statements {
     private PirType held(ExpressionTree initializer, PirTerm value, PirType seen) {
         try {
             return typing.of(initializer, value);
-        } catch (NotPorted e) {
+        } catch (Typing.Unrepresented e) {
             return seen;
         }
     }

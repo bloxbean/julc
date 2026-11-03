@@ -77,6 +77,14 @@ public final class RecordDeclarations {
                 parents.get(0).getSimpleName(), parents.get(1).getSimpleName());
     }
 
+    /**
+     * {@code JULC0127} at a {@code new}, an {@code instanceof} or a {@code case} of {@code variant}, a variant of {@code parent}
+     * that is a class or a {@code @NewType}: a value of a sum is a constructor of a record's components, and these have none.
+     */
+    public static CompilerException notPlainRecord(JavacFacts facts, Tree where, TypeElement variant, TypeElement parent) {
+        return facts.rejection(DiagnosticCodes.VARIANT_NOT_PLAIN_RECORD, where, variant.getSimpleName(), parent.getSimpleName());
+    }
+
     private static void requireOnlyNestedTypes(JavacFacts facts, ClassTree tree) {
         var record = (TypeElement) facts.element(tree);
         for (var member : tree.getMembers()) {

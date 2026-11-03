@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
+import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodRejected;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertNotPorted;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodRejectionAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameRejectionAsReference;
@@ -247,7 +248,7 @@ class JavacRejectionsTest {
     /** By identity: a user's class named {@code Object} is inheritance, whatever it is spelled. */
     @Test
     void aUsersObjectIsInheritance() {
-        assertMethodNotPorted("class P extends Object { static long m() { return 1; } }\nclass Object { }\n", "m", "inheritance", 1);
+        assertMethodRejected("class P extends Object { static long m() { return 1; } }\nclass Object { }\n", "m", "JULC0109", 1);
     }
 
     /** A library javac read is lowered whole, an unused method too, as the reference binds every library it is given. */
@@ -280,8 +281,8 @@ class JavacRejectionsTest {
     }
 
     @Test
-    void aStatementNotPortedIsNamedWhereItIs() {
-        var e = assertNotPorted(IMPORTS + """
+    void aStatementTheReferenceDoesNotLowerIsNamedWhereItIs() {
+        var e = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compile(IMPORTS + """
                 @SpendingValidator
                 class V {
                     @Entrypoint
@@ -290,8 +291,10 @@ class JavacRejectionsTest {
                         return true;
                     }
                 }
-                """, "ASSERT", 10);
-        assertEquals("JULC0084", e.diagnostics().getFirst().code());
-        assertTrue(e.getMessage().contains("ASSERT `assert true;`"), e.getMessage());
+                """));
+        var diagnostic = e.diagnostics().getFirst();
+        assertEquals("JULC0110", diagnostic.code(), e::getMessage);
+        assertEquals(10, diagnostic.line());
+        assertEquals("Unsupported statement: assert true;", diagnostic.message());
     }
 }

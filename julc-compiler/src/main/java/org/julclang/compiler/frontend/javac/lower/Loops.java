@@ -14,9 +14,9 @@ import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.desugar.LoopDesugarer;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.FieldUpdates;
 import org.julclang.compiler.frontend.javac.subset.LoopRules;
 import org.julclang.compiler.pir.PirHelpers;
@@ -28,6 +28,7 @@ import org.julclang.vm.ProtocolCapability;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -187,10 +188,11 @@ final class Loops {
 
     /** {@code JulcList} and {@code java.util.List} are lists on-chain. An array is not, and the reference walks its bytes as one, which fails. */
     private void requireList(EnhancedForLoopTree tree) {
-        if (facts.type(tree.getExpression()).getKind() == TypeKind.ARRAY) throw NotPorted.at(facts, tree.getExpression(), "a for-each over an array");
+        // Arrays are outside the subset but a byte[] literal, and the reference walks a byte[]'s bytes as a list, which fails.
+        if (facts.type(tree.getExpression()).getKind() == TypeKind.ARRAY) throw facts.rejection(DiagnosticCodes.ARRAY_UNSUPPORTED, tree.getExpression());
     }
 
-    /** What the variable holds, which is what an element decodes by: the type javac gave it. */
+    /** What the variable holds, which is what an element decodes by: the type javac gave it, or the element's where it is wider. */
     private PirType held(EnhancedForLoopTree tree) {
         var variable = tree.getVariable();
         var type = facts.element(variable).asType();
@@ -198,7 +200,14 @@ final class Loops {
         try {
             held = facts.registry().resolveNamed(facts.isInferred(variable) ? facts.valueType(type, variable) : facts.pirType(type, variable.getType()));
         } catch (CompilerException e) {
-            throw NotPorted.at(facts, variable, "a for-each variable of type " + ArrayIdentityEquality.text(type));
+            // A wider variable, Object, Number or a box, holds the element's value: what the iterable's element is (ADR-068 M5).
+            if (!(facts.type(tree.getExpression()) instanceof DeclaredType iterable)) {
+                throw facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, variable,
+                        "a for-each variable of type " + ArrayIdentityEquality.text(type));
+            }
+            var arguments = iterable.getTypeArguments();
+            held = arguments.isEmpty() ? new PirType.DataType()
+                    : facts.registry().resolveNamed(facts.valueType(arguments.getFirst(), tree.getExpression()));
         }
         try {
             terms.requireDecodes(held);

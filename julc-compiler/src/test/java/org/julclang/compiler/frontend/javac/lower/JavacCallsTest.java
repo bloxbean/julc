@@ -212,11 +212,15 @@ class JavacCallsTest {
     }
 
     @Test
-    void aNewTypeComponentNamedLikeAMethodOfItsValueDoesNotLower() {
-        assertEquals("a wrapper's component named like a method of its value", notPorted(
-                "@NewType record A(BigInteger abs) { } record R(A a) { } static BigInteger m(R r) { return r.a().abs(); }"));
-        assertEquals("a wrapper's component named like a method of its value", notPorted(
-                "@NewType record A(byte[] length) { } record R(A a) { } static byte[] m(R r) { return r.a().length(); }"));
+    void aNewTypeComponentNamedLikeAMethodOfItsValueIsTheComponent() {
+        // Java reads the component; Adr068M5bHarnessTest holds the values to the JVM's (ADR-068 M5).
+        // Of an integer, the reference's own rejection stands (JULC0055): it reads abs as the value's method.
+        assertEquals("JULC0055", rejected("@NewType record A(BigInteger abs) { } record R(A a) { } static BigInteger m(R r) { return r.a().abs(); }").code());
+        lowers("@NewType record A(byte[] length) { } record R(A a) { } static byte[] m(R r) { return r.a().length(); }");
+    }
+
+    private static void lowers(String members) {
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of());
     }
 
     @Test
@@ -237,15 +241,16 @@ class JavacCallsTest {
             "static PubKeyHash h(PubKeyHash p) { return p; } static byte[] m(PubKeyHash p) { return h(p).hash(); }",
             "static byte[] m(TokenName t) { return t.name(); }",
             "@NewType record H(byte[] v) { } static byte[] m(H h) { return h.v(); }"})
-    void aWrapperReadAsDataDoesNotLower(String members) {
-        assertEquals("a wrapper's component read as Data", notPorted(members));
+    void aWrapperReadIsItsBytes(String members) {
+        // A variable of a wrapper holds its bytes on this frontend, so the read is the bytes, as Java's (M5; the harness's values).
+        lowers(members);
     }
 
     /** The reference reads any no-argument method on bytes as a component: a hash's string is not its bytes. */
     @Test
     void aMethodOfAHashThatIsNoComponentDoesNotLower() {
-        assertEquals("the method toString of a byte string", notPorted("static String m(PubKeyHash p) { return p.toString(); }"));
-        assertEquals("the method hashCode of a byte string", notPorted("static int m(PubKeyHash p) { return p.hashCode(); }"));
+        assertEquals("JULC0055", rejected("static String m(PubKeyHash p) { return p.toString(); }").code());
+        assertEquals("JULC0055", rejected("static int m(PubKeyHash p) { return p.hashCode(); }").code());
     }
 
     /**
@@ -347,8 +352,7 @@ class JavacCallsTest {
 
     @Test
     void aStaticMethodThroughAVariableDoesNotLower() {
-        assertEquals("a static call not qualified by a simple class name",
-                notPorted("static BigInteger m(BigInteger a) { return a.valueOf(1); }"));
+        assertEquals("JULC0123", rejected("static BigInteger m(BigInteger a) { return a.valueOf(1); }").code());
     }
 
     /** The reference resolves a static call through its class's simple name, and rejects this uncoded: JULC0123 (I2a). */

@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
+import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodRejected;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodAsReference;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertSameMethodRejectionAsReference;
 
@@ -103,12 +104,12 @@ class JavacLiteralsTest {
     /** The constant is the field javac resolved: a user's type of that name is not the API's, on any spelling. */
     @Test
     void aUsersBigIntegerIsNotTheApisConstant() {
-        assertMethodNotPorted("""
+        assertMethodRejected("""
                 class P {
                     static class BigInteger { static final long ZERO = 7; }
                     static long m() { return BigInteger.ZERO; }
                 }
-                """, "m", "MEMBER_SELECT", 3);
+                """, "m", "JULC0125", 3);
     }
 
     /** A variable as the qualifier reads a static field through it, which the reference rejects. */
@@ -148,7 +149,7 @@ class JavacLiteralsTest {
     @Test
     void aConcatenationOfLiteralsIsAnOperator() {
         assertSameMethodAsReference(returning("String", "\"a\" + \"b\""), "m");
-        assertMethodNotPorted(returning("String", "\"a\" + \"\"\"\n    b\"\"\""), "m", "a text block", 4);
+        assertMethodRejected(returning("String", "\"a\" + \"\"\"\n    b\"\"\""), "m", "JULC0125", 4);
     }
 
     /** Each literal is its own, so half a pair stops on both frontends, in each one's words. */
@@ -164,20 +165,20 @@ class JavacLiteralsTest {
 
     @Test
     void aTextBlockIsNotAStringLiteralOfTheSubset() {
-        assertMethodNotPorted("""
+        assertMethodRejected("""
                 class P {
                     static String m() { return \"""
                         hi
                         \"""; }
                 }
-                """, "m", "a text block", 2);
-        assertMethodNotPorted("""
+                """, "m", "JULC0125", 2);
+        assertMethodRejected("""
                 class P {
                     static String m() { return \\u0022\\u0022\\u0022
                         hi
                         \"""; }
                 }
-                """, "m", "a text block", 2);
+                """, "m", "JULC0125", 2);
     }
 
     @ParameterizedTest

@@ -9,10 +9,10 @@ import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -39,6 +39,16 @@ import java.util.Set;
  */
 final class Typing {
 
+    /**
+     * {@code JULC0012}: an expression of a type with no representation. A distinct class, as a caller that can read a value
+     * another way (a variable by its binder, a component as Data) takes this one rejection and no other.
+     */
+    static final class Unrepresented extends CompilerException {
+        Unrepresented(CompilerException rejection) {
+            super(rejection.diagnostics());
+        }
+    }
+
     private final JavacFacts facts;
     private final TermTypes termTypes = new TermTypes();
     /** Terms whose type no tree says: a diamond's, worked out here. */
@@ -60,7 +70,9 @@ final class Typing {
         } catch (CompilerException e) {
             var read = hasNoRepresentation(type) ? unrepresented(tree, type) : null;
             if (read != null) return read;
-            throw NotPorted.at(facts, tree, "an expression of type " + ArrayIdentityEquality.text(type));
+            // The reference's code for a value of a type it cannot resolve (I2a).
+            throw new Unrepresented(facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, tree,
+                    "an expression of type " + ArrayIdentityEquality.text(type)));
         }
     }
 
@@ -126,7 +138,7 @@ final class Typing {
         PirType type;
         try {
             type = of(tree);
-        } catch (NotPorted stop) {
+        } catch (Unrepresented stop) {
             // A variable of a type with no representation, var x = c ? new R1(a) : new R2(a), holds what its initializer was
             // typed, and its binder says that.
             if (lowered instanceof PirTerm.Var && hasNoRepresentation(facts.type(tree))) return ofVariable(lowered);

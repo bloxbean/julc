@@ -12,10 +12,11 @@ import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.EqualityRules;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -98,7 +99,7 @@ final class Operators {
             case MULTIPLY_ASSIGNMENT -> DefaultFun.MultiplyInteger;
             case DIVIDE_ASSIGNMENT -> DefaultFun.QuotientInteger;
             case REMAINDER_ASSIGNMENT -> DefaultFun.RemainderInteger;
-            default -> throw NotPorted.at(facts, compound);
+            default -> throw facts.rejection(DiagnosticCodes.COMPOUND_ASSIGNMENT_UNSUPPORTED, compound, compound.getKind().name());
         }, current, operand);
     }
 
@@ -139,7 +140,7 @@ final class Operators {
             case LEFT_SHIFT -> throw unsupported("LEFT_SHIFT", tree);
             case RIGHT_SHIFT -> throw unsupported("SIGNED_RIGHT_SHIFT", tree);
             case UNSIGNED_RIGHT_SHIFT -> throw unsupported("UNSIGNED_RIGHT_SHIFT", tree);
-            default -> throw NotPorted.at(facts, tree);
+            default -> throw unsupported(tree.getKind().name(), tree);
         };
     }
 
@@ -155,7 +156,9 @@ final class Operators {
         if (typing.of(tree) instanceof PirType.StringType) {
             if (!(typing.of(tree.getLeftOperand()) instanceof PirType.StringType
                     && typing.of(tree.getRightOperand()) instanceof PirType.StringType)) {
-                throw NotPorted.at(facts, tree, "a string + with another type");
+                throw CompilerTypeDiagnostics.stringConcatNonString(facts.location(tree).fragment(),
+                        ArrayIdentityEquality.text(facts.type(typing.of(tree.getLeftOperand()) instanceof PirType.StringType
+                                ? tree.getRightOperand() : tree.getLeftOperand())), facts.location(tree));
             }
             return PirHelpers.builtinApp2(DefaultFun.AppendString, left, right);
         }
@@ -170,7 +173,7 @@ final class Operators {
     private void requireIntegers(BinaryTree tree) {
         if (!(typing.of(tree.getLeftOperand()) instanceof PirType.IntegerType
                 && typing.of(tree.getRightOperand()) instanceof PirType.IntegerType)) {
-            throw NotPorted.at(facts, tree);
+            throw unsupported(tree.getKind().name(), tree);
         }
     }
 
@@ -199,7 +202,8 @@ final class Operators {
 
     PirTerm unary(UnaryTree tree, Frame frame) {
         if (tree.getKind() == Tree.Kind.UNARY_MINUS && isMinimumValue(tree.getExpression())) {
-            throw NotPorted.at(facts, tree, "the negation of a type's minimum value");
+            // Java's negation of a type's minimum value wraps to that value (JLS 15.15.4); the reference gives the positive one.
+            return new PirTerm.Const(Constant.integer(BigInteger.valueOf(minimumValue(tree.getExpression()))));
         }
         var operand = lowering.expr(tree.getExpression(), frame);
         return switch (tree.getKind()) {
@@ -210,7 +214,7 @@ final class Operators {
                     throw facts.rejection(DiagnosticCodes.UNARY_OPERATOR_UNSUPPORTED, tree, tree.getKind().name());
             // The reference's name of a unary +.
             case UNARY_PLUS -> throw facts.rejection(DiagnosticCodes.UNARY_OPERATOR_UNSUPPORTED, tree, "PLUS");
-            default -> throw NotPorted.at(facts, tree);
+            default -> throw facts.rejection(DiagnosticCodes.UNARY_OPERATOR_UNSUPPORTED, tree, tree.getKind().name());
         };
     }
 
@@ -219,6 +223,12 @@ final class Operators {
      * this literal, which javac's value shows, so it stops until someone decides which is right. The same operand at run
      * time is T6, which no tree shows.
      */
+    private static long minimumValue(ExpressionTree operand) {
+        var inner = operand;
+        while (inner instanceof ParenthesizedTree parenthesized) inner = parenthesized.getExpression();
+        return inner.getKind() == Tree.Kind.INT_LITERAL ? Integer.MIN_VALUE : Long.MIN_VALUE;
+    }
+
     private static boolean isMinimumValue(ExpressionTree operand) {
         var inner = operand;
         while (inner instanceof ParenthesizedTree parenthesized) inner = parenthesized.getExpression();

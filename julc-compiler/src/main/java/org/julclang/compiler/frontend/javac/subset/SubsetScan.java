@@ -80,7 +80,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
 
     private static final Set<Tree.Kind> ALLOWED = EnumSet.of(
             Tree.Kind.COMPILATION_UNIT, Tree.Kind.PACKAGE, Tree.Kind.IMPORT, Tree.Kind.MODIFIERS, Tree.Kind.ANNOTATION,
-            Tree.Kind.CLASS, Tree.Kind.INTERFACE, Tree.Kind.RECORD, Tree.Kind.METHOD, Tree.Kind.VARIABLE,
+            Tree.Kind.CLASS, Tree.Kind.INTERFACE, Tree.Kind.RECORD, Tree.Kind.ANNOTATION_TYPE, Tree.Kind.METHOD, Tree.Kind.VARIABLE,
             Tree.Kind.BLOCK, Tree.Kind.RETURN,
             Tree.Kind.PRIMITIVE_TYPE, Tree.Kind.ARRAY_TYPE, Tree.Kind.PARAMETERIZED_TYPE, Tree.Kind.TYPE_PARAMETER,
             Tree.Kind.UNBOUNDED_WILDCARD, Tree.Kind.EXTENDS_WILDCARD, Tree.Kind.SUPER_WILDCARD,
@@ -198,7 +198,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         if (tree != null && !allowed(tree.getKind())) {
             // A char has no on-chain representation, as the reference says of its type (JULC0124); a guard folds it.
             if (tree.getKind() == Tree.Kind.CHAR_LITERAL) throw facts.unsupportedPrimitive("char", tree);
-            throw NotPorted.at(facts, tree);
+            throw outside(tree);
         }
         try {
             return super.scan(tree, unused);
@@ -209,6 +209,19 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             diagnostics.addAll(rejection.diagnostics());
             return null;
         }
+    }
+
+    /**
+     * A kind no rule reads where it stands, with the reference's words: a statement is {@code JULC0110}, an expression
+     * {@code JULC0125}, floating point {@code JULC0020}, and any other tree, such as an enum, {@code JULC0125} too (I2a).
+     */
+    private CompilerException outside(Tree tree) {
+        return switch (tree) {
+            case LiteralTree literal when literal.getKind() == Tree.Kind.FLOAT_LITERAL || literal.getKind() == Tree.Kind.DOUBLE_LITERAL ->
+                    facts.rejection(DiagnosticCodes.FLOATING_POINT_UNSUPPORTED, tree);
+            case StatementTree statement -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, facts.location(tree).fragment());
+            default -> facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());
+        };
     }
 
     private boolean allowed(Tree.Kind kind) {
@@ -289,7 +302,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             if (inLowered && (rejected || STATEMENTS.contains(statement.getKind()))) {
                 scan(statement, null);
             } else if (inLowered) {
-                throw NotPorted.at(facts, statement);
+                throw facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, statement, facts.location(statement).fragment());
             } else if (!rejected) {
                 // A rejected statement here the walk has read, by its own rule.
                 SubsetWalk.all(statement, LiteralTree.class).forEach(this::requirePairedSurrogates);
@@ -542,7 +555,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** A class body would run code no record has: the reference has no meaning for it, and the gate rejects it. */
     @Override
     public Void visitNewClass(NewClassTree tree, Void unused) {
-        if (tree.getClassBody() != null) throw NotPorted.at(facts, tree, "a new with a class body");
+        // An anonymous class extends its type: inheritance (JULC0109).
+        if (tree.getClassBody() != null) throw facts.rejection(DiagnosticCodes.INHERITANCE_UNSUPPORTED, tree);
         return super.visitNewClass(tree, unused);
     }
 
@@ -554,9 +568,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         if (tree.getKind() != Tree.Kind.RECORD && inherits) {
             // The reference reads a superclass by its simple name: one written Object is no inheritance there, so a user's own
             // Object stays a stop, which no rule of the reference's answers.
-            if (tree.getKind() != Tree.Kind.INTERFACE && simpleName(tree.getExtendsClause()).equals("Object")) {
-                throw NotPorted.at(facts, tree, "inheritance");
-            }
+            // A user's own Object is no java.lang.Object: inheritance as any other (JULC0109).
             throw facts.rejection(DiagnosticCodes.INHERITANCE_UNSUPPORTED, tree);
         }
         return super.visitClass(tree, unused);
@@ -696,7 +708,6 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitNewArray(NewArrayTree tree, Void unused) {
         if (isByteLiteral(tree)) return null;
-        if (tree.getType() == null) throw NotPorted.at(facts, tree);
         throw facts.rejection(DiagnosticCodes.ARRAY_UNSUPPORTED, tree);
     }
 

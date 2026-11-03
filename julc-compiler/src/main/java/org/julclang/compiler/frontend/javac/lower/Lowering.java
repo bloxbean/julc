@@ -26,7 +26,6 @@ import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.FieldUpdates;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -166,7 +165,8 @@ public final class Lowering {
             case TypeCastTree t -> casts.cast(t, frame);
             case AssignmentTree t -> throw reassignment(t.getVariable(), t, frame);
             case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t, frame);
-            default -> throw NotPorted.at(facts, tree);
+            // The scan stops every other kind first; a method lowered on its own meets the reference's words here (I2a).
+            default -> throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());
         };
     }
 

@@ -1505,6 +1505,50 @@
       "template": "Unsupported primitive type: {0}. Supported types: boolean, int, long",
       "summary": "byte, short, char, float and double have no on-chain representation, and neither has a char literal. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
       "fix": "Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes."
+    },
+    {
+      "code": "JULC0125",
+      "constant": "EXPRESSION_UNSUPPORTED",
+      "status": "emitted",
+      "title": "An expression outside the subset",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported expression: {0}",
+      "summary": "An expression form JuLC does not compile on-chain: a class literal, a text block, a function that is not a lambda written at the call, and the like. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports the same family uncoded, in these words, or as an undefined name.",
+      "fix": "Write the value with a supported form: a string literal for a text block, a lambda at the call for a function, and no class literal outside PlutusData.cast."
+    },
+    {
+      "code": "JULC0126",
+      "constant": "INSTANCEOF_OPERAND_UNRELATED",
+      "status": "emitted",
+      "title": "instanceof of a value whose type is not the variant's sealed interface",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} tests a value of type {1}, which is not {2} or a variant of it; on-chain the test reads a constructor tag, which another type can share",
+      "summary": "An instanceof pattern on a variant reads the value's constructor tag. That answers Java's question only when the value's static type is the variant's sealed interface or the variant itself: a value of another type, through a widening cast to Object for one, can carry the same tag. Emitted by the javac frontend (ADR-068 M5); the reference frontend reads the tag.",
+      "fix": "Test a value of the sealed interface's type, or switch over it."
+    },
+    {
+      "code": "JULC0127",
+      "constant": "VARIANT_NOT_PLAIN_RECORD",
+      "status": "emitted",
+      "title": "A variant that is not a plain record",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} is a variant of {1} that is not a plain record; a variant is a record, not a class or a @NewType, so that it has one constructor tag and its fields",
+      "summary": "JuLC encodes a sealed interface's value as a constructor whose tag is the variant's place among the permitted records, and whose fields are the record's components. A final class or a @NewType has neither. Emitted by the javac frontend at a new, an instanceof or a case of such a variant (ADR-068 M5); the reference frontend reads it as a record of no or one field.",
+      "fix": "Make the variant a record that is not a @NewType."
+    },
+    {
+      "code": "JULC0128",
+      "constant": "DATA_VIEW_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A value whose on-chain form is not the one the operation reads",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0}: {1}",
+      "summary": "The value's on-chain representation is not the one this operation takes, and no conversion keeps Java's value: Data where a builtin takes bytes, a native list where a component holds Data, a ledger type that holds a map, whose Data repeats a key the JVM's map holds once. Emitted by the javac frontend (ADR-068 M5) where the reference reads the representation as it finds it and fails or misreads.",
+      "fix": "Convert explicitly: Builtins.unBData for bytes, Builtins.listData or mapData for a list or a map, or read the map through the stdlib's ValuesLib and MapLib."
     }
   ]
 }

@@ -4,9 +4,9 @@ import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.InstanceOfTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
+import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -16,6 +16,8 @@ import org.julclang.core.DefaultFun;
 
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.IntersectionType;
+import javax.lang.model.type.TypeMirror;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -117,18 +119,28 @@ final class TypeTests {
         return tree.getPattern() == null ? (TypeElement) facts.types().asElement(facts.type(tree.getType())) : variantOf(tree);
     }
 
+    /**
+     * Whether a value of {@code type} is a value of {@code element}'s type: that type, or an intersection with it among its
+     * bounds ({@code c ? new S.A() : new S.B()} is {@code Record & S}), as Java's value is a value of each bound.
+     */
+    private boolean isOf(TypeMirror type, TypeElement element) {
+        if (type instanceof IntersectionType intersection) return intersection.getBounds().stream().anyMatch(bound -> isOf(bound, element));
+        return element.equals(facts.types().asElement(type));
+    }
+
     /** The constructor {@code tree} tests for, of the one sealed interface it can mean. */
     private PirType.Constructor constructor(InstanceOfTree tree, TypeElement variant) {
         var parents = facts.sealedParents(variant);
         if (parents.isEmpty()) throw unsupported(tree);
         if (variant.getKind() != ElementKind.RECORD || facts.hasAnnotation(variant, JavacNames.NEW_TYPE)) {
-            throw NotPorted.at(facts, tree, "an instanceof of a variant that is not a plain record");
+            throw RecordDeclarations.notPlainRecord(facts, tree, variant, parents.getFirst());
         }
         if (parents.size() > 1) throw RecordDeclarations.twoSealedParents(facts, tree, variant, parents);
         var parent = parents.getFirst();
-        var operand = facts.types().asElement(facts.type(tree.getExpression()));
-        if (!variant.equals(operand) && !parent.equals(operand)) {
-            throw NotPorted.at(facts, tree, "an instanceof of an operand outside the variant's sealed interface");
+        var operandType = facts.type(tree.getExpression());
+        if (!isOf(operandType, variant) && !isOf(operandType, parent)) {
+            throw facts.rejection(DiagnosticCodes.INSTANCEOF_OPERAND_UNRELATED, tree, facts.location(tree).fragment(),
+                    ArrayIdentityEquality.text(operandType), parent.getSimpleName());
         }
         var sum = (PirType.SumType) facts.registry().lookupNominal(facts.identity(parent)).orElseThrow();
         return sum.constructors().get(facts.permitted(parent).indexOf(variant));

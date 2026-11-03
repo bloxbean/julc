@@ -82,8 +82,4 @@ sealed interface CallTarget {
     /** What the reference rejects, uncoded, in the words of {@code info}: here with its code (ADR-068 I2a). */
     record Rejected(DiagnosticInfo info, Object... arguments) implements CallTarget {
     }
-
-    /** {@code JULC0084}: not ported, or not to be lowered as the reference lowers it. */
-    record NotLowered(String construct) implements CallTarget {
-    }
 }

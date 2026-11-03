@@ -335,7 +335,7 @@ class JavacStatementsTest {
                     + "static boolean m(N n) { return n instanceof W v; }",
     })
     void aTypeTestOutsideOneSum(String members) {
-        assertInstanceOf(NotPorted.class, javac(SUM + members));
+        assertEquals("JULC0127", javac(SUM + members).diagnostics().getFirst().code());
     }
 
     /** A variant of two sealed interfaces stops at its declaration (ADR-067 D6, {@code JULC0079}), before the test. */

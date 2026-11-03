@@ -550,8 +550,8 @@ class JavacSwitchesTest {
     /** A variable read once is still read: what it holds decides, at any depth, and two variables are two values. */
     @ParameterizedTest
     @ValueSource(strings = {"c ? v8 : a", "c ? a : v8", "c ? w : w", "c ? v8 : w"})
-    void aChainThatHoldsAMapOnOnePathStops(String value) {
-        assertEquals("JULC0084", javacCode(chain(8, "c ? V : V").formatted("var w = c ? a : d; " + SIZE.formatted(value))));
+    void aChainThatHoldsAMapOnOnePathHasNoOneType(String value) {
+        assertEquals("JULC0012", javacCode(chain(8, "c ? V : V").formatted("var w = c ? a : d; " + SIZE.formatted(value))));
     }
 
     /** A {@code @Param} is what is applied, whatever its initializer holds, so a cast of it decodes that, alone or as one of a choice. */
@@ -757,8 +757,9 @@ class JavacSwitchesTest {
             "record X(BigInteger v) { } static X m(S s, S t) { final boolean on = true; return new X(switch (s) { case A a -> switch (t) { case A b when on -> BigInteger.ONE; default -> BigInteger.TWO; }; default -> BigInteger.ZERO; }); }",
             "record X(BigInteger v) { } static X m(S s) { final boolean on = true; return new X(h(switch (s) { case A a when on -> BigInteger.ONE; default -> BigInteger.TWO; })); }",
     })
-    void aConstantGuardThatReadsALocalThroughANewStops(String members) {
-        LoweringFixture.assertMethodNotPorted(source(members), "m", "a constant guard that reads a local through a new", 27);
+    void aConstantGuardThatReadsALocalThroughANewIsJavasConstant(String members) {
+        // The reference keeps it a read at run time, in other bytes; here it is Java's constant (M5, the harness's values).
+        new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source(members), "m", List.of());
     }
 
     /** A local on the same side of the {@code new}, no local, no {@code new}, or a guard read at run time on both. */

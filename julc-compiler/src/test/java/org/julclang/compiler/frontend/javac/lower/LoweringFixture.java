@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -281,6 +282,19 @@ public final class LoweringFixture {
     public static NotPorted assertMethodNotPorted(String source, String name, String construct, int line) {
         return assertNotPorted(() -> method(source, name, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAC),
                 construct, line);
+    }
+
+    /**
+     * The rejection with {@code code} at {@code line}, not a stop: what was {@code JULC0084} until ADR-068 M5 has a code, or the
+     * reference's words with their code (I2a).
+     */
+    public static CompilerDiagnostic assertMethodRejected(String source, String name, String code, int line) {
+        var e = assertThrows(CompilerException.class, () -> method(source, name, OptimizationLevel.DEFAULT, false, CompilerFrontend.JAVAC));
+        assertFalse(e instanceof NotPorted, e::getMessage);
+        var diagnostic = e.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst().orElseThrow();
+        assertEquals(code, diagnostic.code(), e::getMessage);
+        assertEquals(line, diagnostic.line(), e::getMessage);
+        return diagnostic;
     }
 
     private static NotPorted assertNotPorted(org.junit.jupiter.api.function.Executable compile, String construct, int line) {

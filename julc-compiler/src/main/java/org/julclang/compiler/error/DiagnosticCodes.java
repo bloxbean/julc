@@ -213,6 +213,14 @@ public final class DiagnosticCodes {
             "C-style for loops are not supported on-chain",
             "Use for-each over a list or while loops instead");
 
+    public static final DiagnosticInfo DATA_VIEW_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0128",
+            "DATA_VIEW_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0}: {1}",
+            "Convert explicitly: Builtins.unBData for bytes, Builtins.listData or mapData for a list or a map, or read the map through the stdlib's ValuesLib and MapLib.");
+
     public static final DiagnosticInfo DO_WHILE_UNSUPPORTED = new DiagnosticInfo(
             "JULC0019",
             "DO_WHILE_UNSUPPORTED",
@@ -285,6 +293,14 @@ public final class DiagnosticCodes {
             "{0} compares {1} with {2}, which Java keeps distinct: on-chain the two can compare equal",
             "Compare through one typed value (decode the datum to the record type first), or compare the components explicitly.");
 
+    public static final DiagnosticInfo EXPRESSION_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0125",
+            "EXPRESSION_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Unsupported expression: {0}",
+            "Write the value with a supported form: a string literal for a text block, a lambda at the call for a function, and no class literal outside PlutusData.cast.");
+
     public static final DiagnosticInfo FIELD_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(
             "JULC0056",
             "FIELD_ASSIGNMENT_UNSUPPORTED",
@@ -340,6 +356,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "{0} is not lowered, so {1}",
             "Move the value to a static field of the compiled class, or to the entry point, or write it as a literal.");
+
+    public static final DiagnosticInfo INSTANCEOF_OPERAND_UNRELATED = new DiagnosticInfo(
+            "JULC0126",
+            "INSTANCEOF_OPERAND_UNRELATED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0} tests a value of type {1}, which is not {2} or a variant of it; on-chain the test reads a constructor tag, which another type can share",
+            "Test a value of the sealed interface's type, or switch over it.");
 
     public static final DiagnosticInfo INSTANCEOF_RECORD_PATTERN_UNSUPPORTED = new DiagnosticInfo(
             "JULC0077",
@@ -965,6 +989,14 @@ public final class DiagnosticCodes {
             "Variable must be initialized: {0}",
             "Initialize at declaration, e.g. `var x = BigInteger.ZERO;`. Re-bind via a new `var` if you need a different value later (UPLC is single-assignment).");
 
+    public static final DiagnosticInfo VARIANT_NOT_PLAIN_RECORD = new DiagnosticInfo(
+            "JULC0127",
+            "VARIANT_NOT_PLAIN_RECORD",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0} is a variant of {1} that is not a plain record; a variant is a record, not a class or a @NewType, so that it has one constructor tag and its fields",
+            "Make the variant a record that is not a @NewType.");
+
     public static final DiagnosticInfo YIELD_INSIDE_LOOP = new DiagnosticInfo(
             "JULC0112",
             "YIELD_INSIDE_LOOP",
@@ -1001,6 +1033,7 @@ public final class DiagnosticCodes {
             CONSTRUCTOR_BODY,
             CONTINUE_UNSUPPORTED,
             C_STYLE_FOR_UNSUPPORTED,
+            DATA_VIEW_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
             ENTRYPOINT_CONTEXT_PARAMETER,
@@ -1010,6 +1043,7 @@ public final class DiagnosticCodes {
             ENTRYPOINT_RETURN_TYPE,
             ENTRYPOINT_WRONG_PARAMETER_COUNT,
             EQUALS_ALWAYS_FALSE,
+            EXPRESSION_UNSUPPORTED,
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             FRONTEND_CONSTRUCT_NOT_PORTED,
@@ -1017,6 +1051,7 @@ public final class DiagnosticCodes {
             GENERIC_LIBRARY_CALL_UNSUPPORTED,
             INHERITANCE_UNSUPPORTED,
             INITIALIZER_NOT_LOWERED,
+            INSTANCEOF_OPERAND_UNRELATED,
             INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
             INTEGER_LITERAL_INVALID,
             JAVAC_ERROR,
@@ -1095,6 +1130,7 @@ public final class DiagnosticCodes {
             UNSUPPORTED_OPTIMIZATION_LEVEL,
             VALIDATOR_ANNOTATION_MISSING,
             VARIABLE_UNINITIALIZED,
+            VARIANT_NOT_PLAIN_RECORD,
             YIELD_INSIDE_LOOP
     );
 
