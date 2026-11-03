@@ -211,6 +211,60 @@ class JavacLedgerFromDataTest {
         }
     }
 
+    /** A hash's decode is its check: the program is the bytes' decode, as {@code Builtins.unBData} is. */
+    @Test
+    void aHashsDecodeIsItsCheck() {
+        String fromData = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.PubKeyHash;
+                class C { static byte[] m(PlutusData d) { return PubKeyHash.fromPlutusData(d).hash(); } }
+                """;
+        String unBData = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.Builtins;
+                class C { static byte[] m(PlutusData d) { return Builtins.unBData(d); } }
+                """;
+        for (var level : OptimizationLevel.values()) {
+            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level);
+            assertEquals(new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(unBData, "m").scriptSizeBytes(),
+                    new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(fromData, "m").scriptSizeBytes(), level::toString);
+        }
+    }
+
+    /**
+     * In an entry point whose redeemer the strict boundary checks, a shape check is the program's, not the redeemer's: Data
+     * of the redeemer's shape and not the decoded type's fails.
+     */
+    @Test
+    void aShapeCheckBesideARedeemersCheckIsItsOwn() {
+        String source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.Credential;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
+
+                @MintingValidator
+                class Checked {
+                    record Redeemer(PlutusData credential) {}
+
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        Credential c = Credential.fromPlutusData(redeemer.credential());
+                        return true;
+                    }
+                }
+                """;
+        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                .compile(source).program();
+        for (var credential : List.of(constr(0, bytes(28)), constr(0, integer(5)))) {
+            var context = constr(0, integer(0), constr(0, credential), constr(0, bytes(28)));
+            var result = CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(context));
+            boolean expected = credential.equals(constr(0, bytes(28)));
+            assertEquals(expected, result instanceof EvalResult.Success, () -> credential + ": " + result);
+        }
+    }
+
     /** A ledger type whose shape holds a map, a {@code Value} among them, is not decoded on-chain. */
     @ParameterizedTest
     @ValueSource(strings = {"Value", "TxOut", "TxInInfo", "TxInfo", "ScriptContext", "Committee", "GovernanceAction"})
