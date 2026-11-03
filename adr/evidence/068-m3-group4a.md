@@ -210,6 +210,15 @@ accepted shapes at every level against the reference's bytes, F946's collection,
 No evaluation is new: every rule here rejects, and what each lets through compiles to the reference's bytes at all four levels,
 so the JVM comparison of those programs is the reference's own.
 
+### After the review (round two)
+
+| Run | At | Result |
+|---|---|---|
+| `:julc-compiler:test` | `1e740825` | `BUILD SUCCESSFUL`, 0 failures |
+| `:julc-difftest:test` | `1e740825` | `BUILD SUCCESSFUL`, 0 failures |
+| I1 into scratch | `1e740825` | Against the run at `47dde88e`, one row's detail moved: `e01a0161`, `JULC0077` now with the source's words (F5); its class, `DIFFERENT-rejection`, is the one the table already accepts. F3 and F4 move no corpus row |
+| Docs build | | Not run: `docs/` has no `node_modules`, and the build cannot install offline. The pages are Markdown in the existing structure |
+
 ## Mutants
 
 Applied one at a time to the new lines, each run with its tests under a 5-minute limit.
@@ -230,6 +239,10 @@ Applied one at a time to the new lines, each run with its tests under a 5-minute
 | M12 | The unlowered walk reads what javac wrote | Killed |
 | M13 | A compact constructor named as any canonical one | Killed, after a test of the words was added (it survived the first round) |
 | M14 | Unary `+` named `UNARY_PLUS` | Killed |
+
+Round two, on the review's lines, each killed by a test failure: N1 (the functional rule by name dropped, 6 failures), N4 (two
+declarators reported twice), N5 (`JULC0077` back to javac's tree text), N7 (the old order, every statement checked before any is
+read: 2 failures), N8 (code nothing lowers stops at its first error).
 
 ## Not done
 
