@@ -212,6 +212,19 @@ class JavacSubsetCodesTest {
         assertEquals(expected, javacCode(VALIDATOR.formatted(declaration)));
     }
 
+    /** The rule names the member it read: a compact constructor is not any canonical one. */
+    @Test
+    void theRuleNamesTheMember() {
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var compact = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(VALIDATOR.formatted("record R(long v) { R { } }")))
+                .diagnostics().getFirst();
+        assertEquals("Record R declares a compact canonical constructor, which JuLC does not compile; a record body may contain only "
+                + "nested type declarations", compact.message());
+        var method = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options)
+                .compile(VALIDATOR.formatted("record R(long v) { static long twice(long x) { return x + x; } }"))).diagnostics().getFirst();
+        assertTrue(method.message().startsWith("Record R declares a static method twice,"), method.message());
+    }
+
     @Test
     void aRecordWithANestedTypeCompiles() {
         LoweringFixture.assertSameAsReference(VALIDATOR.formatted("record R(long v) { record Inner(long w) { } }"));
