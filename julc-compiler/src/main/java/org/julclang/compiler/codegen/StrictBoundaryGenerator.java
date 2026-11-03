@@ -357,7 +357,9 @@ public final class StrictBoundaryGenerator {
                 data);
     }
 
+    /** {@code left && right}; {@code left && true} is {@code left}, which only the ledger mode's unread fields build. */
     private static PirTerm and(PirTerm left, PirTerm right) {
+        if (right instanceof PirTerm.Const(Constant.BoolConst(boolean value)) && value) return left;
         return new PirTerm.IfThenElse(left, right, bool(false));
     }
 
