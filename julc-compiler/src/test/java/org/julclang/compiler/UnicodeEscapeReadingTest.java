@@ -1,5 +1,7 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.frontend.javac.SourceReader;
+
 import com.github.javaparser.Position;
 import com.github.javaparser.Problem;
 import com.github.javaparser.ast.CompilationUnit;
@@ -369,9 +371,10 @@ class UnicodeEscapeReadingTest {
         // A source that does name an annotation still reaches the strict parser, and fails closed there.
         String candidate = "@\\u004fnchainLibrary public class Bad { static String s = \"\\uD800\"; }";
         assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(candidate));
-        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(candidate));
+        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(candidate, SourceReader.JAVAPARSER));
     }
 
+    /** JuLC's strict reader's own behaviour, so JavaParser's reading by name (javac's reads these sources: ADR-068 M6). */
     @Test
     void aCandidateThatOnlyMentionsAnAnnotationHasNoJulcRole() throws Exception {
         // The pre-filter is a text test, so a Javadoc mention makes this off-chain source a candidate. JuLC's
@@ -385,8 +388,8 @@ class UnicodeEscapeReadingTest {
                 """;
         assertTrue(javac(mentions).isPresent());
         assertTrue(JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(mentions));
-        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(mentions));
-        assertTrue(JavaSourceIntrospector.declaresNoJulcRole(mentions));
+        assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(mentions, SourceReader.JAVAPARSER));
+        assertTrue(JavaSourceIntrospector.declaresNoJulcRole(mentions, SourceReader.JAVAPARSER));
         assertTrue(JavaSourceIntrospector.declaresNoTestMethod(mentions));
 
         // The question stays open, and the candidate fails closed, when the source declares an annotation, or when
@@ -400,14 +403,14 @@ class UnicodeEscapeReadingTest {
                 "public class P { } // \\u005c\\\\u000a @OnchainLibrary class Q { }",
                 "public class P { } // \\u\u0661\u0662\u0663\u0664 @OnchainLibrary",
                 "public class P { static String s = \"\\uD800\\\\\"; } // @OnchainLibrary")) {
-            assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(source), source);
-            if (JavaSourceIntrospector.declaresNoJulcRole(source) && JavaSourceIntrospector.declaresNoTestMethod(source)) {
+            assertThrows(JavaSourceIntrospector.SourceParseException.class, () -> JavaSourceIntrospector.inspect(source, SourceReader.JAVAPARSER), source);
+            if (JavaSourceIntrospector.declaresNoJulcRole(source, SourceReader.JAVAPARSER) && JavaSourceIntrospector.declaresNoTestMethod(source)) {
                 open.add("decided as no role, but should stay open or declared: " + source);
             }
         }
         assertEquals(List.of(), open);
         assertFalse(JavaSourceIntrospector.declaresNoJulcRole(
-                "@OnchainLibrary public class P { static String s = \"\\uD800\"; }"));
+                "@OnchainLibrary public class P { static String s = \"\\uD800\"; }", SourceReader.JAVAPARSER));
         assertFalse(JavaSourceIntrospector.declaresNoTestMethod(
                 "public class P { @Test public static boolean t() { return \"\\uD800\".isEmpty(); } }"));
     }
