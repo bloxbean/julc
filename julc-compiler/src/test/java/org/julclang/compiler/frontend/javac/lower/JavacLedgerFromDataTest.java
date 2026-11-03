@@ -46,6 +46,12 @@ class JavacLedgerFromDataTest {
 
     private static final PlutusData TRUE = constr(1);
 
+    /** A Value of one policy and one token, as the ledger encodes it: a map of maps. */
+    private static PlutusData value(PlutusData amount) {
+        return new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(28),
+                new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(3), amount))))));
+    }
+
     static Stream<Input> inputs() {
         var hash = bytes(28);
         var credential = constr(0, hash);
@@ -69,7 +75,10 @@ class JavacLedgerFromDataTest {
                 new Input("Address", "a present Optional of two fields",
                         constr(0, credential, constr(0, constr(0, credential), integer(7)))),
                 new Input("Address", "an Optional of tag 2", constr(0, credential, constr(2))),
-new Input("Address", "a list", new PlutusData.ListData(List.of())));
+                new Input("Address", "a list", new PlutusData.ListData(List.of())),
+                new Input("TxOut", "a Value as the map it is", constr(0, address, value(integer(5)), constr(0), constr(1))),
+                new Input("TxOut", "a Value as its record's constructor", constr(0, address, constr(0, value(integer(5))), constr(0), constr(1))),
+                new Input("TxOut", "an amount that is bytes", constr(0, address, value(bytes(1)), constr(0), constr(1))));
     }
 
     private static boolean jvmDecodes(Input input) throws ReflectiveOperationException {
