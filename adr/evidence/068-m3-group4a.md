@@ -8,7 +8,7 @@ maintainer's decision on an entry point's last parameter. `DelayedMethodPass` is
 
 | Item | Before | Now | Where |
 |---|---|---|---|
-| F904: an entry point's last parameter | Not enforced; both frontends pass the context's Data undecoded to whatever the parameter is | `JULC0103` unless the last parameter is `ScriptContext` or `PlutusData`, by identity. A rule on javac's trees, so it holds on **both** frontends: at the gate on `JAVAPARSER` (under `enforce`, D15), first of all on `JAVAC`. An entry point with a count its purpose does not take keeps the count's rejection (`JULC0008`), so the rule never overtakes it | `SubsetRules.requireEntrypointSignatures`, `JavacDiscovery.takesParameterCount` |
+| F904: an entry point's last parameter | Not enforced; both frontends pass the context's Data undecoded to whatever the parameter is | `JULC0103` unless the last parameter is `ScriptContext` or `PlutusData`, by identity. A rule on javac's trees, so it holds on **both** frontends: at the gate on `JAVAPARSER` (under `enforce`, D15), first of all on `JAVAC`. An entry point with a count its purpose does not take keeps the count's rejection (`JULC0008`), so the rule never overtakes the count. It does come before the reference's other rejections of a source that has both (D13's two errors; see the rows below) | `SubsetRules.requireEntrypointSignatures`, `JavacDiscovery.takesParameterCount` |
 | The reference validator's rules (`SubsetValidator`) | Uncoded words, or `JULC0084` (`synchronized`, `this`, `super`, inheritance, arrays, array access, `null` outside a `case`) | Each with a code, the reference's words and its position: `JULC0104` `synchronized`, `JULC0107` `this`/`super`, `JULC0109` inheritance, `JULC0014` an array, `JULC0108` array access, `JULC0017` `null`, `JULC0020` floating point, `JULC0105` method references, `JULC0106` a call through a functional local, `JULC0004` `break` outside a loop | `SubsetScan` |
 | Rules in code nothing lowers | `break`, `for`, `do`, `try`, `throw`, floating point; the rest stopped at `JULC0084` at the first unread statement | One walk in source order of every rule the reference's validator has, before that stop: the above, plus `JULC0052`, `JULC0053` and `JULC0059` | `SubsetScan.requireNoRejectedStatement` |
 | Statements (M3c's row) | Uncoded: `Unsupported statement`, `Variable must be initialized`, `Unsupported instanceof pattern`, `may not return a value`, `Undefined variable`, `Method must have a body` | `JULC0110`, `JULC0002`, `JULC0077`, `JULC0006`, `JULC0011`, `JULC0001` | `Statements`, `TypeTests`, `Names`, `Records`, `Calls`, `CallTargets`, `LibraryRegistration` |
@@ -18,7 +18,7 @@ maintainer's decision on an entry point's last parameter. `DelayedMethodPass` is
 | Calls | Uncoded: a template called from its own class, a generic library method called from Java | `JULC0024`, `JULC0122` | `CallTarget.Rejected` now carries its catalogue entry |
 | D11: ADR-067 M3 | `new`, `instanceof` and `case` of a record of two sealed parents stopped at `JULC0084` | `JULC0079` at the record's declaration, on `JAVAC` | `RecordDeclarations` |
 | D11: ADR-067 M3b | A record's members other than `toPlutusData` and accessors (`JULC0101`) and a constructor's statements (`JULC0099`) lowered or stopped where read | `JULC0080` at the member, on `JAVAC`: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field, an initializer block | `RecordDeclarations` |
-| F946: rejection order in `SubsetScan` | Threw at the first error | Collects every rule's error and goes on past the subtree that broke it; the compilation fails with all of them, and the warnings found before, in the order found. A construct not ported still stops the scan (I8), and where an error came first, the errors are the rejection, with no `JULC0084` | `SubsetScan.check`, `SubsetScan.scan` |
+| F946: rejection order in `SubsetScan` | Threw at the first error | Collects every rule's error and goes on past the subtree that broke it, in lowered code and in code nothing lowers (every node of a block, once each); the compilation fails with all of them, and the warnings found before, in the order found. A block's statements are read in source order, so a statement not ported stops the scan where it stands, after what came before it (I8); where an error came first, the errors are the rejection, with no `JULC0084` | `SubsetScan.check`, `SubsetScan.scan` |
 | `JULC0087`'s words | "compares an array by identity" for every rejection, a raw receiver and an unread operand included | The template takes a reason: "compares an array by identity" where a path reaches an array; "cannot be shown to compare by value" for a raw collection, a type with no rule, a type variable and an operand of no readable type | `CompilerTypeDiagnostics.equalityUnread`, `EqualityRules` |
 
 ## What I2a means by the first error (F946)
@@ -83,19 +83,37 @@ external examples have none.
 
 **Proposed ADR text (for the maintainer to apply).**
 
+- **The decision, r16 (maintainer, 2026-11-03).** "An entry point's last parameter is `ScriptContext` or `PlutusData`
+  (`JULC0103`). Both frontends lower the last parameter alike, with no decode, so a parameter of another type read the
+  context as that type: a defect of code both frontends use. By this decision it is a subset rule on javac's trees
+  (`SubsetRules`, D15), a Policy rejection on both frontends, and not exception 2's reference change: it stands outside D4's
+  clause on the JavaParser frontend's misreadings (r11) by this decision, and the reference with the gate off keeps its
+  reading, so I1 records the rows as Policy rejections and the reference is not re-frozen. Under the gate's `report` and `off`
+  modes the default frontend does not enforce it, until M6 removes that frontend; that exposure is accepted. An entry point
+  with a count its purpose does not take keeps the count's rejection (`JULC0008`). The in-repo fixtures that wrote
+  `validate(BigInteger, BigInteger)` declare the context."
 - D15's table gains: `| JULC0103 | An entry point's last parameter is ScriptContext or PlutusData, by identity; an entry point
-  with a count its purpose does not take keeps the count's rejection | Both |`.
+  with a count its purpose does not take keeps the count's rejection | Both, by the maintainer's decision (r16); the gate's
+  modes apply on the default frontend |`.
 - Compatibility, "Source that stops compiling", gains: "an entry point whose last parameter is not `ScriptContext` or
   `PlutusData` (`JULC0103`), on both frontends under the default gate: the wrapper passes the script context's Data to that
   parameter undecoded, so the script did not run what the method's JVM test ran".
-- D13: the rows below, as Policy rejections (F904).
-- r16: "F904 → the maintainer's decision: an entry point's last parameter is `ScriptContext` or `PlutusData` (`JULC0103`), a
-  rule of D15 on both frontends; the fixtures that wrote `validate(BigInteger, BigInteger)` declare the context. Group 4a: the
-  subset's rejections on javac trees, with a code for each the reference made uncoded (I2a, `JULC0104`–`JULC0122` and eleven
-  activated codes); `SubsetScan` collects every error (F946, I2a's first error as D13's two-errors rule says); `JULC0087` names
-  its reason; ADR-067 M3 and M3b on `frontend=JAVAC` (`JULC0079`, `JULC0080`, D11)."
+- D13: the rows below, as Policy rejections (F904) and, where the source has another error, Diagnostic changes (two errors).
+- r16, the rest: "Group 4a: the subset's rejections on javac trees, with a code for each the reference made uncoded (I2a,
+  `JULC0104`–`JULC0122` and eleven activated codes); `SubsetScan` collects every error (F946, I2a's first error as D13's
+  two-errors rule says); `JULC0087` names its reason; ADR-067 M3 and M3b on `frontend=JAVAC` (`JULC0079`, `JULC0080`, D11).
+  `JULC0080` reverses F908: `R { }`, accepted on `frontend=JAVAC` from M3d, is a record member ADR-067 D9 rejects. A declared
+  accessor or `toPlutusData` stays `JULC0101`, and a constructor with a statement `JULC0099`, ahead of D9's single diagnostic,
+  by D15 (r12)."
 - D11's last bullet: "ADR-067 M3 (two sealed parents, `JULC0079`) and M3b (record members, `JULC0080`) are on the javac frontend
   (Group 4a). M2a and M2b (record patterns) remain: `JULC0076` stands for a record pattern until they are lowered."
+- **ADR-067 D6's wording (`JULC0079`).** D6 counts "only sealed interfaces registered as JuLC sum types". On `frontend=JAVAC`
+  `JavacTypeRegistrar` registers every sealed interface, a generic one and one that permits a `final` class included (the
+  latter as a sum with a variant that is not a record), so `RecordDeclarations` counts every sealed interface, and the text
+  should say so: "On `frontend=JAVAC`, every sealed interface is registered, so every sealed parent counts." This rejects a
+  record of a generic sealed parent and a sealed parent that permits a class, which the reference compiles; it fails closed and
+  no corpus row reaches it. Aligning the check with the reference's narrower registration would read the reference's rule into
+  the javac frontend, which D7 replaced, so the text is the change proposed.
 
 ## D11: which of ADR-067's codes stay
 
@@ -151,11 +169,17 @@ table at `b71373e3`: 17,098 cases, **389 rows moved**, 368 of them a "shrink" in
 | 80 | `i1a-identical` | `DIFFERENT-javac-rejects` | Policy rejection: 79 `JULC0103` (F904), 1 `JULC0080` (D11) |
 | 7 | `not-ported` | `DIFFERENT-javac-rejects` | Policy rejection: 3 `JULC0079`, 4 `JULC0080` (D11) |
 | 6 | `DIFFERENT-javac-accepts` (D8's unread units) | `DIFFERENT-rejection` | Diagnostic change (F904 and D8): the root's entry point also takes a `BigInteger` last. These **replace** their entries in `lowering-accepted-differences.tsv` |
-| 2 | `DIFFERENT-rejection` | `DIFFERENT-rejection` | Two errors in one compilation (D13), one now `JULC0103` |
-| 68 | `DIFFERENT-javac-rejects` | `DIFFERENT-javac-rejects` | Unchanged class, already accepted: 63 `JULC0086` and 2 `JULC0095` are `JULC0103` first; 2 `JULC0087` have the new words; 1 `JULC0087` is `JULC0080` |
+| 2 | `DIFFERENT-rejection` | `DIFFERENT-rejection` | Already accepted, class unchanged: `68878d7e`, two errors (the reference's `Undefined variable: q`, javac's `JULC0110` for the bare block, now coded); `e01a0161`, `JULC0077` now coded, with the source's words since the review (F5) |
+| 68 | `DIFFERENT-javac-rejects` | `DIFFERENT-javac-rejects` | Class unchanged; the TSV **replaces** each entry, whose reason named the old code: 63 `JULC0086` and 2 `JULC0095` are `JULC0103` first (two errors; with the context declared the review's run gives `JULC0086` again on 43, `JULC0095` on both, and on 20 the body reads the context, F904's own target); 2 `JULC0087` have the new words; 1 `JULC0087` is `JULC0080` |
 
-`068/g4a-accepted-differences.tsv` holds the 318 entries the integrator adds (231 Diagnostic change, 87 Policy rejection), in
-the tool's format, with the six replacements named at its head. No byte changed: no row moved into or out of
+`068/g4a-accepted-differences.tsv` holds 386 entries in the tool's format (231 Diagnostic change, 155 Policy rejection): 312
+the integrator adds and 74 that replace an entry of the same key (the six D8 rows and the 68 above), all named at its head.
+
+**`JULC0103` comes before other rejections.** Besides the count, a source with a context of another type and another error
+gives `JULC0103` first: the reference's coded `JULC0015` and `JULC0018` (`b254026b`, `f7c2867b`), floating point, a
+`@MultiValidator` that mixes purposes or repeats one, mutual recursion (`9eed01ad`), and on `frontend=JAVAC` `JULC0096` and
+`JULC0097`. Each is D13's two errors; with the context declared the reference's error is back on both frontends (the review's
+rewrite run). No byte changed: no row moved into or out of
 `DIFFERENT-bytes`, `DIFFERENT-pir` or `i1a-identical` but by a rejection, and the reference did not move (no `REFERENCE-DRIFT`).
 
 Totals after: `i1a-identical` 9,424 (−80), `both-reject` 306, `DIFFERENT-rejection` 253, `DIFFERENT-javac-rejects` 254,
