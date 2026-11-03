@@ -59,9 +59,19 @@ class JavacCastsTest {
             "static BigInteger m(Value v) { return ((Value)(Object) v).lovelaceOf(); }",
             "record R(BigInteger a, byte[] b) { } static BigInteger m(PlutusData d) { var r = (R)(Object) d; return r.a(); }",
             "record R(BigInteger a, byte[] b) { } static BigInteger m(PlutusData d) { R r = (R)(Object) d; return r.a(); }",
+            "static boolean m(PlutusData d) { JulcMap<PlutusData, PlutusData> m = PlutusData.cast(d, JulcMap.class); return m.isEmpty(); }",
+            "static boolean m(boolean b, JulcMap<PlutusData, PlutusData> x, JulcMap<PlutusData, PlutusData> y) { JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) (b ? (PlutusData)(Object) x : (PlutusData)(Object) y); return m.isEmpty(); }",
     })
     void aCastIsTheReferences(String members) {
         LoweringFixture.assertSameMethodAsReference(method(members), "m", STDLIB);
+    }
+
+    /** A {@code var} bound to a cast to Data has the type of what was cast, as the reference reads it: a map has no {@code equals}. */
+    @Test
+    void aVarOfACastToDataIsWhatWasCast() {
+        LoweringFixture.assertSameMethodRejectionAsReference(method(
+                "static boolean m(JulcMap<PlutusData, PlutusData> x, PlutusData y) { var d = (PlutusData)(Object) x; return d.equals(y); }"),
+                "m", List.of(), STDLIB);
     }
 
     /** {@code (int)} of a {@code long} keeps the low 32 bits, as Java does, at every level. */

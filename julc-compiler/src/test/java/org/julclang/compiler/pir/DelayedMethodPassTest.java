@@ -699,6 +699,29 @@ class DelayedMethodPassTest {
         }
 
         @Test
+        void aParameterOfTheNameOfATotalFieldIsNotTheField() {
+            var term = new PirTerm.Let("F", integer(1), new PirTerm.Lam("F", INTEGER,
+                    new PirTerm.Let("C.k", variable("F"), variable("C.k"))));
+            var outer = assertInstanceOf(PirTerm.Let.class, new DelayedMethodPass(Set.of("C.k"), Set.of("F"), null, null).lower(term).term());
+            var method = assertInstanceOf(PirTerm.Let.class, assertInstanceOf(PirTerm.Lam.class, outer.body()).body());
+            assertInstanceOf(PirTerm.Lam.class, method.value());
+        }
+
+        @Test
+        void aParameterOfTheNameOfADelayedMethodIsReadAsItIs() {
+            var term = new PirTerm.Let("C.k", new PirTerm.Error(INTEGER), new PirTerm.Lam("C.k", INTEGER, variable("C.k")));
+            var lowered = assertInstanceOf(PirTerm.Let.class, lower(term, "C.k"));
+            assertEquals(new PirTerm.Lam("C.k", INTEGER, variable("C.k")), lowered.body());
+        }
+
+        @Test
+        void aLetOfTheNameOfADelayedMethodIsReadAsItIs() {
+            var term = new PirTerm.Let("C.k", new PirTerm.Error(INTEGER), new PirTerm.Let("C.k", integer(2), variable("C.k")));
+            var lowered = assertInstanceOf(PirTerm.Let.class, lower(term, "C.k"));
+            assertEquals(new PirTerm.Let("C.k", integer(2), variable("C.k")), lowered.body());
+        }
+
+        @Test
         void aMethodThatReadsItselfIsAFunctionOfAUnit() {
             var term = new PirTerm.LetRec(List.of(new PirTerm.Binding("C.k", variable("C.k"))), variable("C.k"));
             assertEquals(new PirTerm.LetRec(List.of(new PirTerm.Binding("C.k", new PirTerm.Lam("#_", new PirType.UnitType(), read()))), read()),
