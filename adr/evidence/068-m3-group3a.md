@@ -141,6 +141,7 @@ After M4's merge (`25e383ad`), the review's findings, in new commits (`5e90734e`
 | `(byte)`, `(short)`, `(char)` | `JULC0084` "a cast to …" (I8): no representation yet | `Casts.primitive` |
 | What a cast's operand is read as | The cast's type, unless that is Data, then the operand's, as the reference reads it | `CallTargets.seen` |
 | A raw receiver through a cast (`ValuesLib.java:43`) | Accepted in the stdlib, where the reference accepts it; `JULC0087` elsewhere (D6) | `EqualityRules.isRawReceiver` |
+| A variable cast to a map (round 3) | An effectively final `var` is read through its initializer, as the reference binds it; a variable with a written type is that type; a variable assigned after its declaration stops, `JULC0084` "a cast to a map of a variable assigned after its declaration" | `Casts.valuesOf`, `JavacFacts.effectivelyFinal` |
 
 **The narrowing (a decision for the coordinator).** The reference erases `(int)`, so `(int) 2147483648L` is `2147483648` there and
 `-2147483648` on the JVM and on `JAVAC`. That is a Semantic fix (T6's narrowing, D4's cap), saved as
@@ -237,6 +238,38 @@ its value as it is. Java needs an `(Object)` step between Data and a map, so suc
 then reads the term's type, which says the same; no program I could write that javac accepts tells them apart.
 
 Both controls survived, on the final tests. The 22 killed and the one survivor are on the same tests.
+
+## Round 3: the second review
+
+The second review found no P0 or P1. Its four findings, in new commits (`1b5bc6ed`, `0084906d`, `0f04d6c8`, the test and evidence
+commits after them):
+
+| Finding | Fix | Test |
+|---|---|---|
+| F1 (P2): a cast to a map read a local through its initializer, so a local assigned in a loop was decoded on `JAVAC` as first bound, opposite to the reference | A variable is read through its initializer only if it is effectively final (`JavacFacts.effectivelyFinal`: `final`, or nothing in its unit assigns, compounds or increments it) and a `var`. A variable with a written type is read as that type, as the reference binds it: an effectively final `PlutusData p` holding a view of a map is decoded on both frontends. A variable assigned after its declaration stops with `JULC0084`, "a cast to a map of a variable assigned after its declaration" | `JavacCastsTest`: the review's program, whose reference answers `ds=[{}]` and fails on `ds=[]`, stops; the written-type, `var`, Data-first, branch, compound and lambda forms stop; the effectively final written and `var` forms have the reference's bytes; a `var` that holds a map on one path stops |
+| F2 (P2): the shared `DelayedMethodPass` change moves the reference | Declared as reference change B5, `068-m3-reference-b5.md`, with `agree-068-b5-root-and-its-library-copy.diffcase` (and its class-path copy) pinning it against the JVM, and r15's text proposed there. Not frozen | `RegressionCasesTest`, `Adr068SavedCasesOnJavacTest` (29 saved `-068-` cases); with the pass as at B4 the case fails on both frontends |
+| F3 (P3): `double` in an instance method or a template of a read library was `JULC0084` | Floating point is the reference's rejection in code nothing lowers and in a template | `JavacLibrariesTest.floatingPointInAnUnloweredPartOfALibraryIsTheReferencesRejection` |
+| F4 (P3): the MPF cost rows overstated the delta | `combineAt`, `combine` and `nullHash` read no nibble: 26 bytes more at `NONE`, and at every level with a map; equal from `BASELINE` without one, budgets equal. `5ec9100b` compares PIR only. `8817f132` is 25 bytes with a map at the PV11 levels | `068/g3a-accepted-differences.tsv` |
+
+The review's F1 program is outside Java's semantics (the JVM throws `ClassCastException` at the view, #288), so no JVM value is lost
+by the stop.
+
+**I1** at `b6fab6c3`'s code (scratch `i1-7`): no row moved against `i1-6`. One new row, the B5 `.diffcase`, is `REFERENCE-DRIFT`
+with no committed row (73 bytes at `NONE`), for the integrator's freeze; `lowering-reference.tsv` is otherwise unchanged.
+
+**Tests.** `julc-compiler` whole: 6,582, 0 failed. `julc-difftest` whole: 2,105, 0 failed (with the scratch `G3aMpfProbeTest`).
+
+**Mutants**, 11 of the new lines with a no-op control before and after (both survived), on the same tests as round 2:
+
+| Killed | Mutants |
+|---|---|
+| Effectively final | every variable; no variable; an assignment ignored; a compound assignment ignored |
+| What a variable is read as | a written type read through; a `var` not read through; a variable assigned again read through |
+| Floating point | in unread code; in a template |
+
+One survives, and it is equivalent: an increment ignored by `effectivelyFinal`. An increment is rejected wherever it is lowered,
+so a variable incremented never reaches a cast. The B4 pass, put back, fails the B5 case on both frontends and
+`JavacLibrariesTest.aDelayedCopyDoesNotDelayTheHelperOfItsName`.
 
 ## Not done
 

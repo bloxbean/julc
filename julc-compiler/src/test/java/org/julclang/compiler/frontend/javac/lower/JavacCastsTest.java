@@ -136,11 +136,20 @@ class JavacCastsTest {
             "static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { PlutusData p = ds.head(); for (var e : ds) { p = (PlutusData)(Object) x; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
             // Assigned on one branch.
             "static boolean m(boolean b, JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { var p = (PlutusData)(Object) x; for (var e : ds) { if (b) { p = e; } } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
+            // Compounded in a loop (an increment is rejected wherever it is lowered).
+            "static boolean m(JulcList<PlutusData> ds) { var i = 0L; for (var e : ds) { i += 1; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) i; return m.isEmpty(); }",
             // In a lambda's body.
             "static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { return ds.any(d -> { PlutusData p = (PlutusData)(Object) x; for (var e : ds) { p = e; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }); }",
     })
     void aCastToAMapOfAVariableAssignedAgainStops(String members) {
         LoweringFixture.assertMethodNotPorted(method(members), "m", "a cast to a map of a variable assigned after its declaration", 8);
+    }
+
+    /** A {@code var} is read through its initializer, so one that holds a decoded map on one path and Data on the other stops. */
+    @Test
+    void aVarOfAMapOnOnePathStops() {
+        LoweringFixture.assertMethodNotPorted(method("static boolean m(boolean b, JulcMap<PlutusData, PlutusData> x, PlutusData d) { var p = b ? (PlutusData)(Object) x : d; JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }"),
+                "m", "a cast to a map of a value that holds another type on one path", 8);
     }
 
     /**
