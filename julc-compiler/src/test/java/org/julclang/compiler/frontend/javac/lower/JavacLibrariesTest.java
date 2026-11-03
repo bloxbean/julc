@@ -325,6 +325,82 @@ class JavacLibrariesTest {
         LoweringFixture.assertSameMethodAsReference(source, "f", List.of(library), STDLIB);
     }
 
+    /** The reference looks the method up by the class name as written: a packaged library is never found, so never warned of. */
+    @Test
+    void aPackagedLibraryIsNotWarnedOf() {
+        var library = """
+                package lib;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import org.julclang.core.PlutusData;
+                @OnchainLibrary
+                public class D {
+                    public static PlutusData id(PlutusData x) { return x; }
+                }
+                """;
+        var source = """
+                import lib.D;
+                import org.julclang.core.PlutusData;
+                import java.math.BigInteger;
+                class M {
+                    static PlutusData f(BigInteger a) { return D.id(PlutusData.cast(a, PlutusData.class)); }
+                }
+                """;
+        assertTrue(new JulcCompiler(STDLIB).compileMethod(source, "f", List.of(library)).diagnostics().isEmpty());
+        LoweringFixture.assertSameMethodAsReference(source, "f", List.of(library), STDLIB);
+    }
+
+    /** In a library the reference's generator holds the warning with its errors, so the library is rejected. */
+    @Test
+    void aWarningInALibraryRejectsIt() {
+        var callee = """
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import org.julclang.core.PlutusData;
+                @OnchainLibrary
+                public class D {
+                    public static PlutusData id(PlutusData x) { return x; }
+                }
+                """;
+        var caller = """
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                import org.julclang.core.PlutusData;
+                import java.math.BigInteger;
+                @OnchainLibrary
+                public class E {
+                    public static PlutusData f(BigInteger a) { return D.id(PlutusData.cast(a, PlutusData.class)); }
+                }
+                """;
+        var source = """
+                import org.julclang.core.PlutusData;
+                import java.math.BigInteger;
+                class M {
+                    static PlutusData g(BigInteger a) { return E.f(a); }
+                }
+                """;
+        for (var frontend : List.of(CompilerFrontend.JAVAPARSER, CompilerFrontend.JAVAC)) {
+            var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
+                    new CompilerOptions().setFrontend(frontend)).compileMethod(source, "g", List.of(callee, caller)));
+            assertTrue(failure.getMessage().contains("expects Data"), failure::getMessage);
+        }
+    }
+
+    /** A loop's rest rebinds the class's own static methods, as the reference's symbol table holds them; a library's are not the root's. */
+    @Test
+    void aLoopRebindsOnlyItsOwnClassesMethods() {
+        var source = """
+                import com.lib.TokenLib;
+                import org.julclang.core.types.JulcList;
+                import java.math.BigInteger;
+                class M {
+                    static BigInteger m(JulcList<BigInteger> xs) {
+                        BigInteger s = BigInteger.ZERO;
+                        for (var x : xs) { s = s.add(x); }
+                        return TokenLib.scaled(s);
+                    }
+                }
+                """;
+        LoweringFixture.assertSameMethodAsReference(source, "m", List.of(TOKEN_LIB), STDLIB);
+    }
+
     @Test
     void aLibrarysStaticFieldHoldsOnlyAConstant() {
         var library = """

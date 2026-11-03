@@ -44,8 +44,7 @@ class JavacExportsTest {
             import org.julclang.stdlib.annotation.OnchainLibrary;
             @OnchainLibrary
             public class Lone {
-                static final BigInteger STEP = BigInteger.TWO;
-                public static BigInteger step(BigInteger x) { return x.add(STEP); }
+                public static BigInteger step(BigInteger x) { return x.add(BigInteger.TWO); }
                 public static <A> A last(JulcList<A> items, A fallback) {
                     if (items.isEmpty()) return fallback;
                     if (items.tail().isEmpty()) return items.head();
@@ -54,6 +53,7 @@ class JavacExportsTest {
                 public static BigInteger f(long x) { return BigInteger.valueOf(x); }
                 public static BigInteger f(BigInteger x) { return x; }
                 /** Overloads of one lowering and two source signatures: every export of this class is unsupported. */
+                @OnchainLibrary
                 public static class Ambiguous {
                     public static byte[] p(byte[] x) { return x; }
                     public static PubKeyHash p(PubKeyHash x) { return x; }
