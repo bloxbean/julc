@@ -60,9 +60,9 @@ A `PlutusData` variable can hold Data, a list or a pair list, and Java's type do
 | What reaches the variable, where the reference reads Data | It travels as |
 |---|---|
 | `unListData`, `mkNilData`, `constrFields`, `mkCons` onto a list | A list |
-| `unMapData`, `mkNilPairData`, a declared `MapData`, `mkCons` of a pair or onto a pair list | A pair list |
+| `unMapData`, `mkNilPairData`, `mkCons` of a pair or onto a pair list | A pair list |
 | `tailList` of a list or a pair list, or of the variable itself | The same |
-| `tailList` of what nothing says, a declared `ListData` | A list of either kind: a list, unless its head is read as a pair or a pair list travels beside it. A cursor shown to be a list stays one beside a map cursor |
+| `tailList` of what nothing says | A list of either kind: a list, unless its head is read as a pair or a pair list travels beside it. A cursor shown to be a list stays one beside a map cursor |
 | Anything else: a parameter, a `@Param`, a read of a list or a record, a helper's Data, `iData` and the like | Data |
 | A list and Data, or a list and pairs | Data |
 
@@ -134,25 +134,25 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 4. **`if (c) ;`** was a rejection with a diagnostic where the reference has the located text. `Statements.single` now takes the reference's form, and a loop's body uses it too.
 5. **`JULC0012` and `JULC0041` on a tuple of accumulators have the loop's position** (F724), where the reference has none, and `JULC0041` on a for-each's native element has the iterable's. `JULC0091` keeps the reference's. No row of the corpus reaches them.
 6. **A list shown to be one is carried on `JAVAC`, and stays a failure on the reference where its analysis does not read it** (D4's cap, "Closed by M5"). Its analysis lives on the JavaParser side, so that frontend is not changed. `diverge-068-cursor-*` pin both answers.
-7. **`JAVAC` never reads less than the reference.** What its analysis says of a list or a map stands, so every program that runs on the reference keeps its reading: `agree-068-walk-*`, a helper's parameter by a direct `tailList`, with a list and a pair list, one accumulator and several, and `aMixKeepsTheReferencesReading`. Where that reading fails, `JAVAC` fails with it, and these fail closed: a Data start with a direct assignment in a `while` (`diverge-data-start-in-a-while`), a list beside a map cursor (`diverge-cursor-beside-a-map-cursor`), `tailList(unMapData(d))` as a start, and a pair list in a nested `while`, which the reference reads as a list since it passes that loop nothing before it. `theReferencesReadingOfTheOtherKindStands` pins the last three. A list that arrives in a parameter by any other form still fails on both.
-8. **A pair list stays a map on the JVM, as on-chain** (the maintainer's decision). `Builtins.tailList` of a `MapData` and `mkCons` of a pair onto one leave a `MapData`, and `mkNilPairData` is an empty one, so every encoding of a pair list agrees with the JVM at all four levels, on zero, one and many iterations and an empty remainder. `aWalkedPairListIsAMap`, `aBuiltPairListIsAMap` and the jqwik family `aPairListInEveryEncoding` hold it. The reference's `while` forms now agree as well. Its for-each stays a failure, a Semantic fix row, `diverge-068-pair-list-in-a-for-each`. A single pair is a `Constr` on the JVM and a native pair on-chain, and encoding one fails on both frontends: 354 runs of 396 over every encoding, none a value, and the rest read the pair or stop before it. It stays so, pinned by `aSinglePairFailsOnBoth`.
+7. **`JAVAC` never reads less than the reference.** What its analysis says of a list or a map stands, so every program that runs on the reference keeps its reading: `agree-068-walk-*`, a helper's parameter by a direct `tailList`, with a list and a pair list, one accumulator and several, and `aMixKeepsTheReferencesReading`. Where that reading fails, `JAVAC` fails with it, and these fail closed: a Data start with a direct assignment in a `while` (`diverge-data-start-in-a-while`), a list beside a map cursor (`diverge-cursor-beside-a-map-cursor`), `tailList(unMapData(d))` as a start, and a pair list in a nested `while`, which the reference reads as a list since it passes that loop nothing before it. `theReferencesReadingOfTheOtherKindStands` pins the last three. A list that arrives in a parameter by any other form still fails on both, and so does a native list in a parameter declared `ListData`, since a declared `ListData` or `MapData` is the type of encoded Data too and says nothing (`aDeclaredTypeTheReferenceReadsFailsOnBoth`). Encoded Data of those types, by `listData`, `mapData`, a record component, a helper's return, a parameter or a `var` alias, is carried as Data and agrees on both (`encodedDataIsData`, the jqwik family `anEncodedStart`). The port reads a variable's written type, as the reference does, so a `var` is not `MapData` to it.
+8. **A pair list stays a map on the JVM, as on-chain** (the maintainer's decision). `Builtins.tailList` of a `MapData` and `mkCons` of a pair onto one leave a `MapData`, and `mkNilPairData` is an empty one, so every encoding of a pair list agrees with the JVM at all four levels, on zero, one and many iterations and an empty remainder. `aWalkedPairListIsAMap`, `aBuiltPairListIsAMap` and the jqwik family `aPairListInEveryEncoding` hold it. The reference's `while` forms now agree as well. Its for-each stays a failure, a Semantic fix row, `diverge-068-pair-list-in-a-for-each`. A single pair is a `Constr` on the JVM and a native pair on-chain, and encoding one fails on both frontends: 354 runs of 396 over every encoding, none a value, and the rest read the pair or stop before it. It stays so, pinned by `aSinglePairFailsOnBoth`. An empty pair list in `listData`, or a list of Data in `mapData`, fails on the node, which checks the list's type whole; the Java VM now does too, so the harness no longer shows a value there.
 9. **What a variable holds wins over what the reference sees wherever the second is not decoded.** `var y = xs.find(p)` is an `Optional` to the reference, and holds the element. `diverge-068-found-element-in-a-tuple` pins it.
 
 ## Proposed text for the integrator
 
 ### ADR r14
 
-> **r14** (2026-11-03, M4, on the maintainer's decision). A pair list stays a map on the JVM, as on-chain. `Builtins.tailList` of a `MapData` is a `MapData` of the rest, `mkCons` of a pair onto a `MapData` is a `MapData` with the pair in front, and `mkNilPairData` is an empty `MapData`. `tailList` and `mkCons` of a `PlutusData` return `PlutusData`, their overloads on a `ListData` return a `ListData`, and `mkNilPairData` returns `PlutusData.MapData`. What a `PlutusData` accumulator carries (D4's cap): `JAVAC` never reads less than the reference, so a variable is what `AccumulatorTypeAnalyzer` says when that says a list or a map. Otherwise it is a list only if its start and every value that reaches it are shown to be a list of one kind, and anything else is Data. A variable's one type is what it holds wherever the reference's view of it is not decoded. An iterable's element is read by the reference's walk: a name, or a call or chain of calls rooted at one. A label's statement is read before the label's rejection.
+> **r14** (2026-11-03, M4, on the maintainer's decision). A pair list stays a map on the JVM, as on-chain. `Builtins.tailList` of a `MapData` is a `MapData` of the rest, `mkCons` of a pair onto a `MapData` is a `MapData` with the pair in front, and `mkNilPairData` is an empty `MapData`. A pair is what `mkPairData` makes, `Constr 0` with two fields, and `mkCons` onto a map takes nothing else. `tailList(PlutusData)` and `mkCons(PlutusData, PlutusData)` return `PlutusData`; their overloads keep a `ListData` a `ListData` and a `MapData` a `MapData`, and `mkNilPairData` returns `PlutusData.MapData`. The Java VM's `listData` and `mapData` check the list's element type, as Plutus does. What a `PlutusData` accumulator carries (D4's cap): `JAVAC` never reads less than the reference, so a variable is what `AccumulatorTypeAnalyzer` says when that says a list or a map, reading a variable's written type as it does. Otherwise it is a list only if its start and every value that reaches it are shown by a builtin to be a list of one kind, and anything else is Data. A declared `ListData` or `MapData` says nothing: those are also the types of encoded Data. A variable's one type is what it holds wherever the reference's view of it is not decoded. An iterable's element is read by the reference's walk: a name, or a call or chain of calls rooted at one. A label's statement is read before the label's rejection.
 
 ### Public API note
 
-> `Builtins.tailList(PlutusData)` and `Builtins.mkCons(PlutusData, PlutusData)` return `PlutusData`, where they returned `PlutusData.ListData`, and `Builtins.mkNilPairData` returns `PlutusData.MapData`. New overloads take a `PlutusData.ListData` and return one, so a list Java has as a list stays typed as one. A source that takes a `ListData` from a call on a `PlutusData`, or from `mkNilPairData`, no longer compiles: write `PlutusData`. Off-chain, a map walked or built by these methods stays a `MapData`, and `mkCons` onto a map takes a pair. Scripts are unchanged.
+> `Builtins.tailList(PlutusData)` and `Builtins.mkCons(PlutusData, PlutusData)` return `PlutusData`, where they returned `PlutusData.ListData`, and `Builtins.mkNilPairData` returns `PlutusData.MapData`. New overloads keep a type Java knows: `tailList(ListData)` and `mkCons(PlutusData, ListData)` return `ListData`, and `tailList(MapData)` and `mkCons(PlutusData, MapData)` return `MapData`. So `var pairs = Builtins.mkNilPairData(); pairs = Builtins.mkCons(Builtins.mkPairData(k, v), pairs);` and `var l = Builtins.mkNilData(); l = Builtins.mkCons(x, l);` compile as before. What no longer compiles: a `ListData` taken from `tailList` or `mkCons` of an argument whose static type is `PlutusData` or another subtype, and a `ListData` taken from `mkNilPairData` or from either call on a `MapData`. Write `PlutusData`, or a `var`. Off-chain, a map walked or built by these methods stays a `MapData`, and `mkCons` onto a map takes only a pair, `Constr 0` with two fields. Scripts are unchanged.
 
 ## The I1 gate
 
 `build/m4/i1.sh` against the tables frozen at `e0d6eefc`. The run fails by design at `assertListed` until the integrator adds the rows below, and moved rows are checked at the freeze. Nothing shrank: `lowering-i1-shrunk.tsv` is empty. No row has a loop as its first construct.
 
-The tables below are at `6209a23b`. The merges of `wip/068-m3g2` moved no row of this slice's. The fixes after them moved one, `f759f988`, a label's rejection: the other 17,075 cases have the same row before and after them, bytes included, so the corpus holds no program that reaches what they changed. That includes the change to `Builtins`, and no reference row moved, so the reference table needs only the new cases. No row stops at a rule of this round.
+The tables below are at `f79e04a0`, the same as at `6209a23b`. `ContextsLib.listIndex`'s 22 rows stay byte-identical through the reference's reading, with the declared-type rule gone. The merges of `wip/068-m3g2` moved no row of this slice's. The fixes after them moved one, `f759f988`, a label's rejection: the other 17,075 cases have the same row before and after them, bytes included, so the corpus holds no program that reaches what they changed. That includes the change to `Builtins`, and no reference row moved, so the reference table needs only the new cases. No row stops at a rule of this round.
 
 The 18 new `.diffcase`s are cases 17,077 to 17,094. They have no row in `lowering-reference.tsv`, so I1 reports them as `REFERENCE-DRIFT`, `no committed row`, and the freeze must add them. With that table extended in a throwaway worktree, and nothing frozen here, 12 are `DIFFERENT-bytes`, 6 are `i1a-identical`, every other row is as below, and nothing shrank.
 
@@ -327,16 +327,16 @@ The other loop suites compile by the default frontend, so they were run once in 
 
 ### Whole modules
 
-Under the machine lock, `--rerun`, from the XML, at `6209a23b`:
+Under the machine lock, `--rerun`, from the XML, at `f79e04a0`:
 
 | Module | Tests | Failures | Errors | Skipped |
 |---|---:|---:|---:|---:|
-| `julc-stdlib` | 568 | 0 | 0 | 0 |
+| `julc-stdlib` | 570 | 0 | 0 | 0 |
 | `julc-compiler` | 6,501 | 0 | 0 | 0 |
-| `julc-difftest` | 2,081 | 0 | 0 | 0 |
+| `julc-difftest` | 2,097 | 0 | 0 | 0 |
 | `julc-testkit` | 236 | 0 | 0 | 0 |
 | `julc-vm` | 114 | 0 | 0 | 0 |
-| `julc-vm-java` | 2,485 | 0 | 0 | 262 |
+| `julc-vm-java` | 2,487 | 0 | 0 | 262 |
 | `julc-vm-scalus` | 312 | 0 | 0 | 0 |
 | `julc-examples` | 100 | 0 | 0 | 0 |
 | `julc-gradle-plugin` | 50 | 0 | 0 | 0 |
@@ -433,6 +433,8 @@ Four throwaway worktrees at `68a4f0b7`, then `01471217`, with `julc-stdlib`'s `B
 | 2 | Survived, and their lines went: `tailList` of the variable itself needs no case of its own, and a `@Param`'s initializer can only be a literal (`JULC0095`) |
 
 `theLibrariesOnAMap` now has a timeout, so a wrong map fails it rather than running on. The last three mutants ran only against `BuiltinsPairListTest`, each in one JVM, and each failed there.
+
+The second confirmation's round added 7 mutants at `f79e04a0`, one runner, 5 minutes each, against `BuiltinsPairListTest`, `ListAndMapDataTypeTest` and `Adr068LoopRepresentationsTest`: a `var` read by javac's type in the port, a pair of another tag or of three fields, a typed map's tail that keeps its head, `mkCons` onto a map as `PlutusData` that builds a list, and either type check of the VM removed. All 7 are killed, and the control passes.
 
 The reference's reading came at `6209a23b` with 8 more mutants, one runner under a limit of 5 minutes each, against `JavacLoopsTest` and `Adr068LoopRepresentationsTest`: the reading dropped, the statements before the loop dropped, and six of its rules. All 8 are killed, and the control passes.
 
