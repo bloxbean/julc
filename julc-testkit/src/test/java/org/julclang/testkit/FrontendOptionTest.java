@@ -75,9 +75,12 @@ class FrontendOptionTest {
         assertTrue(isNotPorted(javac), javac::getMessage);
     }
 
-    /** {@code fromPlutusData} on a hash is an identity there, so what follows meets Data; javac stops it. */
+    /**
+     * {@code fromPlutusData} on a hash is an identity there, so what follows meets Data; javac checks and decodes it, and
+     * returns what Java returns.
+     */
     @Test
-    void aHashFromDataFailsOnTheReferenceAndStopsOnJavac() {
+    void aHashFromDataFailsOnTheReferenceAndIsItsBytesOnJavac() {
         String source = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.ledger.PubKeyHash;
@@ -87,8 +90,7 @@ class FrontendOptionTest {
         var bytes = new PlutusData.BytesData(new byte[]{1, 2});
         var reference = assertThrows(TermExtractor.ExtractionException.class, () -> JulcEval.forSource(source).call("m", bytes).asInteger());
         assertTrue(reference.getMessage().contains("expected bytestring"), reference::getMessage);
-        var javac = assertThrows(CompilerException.class, () -> JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC).call("m", bytes).asInteger());
-        assertTrue(isNotPorted(javac), javac::getMessage);
+        assertEquals(BigInteger.TWO, JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC).call("m", bytes).asInteger());
     }
 
     @Test

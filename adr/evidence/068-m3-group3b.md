@@ -108,7 +108,20 @@ and a binding's type is compared where it is shown.
 | julc-difftest | whole, at `7ddd5b3f` | 2,103 tests, 0 failures. `Adr068LedgerFromDataPropertyTest`: 400 tries over 33 ledger types (179 the JVM accepts, 221 it refuses), `JAVAC` agreeing at every level; the reference returns where the JVM throws in 884 runs; 200 values read back equal to the JVM's |
 | julc-difftest | `adr068Lowering` (I1), `adr068Baseline`, `adr068ContractDebug` | Above |
 
-Module runs after the last code commit are in the report.
+After the last code change (`9ab1bcc7`), each module whole with `--rerun`:
+
+| Module | Tests | Failures | Skipped |
+|---|---|---|---|
+| julc-compiler | 6,525 | 0 | 0 |
+| julc-tools (the source debugger; `JavacDebugMetadataTest` new) | 48 | 0 | 0 |
+| julc-vm-truffle | 3,495 | 0 | 262 |
+| julc-annotation-processor | 29 | 0 | 0 |
+| julc-gradle-plugin | 50 | 0 | 0 |
+| julc-testkit | 236 | 0 | 0 |
+
+Two tests pinned the retired stops and changed with them: `FrontendOptionTest` (testkit) now holds `JAVAC` to Java's answer
+for a hash from Data, and `JulcAnnotationProcessorFrontendTest` shows the option reaching the compilation with
+`Value.fromPlutusData`, which only `JAVAC` stops, since a contract schema no longer does.
 
 ## Mutants
 
