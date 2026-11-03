@@ -441,7 +441,8 @@ public final class JavacFacts {
             case DECLARED -> declared((DeclaredType) type, where, inferred);
             case TYPEVAR -> {
                 var bound = typeVariables.get(((TypeVariable) type).asElement());
-                if (bound == null) throw rejection(registry.unknownTypeMessage(type.toString(), type.toString()), where);
+                // A type parameter no specialization binds: the reference reads its name as a type (D15).
+                if (bound == null) throw rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, where, "type parameter " + type);
                 yield bound;
             }
             case ERROR -> throw new IllegalStateException("an error type reached JuLC: " + type);
@@ -519,7 +520,7 @@ public final class JavacFacts {
 
     private PirType array(ArrayType type, Tree where) {
         if (type.getComponentType().getKind() == TypeKind.BYTE) return new PirType.ByteStringType();
-        throw rejection("Arrays are not supported except byte[]. Use List<T> instead. Got: " + type, where);
+        throw rejection(DiagnosticCodes.ARRAY_UNSUPPORTED, where);
     }
 
     private PirType declared(DeclaredType type, Tree where, boolean inferred) {

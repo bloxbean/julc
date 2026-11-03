@@ -80,11 +80,8 @@ class SpelledProgramsOnJavacTest {
     }
 
     private static final Answer AGREES = new Agrees();
-    /**
-     * What the reference says in words with no code: a call of a class that is no library, a type it cannot read, or a
-     * statement it does not lower.
-     */
-    private static final Answer UNDEFINED = rejects(null);
+    /** A type parameter no specialization binds, which the reference reads as a type of its name (I2a's code). */
+    private static final Answer TYPE_PARAMETER = rejects("JULC0012");
     /** The reference's {@code Undefined variable}, with the code the javac frontend gives it (I2a). */
     private static final Answer UNDEFINED_VARIABLE = rejects("JULC0011");
     /** The reference's {@code Unsupported statement}, with its code (I2a). */
@@ -102,8 +99,8 @@ class SpelledProgramsOnJavacTest {
             entry("the same in a type argument", AGREES),
             entry("an annotation type as a qualifier, beside a record of its name", AGREES),
             entry("a library of the root used from a pool unit, beside a pool library of its name", UNDEFINED_VARIABLE),
-            entry("a library record's type parameter beside a record of its name", UNDEFINED),
-            entry("the same with an integer", UNDEFINED),
+            entry("a library record's type parameter beside a record of its name", TYPE_PARAMETER),
+            entry("the same with an integer", TYPE_PARAMETER),
             entry("a generic method of a library compiled as the root", rejects("JULC0087")),
             entry("new with a class body", rejects("JULC0109")),
             entry("a guard reads an inherited type", AGREES),

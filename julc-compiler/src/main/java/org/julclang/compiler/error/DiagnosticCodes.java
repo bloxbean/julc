@@ -565,6 +565,14 @@ public final class DiagnosticCodes {
             "@NewType record {0} must have exactly one field",
             "Reduce to one field, or remove @NewType and use a plain record (which compiles to ConstrData).");
 
+    public static final DiagnosticInfo NON_RECORD_CONSTRUCTION = new DiagnosticInfo(
+            "JULC0129",
+            "NON_RECORD_CONSTRUCTION",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Cannot construct non-record type: {0}",
+            "Only record types can be constructed on-chain. Declare the type as a record.");
+
     public static final DiagnosticInfo NULL_UNSUPPORTED = new DiagnosticInfo(
             "JULC0017",
             "NULL_UNSUPPORTED",
@@ -1077,6 +1085,7 @@ public final class DiagnosticCodes {
             NATIVE_TYPE_MISMATCH,
             NEWTYPE_UNSUPPORTED_FIELD_TYPE,
             NEWTYPE_WRONG_FIELD_COUNT,
+            NON_RECORD_CONSTRUCTION,
             NULL_UNSUPPORTED,
             OPERATOR_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,

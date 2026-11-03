@@ -90,9 +90,7 @@ final class Records {
         if (record && nominal instanceof PirType.RecordType recordType) {
             return constructed(tree, type, recordType, 0, frame);
         }
-        String name = name(type);
-        throw facts.locatedRejection("Cannot construct non-record type: " + name,
-                "Only record types can be constructed on-chain. Define " + name + " as a record.", tree);
+        throw facts.rejection(DiagnosticCodes.NON_RECORD_CONSTRUCTION, tree, name(type));
     }
 
     private static String name(TypeElement type) {

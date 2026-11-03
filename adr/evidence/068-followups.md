@@ -187,6 +187,19 @@ From M3a's close, a misreading in the JavaParser frontend alone is listed here, 
 
 | A cheaper `DelayedMethodPass` | M3 Group 4 (withdrawn trial, `wip/068-g4b`, review `g4-confirmation.md`) | A trial folded closed methods with no parameters at compile time, shared bodies every path reads, and weighed hashes. Its confirmation found a program dearer on every path (a hash-heavy body read through other methods), a fold measured before the UPLC optimizer that grew a script, the compiler depending on `julc-vm-java` so that `JulcVm.create()` picks the Java VM over Scalus in users' tests, and compile-time BLS evaluation that may differ by host. Withdrawn; B5's pass stands | After M6, as its own design: fold with a pure evaluator in the compiler's own module, BLS excluded, size measured after the optimizer; share by a count of reads |
 
+## M5a: over-rejections and decisions owed
+
+What `frontend=JAVAC` rejects at M5a where the reference compiles (`068-m5a.md`, sections 12 and 15). Each fails closed with a
+code. An owner is who closes the row: **maintainer** for a decision, **M5b** for the next slice of the javac frontend.
+
+| ID | Problem | Plan | Owner |
+|---|---|---|---|
+| O1, arms of two types | A conditional or `switch` expression whose arms have two Java types is `JULC0012` wherever it is used (section 9), outside a primitive result, a sealed sum and a PlutusData view | Confirm the rule and its three exceptions, or name a further shape to lower; each lowered shape needs a JVM-pinned harness row | maintainer |
+| O2, Policy rejections of M5a | `JULC0124` (a cast to `byte`, `short`, `char`), `JULC0126`, `JULC0127`, `JULC0128`: the reference accepts each and reads it otherwise than Java, or holds a value with no representation | Confirm each code as a policy (D13 "Policy rejection" needs the decision), with the r17 text of section 10 | maintainer |
+| O3, an integer `@NewType`'s component named like a method | `r.a().abs()` where `a` is an integer `@NewType` read from a record: `JULC0055`. The reference compiles it, and with the default gate rejects it with `JULC0101`, so no gated program is lost. A port at M5a widened a pinned rejection and was reverted | Port with the byte-string wrapper read of section 12, as one change with its own harness rows | M5b |
+| O4, `Number.longValue()` | `for (Number o : xs) { s = s + o.longValue(); }` over a `JulcList<BigInteger>`: `JULC0055`. JuLC reads `longValue` and `intValue` as the identity, which Java's 64- and 32-bit truncation is only in range, so a port takes the narrowing rule (`GuardRules.NARROWING_IDENTITY_METHODS`) with it | Lower `Number`'s accessors as the element's, under the narrowing rule, or keep the rejection | M5b |
+| O5, uncoded unknown types | `JAVAC`'s other `Unknown type: X` (a declared type no registry holds, `JavacFacts.declared`) is still uncoded; no head corpus row reaches it, and the reference's text is the same | Give it `JULC0012` with the type parameter's rule of section 15 | M5b |
+
 ## Codex read owed
 
 If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).

@@ -164,4 +164,29 @@ class JavacM5aTest {
                 + " static boolean m(BigInteger a) { S s = new B(a); return s instanceof B; }");
         assertEquals("JULC0079", diagnostic.code(), diagnostic::message);
     }
+
+    // --- I2a: the last uncoded rejections the head corpus reaches (part 3) ---
+
+    /** A type parameter nothing specializes is read by no rule but its name on the reference (D15): it has JULC0012 here. */
+    @Test
+    void aTypeParameterNothingBindsHasACode() {
+        var diagnostic = rejected("static <Boolean> Boolean bad(long x) { return (Boolean) (Object) x; } static long m() { return 1; }");
+        assertEquals("JULC0012", diagnostic.code(), diagnostic::message);
+        assertEquals("Cannot resolve type: type parameter Boolean", diagnostic.message());
+    }
+
+    @Test
+    void aVarargsComponentIsAnArrayWithItsCode() {
+        var diagnostic = rejected("record R(BigInteger... a) { } static long m() { return 1; }");
+        assertEquals("JULC0014", diagnostic.code(), diagnostic::message);
+        assertEquals("arrays are not supported on-chain", diagnostic.message());
+    }
+
+    @Test
+    void aClassIsNoValueToConstruct() {
+        var diagnostic = rejected("static class Foo { Foo(long a) { } long a() { return 9; } } static long m() { Foo f = new Foo(5); return f.a(); }");
+        assertEquals("JULC0129", diagnostic.code(), diagnostic::message);
+        assertEquals("Cannot construct non-record type: Foo", diagnostic.message());
+        assertEquals("Only record types can be constructed on-chain. Declare the type as a record.", diagnostic.suggestion());
+    }
 }

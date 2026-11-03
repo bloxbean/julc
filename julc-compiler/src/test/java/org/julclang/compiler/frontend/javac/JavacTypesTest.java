@@ -693,7 +693,7 @@ class JavacTypesTest {
         @CsvSource(delimiter = '|', value = {
                 "float|Unsupported primitive type: float. Supported types: boolean, int, long",
                 "byte|Unsupported primitive type: byte. Supported types: boolean, int, long",
-                "int[]|Arrays are not supported except byte[]. Use List<T> instead. Got: int[]",
+                "int[]|arrays are not supported on-chain",
                 "Object|Unknown type: Object",
                 "Integer|Unknown type: Integer"
         })
@@ -753,8 +753,7 @@ class JavacTypesTest {
         @Test
         void anyOtherVarargsComponentIsAnArray() {
             String source = HEADER + "record R(BigInteger... v) {} class P {}";
-            assertTrue(assertThrows(CompilerException.class, () -> read(source)).diagnostics().getFirst().message()
-                    .contains("Arrays are not supported except byte[]"));
+            assertEquals("JULC0014", assertThrows(CompilerException.class, () -> read(source)).diagnostics().getFirst().code());
             var reference = new TypeResolver();
             new TypeRegistrar().registerAll(LedgerSourceLoader.loadLedgerSources(JavacTypesTest.class.getClassLoader()), reference);
             new TypeRegistrar().registerAll(List.of(JavaSourceParser.parseCompilationUnit(source)), reference);
@@ -763,7 +762,9 @@ class JavacTypesTest {
 
         @Test
         void aGenericComponentIsRejected() {
-            assertTrue(rejected("record R<T>(T v) {} class P {}").diagnostics().getFirst().message().contains("Unknown type: T"));
+            var diagnostic = rejected("record R<T>(T v) {} class P {}").diagnostics().getFirst();
+            assertEquals("JULC0012", diagnostic.code());
+            assertEquals("Cannot resolve type: type parameter T", diagnostic.message());
         }
 
         @Test

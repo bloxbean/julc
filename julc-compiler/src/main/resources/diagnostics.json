@@ -1549,6 +1549,17 @@
       "template": "{0}: {1}",
       "summary": "The value's on-chain representation is not the one this operation takes, and no conversion keeps Java's value: Data where a builtin takes bytes, a native list where a component holds Data, a ledger type that holds a map, whose Data repeats a key the JVM's map holds once. Emitted by the javac frontend (ADR-068 M5) where the reference reads the representation as it finds it and fails or misreads.",
       "fix": "Convert explicitly: Builtins.unBData for bytes, Builtins.listData or mapData for a list or a map, or read the map through the stdlib's ValuesLib and MapLib."
+    },
+    {
+      "code": "JULC0129",
+      "constant": "NON_RECORD_CONSTRUCTION",
+      "status": "emitted",
+      "title": "A class instance is constructed",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Cannot construct non-record type: {0}",
+      "summary": "A new of a class that is not a record, a tuple, a sealed variant or a supported API type. On-chain a value is a record's components, and a class's constructor and fields have no on-chain form. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Only record types can be constructed on-chain. Declare the type as a record."
     }
   ]
 }
