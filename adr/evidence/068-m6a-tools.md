@@ -65,9 +65,16 @@ javac readings share (positions, type printing, qualified names, value-versus-ty
 arguments printed without a space, an enum's constants visited last); after M6 these are simply the tools' formats, and
 each is marked where it is defined.
 
-**ADR deviation to raise.** D12 says the verification resolvers move to `javax.lang.model`. Resolving the annotations by
-element (identity) would change what they accept: today `@RequiresSigner` is matched by spelling, import and package. The
-equivalence gate needs the syntactic port; resolving by element is a behaviour change for its own decision.
+**D12, proposed text (the maintainer's decision).** D12 reads "JavaParser from `julc-cli` (lint rules on
+`TreePathScanner`), `julc-tools`, `julc-verification` (on `javax.lang.model`) and `julc-playground`'s build". Proposed:
+
+> JavaParser from `julc-cli` (lint rules on javac's syntax trees), `julc-tools`, `julc-verification` and
+> `julc-playground`'s build. The verification resolvers read javac's syntax trees (`SourceAnnotations`) and keep today's
+> matching: an annotation is one of theirs by its spelling, the source's imports and its package. Matching by identity
+> through `javax.lang.model`, which would change what they accept, is a later decision of its own, not part of M6.
+
+with a revision-history line: "D12: the resolvers move to javac's syntax trees with today's matching; `javax.lang.model`
+identity matching is deferred to its own decision (M6a review)."
 
 ## Equivalence results
 

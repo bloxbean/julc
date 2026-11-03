@@ -100,6 +100,8 @@ class Adr068MetadataCorpusTest {
                 }
             }
             count(counts, kind);
+            // The files where the JavaParser frontend's validator reports something: what javac's check makes of them.
+            if (!javaParserSubset.isEmpty()) count(counts, "javaparser-subset-files " + kind);
             if (!kind.equals("metadata:same")) differences.add(kind + "\t" + file + "\t" + expected + "\t" + actual);
         }
         var summary = new ArrayList<String>();
