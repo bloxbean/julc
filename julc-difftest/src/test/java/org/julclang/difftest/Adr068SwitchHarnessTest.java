@@ -407,7 +407,7 @@ class Adr068SwitchHarnessTest {
             assertAgree("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> a.v(); default -> BigInteger.ONE; }); }", integer(7), s);
             assertAgree("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> { yield a.v(); } default -> BigInteger.ONE; }); }", integer(1), s);
         }
-        assertStopsOnJavac("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> true; default -> false; }); }", "JULC0084", integer(7), a(1));
+        assertStopsOnJavac("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> true; default -> false; }); }", "JULC0078", integer(7), a(1));
         // A yield of a nested switch is that switch's, so it says nothing of what this one gives.
         for (var s : everyS()) {
             assertAgree("public static boolean m(BigInteger n, S s) { return n.equals(switch (s) { case S.A a -> { boolean y = switch (s) { case S.A b -> { yield true; } default -> false; }; yield y ? a.v() : n; } default -> n; }); }", integer(7), s);
@@ -449,7 +449,7 @@ class Adr068SwitchHarnessTest {
     /** F720: arms of two types have no type of their own, so what needs one stops, and a value that reads each by its own runs. */
     @Test
     void armsOfTwoTypesStopWhereTheyNeedOne() {
-        assertStopsOnJavac("static PlutusData d(BigInteger v) { return Builtins.iData(v); } public static long m(S s) { var v = switch (s) { case S.A a -> a.v(); default -> d(BigInteger.ONE); }; return JulcList.of(v).size(); }", "JULC0084", a(1));
+        assertStopsOnJavac("static PlutusData d(BigInteger v) { return Builtins.iData(v); } public static long m(S s) { var v = switch (s) { case S.A a -> a.v(); default -> d(BigInteger.ONE); }; return JulcList.of(v).size(); }", "JULC0012", a(1));
     }
 
     @Test

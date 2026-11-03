@@ -135,7 +135,7 @@ class Adr068LoweringToolTest {
 
     @Test
     void aRejectionOfWhatTheReferenceRejectsIsNotAPass() {
-        assertRow("reference-rejects-not-ported", 0, 0, "CHAR_LITERAL", row("class P { static long m() { char c = 'a'; return 1; } }"));
+        assertRow("reference-rejects-not-ported", 0, 1, "a text block", row("class P { static String m() { return \"\"\"\n    a\"\"\"; } }"));
     }
 
     /** A rule ported with the reference's code is the same rejection. */

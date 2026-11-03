@@ -144,16 +144,16 @@ component	Comparable<BigInteger>	both-reject	Unknown type: Comparable /// Unknow
 in-sealed	Comparable<BigInteger>	both-reject	Unknown type: Comparable /// Unknown type: Comparable (resolved to java.lang.Comparable)
 component	ArrayList<BigInteger>	both-reject	Unknown type: ArrayList /// Unknown type: ArrayList (resolved to java.util.ArrayList)
 in-sealed	ArrayList<BigInteger>	both-reject	Unknown type: ArrayList /// Unknown type: ArrayList (resolved to java.util.ArrayList)
-component	byte	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
-in-sealed	byte	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
-component	short	both-reject-same	Unsupported primitive type: short. Supported types: boolean, int, long /// Unsupported primitive type: short. Supported types: boolean, int, long
-in-sealed	short	both-reject-same	Unsupported primitive type: short. Supported types: boolean, int, long /// Unsupported primitive type: short. Supported types: boolean, int, long
-component	char	both-reject-same	Unsupported primitive type: char. Supported types: boolean, int, long /// Unsupported primitive type: char. Supported types: boolean, int, long
-in-sealed	char	both-reject-same	Unsupported primitive type: char. Supported types: boolean, int, long /// Unsupported primitive type: char. Supported types: boolean, int, long
-component	float	both-reject-same	Unsupported primitive type: float. Supported types: boolean, int, long /// Unsupported primitive type: float. Supported types: boolean, int, long
-in-sealed	float	both-reject-same	Unsupported primitive type: float. Supported types: boolean, int, long /// Unsupported primitive type: float. Supported types: boolean, int, long
-component	double	both-reject-same	Unsupported primitive type: double. Supported types: boolean, int, long /// Unsupported primitive type: double. Supported types: boolean, int, long
-in-sealed	double	both-reject-same	Unsupported primitive type: double. Supported types: boolean, int, long /// Unsupported primitive type: double. Supported types: boolean, int, long
+component	byte	both-reject	Unsupported primitive type: byte. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: byte. Supported types: boolean, int, long
+in-sealed	byte	both-reject	Unsupported primitive type: byte. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: byte. Supported types: boolean, int, long
+component	short	both-reject	Unsupported primitive type: short. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: short. Supported types: boolean, int, long
+in-sealed	short	both-reject	Unsupported primitive type: short. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: short. Supported types: boolean, int, long
+component	char	both-reject	Unsupported primitive type: char. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: char. Supported types: boolean, int, long
+in-sealed	char	both-reject	Unsupported primitive type: char. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: char. Supported types: boolean, int, long
+component	float	both-reject	Unsupported primitive type: float. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: float. Supported types: boolean, int, long
+in-sealed	float	both-reject	Unsupported primitive type: float. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: float. Supported types: boolean, int, long
+component	double	both-reject	Unsupported primitive type: double. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: double. Supported types: boolean, int, long
+in-sealed	double	both-reject	Unsupported primitive type: double. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: double. Supported types: boolean, int, long
 component	int[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: int[]
 in-sealed	int[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: int[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: int[]
 component	long[]	both-reject-same	Arrays are not supported except byte[]. Use List<T> instead. Got: long[] /// Arrays are not supported except byte[]. Use List<T> instead. Got: long[]
@@ -220,7 +220,7 @@ decl	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {
 decl	record R(BigInteger a) { record N(R r) {} } class P {}	equal	
 decl	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	equal	
 decl	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
-decl	record R(byte... xs) {} class P {}	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
+decl	record R(byte... xs) {} class P {}	both-reject	Unsupported primitive type: byte. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: byte. Supported types: boolean, int, long
 decl	record R(final BigInteger a) {} class P {}	JAVAC-REJECTS	JULC0085: record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers)
 decl	record R(@Deprecated BigInteger a) {} class P {}	equal	
 decl	class P { record R(BigInteger a) {} static class Q { record R(byte[] b) {} } record H(R r, Q.R q) {} }	equal	
@@ -293,7 +293,7 @@ pkg	record R(BigInteger a) { static BigInteger z = BigInteger.ZERO; } class P {}
 pkg	record R(BigInteger a) { record N(R r) {} } class P {}	equal	
 pkg	record R(BigInteger a) implements Comparable<R> { public int compareTo(R o) { return 0; } } class P {}	equal	
 pkg	record R(BigInteger... xs) {} class P {}	JAVAC-REJECTS	Arrays are not supported except byte[]. Use List<T> instead. Got: java.math.BigInteger[]
-pkg	record R(byte... xs) {} class P {}	both-reject-same	Unsupported primitive type: byte. Supported types: boolean, int, long /// Unsupported primitive type: byte. Supported types: boolean, int, long
+pkg	record R(byte... xs) {} class P {}	both-reject	Unsupported primitive type: byte. Supported types: boolean, int, long /// JULC0124: Unsupported primitive type: byte. Supported types: boolean, int, long
 pkg	record R(final BigInteger a) {} class P {}	JAVAC-REJECTS	JULC0085: record components cannot have modifiers (compiler.err.record.cant.declare.field.modifiers)
 pkg	record R(@Deprecated BigInteger a) {} class P {}	equal	
 pkg	class P { record R(BigInteger a) {} static class Q { record R(byte[] b) {} } record H(R r, Q.R q) {} }	equal	

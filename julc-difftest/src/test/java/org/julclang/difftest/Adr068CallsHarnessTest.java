@@ -575,7 +575,7 @@ class Adr068CallsHarnessTest {
         assertStopsOnJavac("public static boolean m(BigInteger a, BigInteger b) { return a == b; }", "JULC0086", integer(1), integer(1));
         assertStopsOnJavac("public static boolean m(byte[] a, byte[] b) { return a.equals(b); }", "JULC0087", bytes(1), bytes(1));
         assertStopsOnJavac("public static String m(String a) { return a + 1; }", "JULC0090", string("x"));
-        assertStopsOnJavac("public static boolean m(BigInteger a, PlutusData d) { return a.equals(d); }", "JULC0084", integer(1), integer(1));
+        assertStopsOnJavac("public static boolean m(BigInteger a, PlutusData d) { return a.equals(d); }", "JULC0078", integer(1), integer(1));
     }
 
     @Test
