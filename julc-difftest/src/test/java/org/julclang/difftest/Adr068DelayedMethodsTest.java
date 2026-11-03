@@ -5,7 +5,6 @@ import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
-import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
@@ -14,6 +13,7 @@ import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.core.Constant;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Term;
+import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
@@ -30,10 +30,9 @@ import static org.julclang.difftest.Adr068CallsHarnessTest.assertBothDivergeAlik
 import static org.julclang.difftest.Adr068CallsHarnessTest.bool;
 import static org.julclang.difftest.Adr068CallsHarnessTest.integer;
 import static org.julclang.difftest.Adr068CallsHarnessTest.list;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ADR-068 B4: a method with no parameters whose body may fail runs at each call, and only if it is called, as in Java. The JVM
@@ -479,10 +478,15 @@ class Adr068DelayedMethodsTest {
         assertEquals(List.of("T", "T"), assertInstanceOf(EvalResult.Success.class, vm.evaluateWithArgs(g, List.<PlutusData>of())).traces());
     }
 
-    @Test
-    void aLibraryStopsOnJavac() {
-        var thrown = assertThrows(CompilerException.class,
-                () -> compiler(CompilerFrontend.JAVAC, OptimizationLevel.PV11_SAFE).compileMethod(ROOT, "f", List.of(LIBRARY)));
-        assertTrue(thrown.diagnostics().stream().anyMatch(d -> "JULC0084".equals(d.code())), thrown::getMessage);
+    /** Group 3a: the library lowers on {@code JAVAC}, and its methods with no parameters are delayed as on the reference. */
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void aLibraryOnJavacIsTheReferences(OptimizationLevel level) {
+        for (var method : List.of("f", "g")) {
+            assertArrayEquals(
+                    UplcFlatEncoder.encodeProgram(compiler(CompilerFrontend.JAVAPARSER, level).compileMethod(ROOT, method, List.of(LIBRARY)).program()),
+                    UplcFlatEncoder.encodeProgram(compiler(CompilerFrontend.JAVAC, level).compileMethod(ROOT, method, List.of(LIBRARY)).program()),
+                    method + " at " + level);
+        }
     }
 }

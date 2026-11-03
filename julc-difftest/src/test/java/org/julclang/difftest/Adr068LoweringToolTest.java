@@ -879,8 +879,9 @@ class Adr068LoweringToolTest {
     private static String construct(String library, String caller) {
         var root = "import lib.L;\nclass P {\n    " + caller + "\n}\n";
         var unit = "package lib;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n@OnchainLibrary\npublic class L {\n    " + library + "\n}\n";
+        // The library's own methods are attempted first (D8); this is the caller's.
         return JavacEvidence.attempts(root, List.of(unit), "m", null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
-                .getFirst().construct();
+                .stream().filter(attempt -> attempt.binder().equals("P.m")).findFirst().orElseThrow().construct();
     }
 
     @Test
