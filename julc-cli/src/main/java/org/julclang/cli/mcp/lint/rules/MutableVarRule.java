@@ -5,6 +5,7 @@ import org.julclang.cli.mcp.lint.LintRule;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.util.TreePath;
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ExpressionTree;
@@ -154,10 +155,14 @@ public final class MutableVarRule implements LintRule {
         return findings;
     }
 
-    /** JavaParser's assignment expressions: {@code =} and the compound ones, in pre-order. */
+    /**
+     * JavaParser's assignment expressions: {@code =} and the compound ones, in pre-order. An annotation's
+     * {@code name = value} is an assignment in javac's tree and a member-value pair in JavaParser's, so it is left out.
+     */
     private static List<TreePath> assignments(TreePath root) {
         return LintTrees.findAll(root, ExpressionTree.class).stream()
-                .filter(path -> path.getLeaf() instanceof AssignmentTree
+                .filter(path -> (path.getLeaf() instanceof AssignmentTree
+                        && !(path.getParentPath().getLeaf() instanceof AnnotationTree))
                         || path.getLeaf() instanceof CompoundAssignmentTree)
                 .toList();
     }

@@ -213,8 +213,9 @@ final class SourceAnnotations {
             String string = v instanceof String s && !written.startsWith("\"\"\"") ? s : null;
             return new Value(string, integer, written);
         }
+        // Anything else as a printer lays it out, as JavaParser's does: `a + b`, whatever the spacing written.
         String name = dottedOrNull(expression);
-        return new Value(null, null, name != null ? name : written);
+        return new Value(null, null, name != null ? name : expression.toString());
     }
 
     private static String dotted(Tree tree) {

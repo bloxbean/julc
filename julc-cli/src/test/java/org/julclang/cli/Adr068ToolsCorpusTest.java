@@ -6,6 +6,7 @@ import org.julclang.cli.mcp.lint.LintEngine;
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.cli.mcp.tools.EvaluateToolAccess;
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
@@ -36,14 +37,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @Tag("adr068-tools")
 class Adr068ToolsCorpusTest {
 
+    private static final String READER_REJECTS = "JuLC's strict reader (JavaSourceParser, ADR-062 T24) rejects a"
+            + " source javac's parser reads; ADR-068 keeps javac's reading (D5), and compiling the source reports its"
+            + " problem";
+
     /** The differences a reason accounts for, by class (the evidence names each file). */
     private static final Map<String, String> ALLOWED = Map.of(
             "lint:javac-rejects",
             "javac's parser rejects the source, so it has no findings; JavaParser lints the tree it recovered",
             "arity:javac-rejects",
             "javac's parser rejects the source, so the arity is unknown (-1) and the compiler reports the error",
-            "discovery:javac-reads-literal",
-            "a literal with an unpaired surrogate is valid Java: the test is found and its compilation reports JULC0093");
+            "lint:reader-rejects", READER_REJECTS,
+            "arity:reader-rejects", READER_REJECTS,
+            "discovery:reader-rejects", READER_REJECTS
+                    + " (a literal with an unpaired surrogate: the test is found and its compilation reports JULC0093)");
 
     private final LintEngine lintJavaParser = new LintEngine(LintEngine.DEFAULT_RULES, LintEngine.Reader.JAVAPARSER);
     private final LintEngine lintJavac = new LintEngine(LintEngine.DEFAULT_RULES, LintEngine.Reader.JAVAC);
@@ -76,6 +83,9 @@ class Adr068ToolsCorpusTest {
             count(counts, "files");
             var syntax = JavacSyntax.read(text);
             if (syntax.hasErrors()) count(counts, "files:javac-rejects");
+            boolean readerRejects = !syntax.hasErrors() && !JavaSourceParser.parse(text).isSuccessful();
+            if (readerRejects) count(counts, "files:reader-rejects");
+            String other = syntax.hasErrors() ? ":javac-rejects" : readerRejects ? ":reader-rejects" : ":DIFFERENT";
 
             // Lint
             var expected = lintJavaParser.lint(text);
@@ -84,8 +94,13 @@ class Adr068ToolsCorpusTest {
             if (expected.equals(actual)) {
                 count(counts, "lint:same");
             } else {
-                record(counts, differences, file, syntax.hasErrors() ? "lint:javac-rejects" : "lint:DIFFERENT",
-                        expected, actual);
+                var missing = new ArrayList<>(expected);
+                missing.removeAll(actual);
+                var extra = new ArrayList<>(actual);
+                extra.removeAll(expected);
+                record(counts, differences, file, "lint" + other,
+                        missing.isEmpty() && extra.isEmpty() ? "order " + expected : "only JavaParser: " + missing,
+                        "only javac: " + extra);
             }
 
             // julc check's discovery
@@ -94,10 +109,7 @@ class Adr068ToolsCorpusTest {
             if (found.equals(foundOnJavac)) {
                 count(counts, found.equals("[]") ? "discovery:same-none" : "discovery:same");
             } else {
-                boolean literal = found.startsWith("ERROR") && !foundOnJavac.startsWith("ERROR")
-                        && hasUnpairedSurrogateEscape(text);
-                record(counts, differences, file, literal ? "discovery:javac-reads-literal" : "discovery:DIFFERENT",
-                        found, foundOnJavac);
+                record(counts, differences, file, "discovery" + other, found, foundOnJavac);
             }
 
             // MCP evaluate's arity, for the first methods javac finds and a missing one
@@ -113,8 +125,7 @@ class Adr068ToolsCorpusTest {
                 if (arity == arityOnJavac) {
                     count(counts, "arity:same");
                 } else {
-                    record(counts, differences, file, syntax.hasErrors() ? "arity:javac-rejects" : "arity:DIFFERENT",
-                            name + "=" + arity, name + "=" + arityOnJavac);
+                    record(counts, differences, file, "arity" + other, name + "=" + arity, name + "=" + arityOnJavac);
                 }
             }
         }
@@ -139,11 +150,6 @@ class Adr068ToolsCorpusTest {
         } catch (IllegalArgumentException e) {
             return "ERROR " + e.getMessage().substring(0, e.getMessage().indexOf(": "));
         }
-    }
-
-    /** A {@code \}{@code uD800}-{@code \}{@code uDFFF} escape: a literal JuLC's reader rejects and javac reads. */
-    private static boolean hasUnpairedSurrogateEscape(String text) {
-        return text.matches("(?s).*\\\\u+[dD][89abAB][0-9a-fA-F]{2}.*") || text.matches("(?s).*\\\\u+[dD][c-fC-F][0-9a-fA-F]{2}.*");
     }
 
     private static void count(Map<String, Integer> counts, String key) {

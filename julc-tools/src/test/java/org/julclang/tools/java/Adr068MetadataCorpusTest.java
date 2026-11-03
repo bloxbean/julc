@@ -1,6 +1,8 @@
 package org.julclang.tools.java;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.compiler.validate.SubsetValidator;
 import org.julclang.tools.model.CheckResponse;
 import org.julclang.tools.model.DiagnosticDto;
 import org.junit.jupiter.api.Assumptions;
@@ -33,7 +35,9 @@ class Adr068MetadataCorpusTest {
 
     private static final Map<String, String> ALLOWED = Map.of(
             "metadata:both-unparsable", "both parsers reject the source; each reports in its own words (D5)",
-            "metadata:javac-rejects", "javac's parser rejects the source, which JavaParser's reading accepted");
+            "metadata:javac-rejects", "javac's parser rejects the source, which JavaParser's reading accepted",
+            "metadata:reader-rejects", "JuLC's strict reader (JavaSourceParser, ADR-062 T24) rejects a source javac's"
+                    + " parser reads; ADR-068 keeps javac's reading (D5)");
 
     @Test
     void javacReadsTheMetadataJavaParserReads() throws IOException {
@@ -60,22 +64,26 @@ class Adr068MetadataCorpusTest {
             var expected = JavaMetadataExtractor.extract(text, JavaMetadataExtractor.Reader.JAVAPARSER);
             var actual = JavaMetadataExtractor.extract(text, JavaMetadataExtractor.Reader.JAVAC);
             if (expected.contractName() != null) count(counts, "validators");
-            long subset = expected.diagnostics().stream().filter(d -> d.code() != null).count();
+            int subset = subsetDiagnostics(text);
             if (subset > 0) count(counts, "javaparser-subset-diagnostics-files");
             String kind;
             boolean javacRejects = JavacSyntax.read(text).hasErrors();
-            if (comparable(expected).equals(comparable(actual))) {
+            boolean readerRejects = !javacRejects && !JavaSourceParser.parse(text).isSuccessful();
+            if (comparable(expected, subset).equals(comparable(actual, 0))) {
                 kind = "metadata:same";
             } else if (javacRejects && unparsable(expected)) {
                 kind = "metadata:both-unparsable";
             } else if (javacRejects) {
                 kind = "metadata:javac-rejects";
+            } else if (readerRejects) {
+                kind = "metadata:reader-rejects";
             } else {
                 kind = "metadata:DIFFERENT";
             }
             count(counts, kind);
             if (!kind.equals("metadata:same")) {
-                differences.add(kind + "\t" + file + "\t" + clip(comparable(expected)) + "\t" + clip(comparable(actual)));
+                differences.add(kind + "\t" + file + "\t" + clip(comparable(expected, subset)) + "\t"
+                        + clip(comparable(actual, 0)));
             }
         }
         var summary = new ArrayList<String>();
@@ -95,9 +103,19 @@ class Adr068MetadataCorpusTest {
                 && response.diagnostics().stream().noneMatch(d -> d.message().startsWith("No validator annotation"));
     }
 
-    /** The response without the subset diagnostics (coded), and without validity when they decided it. */
-    private static String comparable(CheckResponse r) {
-        List<DiagnosticDto> own = r.diagnostics().stream().filter(d -> d.code() == null).toList();
+    /**
+     * How many diagnostics the JavaParser frontend's subset validator adds to the JavaParser reading: the extractor puts
+     * them first. Coded or not (some of its warnings have no code).
+     */
+    private static int subsetDiagnostics(String text) {
+        var parsed = JavaSourceParser.parse(text);
+        if (!parsed.isSuccessful() || parsed.getResult().isEmpty()) return 0;
+        return new SubsetValidator().validate(parsed.getResult().get()).size();
+    }
+
+    /** The response without its first {@code subset} diagnostics, and without validity when they decided it. */
+    private static String comparable(CheckResponse r, int subset) {
+        List<DiagnosticDto> own = r.diagnostics().subList(Math.min(subset, r.diagnostics().size()), r.diagnostics().size());
         boolean ownErrors = own.stream().anyMatch(d -> "ERROR".equals(d.level()));
         return String.join(" | ", String.valueOf(!ownErrors), String.valueOf(r.contractName()), String.valueOf(r.purpose()),
                 String.valueOf(r.params()), String.valueOf(r.datumName()), String.valueOf(r.datumFields()),

@@ -1,6 +1,12 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.ArrayTypeTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.ParameterizedTypeTree;
+import com.sun.source.tree.PrimitiveTypeTree;
+import com.sun.source.tree.WildcardTree;
 import com.sun.source.tree.LineMap;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.SourcePositions;
@@ -93,6 +99,29 @@ public record JavacSyntax(String text, CompilationUnitTree unit, SourcePositions
         long end = end(tree);
         if (start < 0 || end < start || end > text.length()) return "";
         return text.substring((int) start, (int) end);
+    }
+
+    /**
+     * A type as JuLC's tools print it: names as written, type arguments joined by a comma with no space
+     * ({@code Map<byte[],BigInteger>}), as they have printed it since JavaParser's {@code asString}. Anything that is not a
+     * type tree prints as javac prints it.
+     */
+    public static String typeName(Tree type) {
+        return switch (type) {
+            case IdentifierTree id -> id.getName().toString();
+            case MemberSelectTree select -> typeName(select.getExpression()) + "." + select.getIdentifier();
+            case PrimitiveTypeTree primitive -> primitive.getPrimitiveTypeKind().name().toLowerCase(Locale.ROOT);
+            case ArrayTypeTree array -> typeName(array.getType()) + "[]";
+            case ParameterizedTypeTree parameterized -> typeName(parameterized.getType()) + "<"
+                    + String.join(",", parameterized.getTypeArguments().stream().map(JavacSyntax::typeName).toList()) + ">";
+            case WildcardTree wildcard -> switch (wildcard.getKind()) {
+                case EXTENDS_WILDCARD -> "? extends " + typeName(wildcard.getBound());
+                case SUPER_WILDCARD -> "? super " + typeName(wildcard.getBound());
+                default -> "?";
+            };
+            case null -> "";
+            default -> type.toString();
+        };
     }
 
     /** The path from the unit to {@code tree}, or null when the unit does not hold it. */

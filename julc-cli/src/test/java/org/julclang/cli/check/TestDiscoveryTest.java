@@ -55,14 +55,16 @@ class TestDiscoveryTest {
                 """);
         assertEquals(0, discover(tempDir).size());
 
-        // With a Test method, the strict diagnostic stands.
+        // With a Test method, JavaParser's strict diagnostic stands (javac's reading finds the test:
+        // TestDiscoveryOnJavacTest).
         Files.writeString(tempDir.resolve("Mentions.java"), """
                 public class Mentions {
                     @Test
                     public static boolean t() { return "\\uD800".isEmpty(); }
                 }
                 """);
-        var error = assertThrows(IllegalArgumentException.class, () -> discover(tempDir));
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> TestDiscovery.discover(tempDir, TestDiscovery.Reader.JAVAPARSER));
         assertTrue(error.getMessage().contains("Could not parse @Test candidate"), error.getMessage());
     }
 

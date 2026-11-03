@@ -66,7 +66,8 @@ class LintEngineOnJavacTest extends LintEngineTest {
                     }
                 }
                 """);
-        assertEquals(2, findings.size(), findings.toString());
+        // The inner switch's case is reported twice, once under each switch it is in, as JavaParser's reading does.
+        assertEquals(3, findings.size(), findings.toString());
     }
 
     @Test

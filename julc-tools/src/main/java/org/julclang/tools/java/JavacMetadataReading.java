@@ -28,7 +28,7 @@ import java.util.Optional;
  * {@code @Param} fields, datum and redeemer, found by the same rules, read from javac's parser. JavaParser's names map
  * to javac's trees so: a class or interface declaration is a named {@link ClassTree} of kind {@code CLASS} or
  * {@code INTERFACE}; a record's parameters are its instance fields, which javac's parser lists first among its members;
- * a type is printed by javac's tree, as JavaParser prints it.
+ * a type prints as {@link JavacSyntax#typeName} prints it, as JavaParser's {@code asString} did.
  * <p>
  * What it does not do: the JavaParser reading also runs the JavaParser frontend's subset validator, whose rules need
  * javac's attribution on this frontend ({@code SubsetScan}); this reading reports only its own diagnostics.
@@ -112,14 +112,14 @@ final class JavacMetadataReading {
         boolean isSpending = "SPENDING".equals(purpose);
         String redeemerType = null;
         if (isSpending && entrypointParams.size() >= 3) {
-            String datumType = entrypointParams.get(0).getType().toString();
+            String datumType = JavacSyntax.typeName(entrypointParams.get(0).getType());
             datumName = datumType;
             datumFields = extractRecordFields(validatorClass, datumType);
-            redeemerType = entrypointParams.get(1).getType().toString();
+            redeemerType = JavacSyntax.typeName(entrypointParams.get(1).getType());
         } else if (isSpending && entrypointParams.size() == 2) {
-            redeemerType = entrypointParams.get(0).getType().toString();
+            redeemerType = JavacSyntax.typeName(entrypointParams.get(0).getType());
         } else if (!isSpending && entrypointParams.size() >= 2) {
-            redeemerType = entrypointParams.get(0).getType().toString();
+            redeemerType = JavacSyntax.typeName(entrypointParams.get(0).getType());
         }
         if (redeemerType != null) {
             var variants = extractVariants(validatorClass, redeemerType);
@@ -223,7 +223,7 @@ final class JavacMetadataReading {
         for (Tree member : cls.getMembers()) {
             if (member instanceof VariableTree field && hasAnnotationNamed(field.getModifiers(), "Param")) {
                 params.add(new FieldDto(field.getName().toString(),
-                        JavaMetadataExtractor.mapDisplayType(field.getType().toString())));
+                        JavaMetadataExtractor.mapDisplayType(JavacSyntax.typeName(field.getType()))));
             }
         }
         return params;
@@ -273,7 +273,7 @@ final class JavacMetadataReading {
             if (member instanceof VariableTree component
                     && !component.getModifiers().getFlags().contains(Modifier.STATIC)) {
                 String name = component.getName().toString();
-                fields.add(new FieldDto(name, JavaMetadataExtractor.mapDisplayType(component.getType().toString(), name)));
+                fields.add(new FieldDto(name, JavaMetadataExtractor.mapDisplayType(JavacSyntax.typeName(component.getType()), name)));
             }
         }
         return fields;

@@ -291,7 +291,7 @@ public final class SwitchFieldShadowRule implements LintRule {
     /** A type pattern's type and binding; for another label, JavaParser's reading of its printed text. */
     private static PatternLabel patternLabel(CaseLabelTree label) {
         if (label instanceof PatternCaseLabelTree pattern && pattern.getPattern() instanceof BindingPatternTree binding) {
-            return new PatternLabel(binding.getVariable().getType().toString(),
+            return new PatternLabel(JavacSyntax.typeName(binding.getVariable().getType()),
                     binding.getVariable().getName().toString());
         }
         String text = label instanceof ConstantCaseLabelTree constant ? constant.getConstantExpression().toString()

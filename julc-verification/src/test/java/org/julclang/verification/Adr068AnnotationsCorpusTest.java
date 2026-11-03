@@ -1,5 +1,6 @@
 package org.julclang.verification;
 
+import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
@@ -35,6 +36,8 @@ class Adr068AnnotationsCorpusTest {
 
     private static final Map<String, String> ALLOWED = Map.of(
             "annotations:javac-rejects", "javac's parser rejects the source: both readings throw, in their own words",
+            "annotations:reader-rejects", "JuLC's strict reader (JavaSourceParser, ADR-062 T24) rejects a source"
+                    + " javac's parser reads; ADR-068 keeps javac's reading (D5)",
             "annotations:text-of-unresolved",
             "the printed text of an annotation no resolver reads, for a value JavaParser prints in its own layout");
 
@@ -67,6 +70,8 @@ class Adr068AnnotationsCorpusTest {
                 kind = "annotations:same";
             } else if (JavacSyntax.read(text).hasErrors()) {
                 kind = "annotations:javac-rejects";
+            } else if (expected.equals("ERROR") && !JavaSourceParser.parse(text).isSuccessful()) {
+                kind = "annotations:reader-rejects";
             } else if (withoutUnresolvedText(text, SourceAnnotations.Reader.JAVAPARSER)
                     .equals(withoutUnresolvedText(text, SourceAnnotations.Reader.JAVAC))) {
                 kind = "annotations:text-of-unresolved";

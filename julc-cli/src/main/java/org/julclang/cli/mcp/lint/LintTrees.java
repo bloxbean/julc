@@ -102,17 +102,61 @@ public final class LintTrees {
     public static long declaratorNameStart(JavacSyntax syntax, TreePath path) {
         var variable = (VariableTree) path.getLeaf();
         Tree type = variable.getType();
-        VariableTree previous = previousSibling(path);
-        if (previous != null && previous.getType() == type) {
-            long comma = syntax.nextToken(syntax.end(previous));
+        TreePath previous = previousSibling(path);
+        // `int a, b[]` gives b an array type of a's very element type tree.
+        if (previous != null && type != null
+                && innermost(((VariableTree) previous.getLeaf()).getType()) == innermost(type)) {
+            // javac keeps no end for a declarator before the last one: step over its name, dimensions and initializer.
+            var before = (VariableTree) previous.getLeaf();
+            long after = before.getInitializer() != null ? syntax.end(before.getInitializer())
+                    : afterNameAndDimensions(syntax, declaratorNameStart(syntax, previous));
+            long comma = syntax.nextToken(after);
             if (comma < 0 || syntax.text().charAt((int) comma) != ',') return -1;
             return syntax.nextToken(comma + 1);
         }
         if (type == null) return syntax.start(variable);
+        // In `int a[]` the array type javac builds ends after the name, which follows the element type.
+        Tree element = type;
+        while (element instanceof ArrayTypeTree array) element = array.getType();
+        if (element != type) {
+            long afterElement = syntax.nextToken(syntax.end(element));
+            if (afterElement >= 0 && syntax.text().charAt((int) afterElement) != '[') return afterElement;
+        }
         return syntax.nextToken(syntax.end(type));
     }
 
-    private static VariableTree previousSibling(TreePath path) {
+    private static Tree innermost(Tree type) {
+        while (type instanceof ArrayTypeTree array) type = array.getType();
+        return type;
+    }
+
+    /** The offset after an identifier at {@code name} (Unicode escapes included) and any {@code []} after it. */
+    private static long afterNameAndDimensions(JavacSyntax syntax, long name) {
+        if (name < 0) return -1;
+        String text = syntax.text();
+        int i = (int) name;
+        while (i < text.length()) {
+            if (text.startsWith("\\u", i)) {
+                int k = i + 1;
+                while (k < text.length() && text.charAt(k) == 'u') k++;
+                i = k + 4;
+            } else if (Character.isJavaIdentifierPart(text.charAt(i))) {
+                i++;
+            } else {
+                break;
+            }
+        }
+        long at = i;
+        while (true) {
+            long open = syntax.nextToken(at);
+            if (open < 0 || text.charAt((int) open) != '[') return at;
+            long close = syntax.nextToken(open + 1);
+            if (close < 0 || text.charAt((int) close) != ']') return at;
+            at = close + 1;
+        }
+    }
+
+    private static TreePath previousSibling(TreePath path) {
         Tree parent = path.getParentPath().getLeaf();
         List<? extends Tree> siblings = switch (parent) {
             case com.sun.source.tree.BlockTree block -> block.getStatements();
@@ -126,7 +170,8 @@ public final class LintTrees {
         for (int i = 0; i < siblings.size(); i++) {
             if (siblings.get(i) == path.getLeaf()) at = i;
         }
-        return at > 0 && siblings.get(at - 1) instanceof VariableTree v ? v : null;
+        return at > 0 && siblings.get(at - 1) instanceof VariableTree v
+                ? new TreePath(path.getParentPath(), v) : null;
     }
 
     /**
