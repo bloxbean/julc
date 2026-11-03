@@ -235,6 +235,18 @@ public final class CompilerTypeDiagnostics {
         return exception(info.code(), info.level(), info.fix(), info.format(method, owner, type), location);
     }
 
+    /** JULC0103: an entry point's last parameter, which the wrapper gives the script context's Data, is of another type. */
+    public static CompilerException entrypointContextParameter(String method, String owner, String type, SourceLocation location) {
+        var info = DiagnosticCodes.ENTRYPOINT_CONTEXT_PARAMETER;
+        return exception(info.code(), info.level(), info.fix(), info.format(method, owner, type), location);
+    }
+
+    /** JULC0011: a name with no binder; {@code location} is null where the reference's own message has no position. */
+    public static CompilerException undefinedVariable(String name, SourceLocation location) {
+        var info = DiagnosticCodes.UNDEFINED_VARIABLE;
+        return exception(info.code(), info.level(), info.fix(), info.format(name), location);
+    }
+
     /** JULC0096: a second entry point, or a second validator class. */
     public static CompilerException entrypointNotUnique(String owner, String what, SourceLocation location) {
         var info = DiagnosticCodes.ENTRYPOINT_NOT_UNIQUE;
@@ -298,7 +310,17 @@ public final class CompilerTypeDiagnostics {
     /** JULC0087: an operation whose JVM equality reaches an array compared by identity, along {@code path}. */
     public static CompilerException arrayEquals(String operation, String path, SourceLocation location) {
         var info = DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED;
-        return exception(info.code(), info.level(), info.fix(), info.format(operation, path), location);
+        return exception(info.code(), info.level(), info.fix(), info.format(operation, path, "compares an array by identity"), location);
+    }
+
+    /**
+     * JULC0087 where the check cannot read the compared type, along {@code path}: a raw collection, a type with no rule, an
+     * operand of no readable type. It cannot be shown to compare by value, so it fails closed, and says that, not "an array".
+     */
+    public static CompilerException equalityUnread(String operation, String path, SourceLocation location) {
+        var info = DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED;
+        return exception(info.code(), info.level(), info.fix(),
+                info.format(operation, path, "cannot be shown to compare by value"), location);
     }
 
     /** JULC0078: an operation that compares two types Java keeps distinct, whose representations can still be equal. */

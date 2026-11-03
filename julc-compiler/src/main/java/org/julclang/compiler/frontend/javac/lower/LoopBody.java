@@ -11,6 +11,7 @@ import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.tree.WhileLoopTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.subset.LoopRules;
@@ -122,14 +123,11 @@ final class LoopBody {
         String name = Statements.statementName(statement);
         if (!shape.carried().isSingle()) {
             return shape.breaks()
-                    ? facts.locatedRejection("Unsupported in multi-acc break-aware body: " + name,
-                            "Inside multi-accumulator loops with break, only variable declarations, assignments, if/else, and break are supported.", statement)
-                    : facts.locatedRejection("Unsupported in multi-acc loop body: " + name,
-                            "Inside multi-accumulator loops, only variable declarations, assignments, and if/else are supported.", statement);
+                    ? facts.rejection(DiagnosticCodes.LOOP_BODY_STATEMENT_UNSUPPORTED, statement, "in multi-acc break-aware", name)
+                    : facts.rejection(DiagnosticCodes.LOOP_BODY_STATEMENT_UNSUPPORTED, statement, "in multi-acc loop", name);
         }
         return shape.breaks()
-                ? facts.locatedRejection("Unsupported statement in break-aware loop body: " + name,
-                        "Inside loops with break, only variable declarations, assignments, if/else, and break are supported.", statement)
+                ? facts.rejection(DiagnosticCodes.LOOP_BODY_STATEMENT_UNSUPPORTED, statement, "statement in break-aware loop", name)
                 : statements.unsupportedAsValue(statement);
     }
 
@@ -157,8 +155,7 @@ final class LoopBody {
      */
     private PirTerm assigned(ExpressionTree assignment, IdentifierTree target, Scope.Binder binder, Frame frame) {
         if (binder == null) {
-            throw facts.locatedRejection("Assignment to undeclared variable '" + target.getName() + "'",
-                    "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.", assignment);
+            throw facts.rejection(DiagnosticCodes.UNDECLARED_ASSIGNMENT, assignment, target.getName());
         }
         return lowering.assigned(assignment, binder, frame);
     }

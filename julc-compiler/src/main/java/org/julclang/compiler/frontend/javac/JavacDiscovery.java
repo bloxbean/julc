@@ -413,6 +413,19 @@ final class JavacDiscovery {
         }
     }
 
+    /**
+     * Whether {@code method}, an entry point of {@code type}, has a parameter count its purpose takes: two, or three for a
+     * spending entry point ({@link #requireEntrypointParameters}, {@link #multiEntrypoints}).
+     */
+    boolean takesParameterCount(ClassTree type, MethodTree method) {
+        int count = method.getParameters().size();
+        if (count == 2) return true;
+        if (count != 3) return false;
+        var annotations = validatorAnnotations(type);
+        return annotations.contains("SpendingValidator")
+                || annotations.contains("MultiValidator") && purposeName(method).equals("SPEND");
+    }
+
     /** {@link DiagnosticInfo#format} takes the names as javac holds them too: each is printed as text. */
     private CompilerException validationError(DiagnosticInfo info, String suggestion, Tree tree, Object... args) {
         var printable = new Object[args.length];

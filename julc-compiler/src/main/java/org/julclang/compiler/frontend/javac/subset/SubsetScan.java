@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac.subset;
 
 import com.sun.source.tree.AnnotationTree;
+import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.BlockTree;
@@ -26,12 +27,14 @@ import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.StatementTree;
+import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.TryTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticCodes;
@@ -79,7 +82,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.UNBOUNDED_WILDCARD, Tree.Kind.EXTENDS_WILDCARD, Tree.Kind.SUPER_WILDCARD,
             Tree.Kind.IDENTIFIER, Tree.Kind.MEMBER_SELECT, Tree.Kind.PARENTHESIZED, Tree.Kind.NEW_ARRAY,
             Tree.Kind.INT_LITERAL, Tree.Kind.LONG_LITERAL, Tree.Kind.BOOLEAN_LITERAL, Tree.Kind.STRING_LITERAL,
-            Tree.Kind.MEMBER_REFERENCE, Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP, Tree.Kind.TRY, Tree.Kind.THROW);
+            Tree.Kind.MEMBER_REFERENCE, Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP, Tree.Kind.TRY, Tree.Kind.THROW,
+            Tree.Kind.SYNCHRONIZED, Tree.Kind.ARRAY_ACCESS, Tree.Kind.NULL_LITERAL);
 
     /** The kinds that are subset only where lowering reaches them. */
     private static final Set<Tree.Kind> WHERE_LOWERED = EnumSet.of(
@@ -93,7 +97,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.PLUS, Tree.Kind.MINUS, Tree.Kind.MULTIPLY, Tree.Kind.DIVIDE, Tree.Kind.REMAINDER,
             Tree.Kind.EQUAL_TO, Tree.Kind.NOT_EQUAL_TO, Tree.Kind.LESS_THAN, Tree.Kind.LESS_THAN_EQUAL,
             Tree.Kind.GREATER_THAN, Tree.Kind.GREATER_THAN_EQUAL, Tree.Kind.CONDITIONAL_AND, Tree.Kind.CONDITIONAL_OR,
-            Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.UNARY_MINUS,
+            Tree.Kind.LOGICAL_COMPLEMENT, Tree.Kind.UNARY_MINUS, Tree.Kind.UNARY_PLUS, Tree.Kind.BITWISE_COMPLEMENT,
+            Tree.Kind.AND, Tree.Kind.OR, Tree.Kind.XOR, Tree.Kind.LEFT_SHIFT, Tree.Kind.RIGHT_SHIFT, Tree.Kind.UNSIGNED_RIGHT_SHIFT,
             Tree.Kind.SWITCH, Tree.Kind.SWITCH_EXPRESSION, Tree.Kind.CASE, Tree.Kind.YIELD, Tree.Kind.DEFAULT_CASE_LABEL,
             Tree.Kind.PATTERN_CASE_LABEL, Tree.Kind.CONSTANT_CASE_LABEL,
             Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP, Tree.Kind.BREAK, Tree.Kind.CONTINUE,
@@ -112,7 +117,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
 
     /** The statements rejected wherever they stand, lowered or not, with a code of their own. */
     private static final Set<Tree.Kind> REJECTED_STATEMENTS = EnumSet.of(Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP, Tree.Kind.TRY,
-            Tree.Kind.THROW);
+            Tree.Kind.THROW, Tree.Kind.SYNCHRONIZED);
 
     /** The methods of a functional interface, as the reference lists them. */
     private static final Set<String> FUNCTIONAL_METHODS = Set.of("apply", "test", "accept", "get", "run");
@@ -127,7 +132,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     private final EqualityRules equality;
     /** The methods and fields lowering reaches. */
     private final Set<Tree> lowered;
-    private final List<CompilerDiagnostic> warnings = new ArrayList<>();
+    /** What the scan found, in the order it found it: its warnings, and every rule's error (F946, as the reference collects). */
+    private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     /** The methods not read: a library's templates, which only a producer's request lowers. */
     private Set<Tree> skipped = Set.of();
     private boolean inLowered;
@@ -143,6 +149,11 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     }
 
     /**
+     * A rule's rejection does not stop the scan: as the reference's validator does, it collects every error and goes on past
+     * the subtree that broke the rule, and the compilation fails with all of them, and the warnings found before, in the
+     * order found. The first error is the one a source with one error would give alone. A construct not ported stops the scan
+     * at once ({@code JULC0084}, I8), and if an error came before it, the errors are what the compilation fails with.
+     *
      * @param lowered the methods and fields of {@code unit} that the compilation lowers, by identity
      * @return what the scan warns of, in source order
      */
@@ -154,8 +165,18 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     public static List<CompilerDiagnostic> check(JavacFacts facts, Tree unit, Set<Tree> lowered, Set<Tree> skipped) {
         var scan = new SubsetScan(facts, lowered);
         scan.skipped = skipped;
-        scan.scan(unit, null);
-        return scan.warnings;
+        try {
+            scan.scan(unit, null);
+        } catch (CompilerException stop) {
+            // A stop after an error: the errors before it are the rejection.
+            if (!scan.hasErrors()) throw stop;
+        }
+        if (scan.hasErrors()) throw new CompilerException(scan.diagnostics);
+        return List.copyOf(scan.diagnostics);
+    }
+
+    private boolean hasErrors() {
+        return diagnostics.stream().anyMatch(diagnostic -> diagnostic.level() == CompilerDiagnostic.Level.ERROR);
     }
 
     /** A {@code ;} after a type is no declaration: javac keeps it among a unit's types. */
@@ -163,7 +184,15 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     public Void scan(Tree tree, Void unused) {
         if (tree != null && tree.getKind() == Tree.Kind.EMPTY_STATEMENT && facts.parent(tree) instanceof CompilationUnitTree) return null;
         if (tree != null && !allowed(tree.getKind())) throw NotPorted.at(facts, tree);
-        return super.scan(tree, unused);
+        try {
+            return super.scan(tree, unused);
+        } catch (NotPorted stop) {
+            throw stop;
+        } catch (CompilerException rejection) {
+            if (rejection.diagnostics().isEmpty()) throw rejection;
+            diagnostics.addAll(rejection.diagnostics());
+            return null;
+        }
     }
 
     private boolean allowed(Tree.Kind kind) {
@@ -246,14 +275,33 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     }
 
     /**
-     * In code nothing lowers the walk stops at the first statement it does not read. What is rejected wherever it stands has
-     * its code even so, in source order: a rejected statement, and floating point, which the reference rejects in any method.
+     * In code nothing lowers the walk stops at the first statement it does not read. What the reference's validator rejects
+     * wherever it stands has its code even so, in one walk in source order, before that stop: a rejected statement, a
+     * {@code break} outside a loop, floating point, {@code null}, {@code this} and {@code super}, an array that is no
+     * {@code byte[]} literal and its access, a method reference, a call through a functional local, a compound operator
+     * with no lowering, a pattern variable named like a field, and two declarators in one statement.
      */
     private void requireNoRejectedStatement(BlockTree tree) {
         for (var node : SubsetWalk.all(tree, Tree.class)) {
-            if (node instanceof BreakTree loopExit) visitBreak(loopExit, null);
-            if (REJECTED_STATEMENTS.contains(node.getKind())) scan(node, null);
-            if (node instanceof PrimitiveTypeTree type) visitPrimitiveType(type, null);
+            switch (node) {
+                case BreakTree loopExit -> visitBreak(loopExit, null);
+                case PrimitiveTypeTree type -> visitPrimitiveType(type, null);
+                case LiteralTree literal when literal.getKind() == Tree.Kind.NULL_LITERAL -> visitLiteral(literal, null);
+                case IdentifierTree name -> visitIdentifier(name, null);
+                case MemberSelectTree select when isThisOrSuper(select.getIdentifier()) -> visitMemberSelect(select, null);
+                case ArrayAccessTree access -> visitArrayAccess(access, null);
+                case MemberReferenceTree reference -> visitMemberReference(reference, null);
+                case NewArrayTree array when array.getType() != null -> visitNewArray(array, null);
+                case CompoundAssignmentTree compound when UNLOWERED_COMPOUNDS.containsKey(compound.getKind()) ->
+                        visitCompoundAssignment(compound, null);
+                case MethodInvocationTree call -> requireNoFunctionalCall(call);
+                case InstanceOfTree test -> requireNoPatternNamedLikeAField(test);
+                case VariableTree local when facts.parent(local) instanceof BlockTree block ->
+                        requireSingleDeclarator(local, block.getStatements());
+                default -> {
+                    if (REJECTED_STATEMENTS.contains(node.getKind())) scan(node, null);
+                }
+            }
         }
     }
 
@@ -268,7 +316,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         for (int i = 0; i + 1 < statements.size(); i++) {
             if (isError(statements.get(i))) {
                 var at = facts.location(statements.get(i + 1));
-                warnings.add(new CompilerDiagnostic(CompilerDiagnostic.Level.WARNING,
+                diagnostics.add(new CompilerDiagnostic(CompilerDiagnostic.Level.WARNING,
                         "Unreachable code after Builtins.error(). This code will never execute.", at.fileName(), at.line(), at.column()));
                 return;
             }
@@ -334,7 +382,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitLiteral(LiteralTree literal, Void ignored) {
-                if (literal.getKind() == Tree.Kind.NULL_LITERAL) throw NotPorted.at(facts, literal);
+                if (literal.getKind() == Tree.Kind.NULL_LITERAL) throw facts.rejection(DiagnosticCodes.NULL_UNSUPPORTED, literal);
                 requirePairedSurrogates(literal);
                 return null;
             }
@@ -353,8 +401,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     public Void visitBreak(BreakTree tree, Void unused) {
         if (facts.enclosing(tree, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
             if (tree.getLabel() != null) throw facts.rejection(DiagnosticCodes.LABEL_UNSUPPORTED, tree, "break " + tree.getLabel());
-            throw facts.rejection("break is only supported inside for-each or while loops on-chain",
-                    "Use for-each or while with an accumulator and break to exit early", tree);
+            throw facts.rejection(DiagnosticCodes.BREAK_OUTSIDE_LOOP, tree);
         }
         return null;
     }
@@ -374,6 +421,18 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitThrow(ThrowTree tree, Void unused) {
         throw facts.rejection(DiagnosticCodes.THROW_UNSUPPORTED, tree);
+    }
+
+    /** On-chain code is single-threaded: {@code synchronized} is outside the subset wherever it stands. */
+    @Override
+    public Void visitSynchronized(SynchronizedTree tree, Void unused) {
+        throw facts.rejection(DiagnosticCodes.SYNCHRONIZED_UNSUPPORTED, tree);
+    }
+
+    /** An array is a {@code byte[]} literal or nothing, so there is no element to read. */
+    @Override
+    public Void visitArrayAccess(ArrayAccessTree tree, Void unused) {
+        throw facts.rejection(DiagnosticCodes.ARRAY_ACCESS_UNSUPPORTED, tree);
     }
 
     /** A {@code do}-{@code while} has no lowering: a {@code while} does what it does. */
@@ -396,6 +455,11 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
      */
     @Override
     public Void visitInstanceOf(InstanceOfTree tree, Void unused) {
+        requireNoPatternNamedLikeAField(tree);
+        return super.visitInstanceOf(tree, unused);
+    }
+
+    private void requireNoPatternNamedLikeAField(InstanceOfTree tree) {
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitBindingPattern(BindingPatternTree pattern, Void ignored) {
@@ -408,7 +472,6 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
                 return null;
             }
         }.scan(tree.getPattern(), null);
-        return super.visitInstanceOf(tree, unused);
     }
 
     /** The nearest class around {@code tree} that declares a field {@code name}. A record's components are not fields here. */
@@ -438,7 +501,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     public Void visitClass(ClassTree tree, Void unused) {
         boolean inherits = tree.getKind() == Tree.Kind.INTERFACE ? !tree.getImplementsClause().isEmpty()
                 : tree.getExtendsClause() != null && !isObject(tree.getExtendsClause());
-        if (tree.getKind() != Tree.Kind.RECORD && inherits) throw NotPorted.at(facts, tree, "inheritance");
+        if (tree.getKind() != Tree.Kind.RECORD && inherits) throw facts.rejection(DiagnosticCodes.INHERITANCE_UNSUPPORTED, tree);
         return super.visitClass(tree, unused);
     }
 
@@ -450,8 +513,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitPrimitiveType(PrimitiveTypeTree tree, Void unused) {
         if (tree.getPrimitiveTypeKind() == TypeKind.FLOAT || tree.getPrimitiveTypeKind() == TypeKind.DOUBLE) {
-            throw facts.rejection("floating point types (float/double) are not supported on-chain",
-                    "Use BigInteger for integer arithmetic or Rational for fractions", tree);
+            throw facts.rejection(DiagnosticCodes.FLOATING_POINT_UNSUPPORTED, tree);
         }
         return null;
     }
@@ -459,14 +521,16 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** {@code this} and {@code super} are identifiers to javac, and outside the subset. */
     @Override
     public Void visitIdentifier(IdentifierTree tree, Void unused) {
-        if (isThisOrSuper(tree.getName())) throw NotPorted.at(facts, tree);
+        if (isThisOrSuper(tree.getName())) throw facts.rejection(DiagnosticCodes.THIS_OR_SUPER_UNSUPPORTED, tree, tree.getName());
         return null;
     }
 
     /** {@code V.this} and {@code V.super} are member selects to javac. */
     @Override
     public Void visitMemberSelect(MemberSelectTree tree, Void unused) {
-        if (isThisOrSuper(tree.getIdentifier())) throw NotPorted.at(facts, tree);
+        if (isThisOrSuper(tree.getIdentifier())) {
+            throw facts.rejection(DiagnosticCodes.THIS_OR_SUPER_UNSUPPORTED, tree, tree.getIdentifier());
+        }
         return super.visitMemberSelect(tree, unused);
     }
 
@@ -474,8 +538,10 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         return name.toString().equals("this") || name.toString().equals("super");
     }
 
+    /** {@code null} is outside the subset wherever it stands; a string literal is Unicode text. */
     @Override
     public Void visitLiteral(LiteralTree tree, Void unused) {
+        if (tree.getKind() == Tree.Kind.NULL_LITERAL) throw facts.rejection(DiagnosticCodes.NULL_UNSUPPORTED, tree);
         requirePairedSurrogates(tree);
         return null;
     }
@@ -500,8 +566,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         if (tree.getMethodSelect() instanceof MemberSelectTree select && select.getExpression() instanceof IdentifierTree receiver
                 && FUNCTIONAL_METHODS.contains(select.getIdentifier().toString())
                 && facts.element(receiver).getKind() == ElementKind.LOCAL_VARIABLE && isFunctional(facts.type(receiver))) {
-            throw facts.rejection("Functional interface ." + select.getIdentifier() + "() is not supported on-chain",
-                    "Call the method directly instead of through a function reference", tree);
+            throw facts.rejection(DiagnosticCodes.FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED, tree, select.getIdentifier());
         }
     }
 
@@ -513,7 +578,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** Outside the subset, wherever it stands. */
     @Override
     public Void visitMemberReference(MemberReferenceTree tree, Void unused) {
-        throw facts.rejection("Method references (::) are not supported on-chain", "Use a regular static method call instead", tree);
+        throw facts.rejection(DiagnosticCodes.METHOD_REFERENCE_UNSUPPORTED, tree);
     }
 
     /** A UPLC string is Unicode text: a surrogate must be the high half of a pair followed by its low half. */
@@ -529,11 +594,16 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         }
     }
 
-    /** The one array: {@code new byte[]{...}} over integer literals, each negated or not. */
+    /**
+     * The one array: {@code new byte[]{...}} over integer literals, each negated or not. Any other {@code new} of an array is
+     * the reference's {@code JULC0014}. A bare initializer, {@code int[] a = {1}}, has no {@code new}, and the reference has
+     * no rule of its own for it, so it stays a stop.
+     */
     @Override
     public Void visitNewArray(NewArrayTree tree, Void unused) {
-        if (!isByteLiteral(tree)) throw NotPorted.at(facts, tree);
-        return null;
+        if (isByteLiteral(tree)) return null;
+        if (tree.getType() == null) throw NotPorted.at(facts, tree);
+        throw facts.rejection(DiagnosticCodes.ARRAY_UNSUPPORTED, tree);
     }
 
     /** Whether {@code tree} is the one array of the subset. */

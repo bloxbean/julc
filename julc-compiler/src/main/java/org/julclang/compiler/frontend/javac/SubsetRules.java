@@ -7,11 +7,14 @@ import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.subset.BooleanCasts;
 import org.julclang.compiler.frontend.javac.subset.ConstantStringJoins;
 import org.julclang.compiler.frontend.javac.subset.ConstructorBodies;
+import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.frontend.javac.subset.SpelledMethods;
 import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
 
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -25,6 +28,8 @@ import java.util.List;
  * JavaParser frontend every library it is given is lowered, read or not.
  * <ul>
  *   <li>An entry point returns {@code boolean} or {@code java.lang.Boolean} ({@code JULC0094}).</li>
+ *   <li>An entry point's last parameter is the script context: {@code ScriptContext} or {@code PlutusData}
+ *       ({@code JULC0103}).</li>
  *   <li>What is not lowered holds only a constant ({@link UnloweredInitializers}, {@code JULC0095}).</li>
  *   <li>A value reaches {@code boolean} through a cast only from a boolean ({@link BooleanCasts}, {@code JULC0098}).</li>
  *   <li>A constructor holds no statement ({@link ConstructorBodies}, {@code JULC0099}).</li>
@@ -60,7 +65,7 @@ final class SubsetRules {
             var type = discovery.compiledClass(unit, compiled);
             if (type == null) continue;
             UnloweredInitializers.check(facts, unit, field -> discovery.isLowered(field, type));
-            if (compiled == JavacGate.Compiled.VALIDATOR) requireBooleanResults(facts, discovery, type);
+            if (compiled == JavacGate.Compiled.VALIDATOR) requireEntrypointSignatures(facts, discovery, type);
             BooleanCasts.check(facts, unit);
             ConstructorBodies.check(facts, unit);
         }
@@ -70,6 +75,8 @@ final class SubsetRules {
     /**
      * {@link #check} for a compilation on the javac frontend, with the rule the gate's component rule stands in for on the
      * other: a {@code toPlutusData} that a component generates, which no tree says ({@link SpelledMethods#checkRecordMembers}, {@code JULC0101}).
+     * Then ADR-067's rules on a record's declaration, which ADR-068 D11 gives this frontend alone: one sealed parent
+     * ({@code JULC0079}) and a body of nested types ({@code JULC0080}) ({@link RecordDeclarations}).
      *
      * @throws org.julclang.compiler.CompilerException at the first rule a unit breaks
      */
@@ -78,6 +85,9 @@ final class SubsetRules {
         check(facts, roots, libraries, compiled);
         for (var units : List.of(roots, libraries)) {
             for (var unit : units) SpelledMethods.checkRecordMembers(facts, unit);
+        }
+        for (var units : List.of(roots, libraries)) {
+            for (var unit : units) RecordDeclarations.check(facts, unit);
         }
     }
 
@@ -116,14 +126,35 @@ final class SubsetRules {
         ConstructorBodies.check(facts, unit);
     }
 
-    private static void requireBooleanResults(JavacFacts facts, JavacDiscovery discovery, ClassTree type) {
+    /**
+     * {@code JULC0094}, then {@code JULC0103}, for each entry point in source order. The wrapper passes the script context's
+     * Data as the last argument, undecoded, so a last parameter of any other type reads the context as that type, and the
+     * method's JVM test is not a test of the script. An entry point with a parameter count its purpose does not take is the
+     * count's rejection, later, as on the reference, so this rule does not overtake it.
+     */
+    private static void requireEntrypointSignatures(JavacFacts facts, JavacDiscovery discovery, ClassTree type) {
         for (var method : discovery.methods(type)) {
             if (!discovery.carries(method, JavacDiscovery.simpleName(JavacNames.ENTRYPOINT))) continue;
-            var result = ((ExecutableElement) facts.element(method)).getReturnType();
+            var element = (ExecutableElement) facts.element(method);
+            var result = element.getReturnType();
             if (!facts.isBoolean(result)) {
                 throw CompilerTypeDiagnostics.entrypointReturnType(method.getName().toString(),
                         type.getSimpleName().toString(), result.toString(), facts.location(method));
             }
+            if (!discovery.takesParameterCount(type, method)) continue;
+            var last = method.getParameters().getLast();
+            var context = facts.element(last).asType();
+            if (!isContext(facts, context)) {
+                throw CompilerTypeDiagnostics.entrypointContextParameter(method.getName().toString(),
+                        type.getSimpleName().toString(), ArrayIdentityEquality.text(context), facts.location(last));
+            }
         }
+    }
+
+    /** {@code ScriptContext} or {@code PlutusData}, by identity: a subtype of {@code PlutusData} is a decode of the context. */
+    private static boolean isContext(JavacFacts facts, TypeMirror type) {
+        if (type.getKind() != TypeKind.DECLARED) return false;
+        String identity = facts.identity(facts.typeElement(type));
+        return identity.equals(JavacNames.SCRIPT_CONTEXT) || identity.equals(JavacNames.PLUTUS_DATA);
     }
 }

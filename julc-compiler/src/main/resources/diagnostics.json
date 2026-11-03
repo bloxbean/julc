@@ -17,12 +17,12 @@
     {
       "code": "JULC0001",
       "constant": "METHOD_BODY_MISSING",
-      "status": "planned",
+      "status": "emitted",
       "title": "Method must have a body",
       "category": "VALIDATOR",
       "severity": "error",
       "template": "Method must have a body: {0}",
-      "summary": "An abstract or interface method was found where the compiler expects a concrete method body. On-chain code cannot contain abstract methods.",
+      "summary": "A method with no body, such as an abstract or interface method, was found where the compiler lowers a method. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
       "fix": "Provide a body for every method in your validator class.",
       "example": {
         "bad": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public abstract boolean validate(Data redeemer, ScriptContext ctx);\n}",
@@ -32,12 +32,12 @@
     {
       "code": "JULC0002",
       "constant": "VARIABLE_UNINITIALIZED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Variable must be initialized",
       "category": "SYNTAX",
       "severity": "error",
       "template": "Variable must be initialized: {0}",
-      "summary": "A local variable was declared without an initializer. UPLC has no notion of uninitialized state.",
+      "summary": "A local variable was declared without an initializer. UPLC has no notion of uninitialized state. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
       "fix": "Initialize at declaration, e.g. `var x = BigInteger.ZERO;`. Re-bind via a new `var` if you need a different value later (UPLC is single-assignment).",
       "example": {
         "bad": "var x;\nx = 5;",
@@ -62,13 +62,13 @@
     {
       "code": "JULC0004",
       "constant": "BREAK_OUTSIDE_LOOP",
-      "status": "planned",
+      "status": "emitted",
       "title": "break statement outside of a loop",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "break statement outside of a loop",
-      "summary": "`break` was used outside of a `for-each` or `while` loop body.",
-      "fix": "Place the `break` inside a loop, or refactor to use early `return` from a helper method."
+      "template": "break is only supported inside for-each or while loops on-chain",
+      "summary": "`break` was used outside of a `for-each` or `while` loop body, such as in a `switch` statement. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use for-each or while with an accumulator and break to exit early"
     },
     {
       "code": "JULC0005",
@@ -88,13 +88,13 @@
     {
       "code": "JULC0006",
       "constant": "METHOD_MISSING_RETURN",
-      "status": "planned",
+      "status": "emitted",
       "title": "Method does not return on all paths",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "Method {0} may not return a value on all execution paths",
-      "summary": "A non-void method has at least one execution path that does not return a value.",
-      "fix": "Ensure every if/else branch returns, or add a fallthrough return at the end of the method."
+      "template": "Method ''{0}'' may not return a value on all execution paths",
+      "summary": "A non-void method has at least one execution path that does not return a value. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Ensure all code paths end with a 'return' statement."
     },
     {
       "code": "JULC0007",
@@ -143,13 +143,13 @@
     {
       "code": "JULC0011",
       "constant": "UNDEFINED_VARIABLE",
-      "status": "planned",
+      "status": "emitted",
       "title": "Undefined variable",
       "category": "TYPE",
       "severity": "error",
       "template": "Undefined variable: {0}",
-      "summary": "A variable was referenced that is not in scope. Most commonly: typo, used before declared, or shadowed inside a switch case binding.",
-      "fix": "Check spelling and declaration order. If a switch case binds a field with the same name as your method parameter, rename one of them — the field shadows the parameter inside the case body (see JULC0021)."
+      "summary": "A name was read that the on-chain program has no binder for: a type or package read as a value, a class of a library the compilation cannot register, or a pattern variable outside the condition that binds it. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Check spelling, or add an import if the name is a type. A pattern variable is bound only where its instanceof is the whole condition of an if."
     },
     {
       "code": "JULC0012",
@@ -177,13 +177,13 @@
     {
       "code": "JULC0014",
       "constant": "ARRAY_UNSUPPORTED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Arrays are not supported (except byte[])",
       "category": "SYNTAX",
       "severity": "error",
       "template": "arrays are not supported on-chain",
-      "summary": "Java arrays other than `byte[]` are not supported on-chain.",
-      "fix": "Use `JulcList<T>` or `List<T>` instead of `T[]`."
+      "summary": "Java arrays other than a `byte[]` literal of integer literals are not supported on-chain. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use List<T> instead of arrays, or byte[] with literal initializers"
     },
     {
       "code": "JULC0015",
@@ -243,13 +243,13 @@
     {
       "code": "JULC0020",
       "constant": "FLOATING_POINT_UNSUPPORTED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Floating-point types are not supported",
       "category": "TYPE",
       "severity": "error",
       "template": "floating point types (float/double) are not supported on-chain",
-      "summary": "`float` and `double` have no UPLC equivalent.",
-      "fix": "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params."
+      "summary": "`float` and `double` have no UPLC equivalent. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use BigInteger for integer arithmetic or Rational for fractions"
     },
     {
       "code": "JULC0021",
@@ -291,12 +291,12 @@
     {
       "code": "JULC0024",
       "constant": "UNKNOWN_METHOD_ON_TYPE",
-      "status": "planned",
+      "status": "emitted",
       "title": "Unknown method on type",
       "category": "STDLIB",
       "severity": "error",
       "template": "Unknown method: {0}",
-      "summary": "A method was called that doesn't exist on the receiver type. Likely the AI invented a method that isn't in the stdlib.",
+      "summary": "A call names a method the on-chain program has no binder for, such as a generic template of a library class called from that class. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
       "fix": "Check the stdlib catalog at https://julc.dev/ai/catalog.json or the stdlib reference at https://julc.dev/stdlib/stdlib-guide/. Common: `JulcList<T>` has `head/tail/get/size/isEmpty/contains/prepend/reverse/concat/take/drop/map/filter/any/all/find`."
     },
     {
@@ -925,13 +925,13 @@
     {
       "code": "JULC0077",
       "constant": "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
-      "status": "planned",
-      "title": "instanceof with a record pattern is not supported",
+      "status": "emitted",
+      "title": "instanceof with a pattern JuLC does not lower",
       "category": "CONTROL_FLOW",
       "severity": "error",
-      "template": "instanceof with record pattern {0} is not supported",
-      "summary": "Reserved by ADR-067 (D3): `x instanceof R(var c)` stays unsupported until #204 settles where instanceof binds variables.",
-      "fix": "Use a switch expression with a record pattern instead."
+      "template": "Unsupported instanceof pattern: {0}",
+      "summary": "An instanceof whose pattern is not a type pattern, such as a record pattern (ADR-067 D3), is not supported. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use a type pattern (x instanceof R r) and read the components through r, or a switch."
     },
     {
       "code": "JULC0078",
@@ -947,23 +947,23 @@
     {
       "code": "JULC0079",
       "constant": "RECORD_MULTIPLE_SEALED_PARENTS",
-      "status": "planned",
+      "status": "emitted",
       "title": "Record implements two sealed interfaces",
       "category": "TYPE",
       "severity": "error",
       "template": "Record {0} implements sealed interfaces {1} and {2}; a record may have at most one sealed parent",
-      "summary": "Reserved by ADR-067 (D6): a Data value has one constructor tag, so a record cannot be a variant of two sealed interfaces.",
+      "summary": "A Data value has one constructor tag, so a record cannot be a variant of two sealed interfaces (ADR-067 D6). Emitted by the javac frontend (ADR-068 D11).",
       "fix": "Wrap the record in a separate variant for the second interface."
     },
     {
       "code": "JULC0080",
       "constant": "RECORD_MEMBER_UNSUPPORTED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Record body member is not supported",
       "category": "TYPE",
       "severity": "error",
       "template": "Record {0} declares {1}, which JuLC does not compile; a record body may contain only nested type declarations",
-      "summary": "Reserved by ADR-067 (D9): JuLC compiles a record as its components only, so a declared accessor, equals, constructor or method would be ignored.",
+      "summary": "JuLC compiles a record as its components only, so a declared accessor, equals, constructor, method, static field or initializer would be ignored (ADR-067 D9). Emitted by the javac frontend (ADR-068 D11).",
       "fix": "Move the logic into a static helper method of the enclosing class."
     },
     {
@@ -1055,9 +1055,9 @@
       "title": "Equality would compare an array by identity",
       "category": "TYPE",
       "severity": "error",
-      "template": "{0} compares {1}, whose equality on the JVM compares an array by identity",
-      "summary": "An equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM (ADR-068 D6). Emitted by the javac frontend.",
-      "fix": "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper."
+      "template": "{0} compares {1}, whose equality on the JVM {2}",
+      "summary": "An equals call or collection operation whose JVM implementation compares elements or keys with equals, at a static type through which an array is compared by identity (directly, or through record components, sealed variants or type arguments), is true on-chain for equal bytes but false on the JVM (ADR-068 D6). A type the check cannot read (a raw collection, Object, a type variable, an operand of no readable type) is rejected the same way, because it cannot be shown to compare by value. Emitted by the javac frontend.",
+      "fix": "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type."
     },
     {
       "code": "JULC0088",
@@ -1259,6 +1259,230 @@
       "template": "Entrypoint {0} of {1} is not static",
       "summary": "An @Entrypoint method is static.",
       "fix": "Declare the method static."
+    },
+    {
+      "code": "JULC0103",
+      "constant": "ENTRYPOINT_CONTEXT_PARAMETER",
+      "status": "emitted",
+      "title": "An entry point's last parameter is the script context",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Entrypoint {0} of {1} takes {2} as its last parameter; the last parameter is the script context, ScriptContext or PlutusData",
+      "summary": "The wrapper passes the script context's Data as an entry point's last argument, undecoded. A last parameter of another type reads the context as that type, so the script does not do what the JVM test of the method does (ADR-068 F904).",
+      "fix": "Declare the last parameter as ScriptContext, or as PlutusData to keep the context as Data. Read other values from the redeemer or the datum.",
+      "example": {
+        "bad": "@Entrypoint\nstatic boolean validate(BigInteger redeemer, BigInteger ctx) { return true; }",
+        "good": "@Entrypoint\nstatic boolean validate(BigInteger redeemer, ScriptContext ctx) { return true; }"
+      }
+    },
+    {
+      "code": "JULC0104",
+      "constant": "SYNCHRONIZED_UNSUPPORTED",
+      "status": "emitted",
+      "title": "synchronized is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "synchronized is not supported on-chain",
+      "summary": "A synchronized block has no on-chain meaning. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "On-chain code is single-threaded; remove synchronized blocks"
+    },
+    {
+      "code": "JULC0105",
+      "constant": "METHOD_REFERENCE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Method references are not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Method references (::) are not supported on-chain",
+      "summary": "A method reference has no on-chain lowering. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use a regular static method call instead"
+    },
+    {
+      "code": "JULC0106",
+      "constant": "FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A call through a functional interface is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Functional interface .{0}() is not supported on-chain",
+      "summary": "A function exists on-chain only as the argument of the list method that applies it, so a local of a functional interface type cannot be called. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Call the method directly instead of through a function reference"
+    },
+    {
+      "code": "JULC0107",
+      "constant": "THIS_OR_SUPER_UNSUPPORTED",
+      "status": "emitted",
+      "title": "'this' and 'super' are not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "''{0}'' is not supported on-chain",
+      "summary": "On-chain code has no objects and no inheritance, so this and super name nothing. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "On-chain validators are stateless; use static methods, and sealed interfaces with record variants instead of inheritance"
+    },
+    {
+      "code": "JULC0108",
+      "constant": "ARRAY_ACCESS_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Array access is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "array access is not supported on-chain",
+      "summary": "An array element read or write has no on-chain lowering. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use List<T> with list operations instead"
+    },
+    {
+      "code": "JULC0109",
+      "constant": "INHERITANCE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Class inheritance is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "class inheritance is not supported on-chain",
+      "summary": "A class that extends another class, or an interface that extends another, has no on-chain meaning. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use sealed interfaces with record variants instead"
+    },
+    {
+      "code": "JULC0110",
+      "constant": "STATEMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Statement is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported statement: {0}",
+      "summary": "A bare block, an empty statement or a switch statement among a method's statements has no lowering. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain."
+    },
+    {
+      "code": "JULC0111",
+      "constant": "RETURN_INSIDE_FOR_EACH",
+      "status": "emitted",
+      "title": "return inside a for-each loop",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "'return' is not supported inside for-each loop body",
+      "summary": "A for-each loop is compiled to a fold whose result is the variables the loop updates, so its body cannot return from the method. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use 'break' to exit the loop early, then return after the loop. Or use the accumulator pattern: result = value; (continue iterating) then return result; after the loop."
+    },
+    {
+      "code": "JULC0112",
+      "constant": "YIELD_INSIDE_LOOP",
+      "status": "emitted",
+      "title": "yield inside a loop",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "''yield'' is not supported inside {0} loop body",
+      "summary": "A loop body cannot yield a value of an enclosing switch expression. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use 'break' to exit the loop early, then yield after the loop. Or use the accumulator pattern: result = value; (continue iterating) then yield result; after the loop."
+    },
+    {
+      "code": "JULC0113",
+      "constant": "LOOP_LOCAL_CONDITIONAL_UPDATE",
+      "status": "emitted",
+      "title": "A loop-body local is updated in a branch",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Conditional update to loop-body local ''{0}'' is not supported",
+      "summary": "An if/else branch in a loop carries only the loop's accumulators out of the branch, so an update of a local declared in the loop body would be lost. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "An if/else branch carries only loop accumulators out of the branch. Use a conditional initializer (condition ? value : otherValue), or declare the variable before the loop so it is an accumulator (reset it each iteration if needed), or declare it inside the branch if its value is only needed there."
+    },
+    {
+      "code": "JULC0114",
+      "constant": "ASSIGNMENT_POSITION_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Assignment at a position with no lowering",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Assignment to {0} is not supported at this position",
+      "summary": "Inside a loop, an assignment is lowered only as a statement directly in the loop body or in an if/else branch of it. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. In an if/else branch, assign an accumulator or a local declared within that branch; an assignment inside another expression or statement is not supported."
+    },
+    {
+      "code": "JULC0115",
+      "constant": "LOOP_BODY_STATEMENT_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Statement is not supported in this loop body",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Unsupported {0} body: {1}",
+      "summary": "A loop that breaks, or that updates several variables declared before it, lowers only declarations, assignments, if/else and break in its body. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Inside loops with break or several accumulators, only variable declarations, assignments, if/else, and break are supported."
+    },
+    {
+      "code": "JULC0116",
+      "constant": "UNDECLARED_ASSIGNMENT",
+      "status": "emitted",
+      "title": "Assignment to a variable with no binder",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Assignment to undeclared variable ''{0}''",
+      "summary": "A loop assigns a name that is neither an accumulator of the loop nor a local of its body, such as a field. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local."
+    },
+    {
+      "code": "JULC0117",
+      "constant": "COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Compound assignment on a type it has no lowering for",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Compound assignment {0} to ''{1}'' {2}",
+      "summary": "Compound assignment is lowered on integer variables, and += on String variables with a String operand. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Write the update explicitly, e.g. x = x.add(y), or convert the right-hand side to the variable's type first."
+    },
+    {
+      "code": "JULC0118",
+      "constant": "OPERATOR_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Operator is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported operator: {0}",
+      "summary": "A binary operator with no on-chain lowering, such as a shift or a bitwise operator. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||"
+    },
+    {
+      "code": "JULC0119",
+      "constant": "UNARY_OPERATOR_UNSUPPORTED",
+      "status": "emitted",
+      "title": "Unary operator is not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Unsupported unary operator: {0}",
+      "summary": "A unary operator with no on-chain lowering, such as ~, + or an increment outside a loop update. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Supported unary operators: ! (logical NOT) and - (negation)"
+    },
+    {
+      "code": "JULC0120",
+      "constant": "SWITCH_CASE_VARIABLE_REASSIGNED",
+      "status": "emitted",
+      "title": "A switch pattern variable is reassigned",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Reassignment of switch case-pattern variable ''{0}'' is not supported",
+      "summary": "An arm of a switch reads a pattern variable through projections of the matched record, so an assignment to it would not be seen. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Copy the pattern variable to a fresh local accumulator inside the arm, update that local, and yield its result instead."
+    },
+    {
+      "code": "JULC0121",
+      "constant": "SWITCH_ARM_UPDATE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A switch expression arm updates an enclosing variable",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Switch-expression arm cannot update enclosing variable ''{0}''",
+      "summary": "A switch expression exports only its yielded value, so an update of a variable declared outside the arm would be lost. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable."
+    },
+    {
+      "code": "JULC0122",
+      "constant": "GENERIC_LIBRARY_CALL_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A generic library method is called from Java",
+      "category": "LIBRARY",
+      "severity": "error",
+      "template": "Generic library method {0} cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.",
+      "summary": "A generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Provide a concrete overload-free method for Java callers."
     }
   ]
 }

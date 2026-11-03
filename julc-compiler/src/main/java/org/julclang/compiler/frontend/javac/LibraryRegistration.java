@@ -1,6 +1,7 @@
 package org.julclang.compiler.frontend.javac;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.lower.Lowering;
 import org.julclang.compiler.resolve.LibraryMethodRegistry.LibraryMethod;
 
@@ -58,7 +59,7 @@ final class LibraryRegistration {
         // The final pass: each unit left, in order, once more; the first that still fails is the rejection.
         for (var unit : remaining) {
             var unresolved = registration.attempt(unit);
-            if (unresolved != null) throw new CompilerException("Undefined variable: " + unresolved.qualifier());
+            if (unresolved != null) throw CompilerTypeDiagnostics.undefinedVariable(unresolved.qualifier(), null);
         }
         return List.copyOf(registration.registered.values());
     }

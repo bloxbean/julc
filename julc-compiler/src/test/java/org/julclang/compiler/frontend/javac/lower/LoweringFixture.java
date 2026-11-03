@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -183,12 +184,46 @@ public final class LoweringFixture {
     private static void assertSameRejection(Function<CompilerFrontend, CompileResult> compile, UnaryOperator<String> message) {
         var reference = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAPARSER));
         var javac = assertThrows(CompilerException.class, () -> compile.apply(CompilerFrontend.JAVAC));
-        assertEquals(message.apply(error(reference)), message.apply(error(javac)), () -> javac.getMessage());
+        assertEquals(message.apply(error(reference, javac)), message.apply(error(javac)), () -> javac.getMessage());
     }
 
     private static String error(CompilerException e) {
         var error = e.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst();
         return error.map(d -> d.code() + " " + d.message() + " @" + d.line() + ":" + d.column()).orElse(e.getMessage());
+    }
+
+    /** The reference's text in its own form, where it holds a position or a hint: {@code File.java:4:2: words\n  Hint: ...}. */
+    private static final Pattern LOCATED = Pattern.compile("(?s)[^\\n]*?:(\\d+):(\\d+): (.*?)(?:\\n  Hint: .*)?");
+
+    /**
+     * The reference's error, as the javac frontend must give it. ADR-068 I2a: an uncoded rejection gets a code when it is
+     * ported, so where the reference's error has no code and javac's has one, javac's must have the reference's words and,
+     * where the reference gives one, its position: the words with no position or hint in them, the position from the text
+     * where the reference wrote it there. Any other difference is a difference.
+     */
+    private static String error(CompilerException reference, CompilerException javac) {
+        var referenceError = reference.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst();
+        var javacError = javac.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst();
+        String words = referenceError.map(CompilerDiagnostic::message).orElse(reference.getMessage());
+        if (referenceError.map(CompilerDiagnostic::code).isPresent() || javacError.map(CompilerDiagnostic::code).isEmpty()) {
+            return error(reference);
+        }
+        int line = referenceError.map(CompilerDiagnostic::line).orElse(0);
+        int column = referenceError.map(CompilerDiagnostic::column).orElse(0);
+        var located = LOCATED.matcher(words);
+        if (line == 0 && located.matches()) {
+            line = Integer.parseInt(located.group(1));
+            column = Integer.parseInt(located.group(2));
+            words = located.group(3);
+        }
+        int hint = words.indexOf(". Hint: ");
+        if (hint >= 0) words = words.substring(0, hint);
+        var coded = javacError.orElseThrow();
+        if (line == 0) {
+            line = coded.line();
+            column = coded.column();
+        }
+        return coded.code() + " " + words + " @" + line + ":" + column;
     }
 
     /** The compilation stops with {@code JULC0084} at {@code construct}, on the line given. The reference must not. */

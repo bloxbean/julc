@@ -160,8 +160,8 @@ public final class JavacGate {
             synchronized (JavacGate.class) {
                 if (metadata == null) {
                     var built = JavacFrontend.shared().metadata();
-                    if (built.read((elements, types) -> elements.getTypeElement(SCRIPT_CONTEXT) == null)) {
-                        throw new BrokenJulcBuildException("the javac stubs do not define " + SCRIPT_CONTEXT);
+                    if (built.read((elements, types) -> elements.getTypeElement(JavacNames.SCRIPT_CONTEXT) == null)) {
+                        throw new BrokenJulcBuildException("the javac stubs do not define " + JavacNames.SCRIPT_CONTEXT);
                     }
                     metadata = built;
                 }
@@ -182,7 +182,6 @@ public final class JavacGate {
         return null;
     }
 
-    private static final String SCRIPT_CONTEXT = "org.julclang.ledger.ScriptContext";
 
     /**
      * The result for these inputs in the current environment. The frontend is selected first and holds its own

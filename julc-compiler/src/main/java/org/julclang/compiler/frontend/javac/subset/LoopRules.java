@@ -23,6 +23,7 @@ import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.tree.YieldTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 
 import javax.lang.model.element.Element;
@@ -42,11 +43,6 @@ import java.util.Set;
  */
 public final class LoopRules {
 
-    private static final String RETURN_IN_FOR_EACH_HINT = "Use 'break' to exit the loop early, then return after the loop. "
-            + "Or use the accumulator pattern: result = value; (continue iterating) then return result; after the loop.";
-    private static final String YIELD_IN_LOOP_HINT = "Use 'break' to exit the loop early, then yield after the loop. "
-            + "Or use the accumulator pattern: result = value; (continue iterating) then yield result; after the loop.";
-
     private final JavacFacts facts;
 
     public LoopRules(JavacFacts facts) {
@@ -58,10 +54,10 @@ public final class LoopRules {
         requireNoLabelOrContinue(loop);
         requireNoConditionalLocalUpdate(loop.getStatement(), Set.of(facts.element(loop.getVariable())));
         if (firstExit(loop.getStatement(), ReturnTree.class) != null) {
-            throw facts.locatedRejection("'return' is not supported inside for-each loop body", RETURN_IN_FOR_EACH_HINT, loop);
+            throw facts.rejection(DiagnosticCodes.RETURN_INSIDE_FOR_EACH, loop);
         }
         if (firstExit(loop.getStatement(), YieldTree.class) != null) {
-            throw facts.locatedRejection("'yield' is not supported inside for-each loop body", YIELD_IN_LOOP_HINT, loop);
+            throw facts.rejection(DiagnosticCodes.YIELD_INSIDE_LOOP, loop, "for-each");
         }
     }
 
@@ -72,7 +68,7 @@ public final class LoopRules {
         var exit = firstExit(loop.getStatement(), ReturnTree.class);
         if (exit != null) throw CompilerTypeDiagnostics.returnInsideWhile(facts.location(exit));
         if (firstExit(loop.getStatement(), YieldTree.class) != null) {
-            throw facts.locatedRejection("'yield' is not supported inside while loop body", YIELD_IN_LOOP_HINT, loop);
+            throw facts.rejection(DiagnosticCodes.YIELD_INSIDE_LOOP, loop, "while");
         }
     }
 
@@ -156,12 +152,7 @@ public final class LoopRules {
             default -> {
                 var target = updated(tree);
                 if (target != null && conditional.contains(facts.element(target))) {
-                    throw facts.locatedRejection("Conditional update to loop-body local '" + target.getName() + "' is not supported",
-                            "An if/else branch carries only loop accumulators out of the branch. "
-                                    + "Use a conditional initializer (condition ? value : otherValue), "
-                                    + "or declare the variable before the loop so it is an accumulator "
-                                    + "(reset it each iteration if needed), or declare it inside the branch "
-                                    + "if its value is only needed there.", tree);
+                    throw facts.rejection(DiagnosticCodes.LOOP_LOCAL_CONDITIONAL_UPDATE, tree, target.getName());
                 }
                 SubsetWalk.children(tree).forEach(child -> crossing(child, new HashSet<>(locals), new HashSet<>(conditional)));
             }

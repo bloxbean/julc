@@ -14,6 +14,7 @@ import com.sun.source.tree.VariableTree;
 import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.tree.YieldTree;
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
@@ -56,8 +57,6 @@ final class Statements {
     private final Ifs ifs;
     private final Loops loops;
 
-    private static final String SUPPORTED_STATEMENTS =
-            "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.";
 
     Statements(JavacFacts facts, Terms terms, Typing typing, Lowering lowering, CallTargets targets, TypeTests typeTests,
                CompilationContext context, FieldUpdates fieldUpdates) {
@@ -83,13 +82,12 @@ final class Statements {
     }
 
     PirTerm method(MethodTree tree, Scope enclosing, boolean guardBoolean) {
-        if (tree.getBody() == null) throw new CompilerException("Method must have a body: " + tree.getName());
+        if (tree.getBody() == null) throw facts.rejection(DiagnosticCodes.METHOD_BODY_MISSING, tree, tree.getName());
         var element = (ExecutableElement) facts.element(tree);
         var returnType = element.getReturnType();
         boolean isVoid = returnType.getKind() == TypeKind.VOID;
         if (!isVoid && !Exits.allPathsReturn(tree.getBody().getStatements())) {
-            throw facts.rejection("Method '" + tree.getName() + "' may not return a value on all execution paths",
-                    "Ensure all code paths end with a 'return' statement.", tree);
+            throw facts.rejection(DiagnosticCodes.METHOD_MISSING_RETURN, tree, tree.getName());
         }
         var scope = enclosing;
         var binders = new ArrayList<Binder>();
@@ -164,7 +162,7 @@ final class Statements {
     /** What the reference has no statement for: a bare block, in a list, is one of these. Each slice ports its own. */
     private CompilerException unsupported(StatementTree tree) {
         return switch (tree.getKind()) {
-            case BLOCK, EMPTY_STATEMENT, SWITCH -> facts.rejection("Unsupported statement: " + statementName(tree), SUPPORTED_STATEMENTS, tree);
+            case BLOCK, EMPTY_STATEMENT, SWITCH -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, statementName(tree));
             default -> NotPorted.at(facts, tree);
         };
     }
@@ -172,7 +170,7 @@ final class Statements {
     /** A statement with no value: where the reference throws at once, with what it knows in its text. */
     CompilerException unsupportedAsValue(StatementTree tree) {
         return switch (tree.getKind()) {
-            case EMPTY_STATEMENT, SWITCH -> facts.locatedRejection("Unsupported statement: " + statementName(tree), SUPPORTED_STATEMENTS, tree);
+            case EMPTY_STATEMENT, SWITCH -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, statementName(tree));
             default -> NotPorted.at(facts, tree);
         };
     }
@@ -191,8 +189,7 @@ final class Statements {
         String name = tree.getName().toString();
         var initializer = tree.getInitializer();
         if (initializer == null) {
-            throw new CompilerException("Variable must be initialized: " + name
-                    + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;");
+            throw facts.rejection(DiagnosticCodes.VARIABLE_UNINITIALIZED, tree, name);
         }
         var value = lowering.expr(initializer, frame);
         var element = facts.element(tree);

@@ -157,12 +157,15 @@ public final class EqualityRules {
         for (var argument : tree.getArguments()) argumentTypes.add(facts.type(argument));
         for (var site : operations.sites(method, receiver(tree, method), argumentTypes)) {
             var result = arrays.check(site.compared(), site.julcCollection());
-            if (result.rejected()) {
+            if (result.kind() == ArrayIdentityEquality.Kind.ARRAY_IDENTITY) {
                 throw CompilerTypeDiagnostics.arrayEquals(site.operation(), result.path(), facts.location(tree));
+            }
+            if (result.rejected()) {
+                throw CompilerTypeDiagnostics.equalityUnread(site.operation(), result.path(), facts.location(tree));
             }
             if (site.raw()) {
                 if (isRawReceiver(tree, method)) {
-                    throw CompilerTypeDiagnostics.arrayEquals(site.operation(), "a raw collection", facts.location(tree));
+                    throw CompilerTypeDiagnostics.equalityUnread(site.operation(), "a raw collection", facts.location(tree));
                 }
             } else if (site.argument() != EqualityOperations.NO_ARGUMENT) {
                 requireRelated(site, tree);
@@ -177,7 +180,7 @@ public final class EqualityRules {
             switch (result.kind()) {
                 case RELATED -> {
                 }
-                case UNRESOLVED -> throw CompilerTypeDiagnostics.arrayEquals(site.operation(),
+                case UNRESOLVED -> throw CompilerTypeDiagnostics.equalityUnread(site.operation(),
                         ArrayIdentityEquality.text(result.left()) + " against " + ArrayIdentityEquality.text(result.right())
                                 + ", which cannot be decided", facts.location(tree));
                 case UNRELATED -> {

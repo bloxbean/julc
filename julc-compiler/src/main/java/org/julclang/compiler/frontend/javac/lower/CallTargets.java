@@ -10,6 +10,7 @@ import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.TypeCastTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
@@ -92,7 +93,7 @@ final class CallTargets {
         if (method.getModifiers().contains(Modifier.STATIC) && owner.equals(facts.element(enclosing))) {
             // A library class declares only its concrete methods to itself: a template has no binder there (ADR-059).
             if (!method.getTypeParameters().isEmpty() && facts.inOfferedLibrary(owner) && !facts.specializes(method)) {
-                return new CallTarget.Rejected("Unknown method: " + name(method));
+                return new CallTarget.Rejected(DiagnosticCodes.UNKNOWN_METHOD_ON_TYPE, name(method));
             }
             return method.isVarArgs() ? VARARGS : new CallTarget.Local(facts.identity(owner) + "." + name(method), method);
         }
@@ -133,7 +134,7 @@ final class CallTargets {
         }
         if (owner.equals(facts.element(facts.enclosing(tree, Tree.Kind.CLASS, Tree.Kind.RECORD, Tree.Kind.INTERFACE)))
                 || facts.declaredInSource(method)) {
-            return new CallTarget.Rejected("Undefined variable: " + qualifier.getName());
+            return new CallTarget.Rejected(DiagnosticCodes.UNDEFINED_VARIABLE, qualifier.getName());
         }
         return new CallTarget.Stdlib(SIMPLE_STDLIB_KEYS.getOrDefault(identity, identity), name, method);
     }
@@ -150,9 +151,7 @@ final class CallTargets {
                 .anyMatch(other -> other.getSimpleName().equals(method.getSimpleName())
                         && other.getModifiers().contains(Modifier.STATIC) && !other.getTypeParameters().isEmpty());
         if (template) {
-            return new CallTarget.Rejected("Generic library method " + identity + "." + name + " cannot be called from Java yet: "
-                    + "generic @OnchainLibrary methods are specialized only by language-neutral library "
-                    + "providers (ADR-059). Provide a concrete overload-free method for Java callers.");
+            return new CallTarget.Rejected(DiagnosticCodes.GENERIC_LIBRARY_CALL_UNSUPPORTED, identity + "." + name);
         }
         return new CallTarget.Library(identity, name, method, true);
     }

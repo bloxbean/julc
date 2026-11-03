@@ -5,13 +5,21 @@ package org.julclang.compiler.error;
 public final class DiagnosticCodes {
     private DiagnosticCodes() {}
 
+    public static final DiagnosticInfo ARRAY_ACCESS_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0108",
+            "ARRAY_ACCESS_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "array access is not supported on-chain",
+            "Use List<T> with list operations instead");
+
     public static final DiagnosticInfo ARRAY_EQUALS_UNSUPPORTED = new DiagnosticInfo(
             "JULC0087",
             "ARRAY_EQUALS_UNSUPPORTED",
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
-            "{0} compares {1}, whose equality on the JVM compares an array by identity",
-            "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper.");
+            "{0} compares {1}, whose equality on the JVM {2}",
+            "Compare the bytes: ByteStringLib.equals(a, b), or ByteStringLib.equals(a.hash(), b.hash()) for a @NewType byte wrapper. Where the type cannot be read, compare at the value's own declared type.");
 
     public static final DiagnosticInfo ARRAY_UNSUPPORTED = new DiagnosticInfo(
             "JULC0014",
@@ -19,7 +27,15 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "SYNTAX",
             "arrays are not supported on-chain",
-            "Use `JulcList<T>` or `List<T>` instead of `T[]`.");
+            "Use List<T> instead of arrays, or byte[] with literal initializers");
+
+    public static final DiagnosticInfo ASSIGNMENT_POSITION_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0114",
+            "ASSIGNMENT_POSITION_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Assignment to {0} is not supported at this position",
+            "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. In an if/else branch, assign an accumulator or a local declared within that branch; an assignment inside another expression or statement is not supported.");
 
     public static final DiagnosticInfo BACKEND_CAPABILITY_UNAVAILABLE = new DiagnosticInfo(
             "JULC0045",
@@ -90,8 +106,8 @@ public final class DiagnosticCodes {
             "BREAK_OUTSIDE_LOOP",
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
-            "break statement outside of a loop",
-            "Place the `break` inside a loop, or refactor to use early `return` from a helper method.");
+            "break is only supported inside for-each or while loops on-chain",
+            "Use for-each or while with an accumulator and break to exit early");
 
     public static final DiagnosticInfo CASE_PATTERN_UNSUPPORTED = new DiagnosticInfo(
             "JULC0076",
@@ -149,6 +165,14 @@ public final class DiagnosticCodes {
             "Compiler stage {0} emitted target-illegal feature {1} for {2}",
             "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer.");
 
+    public static final DiagnosticInfo COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0117",
+            "COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Compound assignment {0} to ''{1}'' {2}",
+            "Write the update explicitly, e.g. x = x.add(y), or convert the right-hand side to the variable's type first.");
+
     public static final DiagnosticInfo COMPOUND_ASSIGNMENT_UNSUPPORTED = new DiagnosticInfo(
             "JULC0052",
             "COMPOUND_ASSIGNMENT_UNSUPPORTED",
@@ -204,6 +228,14 @@ public final class DiagnosticCodes {
             "TYPE",
             "Duplicate type declaration: {0}",
             "Rename one of the types, or ensure they are not both on the compilation classpath.");
+
+    public static final DiagnosticInfo ENTRYPOINT_CONTEXT_PARAMETER = new DiagnosticInfo(
+            "JULC0103",
+            "ENTRYPOINT_CONTEXT_PARAMETER",
+            CompilerDiagnostic.Level.ERROR,
+            "VALIDATOR",
+            "Entrypoint {0} of {1} takes {2} as its last parameter; the last parameter is the script context, ScriptContext or PlutusData",
+            "Declare the last parameter as ScriptContext, or as PlutusData to keep the context as Data. Read other values from the redeemer or the datum.");
 
     public static final DiagnosticInfo ENTRYPOINT_MISSING = new DiagnosticInfo(
             "JULC0009",
@@ -267,7 +299,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
             "floating point types (float/double) are not supported on-chain",
-            "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params.");
+            "Use BigInteger for integer arithmetic or Rational for fractions");
 
     public static final DiagnosticInfo FRONTEND_CONSTRUCT_NOT_PORTED = new DiagnosticInfo(
             "JULC0084",
@@ -276,6 +308,30 @@ public final class DiagnosticCodes {
             "FRONTEND",
             "The javac frontend does not compile {0} yet",
             "The default frontend may compile it until it is ported; if that frontend rejects it too, it is outside the subset.");
+
+    public static final DiagnosticInfo FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0106",
+            "FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Functional interface .{0}() is not supported on-chain",
+            "Call the method directly instead of through a function reference");
+
+    public static final DiagnosticInfo GENERIC_LIBRARY_CALL_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0122",
+            "GENERIC_LIBRARY_CALL_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "LIBRARY",
+            "Generic library method {0} cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.",
+            "Provide a concrete overload-free method for Java callers.");
+
+    public static final DiagnosticInfo INHERITANCE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0109",
+            "INHERITANCE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "class inheritance is not supported on-chain",
+            "Use sealed interfaces with record variants instead");
 
     public static final DiagnosticInfo INITIALIZER_NOT_LOWERED = new DiagnosticInfo(
             "JULC0095",
@@ -290,8 +346,8 @@ public final class DiagnosticCodes {
             "INSTANCEOF_RECORD_PATTERN_UNSUPPORTED",
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
-            "instanceof with record pattern {0} is not supported",
-            "Use a switch expression with a record pattern instead.");
+            "Unsupported instanceof pattern: {0}",
+            "Use a type pattern (x instanceof R r) and read the components through r, or a switch.");
 
     public static final DiagnosticInfo INTEGER_LITERAL_INVALID = new DiagnosticInfo(
             "JULC0070",
@@ -349,6 +405,22 @@ public final class DiagnosticCodes {
             "{0} declares {1}, which JuLC''s {2} owns",
             "Rename the type, or move it to a package of your own.");
 
+    public static final DiagnosticInfo LOOP_BODY_STATEMENT_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0115",
+            "LOOP_BODY_STATEMENT_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Unsupported {0} body: {1}",
+            "Inside loops with break or several accumulators, only variable declarations, assignments, if/else, and break are supported.");
+
+    public static final DiagnosticInfo LOOP_LOCAL_CONDITIONAL_UPDATE = new DiagnosticInfo(
+            "JULC0113",
+            "LOOP_LOCAL_CONDITIONAL_UPDATE",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Conditional update to loop-body local ''{0}'' is not supported",
+            "An if/else branch carries only loop accumulators out of the branch. Use a conditional initializer (condition ? value : otherValue), or declare the variable before the loop so it is an accumulator (reset it each iteration if needed), or declare it inside the branch if its value is only needed there.");
+
     public static final DiagnosticInfo LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR = new DiagnosticInfo(
             "JULC0058",
             "LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR",
@@ -378,8 +450,8 @@ public final class DiagnosticCodes {
             "METHOD_MISSING_RETURN",
             CompilerDiagnostic.Level.ERROR,
             "CONTROL_FLOW",
-            "Method {0} may not return a value on all execution paths",
-            "Ensure every if/else branch returns, or add a fallthrough return at the end of the method.");
+            "Method ''{0}'' may not return a value on all execution paths",
+            "Ensure all code paths end with a 'return' statement.");
 
     public static final DiagnosticInfo METHOD_NAME_READ_BY_SPELLING = new DiagnosticInfo(
             "JULC0101",
@@ -396,6 +468,14 @@ public final class DiagnosticCodes {
             "VALIDATOR",
             "Method {0} is declared more than once in {1}; on-chain methods are bound by name, so declarations sharing a name must compile to identical code",
             "Give each method a distinct name.");
+
+    public static final DiagnosticInfo METHOD_REFERENCE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0105",
+            "METHOD_REFERENCE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Method references (::) are not supported on-chain",
+            "Use a regular static method call instead");
 
     public static final DiagnosticInfo MISSING_OPTIMIZATION_COST_PROFILE = new DiagnosticInfo(
             "JULC0037",
@@ -468,6 +548,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "null is not supported on-chain",
             "Use Optional<T> (Optional.of(x) / Optional.empty()) to represent absence of a value");
+
+    public static final DiagnosticInfo OPERATOR_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0118",
+            "OPERATOR_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Unsupported operator: {0}",
+            "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||");
 
     public static final DiagnosticInfo OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH = new DiagnosticInfo(
             "JULC0038",
@@ -565,6 +653,14 @@ public final class DiagnosticCodes {
             "{0} compares {1} by reference; use equals",
             "Use a.equals(b), or ByteStringLib.equals(a, b) for bytes.");
 
+    public static final DiagnosticInfo RETURN_INSIDE_FOR_EACH = new DiagnosticInfo(
+            "JULC0111",
+            "RETURN_INSIDE_FOR_EACH",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "'return' is not supported inside for-each loop body",
+            "Use 'break' to exit the loop early, then return after the loop. Or use the accumulator pattern: result = value; (continue iterating) then return result; after the loop.");
+
     public static final DiagnosticInfo RETURN_INSIDE_WHILE = new DiagnosticInfo(
             "JULC0003",
             "RETURN_INSIDE_WHILE",
@@ -588,6 +684,14 @@ public final class DiagnosticCodes {
             "PIR",
             "Failed to parse {0} source: {1}",
             "Check the file with a Java IDE or `javac` \u2014 the JuLC compiler relies on JavaParser to produce a clean AST.");
+
+    public static final DiagnosticInfo STATEMENT_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0110",
+            "STATEMENT_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Unsupported statement: {0}",
+            "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.");
 
     public static final DiagnosticInfo STATIC_INITIALIZER_CALLS_METHOD = new DiagnosticInfo(
             "JULC0057",
@@ -620,6 +724,22 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "A string literal holds the unpaired surrogate U+{0}, which a UPLC string cannot hold",
             "Write a supplementary character as its high surrogate followed by its low surrogate, or remove it.");
+
+    public static final DiagnosticInfo SWITCH_ARM_UPDATE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0121",
+            "SWITCH_ARM_UPDATE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Switch-expression arm cannot update enclosing variable ''{0}''",
+            "A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.");
+
+    public static final DiagnosticInfo SWITCH_CASE_VARIABLE_REASSIGNED = new DiagnosticInfo(
+            "JULC0120",
+            "SWITCH_CASE_VARIABLE_REASSIGNED",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Reassignment of switch case-pattern variable ''{0}'' is not supported",
+            "Copy the pattern variable to a fresh local accumulator inside the arm, update that local, and yield its result instead.");
 
     public static final DiagnosticInfo SWITCH_DUPLICATE_DEFAULT = new DiagnosticInfo(
             "JULC0082",
@@ -693,6 +813,22 @@ public final class DiagnosticCodes {
             "switch expression requires a sealed interface type, got: {0}",
             "Use field access (`pair.first()`, `pair.second()`) for records. Reserve `switch` for sealed interfaces with permitted record variants.");
 
+    public static final DiagnosticInfo SYNCHRONIZED_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0104",
+            "SYNCHRONIZED_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "synchronized is not supported on-chain",
+            "On-chain code is single-threaded; remove synchronized blocks");
+
+    public static final DiagnosticInfo THIS_OR_SUPER_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0107",
+            "THIS_OR_SUPER_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "''{0}'' is not supported on-chain",
+            "On-chain validators are stateless; use static methods, and sealed interfaces with record variants instead of inheritance");
+
     public static final DiagnosticInfo THROW_UNSUPPORTED = new DiagnosticInfo(
             "JULC0016",
             "THROW_UNSUPPORTED",
@@ -725,13 +861,29 @@ public final class DiagnosticCodes {
             "Cannot resolve type: {0}",
             "Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).");
 
+    public static final DiagnosticInfo UNARY_OPERATOR_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0119",
+            "UNARY_OPERATOR_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Unsupported unary operator: {0}",
+            "Supported unary operators: ! (logical NOT) and - (negation)");
+
+    public static final DiagnosticInfo UNDECLARED_ASSIGNMENT = new DiagnosticInfo(
+            "JULC0116",
+            "UNDECLARED_ASSIGNMENT",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "Assignment to undeclared variable ''{0}''",
+            "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.");
+
     public static final DiagnosticInfo UNDEFINED_VARIABLE = new DiagnosticInfo(
             "JULC0011",
             "UNDEFINED_VARIABLE",
             CompilerDiagnostic.Level.ERROR,
             "TYPE",
             "Undefined variable: {0}",
-            "Check spelling and declaration order. If a switch case binds a field with the same name as your method parameter, rename one of them \u2014 the field shadows the parameter inside the case body (see JULC0021).");
+            "Check spelling, or add an import if the name is a type. A pattern variable is bound only where its instanceof is the whole condition of an if.");
 
     public static final DiagnosticInfo UNKNOWN_METHOD_ON_TYPE = new DiagnosticInfo(
             "JULC0024",
@@ -797,10 +949,20 @@ public final class DiagnosticCodes {
             "Variable must be initialized: {0}",
             "Initialize at declaration, e.g. `var x = BigInteger.ZERO;`. Re-bind via a new `var` if you need a different value later (UPLC is single-assignment).");
 
+    public static final DiagnosticInfo YIELD_INSIDE_LOOP = new DiagnosticInfo(
+            "JULC0112",
+            "YIELD_INSIDE_LOOP",
+            CompilerDiagnostic.Level.ERROR,
+            "CONTROL_FLOW",
+            "''yield'' is not supported inside {0} loop body",
+            "Use 'break' to exit the loop early, then yield after the loop. Or use the accumulator pattern: result = value; (continue iterating) then yield result; after the loop.");
+
 
     private static final java.util.List<DiagnosticInfo> ALL = java.util.List.of(
+            ARRAY_ACCESS_UNSUPPORTED,
             ARRAY_EQUALS_UNSUPPORTED,
             ARRAY_UNSUPPORTED,
+            ASSIGNMENT_POSITION_UNSUPPORTED,
             BACKEND_CAPABILITY_UNAVAILABLE,
             BACKEND_INVALID_DESCRIPTOR,
             BACKEND_TARGET_MISMATCH,
@@ -817,6 +979,7 @@ public final class DiagnosticCodes {
             COMPILER_FEATURE_UNAVAILABLE,
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,
+            COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED,
             COMPOUND_ASSIGNMENT_UNSUPPORTED,
             CONSTANT_STRING_JOIN,
             CONSTRUCTOR_BODY,
@@ -824,6 +987,7 @@ public final class DiagnosticCodes {
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
+            ENTRYPOINT_CONTEXT_PARAMETER,
             ENTRYPOINT_MISSING,
             ENTRYPOINT_NOT_STATIC,
             ENTRYPOINT_NOT_UNIQUE,
@@ -833,6 +997,9 @@ public final class DiagnosticCodes {
             FIELD_ASSIGNMENT_UNSUPPORTED,
             FLOATING_POINT_UNSUPPORTED,
             FRONTEND_CONSTRUCT_NOT_PORTED,
+            FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED,
+            GENERIC_LIBRARY_CALL_UNSUPPORTED,
+            INHERITANCE_UNSUPPORTED,
             INITIALIZER_NOT_LOWERED,
             INSTANCEOF_RECORD_PATTERN_UNSUPPORTED,
             INTEGER_LITERAL_INVALID,
@@ -842,12 +1009,15 @@ public final class DiagnosticCodes {
             LABEL_UNSUPPORTED,
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             LEDGER_TYPE_REDECLARED,
+            LOOP_BODY_STATEMENT_UNSUPPORTED,
+            LOOP_LOCAL_CONDITIONAL_UPDATE,
             LOOP_REASSIGNMENT_WITHOUT_ACCUMULATOR,
             LOOP_UPDATE_POSITION_UNSUPPORTED,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
             METHOD_NAME_READ_BY_SPELLING,
             METHOD_OVERLOAD_UNSUPPORTED,
+            METHOD_REFERENCE_UNSUPPORTED,
             MISSING_OPTIMIZATION_COST_PROFILE,
             MULTIPLE_DECLARATORS_UNSUPPORTED,
             MUTUAL_RECURSION_TOO_LARGE,
@@ -857,6 +1027,7 @@ public final class DiagnosticCodes {
             NEWTYPE_UNSUPPORTED_FIELD_TYPE,
             NEWTYPE_WRONG_FIELD_COUNT,
             NULL_UNSUPPORTED,
+            OPERATOR_UNSUPPORTED,
             OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
             PARAM_CONSTANT_VARIABLE,
             PARAM_RAW_PLUTUS_DATA,
@@ -869,13 +1040,17 @@ public final class DiagnosticCodes {
             RECORD_MEMBER_UNSUPPORTED,
             RECORD_MULTIPLE_SEALED_PARENTS,
             REFERENCE_EQUALITY_UNSUPPORTED,
+            RETURN_INSIDE_FOR_EACH,
             RETURN_INSIDE_WHILE,
             SEALED_PERMITS_REQUIRED,
             SOURCE_PARSE_FAILED,
+            STATEMENT_UNSUPPORTED,
             STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,
             STRING_CONCAT_NON_STRING,
             STRING_LITERAL_UNPAIRED_SURROGATE,
+            SWITCH_ARM_UPDATE_UNSUPPORTED,
+            SWITCH_CASE_VARIABLE_REASSIGNED,
             SWITCH_DUPLICATE_DEFAULT,
             SWITCH_FIELD_SHADOWS_PARAMETER,
             SWITCH_GROUP_UNSUPPORTED,
@@ -885,10 +1060,14 @@ public final class DiagnosticCodes {
             SWITCH_LABEL_DOMINATED,
             SWITCH_NOT_EXHAUSTIVE,
             SWITCH_REQUIRES_SEALED_INTERFACE,
+            SYNCHRONIZED_UNSUPPORTED,
+            THIS_OR_SUPER_UNSUPPORTED,
             THROW_UNSUPPORTED,
             TRY_CATCH_UNSUPPORTED,
             TYPE_NAME_READ_BY_SPELLING,
             TYPE_RESOLUTION_FAILED,
+            UNARY_OPERATOR_UNSUPPORTED,
+            UNDECLARED_ASSIGNMENT,
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,
             UNKNOWN_OPTIMIZATION_RULE,
@@ -897,7 +1076,8 @@ public final class DiagnosticCodes {
             UNSUPPORTED_OPTIMIZATION_COST_PROFILE,
             UNSUPPORTED_OPTIMIZATION_LEVEL,
             VALIDATOR_ANNOTATION_MISSING,
-            VARIABLE_UNINITIALIZED
+            VARIABLE_UNINITIALIZED,
+            YIELD_INSIDE_LOOP
     );
 
     private static final java.util.Map<String, DiagnosticInfo> BY_CODE = ALL.stream()

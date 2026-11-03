@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac.lower;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import org.julclang.compiler.frontend.javac.JavacFacts;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.PirTerm;
@@ -42,7 +43,7 @@ final class Names {
         // pattern variable outside the then branch of the if whose whole condition binds it, the one place it lowers.
         boolean unbound = element.getKind() == ElementKind.FIELD || element.getKind() == ElementKind.BINDING_VARIABLE;
         if (unbound && !tree.getName().contentEquals("this") && !tree.getName().contentEquals("super")) {
-            throw facts.rejection("Undefined variable: " + tree.getName(), tree);
+            throw facts.rejection(DiagnosticCodes.UNDEFINED_VARIABLE, tree, tree.getName());
         }
         throw NotPorted.at(facts, tree);
     }

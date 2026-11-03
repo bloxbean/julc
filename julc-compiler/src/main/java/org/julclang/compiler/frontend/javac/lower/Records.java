@@ -8,6 +8,7 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
@@ -209,7 +210,7 @@ final class Records {
         if (expression instanceof IdentifierTree qualifier
                 && (facts.element(qualifier) instanceof TypeElement || facts.element(qualifier) instanceof PackageElement)) {
             if (API_CONSTANT_OWNERS.contains(qualifier.getName().toString())) throw NotPorted.at(facts, tree);
-            throw facts.rejection("Undefined variable: " + qualifier.getName(), qualifier);
+            throw facts.rejection(DiagnosticCodes.UNDEFINED_VARIABLE, qualifier, qualifier.getName());
         }
         var scope = lowering.expr(expression, frame);
         if (facts.type(expression).getKind() == TypeKind.ARRAY) {

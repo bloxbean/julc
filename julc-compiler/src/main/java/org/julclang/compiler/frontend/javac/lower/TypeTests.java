@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac.lower;
 import com.sun.source.tree.BindingPatternTree;
 import com.sun.source.tree.InstanceOfTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
@@ -133,6 +134,6 @@ final class TypeTests {
     }
 
     private CompilerException unsupported(InstanceOfTree tree) {
-        return facts.rejection("Unsupported instanceof pattern: " + tree, tree);
+        return facts.rejection(DiagnosticCodes.INSTANCEOF_RECORD_PATTERN_UNSUPPORTED, tree, tree.toString());
     }
 }

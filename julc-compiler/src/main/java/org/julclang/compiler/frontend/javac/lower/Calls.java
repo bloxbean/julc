@@ -5,6 +5,7 @@ import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTargetDiagnostics;
 import org.julclang.compiler.CompilerTypeDiagnostics;
@@ -86,7 +87,7 @@ final class Calls {
             case CallTarget.Hof target -> hof(target, tree, frame);
             case CallTarget.Unresolved target ->
                     throw CompilerTypeDiagnostics.unresolvedMember(target.member(), facts.location(tree));
-            case CallTarget.Rejected target -> throw facts.rejection(target.message(), tree);
+            case CallTarget.Rejected target -> throw facts.rejection(target.info(), tree, target.arguments());
             case CallTarget.NotLowered target -> throw NotPorted.at(facts, tree, target.construct());
         };
     }
@@ -191,8 +192,10 @@ final class Calls {
         var qualifier = ((IdentifierTree) ((MemberSelectTree) tree.getMethodSelect()).getExpression()).getName().toString();
         var result = lookup(target, arguments, tree);
         if (result == null) {
-            // The reference throws its message alone here, with no position.
-            if (!target.bound()) throw new CompilerException("Undefined variable: " + qualifier);
+            // The reference throws its message alone here, with no position; this has its code and the qualifier's.
+            if (!target.bound()) {
+                throw facts.rejection(DiagnosticCodes.UNDEFINED_VARIABLE, ((MemberSelectTree) tree.getMethodSelect()).getExpression(), qualifier);
+            }
             String binder = target.className() + "." + target.method();
             libraryCalls.add(new Lowering.LibraryCall(binder, qualifier));
             if (librarySites.lookupMethod(binder).isEmpty()) {

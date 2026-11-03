@@ -72,6 +72,37 @@ JULC0101	code	JULC0101	METHOD_NAME_READ_BY_SPELLING	javac gate: emitted on javac
 JULC0096	code	JULC0096	ENTRYPOINT_NOT_UNIQUE	javac frontend: emitted with frontend=JAVAC (ADR-068 M3a); not a reference-frontend rejection
 JULC0097	code	JULC0097	ENTRYPOINT_NOT_STATIC	javac frontend: emitted with frontend=JAVAC (ADR-068 M3a); not a reference-frontend rejection
 JULC0102	code	JULC0102	CONSTANT_STRING_JOIN	javac gate: a warning on javac's trees, on both frontends (ADR-068 M3b); it rejects nothing
+JULC0001	code	JULC0001	METHOD_BODY_MISSING	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-method-body)
+JULC0002	code	JULC0002	VARIABLE_UNINITIALIZED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-variable-initialized)
+JULC0004	code	JULC0004	BREAK_OUTSIDE_LOOP	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-break-outside-loop)
+JULC0006	code	JULC0006	METHOD_MISSING_RETURN	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-missing-return)
+JULC0011	code	JULC0011	UNDEFINED_VARIABLE	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-undefined-variable)
+JULC0014	code	JULC0014	ARRAY_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-array-creation)
+JULC0020	code	JULC0020	FLOATING_POINT_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-floating-point)
+JULC0024	code	JULC0024	UNKNOWN_METHOD_ON_TYPE	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (a template called from its own class)
+JULC0077	code	JULC0077	INSTANCEOF_RECORD_PATTERN_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-instanceof-pattern)
+JULC0104	code	JULC0104	SYNCHRONIZED_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-synchronized)
+JULC0105	code	JULC0105	METHOD_REFERENCE_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-method-reference)
+JULC0106	code	JULC0106	FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-functional-call)
+JULC0107	code	JULC0107	THIS_OR_SUPER_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-this, U-super)
+JULC0108	code	JULC0108	ARRAY_ACCESS_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-array-access)
+JULC0109	code	JULC0109	INHERITANCE_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-inheritance)
+JULC0110	code	JULC0110	STATEMENT_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-unsupported-statement)
+JULC0111	code	JULC0111	RETURN_INSIDE_FOR_EACH	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (a return in a for-each)
+JULC0112	code	JULC0112	YIELD_INSIDE_LOOP	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (a yield in a loop)
+JULC0113	code	JULC0113	LOOP_LOCAL_CONDITIONAL_UPDATE	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-loop-conditional-local)
+JULC0114	code	JULC0114	ASSIGNMENT_POSITION_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-assignment-position)
+JULC0115	code	JULC0115	LOOP_BODY_STATEMENT_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-break-loop-statement, U-multi-acc-statement)
+JULC0116	code	JULC0116	UNDECLARED_ASSIGNMENT	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-undeclared-assignment)
+JULC0117	code	JULC0117	COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-compound-assignment-target)
+JULC0118	code	JULC0118	OPERATOR_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (an unsupported binary operator)
+JULC0119	code	JULC0119	UNARY_OPERATOR_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (an unsupported unary operator)
+JULC0120	code	JULC0120	SWITCH_CASE_VARIABLE_REASSIGNED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-reassign-case-variable)
+JULC0121	code	JULC0121	SWITCH_ARM_UPDATE_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-switch-arm-update)
+JULC0122	code	JULC0122	GENERIC_LIBRARY_CALL_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (a generic library method called from Java)
+JULC0079	code	JULC0079	RECORD_MULTIPLE_SEALED_PARENTS	javac frontend: emitted with frontend=JAVAC (ADR-068 D11, ADR-067 M3, Group 4a); not a reference-frontend rejection
+JULC0080	code	JULC0080	RECORD_MEMBER_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D11, ADR-067 M3b, Group 4a); not a reference-frontend rejection
+JULC0103	code	JULC0103	ENTRYPOINT_CONTEXT_PARAMETER	javac gate: emitted on javac's trees after analyze() (ADR-068 F904, Group 4a); not a rejection of the JavaParser frontend with the gate off
 JULC0091	code	JULC0091	NATIVE_ARRAY_NOT_DATA_ENCODABLE (ADR-068 M1c, #298)	source
 JULC0078	code	JULC0078	EQUALS_ALWAYS_FALSE	javac frontend: emitted with frontend=JAVAC (ADR-067 D5, ADR-068 D6, M3 Group 1); not a reference-frontend rejection
 JULC0086	code	JULC0086	REFERENCE_EQUALITY_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D6, M3b); not a reference-frontend rejection

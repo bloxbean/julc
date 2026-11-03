@@ -1,5 +1,7 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.error.DiagnosticInfo;
+
 import org.julclang.compiler.pir.PirType;
 
 import javax.lang.model.element.ExecutableElement;
@@ -77,8 +79,8 @@ sealed interface CallTarget {
     record Unresolved(String member) implements CallTarget {
     }
 
-    /** What the reference rejects in these words. */
-    record Rejected(String message) implements CallTarget {
+    /** What the reference rejects, uncoded, in the words of {@code info}: here with its code (ADR-068 I2a). */
+    record Rejected(DiagnosticInfo info, Object... arguments) implements CallTarget {
     }
 
     /** {@code JULC0084}: not ported, or not to be lowered as the reference lowers it. */

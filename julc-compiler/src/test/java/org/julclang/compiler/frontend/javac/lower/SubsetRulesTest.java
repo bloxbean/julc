@@ -7,6 +7,7 @@ import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
+import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.frontend.javac.JavacProgram;
 import org.julclang.compiler.frontend.javac.subset.SpelledTypes;
 import org.julclang.compiler.frontend.javac.subset.UnloweredInitializers;
@@ -145,6 +146,154 @@ class SubsetRulesTest {
                     static %s validate(PlutusData redeemer, ScriptContext ctx) { return true; }
                 }
                 """.formatted(type));
+    }
+
+    // --- An entry point's last parameter is the script context (JULC0103) ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {"BigInteger", "long", "int", "boolean", "String", "byte[]", "PlutusData.ConstrData",
+            "PlutusData.IntData", "java.util.Optional<PlutusData>", "org.julclang.core.types.JulcList<PlutusData>",
+            "org.julclang.ledger.TxInfo", "org.julclang.ledger.ScriptInfo"})
+    void aSpendingEntryPointsLastParameterIsTheContext(String type) {
+        assertRule("JULC0103", IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, %s ctx) { return true; }
+                }
+                """.formatted(type));
+    }
+
+    @Test
+    void aSpendingEntryPointWithADatumTakesTheContextLast() {
+        assertRule("JULC0103", IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData datum, ScriptContext ctx, BigInteger redeemer) { return true; }
+                }
+                """);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MintingValidator", "WithdrawValidator", "CertifyingValidator", "VotingValidator",
+            "ProposingValidator", "MultiValidator"})
+    void everyPurposesEntryPointTakesTheContextLast(String annotation) {
+        assertRule("JULC0103", IMPORTS + """
+                @%s
+                class V {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, BigInteger ctx) { return true; }
+                }
+                """.formatted(annotation));
+    }
+
+    @Test
+    void everyEntryPointOfAMultiValidatorTakesTheContextLast() {
+        assertRule("JULC0103", IMPORTS + """
+                @MultiValidator
+                class V {
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(PlutusData redeemer, ScriptContext ctx) { return true; }
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(PlutusData datum, PlutusData redeemer, BigInteger ctx) { return true; }
+                }
+                """);
+    }
+
+    /** The words name the method, the class and the type as javac holds it, at the parameter. */
+    @Test
+    void theRuleNamesTheParameterItReads() {
+        var source = IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer,
+                                            final BigInteger ctx) { return true; }
+                }
+                """;
+        for (var frontend : List.of(CompilerFrontend.JAVAC, CompilerFrontend.JAVAPARSER)) {
+            var options = new CompilerOptions().setFrontend(frontend);
+            var diagnostic = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compile(source))
+                    .diagnostics().getFirst();
+            assertEquals("JULC0103", diagnostic.code());
+            assertEquals("Entrypoint validate of V takes java.math.BigInteger as its last parameter; the last parameter is "
+                    + "the script context, ScriptContext or PlutusData", diagnostic.message());
+            assertEquals(9, diagnostic.line());
+            assertEquals(41, diagnostic.column());
+        }
+    }
+
+    /** A count the purpose does not take is the count's rejection, as on the reference with the gate off: the rule does not overtake it. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "@SpendingValidator class V { @Entrypoint static boolean validate(BigInteger ctx) { return true; } }",
+            "@SpendingValidator class V { @Entrypoint static boolean validate(PlutusData a, PlutusData b, PlutusData c, BigInteger ctx) { return true; } }",
+            "@MintingValidator class V { @Entrypoint static boolean validate(PlutusData a, PlutusData b, BigInteger ctx) { return true; } }",
+            "@MultiValidator class V { @Entrypoint static boolean validate(PlutusData a, PlutusData b, BigInteger ctx) { return true; } }",
+            "@MultiValidator class V { @Entrypoint(purpose = Purpose.MINT) static boolean m(PlutusData a, PlutusData b, BigInteger ctx) { return true; } }"})
+    void aWrongCountIsTheCountsRejection(String declaration) {
+        assertRule("JULC0008", IMPORTS + declaration);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ScriptContext", "PlutusData", "org.julclang.ledger.ScriptContext", "org.julclang.core.PlutusData",
+            "final ScriptContext", "final PlutusData"})
+    void theContextCompiles(String type) {
+        assertSameAsReference(IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(BigInteger datum, BigInteger redeemer, %s ctx) {
+                        return datum.compareTo(redeemer) < 0;
+                    }
+                }
+                """.formatted(type));
+    }
+
+    @Test
+    void aMultiValidatorsContextsCompile() {
+        assertSameAsReference(IMPORTS + """
+                @MultiValidator
+                class V {
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(BigInteger redeemer, ScriptContext ctx) { return redeemer.signum() > 0; }
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(PlutusData datum, BigInteger redeemer, PlutusData ctx) { return redeemer.signum() < 0; }
+                }
+                """);
+    }
+
+    /** A user's own {@code ScriptContext} is another type: the rule reads the context by identity. */
+    @Test
+    void aUsersScriptContextIsNotTheContext() {
+        assertJavacRule("JULC0103", """
+                package p;
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.stdlib.annotation.*;
+                @SpendingValidator
+                class V {
+                    record ScriptContext(BigInteger x) { }
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+    }
+
+    /** The rule is the gate's on the default frontend (D15): with the gate off the reference compiles what it always did. */
+    @Test
+    void theReferenceWithTheGateOffIsUnchanged() {
+        var source = IMPORTS + """
+                @SpendingValidator
+                class V {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) { return redeemer.signum() > 0; }
+                }
+                """;
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAPARSER)
+                .setJavacGate(JavacGateMode.OFF);
+        assertFalse(new JulcCompiler(null, options).compile(source).hasErrors());
     }
 
     /** {@code Boolean} is the JDK's by identity: a user's own is another type, however it is declared. */

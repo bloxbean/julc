@@ -12,6 +12,7 @@ import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
@@ -79,18 +80,16 @@ final class Operators {
         String operator = compoundOperator(compound);
         boolean string = target.seen() instanceof PirType.StringType;
         if (!(target.seen() instanceof PirType.IntegerType) && !string) {
-            throw facts.locatedRejection("Compound assignment " + operator + " to '" + name + "' of type "
-                            + LibraryMethodRegistry.pirTypeName(target.seen()) + " is not supported",
-                    "Compound assignment is supported on integer variables, and += on String variables. "
-                            + "Write the update explicitly, e.g. x = x.add(y).", assignment);
+            throw facts.rejection(DiagnosticCodes.COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED, assignment, operator, name,
+                    "of type " + LibraryMethodRegistry.pirTypeName(target.seen()) + " is not supported");
         }
         var current = lowering.expr(compound.getVariable(), frame);
         var operand = lowering.expr(compound.getExpression(), frame);
         var operandType = typing.of(compound.getExpression(), operand);
         if (string && !(operandType instanceof PirType.StringType)) {
-            throw facts.locatedRejection("Compound assignment " + operator + " to '" + name + "' needs a "
-                            + LibraryMethodRegistry.pirTypeName(target.type()) + " operand, found " + LibraryMethodRegistry.pirTypeName(operandType),
-                    "Convert the right-hand side to the variable's type first.", compound.getExpression());
+            throw facts.rejection(DiagnosticCodes.COMPOUND_ASSIGNMENT_TYPE_UNSUPPORTED, compound.getExpression(), operator, name,
+                    "needs a " + LibraryMethodRegistry.pirTypeName(target.type()) + " operand, found "
+                            + LibraryMethodRegistry.pirTypeName(operandType));
         }
         if (string) return PirHelpers.builtinApp2(DefaultFun.AppendString, current, operand);
         return PirHelpers.builtinApp2(switch (compound.getKind()) {
@@ -133,15 +132,19 @@ final class Operators {
             case CONDITIONAL_AND -> new PirTerm.IfThenElse(left, right, bool(false));
             case CONDITIONAL_OR -> new PirTerm.IfThenElse(left, bool(true), right);
             // Only a guard reaches these, on booleans: the rest of a guard's int and long arithmetic is a rule's.
+            // A guard reaches these on booleans; elsewhere they have no lowering. The names are the reference's.
             case AND -> throw unsupported("BINARY_AND", tree);
             case OR -> throw unsupported("BINARY_OR", tree);
             case XOR -> throw unsupported("XOR", tree);
+            case LEFT_SHIFT -> throw unsupported("LEFT_SHIFT", tree);
+            case RIGHT_SHIFT -> throw unsupported("SIGNED_RIGHT_SHIFT", tree);
+            case UNSIGNED_RIGHT_SHIFT -> throw unsupported("UNSIGNED_RIGHT_SHIFT", tree);
             default -> throw NotPorted.at(facts, tree);
         };
     }
 
     private CompilerException unsupported(String operator, BinaryTree tree) {
-        return facts.rejection("Unsupported operator: " + operator, "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||", tree);
+        return facts.rejection(DiagnosticCodes.OPERATOR_UNSUPPORTED, tree, operator);
     }
 
     private static PirTerm bool(boolean value) {
@@ -203,8 +206,10 @@ final class Operators {
             case LOGICAL_COMPLEMENT -> new PirTerm.IfThenElse(operand, bool(false), bool(true));
             case UNARY_MINUS -> PirHelpers.builtinApp2(DefaultFun.SubtractInteger,
                     new PirTerm.Const(Constant.integer(BigInteger.ZERO)), operand);
-            case PREFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_INCREMENT, POSTFIX_DECREMENT ->
-                    throw facts.rejection("Unsupported unary operator: " + tree.getKind(), "Supported unary operators: ! (logical NOT) and - (negation)", tree);
+            case PREFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_INCREMENT, POSTFIX_DECREMENT, BITWISE_COMPLEMENT ->
+                    throw facts.rejection(DiagnosticCodes.UNARY_OPERATOR_UNSUPPORTED, tree, tree.getKind().name());
+            // The reference's name of a unary +.
+            case UNARY_PLUS -> throw facts.rejection(DiagnosticCodes.UNARY_OPERATOR_UNSUPPORTED, tree, "PLUS");
             default -> throw NotPorted.at(facts, tree);
         };
     }

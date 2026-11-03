@@ -182,10 +182,7 @@ public final class Lowering {
     private CompilerException reassignment(ExpressionTree target, ExpressionTree assignment, Frame frame) {
         if (frame.bindsUpdates()) {
             var name = target instanceof IdentifierTree identifier ? "'" + identifier.getName() + "'" : "this target";
-            return facts.locatedRejection("Assignment to " + name + " is not supported at this position",
-                    "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. "
-                            + "In an if/else branch, assign an accumulator or a local declared within that branch; "
-                            + "an assignment inside another expression or statement is not supported.", assignment);
+            return facts.rejection(DiagnosticCodes.ASSIGNMENT_POSITION_UNSUPPORTED, assignment, name);
         }
         if (facts.enclosing(assignment, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP) == null) {
             return facts.rejection(DiagnosticCodes.REASSIGNMENT_OUTSIDE_LOOP, assignment, target.toString());

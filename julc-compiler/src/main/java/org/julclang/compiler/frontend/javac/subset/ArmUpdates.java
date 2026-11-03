@@ -17,6 +17,7 @@ import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 
 import javax.lang.model.element.Element;
@@ -103,13 +104,8 @@ final class ArmUpdates {
         String name = ((IdentifierTree) target).getName().toString();
         if (bindings.contains(facts.element(target))) {
             // #162: cached case-field projections still refer to the original record.
-            return facts.locatedRejection("Reassignment of switch case-pattern variable '" + name + "' is not supported",
-                    "Copy the pattern variable to a fresh local accumulator inside the arm, "
-                            + "update that local, and yield its result instead.", assignment);
+            return facts.rejection(DiagnosticCodes.SWITCH_CASE_VARIABLE_REASSIGNED, assignment, name);
         }
-        return facts.locatedRejection("Switch-expression arm cannot update enclosing variable '" + name + "'",
-                "A switch expression exports only its yielded value. Declare an accumulator inside the arm, "
-                        + "yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.",
-                assignment);
+        return facts.rejection(DiagnosticCodes.SWITCH_ARM_UPDATE_UNSUPPORTED, assignment, name);
     }
 }
