@@ -103,7 +103,11 @@ final class Statements {
         PirTerm result = block(tree.getBody(), Frame.body(scope, exit));
 
         // Wrap body in lambda chain: \p1 -> \p2 -> ... -> body
-        for (int i = binders.size() - 1; i >= 0; i--) result = terms.lam(binders.get(i), result);
+        for (int i = binders.size() - 1; i >= 0; i--) {
+            var binder = binders.get(i);
+            result = terms.lam(binder, result);
+            terms.declared(binder.element(), result, binder.type());
+        }
         return terms.at(tree, result);
     }
 
@@ -201,7 +205,10 @@ final class Statements {
             typing.requireNativeBoundary("Variable '" + name + "' initializer", typing.of(initializer, value), type, initializer);
             scope = frame.scope().bind(element, type);
         }
-        return terms.let(scope.lookup(element), value, rest.apply(frame.in(scope)));
+        var binder = scope.lookup(element);
+        var binding = terms.let(binder, value, rest.apply(frame.in(scope)));
+        terms.declared(element, binding, binder.type());
+        return binding;
     }
 
     /**

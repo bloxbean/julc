@@ -13,7 +13,9 @@ import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.JulcCompiler.ScriptPurpose;
 import org.julclang.compiler.OnchainOverloads;
+import org.julclang.compiler.backend.PirBackend;
 import org.julclang.compiler.codegen.ValidatorAssembly;
+import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.lower.BindingCheck;
 import org.julclang.compiler.frontend.javac.lower.Lowering;
@@ -25,6 +27,7 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.compiler.resolve.TypeRegistry;
+import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.core.Constant;
 import org.julclang.core.source.SourceLocation;
 
@@ -71,14 +74,39 @@ public final class JavacCompilation {
     }
 
     /**
+     * What a validator's compilation asks for beyond its program.
+     *
+     * @param captureDetails whether the result keeps its PIR and UPLC
+     * @param contractSchema whether to describe the validator's interfaces ({@code compileContract})
+     * @param debugLibraries the library sources debug metadata names, in the order given, or null to collect none
+     *                       ({@code compileForDebug})
+     */
+    public record Request(boolean captureDetails, boolean contractSchema, List<String> debugLibraries) {
+    }
+
+    /**
+     * A compiled validator: its result, its schema if asked, and its debug metadata's collector with what the backend
+     * returned, which the caller completes with the compiler's options.
+     */
+    public record Compiled(CompileResult result, ContractSchema schema, DebugMetadataCollector debug,
+                           PirBackend.Result lowered) {
+    }
+
+    /**
      * Compiles the validator of {@code root}, with {@code pool} on the source path (D8).
      *
      * @param stdlib the compilation's lookup, or null
      */
     public static CompileResult validator(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, StdlibLookup stdlib,
                                           CompilationContext context, boolean captureDetails) {
+        return validator(root, pool, stdlib, context, new Request(captureDetails, false, null)).result();
+    }
+
+    /** {@link #validator(JavacFrontend.Unit, List, StdlibLookup, CompilationContext, boolean)}, with what {@code request} asks. */
+    public static Compiled validator(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, StdlibLookup stdlib,
+                                     CompilationContext context, Request request) {
         var program = attributed(root, pool, context);
-        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).validator(captureDetails));
+        return program.read(facts -> new JavacCompilation(program, facts, context, stdlib).validator(request));
     }
 
     /** Compiles the static method {@code methodName} of the first class of {@code root} ({@code compileMethod}). */
@@ -249,17 +277,26 @@ public final class JavacCompilation {
 
         /** What the assembly needs of this compilation: where terms came from, and I13's check of the result. */
         ValidatorAssembly.Frontend frontend() {
+            return frontend(null);
+        }
+
+        /** {@link #frontend()}, telling {@code debug}, if not null, the binders of {@code @Param}s as the reference does. */
+        ValidatorAssembly.Frontend frontend(DebugMetadataCollector debug) {
             var terms = lowering.terms();
             var elements = new LinkedHashMap<String, Element>();
             for (var param : params) elements.put(scope.lookup(param.element()).name(), param.element());
             for (var field : statics) elements.put(scope.lookup(facts.element(field)).name(), facts.element(field));
-            return new ValidatorAssembly.Frontend(terms.positions(), null,
-                    (param, binding) -> terms.assembled(binding, param.name(), elements.get(param.name())),
+            return new ValidatorAssembly.Frontend(terms.positions(), debug == null ? null : debug.provenance(),
+                    (param, binding) -> {
+                        terms.assembled(binding, param.name(), elements.get(param.name()));
+                        terms.declared(elements.get(param.name()), binding, param.type());
+                    },
                     term -> {
                         if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) BindingCheck.check(term, terms.provenance());
                     },
                     (field, binding) -> terms.assembled(binding, field.name(), elements.get(field.name())),
-                    (name, binding) -> terms.assembled(binding, name, methodElements.getOrDefault(name, libraries.binders().get(name))));
+                    (name, binding) -> terms.assembled(binding, name, methodElements.getOrDefault(name, libraries.binders().get(name))),
+                    terms::bindShapeChecks);
         }
     }
 
@@ -305,11 +342,17 @@ public final class JavacCompilation {
 
     // --- Validators ---
 
-    private CompileResult validator(boolean captureDetails) {
+    private Compiled validator(Request request) {
         var unit = program.roots().getFirst();
         // 1b. The subset's rules, first as on the JavaParser frontend, whose compilations get them from the gate
         SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
+        // 1c. Debug metadata's declarations, scanned before the subset is validated, as in the reference
+        DebugMetadataCollector debug = null;
+        if (request.debugLibraries() != null) {
+            debug = JavacDebugScan.collector(facts, unit, debugSources(unit, request.debugLibraries()));
+            lowering.terms().collectDebugMetadata(debug);
+        }
         // 2. Validate subset
         SubsetScan.check(facts, unit, lowered(unit, discovery.validatorClassOrNull(unit))).forEach(context::report);
         libraries.scan().forEach(context::report);
@@ -371,7 +414,25 @@ public final class JavacCompilation {
         // 13-22. Everything from here on takes PIR and resolved types (F846).
         var validator = new ValidatorAssembly.Validator(purpose, autoDispatch, entries, List.copyOf(helpers.values()),
                 statics, libraryMethods, parts.assemblyParams(), failureLocation(entrypoints.getFirst().method()), strictErrors);
-        return ValidatorAssembly.validator(validator, registry(), context, parts.frontend(), captureDetails).result();
+        var assembled = ValidatorAssembly.validator(validator, registry(), context, parts.frontend(debug),
+                request.captureDetails());
+        // The schema is read after the bytes are built, so its rejection comes after the program's, as in the reference.
+        var schema = request.contractSchema()
+                ? new JavacContractSchema(facts).of(type, purpose, entrypoints, parts.params) : null;
+        return new Compiled(assembled.result(), schema, debug, assembled.lowered());
+    }
+
+    /** The sources debug metadata names: the root, then each library given, with the reference's ids and names. */
+    private List<DebugMetadataCollector.SourceText> debugSources(CompilationUnitTree root, List<String> libraries) {
+        var sources = new ArrayList<DebugMetadataCollector.SourceText>();
+        sources.add(new DebugMetadataCollector.SourceText("validator", JavacDebugScan.uri(root, "validator.java"),
+                facts.source(root)));
+        for (int i = 0; i < libraries.size(); i++) {
+            String first = JavacFrontend.shared().firstClassOrInterface(libraries.get(i));
+            sources.add(new DebugMetadataCollector.SourceText("library-" + i,
+                    first == null ? "library-" + i + ".java" : first + ".java", libraries.get(i)));
+        }
+        return sources;
     }
 
     private List<JavacDiscovery.EntryPoint> entrypoints(ClassTree type, ScriptPurpose purpose) {

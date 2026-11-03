@@ -862,12 +862,10 @@ class JavacTypesTest {
             assertNotNull(compiler.compile(COVERED, List.of()).program());
             assertNotNull(compiler.compileWithDetails(COVERED).pirTerm());
             assertNotNull(compiler.compileMethod(COVERED, "validate", List.of()).program());
-            for (Executable contract : List.<Executable>of(() -> compiler.compileContract(COVERED),
-                    () -> compiler.compileContract(COVERED, List.of()))) {
-                assertEquals("a contract schema", assertThrows(NotPorted.class, contract).construct());
-            }
+            assertNotNull(compiler.compileContract(COVERED).contractSchema());
+            assertNotNull(compiler.compileContract(COVERED, List.of()).contractSchema());
             var debug = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setSourceMapEnabled(true));
-            assertEquals("debug metadata", assertThrows(NotPorted.class, () -> debug.compileForDebug(COVERED, List.of())).construct());
+            assertNotNull(debug.compileForDebug(COVERED, List.of()).debugMetadata());
         }
 
         @Test

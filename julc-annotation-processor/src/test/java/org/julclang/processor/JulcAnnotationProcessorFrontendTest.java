@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ADR-068 D4: {@code -Ajulc.frontend}, which the Gradle plugin passes, so a project's validators under {@code src/main/java}
- * are compiled by the frontend it chose. A blueprint needs a contract schema, which {@code javac} does not produce yet.
+ * are compiled by the frontend it chose.
  */
 class JulcAnnotationProcessorFrontendTest {
 

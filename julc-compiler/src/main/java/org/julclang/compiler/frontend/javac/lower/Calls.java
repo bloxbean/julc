@@ -75,6 +75,7 @@ final class Calls {
     PirTerm call(MethodInvocationTree tree, Frame frame) {
         return switch (targets.classify(tree)) {
             case CallTarget.Intrinsic intrinsic -> intrinsic(intrinsic, tree, frame);
+            case CallTarget.FromData target -> fromData(target, tree, frame);
             case CallTarget.Stdlib target -> stdlib(target, tree, frame);
             case CallTarget.Library target -> library(target, tree, frame);
             case CallTarget.Local target -> local(target, tree, frame);
@@ -121,6 +122,22 @@ final class Calls {
                 yield PirHelpers.wrapEncode(scope, typing.of(receiver, scope));
             }
         };
+    }
+
+    /**
+     * {@code T.fromPlutusData(d)} for a ledger type {@code T} whose shape holds no map: {@code d} is evaluated once, then
+     * checked whole for exactly {@code T}'s shape, the strict boundary's check, before anything reads it. The JVM's decoder
+     * reads the same Data, and ignores what that shape has not; the script refuses it, so a value it accepts is the JVM's.
+     * A hash or an integer is its decode, which is its check. The value is {@code d} as {@code T} holds it.
+     */
+    private PirTerm fromData(CallTarget.FromData target, MethodInvocationTree tree, Frame frame) {
+        var argument = tree.getArguments().getFirst();
+        var term = lowering.expr(argument, frame);
+        var data = PirHelpers.wrapEncode(term, typing.of(argument, term));
+        if (target.type() instanceof PirType.ByteStringType || target.type() instanceof PirType.IntegerType) {
+            return terms.decode(data, target.type());
+        }
+        return terms.checkedDecode(data, target.type());
     }
 
     // --- Static methods ---

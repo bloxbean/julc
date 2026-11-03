@@ -29,10 +29,12 @@ import java.util.concurrent.ConcurrentHashMap;
 final class JavacUnits {
 
     /**
-     * The package, the top-level type names in source order, the primary one (public, else first), and the simple names at
-     * any depth of the unit's records and sealed interfaces, and of its classes, once per declaration.
+     * The package, the top-level type names in source order, the primary one (public, else first), the simple names at
+     * any depth of the unit's records and sealed interfaces, and of its classes, once per declaration, and the first class
+     * or interface at any depth, or null: the name the JavaParser frontend gives a string source.
      */
-    record UnitInfo(String packageName, List<String> topLevelNames, String primary, List<String> dataTypes, List<String> classes) {
+    record UnitInfo(String packageName, List<String> topLevelNames, String primary, List<String> dataTypes, List<String> classes,
+                    String firstClassOrInterface) {
     }
 
     private static final int CACHE_LIMIT = 8192;
@@ -108,9 +110,13 @@ final class JavacUnits {
         if (primary == null) primary = names.isEmpty() ? "Unit_" + digest.substring(0, 12) : names.getFirst();
         var dataTypes = new ArrayList<String>();
         var classes = new ArrayList<String>();
+        var classesAndInterfaces = new ArrayList<String>();
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
+                if (tree.getKind() == Tree.Kind.CLASS || tree.getKind() == Tree.Kind.INTERFACE) {
+                    classesAndInterfaces.add(tree.getSimpleName().toString());
+                }
                 boolean sealed = tree.getKind() == Tree.Kind.INTERFACE
                         && tree.getModifiers().getFlags().contains(Modifier.SEALED);
                 if (tree.getKind() == Tree.Kind.RECORD || sealed) dataTypes.add(tree.getSimpleName().toString());
@@ -118,6 +124,7 @@ final class JavacUnits {
                 return super.visitClass(tree, unused);
             }
         }.scan(unit, null);
-        return new UnitInfo(pkg, List.copyOf(names), primary, List.copyOf(dataTypes), List.copyOf(classes));
+        return new UnitInfo(pkg, List.copyOf(names), primary, List.copyOf(dataTypes), List.copyOf(classes),
+                classesAndInterfaces.isEmpty() ? null : classesAndInterfaces.getFirst());
     }
 }

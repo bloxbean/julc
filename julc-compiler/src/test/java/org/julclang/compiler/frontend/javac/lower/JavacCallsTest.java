@@ -233,9 +233,15 @@ class JavacCallsTest {
         assertEquals("the method hashCode of a byte string", notPorted("static int m(PubKeyHash p) { return p.hashCode(); }"));
     }
 
+    /**
+     * A ledger {@code fromPlutusData} checks what the JVM's decoder reads and decodes what the type holds, where the
+     * reference's identity leaves a hash as Data; {@code Adr068LedgerFromDataPropertyTest} holds it to the JVM.
+     */
     @Test
-    void fromPlutusDataOnAHashLeavesDataWhereBytesAreExpected() {
-        assertEquals("fromPlutusData on a ledger hash", notPorted("static PubKeyHash m(PlutusData d) { return PubKeyHash.fromPlutusData(d); }"));
+    void fromPlutusDataOnAHashIsItsBytes() {
+        var program = new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                .compileMethod(source("static byte[] m(PlutusData d) { return PubKeyHash.fromPlutusData(d).hash(); }"), "m", List.of());
+        assertTrue(program.program() != null);
     }
 
     @Test

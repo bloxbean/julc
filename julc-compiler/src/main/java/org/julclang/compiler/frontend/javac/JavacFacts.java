@@ -13,8 +13,10 @@ import com.sun.source.util.TreeScanner;
 import com.sun.source.util.Trees;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
+import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.source.SourceLocation;
@@ -41,6 +43,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -625,6 +628,38 @@ public final class JavacFacts {
             throw rejection("Cannot read the source of this literal: " + e.getMessage(), tree);
         }
         return read.toString();
+    }
+
+    /**
+     * The exact-shape checks of one program: the strict boundary's check, the one a datum and a redeemer take, with one
+     * dispatcher for the program, bound under a name of its own so a datum's checker does not capture it.
+     */
+    public StrictBoundaryGenerator shapeChecks() {
+        return StrictBoundaryGenerator.shared(registry.namedDefinitions(), "#__julc-shape-check");
+    }
+
+    /** Whether a map is reachable in {@code type}'s shape, through its fields, constructors, elements and named types. */
+    public boolean holdsMap(PirType type) {
+        return holdsMap(type, new HashSet<>());
+    }
+
+    private boolean holdsMap(PirType type, Set<String> seen) {
+        return switch (type) {
+            case PirType.MapType ignored -> true;
+            case PirType.NamedTypeRef ref -> seen.add(ref.stableId())
+                    && holdsMap(registry.namedDefinitions().get(ref.stableId()), seen);
+            case PirType.RecordType record -> record.fields().stream().anyMatch(field -> holdsMap(field.type(), seen));
+            case PirType.SumType sum -> sum.constructors().stream()
+                    .anyMatch(constructor -> constructor.fields().stream().anyMatch(field -> holdsMap(field.type(), seen)));
+            case PirType.ListType list -> holdsMap(list.elemType(), seen);
+            case PirType.OptionalType optional -> holdsMap(optional.elemType(), seen);
+            case null, default -> false;
+        };
+    }
+
+    /** The text of {@code unit}, as javac read it. */
+    String source(CompilationUnitTree unit) {
+        return text(unit);
     }
 
     /** The start offset of {@code tree} in its unit, or -1. */
