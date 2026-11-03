@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-10-31): approved by the review comment at `0e8bb3c1` and by Codex at `0e8bb3c1`, with
 the post-approval P3 edits at `3ba3ea03`. The implementation follows in this PR, milestone by milestone (M0–M6)
-**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13) and 2026-11-03 (r14, r15)
+**Date:** 2026-10-30 (r1); revised 2026-10-31 (r2–r9), 2026-11-01 (r10, r11), 2026-11-02 (r12, r13) and 2026-11-03 (r14 to r16)
 **Label:** `semantic-consistency`
 **Risk class:** correctness-sensitive, **high**. The frontend decides what every validator means; a wrong
 binding, type or literal is a silent miscompile.
@@ -798,9 +798,10 @@ by name, and the gate rejects that shape on the default frontend.
 - **Codes.** javac's `pattern.dominated`, `not.exhaustive` and constant checks replace the JuLC checks that
   replicate them; M3 lists which of `JULC0071`–`JULC0075`, `JULC0082` and `JULC0083` are retired and which stay as
   subset rules (for example colon-form fall-through, `JULC0075`). `SwitchPatternChecker` keeps only subset rules.
-- **Remaining milestones.** ADR-067 M2a and M2b (record patterns), M3 (two sealed parents), M3b (record members,
-  ledger names), M4 (cross-type `equals`) and M5 are implemented on the javac frontend in this ADR's M3, not on
-  JavaParser (D4: the exposure until M5 is accepted).
+- ADR-067 M3 (two sealed parents, `JULC0079`) and M3b (record members, `JULC0080`) are on the javac frontend (Group 4a). M2a and M2b (record patterns) remain: `JULC0076` stands for a record pattern until they are lowered. (r16)
+- **Remaining milestones.** ADR-067 M3 (two sealed parents) and M3b (record members) are on the javac frontend (Group 4,
+  r16). M2a and M2b (record patterns), M4 (cross-type `equals`) and M5 remain for this ADR's M5, not on JavaParser (D4: the
+  exposure until M5 is accepted).
 
 ### D12. Deletion
 
@@ -905,6 +906,7 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 | `JULC0101` | A method does not declare `toPlutusData` or a record's accessor, because JuLC compiles a record as its components | Both, from `SubsetRules.check` (r12) |
 | `JULC0101` | A record's generated accessor does not implement `ToPlutusData.toPlutusData`: `SpelledMethods.checkRecordMembers` reads that element, because javac gives the accessor no tree. A generated accessor of any other method lowers | `frontend=JAVAC` (r12) |
 | `JULC0101` | The rest: a method does not take a name that frontend reads in place of the method's body, and a call on a `@NewType` or on what lowers to bytes is its accessor | The gate only |
+| `JULC0103` | An entry point's last parameter is `ScriptContext` or `PlutusData`, by identity; an entry point with a count its purpose does not take keeps the count's rejection | Both, by the maintainer's decision (r16); the gate's modes apply on the default frontend |
 | `JULC0078` | D6's related types: a collection operation between unrelated types, and `.equals` of unrelated type arguments | `frontend=JAVAC`, from M3 (r12) |
 | `JULC0092` | Existing (I11). The gate also applies it where a sealed interface's variants, read as `TypeRegistrar` reads them, differ from javac's list | Both |
 
@@ -963,6 +965,9 @@ A rule that depends on what javac resolved runs on javac's trees after `analyze(
 
 - **Script bytes change** where the D13 ledger says so; each milestone's ledger totals go into the release notes.
 - **Source that stops compiling:**
+  - an entry point whose last parameter is not `ScriptContext` or `PlutusData` (`JULC0103`), on both frontends under the default gate: the wrapper passes the script context's Data to that parameter undecoded, so the script did not run what the method's JVM test ran".
+- D13: the rows below, as Policy rejections (F904) and, where the source has another error, Diagnostic changes (two errors).
+- r16, the rest: "Group 4a: the subset's rejections on javac trees, with a code for each the reference made uncoded (I2a, `JULC0104`–`JULC0122` and eleven activated codes); `SubsetScan` collects every error (F946, I2a's first error as D13's two-errors rule says); `JULC0087` names its reason; ADR-067 M3 and M3b on `frontend=JAVAC` (`JULC0079`, `JULC0080`, D11). `JULC0080` reverses F908: `R { }`, accepted on `frontend=JAVAC` from M3d, is a record member ADR-067 D9 rejects. A declared accessor or `toPlutusData` stays `JULC0101`, and a constructor with a statement `JULC0099`, ahead of D9's single diagnostic, by D15 (r12). (r16).
   - On `frontend=JAVAC` (r15): a ledger type's `fromPlutusData` checks the exact shape on-chain, so Data with extra constructor fields, fields on a `Bool` or fields on an empty `Optional` fails where the JVM's decoder ignores them; a ledger type that holds a map (`Value`, `TxOut`, `TxInInfo`, `TxInfo`, `ScriptContext`, `Committee`, `GovernanceAction`, `ProposalProcedure`) stops with `JULC0084`. A cast to a map of a variable assigned after its declaration stops with `JULC0084`. `(byte)`, `(short)` and `(char)` casts stop with `JULC0084`.
   - `Builtins.tailList`, `mkCons` and `mkNilPairData` (r14): `Builtins.tailList(PlutusData)` and `Builtins.mkCons(PlutusData, PlutusData)` return `PlutusData`, where they returned `PlutusData.ListData`, and `Builtins.mkNilPairData` returns `PlutusData.MapData`. New overloads keep a type Java knows: `tailList(ListData)` and `mkCons(PlutusData, ListData)` return `ListData`, and `tailList(MapData)` and `mkCons(PlutusData, MapData)` return `MapData`. So `var pairs = Builtins.mkNilPairData(); pairs = Builtins.mkCons(Builtins.mkPairData(k, v), pairs);` and `var l = Builtins.mkNilData(); l = Builtins.mkCons(x, l);` compile as before. What no longer compiles: a `ListData` taken from `tailList` or `mkCons` of an argument whose static type is `PlutusData` or another subtype, and a `ListData` taken from `mkNilPairData` or from either call on a `MapData`. A `null` argument is ambiguous between the overloads. Write `PlutusData`, or a `var`. Off-chain, a map walked or built by these methods stays a `MapData`, and `mkCons` onto a map takes only a pair, `Constr 0` with two fields. Scripts are unchanged.
   - JuLC's dialect (D6): `BigInteger` operators, `int` literals as `BigInteger`, implicit imports, `@NewType`
@@ -1018,7 +1023,7 @@ milestone's evidence; a skipped check fails the gate.
 | **M0** | Freeze B0 and the corpus: in-repo `julc-examples` validators, the 16 stdlib libraries, ledger sources, `verification/blaster/fixtures`, `verification/c7/fixtures`, every compiler/stdlib/testkit test source, the `.diffcase` set, G0, the G1 fixed-seed corpus, the external `julc-examples`, Elci's smoke and `custom-library`. Build the D13 ledger's reference rows, the I2a rejection inventory, and D6's scan of `.equals` call sites that `JULC0087` would reject. Freeze D4's accepted-divergence list with each pin's ID. Add this ADR as a step of ADR-062, and D4's preview-tracking sentence to `SECURITY.md` | This ADR accepted; the integration's full run green | `adr/evidence/068-javac-frontend-baseline.md` with B0's SHA, the pinned commands, and the generated ledger and inventory | I1, I2a, I7, I11 baselines |
 | **M1** | `JavacFrontend` (D3) and D5, run as a **gate before the JavaParser frontend** on every compile: a javac error rejects, nothing else changes. D6's comparison rules in both frontends (D4 exception 1, re-freezing the reference as B1); the JuLC collections' `byte[]` value equality on the JVM (D6). D6's dialect rewrite of every in-repo migration source; the operand-order issue filed. Hosts: JVM, Gradle plugin, annotation processor, testkit, native CLI, playground, `julc-wasm` (a stdlib-using and a `@RequiresSigner` validator in the real image), Elci native shape, each built without `--add-exports` | M0 | Every migration case accepted by both is byte-identical to B1 (I1a); every migration case javac rejects is a "javac rejection" row whose rewrite is accepted and costs no more, in size and budget, than the order-correct lowering of its dialect original (D4), except where the rewrite writes out a conversion or library call the dialect made implicitly, each listed with its measured cost; a case D6 removes keeps its original rejection row and needs no accepted replacement; negative fixtures stay rejected; warm compile ≤ 2× on the corpus, cold recorded with a threshold set in review; one rejection test per Java 22–25 feature; the negative control; each host smoke passes | I1, I2b, I2c, I4, I6, I10 |
 | **M2** | D7 behind `frontend=JAVAC`; `JavacFacts`; the stub generator's attribute check | M1 | I11's registry equality and independent encoding tests on the whole corpus; #284 and #286 cases bind to the user's type (their values agree in M3, when they can run); `LedgerTypeProvider` equal | I3, I11, I5 (Elci types) |
-| **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14) (**ported**, M3a); calls (stdlib, instance dispatch, D6's comparison rules) (**ported**, Group 1; a library call waits for whole-library lowering); records, fields, object creation (**ported**, Group 1); locals, `if`/`else`, `return` (**ported**, Group 1); `instanceof` (**ported**, Group 1); `switch` with ADR-067 M1 guards and the ported `JavaConstants` (**ported**, Group 2); lambdas (**ported**, Group 2); whole-library lowering and Elci's specialization (D8) (**ported**, Group 3); entry points and `@Param`; debug metadata (**ported**, Group 3; contract schemas too). Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
+| **M3** | Port the non-loop lowering, in order: literals, names, static constants (with D14) (**ported**, M3a); calls (stdlib, instance dispatch, D6's comparison rules) (**ported**, Group 1; a library call waits for whole-library lowering); records, fields, object creation (**ported**, Group 1); locals, `if`/`else`, `return` (**ported**, Group 1); `instanceof` (**ported**, Group 1); `switch` with ADR-067 M1 guards and the ported `JavaConstants` (**ported**, Group 2); lambdas (**ported**, Group 2); whole-library lowering and Elci's specialization (D8) (**ported**, Group 3); entry points and `@Param`; debug metadata (**ported**, Group 3; contract schemas too). Then the subset validator on javac trees, with D6's equality rules and D11's ADR-067 milestones (**ported**, Group 4) | M2 | Per construct: I1b ledger rows for every covered method, I1a for fully covered programs, all classified; the harness gate on covered programs; I13's binding check over the corpus; the rejection inventory passes for ported constructs; ADR-067 and ADR-062 revisions | I1, I2a, I3, I7, I9, I12, I13 |
 | **M4** | (**ported**, r14) Port loop lowering: for-each, `while`, `break`, accumulators, from B0's lowering (which includes the loop-break continuation fix). A loop that calls a library gets its I1 row when libraries are lowered | M3's Group 2, by the maintainer's decision of r13 | I1 ledger rows for every loop method; the loop regression tests, including the loop-break continuation suite; T21 and T23 cases agree; the harness gate including G0's loop shapes | I1, I3, I13 |
 | **M5** | Default `frontend=JAVAC` | M4; **zero `JULC0084` on the corpus; I1 ledger complete** (every case has a javac row) | Full `./gradlew build`; external `julc-examples` and `julc-helloworld`; Elci's release smoke against a local snapshot; native and Wasm smokes; a cost and size report against M0; docs and release notes | All |
 | **M6** | Delete JavaParser (D12) | M5 | No `com.github.javaparser` on any class path; equivalence gates for the lint rules and MCP output, `TestDiscovery` (`julc check`), `JavaMetadataExtractor` and the `julc-verification` resolvers, against M5's outputs on the corpus; `JULC0100` and the gate-only rows of `JULC0101` removed, with a release note (D15); full build; harness gate; Elci coordinated | I8 |
@@ -1475,3 +1480,24 @@ rest on the rule's own tests and on V146 showing it is the only byte change. Dev
     listings are sorted, on both frontends. D8: each host's pool is what `LibrarySourceResolver.resolve` finds until M6.
   - D13: Group 3's rows are in `lowering-accepted-differences.tsv`; the cost of `(int)`'s check on MPF and of the ledger
     shape check are accepted, with follow-ups to win them back.
+- **r16** (2026-11-03, M3 Group 4: the subset's rejections, on repository evidence and independent reviews,
+  `068-m3-group4a.md`):
+  - The maintainer's decision: An entry point's last parameter is `ScriptContext` or `PlutusData`
+    (`JULC0103`). Both frontends lower the last parameter alike, with no decode, so a parameter of another type read the
+    context as that type: a defect of code both frontends use. By this decision it is a subset rule on javac's trees
+    (`SubsetRules`, D15), a Policy rejection on both frontends, and not exception 2's reference change: it stands outside D4's
+    clause on the JavaParser frontend's misreadings (r11) by this decision, and the reference with the gate off keeps its
+    reading, so I1 records the rows as Policy rejections and the reference is not re-frozen. Under the gate's `report` and `off`
+    modes the default frontend does not enforce it, until M6 removes that frontend; that exposure is accepted. An entry point
+    with a count its purpose does not take keeps the count's rejection (`JULC0008`). The in-repo fixtures that wrote
+    `validate(BigInteger, BigInteger)` declare the context.
+  - Group 4a: the subset's rejections on javac trees, with a code for each the reference made uncoded (I2a,
+    `JULC0104`–`JULC0122` and eleven activated codes); `SubsetScan` collects every error (F946, I2a's first error as D13's
+    two-errors rule says); `JULC0087` names its reason; ADR-067 M3 and M3b on `frontend=JAVAC` (`JULC0079`, `JULC0080`, D11).
+    `JULC0080` reverses F908: `R { }`, accepted on `frontend=JAVAC` from M3d, is a record member ADR-067 D9 rejects. A declared
+    accessor or `toPlutusData` stays `JULC0101`, and a constructor with a statement `JULC0099`, ahead of D9's single diagnostic,
+    by D15 (r12).
+  - A trial of a cheaper `DelayedMethodPass` (fold closed bodies, share bodies every path reads, weigh hashes) is withdrawn:
+    its confirmation found a program dearer on every path, a fold that grew a script, a new dependency of the compiler on
+    `julc-vm-java` that changes which VM a user's tests run on, and compile-time BLS evaluation that may differ by host
+    (I4). Open question 5 stands as at B4; the trial's findings are a follow-up for the optimization work after M6.

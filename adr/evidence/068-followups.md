@@ -184,6 +184,8 @@ From M3a's close, a misreading in the JavaParser frontend alone is listed here, 
 | The JVM's `mapData` of a `ListData` | M4 confirmation | `mapData(mkNilData())` and `mapData` of a `ListData` of `Constr 0` pairs give a `MapData` on the JVM, where the node fails. Both frontends fail it | M5, with the JVM model of pairs |
 | `constrData`'s field list type in `julc-vm-java` | M4 | Checked element by element, where Plutus checks the list's type whole, as `listData` and `mapData` now are | Next VM change |
 
+| A cheaper `DelayedMethodPass` | M3 Group 4 (withdrawn trial, `wip/068-g4b`, review `g4-confirmation.md`) | A trial folded closed methods with no parameters at compile time, shared bodies every path reads, and weighed hashes. Its confirmation found a program dearer on every path (a hash-heavy body read through other methods), a fold measured before the UPLC optimizer that grew a script, the compiler depending on `julc-vm-java` so that `JulcVm.create()` picks the Java VM over Scalus in users' tests, and compile-time BLS evaluation that may differ by host. Withdrawn; B5's pass stands | After M6, as its own design: fold with a pure evaluator in the compiler's own module, BLS excluded, size measured after the optimizer; share by a count of reads |
+
 ## Codex read owed
 
 If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).

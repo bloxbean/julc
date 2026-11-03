@@ -1,21 +1,21 @@
 cases	17080
 DIFFERENT	7
-DIFFERENT-provider	2
+DIFFERENT-provider	6
 both-reject	12
 both-reject-javac-first	38
 both-reject-tolerant	3
-equal	10320
+equal	10316
 equal-tolerant	6633
 javac-rejects-unreadable	4
 ledger-source	38
 reference-rejects	23
 compared	class	cases	no-user-declaration	records	variants	sums	new-types	fields	distinct-definitions
 compared	DIFFERENT	7	7	0	0	0	0	0	0
-compared	DIFFERENT-provider	2	0	2	0	0	0	2	1
+compared	DIFFERENT-provider	6	4	2	0	0	0	2	1
 compared	both-reject	12	12	0	0	0	0	0	0
 compared	both-reject-javac-first	38	38	0	0	0	0	0	0
 compared	both-reject-tolerant	3	3	0	0	0	0	0	0
-compared	equal	10320	6715	941	6635	3460	34	8687	1078
+compared	equal	10316	6711	941	6635	3460	34	8687	1078
 compared	equal-tolerant	6633	4675	187	3727	1841	27	3845	264
 compared	javac-rejects-unreadable	4	4	0	0	0	0	0	0
 compared	ledger-source	38	38	0	0	0	0	0	0
@@ -56,4 +56,5 @@ part	recorded	equal-tolerant	6491
 part	recorded	javac-rejects-unreadable	4
 part	recorded	reference-rejects	15
 part	rules	equal	4
-part	stdlib	equal	17
+part	stdlib	DIFFERENT-provider	4
+part	stdlib	equal	13
