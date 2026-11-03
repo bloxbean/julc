@@ -247,11 +247,9 @@ public final class EvaluateTool {
      * (the compiler will catch the real error).
      */
     static int expectedMethodArity(String source, String methodName) {
-        return expectedMethodArity(source, methodName, ARITY_READER);
+        return expectedMethodArity(source, methodName, SourceReader.configured());
     }
 
-    /** The reader {@link #expectedMethodArity(String, String)} uses: the lint engine's ({@link LintEngine#DEFAULT_READER}). */
-    static final SourceReader ARITY_READER = LintEngine.DEFAULT_READER;
 
     /** {@link #expectedMethodArity(String, String)} with {@code reader}; javac's reading of a rejected source is -1. */
     static int expectedMethodArity(String source, String methodName, SourceReader reader) {

@@ -5,10 +5,10 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.Tree;
-import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.JavaSourceIntrospector;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import org.julclang.compiler.frontend.javac.SourceReader;
@@ -25,7 +25,7 @@ import java.util.stream.Stream;
 /**
  * Discovers @Test-annotated static methods in test/ source files.
  * <p>
- * Two readers find the same methods (ADR-068 M6): JavaParser's, the default, and javac's parser. {@link #DEFAULT_READER}
+ * Two readers find the same methods (ADR-068 M6): JavaParser's, the default, and javac's parser. {@link #defaultReader()}
  * is the one switch between them; M6 deletes the JavaParser reading.
  */
 public final class TestDiscovery {
@@ -33,20 +33,26 @@ public final class TestDiscovery {
     private TestDiscovery() {}
 
     public record TestMethod(String sourceFile, String className, String methodName, String source) {}
-
-
-    /** The reader this tool uses (ADR-068 M6): {@link SourceReader#configured()}. */
-    public static final SourceReader DEFAULT_READER = SourceReader.configured();
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    private static SourceReader defaultReader() {
+        return SourceReader.configured();
+    }
 
     /**
      * Scan a directory for test methods.
      * A test method is a static boolean method annotated with @Test.
      */
     public static List<TestMethod> discover(Path testDir) throws IOException {
-        return discover(testDir, DEFAULT_READER);
+        return discover(testDir, defaultReader());
     }
 
-    /** {@link #discover(Path)}, reading each source with {@code reader}. */
+    /**
+     * {@link #discover(Path)}, reading each source with {@code reader}.
+     * <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this overload goes at M6.
+     */
     public static List<TestMethod> discover(Path testDir, SourceReader reader) throws IOException {
         var results = new ArrayList<TestMethod>();
 
@@ -72,6 +78,7 @@ public final class TestDiscovery {
      * The test methods of one source, in source order: the classes and interfaces at any depth, the outer first, and
      * each one's own methods. Throws {@link IllegalArgumentException} when a source that names {@code @Test} cannot
      * be read.
+     * <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this overload goes at M6.
      */
     public static List<TestMethod> discover(Path path, String source, SourceReader reader) {
         if (!JavaSourceIntrospector.mightContainTestAnnotation(source)) return List.of();
@@ -116,16 +123,14 @@ public final class TestDiscovery {
 
     /**
      * javac's reading: the class and interface declarations (not records, enums or annotation types, and no anonymous
-     * class), with their explicit modifiers, as written. A source javac's parser rejects is an error, as JavaParser's
-     * strict reading is; javac's reading is the lenient one that reading falls back to, so there is no third.
+     * class), with their explicit modifiers, as written, in JavaParser's order. A source javac's parser rejects is an
+     * error, unless its only errors are of a later Java and no method in it carries {@code @Test}: then it only mentions
+     * the annotation, as the JavaParser reading's lenient fallback decided.
      */
     private static List<TestMethod> discoverWithJavac(Path p, String source) {
         var syntax = JavacSyntax.read(source);
-        if (syntax.hasErrors()) {
-            throw new IllegalArgumentException("Could not parse @Test candidate " + p + ": " + syntax.errorMessages());
-        }
         var results = new ArrayList<TestMethod>();
-        new TreeScanner<Void, Void>() {
+        new SourceOrderScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree cls, Void unused) {
                 boolean classOrInterface = cls.getKind() == Tree.Kind.CLASS || cls.getKind() == Tree.Kind.INTERFACE;
@@ -140,7 +145,25 @@ public final class TestDiscovery {
                 return super.visitClass(cls, unused);
             }
         }.scan(syntax.unit(), null);
+        if (syntax.hasErrors()) {
+            // Later Java in a source with no Test method only mentions the annotation: skip it, as the project scan does.
+            if (syntax.onlyLanguageLevelErrors() && results.isEmpty() && !declaresTestMethod(syntax)) return List.of();
+            throw new IllegalArgumentException("Could not parse @Test candidate " + p + ": " + syntax.errorMessages());
+        }
         return results;
+    }
+
+    /** Whether any method, of any type or none, carries an annotation named {@code Test}. */
+    private static boolean declaresTestMethod(JavacSyntax syntax) {
+        boolean[] found = {false};
+        new SourceOrderScanner<Void, Void>() {
+            @Override
+            public Void visitMethod(MethodTree method, Void unused) {
+                if (method.getModifiers().getAnnotations().stream().anyMatch(TestDiscovery::isTestAnnotation)) found[0] = true;
+                return super.visitMethod(method, unused);
+            }
+        }.scan(syntax.unit(), null);
+        return found[0];
     }
 
     private static boolean isTest(MethodTree method) {

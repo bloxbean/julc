@@ -5,16 +5,15 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.TreePath;
-import com.sun.source.util.TreePathScanner;
 import org.julclang.compiler.JavaSourceIntrospector.AnnotatedType;
 import org.julclang.compiler.JavaSourceIntrospector.RoleConflict;
 import org.julclang.compiler.JavaSourceIntrospector.SourceInfo;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * {@link JavaSourceIntrospector}'s reading on javac's parser (ADR-068 M6): the same {@link SourceInfo} from javac's syntax
@@ -22,16 +21,6 @@ import java.util.Set;
  * at any depth; an anonymous class is none. An annotation is matched by its simple name, as written.
  */
 final class JavacSourceIntrospection {
-
-    /**
-     * javac's errors for a construct of a later Java than {@code -source 21}: its parser has read the whole source, so
-     * the tree is the source's, and whether a type declares a role is known.
-     */
-    private static final Set<String> LANGUAGE_LEVEL_ERRORS = Set.of(
-            "compiler.err.feature.not.supported.in.source",
-            "compiler.err.feature.not.supported.in.source.plural",
-            "compiler.err.preview.feature.disabled",
-            "compiler.err.preview.feature.disabled.plural");
 
     private JavacSourceIntrospection() {
     }
@@ -87,7 +76,7 @@ final class JavacSourceIntrospection {
      */
     static boolean declaresNoJulcRole(String source) {
         var syntax = JavacSyntax.read(source);
-        if (!syntax.hasErrors() || !onlyLanguageLevelErrors(syntax)) return false;
+        if (!syntax.hasErrors() || !syntax.onlyLanguageLevelErrors()) return false;
         return types(syntax.unit()).stream()
                 .flatMap(path -> annotationNames((ClassTree) path.getLeaf()).stream())
                 .noneMatch(name -> JavaSourceIntrospector.isSupportedValidatorAnnotation(name)
@@ -95,14 +84,11 @@ final class JavacSourceIntrospection {
                         || JavaSourceIntrospector.ONCHAIN_LIBRARY_ANNOTATION.equals(name));
     }
 
-    private static boolean onlyLanguageLevelErrors(JavacSyntax syntax) {
-        return syntax.errors().stream().allMatch(e -> LANGUAGE_LEVEL_ERRORS.contains(e.getCode()));
-    }
 
     /** Every named type declaration, the unit's first, in pre-order. */
     private static List<TreePath> types(CompilationUnitTree unit) {
         var found = new ArrayList<TreePath>();
-        new TreePathScanner<Void, Void>() {
+        new SourceOrderScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
                 if (!tree.getSimpleName().isEmpty()) found.add(getCurrentPath());

@@ -2,6 +2,7 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.util.TreePath;
@@ -64,6 +65,11 @@ public final class DoubleHashRule implements LintRule {
             ));
         });
         return findings;
+    }
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
     }
 
     @Override

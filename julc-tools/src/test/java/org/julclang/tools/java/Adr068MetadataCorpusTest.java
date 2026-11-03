@@ -1,12 +1,12 @@
 package org.julclang.tools.java;
 
-import org.julclang.compiler.frontend.javac.SourceReader;
-
 import org.julclang.compiler.JavaSourceParser;
+import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.compiler.validate.SubsetValidator;
 import org.julclang.tools.model.CheckResponse;
-import org.julclang.tools.model.DiagnosticDto;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -27,19 +27,30 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * ADR-068 M6's equivalence gate for {@link JavaMetadataExtractor}: on every corpus file, javac's reading gives the
- * JavaParser reading's metadata (contract, purpose, params, datum, redeemer) and its own diagnostics. The JavaParser
- * reading also reports the JavaParser frontend's subset diagnostics (those with a code), which javac's reading does not
- * make; they are compared out and counted. Run by {@code :julc-tools:adr068Tools -Padr068.tools.sources=...}.
+ * ADR-068 M6's equivalence gate for {@link JavaMetadataExtractor}: on every corpus file, the whole response of each
+ * reading, diagnostics and validity included. The subset's diagnostics are each frontend's: the JavaParser frontend's
+ * validator, or the javac frontend's subset check ({@code JavacCompilation.subset}), as a compilation reports them. A
+ * response that differs only there is classified by how the two frontends' diagnostics differ, and written down with
+ * both. Run by {@code :julc-tools:adr068Tools -Padr068.tools.sources=...}.
  */
 @Tag("adr068-tools")
 class Adr068MetadataCorpusTest {
 
-    private static final Map<String, String> ALLOWED = Map.of(
-            "metadata:both-unparsable", "both parsers reject the source; each reports in its own words (D5)",
-            "metadata:javac-rejects", "javac's parser rejects the source, which JavaParser's reading accepted",
-            "metadata:reader-rejects", "JuLC's strict reader (JavaSourceParser, ADR-062 T24) rejects a source javac's"
-                    + " parser reads; ADR-068 keeps javac's reading (D5)");
+    private static final JulcCompiler COMPILER = new JulcCompiler();
+
+    private static final Map<String, String> ALLOWED = Map.ofEntries(
+            Map.entry("metadata:both-unparsable", "both parsers reject the source; each reports in its own words (D5)"),
+            Map.entry("metadata:javac-rejects", "javac's parser rejects the source, which JavaParser's reading accepted"),
+            Map.entry("metadata:reader-rejects", "JuLC's strict reader (ADR-062 T24) rejects a source javac's parser reads;"
+                    + " ADR-068 keeps javac's reading (D5)"),
+            Map.entry("subset:same-codes", "the same codes at the same positions, in the same order; a message's words differ"),
+            Map.entry("subset:same-first-error", "the first error's code and position agree (the one a compilation stops"
+                    + " on); the frontends collect the rest differently"),
+            Map.entry("subset:javac-attribution", "javac's attribution rejects the source (JULC0085, D5), which the"
+                    + " JavaParser validator does not read"),
+            Map.entry("subset:not-ported", "the javac frontend stops at a construct it does not lower yet (JULC0084): M5's"),
+            Map.entry("subset:javac-codes", "the javac frontend rejects with its own code where the JavaParser frontend's"
+                    + " validator had another or none (I2a's coded rejections, D13's policy rows)"));
 
     @Test
     void javacReadsTheMetadataJavaParserReads() throws IOException {
@@ -63,15 +74,15 @@ class Adr068MetadataCorpusTest {
                 continue;
             }
             count(counts, "files");
-            var expected = JavaMetadataExtractor.extract(text, SourceReader.JAVAPARSER);
-            var actual = JavaMetadataExtractor.extract(text, SourceReader.JAVAC);
+            var expected = JavaMetadataExtractor.extract(text, SourceReader.JAVAPARSER, COMPILER, List.of());
+            var actual = JavaMetadataExtractor.extract(text, SourceReader.JAVAC, COMPILER, List.of());
             if (expected.contractName() != null) count(counts, "validators");
-            int subset = subsetDiagnostics(text);
-            if (subset > 0) count(counts, "javaparser-subset-diagnostics-files");
-            String kind;
+            var javaParserSubset = javaParserSubset(text);
+            if (!javaParserSubset.isEmpty()) count(counts, "javaparser-subset-diagnostics-files");
             boolean javacRejects = JavacSyntax.read(text).hasErrors();
             boolean readerRejects = !javacRejects && !JavaSourceParser.parse(text).isSuccessful();
-            if (comparable(expected, subset).equals(comparable(actual, 0))) {
+            String kind;
+            if (expected.equals(actual)) {
                 kind = "metadata:same";
             } else if (javacRejects && unparsable(expected)) {
                 kind = "metadata:both-unparsable";
@@ -80,22 +91,51 @@ class Adr068MetadataCorpusTest {
             } else if (readerRejects) {
                 kind = "metadata:reader-rejects";
             } else {
-                kind = "metadata:DIFFERENT";
+                var javacSubset = JavacMetadataReading.subset(text, COMPILER, List.of());
+                if (structure(expected, javaParserSubset.size()).equals(structure(actual, javacSubset.size()))) {
+                    kind = "subset:" + subsetClass(javaParserSubset, javacSubset);
+                    count(counts, expected.valid() == actual.valid() ? "subset-validity:same" : "subset-validity:differs");
+                } else {
+                    kind = "metadata:DIFFERENT";
+                }
             }
             count(counts, kind);
-            if (!kind.equals("metadata:same")) {
-                differences.add(kind + "\t" + file + "\t" + clip(comparable(expected, subset)) + "\t"
-                        + clip(comparable(actual, 0)));
-            }
+            if (!kind.equals("metadata:same")) differences.add(kind + "\t" + file + "\t" + expected + "\t" + actual);
         }
         var summary = new ArrayList<String>();
         counts.forEach((k, v) -> summary.add(k + "\t" + v));
         Files.write(out.resolve("metadata-summary.tsv"), summary);
         Files.write(out.resolve("metadata-differences.tsv"), differences);
         var unexplained = counts.keySet().stream()
-                .filter(k -> k.startsWith("metadata:") && !k.equals("metadata:same") && !ALLOWED.containsKey(k))
+                .filter(k -> k.startsWith("metadata:") || k.startsWith("subset:"))
+                .filter(k -> !k.equals("metadata:same") && !ALLOWED.containsKey(k))
                 .toList();
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(30).toList()));
+    }
+
+    /** The JavaParser frontend's validator's diagnostics, which its reading puts first. */
+    private static List<CompilerDiagnostic> javaParserSubset(String text) {
+        var parsed = JavaSourceParser.parse(text);
+        if (!parsed.isSuccessful() || parsed.getResult().isEmpty()) return List.of();
+        return new SubsetValidator().validate(parsed.getResult().get());
+    }
+
+    /** How the two frontends' subset diagnostics differ. */
+    private static String subsetClass(List<CompilerDiagnostic> javaParser, List<CompilerDiagnostic> javac) {
+        if (javac.stream().anyMatch(d -> "JULC0085".equals(d.code()))) return "javac-attribution";
+        if (javac.stream().anyMatch(d -> "JULC0084".equals(d.code()))) return "not-ported";
+        if (javaParser.stream().map(Adr068MetadataCorpusTest::site).toList()
+                .equals(javac.stream().map(Adr068MetadataCorpusTest::site).toList())) {
+            return "same-codes";
+        }
+        var first = javaParser.stream().filter(CompilerDiagnostic::isError).findFirst().map(Adr068MetadataCorpusTest::site);
+        var firstOnJavac = javac.stream().filter(CompilerDiagnostic::isError).findFirst().map(Adr068MetadataCorpusTest::site);
+        if (first.isPresent() && first.equals(firstOnJavac)) return "same-first-error";
+        return "javac-codes";
+    }
+
+    private static String site(CompilerDiagnostic d) {
+        return d.level() + " " + d.code() + " " + d.line() + ":" + d.column();
     }
 
     /** A parse failure: no contract and only errors without a code. */
@@ -105,31 +145,15 @@ class Adr068MetadataCorpusTest {
                 && response.diagnostics().stream().noneMatch(d -> d.message().startsWith("No validator annotation"));
     }
 
-    /**
-     * How many diagnostics the JavaParser frontend's subset validator adds to the JavaParser reading: the extractor puts
-     * them first. Coded or not (some of its warnings have no code).
-     */
-    private static int subsetDiagnostics(String text) {
-        var parsed = JavaSourceParser.parse(text);
-        if (!parsed.isSuccessful() || parsed.getResult().isEmpty()) return 0;
-        return new SubsetValidator().validate(parsed.getResult().get()).size();
-    }
-
-    /** The response without its first {@code subset} diagnostics, and without validity when they decided it. */
-    private static String comparable(CheckResponse r, int subset) {
-        List<DiagnosticDto> own = r.diagnostics().subList(Math.min(subset, r.diagnostics().size()), r.diagnostics().size());
-        boolean ownErrors = own.stream().anyMatch(d -> "ERROR".equals(d.level()));
-        return String.join(" | ", String.valueOf(!ownErrors), String.valueOf(r.contractName()), String.valueOf(r.purpose()),
+    /** The response but for its first {@code subset} diagnostics and its validity: what the reading itself found. */
+    private static String structure(CheckResponse r, int subset) {
+        var own = r.diagnostics().subList(Math.min(subset, r.diagnostics().size()), r.diagnostics().size());
+        return String.join(" | ", String.valueOf(r.contractName()), String.valueOf(r.purpose()),
                 String.valueOf(r.params()), String.valueOf(r.datumName()), String.valueOf(r.datumFields()),
                 String.valueOf(r.redeemerVariants()), String.valueOf(r.redeemerFields()), String.valueOf(own));
     }
 
     private static void count(Map<String, Integer> counts, String key) {
         counts.merge(key, 1, Integer::sum);
-    }
-
-    private static String clip(String s) {
-        s = s.replace('\t', ' ').replace('\n', ' ');
-        return s.length() > 500 ? s.substring(0, 500) + "..." : s;
     }
 }

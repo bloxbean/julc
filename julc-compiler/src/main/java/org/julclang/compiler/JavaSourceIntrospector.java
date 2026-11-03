@@ -105,14 +105,22 @@ public final class JavaSourceIntrospector {
         }
     }
 
-    /** The reader {@link #inspect(String)} and {@link #declaresNoJulcRole(String)} use (ADR-068 M6). */
-    public static final SourceReader DEFAULT_READER = SourceReader.configured();
-
-    public static SourceInfo inspect(String source) {
-        return inspect(source, DEFAULT_READER);
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    private static SourceReader defaultReader() {
+        return SourceReader.configured();
     }
 
-    /** {@link #inspect(String)} with the source read by {@code reader}. */
+    public static SourceInfo inspect(String source) {
+        return inspect(source, defaultReader());
+    }
+
+    /**
+     * {@link #inspect(String)} with the source read by {@code reader}.
+     * <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this overload goes at M6.
+     */
     public static SourceInfo inspect(String source, SourceReader reader) {
         if (reader == SourceReader.JAVAC) return JavacSourceIntrospection.inspect(source);
         var result = JavaSourceParser.parse(source);
@@ -187,12 +195,13 @@ public final class JavaSourceIntrospector {
      * False when that cannot be decided, so that the caller keeps the strict diagnostic and fails closed.
      */
     public static boolean declaresNoJulcRole(String source) {
-        return declaresNoJulcRole(source, DEFAULT_READER);
+        return declaresNoJulcRole(source, defaultReader());
     }
 
     /**
      * {@link #declaresNoJulcRole(String)} for a source {@code reader} rejected. javac's reading is the lenient one, so a
      * source it rejects declares no role only when its sole errors are of language level and no type carries one.
+     * <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this overload goes at M6.
      */
     public static boolean declaresNoJulcRole(String source, SourceReader reader) {
         if (reader == SourceReader.JAVAC) return JavacSourceIntrospection.declaresNoJulcRole(source);

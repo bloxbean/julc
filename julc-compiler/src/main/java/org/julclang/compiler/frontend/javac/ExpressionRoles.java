@@ -31,6 +31,8 @@ import com.sun.source.util.TreePath;
  * M6). javac uses one tree for a name whether it is a value, a type, a package or a method's name; these tell the
  * value uses apart, as the tools have always told them apart: a name expression and a field access are values, or the
  * qualifier of one.
+ * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools while JavaParser and javac readings coexist; not an API,
+ * and it may change or go without notice.
  */
 public final class ExpressionRoles {
 

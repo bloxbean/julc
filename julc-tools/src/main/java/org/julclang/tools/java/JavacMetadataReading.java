@@ -13,6 +13,8 @@ import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
 import org.julclang.compiler.frontend.javac.SourceOrderScanner;
 import org.julclang.compiler.JavaSourceIntrospector;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import org.julclang.tools.model.CheckResponse;
 import org.julclang.tools.model.DiagnosticDto;
@@ -31,15 +33,16 @@ import java.util.Optional;
  * {@code INTERFACE}; a record's parameters are its instance fields, which javac's parser lists first among its members;
  * a type prints as {@link JavacSyntax#typeName} prints it, as JavaParser's {@code asString} did.
  * <p>
- * What it does not do: the JavaParser reading also runs the JavaParser frontend's subset validator, whose rules need
- * javac's attribution on this frontend ({@code SubsetScan}); this reading reports only its own diagnostics.
+ * The subset's diagnostics are the javac frontend's ({@link JulcCompiler#subsetDiagnostics}), as a compilation reports them, where
+ * the JavaParser reading runs the JavaParser frontend's validator.
  */
 final class JavacMetadataReading {
 
     private JavacMetadataReading() {
     }
 
-    static CheckResponse extract(String source, List<String> validatorAnnotations) {
+    static CheckResponse extract(String source, List<String> validatorAnnotations, JulcCompiler compiler,
+                                 List<String> librarySources) {
         var syntax = JavacSyntax.read(source);
         if (syntax.hasErrors()) {
             var diagnostics = new ArrayList<DiagnosticDto>();
@@ -50,7 +53,10 @@ final class JavacMetadataReading {
             }
             return new CheckResponse(false, null, null, List.of(), null, List.of(), List.of(), List.of(), diagnostics);
         }
+        // The subset's diagnostics first, as the JavaParser reading puts its validator's: the javac frontend's, which a
+        // compilation reports before it lowers anything, with the same codes and positions.
         var diagnostics = new ArrayList<DiagnosticDto>();
+        for (CompilerDiagnostic diagnostic : subset(source, compiler, librarySources)) diagnostics.add(DiagnosticDto.from(diagnostic));
 
         TreePath validatorClass = null;
         String annotationName = null;
@@ -134,6 +140,11 @@ final class JavacMetadataReading {
         boolean hasErrors = diagnostics.stream().anyMatch(d -> "ERROR".equals(d.level()));
         return new CheckResponse(!hasErrors, contractName, purpose, params, datumName,
                 datumFields, redeemerVariants, redeemerFields, diagnostics);
+    }
+
+    /** What {@code compiler} reports of the subset for {@code source} with {@code librarySources} on javac. */
+    static List<CompilerDiagnostic> subset(String source, JulcCompiler compiler, List<String> librarySources) {
+        return compiler.subsetDiagnostics(source, librarySources);
     }
 
     /** JavaParser's {@code findAll(ClassOrInterfaceDeclaration)}: named classes and interfaces, the root too, in pre-order. */

@@ -71,4 +71,22 @@ class SourceAnnotationsTest {
         assertThrows(RuntimeException.class,
                 () -> SourceAnnotations.read("class {", SourceReader.JAVAC));
     }
+
+    @Test
+    void aCommentBeforeAValueAndASpacedMinusPrintAsJavaParserPrintsThem() {
+        String source = """
+                package p;
+                import org.julclang.verification.annotation.*;
+                @RequiresSigner(/* who */ "datum.owner")
+                @ControlledMint(policy = "abcd", tokenName = /* name */ "ab", amount = - 5)
+                class V1 {}
+                """;
+        var javaParser = SourceAnnotations.read(source, SourceReader.JAVAPARSER);
+        var javac = SourceAnnotations.read(source, SourceReader.JAVAC);
+        for (int i = 0; i < 2; i++) {
+            assertEquals(javaParser.types().getFirst().annotations().get(i).text(),
+                    javac.types().getFirst().annotations().get(i).text());
+        }
+        assertEquals("datum.owner", javac.types().getFirst().annotations().getFirst().single().string());
+    }
 }

@@ -99,4 +99,35 @@ class TestDiscoveryOnJavacTest extends TestDiscoveryTest {
                 found.stream().map(TestDiscovery.TestMethod::methodName).toList());
         assertTrue(found.stream().anyMatch(t -> t.className().equals("Local")));
     }
+
+    @Test
+    void enumsAreReadInJavaParsersOrder(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("EnumTests.java"), """
+                enum EnumTests {
+                    A { class InA { @Test public static boolean inA() { return true; } } };
+                    static class InMembers { @Test public static boolean inMembers() { return true; } }
+                }
+                """);
+        var found = discover(tempDir);
+        assertEquals(List.of("inMembers", "inA"), found.stream().map(TestDiscovery.TestMethod::methodName).toList());
+    }
+
+    @Test
+    void laterJavaThatOnlyMentionsTestIsSkippedAndOtherErrorsAreReported(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("LaterJavaTest.java"), """
+                // mentions @Test
+                class LaterJavaTest {
+                    static void f(Object o) { if (o instanceof String _) {} }
+                }
+                """);
+        assertEquals(List.of(), TestDiscovery.discover(tempDir, SourceReader.JAVAC));
+        Files.writeString(tempDir.resolve("LaterJavaTest.java"), """
+                class LaterJavaTest {
+                    @Test public static boolean t() { Object o = ""; return o instanceof String _; }
+                }
+                """);
+        assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir, SourceReader.JAVAC));
+        Files.writeString(tempDir.resolve("LaterJavaTest.java"), "// @Test\nclass LaterJavaTest {\n");
+        assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir, SourceReader.JAVAC));
+    }
 }

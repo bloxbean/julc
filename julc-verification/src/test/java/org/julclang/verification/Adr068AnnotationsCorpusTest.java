@@ -40,6 +40,8 @@ class Adr068AnnotationsCorpusTest {
             "annotations:javac-rejects", "javac's parser rejects the source: both readings throw, in their own words",
             "annotations:reader-rejects", "JuLC's strict reader (JavaSourceParser, ADR-062 T24) rejects a source"
                     + " javac's parser reads; ADR-068 keeps javac's reading (D5)",
+            "annotations:javaparser-comment-in-value", "JavaParser prints a comment written before a value into the"
+                    + " value's text, which only an enum member's reading uses, and then wrongly; the fragments agree",
             "annotations:text-of-unresolved",
             "the printed text of an annotation no resolver reads, for a value JavaParser prints in its own layout");
 
@@ -74,6 +76,8 @@ class Adr068AnnotationsCorpusTest {
                 kind = "annotations:javac-rejects";
             } else if (expected.equals("ERROR") && !JavaSourceParser.parse(text).isSuccessful()) {
                 kind = "annotations:reader-rejects";
+            } else if (withoutValueComments(expected).equals(actual)) {
+                kind = "annotations:javaparser-comment-in-value";
             } else if (withoutUnresolvedText(text, SourceReader.JAVAPARSER)
                     .equals(withoutUnresolvedText(text, SourceReader.JAVAC))) {
                 kind = "annotations:text-of-unresolved";
@@ -100,6 +104,11 @@ class Adr068AnnotationsCorpusTest {
         } catch (RuntimeException e) {
             return "ERROR";
         }
+    }
+
+    /** JavaParser's reading with the comment it prints before a value's text taken out. */
+    private static String withoutValueComments(String unit) {
+        return unit.replaceAll("text=/\\*.*?\\*/\\s*", "text=");
     }
 
     private static String withoutUnresolvedText(String text, SourceReader reader) {

@@ -55,10 +55,13 @@ public final class LintEngine {
             new MapReturnTypeRule(),
             new IncrementDecrementRule()
     );
-
-
-    /** The reader this tool uses (ADR-068 M6): {@link SourceReader#configured()}. */
-    public static final SourceReader DEFAULT_READER = SourceReader.configured();
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    private static SourceReader defaultReader() {
+        return SourceReader.configured();
+    }
 
     private final List<LintRule> rules;
     private final SourceReader reader;
@@ -68,9 +71,10 @@ public final class LintEngine {
     }
 
     public LintEngine(List<LintRule> rules) {
-        this(rules, DEFAULT_READER);
+        this(rules, defaultReader());
     }
 
+    /** <b>Internal</b> (ADR-068 M6): the reader is chosen here for the equivalence gates; this constructor goes at M6. */
     public LintEngine(List<LintRule> rules, SourceReader reader) {
         this.rules = List.copyOf(rules);
         this.reader = reader;
@@ -122,6 +126,12 @@ public final class LintEngine {
     private List<LintFinding> run(Function<LintRule, List<LintFinding>> check) {
         var all = new ArrayList<LintFinding>();
         for (var rule : rules) {
+            if (!rule.supports(reader)) {
+                all.add(new LintFinding(rule.id(), null, "info",
+                        "Lint rule " + rule.id() + " does not run on the " + reader + " reading of the source",
+                        0, 0, null));
+                continue;
+            }
             try {
                 all.addAll(check.apply(rule));
             } catch (Exception e) {

@@ -61,6 +61,8 @@ class Adr068ToolsCorpusTest {
             "introspection:javac-fails-closed", "both reject; JavaParser's lenient reading found no role, javac's error is"
                     + " lexical (an illegal escape), so the role cannot be read and the scan reports the error, as javac"
                     + " compiling the project would",
+            "discovery:javac-reads-later-java", "javac's discovery skips a source of later Java that declares no Test"
+                    + " method, as JavaParser's lenient reading did",
             "discovery:reader-rejects", READER_REJECTS
                     + " (a literal with an unpaired surrogate: the test is found and its compilation reports JULC0093)");
 
@@ -121,7 +123,10 @@ class Adr068ToolsCorpusTest {
             if (found.equals(foundOnJavac)) {
                 count(counts, found.equals("[]") ? "discovery:same-none" : "discovery:same");
             } else {
-                record(counts, differences, file, "discovery" + other, found, foundOnJavac);
+                boolean laterJava = found.startsWith("ERROR") && foundOnJavac.equals("[]") && syntax.hasErrors()
+                        && syntax.onlyLanguageLevelErrors();
+                record(counts, differences, file, laterJava ? "discovery:javac-reads-later-java" : "discovery" + other,
+                        found, foundOnJavac);
             }
 
             // The project scan's introspection (ProjectScanner, the gradle plugin, the testkit)
@@ -161,7 +166,8 @@ class Adr068ToolsCorpusTest {
         Files.write(out.resolve("differences.tsv"), differences);
 
         var unexplained = counts.keySet().stream()
-                .filter(k -> k.startsWith("lint:") || k.startsWith("discovery:") || k.startsWith("arity:"))
+                .filter(k -> k.startsWith("lint:") || k.startsWith("discovery:") || k.startsWith("arity:")
+                        || k.startsWith("introspection:"))
                 .filter(k -> !k.endsWith(":same") && !k.endsWith(":same-none") && !ALLOWED.containsKey(k))
                 .toList();
         assertEquals(List.of(), unexplained, () -> String.join("\n", differences.stream().limit(40).toList()));

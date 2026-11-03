@@ -31,6 +31,8 @@ import java.util.Locale;
  * @param unit      javac's tree of it; after a syntax error, the tree javac's parser recovered
  * @param positions the trees' start and end offsets
  * @param errors    the parser's errors, in emission order
+ * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools while JavaParser and javac readings coexist; not an API,
+ * and it may change or go without notice.
  */
 public record JavacSyntax(String text, CompilationUnitTree unit, SourcePositions positions,
                           List<Diagnostic<? extends JavaFileObject>> errors) {
@@ -52,6 +54,21 @@ public record JavacSyntax(String text, CompilationUnitTree unit, SourcePositions
     /** Whether javac's parser rejected the source. */
     public boolean hasErrors() {
         return !errors.isEmpty();
+    }
+
+    /**
+     * javac's errors for a construct of a later Java than {@code -source 21}: the parser has read the whole source, so
+     * the tree is the source's.
+     */
+    private static final java.util.Set<String> LANGUAGE_LEVEL_ERRORS = java.util.Set.of(
+            "compiler.err.feature.not.supported.in.source",
+            "compiler.err.feature.not.supported.in.source.plural",
+            "compiler.err.preview.feature.disabled",
+            "compiler.err.preview.feature.disabled.plural");
+
+    /** Whether javac's parser rejected the source only for constructs of a later Java, so its tree is whole. */
+    public boolean onlyLanguageLevelErrors() {
+        return errors.stream().allMatch(e -> LANGUAGE_LEVEL_ERRORS.contains(e.getCode()));
     }
 
     /** Each error as {@code line:column: message}, in English, the column as {@link #column(long)} gives it. */

@@ -140,6 +140,23 @@ public class JulcCompiler {
         return new CompilationOutcome(result, compiled.schema(), metadata);
     }
 
+    /**
+     * What a compilation of {@code source} with {@code librarySources} reports of the subset on the javac frontend, before
+     * it lowers anything ({@link JavacCompilation#subset}): javac's rejection, or the subset's rules and scan, with the
+     * same codes at the same positions, and the libraries ranked as a compilation ranks them (D8). For JuLC's tools that
+     * check a source without compiling it (ADR-068 M6), whatever frontend this compiler compiles with. Empty when the
+     * source keeps to the subset.
+     */
+    public List<CompilerDiagnostic> subsetDiagnostics(String source, List<String> librarySources) {
+        var context = beginCompilation();
+        try {
+            return JavacGate.onJavacFrontend(() -> JavacCompilation.subset(JavacFrontend.Unit.of(source),
+                    libraryUnits(librarySources, context), context));
+        } catch (CompilerException e) {
+            return e.diagnostics();
+        }
+    }
+
     private CompilationContext beginCompilation() {
         var context = CompilationContext.resolve(options);
         context.logf("Compiler target: %s", context.target().profileId());

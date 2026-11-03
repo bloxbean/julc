@@ -14,6 +14,7 @@ import org.julclang.ledger.Vote;
 import org.julclang.ledger.Voter;
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.util.TreePath;
@@ -245,6 +246,11 @@ public final class SwitchFieldShadowRule implements LintRule {
     }
 
     private record PatternLabel(String typeName, String bindingName) {}
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
+    }
 
     @Override
     public List<LintFinding> check(JavacSyntax syntax) {

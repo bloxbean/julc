@@ -27,16 +27,19 @@ import java.util.List;
 /**
  * What the verification resolvers read of a source: its package, its imports, and the annotations on its top-level
  * types, as written. JavaParser or javac's parser reads it (ADR-068 M6) into this one model, so the resolvers do not
- * depend on either tree; {@link #DEFAULT_READER} is the one switch, and M6 deletes the JavaParser reading.
+ * depend on either tree; {@link #defaultReader()} is the one switch, and M6 deletes the JavaParser reading.
  * <p>
  * An annotation's {@link Annotation#text() text} is printed as JavaParser prints it, {@code @Name(a = v, b = w)}, with
  * each value as written, since it is the property's source fragment.
  */
 final class SourceAnnotations {
-
-
-    /** The reader this tool uses (ADR-068 M6): {@link SourceReader#configured()}. */
-    static final SourceReader DEFAULT_READER = SourceReader.configured();
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    static SourceReader defaultReader() {
+        return SourceReader.configured();
+    }
 
     /** A source: its package name ({@code ""} for none), its imports and its top-level types, in source order. */
     record Unit(String packageName, List<Import> imports, List<Type> types) {
@@ -87,9 +90,9 @@ final class SourceAnnotations {
     private SourceAnnotations() {
     }
 
-    /** {@code source} read by {@link #DEFAULT_READER}. */
+    /** {@code source} read by {@link #defaultReader()}. */
     static Unit read(String source) {
-        return read(source, DEFAULT_READER);
+        return read(source, defaultReader());
     }
 
     /** {@code source} read by {@code reader}; a source it cannot read throws, as the resolvers did. */
@@ -179,7 +182,7 @@ final class SourceAnnotations {
         var printed = new ArrayList<String>();
         if (single) {
             singleValue = value(syntax, arguments.getFirst());
-            printed.add(singleValue.text());
+            printed.add(commented(syntax, arguments.getFirst(), singleValue.text()));
         } else {
             for (ExpressionTree argument : arguments) {
                 if (!(argument instanceof AssignmentTree assignment)) {
@@ -189,7 +192,8 @@ final class SourceAnnotations {
                 }
                 var member = new Member(dotted(assignment.getVariable()), value(syntax, assignment.getExpression()));
                 members.add(member);
-                printed.add(member.name() + " = " + member.value().text());
+                printed.add(commented(syntax, assignment.getVariable(),
+                        member.name() + " = " + commented(syntax, assignment.getExpression(), member.value().text())));
             }
         }
         String text = "@" + name + (single || normal ? "(" + String.join(", ", printed) + ")" : "");
@@ -211,11 +215,29 @@ final class SourceAnnotations {
             Long integer = !signed && (v instanceof Integer || v instanceof Long) ? ((Number) v).longValue() : null;
             // A text block is a string literal to javac; JavaParser reads it as a different expression.
             String string = v instanceof String s && !written.startsWith("\"\"\"") ? s : null;
-            return new Value(string, integer, written);
+            // JavaParser prints a minus and its operand together: `- 5` as `-5`.
+            String text = signed ? "-" + written.substring(1).strip() : written;
+            return new Value(string, integer, text);
         }
         // Anything else as a printer lays it out, as JavaParser's does: `a + b`, whatever the spacing written.
         String name = dottedOrNull(expression);
         return new Value(null, null, name != null ? name : expression.toString());
+    }
+
+    /**
+     * {@code printed}, after the comment written right before {@code tree}, as JavaParser prints a node with the comment
+     * it attaches to it: the comment, a line break, the node. Only the fragment's text carries it, not a value.
+     */
+    private static String commented(JavacSyntax syntax, Tree tree, String printed) {
+        long start = syntax.start(tree);
+        String text = syntax.text();
+        int end = (int) start;
+        while (end > 0 && Character.isWhitespace(text.charAt(end - 1))) end--;
+        if (end >= 2 && text.startsWith("*/", end - 2)) {
+            int open = text.lastIndexOf("/*", end - 2);
+            if (open >= 0) return text.substring(open, end) + "\n" + printed;
+        }
+        return printed;
     }
 
     private static String dotted(Tree tree) {

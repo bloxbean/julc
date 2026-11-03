@@ -119,4 +119,30 @@ class LintEngineOnJavacTest extends LintEngineTest {
                 """);
         lint("enum E { A, B; @Param static PlutusData.BytesData p; }");
     }
+
+    @Test
+    void aRuleWithoutAJavacReadingIsReportedAsNotRunning() {
+        LintRule legacy = new LintRule() {
+            @Override
+            public String id() {
+                return "EXTERNAL-RULE";
+            }
+
+            @Override
+            public String description() {
+                return "a rule written before javac's reading";
+            }
+
+            @Override
+            public List<LintFinding> check(com.github.javaparser.ast.CompilationUnit cu) {
+                return List.of();
+            }
+        };
+        assertEquals(List.of(), new LintEngine(List.of(legacy), SourceReader.JAVAPARSER).lint("class T { }"));
+        var findings = new LintEngine(List.of(legacy), SourceReader.JAVAC).lint("class T { }");
+        assertEquals(1, findings.size());
+        assertEquals("info", findings.getFirst().level());
+        assertEquals("Lint rule EXTERNAL-RULE does not run on the JAVAC reading of the source",
+                findings.getFirst().message());
+    }
 }

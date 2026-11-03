@@ -2,8 +2,10 @@ package org.julclang.compiler.frontend.javac;
 
 /**
  * Which parser JuLC's tools read Java source with while both exist (ADR-068 M6): JavaParser's, through
- * {@code JavaSourceParser}, or javac's, through {@link JavacSyntax}. Each tool has one {@code DEFAULT_READER} from
- * {@link #configured()}; M5 makes javac the default, and M6 deletes this type with the JavaParser readings.
+ * {@code JavaSourceParser}, or javac's, through {@link JavacSyntax}. Each tool reads it in one place, through
+ * {@link #configured()}, when it is used; M5 makes javac the default, and M6 deletes this type with the JavaParser readings.
+ * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools while JavaParser and javac readings coexist; not an API,
+ * and it may change or go without notice.
  */
 public enum SourceReader {
     JAVAPARSER, JAVAC;

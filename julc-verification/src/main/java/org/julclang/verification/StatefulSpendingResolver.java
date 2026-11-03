@@ -27,7 +27,7 @@ public final class StatefulSpendingResolver {
 
     public static Optional<StatefulSpendingProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        return resolve(source, fileName, validatorTitle, schema, SourceAnnotations.DEFAULT_READER);
+        return resolve(source, fileName, validatorTitle, schema, SourceAnnotations.defaultReader());
     }
 
     /** {@link #resolve(String, String, String, ContractSchema)} with the source read by {@code reader} (ADR-068 M6). */

@@ -450,14 +450,18 @@ public final class LibrarySourceResolver {
         }
         toProcess.add(librarySource);
     }
-
-    /** The reader {@link #resolve} and {@link #extractTopLevelTypeName} read sources with (ADR-068 M6). */
-    public static final SourceReader DEFAULT_READER = SourceReader.configured();
+    /**
+     * The reader this tool uses (ADR-068 M6), read when it is used: {@link SourceReader#configured()}, which fails with a
+     * message naming the property for a value it does not know.
+     */
+    private static SourceReader defaultReader() {
+        return SourceReader.configured();
+    }
 
     private static SourceContext parseSourceContext(String source,
                                                     String packageName,
                                                     DiagnosticCollector diagnostics) {
-        return parseSourceContext(source, packageName, DEFAULT_READER);
+        return parseSourceContext(source, packageName, defaultReader());
     }
 
     /** A source's package, imports and class references, as {@code reader} reads them; a regex reading if it cannot. */
@@ -622,11 +626,11 @@ public final class LibrarySourceResolver {
     }
 
     public static Optional<String> extractTopLevelTypeName(String source) {
-        return extractTopLevelTypeName(source, DEFAULT_READER);
+        return extractTopLevelTypeName(source, defaultReader());
     }
 
     /** {@link #extractTopLevelTypeName(String)} with the source read by {@code reader}. */
-    public static Optional<String> extractTopLevelTypeName(String source, SourceReader reader) {
+    static Optional<String> extractTopLevelTypeName(String source, SourceReader reader) {
         if (reader == SourceReader.JAVAC) {
             var syntax = JavacSyntax.read(source);
             if (!syntax.hasErrors()) {

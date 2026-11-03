@@ -2,6 +2,7 @@ package org.julclang.cli.mcp.lint;
 
 import com.github.javaparser.ast.CompilationUnit;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.compiler.frontend.javac.SourceReader;
 
 import java.util.List;
 
@@ -28,10 +29,18 @@ public interface LintRule {
     List<LintFinding> check(CompilationUnit cu);
 
     /**
+     * Whether the rule reads sources on {@code reader}. A rule written before javac's reading (ADR-068 M6) reads only
+     * JavaParser's; {@link LintEngine} reports it as not running on javac's, rather than calling it.
+     */
+    default boolean supports(SourceReader reader) {
+        return reader == SourceReader.JAVAPARSER;
+    }
+
+    /**
      * Apply the rule to javac's tree of the source and return the findings {@link #check(CompilationUnit)} returns.
-     * A rule without a javac reading fails, which {@link LintEngine} reports as an info finding.
+     * Only called when {@link #supports} says the rule reads javac's tree.
      */
     default List<LintFinding> check(JavacSyntax syntax) {
-        throw new UnsupportedOperationException("no javac reading");
+        throw new UnsupportedOperationException("Lint rule " + id() + " has no javac reading");
     }
 }

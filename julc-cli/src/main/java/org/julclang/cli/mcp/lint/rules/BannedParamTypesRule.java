@@ -2,6 +2,7 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.compiler.frontend.javac.SourceReader;
 import org.julclang.cli.mcp.lint.LintTrees;
 import org.julclang.compiler.frontend.javac.JavacSyntax;
 import com.sun.source.util.TreePath;
@@ -74,6 +75,11 @@ public final class BannedParamTypesRule implements LintRule {
         String head = lt < 0 ? typeStr : typeStr.substring(0, lt);
         int dot = head.lastIndexOf('.');
         return dot < 0 ? head.trim() : head.substring(dot + 1).trim();
+    }
+
+    @Override
+    public boolean supports(SourceReader reader) {
+        return true;
     }
 
     @Override

@@ -418,7 +418,7 @@ public final class JavacFrontend {
      * {@code text} read by javac's parser alone, with {@link #OPTIONS} and no attribution, for JuLC's tools that read a
      * source's shape ({@link JavacSyntax}); empty when the host's javac is not supported ({@link #supported()} says why).
      */
-    public Optional<JavacSyntax> parse(String text) {
+    Optional<JavacSyntax> parse(String text) {
         JavaCompiler javac = compiler();
         if (javac == null) return Optional.empty();
         var file = new SimpleJavaFileObject(URI.create("string:///Source.java"), JavaFileObject.Kind.SOURCE) {

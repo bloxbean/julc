@@ -15,6 +15,8 @@ import java.util.ArrayList;
  * before its guard, and an enum's other members before its constants. javac's own scanner visits the guard first and the
  * constants first. The order is the order of what the tools list: the first call a lint rule reports, the order in
  * which library references are resolved (ADR-068 M6).
+ * <p><b>Internal</b> (ADR-068 M6): for JuLC's own tools while JavaParser and javac readings coexist; not an API,
+ * and it may change or go without notice.
  */
 public class SourceOrderScanner<R, P> extends TreePathScanner<R, P> {
 
