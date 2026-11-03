@@ -434,17 +434,22 @@ class JavacLoopsTest {
         assertEquals(12, failure.diagnostics().getFirst().line());
     }
 
-    /** A library compiled as a root finds its own method in the reference's pool, which is the library slice's to read. */
+    /**
+     * A library compiled as a root calls its own method by its class name through the reference's library registry, which
+     * holds it only when the pool holds the unit too (D8).
+     */
     @Test
-    void aLibraryAsARootStopsAtItsOwnMethod() {
-        LoweringFixture.assertMethodNotPorted("""
+    void aLibraryAsARootCallsItsOwnMethodAsTheReferenceDoes() {
+        var library = """
                 import org.julclang.stdlib.annotation.OnchainLibrary;
                 @OnchainLibrary
                 class L {
                     static long h(long a) { return a; }
                     static long m(long a) { return L.h(a); }
                 }
-                """, "m", "a call of a library unit's own method", 5);
+                """;
+        LoweringFixture.assertSameMethodRejectionAsReference(library, "m", List.of(), StdlibRegistry.defaultRegistry());
+        LoweringFixture.assertSameMethodAsReference(library, "m", List.of(library), StdlibRegistry.defaultRegistry());
     }
 
     /** A value that a tuple cannot encode. With no type to encode by, the rejection stands at the loop: the reference has no position for it. */

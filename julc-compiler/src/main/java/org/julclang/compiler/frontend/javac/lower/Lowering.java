@@ -87,6 +87,25 @@ public final class Lowering {
         return terms;
     }
 
+    /** A call of a library method's binder: the binder, and the class name the call is written with. */
+    public record LibraryCall(String binder, String qualifier) {
+    }
+
+    /** The calls of library binders lowered since the last drain, in the order they lowered. */
+    public List<LibraryCall> drainLibraryCalls() {
+        return calls.drainLibraryCalls();
+    }
+
+    /** The warnings lowering found since the last drain, in the order it found them. */
+    public List<CompilerDiagnostic> drainWarnings() {
+        return calls.drainWarnings();
+    }
+
+    /** The lowering of another class begins: the static methods {@link #methodDeclared} names from here on are its own. */
+    public void classBegins() {
+        statements.classBegins();
+    }
+
     /** A method: a lambda over its parameters, as the reference's {@code generateMethod} builds it. */
     public PirTerm method(MethodTree tree, Scope scope, boolean guardBoolean) {
         var term = statements.method(tree, scope, guardBoolean);

@@ -67,6 +67,8 @@ public final class JavacFacts {
     private final Map<Tree, TreePath> paths = new IdentityHashMap<>();
     /** The pool units javac read (D8). */
     private final Set<CompilationUnitTree> libraries = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** What the reference compiles as libraries, of what javac read ({@code JavacFrontend.Attribution#offered}). */
+    private final Set<CompilationUnitTree> offered = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private JavacFacts(Trees trees, Elements elements, Types types, TypeRegistry registry) {
         this.trees = trees;
@@ -81,6 +83,7 @@ public final class JavacFacts {
         attribution.roots().forEach(facts::index);
         attribution.libraries().forEach(facts::index);
         facts.libraries.addAll(attribution.libraries());
+        facts.offered.addAll(attribution.offered());
         return facts;
     }
 
@@ -171,6 +174,15 @@ public final class JavacFacts {
     public boolean inLibraryUnit(Element element) {
         var path = trees == null ? null : trees.getPath(element);
         return path != null && libraries.contains(path.getCompilationUnit());
+    }
+
+    /**
+     * Whether {@code element} is declared in a unit the reference compiles as a library: one the host offered in its pool,
+     * a root it offered there too included. A bundled source the host did not offer is read by javac and is none (D8).
+     */
+    public boolean inOfferedLibrary(Element element) {
+        var path = trees == null ? null : trees.getPath(element);
+        return path != null && offered.contains(path.getCompilationUnit());
     }
 
     /** Whether a source declares {@code method}: an accessor a record writes out. javac's own has no tree, nor has a stub's. */

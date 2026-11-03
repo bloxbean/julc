@@ -53,7 +53,7 @@ final class SubsetRules {
         var discovery = new JavacDiscovery(facts);
         for (var unit : roots) {
             if (compiled == JavacGate.Compiled.LIBRARY) {
-                library(facts, discovery, unit);
+                library(facts, unit);
                 continue;
             }
             SpelledMethods.checkDeclarations(facts, unit);
@@ -64,7 +64,7 @@ final class SubsetRules {
             BooleanCasts.check(facts, unit);
             ConstructorBodies.check(facts, unit);
         }
-        for (var unit : libraries) library(facts, discovery, unit);
+        for (var unit : libraries) library(facts, unit);
     }
 
     /**
@@ -105,9 +105,13 @@ final class SubsetRules {
         for (var unit : libraryUnits) UnloweredInitializers.check(facts, unit, field -> false);
     }
 
-    private static void library(JavacFacts facts, JavacDiscovery discovery, CompilationUnitTree unit) {
+    /**
+     * A library's static fields are bound when the script starts, around every method of their class, whether or not Java
+     * would initialize the class (D8). So each holds what nothing lowers may hold ({@code JULC0095}), on both frontends.
+     */
+    private static void library(JavacFacts facts, CompilationUnitTree unit) {
         SpelledMethods.checkDeclarations(facts, unit);
-        UnloweredInitializers.check(facts, unit, discovery::isLoweredInALibrary);
+        UnloweredInitializers.check(facts, unit, field -> false);
         BooleanCasts.check(facts, unit);
         ConstructorBodies.check(facts, unit);
     }

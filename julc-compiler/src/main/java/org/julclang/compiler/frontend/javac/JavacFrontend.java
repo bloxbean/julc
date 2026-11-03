@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -182,13 +183,16 @@ public final class JavacFrontend {
      * An analysis with its attributed trees: the result, the roots' trees in order (empty when javac did not run), the
      * pool units javac read, in qualified-name order (I4), and the task's {@link Trees}, {@link Elements} and
      * {@link Types}. For the javac frontend, and for JuLC's own tools that read javac's types, such as the REPL
-     * wrapper (D9).
+     * wrapper (D9). {@code offered} is what the reference compiles as libraries, of what javac read: each unit the host
+     * offered in its pool, in the host's order, a root whose text the host offered there too included, and the bundled
+     * sources it did not offer left out (D8).
      */
     record Attribution(JavacResult result, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
-                       Trees trees, Elements elements, Types types) {
+                       List<CompilationUnitTree> offered, List<CompilationUnitTree> offeredByName, Trees trees,
+                       Elements elements, Types types) {
 
         static Attribution none(JavacResult result) {
-            return new Attribution(result, List.of(), List.of(), null, null, null);
+            return new Attribution(result, List.of(), List.of(), List.of(), List.of(), null, null, null);
         }
     }
 
@@ -282,10 +286,13 @@ public final class JavacFrontend {
         var poolFiles = new ArrayList<JavacSourceFile>();
         var origins = new ArrayList<Origin>();
         var positions = new HashMap<String, Integer>();
+        // The host's pool in its order, by text: the bundled sources come after it, and are not the host's.
+        var hostOrder = new LinkedHashSet<String>();
         for (int i = roots.size(); i < all.size(); i++) {
             var file = all.get(i);
             String identity = JavacPlatform.identity(file.text());
             Origin origin = offered.get(i).origin();
+            if (i < roots.size() + pool.size()) hostOrder.add(identity);
             if (texts.add(identity)) {
                 positions.put(identity, poolFiles.size());
                 poolFiles.add(file);
@@ -348,8 +355,22 @@ public final class JavacFrontend {
             var tree = parsed.get(file.toUri());
             if (tree != null && !rootUris.contains(file.toUri())) libraries.put(file.primaryName(), tree);
         }
-        return new Attribution(result.withDropped(precedence.droppedIdentities()), rootTrees,
-                List.copyOf(libraries.values()), Trees.instance(task), task.getElements(), task.getTypes());
+        var read = new HashMap<String, CompilationUnitTree>();
+        var names = new HashMap<CompilationUnitTree, String>();
+        for (var tree : rootTrees) {
+            var file = byUri.get(tree.getSourceFile().toUri());
+            read.put(JavacPlatform.identity(file.text()), tree);
+            names.put(tree, file.primaryName());
+        }
+        libraries.forEach((name, tree) -> {
+            read.put(JavacPlatform.identity(byUri.get(tree.getSourceFile().toUri()).text()), tree);
+            names.put(tree, name);
+        });
+        var offeredRead = hostOrder.stream().map(read::get).filter(tree -> tree != null).toList();
+        var offeredByName = new ArrayList<>(offeredRead);
+        offeredByName.sort(Comparator.comparing(names::get));
+        return new Attribution(result.withDropped(precedence.droppedIdentities()), rootTrees, List.copyOf(libraries.values()),
+                offeredRead, List.copyOf(offeredByName), Trees.instance(task), task.getElements(), task.getTypes());
     }
 
     /**

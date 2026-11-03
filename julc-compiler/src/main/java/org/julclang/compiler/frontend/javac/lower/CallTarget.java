@@ -31,8 +31,11 @@ sealed interface CallTarget {
     record Stdlib(String className, String method, ExecutableElement element) implements Keyed {
     }
 
-    /** A static method of a library unit: the stdlib lookup first, as in the reference, then a call of its binder. */
-    record Library(String className, String method, ExecutableElement element) implements Keyed {
+    /**
+     * A static method of a library unit: the stdlib lookup first, as in the reference, then a call of its binder. A unit the
+     * reference does not compile as a library ({@code bound} false) has no binder, so the lookup is all there is.
+     */
+    record Library(String className, String method, ExecutableElement element, boolean bound) implements Keyed {
     }
 
     /** A static method of the class being lowered, called by its simple name. */

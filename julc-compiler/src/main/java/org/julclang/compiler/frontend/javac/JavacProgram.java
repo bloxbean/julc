@@ -38,6 +38,8 @@ public final class JavacProgram {
     private final JavacFacts facts;
     private final List<CompilationUnitTree> roots;
     private final List<CompilationUnitTree> libraries;
+    private final List<CompilationUnitTree> offered;
+    private final List<CompilationUnitTree> offeredByName;
     private JavacTypeRegistrar declarations;
 
     private JavacProgram(JavacFrontend frontend, JavacFrontend.Attribution attribution) {
@@ -46,6 +48,8 @@ public final class JavacProgram {
         this.facts = JavacFacts.of(attribution, new TypeRegistry());
         this.roots = attribution.roots();
         this.libraries = attribution.libraries();
+        this.offered = attribution.offered();
+        this.offeredByName = attribution.offeredByName();
     }
 
     /**
@@ -123,5 +127,19 @@ public final class JavacProgram {
     /** The pool units javac read, in qualified-name order. */
     public List<CompilationUnitTree> libraries() {
         return libraries;
+    }
+
+    /**
+     * What the reference compiles as libraries, of the units javac read, in the order the host offered them: each pool
+     * unit it offered, and a root whose text it offered in the pool too. The bundled sources it did not offer are read for
+     * their types alone (D8).
+     */
+    public List<CompilationUnitTree> offered() {
+        return offered;
+    }
+
+    /** {@link #offered}, in qualified-name order (I4): by the public type's name, or the first type's. */
+    public List<CompilationUnitTree> offeredByName() {
+        return offeredByName;
     }
 }

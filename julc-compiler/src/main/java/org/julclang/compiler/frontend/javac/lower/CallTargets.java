@@ -115,10 +115,11 @@ final class CallTargets {
         if (identity.equals(JavacNames.PLUTUS_DATA) && name.equals("cast") && arguments == 2) {
             return CallTarget.Intrinsic.CAST;
         }
-        if (facts.inLibraryUnit(owner)) return library(identity, name, method);
-        if (facts.hasAnnotation(owner, JavacNames.ONCHAIN_LIBRARY)) {
-            // A library compiled as a root, which the reference finds in its pool as well. The library slice decides it.
-            return new CallTarget.NotLowered("a call of a library unit's own method");
+        // The reference's library registry holds the classes of every unit it compiles as a library, a root it was given in
+        // the pool as well included: a bundled source the host did not give has only what the stdlib lookup lowers (D8).
+        if (facts.inOfferedLibrary(owner)) return library(identity, name, method);
+        if (facts.inLibraryUnit(owner) || facts.hasAnnotation(owner, JavacNames.ONCHAIN_LIBRARY)) {
+            return new CallTarget.Library(identity, name, method, false);
         }
         if (owner.equals(facts.element(facts.enclosing(tree, Tree.Kind.CLASS, Tree.Kind.RECORD, Tree.Kind.INTERFACE)))
                 || facts.declaredInSource(method)) {
@@ -139,7 +140,7 @@ final class CallTargets {
                     + "generic @OnchainLibrary methods are specialized only by language-neutral library "
                     + "providers (ADR-059). Provide a concrete overload-free method for Java callers.");
         }
-        return new CallTarget.Library(identity, name, method);
+        return new CallTarget.Library(identity, name, method, true);
     }
 
     private CallTarget instance(MethodInvocationTree tree, MemberSelectTree select, ExecutableElement method,

@@ -130,7 +130,7 @@ class JavacStopsTest {
             new Stop("an instanceof of an operand outside the variant's sealed interface",
                     "sealed interface S { record A() implements S { } record B() implements S { } } static boolean m(boolean c, S.A a, S.B b) { return (c ? a : b) instanceof S.B x; }", "JULC0100"),
             new Stop("TYPE_CAST", "static boolean m(PlutusData v, PlutusData p) { return ((JulcMap)(Object) v).containsKey(p); }", "accepted"),
-            new Stop("a library unit", "static boolean m(PlutusData r) { return org.julclang.stdlib.lib.MapLib.member(PlutusData.cast(r, JulcMap.class), Builtins.iData(2)); }", "uncoded"),
+            new Stop("a static call not qualified by a simple class name", "static boolean m(PlutusData r) { return org.julclang.stdlib.lib.MapLib.member(PlutusData.cast(r, JulcMap.class), Builtins.iData(2)); }", "uncoded"),
             new Stop("an expression of type java.lang.Object",
                     "sealed interface S { record A() implements S { } } static boolean m(boolean c, S a, S.A b) { return a.equals(c ? a : b); }", "accepted"),
             new Stop("IDENTIFIER", "static final boolean J = false; static boolean m() { boolean J = (true || J); return J; }", "accepted"),

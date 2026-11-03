@@ -94,6 +94,11 @@ final class Loops {
         methods.add(binder);
     }
 
+    /** Another class's methods follow: the reference's symbol table is per class. */
+    void classBegins() {
+        methods.clear();
+    }
+
     /** The loop at {@code index} of {@code following}, which continues with what follows it, then {@code cont}. */
     PirTerm loop(StatementTree loop, List<? extends StatementTree> following, int index, Frame frame, PirTerm cont) {
         return switch (loop) {

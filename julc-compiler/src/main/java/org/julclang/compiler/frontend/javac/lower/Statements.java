@@ -74,6 +74,10 @@ final class Statements {
         loops.methodDeclared(binder);
     }
 
+    void classBegins() {
+        loops.classBegins();
+    }
+
     static PirTerm unit() {
         return new PirTerm.Const(Constant.unit());
     }

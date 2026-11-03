@@ -246,8 +246,9 @@ class JavacRejectionsTest {
         assertMethodNotPorted("class P extends Object { static long m() { return 1; } }\nclass Object { }\n", "m", "inheritance", 1);
     }
 
+    /** A library javac read is lowered whole, an unused method too, as the reference binds every library it is given. */
     @Test
-    void aLibraryJavacReadIsNotPortedAndNothingFallsBack() {
+    void aLibraryJavacReadIsLoweredWhole() {
         var library = """
                 package lib;
                 import org.julclang.stdlib.annotation.OnchainLibrary;
@@ -258,9 +259,7 @@ class JavacRejectionsTest {
                 import lib.L;
                 class P { static long m() { return 1; } }
                 """;
-        var e = assertThrows(org.julclang.compiler.frontend.javac.NotPorted.class, () -> new JulcCompiler(null,
-                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(root, "m", List.of(library)));
-        assertEquals("a library unit", e.construct());
+        LoweringFixture.assertSameMethodAsReference(root, "m", List.of(library), null);
     }
 
     @Test

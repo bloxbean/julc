@@ -12,6 +12,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTargetDiagnostics;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.LoweringRequirements;
+import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
@@ -61,6 +62,8 @@ final class Calls {
     private final TypeMethodRegistry typeMethods;
     /** The library methods called so far, as signatures: the same coercions as a compiled method's, no bodies. */
     private final LibraryMethodRegistry librarySites;
+    private final List<Lowering.LibraryCall> libraryCalls = new ArrayList<>();
+    private final List<CompilerDiagnostic> warnings = new ArrayList<>();
 
     Calls(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, Lambdas lambdas, Lowering lowering,
           CompilationContext context, StdlibLookup stdlib, TypeMethodRegistry typeMethods) {
@@ -233,15 +236,70 @@ final class Calls {
         return stdlib.lookup(context, target.className(), target.method(), arguments.terms(), arguments.types()).orElse(null);
     }
 
-    /** The stdlib lookup comes first, as the reference composes them; a library method is then a call of its binder. */
+    /**
+     * The stdlib lookup comes first, as the reference composes them; a library method is then a call of its binder, which
+     * {@link #libraryCalls} records. A unit the reference does not compile as a library has no binder, so the reference's
+     * {@code Undefined variable} follows the lookup.
+     */
     private PirTerm library(CallTarget.Library target, MethodInvocationTree tree, Frame frame) {
         var arguments = arguments(tree, frame);
+        var qualifier = ((IdentifierTree) ((MemberSelectTree) tree.getMethodSelect()).getExpression()).getName().toString();
         var result = lookup(target, arguments, tree);
-        if (result != null) return result;
-        if (librarySites.lookupMethod(target.className() + "." + target.method()).isEmpty()) {
-            librarySites.register(target.className(), target.method(), facts.methodType(target.element()), null);
+        if (result == null) {
+            // The reference throws its message alone here, with no position.
+            if (!target.bound()) throw new CompilerException("Undefined variable: " + qualifier);
+            String binder = target.className() + "." + target.method();
+            libraryCalls.add(new Lowering.LibraryCall(binder, qualifier));
+            if (librarySites.lookupMethod(binder).isEmpty()) {
+                librarySites.register(target.className(), target.method(), facts.methodType(target.element()), null);
+            }
+            result = librarySites.lookup(target.className(), target.method(), arguments.terms(), arguments.types()).orElseThrow();
         }
-        return librarySites.lookup(target.className(), target.method(), arguments.terms(), arguments.types()).orElseThrow();
+        if (target.bound()) narrowerArguments(target, qualifier, tree, arguments);
+        return result;
+    }
+
+    /**
+     * The library calls lowered since the last drain, in the order they lowered: what a library method needs registered
+     * before the reference can lower it.
+     */
+    List<Lowering.LibraryCall> drainLibraryCalls() {
+        var drained = List.copyOf(libraryCalls);
+        libraryCalls.clear();
+        return drained;
+    }
+
+    /** What {@link #narrowerArguments} found since the last drain. */
+    List<CompilerDiagnostic> drainWarnings() {
+        var drained = List.copyOf(warnings);
+        warnings.clear();
+        return drained;
+    }
+
+    /**
+     * The reference's warning for an argument of a primitive type passed where a library method takes Data. It looks the
+     * method up by the class name as written, and its registry holds qualified names, so only a library of the unnamed
+     * package is ever found.
+     */
+    private void narrowerArguments(CallTarget.Library target, String qualifier, MethodInvocationTree tree, Arguments arguments) {
+        if (!target.className().equals(qualifier)) return;
+        var expected = LibraryMethodRegistry.getParamTypes(facts.methodType(target.element()));
+        for (int i = 0; i < arguments.types().size() && i < expected.size(); i++) {
+            var callerType = arguments.types().get(i);
+            if (!isSpecificPrimitive(callerType) || !(expected.get(i) instanceof PirType.DataType)) continue;
+            String key = qualifier + "." + target.method();
+            String name = LibraryMethodRegistry.pirTypeName(callerType);
+            var at = facts.location(tree.getArguments().get(i));
+            warnings.add(new CompilerDiagnostic(CompilerDiagnostic.Level.WARNING, "Argument " + (i + 1) + " to " + key
+                    + "() has type " + name + " but the library method expects Data. The library will receive a decoded "
+                    + "primitive instead of raw Data, which may cause runtime errors.", at.fileName(), at.line(), at.column(),
+                    "Use PlutusData instead of " + name + " for this argument, or change the library method parameter type."));
+        }
+    }
+
+    private static boolean isSpecificPrimitive(PirType type) {
+        return type instanceof PirType.ByteStringType || type instanceof PirType.IntegerType || type instanceof PirType.BoolType
+                || type instanceof PirType.StringType || type instanceof PirType.ListType || type instanceof PirType.MapType;
     }
 
     /** A static method of this class: its binder, applied to each argument from left to right. */

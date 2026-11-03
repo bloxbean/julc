@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilationContext;
@@ -58,6 +59,7 @@ public final class JavacCompilation {
     private final CompilationContext context;
     private final JavacDiscovery discovery;
     private final Lowering lowering;
+    private final JavacLibraries libraries;
 
     private JavacCompilation(JavacProgram program, JavacFacts facts, CompilationContext context, StdlibLookup stdlib) {
         this.program = program;
@@ -65,6 +67,7 @@ public final class JavacCompilation {
         this.context = context;
         this.discovery = new JavacDiscovery(facts);
         this.lowering = new Lowering(facts, context, stdlib);
+        this.libraries = new JavacLibraries(program, facts, discovery, lowering);
     }
 
     /**
@@ -109,10 +112,16 @@ public final class JavacCompilation {
         var unit = program.roots().getFirst();
         ClassTree type = methodName == null ? discovery.validatorClass(unit) : discovery.firstClass(unit);
         program.registerTypes();
+        var attempts = new ArrayList<MethodAttempt>();
+        for (var library : libraries.attempts()) {
+            var lowered = library.lowered();
+            attempts.add(lowered == null ? new MethodAttempt(library.binder(), null, null, library.construct())
+                    : new MethodAttempt(library.binder(), lowered.type(), lowered.body(), null));
+        }
+        lowering.classBegins();
         var parts = new ClassParts(type);
         lowering.entryMethods(methodName == null ? discovery.methods(type).stream().filter(discovery::isEntrypoint).toList()
                 : discovery.methods(type).stream().filter(method -> method.getName().contentEquals(methodName)).toList());
-        var attempts = new ArrayList<MethodAttempt>();
         parts.declareMethods(type);
         for (var method : discovery.methods(type)) {
             boolean entry = methodName == null && discovery.isEntrypoint(method);
@@ -250,7 +259,7 @@ public final class JavacCompilation {
                         if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) BindingCheck.check(term, terms.provenance());
                     },
                     (field, binding) -> terms.assembled(binding, field.name(), elements.get(field.name())),
-                    (name, binding) -> terms.assembled(binding, name, methodElements.get(name)));
+                    (name, binding) -> terms.assembled(binding, name, methodElements.getOrDefault(name, libraries.binders().get(name))));
         }
     }
 
@@ -258,20 +267,12 @@ public final class JavacCompilation {
         return facts.methodType((ExecutableElement) facts.element(method));
     }
 
-    /** Library lowering is not ported: a pool unit javac read is a method the program may call. */
-    private void requireNoLibraries() {
-        if (!program.libraries().isEmpty()) {
-            var unit = program.libraries().getFirst();
-            throw NotPorted.at(facts, unit, "a library unit");
-        }
-    }
-
     /** ADR-060 G2, enabled in tests: the binders of this compilation are reserved names or names the sources declare. */
     private void verifyBinderNamespace(CompilationUnitTree unit) {
         if (!Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) return;
         var declared = new HashSet<String>();
         var methods = new HashSet<String>();
-        new TreeScanner<Void, Void>() {
+        var scanner = new TreeScanner<Void, Void>() {
             @Override
             public Void visitVariable(VariableTree tree, Void unused) {
                 declared.add(tree.getName().toString());
@@ -283,7 +284,9 @@ public final class JavacCompilation {
                 methods.add(tree.getName().toString());
                 return super.visitMethod(tree, null);
             }
-        }.scan(unit, null);
+        };
+        scanner.scan(unit, null);
+        for (var library : libraries.units()) scanner.scan(library, null);
         context.verifyBinderNames(name -> {
             if (PirHelpers.isGeneratedName(name)) return true;
             int mark = name.indexOf(Scope.MARK);
@@ -291,6 +294,13 @@ public final class JavacCompilation {
             int dot = name.lastIndexOf('.');
             return dot > 0 && methods.contains(name.substring(dot + 1));
         });
+    }
+
+    /** What the compilation lowers of the root {@code unit}: {@code type}, and the unit's classes if it is a library too. */
+    private Set<Tree> lowered(CompilationUnitTree unit, ClassTree type) {
+        var lowered = discovery.lowered(type);
+        lowered.addAll(libraries.lowered(unit));
+        return lowered;
     }
 
     // --- Validators ---
@@ -301,9 +311,11 @@ public final class JavacCompilation {
         SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.VALIDATOR);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
-        SubsetScan.check(facts, unit, discovery.lowered(discovery.validatorClassOrNull(unit))).forEach(context::report);
+        SubsetScan.check(facts, unit, lowered(unit, discovery.validatorClassOrNull(unit))).forEach(context::report);
+        libraries.scan().forEach(context::report);
         verifyBinderNamespace(unit);
-        // 3. Library units hold no validator annotation: no step here, since a library unit javac read stops at step 8
+        // 3. Validate: library units hold no validator annotation
+        libraries.requireNoValidators();
         // 4. Find annotated validator class and determine purpose
         var type = discovery.validatorClass(unit);
         var purpose = discovery.purpose(type);
@@ -314,8 +326,9 @@ public final class JavacCompilation {
         // 7. Find @Entrypoint method(s) and validate
         var entrypoints = entrypoints(type, purpose);
         // 8. Compile library static methods
-        requireNoLibraries();
+        var libraryMethods = libraries.lower();
         // 10. Every static method's type
+        lowering.classBegins();
         parts.declareMethods(type);
         // The entrypoints run once per evaluation (JULC0056, ADR-060)
         lowering.entryMethods(entrypoints.stream().map(JavacDiscovery.EntryPoint::method).toList());
@@ -352,9 +365,12 @@ public final class JavacCompilation {
                     hasDatum && parameters.get(0).type() instanceof PirType.OptionalType));
         }
 
+        // 12b. What lowering warned of
+        lowering.drainWarnings().forEach(context::report);
+
         // 13-22. Everything from here on takes PIR and resolved types (F846).
         var validator = new ValidatorAssembly.Validator(purpose, autoDispatch, entries, List.copyOf(helpers.values()),
-                statics, List.of(), parts.assemblyParams(), failureLocation(entrypoints.getFirst().method()), strictErrors);
+                statics, libraryMethods, parts.assemblyParams(), failureLocation(entrypoints.getFirst().method()), strictErrors);
         return ValidatorAssembly.validator(validator, registry(), context, parts.frontend(), captureDetails).result();
     }
 
@@ -404,7 +420,8 @@ public final class JavacCompilation {
         SubsetRules.checkOnJavacFrontend(facts, program.roots(), program.libraries(), JavacGate.Compiled.METHOD);
         SubsetRules.warnings(facts, program.roots()).forEach(context::report);
         // 2. Validate subset
-        SubsetScan.check(facts, unit, discovery.lowered(discovery.firstClassOrNull(unit))).forEach(context::report);
+        SubsetScan.check(facts, unit, lowered(unit, discovery.firstClassOrNull(unit))).forEach(context::report);
+        libraries.scan().forEach(context::report);
         verifyBinderNamespace(unit);
         // 3. Find the target class (first non-interface class)
         var type = discovery.firstClass(unit);
@@ -419,8 +436,9 @@ public final class JavacCompilation {
         // 7, 7b. @Param and static fields
         var parts = new ClassParts(type);
         // 8. Compile libraries
-        requireNoLibraries();
+        var libraryMethods = libraries.lower();
         // 9. Every static method's type
+        lowering.classBegins();
         parts.declareMethods(type);
 
         // The selected entry point is decoded from external Data: reject native Value anywhere in its boundary graph.
@@ -450,9 +468,11 @@ public final class JavacCompilation {
             if (discovery.isStatic(method)) parts.lowerMethod(method, overloads, methods);
         }
 
+        lowering.drainWarnings().forEach(context::report);
+
         // 11-17. Everything from here on takes PIR and resolved types (F846).
         return ValidatorAssembly.method(new ValidatorAssembly.MethodProgram(parts.binder(target), parts.methodType(target),
-                parameters, List.copyOf(methods.values()), statics, List.of(), parts.assemblyParams()),
+                parameters, List.copyOf(methods.values()), statics, libraryMethods, parts.assemblyParams()),
                 context, parts.frontend());
     }
 }

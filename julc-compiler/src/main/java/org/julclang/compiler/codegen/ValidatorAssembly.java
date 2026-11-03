@@ -93,7 +93,7 @@ public final class ValidatorAssembly {
      * @param paramBound  told each {@code @Param}'s binding as it is built, or null
      * @param finalCheck  run on the assembled term, before the backend
      * @param staticBound told each static field's binding as it is built, one per copy, or null
-     * @param methodBound told each method's binding by its binder name, one per copy, or null
+     * @param methodBound told each method's binding by its binder name, a library method's included, one per copy, or null
      */
     public record Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
                            BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
@@ -191,9 +191,9 @@ public final class ValidatorAssembly {
         // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
         var sortedLibMethods = topoSortLibraryMethods(validator.libraries());
         if (validator.autoDispatch()) {
-            handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler));
+            handlers.replaceAll((tag, handler) -> bindLibraries(sortedLibMethods, handler, frontend));
         } else {
-            body = bindLibraries(sortedLibMethods, body);
+            body = bindLibraries(sortedLibMethods, body, frontend);
         }
 
         // 15. Resolve typed transaction-time roots and wrap the entrypoint for on-chain.
@@ -258,7 +258,7 @@ public final class ValidatorAssembly {
         return body;
     }
 
-    private static PirTerm bindLibraries(List<LibraryMethod> sorted, PirTerm body) {
+    private static PirTerm bindLibraries(List<LibraryMethod> sorted, PirTerm body, Frontend frontend) {
         for (var libMethod : sorted) {
             if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
                 body = new PirTerm.LetRec(
@@ -267,6 +267,7 @@ public final class ValidatorAssembly {
             } else {
                 body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
             }
+            if (frontend.methodBound() != null) frontend.methodBound().accept(libMethod.qualifiedName(), body);
         }
         return body;
     }
@@ -318,7 +319,7 @@ public final class ValidatorAssembly {
         // 14. Wrap static field initializers
         body = bindStatics(program.statics(), body, frontend);
         // 15. Wrap library methods as Let bindings
-        body = bindLibraries(topoSortLibraryMethods(program.libraries()), body);
+        body = bindLibraries(topoSortLibraryMethods(program.libraries()), body, frontend);
         // 16. Wrap with outer @Param lambdas
         body = bindParams(program.params(), body, frontend);
 

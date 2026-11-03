@@ -80,8 +80,10 @@ class SpelledProgramsOnJavacTest {
     }
 
     private static final Answer AGREES = new Agrees();
-    private static final Answer LIBRARY = stops("a library unit");
-    /** What the reference says in words with no code: a call of a class that is no library, or a type it cannot read. */
+    /**
+     * What the reference says in words with no code: a call of a class that is no library, a type it cannot read, or a
+     * statement it does not lower.
+     */
     private static final Answer UNDEFINED = rejects(null);
 
     /** What each program of {@link SpelledReadingsTest} does here. */
@@ -93,14 +95,14 @@ class SpelledProgramsOnJavacTest {
             entry("a member reached through a qualifier that inherits it", AGREES),
             entry("the same in a type argument", AGREES),
             entry("an annotation type as a qualifier, beside a record of its name", stops("ANNOTATION_TYPE")),
-            entry("a library of the root used from a pool unit, beside a pool library of its name", LIBRARY),
+            entry("a library of the root used from a pool unit, beside a pool library of its name", UNDEFINED),
             entry("a library record's type parameter beside a record of its name", UNDEFINED),
             entry("the same with an integer", UNDEFINED),
             entry("a generic method of a library compiled as the root", rejects("JULC0087")),
             entry("new with a class body", stops("a new with a class body")),
             entry("a guard reads an inherited type", AGREES),
             entry("a guard reads an inherited field", stops("METHOD_INVOCATION")),
-            entry("a class of the unnamed package named like a package of the compilation", LIBRARY),
+            entry("a class of the unnamed package named like a package of the compilation", AGREES),
             entry("a record of the unnamed package beside a pool record of its name", AGREES),
             entry("a record of the unnamed package beside a library of its name", UNDEFINED),
             entry("a record of the unnamed package beside a @NewType of its name", stops("PLUS")),
@@ -119,13 +121,13 @@ class SpelledProgramsOnJavacTest {
             entry("a variant outside the interface, with a switch", rejects("JULC0092")),
             entry("no variant in the interface", rejects("JULC0092")),
             entry("a switch statement in a root", stops("TYPE_CAST")),
-            entry("a switch statement in a library", LIBRARY),
-            entry("a pattern switch statement in a library", LIBRARY),
-            entry("a call of a generic sibling in a library", LIBRARY),
-            entry("a nested class of a library calling its outer class", LIBRARY),
-            entry("an operator a library cannot lower", LIBRARY),
+            entry("a switch statement in a library", stops("TYPE_CAST")),
+            entry("a pattern switch statement in a library", UNDEFINED),
+            entry("a call of a generic sibling in a library", UNDEFINED),
+            entry("a nested class of a library calling its outer class", stops("a call of g that is not a static method of this class")),
+            entry("an operator a library cannot lower", stops("AND")),
             entry("instanceof on a qualified variant, a member holding its last name", AGREES),
-            entry("instanceof on a qualified variant, an import holding its last name", LIBRARY),
+            entry("instanceof on a qualified variant, an import holding its last name", AGREES),
             entry("instanceof on a variant whose name nothing else holds", AGREES),
             entry("instanceof on a sibling variant of a qualified one", AGREES),
             entry("a permits clause listing a variant outside the interface", AGREES),
@@ -133,16 +135,16 @@ class SpelledProgramsOnJavacTest {
             entry("a validator's nested class beside a plain library class", UNDEFINED),
             entry("a second top-level class beside a plain library class", UNDEFINED),
             entry("an inherited member class beside a plain library class", UNDEFINED),
-            entry("a nested class beside the plain library class the unit imports", LIBRARY),
+            entry("a nested class beside the plain library class the unit imports", UNDEFINED),
             entry("a nested class beside a plain class nested in a library", stops("METHOD_INVOCATION")),
             entry("a nested class beside a plain library class, by method", stops("METHOD_INVOCATION")),
             entry("a qualifier beside a plain library class of its name", AGREES),
-            entry("a static-imported plain class beside a same-package class", LIBRARY),
+            entry("a static-imported plain class beside a same-package class", AGREES),
             entry("a member through a record qualifier that inherits it", AGREES),
             entry("a member through a record qualifier of a sealed interface", AGREES),
             entry("a nested record implementing an annotation of the interface's name", stops("ANNOTATION_TYPE")),
             entry("a nested record implementing a sealed interface of the interface's name", rejects("JULC0092")),
-            entry("a library's static field that runs at script start", LIBRARY));
+            entry("a library's static field that runs at script start", rejects("JULC0095")));
 
     /**
      * One program.
@@ -342,7 +344,8 @@ class SpelledProgramsOnJavacTest {
             case Rejects(var code) -> {
                 var failure = assertThrows(CompilerException.class, () -> compile(program), program.label());
                 assertFalse(failure instanceof NotPorted, failure::getMessage);
-                assertEquals(code, failure.diagnostics().getFirst().code(), failure::getMessage);
+                // A rejection in the reference's words alone, such as Undefined variable, can have no diagnostic.
+                assertEquals(code, failure.diagnostics().isEmpty() ? null : failure.diagnostics().getFirst().code(), failure::getMessage);
             }
             case Agrees ignored -> assertEquals(jvm(program, directory), script(program), program.label());
             case Views ignored -> assertEquals("true", script(program), program.label());

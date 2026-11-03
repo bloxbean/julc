@@ -63,6 +63,52 @@ public final class LoweringFixture {
         }
     }
 
+    /** {@link #assertSameAsReference}, with {@code libraries} as the pool and {@code stdlib} as the lookup. */
+    public static void assertSameAsReference(String source, List<String> libraries, StdlibLookup stdlib) {
+        for (var level : OptimizationLevel.values()) {
+            for (boolean sourceMap : List.of(false, true)) {
+                assertBytes(validator(source, libraries, stdlib, level, sourceMap, CompilerFrontend.JAVAPARSER),
+                        validator(source, libraries, stdlib, level, sourceMap, CompilerFrontend.JAVAC), level + " sourceMap=" + sourceMap);
+            }
+        }
+    }
+
+    /** {@link #assertSameMethodAsReference(String, String, StdlibLookup)}, with {@code libraries} as the pool. */
+    public static void assertSameMethodAsReference(String source, String name, List<String> libraries, StdlibLookup stdlib) {
+        for (var level : OptimizationLevel.values()) {
+            for (boolean sourceMap : List.of(false, true)) {
+                assertBytes(method(source, name, libraries, level, sourceMap, CompilerFrontend.JAVAPARSER, stdlib),
+                        method(source, name, libraries, level, sourceMap, CompilerFrontend.JAVAC, stdlib), level + " sourceMap=" + sourceMap);
+            }
+        }
+    }
+
+    /** {@link #assertSameRejectionAsReference}, with {@code libraries} as the pool and {@code stdlib} as the lookup. */
+    public static void assertSameRejectionAsReference(String source, List<String> libraries, StdlibLookup stdlib) {
+        assertSameRejection(frontend -> validator(source, libraries, stdlib, OptimizationLevel.DEFAULT, false, frontend));
+    }
+
+    /** {@link #assertSameMethodRejectionAsReference(String, String)}, with {@code libraries} as the pool. */
+    public static void assertSameMethodRejectionAsReference(String source, String name, List<String> libraries, StdlibLookup stdlib) {
+        assertSameRejection(frontend -> method(source, name, libraries, OptimizationLevel.DEFAULT, false, frontend, stdlib));
+    }
+
+    /** The reference's result, gate off, and javac's, of a validator with {@code libraries}. */
+    public static CompileResult validatorOn(CompilerFrontend frontend, String source, List<String> libraries, StdlibLookup stdlib,
+                                            OptimizationLevel level) {
+        return validator(source, libraries, stdlib, level, false, frontend);
+    }
+
+    private static CompileResult validator(String source, List<String> libraries, StdlibLookup stdlib, OptimizationLevel level,
+                                           boolean sourceMap, CompilerFrontend frontend) {
+        return new JulcCompiler(stdlib, options(level, sourceMap, frontend)).compile(source, libraries);
+    }
+
+    private static CompileResult method(String source, String name, List<String> libraries, OptimizationLevel level,
+                                        boolean sourceMap, CompilerFrontend frontend, StdlibLookup stdlib) {
+        return new JulcCompiler(stdlib, options(level, sourceMap, frontend)).compileMethod(source, name, libraries);
+    }
+
     /** {@link #assertSameAsReference} for a {@code compileMethod} target. */
     public static void assertSameMethodAsReference(String source, String name) {
         for (var level : OptimizationLevel.values()) {

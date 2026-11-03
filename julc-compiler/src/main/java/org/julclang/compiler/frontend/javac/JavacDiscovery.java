@@ -72,7 +72,7 @@ final class JavacDiscovery {
     // --- Classes ---
 
     /** Every declared class-like type of {@code unit}, in source order, the outer before what it holds; none anonymous. */
-    private static List<ClassTree> types(CompilationUnitTree unit) {
+    static List<ClassTree> types(CompilationUnitTree unit) {
         var types = new ArrayList<ClassTree>();
         new TreeScanner<Void, Void>() {
             @Override
@@ -165,7 +165,7 @@ final class JavacDiscovery {
                 null, " (e.g. @SpendingValidator, @MintingValidator)");
     }
 
-    private void rejectRoleConflict(ClassTree type) {
+    void rejectRoleConflict(ClassTree type) {
         var element = facts.element(type);
         var validators = validatorAnnotations(type);
         if (facts.hasAnnotation(element, JavacNames.ONCHAIN_LIBRARY) && !validators.isEmpty()) {
@@ -176,7 +176,7 @@ final class JavacDiscovery {
     }
 
     /** The simple names of the validator annotations on {@code type}, in source order. */
-    private List<String> validatorAnnotations(ClassTree type) {
+    List<String> validatorAnnotations(ClassTree type) {
         var found = new ArrayList<String>();
         for (AnnotationMirror mirror : facts.element(type).getAnnotationMirrors()) {
             var annotation = facts.identity(mirror.getAnnotationType());
@@ -233,12 +233,6 @@ final class JavacDiscovery {
     /** Whether the compilation lowers {@code field}: a static field of the compiled class, other than a {@code @Param}. */
     boolean isLowered(VariableTree field, ClassTree compiled) {
         return facts.parent(field) == compiled && isStatic(field) && !carries(field, simpleName(JavacNames.PARAM));
-    }
-
-    /** Whether compiling a library lowers {@code field}: a static field of a class, other than a {@code @Param}. */
-    boolean isLoweredInALibrary(VariableTree field) {
-        return facts.parent(field) instanceof ClassTree owner && owner.getKind() == Tree.Kind.CLASS
-                && !owner.getSimpleName().isEmpty() && isStatic(field) && !carries(field, simpleName(JavacNames.PARAM));
     }
 
     boolean isParam(VariableTree field) {

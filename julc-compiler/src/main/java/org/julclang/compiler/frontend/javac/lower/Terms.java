@@ -14,6 +14,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * The only code that builds a {@code Var}, {@code Lam} or {@code Let} for a source element (ADR-068 I13), and the only recorder of
@@ -24,6 +25,8 @@ public final class Terms {
 
     private final JavacFacts facts;
     private final boolean sourceMaps;
+    /** Whether a term's position is recorded now: not in a library, whose positions the reference keeps nowhere. */
+    private boolean locating = true;
     private final IdentityHashMap<PirTerm, SourceLocation> positions = new IdentityHashMap<>();
     private final Provenance provenance = new Provenance();
 
@@ -179,8 +182,22 @@ public final class Terms {
 
     /** Records where {@code term} came from, when this compilation has a source map. */
     <T extends PirTerm> T at(Tree tree, T term) {
-        if (sourceMaps) positions.put(term, facts.location(tree));
+        if (sourceMaps && locating) positions.put(term, facts.location(tree));
         return term;
+    }
+
+    /**
+     * {@code lowering}, with no position recorded: the reference lowers a library with a generator of its own, whose source
+     * map it drops, so a library's terms are in no map.
+     */
+    public <T> T unlocated(Supplier<T> lowering) {
+        boolean was = locating;
+        locating = false;
+        try {
+            return lowering.get();
+        } finally {
+            locating = was;
+        }
     }
 
     /** The PIR term to Java source location map the backend takes. */
