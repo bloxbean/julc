@@ -284,14 +284,27 @@ class JavacOperatorsTest {
         assertSame(member + "\nstatic boolean m() { return true; }");
     }
 
-    /** What the reference rejects wherever it stands is rejected in code nothing lowers, with its code; a type declared there stops. */
+    /** A string of an unpaired surrogate in code nothing lowers is the reference's rejection, as in a field's initializer. */
+    @Test
+    void anUnpairedSurrogateInCodeNothingLowers() {
+        String members = "static class N { static String f() { String s = \"\\uD800\"; return s; } }\nstatic boolean m() { return true; }";
+        assertEquals("JULC0093", javac(members).diagnostics().getFirst().code());
+        // The reference rejects it as it reads the source, uncoded.
+        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source(members), "m", List.of()));
+    }
+
+    /** What the reference rejects wherever it stands is rejected in code nothing lowers, with its code. */
     @Test
     void codeNothingLowersKeepsTheRulesThatHoldEverywhere() {
         assertEquals("JULC0017", javac("static class N { static long f() { done: { BigInteger z = null; } return 1; } }\n"
                 + "static boolean m() { return true; }").diagnostics().getFirst().code());
-        // Rejected, whichever rule speaks first: a declaration is never passed over.
-        javac("static class N { static long f() { class L { } return 1; } }\nstatic boolean m() { return true; }");
-        javac("static class N { static Object f() { return new Object() { }; } }\nstatic boolean m() { return true; }");
+        // A type declared there: the walk reads javac's generated super() in its constructor as 'super' (JULC0107), where the
+        // reference accepts. Fails closed; a follow-up (068-m5a.md).
+        for (var member : new String[]{"static class N { static long f() { class L { } return 1; } }",
+                "static class N { static Object f() { return new Object() { }; } }",
+                "static class N { static long f() { record L(long a) { } return new L(1).a(); } }"}) {
+            assertEquals("JULC0107", javac(member + "\nstatic boolean m() { return true; }").diagnostics().getFirst().code(), member);
+        }
     }
 
     /** A field the compilation lowers is read as a method is, so D6's rules reach its initializer. */

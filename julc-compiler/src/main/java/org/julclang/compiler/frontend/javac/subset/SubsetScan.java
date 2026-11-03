@@ -274,10 +274,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
      * A statement of code nothing lowers never runs, and the reference's validator reads it only for what it rejects wherever
      * it stands, which {@link #requireNoRejectedStatement} has read, {@code null} included (ADR-068 M5): so it is passed over,
      * with its strings' surrogates read as a field initializer's are and its blocks' unreachable code warned of, as the
-     * reference warns. A rejected statement is
-     * read for its own rule, and a statement that declares a type, or a {@code new} with a class body, still stops: a
-     * declaration there has rules of its own. What javac wrote into a constructor, a {@code super();} or a compact
-     * constructor's assignments, is not source, and {@code JULC0099} has read the rest.
+     * reference warns. A rejected statement there the walk has read by its own rule. What javac wrote into a constructor, a
+     * {@code super();} or a compact constructor's assignments, is not source, and {@code JULC0099} has read the rest.
      */
     @Override
     public Void visitBlock(BlockTree tree, Void unused) {
@@ -290,7 +288,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             boolean rejected = REJECTED_STATEMENTS.contains(statement.getKind());
             if (inLowered && (rejected || STATEMENTS.contains(statement.getKind()))) {
                 scan(statement, null);
-            } else if (inLowered || declaresAType(statement)) {
+            } else if (inLowered) {
                 throw NotPorted.at(facts, statement);
             } else if (!rejected) {
                 // A rejected statement here the walk has read, by its own rule.
@@ -299,11 +297,6 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             }
         }
         return null;
-    }
-
-    private static boolean declaresAType(Tree statement) {
-        return !SubsetWalk.all(statement, ClassTree.class).isEmpty()
-                || SubsetWalk.all(statement, NewClassTree.class).stream().anyMatch(created -> created.getClassBody() != null);
     }
 
     /**

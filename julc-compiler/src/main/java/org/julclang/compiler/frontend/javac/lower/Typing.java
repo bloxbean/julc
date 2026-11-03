@@ -22,7 +22,6 @@ import org.julclang.compiler.pir.TermTypes;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.util.Collections;
@@ -68,10 +67,8 @@ final class Typing {
     /**
      * The type of an expression whose static type has no representation, or null:
      * <ul>
-     *   <li>an intersection, such as {@code Record & S} for {@code c ? new S.A() : new S.B()}, is the one bound that has a
-     *       representation, as Java's value is a value of each bound; with none, or more than one, it is read as below;</li>
      *   <li>a conditional or a {@code switch}, which javac types {@code Object} as an argument of an {@code Object} parameter,
-     *       or {@code Record} between two records, is what its arms are: their one type; Data where they differ and are all
+     *       {@code Record} between two records, or {@code Record & S} between two variants, is what its arms are: their one type; Data where they differ and are all
      *       Data-shaped, which is their encoding, as the reference types a {@code switch}; and otherwise
      *       {@link PirHelpers#UNKNOWN}, which no encoding takes ({@code JULC0012}), as the reference says of a
      *       {@code switch}. A conditional is held to that rule too, so its else branch is never read as its then branch;</li>
@@ -80,18 +77,6 @@ final class Typing {
      * </ul>
      */
     private PirType unrepresented(ExpressionTree tree, TypeMirror type) {
-        if (type instanceof IntersectionType intersection) {
-            var bounds = new LinkedHashSet<PirType>();
-            for (var bound : intersection.getBounds()) {
-                if (isObject(bound) || isRecord(bound)) continue;
-                try {
-                    bounds.add(facts.registry().resolveNamed(facts.valueType(bound, tree)));
-                } catch (CompilerException noRepresentation) {
-                    // Number, Comparable or Serializable says nothing of the value's representation.
-                }
-            }
-            if (bounds.size() == 1) return bounds.iterator().next();
-        }
         return switch (tree) {
             case ParenthesizedTree parenthesized -> of(parenthesized.getExpression());
             case ConditionalExpressionTree conditional -> arms(List.of(conditional.getTrueExpression(), conditional.getFalseExpression()));
