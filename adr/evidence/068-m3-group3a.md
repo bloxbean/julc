@@ -298,3 +298,21 @@ so a variable incremented never reaches a cast. The B4 pass, put back, fails the
   of its outer class by name, a cycle of such calls. Stricter than Java on both frontends (follow-ups).
 - **The resolving hosts** (round 2): both frontends compile as libraries what `LibrarySourceResolver.resolve` finds, a JavaParser
   reading, so a library copy of a root exists exactly where the reference makes one. M6 must replace that reading.
+
+## Gates of Group 3, combined
+
+At `b71373e3` (both slices merged, frozen at `e7fe6771` with two later fix commits that moved no I1 row), through `build/g3/gates.sh`, each step under a time limit:
+
+| Gate | Result |
+|---|---|
+| `adr068Baseline` | 0 (the four new saved cases' rows added at the freeze; no other row changed) |
+| `adr068Lowering`, I1 | 0 |
+| `adr068Types` | 0 (two `JULC0095` provider rows listed) |
+| `./gradlew test --rerun --continue` | 16,643 tests, 0 failures, 0 errors, 530 skipped |
+| `pairCaseTest`, `onChainHarnessTest` (offline) | 0 |
+| `Javac21ParityTest`, javac 21.0.3 required | 51 tests, 0 failures |
+| `rediscoveryDiffTest`, six profiles | five pass; `_162` ends in #162's rejection, as ADR-066 designs it |
+| Blaster artifacts | 0 |
+
+Not run on Group 3: DevKit, Elci's release smoke, the external examples, images. These are M5's.
+
