@@ -70,6 +70,7 @@ public final class JavacCompilation {
         this.context = context;
         this.discovery = new JavacDiscovery(facts);
         this.lowering = new Lowering(facts, context, stdlib);
+        lowering.terms().shareShapeChecks();
         this.libraries = new JavacLibraries(program, facts, discovery, lowering);
     }
 

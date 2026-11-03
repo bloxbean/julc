@@ -33,6 +33,7 @@ public final class Terms {
     private final Provenance provenance = new Provenance();
     private DebugMetadataCollector debug;
     private StrictBoundaryGenerator shapes;
+    private boolean sharesShapeChecks;
 
     Terms(JavacFacts facts, CompilationContext context) {
         this.facts = facts;
@@ -94,13 +95,28 @@ public final class Terms {
     /**
      * {@code let #fromData = data in if check #fromData then #fromData decoded as type else error}: Data of exactly
      * {@code type}'s shape, as {@code type} holds it. The check is the program's one dispatcher, bound by
-     * {@link #bindShapeChecks}. Nothing in the {@code let}'s scope is built elsewhere, so the name is fixed (ADR-060).
+     * {@link #bindShapeChecks}, where this lowering builds one program ({@link #shareShapeChecks}), and its own otherwise.
+     * Nothing in the {@code let}'s scope is built elsewhere, so the name is fixed (ADR-060).
      */
     PirTerm.Let checkedDecode(PirTerm data, PirType type) {
-        if (shapes == null) shapes = facts.shapeChecks();
         var read = generated("#fromData", new PirType.DataType());
+        PirTerm check;
+        if (sharesShapeChecks) {
+            if (shapes == null) shapes = facts.shapeChecks();
+            check = shapes.checkShared(read, type);
+        } else {
+            check = facts.exactShapeCheck(read, type);
+        }
         return generatedLet("#fromData", data,
-                new PirTerm.IfThenElse(shapes.checkShared(read, type), PirHelpers.wrapDecode(read, type), new PirTerm.Error(type)));
+                new PirTerm.IfThenElse(check, PirHelpers.wrapDecode(read, type), new PirTerm.Error(type)));
+    }
+
+    /**
+     * The terms of this lowering go into one program, which {@link #bindShapeChecks} binds, so the shape checks share one
+     * dispatcher. Otherwise, as for a library's export, each check carries its own.
+     */
+    public void shareShapeChecks() {
+        this.sharesShapeChecks = true;
     }
 
     /** {@code program} under the one dispatcher of its shape checks, if it has any. */

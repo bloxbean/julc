@@ -638,6 +638,11 @@ public final class JavacFacts {
         return StrictBoundaryGenerator.shared(registry.namedDefinitions(), "#__julc-shape-check");
     }
 
+    /** A {@code Bool} term that holds where {@code data} has exactly {@code type}'s shape, with a dispatcher of its own. */
+    public PirTerm exactShapeCheck(PirTerm data, PirType type) {
+        return new StrictBoundaryGenerator(registry.namedDefinitions()).check(data, type);
+    }
+
     /** Whether a map is reachable in {@code type}'s shape, through its fields, constructors, elements and named types. */
     public boolean holdsMap(PirType type) {
         return holdsMap(type, new HashSet<>());
