@@ -25,6 +25,7 @@ import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
+import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.SynchronizedTree;
@@ -501,8 +502,24 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     public Void visitClass(ClassTree tree, Void unused) {
         boolean inherits = tree.getKind() == Tree.Kind.INTERFACE ? !tree.getImplementsClause().isEmpty()
                 : tree.getExtendsClause() != null && !isObject(tree.getExtendsClause());
-        if (tree.getKind() != Tree.Kind.RECORD && inherits) throw facts.rejection(DiagnosticCodes.INHERITANCE_UNSUPPORTED, tree);
+        if (tree.getKind() != Tree.Kind.RECORD && inherits) {
+            // The reference reads a superclass by its simple name: one written Object is no inheritance there, so a user's own
+            // Object stays a stop, which no rule of the reference's answers.
+            if (tree.getKind() != Tree.Kind.INTERFACE && simpleName(tree.getExtendsClause()).equals("Object")) {
+                throw NotPorted.at(facts, tree, "inheritance");
+            }
+            throw facts.rejection(DiagnosticCodes.INHERITANCE_UNSUPPORTED, tree);
+        }
         return super.visitClass(tree, unused);
+    }
+
+    private static String simpleName(Tree type) {
+        return switch (type) {
+            case IdentifierTree name -> name.getName().toString();
+            case MemberSelectTree select -> select.getIdentifier().toString();
+            case ParameterizedTypeTree parameterized -> simpleName(parameterized.getType());
+            default -> "";
+        };
     }
 
     private boolean isObject(Tree type) {

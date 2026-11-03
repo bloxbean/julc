@@ -227,15 +227,13 @@ class JavacRejectionsTest {
     /** {@code V.this} is a member select to javac, so {@code this} is not only an identifier. */
     @Test
     void aQualifiedThisIsOutsideTheSubset() {
-        assertMethodNotPorted("class V {\n    boolean b;\n    boolean g() { return V.this.b; }\n    static long m() { return 1; }\n}\n",
-                "m", "MEMBER_SELECT", 3);
+        assertSameMethodRejectionAsReference("class V {\n    boolean b;\n    boolean g() { return V.this.b; }\n    static long m() { return 1; }\n}\n", "m");
     }
 
     @Test
     void inheritanceIsOutsideTheSubset() {
-        assertMethodNotPorted("class B { }\nclass P extends B { static long m() { return 1; } }\n", "m", "inheritance", 1 + 1);
-        assertMethodNotPorted("interface I { }\nsealed interface J extends I permits K { }\nrecord K() implements J { }\nclass P { static long m() { return 1; } }\n",
-                "m", "inheritance", 2);
+        assertSameMethodRejectionAsReference("class B { }\nclass P extends B { static long m() { return 1; } }\n", "m");
+        assertSameMethodRejectionAsReference("interface I { }\nsealed interface J extends I permits K { }\nrecord K() implements J { }\nclass P { static long m() { return 1; } }\n", "m");
     }
 
     @Test

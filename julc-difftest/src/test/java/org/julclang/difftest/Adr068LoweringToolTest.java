@@ -135,7 +135,19 @@ class Adr068LoweringToolTest {
 
     @Test
     void aRejectionOfWhatTheReferenceRejectsIsNotAPass() {
-        assertRow("reference-rejects-not-ported", 0, 0, "NULL_LITERAL", row("class P { static String m() { return null; } }"));
+        assertRow("reference-rejects-not-ported", 0, 0, "CHAR_LITERAL", row("class P { static long m() { char c = 'a'; return 1; } }"));
+    }
+
+    /** A rule ported with the reference's code is the same rejection. */
+    @Test
+    void aPortedRuleIsTheSameRejection() {
+        assertRow("both-reject", 0, 0, "-", row("class P { static String m() { return null; } }"));
+    }
+
+    /** A rejection the reference makes uncoded has a code when it is ported (I2a): a difference, which D13 explains. */
+    @Test
+    void aPortedRuleWithItsNewCodeIsADifference() {
+        assertRow("DIFFERENT-rejection", 0, 0, "-", row("class P { static long m(long a) { synchronized (P.class) { return a; } } }"));
     }
 
     @Test

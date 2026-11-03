@@ -187,9 +187,10 @@ class JavacNamesTest {
         assertEquals("Undefined variable: ZERO", e.diagnostics().getFirst().message());
     }
 
+    /** {@code this} is the reference's rejection, in code nothing lowers too, with its code (I2a). */
     @Test
-    void thisIsNotPorted() {
-        assertMethodNotPorted("class P { P m() { return this; } static long n() { return 1; } }", "n", "IDENTIFIER", 1);
+    void thisIsOutsideTheSubset() {
+        LoweringFixture.assertSameMethodRejectionAsReference("class P { P m() { return this; } static long n() { return 1; } }", "n");
     }
 
     @Test
@@ -205,14 +206,15 @@ class JavacNamesTest {
                 """, "m", "a cast to short", 3);
     }
 
+    /** An initializer is lowered whether or not it is read, so its rejection stops the program, with the reference's words. */
     @Test
-    void anInitializerNotPortedStopsTheProgramEvenUnused() {
-        assertMethodNotPorted("""
+    void anInitializersRejectionStopsTheProgramEvenUnused() {
+        LoweringFixture.assertSameMethodRejectionAsReference("""
                 class P {
                     static final long K = ~1;
                     static long m() { return 1; }
                 }
-                """, "m", "BITWISE_COMPLEMENT", 2);
+                """, "m");
     }
 
     // --- D14 ---

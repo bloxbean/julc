@@ -150,6 +150,38 @@ class JavacSubsetCodesTest {
         assertEquals("JULC0079", javacCode(VALIDATOR.formatted(declarations)));
     }
 
+    /**
+     * What stopped at {@code JULC0084} where a record of two sealed parents is built, tested or matched now stops at its
+     * declaration. The reference accepts each (T30), and a compilation with the gate on too: the rule is this frontend's (D11).
+     */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "sealed interface P1 permits R { } sealed interface P2 permits R { } record R() implements P1, P2 { } static long m(P1 p) { return switch (p) { case R r -> 1; }; }",
+            "sealed interface P1 permits R { } sealed interface P2 permits R { } record R() implements P1, P2 { } static boolean m(P1 p) { return p instanceof R r; }",
+            "sealed interface U { record I(BigInteger a) implements U, W { } } sealed interface W permits U.I { } static U m(BigInteger a) { return new U.I(a); }"})
+    void aUseOfARecordOfTwoSealedParentsStopsAtItsDeclaration(String members) {
+        var source = IMPORTS + "class C {\n" + members + "\n}\n";
+        assertEquals("JULC0079", code(source));
+        new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m");
+    }
+
+    /** A record's instance method is no member a record holds, before the lambda it returns is read. */
+    @Test
+    void aRecordsMethodStopsAtTheRecord() {
+        assertEquals("JULC0080", code(IMPORTS + "class C { record R(BigInteger a) { java.util.function.Predicate<BigInteger> h() { return x -> true; } } "
+                + "static boolean m(R r) { return true; } }"));
+    }
+
+    /** In a guard too, a unary plus is the reference's uncoded rejection, here with its code. */
+    @Test
+    void aUnaryPlusInAGuard() {
+        var source = IMPORTS + "class C { sealed interface S permits A, B { } record A() implements S { } record B() implements S { } "
+                + "static long m(S s, long n) { return switch (s) { case A a when +n > 0 -> 1; default -> 3; }; } }";
+        assertEquals("JULC0119", code(source));
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m"));
+        assertEquals(null, reference.diagnostics().getFirst().code());
+    }
+
     /** A sealed parent and a plain interface: one sealed parent. */
     @Test
     void aPlainInterfaceIsNoSecondParent() {
