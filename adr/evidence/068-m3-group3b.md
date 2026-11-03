@@ -84,8 +84,8 @@ rows moved: the 27 of this slice and 2 new cases. No other row moved, and no byt
 `068/g3b-accepted-differences.tsv` holds the 8. Bytes at `NONE`, reference / `JAVAC`: `Credential` 46 / 226 (`06c0423a`,
 `1118febc`), 43 / 224 (`718238a9`), `M3bStatics` 1,123 / 1,304, a `PubKeyHash` 47 / 49, the largest probe 43 / 588.
 
-A schema's location text is javac's (a `@Param`'s fragment is its whole declaration, an entry point's on one line; lines
-agree): a **Diagnostic change (D13)**, printed only in `SchemaGenerator`'s and `BlueprintGenerator`'s exception messages. No
+A schema's location text is javac's (a `@Param`'s is its whole declaration, from its annotation, a line above the name
+where the annotation stands alone; an entry point's fragment is on one line): a **Diagnostic change (D13)**, printed only in `SchemaGenerator`'s and `BlueprintGenerator`'s exception messages. No
 I1 row compares it.
 
 ## The check's cost, per ledger type
