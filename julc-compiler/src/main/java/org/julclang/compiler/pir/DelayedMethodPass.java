@@ -394,8 +394,49 @@ public final class DelayedMethodPass {
             case PirTerm.Var read when delayed.contains(read.name()) -> call(read);
             case PirTerm.Let let -> walkLet(let, total, delayed);
             case PirTerm.LetRec rec -> walkLetRec(rec, total, delayed);
+            // A binder of the same name hides a delayed or total one in its scope: PIR is scoped by name, so a read there is not
+            // of the method (two binders of one name: a root's helper and its library copy).
+            case PirTerm.Lam lam when hides(total, delayed, List.of(lam.param())) -> new PirTerm.Lam(lam.param(), lam.paramType(),
+                    walk(lam.body(), without(total, List.of(lam.param())), minus(delayed, List.of(lam.param()))));
+            case PirTerm.PairMatch match when hides(total, delayed, List.of(match.firstName(), match.secondName())) -> {
+                var names = List.of(match.firstName(), match.secondName());
+                yield new PirTerm.PairMatch(walk(match.scrutinee(), total, delayed), match.pairType(), match.firstName(),
+                        match.secondName(), walk(match.body(), without(total, names), minus(delayed, names)));
+            }
+            case PirTerm.ListMatch match when hides(total, delayed, List.of(match.headName(), match.tailName())) -> {
+                var names = List.of(match.headName(), match.tailName());
+                yield new PirTerm.ListMatch(walk(match.scrutinee(), total, delayed), match.headName(), match.tailName(),
+                        walk(match.nilBranch(), total, delayed), walk(match.consBranch(), without(total, names), minus(delayed, names)));
+            }
+            case PirTerm.DataMatch match when match.branches().stream().anyMatch(branch -> hides(total, delayed, bound(branch))) ->
+                    new PirTerm.DataMatch(walk(match.scrutinee(), total, delayed), match.branches().stream().map(branch ->
+                            new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(), branch.bindingTypes(),
+                                    walk(branch.body(), without(total, bound(branch)), minus(delayed, bound(branch))),
+                                    branch.patternVar())).toList());
             default -> PirHelpers.mapChildren(term, child -> walk(child, total, delayed));
         });
+    }
+
+    private static List<String> bound(PirTerm.MatchBranch branch) {
+        var names = new ArrayList<>(branch.bindings());
+        if (branch.patternVar() != null) names.add(branch.patternVar());
+        return names;
+    }
+
+    private static boolean hides(Map<String, Known> total, Set<String> delayed, List<String> names) {
+        return names.stream().anyMatch(name -> total.containsKey(name) || delayed.contains(name));
+    }
+
+    private static Map<String, Known> without(Map<String, Known> total, List<String> names) {
+        var result = new HashMap<>(total);
+        names.forEach(result::remove);
+        return result;
+    }
+
+    private static Set<String> minus(Set<String> delayed, List<String> names) {
+        var result = new HashSet<>(delayed);
+        names.forEach(result::remove);
+        return result;
     }
 
     private static PirTerm call(PirTerm.Var read) {
@@ -405,29 +446,34 @@ public final class DelayedMethodPass {
 
     private PirTerm walkLet(PirTerm.Let let, Map<String, Known> total, Set<String> delayed) {
         var value = walk(let.value(), total, delayed);
+        var name = List.of(let.name());
+        // In the body this binder hides any outer one of its name, delayed or total.
+        var visible = minus(delayed, name);
         if (!methods.contains(let.name()) && !fields.contains(let.name())) {
-            return new PirTerm.Let(let.name(), value, walk(let.body(), total, delayed));
+            return new PirTerm.Let(let.name(), value, walk(let.body(), without(total, name), visible));
         }
         var known = known(value, total, new Reading());
-        if (known != null) return new PirTerm.Let(let.name(), value, walk(let.body(), with(total, let.name(), known), delayed));
-        var inner = new HashMap<>(total);
-        inner.remove(let.name());
-        if (!methods.contains(let.name())) return new PirTerm.Let(let.name(), value, walk(let.body(), inner, delayed));
-        return new PirTerm.Let(let.name(), delayedBody(value), walk(let.body(), inner, plus(delayed, let.name())));
+        if (known != null) return new PirTerm.Let(let.name(), value, walk(let.body(), with(total, let.name(), known), visible));
+        var inner = without(total, name);
+        if (!methods.contains(let.name())) return new PirTerm.Let(let.name(), value, walk(let.body(), inner, visible));
+        return new PirTerm.Let(let.name(), delayedBody(value), walk(let.body(), inner, plus(visible, let.name())));
     }
 
     /** A binding of a recursive group that is not a function can only be a method that reads itself, which is not total. */
     private PirTerm walkLetRec(PirTerm.LetRec rec, Map<String, Known> total, Set<String> delayed) {
-        var inner = delayed;
+        var names = rec.bindings().stream().map(PirTerm.Binding::name).toList();
+        var inner = minus(delayed, names);
+        total = without(total, names);
         for (var binding : rec.bindings()) {
             if (methods.contains(binding.name()) && !(binding.value() instanceof PirTerm.Lam)) inner = plus(inner, binding.name());
         }
         var scope = inner;
+        var visible = total;
         var bindings = rec.bindings().stream().map(binding -> {
-            var value = walk(binding.value(), total, scope);
+            var value = walk(binding.value(), visible, scope);
             return new PirTerm.Binding(binding.name(), scope.contains(binding.name()) ? delayedBody(value) : value);
         }).toList();
-        return new PirTerm.LetRec(bindings, walk(rec.body(), total, scope));
+        return new PirTerm.LetRec(bindings, walk(rec.body(), visible, scope));
     }
 
     private static PirTerm delayedBody(PirTerm body) {
