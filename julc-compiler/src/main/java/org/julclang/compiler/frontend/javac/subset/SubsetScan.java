@@ -18,6 +18,7 @@ import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.InstanceOfTree;
 import com.sun.source.tree.LabeledStatementTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -53,6 +54,8 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.IdentityHashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -123,6 +126,10 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** The methods of a functional interface, as the reference lists them. */
     private static final Set<String> FUNCTIONAL_METHODS = Set.of("apply", "test", "accept", "get", "run");
 
+    /** The reference's functional interfaces, by the simple name a declaration writes (its {@code FUNCTIONAL_TYPES}). */
+    private static final Set<String> FUNCTIONAL_TYPES = Set.of("Function", "BiFunction", "UnaryOperator", "BinaryOperator",
+            "Predicate", "BiPredicate", "Consumer", "BiConsumer", "Supplier", "Runnable");
+
     /** The compound operators the reference lowers as {@code target op value}; the rest have a rule of their own. */
     private static final Map<Tree.Kind, String> UNLOWERED_COMPOUNDS = Map.of(
             Tree.Kind.LEFT_SHIFT_ASSIGNMENT, "<<=", Tree.Kind.RIGHT_SHIFT_ASSIGNMENT, ">>=",
@@ -135,6 +142,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     private final Set<Tree> lowered;
     /** What the scan found, in the order it found it: its warnings, and every rule's error (F946, as the reference collects). */
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
+    /** The nodes code nothing lowers has had read, once each though a lambda's block in it is a block of its own. */
+    private final Set<Tree> walked = Collections.newSetFromMap(new IdentityHashMap<>());
     /** The methods not read: a library's templates, which only a producer's request lowers. */
     private Set<Tree> skipped = Set.of();
     private boolean inLowered;
@@ -265,13 +274,14 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         if (facts.parent(tree) instanceof ClassTree) return literalsOf(tree);
         var written = tree.getStatements().stream().filter(statement -> !facts.isGenerated(statement)).toList();
         if (!inLowered) requireNoRejectedStatement(tree);
+        warnUnreachable(tree);
+        // In source order: a statement this list does not read stops the scan where it stands, after what came before it.
         for (var statement : written) {
             boolean read = REJECTED_STATEMENTS.contains(statement.getKind())
                     || (inLowered ? STATEMENTS.contains(statement.getKind()) : statement.getKind() == Tree.Kind.RETURN);
             if (!read) throw NotPorted.at(facts, statement);
+            scan(statement, null);
         }
-        warnUnreachable(tree);
-        written.forEach(statement -> scan(statement, null));
         return null;
     }
 
@@ -289,24 +299,37 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             if (!facts.isGenerated(statement)) written.addAll(SubsetWalk.all(statement, Tree.class));
         }
         for (var node : written) {
-            switch (node) {
-                case BreakTree loopExit -> visitBreak(loopExit, null);
-                case PrimitiveTypeTree type -> visitPrimitiveType(type, null);
-                case LiteralTree literal when literal.getKind() == Tree.Kind.NULL_LITERAL -> visitLiteral(literal, null);
-                case IdentifierTree name -> visitIdentifier(name, null);
-                case MemberSelectTree select when isThisOrSuper(select.getIdentifier()) -> visitMemberSelect(select, null);
-                case ArrayAccessTree access -> visitArrayAccess(access, null);
-                case MemberReferenceTree reference -> visitMemberReference(reference, null);
-                case NewArrayTree array when array.getType() != null -> visitNewArray(array, null);
-                case CompoundAssignmentTree compound when UNLOWERED_COMPOUNDS.containsKey(compound.getKind()) ->
-                        visitCompoundAssignment(compound, null);
-                case MethodInvocationTree call -> requireNoFunctionalCall(call);
-                case InstanceOfTree test -> requireNoPatternNamedLikeAField(test);
-                case VariableTree local when facts.parent(local) instanceof BlockTree block ->
-                        requireSingleDeclarator(local, block.getStatements());
-                default -> {
-                    if (REJECTED_STATEMENTS.contains(node.getKind())) scan(node, null);
-                }
+            if (!walked.add(node)) continue;
+            try {
+                requireNothingRejected(node);
+            } catch (NotPorted stop) {
+                throw stop;
+            } catch (CompilerException rejection) {
+                if (rejection.diagnostics().isEmpty()) throw rejection;
+                diagnostics.addAll(rejection.diagnostics());
+            }
+        }
+    }
+
+    /** The rules {@link #requireNoRejectedStatement} reads at one node, each the reference validator's, which collects them all. */
+    private void requireNothingRejected(Tree node) {
+        switch (node) {
+            case BreakTree loopExit -> visitBreak(loopExit, null);
+            case PrimitiveTypeTree type -> visitPrimitiveType(type, null);
+            case LiteralTree literal when literal.getKind() == Tree.Kind.NULL_LITERAL -> visitLiteral(literal, null);
+            case IdentifierTree name -> visitIdentifier(name, null);
+            case MemberSelectTree select when isThisOrSuper(select.getIdentifier()) -> visitMemberSelect(select, null);
+            case ArrayAccessTree access -> visitArrayAccess(access, null);
+            case MemberReferenceTree reference -> visitMemberReference(reference, null);
+            case NewArrayTree array when array.getType() != null -> visitNewArray(array, null);
+            case CompoundAssignmentTree compound when UNLOWERED_COMPOUNDS.containsKey(compound.getKind()) ->
+                    visitCompoundAssignment(compound, null);
+            case MethodInvocationTree call -> requireNoFunctionalCall(call);
+            case InstanceOfTree test -> requireNoPatternNamedLikeAField(test);
+            case VariableTree local when facts.parent(local) instanceof BlockTree block ->
+                    requireSingleDeclarator(local, block.getStatements());
+            default -> {
+                if (REJECTED_STATEMENTS.contains(node.getKind())) scan(node, null);
             }
         }
     }
@@ -342,7 +365,12 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         var at = facts.location(tree);
         VariableTree last = tree;
         for (var statement : statements) {
-            if (statement instanceof VariableTree other && other != tree && startsAt(other, at)) last = other;
+            if (statement == tree) continue;
+            if (statement instanceof VariableTree other && startsAt(other, at)) {
+                // The declaration is one rejection, at its first declarator, as the reference reports it.
+                if (statements.indexOf(other) < statements.indexOf(tree)) return;
+                last = other;
+            }
         }
         if (last != tree) {
             String text = facts.location(last).fragment();
@@ -587,9 +615,37 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     private void requireNoFunctionalCall(MethodInvocationTree tree) {
         if (tree.getMethodSelect() instanceof MemberSelectTree select && select.getExpression() instanceof IdentifierTree receiver
                 && FUNCTIONAL_METHODS.contains(select.getIdentifier().toString())
-                && facts.element(receiver).getKind() == ElementKind.LOCAL_VARIABLE && isFunctional(facts.type(receiver))) {
+                && facts.element(receiver).getKind() == ElementKind.LOCAL_VARIABLE
+                && (isFunctional(facts.type(receiver)) || spelledFunctional(receiver))) {
             throw facts.rejection(DiagnosticCodes.FUNCTIONAL_INTERFACE_CALL_UNSUPPORTED, tree, select.getIdentifier());
         }
+    }
+
+    /**
+     * The reference's reading: a local of the enclosing method declared with a written type whose simple name is one of the
+     * JDK's functional interfaces, whatever type that name binds to. So a user's {@code record Supplier(BigInteger get)}
+     * read through {@code s.get()} is rejected, as there. A {@code var} writes no type, and the reference reads none.
+     */
+    private boolean spelledFunctional(IdentifierTree receiver) {
+        var method = facts.enclosing(receiver, Tree.Kind.METHOD);
+        if (method == null) return false;
+        for (var local : SubsetWalk.all(method, VariableTree.class)) {
+            var declaredIn = facts.parent(local);
+            if (!local.getName().contentEquals(receiver.getName()) || declaredIn instanceof MethodTree
+                    || declaredIn instanceof LambdaExpressionTree) continue;
+            if (local.getType() != null && !facts.isGenerated(local.getType()) && FUNCTIONAL_TYPES.contains(rawSimpleName(local.getType()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String rawSimpleName(Tree type) {
+        return switch (type) {
+            case ParameterizedTypeTree parameterized -> rawSimpleName(parameterized.getType());
+            case MemberSelectTree select -> select.toString();
+            default -> type.toString();
+        };
     }
 
     /** Whether {@code type} is a functional interface of the JDK's, by identity. */

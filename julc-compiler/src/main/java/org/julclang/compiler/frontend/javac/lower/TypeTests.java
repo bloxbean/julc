@@ -134,6 +134,7 @@ final class TypeTests {
     }
 
     private CompilerException unsupported(InstanceOfTree tree) {
-        return facts.rejection(DiagnosticCodes.INSTANCEOF_RECORD_PATTERN_UNSUPPORTED, tree, tree.toString());
+        // The source's words: javac's tree text would print a var component as the type it inferred.
+        return facts.rejection(DiagnosticCodes.INSTANCEOF_RECORD_PATTERN_UNSUPPORTED, tree, facts.location(tree).fragment());
     }
 }
