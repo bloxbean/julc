@@ -76,11 +76,9 @@ class JulcAnnotationProcessorFrontendTest {
         }
     }
 
-    /** A construct only {@code javac} stops, {@code Value.fromPlutusData}, shows which frontend compiled. */
     @Test
     void theOptionReachesTheCompilation(@TempDir Path out) throws Exception {
-        String source = validator("Value v = Value.fromPlutusData(redeemer); return true;")
-                .replace("import org.julclang.ledger.ScriptContext;", "import org.julclang.ledger.ScriptContext;\nimport org.julclang.ledger.Value;");
+        String source = validator("var signers = (Object) ctx.txInfo().signatories(); return ctx.txInfo().signatories().isEmpty();");
         assertEquals(List.of(), errors(process(out, source, "-Ajulc.frontend=javaparser")));
         var errors = errors(process(out, source, "-Ajulc.frontend=javac"));
         assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0084")), errors::toString);

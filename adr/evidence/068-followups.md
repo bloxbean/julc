@@ -179,6 +179,11 @@ From M3a's close, a misreading in the JavaParser frontend alone is listed here, 
 | `c && BAD == "a"` with `static final String BAD = 2147483647 + 1 < 0 ? "a" : "b"`: the reference lowers the field's initializer with unbounded integers, so a read in a guard takes the other branch of Java's, and `JAVAC` stops at `JULC0086` | Group 2 review | `Adr068SwitchHarnessTest.aConstantFieldTheReferenceMisreadsInAGuard` |
 | A `PlutusData` accumulator in a tuple that holds a list the reference's `AccumulatorTypeAnalyzer` does not see, by a nested loop, a helper, a local, parentheses, a conditional, in a for-each, or after a nested `while`: it conses or reads the list as Data, and fails where the JVM returns. The same `MkCons` where a fresh value is assigned to a variable the reference holds as Data. What `find` returns, which the reference takes for an `Optional` and leaves a tuple unencoded | M4 review, M4 confirmation | `Adr068LoopRepresentationsTest`, and `diverge-068-cursor-*`, `diverge-068-assigned-element-in-a-tuple`, `diverge-068-found-element-in-a-tuple`, `diverge-068-pair-list-in-a-for-each` |
 
+| `Builtins.tailList(null)` and `mkCons(d, null)` | M4 confirmation | A `null` argument is ambiguous between the `ListData`, `MapData` and `PlutusData` overloads, so javac rejects it, where it compiled before and threw at run time. No working program is lost | Kept; listed in the API note |
+| `mapData` of a `Constr 0` with two fields onto a map | M4 confirmation | On the JVM, `mkCons` onto a map takes a real `Constr 0 [k, v]` as a pair, as the JVM's pair encoding is that `Constr`; on-chain it is a type error. Both frontends fail it | M5, with the JVM model of pairs |
+| The JVM's `mapData` of a `ListData` | M4 confirmation | `mapData(mkNilData())` and `mapData` of a `ListData` of `Constr 0` pairs give a `MapData` on the JVM, where the node fails. Both frontends fail it | M5, with the JVM model of pairs |
+| `constrData`'s field list type in `julc-vm-java` | M4 | Checked element by element, where Plutus checks the list's type whole, as `listData` and `mapData` now are | Next VM change |
+
 ## Codex read owed
 
 If Codex cannot run, a milestone closes on independent Claude reviewers, and its head is listed here for a later Codex pass (maintainer decision, 2026-11-01).
@@ -188,6 +193,7 @@ If Codex cannot run, a milestone closes on independent Claude reviewers, and its
 | `558c5f58` and M3a's final head | The spelled-name rules (`JULC0100`, `JULC0101`), with the last closures | Codex's safety filter stopped the task after 1m28s. No findings came back |
 | `edfa707b` | Group 1 and B4: `EqualityRelation` and `JULC0078`, `CallTargets.seen`, `JULC0101` at the declaration, `DelayedMethodPass` and `mayFail`, `String.length` | The group closed on independent Claude reviewers and a confirmation round. No Codex pass has run at this head |
 | `9ab85bc3`, Group 2's last code | `switch` and its guards, lambdas, `DelayedMethodPass` and its work limit | The maintainer chose to run Codex later; the group closes on independent Claude reviewers |
+| `63d265e1`, M4's last code | Loops, the pair-list model in `Builtins`, the Java VM's list type check | The group closed on independent Claude reviewers and confirmation rounds |
 
 ## Future stdlib enhancements (after ADR-068 is complete)
 

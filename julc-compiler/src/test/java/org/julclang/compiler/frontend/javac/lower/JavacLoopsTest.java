@@ -279,6 +279,22 @@ class JavacLoopsTest {
         rejected(members);
     }
 
+    /** A case-pattern binding assigned in an arm, by a loop, a nested loop, a label or a record component, is the reference's rejection. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A q -> { long i = 0; while (i < l) { q = new A(BigInteger.ONE); i = i + 1; } yield 1; } default -> 2; }; }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A q -> { for (var x : xs) { q = new A(x); } yield 1; } default -> 2; }; }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A q -> { long i = 0; while (i < l) { for (var x : xs) { q = new A(x); } i = i + 1; } yield 1; } default -> 2; }; }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A q -> { long i = 0; while (i < l) { if (i > 0) { q = new A(BigInteger.ONE); } i = i + 1; if (i > 1) { break; } } yield 1; } default -> 2; }; }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A q -> { done: { q = new A(BigInteger.ONE); } yield 1; } default -> 2; }; }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A q -> { long i = 0; done: while (i < l) { q = new A(BigInteger.ONE); i = i + 1; } yield 1; } default -> 2; }; }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A(BigInteger v) -> { long i = 0; while (i < l) { v = BigInteger.ONE; i = i + 1; } yield 1; } default -> 2; }; }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B() implements S { } static long m(S e, JulcList<BigInteger> xs, long l) { return switch (e) { case A(BigInteger v) -> { for (var x : xs) { v = x; } yield 1; } default -> 2; }; }",
+    })
+    void aCaseBindingAssignedInAnArm(String members) {
+        rejected(members);
+    }
+
     /** What is read off a for-each's variable is what the reference sees of it, whatever javac knows of the element (I2d). */
     @ParameterizedTest
     @ValueSource(strings = {

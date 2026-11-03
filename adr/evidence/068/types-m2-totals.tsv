@@ -1,9 +1,9 @@
-cases	17058
+cases	17076
 DIFFERENT	7
 both-reject	12
 both-reject-javac-first	38
 both-reject-tolerant	3
-equal	10295
+equal	10313
 equal-reference-rejects-lowering	6
 equal-tolerant	6632
 javac-rejects-unreadable	4
@@ -14,7 +14,7 @@ compared	DIFFERENT	7	7	0	0	0	0	0	0
 compared	both-reject	12	12	0	0	0	0	0	0
 compared	both-reject-javac-first	38	38	0	0	0	0	0	0
 compared	both-reject-tolerant	3	3	0	0	0	0	0	0
-compared	equal	10295	6688	943	6635	3460	34	8689	1079
+compared	equal	10313	6706	943	6635	3460	34	8689	1079
 compared	equal-reference-rejects-lowering	6	6	0	0	0	0	0	0
 compared	equal-tolerant	6632	4674	187	3727	1841	27	3845	264
 compared	javac-rejects-unreadable	4	4	0	0	0	0	0	0
@@ -26,7 +26,7 @@ part	c7	equal	6
 part	diffcase	DIFFERENT	6
 part	diffcase	both-reject	2
 part	diffcase	both-reject-javac-first	1
-part	diffcase	equal	197
+part	diffcase	equal	215
 part	diffcase	reference-rejects	8
 part	elci	equal	4
 part	external	equal	100
