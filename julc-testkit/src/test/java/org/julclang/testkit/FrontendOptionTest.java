@@ -40,8 +40,9 @@ class FrontendOptionTest {
             }
             """;
 
+    /** A cast to {@code short} has no representation on {@code JAVAC}: {@code JULC0124} (until ADR-068 M5 a stop, {@code JULC0084}). */
     private static boolean isNotPorted(CompilerException e) {
-        return e.diagnostics().stream().anyMatch(d -> DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code().equals(d.code()));
+        return e.diagnostics().stream().anyMatch(d -> DiagnosticCodes.PRIMITIVE_TYPE_UNSUPPORTED.code().equals(d.code()));
     }
 
     @Test
@@ -73,10 +74,10 @@ class FrontendOptionTest {
 
     /**
      * The reference reads a hash in a parameter as Data, and it is bytes by then: Java returns them and the script fails.
-     * javac stops the program instead. If this first assertion fails the reference has changed, and the stop can go.
+     * javac reads the bytes, as Java (ADR-068 M5).
      */
     @Test
-    void aHashReadFromAParameterFailsOnTheReferenceAndStopsOnJavac() {
+    void aHashReadFromAParameterFailsOnTheReferenceAndIsJavasOnJavac() {
         String source = """
                 import org.julclang.ledger.PubKeyHash;
                 class C { static byte[] m(PubKeyHash p) { return p.hash(); } }
@@ -84,8 +85,8 @@ class FrontendOptionTest {
         var bytes = new PlutusData.BytesData(new byte[]{1, 2});
         var reference = assertThrows(TermExtractor.ExtractionException.class, () -> JulcEval.forSource(source).call("m", bytes).asData());
         assertTrue(reference.getMessage().contains("UnBData: expected data"), reference::getMessage);
-        var javac = assertThrows(CompilerException.class, () -> JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC).call("m", bytes).asData());
-        assertTrue(isNotPorted(javac), javac::getMessage);
+        var javac = JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC).call("m", bytes).asData();
+        assertEquals(bytes, javac);
     }
 
     /**
