@@ -65,19 +65,45 @@ final class JavacLibraries {
         return JavacDiscovery.types(unit).stream().filter(type -> type.getKind() == Tree.Kind.CLASS).toList();
     }
 
-    /** Step 2, after the root's: the subset scan of each unit, where its classes' static methods and fields are lowered. */
+    /**
+     * Step 2, after the root's: the subset scan of each unit, where its static methods and fields are lowered. A template is
+     * not read: the reference compiles it only at a producer's request.
+     */
     List<CompilerDiagnostic> scan() {
         var warnings = new ArrayList<CompilerDiagnostic>();
-        for (var unit : units()) warnings.addAll(SubsetScan.check(facts, unit, lowered(unit)));
+        Set<Tree> skipped = Collections.newSetFromMap(new IdentityHashMap<>());
+        skipped.addAll(templates());
+        for (var unit : units()) warnings.addAll(SubsetScan.check(facts, unit, lowered(unit), skipped));
         return warnings;
     }
 
-    /** What lowering {@code unit} as a library reaches: its classes' static methods and fields; none if it is no library. */
+    /** The scan of one template, which a producer's request would lower: what it rejects makes that export unsupported. */
+    void scan(MethodTree template) {
+        SubsetScan.check(facts, template, Set.of(template), Set.of());
+    }
+
+    /**
+     * What the scan of {@code unit} as a library reads as lowered: every type's static methods and fields, an interface's and a
+     * record's too, which the reference's validator reads though it lowers only a class's. None if the unit is no library.
+     */
     Set<Tree> lowered(CompilationUnitTree unit) {
         Set<Tree> lowered = Collections.newSetFromMap(new IdentityHashMap<>());
         if (!units().contains(unit)) return lowered;
-        for (var type : classes(unit)) lowered.addAll(discovery.lowered(type));
+        for (var type : JavacDiscovery.types(unit)) lowered.addAll(discovery.lowered(type));
         return lowered;
+    }
+
+    /** The generic methods of the units' classes: templates, each lowered only at a producer's request (ADR-059). */
+    List<MethodTree> templates() {
+        var templates = new ArrayList<MethodTree>();
+        for (var unit : units()) {
+            for (var type : classes(unit)) {
+                for (var method : discovery.methods(type)) {
+                    if (discovery.isStatic(method) && !method.getTypeParameters().isEmpty()) templates.add(method);
+                }
+            }
+        }
+        return templates;
     }
 
     /** Each lowered library method's binder, to the method it stands for. */
@@ -161,6 +187,8 @@ final class JavacLibraries {
         var methods = new ArrayList<LibraryRegistration.Method>();
         for (var type : classes(unit)) {
             var lowered = new ClassLowering(type);
+            // A class's fields are lowered before its methods: a call they make must be registered first (a root's fields).
+            methods.add(new LibraryRegistration.Method(null, lowered.fieldCalls));
             var overloads = new OnchainOverloads(lowered.owner, Set.of());
             for (var method : lowered.methods) {
                 var registered = lowered.method(method);
@@ -184,6 +212,8 @@ final class JavacLibraries {
         private final List<VariableTree> fields;
         private final Scope scope;
         private final List<PirTerm> values = new ArrayList<>();
+        /** The library calls the fields' initializers make, which the reference needs registered before any method. */
+        final List<Lowering.LibraryCall> fieldCalls;
 
         ClassLowering(ClassTree type) {
             owner = facts.identity((TypeElement) facts.element(type));
@@ -201,6 +231,7 @@ final class JavacLibraries {
             }
             lowering.drainLibraryCalls();
             for (var field : fields) values.add(lowering.initializer(field.getInitializer(), scope));
+            fieldCalls = lowering.drainLibraryCalls();
         }
 
         String binder(MethodTree method) {

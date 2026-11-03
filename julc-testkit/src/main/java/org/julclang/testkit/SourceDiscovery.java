@@ -139,7 +139,7 @@ public final class SourceDiscovery {
 
         var jarTexts = new ArrayList<String>();
         Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot, jarTexts);
-        List<String> libSources = LibrarySourceResolver.librariesFor(options.getFrontend(), validatorSource, pool);
+        List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compile(validatorSource, libSources);
@@ -246,7 +246,7 @@ public final class SourceDiscovery {
 
         var jarTexts = new ArrayList<String>();
         Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot, jarTexts);
-        List<String> libSources = LibrarySourceResolver.librariesFor(options.getFrontend(), source, pool);
+        List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compileMethod(source, methodName, libSources);
@@ -368,6 +368,7 @@ public final class SourceDiscovery {
         final boolean[] changed = {false};
         try (var stream = Files.list(pkgDir)) {
             stream.filter(p -> p.toString().endsWith(".java"))
+                    .sorted()
                     .forEach(p -> {
                         try {
                             String src = Files.readString(p);

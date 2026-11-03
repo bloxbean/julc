@@ -114,7 +114,7 @@ public class BuildCommand implements Callable<Integer> {
                 System.out.print("  Compiling " + name + " ... ");
 
                 try {
-                    var resolvedLibs = ProjectSourceResolver.resolve(options.getFrontend(), source, pool);
+                    var resolvedLibs = ProjectSourceResolver.resolve(source, pool);
                     var compiler = new JulcCompiler(stdlib, ProjectSourceResolver.options(options, pool));
                     CompileResult result;
                     org.julclang.compiler.schema.ContractSchema contractSchema = null;

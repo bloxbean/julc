@@ -346,7 +346,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private List<String> resolveLibrarySources(String validatorSource) {
         var pool = libraryPool();
 
-        return LibrarySourceResolver.librariesFor(frontend, validatorSource, pool);
+        return LibrarySourceResolver.resolve(validatorSource, pool);
     }
 
     /**

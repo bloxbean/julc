@@ -22,6 +22,7 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
+import javax.lang.model.util.ElementFilter;
 import javax.lang.model.type.TypeMirror;
 import java.util.Map;
 import java.util.Set;
@@ -87,6 +88,10 @@ final class CallTargets {
     private CallTarget unqualified(MethodInvocationTree tree, ExecutableElement method, TypeElement owner) {
         var enclosing = facts.enclosing(tree, Tree.Kind.CLASS, Tree.Kind.RECORD, Tree.Kind.INTERFACE);
         if (method.getModifiers().contains(Modifier.STATIC) && owner.equals(facts.element(enclosing))) {
+            // A library class declares only its concrete methods to itself: a template has no binder there (ADR-059).
+            if (!method.getTypeParameters().isEmpty() && facts.inOfferedLibrary(owner) && !facts.specializes(method)) {
+                return new CallTarget.Rejected("Unknown method: " + name(method));
+            }
             return method.isVarArgs() ? VARARGS : new CallTarget.Local(facts.identity(owner) + "." + name(method), method);
         }
         return new CallTarget.NotLowered("a call of " + name(method) + " that is not a static method of this class");
@@ -117,7 +122,8 @@ final class CallTargets {
         }
         // The reference's library registry holds the classes of every unit it compiles as a library, a root it was given in
         // the pool as well included: a bundled source the host did not give has only what the stdlib lookup lowers (D8).
-        if (facts.inOfferedLibrary(owner)) return library(identity, name, method);
+        // Only a class's methods are lowered: an interface's, a record's or an enum's static method has no binder.
+        if (facts.inOfferedLibrary(owner) && owner.getKind() == ElementKind.CLASS) return library(identity, name, method);
         if (facts.inLibraryUnit(owner) || facts.hasAnnotation(owner, JavacNames.ONCHAIN_LIBRARY)) {
             return new CallTarget.Library(identity, name, method, false);
         }
@@ -135,7 +141,11 @@ final class CallTargets {
     /** ADR-059: a generic method is a template, which only a language-neutral producer can specialize. */
     private CallTarget library(String identity, String name, ExecutableElement method) {
         if (method.isVarArgs()) return VARARGS;
-        if (!method.getTypeParameters().isEmpty()) {
+        // The reference's registry knows a name: any generic overload of it makes the name a template's.
+        boolean template = ElementFilter.methodsIn(method.getEnclosingElement().getEnclosedElements()).stream()
+                .anyMatch(other -> other.getSimpleName().equals(method.getSimpleName())
+                        && other.getModifiers().contains(Modifier.STATIC) && !other.getTypeParameters().isEmpty());
+        if (template) {
             return new CallTarget.Rejected("Generic library method " + identity + "." + name + " cannot be called from Java yet: "
                     + "generic @OnchainLibrary methods are specialized only by language-neutral library "
                     + "providers (ADR-059). Provide a concrete overload-free method for Java callers.");

@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -281,6 +282,8 @@ public final class LibrarySourceResolver {
         if (!dir.exists() || !dir.isDirectory()) return;
         File[] files = dir.listFiles();
         if (files == null) return;
+        // In name order: which of two sources of one name is kept must not depend on the file system (I4).
+        Arrays.sort(files, Comparator.comparing(File::getName));
         for (File file : files) {
             if (file.isDirectory()) {
                 scanFileSystemSources(root, file, result);
@@ -311,23 +314,10 @@ public final class LibrarySourceResolver {
      * @return list of resolved library source strings (in discovery order)
      */
     /**
-     * The library sources a host gives a compilation from its pool (ADR-068 D8). The JavaParser frontend compiles what
-     * {@link #resolve} finds; the javac frontend takes the whole pool, and reads what the source references. For javac the
-     * resolved sources come first, in their order, so that the library {@code let}s its lowering builds follow the
-     * reference's; the order is all that reading decides there.
+     * The library sources a host gives a compilation from its pool: what the source's imports and references resolve to,
+     * transitively, in that order. Both frontends compile exactly these as libraries (ADR-068 D8); the javac frontend also
+     * reads the bundled stdlib sources for their types alone.
      */
-    public static List<String> librariesFor(CompilerFrontend frontend, String source, Map<String, ?> availableLibraries) {
-        if (frontend != CompilerFrontend.JAVAC) return resolve(source, availableLibraries);
-        var ordered = new LinkedHashSet<String>();
-        try {
-            ordered.addAll(resolve(source, availableLibraries));
-        } catch (CompilerException e) {
-            // The reference's reading rejects here; javac reads the source itself, so only the order is lost.
-        }
-        normalizeLibrarySources(availableLibraries).values().forEach(library -> ordered.add(library.source()));
-        return List.copyOf(ordered);
-    }
-
     public static List<String> resolve(String source, Map<String, ?> availableLibraries) {
         return resolveLibrarySources(source, normalizeLibrarySources(availableLibraries)).stream()
                 .map(LibrarySource::source)

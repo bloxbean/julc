@@ -17,13 +17,17 @@ import java.util.Map;
  * The reference compiles the units in the order it was given them, a unit's classes outer first, and a class's static
  * methods in source order, registering each as it compiles it. A call of a library method by its class name needs the
  * method registered: if it is not, the unit fails there, keeps what it registered at its place, and is tried again in the
- * next pass, as long as a pass makes progress. Then the first unit that still fails is rejected, at the first call it
+ * next pass, as long as a pass makes progress. A final pass then tries each unit left once more, in order, so a unit can
+ * still complete on what another registered in the last pass; the first that fails there is rejected, at the first call it
  * cannot resolve, as {@code Undefined variable} of the class name. A unit with no such call registers in one pass. This
  * class reads only what lowering recorded of each method, so it is a function of its input.
  */
 final class LibraryRegistration {
 
-    /** A static method of a library class, in the order of its unit; {@code lowered} is null for a generic template. */
+    /**
+     * A static method of a library class, in the order of its unit, and the library calls it needs registered;
+     * {@code lowered} is null for a generic template, and for a class's fields, whose calls come before its methods.
+     */
     record Method(LibraryMethod lowered, List<Lowering.LibraryCall> calls) {
     }
 
@@ -51,21 +55,24 @@ final class LibraryRegistration {
             }
             remaining = next;
         }
-        if (!remaining.isEmpty()) {
-            var unresolved = registration.attempt(remaining.getFirst());
-            throw new CompilerException("Undefined variable: " + unresolved.qualifier());
+        // The final pass: each unit left, in order, once more; the first that still fails is the rejection.
+        for (var unit : remaining) {
+            var unresolved = registration.attempt(unit);
+            if (unresolved != null) throw new CompilerException("Undefined variable: " + unresolved.qualifier());
         }
         return List.copyOf(registration.registered.values());
     }
 
-    /** Registers what {@code unit} can: null when it registers all of it, else the call that stopped it. */
+    /**
+     * Registers what {@code unit} can: null when it registers all of it, else the call that stopped it. An entry with no
+     * method is what must be registered before a class's methods: its fields' calls.
+     */
     private Lowering.LibraryCall attempt(List<Method> unit) {
         for (var method : unit) {
-            if (method.lowered() == null) continue;
             for (var call : method.calls()) {
                 if (!registered.containsKey(call.binder())) return call;
             }
-            registered.put(method.lowered().qualifiedName(), method.lowered());
+            if (method.lowered() != null) registered.put(method.lowered().qualifiedName(), method.lowered());
         }
         return null;
     }

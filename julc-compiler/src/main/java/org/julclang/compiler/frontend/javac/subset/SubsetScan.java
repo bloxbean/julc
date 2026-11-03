@@ -26,6 +26,8 @@ import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.StatementTree;
+import com.sun.source.tree.ThrowTree;
+import com.sun.source.tree.TryTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
@@ -77,7 +79,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.UNBOUNDED_WILDCARD, Tree.Kind.EXTENDS_WILDCARD, Tree.Kind.SUPER_WILDCARD,
             Tree.Kind.IDENTIFIER, Tree.Kind.MEMBER_SELECT, Tree.Kind.PARENTHESIZED, Tree.Kind.NEW_ARRAY,
             Tree.Kind.INT_LITERAL, Tree.Kind.LONG_LITERAL, Tree.Kind.BOOLEAN_LITERAL, Tree.Kind.STRING_LITERAL,
-            Tree.Kind.MEMBER_REFERENCE, Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP);
+            Tree.Kind.MEMBER_REFERENCE, Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP, Tree.Kind.TRY, Tree.Kind.THROW);
 
     /** The kinds that are subset only where lowering reaches them. */
     private static final Set<Tree.Kind> WHERE_LOWERED = EnumSet.of(
@@ -109,7 +111,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.YIELD, Tree.Kind.SWITCH, Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP, Tree.Kind.BREAK, Tree.Kind.CONTINUE);
 
     /** The statements rejected wherever they stand, lowered or not, with a code of their own. */
-    private static final Set<Tree.Kind> REJECTED_STATEMENTS = EnumSet.of(Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP);
+    private static final Set<Tree.Kind> REJECTED_STATEMENTS = EnumSet.of(Tree.Kind.FOR_LOOP, Tree.Kind.DO_WHILE_LOOP, Tree.Kind.TRY,
+            Tree.Kind.THROW);
 
     /** The methods of a functional interface, as the reference lists them. */
     private static final Set<String> FUNCTIONAL_METHODS = Set.of("apply", "test", "accept", "get", "run");
@@ -125,6 +128,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** The methods and fields lowering reaches. */
     private final Set<Tree> lowered;
     private final List<CompilerDiagnostic> warnings = new ArrayList<>();
+    /** The methods not read: a library's templates, which only a producer's request lowers. */
+    private Set<Tree> skipped = Set.of();
     private boolean inLowered;
     /** Above zero in a {@code switch} guard, an arm of a {@code switch} in one included, as a guard's lowering is. */
     private int guardDepth;
@@ -142,7 +147,13 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
      * @return what the scan warns of, in source order
      */
     public static List<CompilerDiagnostic> check(JavacFacts facts, CompilationUnitTree unit, Set<Tree> lowered) {
+        return check(facts, unit, lowered, Set.of());
+    }
+
+    /** {@link #check(JavacFacts, CompilationUnitTree, Set)}, not reading the methods {@code skipped} holds, by identity. */
+    public static List<CompilerDiagnostic> check(JavacFacts facts, Tree unit, Set<Tree> lowered, Set<Tree> skipped) {
         var scan = new SubsetScan(facts, lowered);
+        scan.skipped = skipped;
         scan.scan(unit, null);
         return scan.warnings;
     }
@@ -208,7 +219,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** A constructor javac generated is not source: its {@code super()} call is no construct of the program. */
     @Override
     public Void visitMethod(MethodTree tree, Void unused) {
-        if (!facts.isGenerated(tree)) member(tree, () -> super.visitMethod(tree, unused));
+        if (!facts.isGenerated(tree) && !skipped.contains(tree)) member(tree, () -> super.visitMethod(tree, unused));
         return null;
     }
 
@@ -346,6 +357,17 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         throw facts.rejection(DiagnosticCodes.C_STYLE_FOR_UNSUPPORTED, tree);
     }
 
+    /** {@code try} and {@code throw} are outside the subset wherever they stand, with the reference's codes. */
+    @Override
+    public Void visitTry(TryTree tree, Void unused) {
+        throw facts.rejection(DiagnosticCodes.TRY_CATCH_UNSUPPORTED, tree);
+    }
+
+    @Override
+    public Void visitThrow(ThrowTree tree, Void unused) {
+        throw facts.rejection(DiagnosticCodes.THROW_UNSUPPORTED, tree);
+    }
+
     /** A {@code do}-{@code while} has no lowering: a {@code while} does what it does. */
     @Override
     public Void visitDoWhileLoop(DoWhileLoopTree tree, Void unused) {
@@ -420,7 +442,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void visitPrimitiveType(PrimitiveTypeTree tree, Void unused) {
         if (tree.getPrimitiveTypeKind() == TypeKind.FLOAT || tree.getPrimitiveTypeKind() == TypeKind.DOUBLE) {
-            throw NotPorted.at(facts, tree);
+            throw facts.rejection("floating point types (float/double) are not supported on-chain",
+                    "Use BigInteger for integer arithmetic or Rational for fractions", tree);
         }
         return null;
     }

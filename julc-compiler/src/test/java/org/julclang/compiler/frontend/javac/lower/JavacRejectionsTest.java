@@ -196,21 +196,25 @@ class JavacRejectionsTest {
     @CsvSource(delimiter = '|', value = {
             "String instance() { return null; }|NULL_LITERAL",
             "long instance() { int a = 1, b = 2; return a; }|VARIABLE",
-            "long instance() { throw new RuntimeException(); }|THROW",
-            "long instance() { try { return 1; } finally { } }|TRY",
             "byte[] instance() { return new byte[2]; }|NEW_ARRAY",
             "long[] instance() { return new long[]{1}; }|NEW_ARRAY",
             "long instance(long[] a) { return a[0]; }|ARRAY_ACCESS",
             "P instance() { return this; }|IDENTIFIER",
             "int instance() { return super.hashCode(); }|METHOD_INVOCATION",
-            "double instance() { return 1; }|PRIMITIVE_TYPE",
-            "float instance;|PRIMITIVE_TYPE",
-            "static double sum;|PRIMITIVE_TYPE"})
+})
     void theScanStopsWhatLoweringNeverReaches(String member, String construct) {
         String source = "class P {\n    static long m() { return 1; }\n    " + member + "\n}\n";
         assertMethodNotPorted(source, "m", construct, 3);
         assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of()),
                 "this fixture is only worth having if the reference rejects it");
+    }
+
+    /** What the reference's validator rejects in code no lowering reaches is its rejection here, with its code. */
+    @ParameterizedTest
+    @ValueSource(strings = {"long instance() { throw new RuntimeException(); }", "long instance() { try { return 1; } finally { } }",
+            "double instance() { return 1; }", "float instance;", "static double sum;"})
+    void theScanRejectsWhatTheReferencesValidatorRejects(String member) {
+        assertSameMethodRejectionAsReference("class P {\n    static long m() { return 1; }\n    " + member + "\n}\n", "m");
     }
 
     /** The reference accepts this: it never lowers the method, and no rule rejects a loop. So it waits for the loops. */

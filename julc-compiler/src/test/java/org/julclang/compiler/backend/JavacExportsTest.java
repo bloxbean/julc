@@ -28,6 +28,7 @@ import static org.julclang.compiler.backend.GenericExportsTest.producer;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ADR-068 D8 and I5 on {@code frontend=JAVAC}: Elci's {@link JavaLibraryProvider} describes, exports, materializes and
@@ -137,5 +138,35 @@ class JavacExportsTest {
         assertEquals(reference.namedDefinitions(), javac.namedDefinitions());
         assertEquals(reference.describe("demo.Seq"), javac.describe("demo.Seq"));
         assertEquals(reference.unsupportedExports(), javac.unsupportedExports());
+    }
+
+    /** One type two units declare is the reference's IllegalArgumentException, before anything is read (review F6). */
+    @Test
+    void aTypeTwoUnitsDeclareIsTheReferencesRejection() {
+        for (var sources : List.of(List.of(SEQ, SEQ), List.of(SEQ, SEQ.replace("BigInteger.TEN", "BigInteger.TWO")))) {
+            var expected = assertThrows(IllegalArgumentException.class, () -> provider(CompilerFrontend.JAVAPARSER, sources));
+            var actual = assertThrows(IllegalArgumentException.class, () -> provider(CompilerFrontend.JAVAC, sources));
+            assertEquals(expected.getMessage(), actual.getMessage());
+        }
+    }
+
+    /** A template the subset rejects is one unsupported export: the provider's other exports stand (review F6). */
+    @Test
+    void aTemplateTheSubsetRejectsIsOneUnsupportedExport() {
+        var source = """
+                package e;
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary
+                public class Q {
+                    public static <X> boolean same(X a, X b) { return a == b; }
+                    public static BigInteger twice(BigInteger x) { return x.add(x); }
+                }
+                """;
+        var javac = provider(CompilerFrontend.JAVAC, List.of(source));
+        assertEquals(List.of("e.Q.twice"), javac.describe("e.Q").stream().map(LibraryExport::symbol).toList());
+        assertTrue(javac.unsupportedExports().get("e.Q.same").contains("by reference"), javac.unsupportedExports()::toString);
+        assertArrayEquals(bytes(provider(CompilerFrontend.JAVAPARSER, List.of(source)).materialize("e.Q.twice")),
+                bytes(javac.materialize("e.Q.twice")));
     }
 }

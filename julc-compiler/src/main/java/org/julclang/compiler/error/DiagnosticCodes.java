@@ -275,7 +275,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "FRONTEND",
             "The javac frontend does not compile {0} yet",
-            "Compile with the default frontend until the construct is ported.");
+            "The default frontend may compile it until it is ported; if that frontend rejects it too, it is outside the subset.");
 
     public static final DiagnosticInfo INITIALIZER_NOT_LOWERED = new DiagnosticInfo(
             "JULC0095",

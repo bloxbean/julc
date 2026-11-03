@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.MethodTree;
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.backend.LibraryExport;
 import org.julclang.compiler.backend.LibraryScheme;
 import org.julclang.compiler.backend.LibraryType;
@@ -51,6 +52,8 @@ public final class JavacLibraryExports {
     /** Each generic export's scheme, or null where it cannot be described. */
     private final Map<String, LibraryScheme> templates = new LinkedHashMap<>();
     private final Map<String, String> unsupported = new LinkedHashMap<>();
+    /** The templates the subset rejects, with the reason. */
+    private final Map<String, String> rejectedTemplates = new LinkedHashMap<>();
 
     private JavacLibraryExports(JavacProgram program, CompilationContext context, StdlibLookup lookup) {
         this.program = program;
@@ -67,6 +70,13 @@ public final class JavacLibraryExports {
      * @throws org.julclang.compiler.CompilerException where javac or the lowering rejects the sources
      */
     public static JavacLibraryExports of(List<String> sources, StdlibLookup lookup, CompilationContext context) {
+        // As the reference, before anything is read: a type two units declare has no one owner.
+        var owners = new HashSet<String>();
+        for (var names : JavacFrontend.shared().declaredNames(sources).orElse(List.of())) {
+            for (String name : names) {
+                if (!owners.add(name)) throw new IllegalArgumentException("Duplicate library type ownership: " + name);
+            }
+        }
         return new JavacLibraryExports(JavacProgram.analyzeLibraries(sources.stream().map(JavacFrontend.Unit::of).toList()),
                 context, lookup);
     }
@@ -79,6 +89,15 @@ public final class JavacLibraryExports {
         var discovery = new JavacDiscovery(facts);
         var libraries = new JavacLibraries(program, facts, discovery, new Lowering(facts, context, lookup));
         libraries.scan();
+        for (var template : libraries.templates()) {
+            try {
+                libraries.scan(template);
+            } catch (CompilerException e) {
+                // One template the subset rejects is one export unsupported, not a provider lost.
+                String symbol = facts.identity((TypeElement) facts.element(facts.parent(template))) + "." + template.getName();
+                rejectedTemplates.put(symbol, e.diagnostics().isEmpty() ? e.getMessage() : e.diagnostics().getFirst().message());
+            }
+        }
         for (var method : libraries.lower()) registry.register(method.className(), method.methodName(), method.type(), method.body());
         for (var unit : libraries.units()) {
             for (var type : libraries.classes(unit)) describeClass(facts, discovery, types, described, type);
@@ -169,6 +188,11 @@ public final class JavacLibraryExports {
 
     /** A generic method as a scheme (ADR-059). A bounded type parameter has no supported substitution. */
     private void describeTemplate(JavacLibraryTypes types, MethodTree method, String symbol, JavacFacts facts) {
+        if (rejectedTemplates.containsKey(symbol)) {
+            unsupported.put(symbol, rejectedTemplates.get(symbol));
+            templates.put(symbol, null);
+            return;
+        }
         var names = method.getTypeParameters().stream().map(parameter -> parameter.getName().toString()).toList();
         var bounded = method.getTypeParameters().stream().filter(parameter -> !parameter.getBounds().isEmpty()).findFirst();
         if (bounded.isPresent()) {

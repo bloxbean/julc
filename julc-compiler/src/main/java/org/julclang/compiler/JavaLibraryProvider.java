@@ -79,8 +79,14 @@ public final class JavaLibraryProvider implements LibraryProvider {
             exports.putAll(javac.exports());
             unsupported.putAll(javac.unsupported());
             javac.templates().forEach((symbol, scheme) -> templates.put(symbol, new Template(scheme, environment -> {
-                var specialized = javac.specialize(symbol, environment);
-                return new LibraryCompiler.Specialization(specialized.body(), specialized.type(), List.of());
+                try {
+                    var specialized = javac.specialize(symbol, environment);
+                    return new LibraryCompiler.Specialization(specialized.body(), specialized.type(), List.of());
+                } catch (CompilerException e) {
+                    // The reference's generator collects what it rejects, and the request names those messages.
+                    if (e.diagnostics().isEmpty()) throw e;
+                    return new LibraryCompiler.Specialization(null, null, e.diagnostics());
+                }
             })));
             return;
         }

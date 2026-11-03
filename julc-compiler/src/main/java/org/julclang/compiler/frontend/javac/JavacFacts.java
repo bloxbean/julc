@@ -93,6 +93,11 @@ public final class JavacFacts {
         this.typeVariables = Map.copyOf(typeVariables);
     }
 
+    /** Whether these facts bind {@code method}'s type variables: they lower a specialization of it, which calls itself. */
+    public boolean specializes(ExecutableElement method) {
+        return method.getTypeParameters().stream().anyMatch(typeVariables::containsKey);
+    }
+
     /**
      * These facts, with each type variable of {@code typeVariables} read as the PIR type it is bound to: a generic library
      * method lowered at the types a producer asked for (D8). The environment is explicit, so a producer's own type needs no

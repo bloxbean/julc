@@ -123,11 +123,16 @@ class JavacLiteralsTest {
 
     /** A literal outside the subset, each until its own rule is ported. */
     @ParameterizedTest
-    @CsvSource(delimiter = '|', quoteCharacter = '"', value = {"int|'a'|CHAR_LITERAL", "String|null|NULL_LITERAL",
-            "double|1.5|DOUBLE_LITERAL", "float|1f|FLOAT_LITERAL"})
+    @CsvSource(delimiter = '|', quoteCharacter = '"', value = {"int|'a'|CHAR_LITERAL", "String|null|NULL_LITERAL"})
     void otherLiterals(String type, String literal, String construct) {
-        assertMethodNotPorted(returning(type, literal), "m", type.equals("double") || type.equals("float") ? "PRIMITIVE_TYPE" : construct,
-                4);
+        assertMethodNotPorted(returning(type, literal), "m", construct, 4);
+    }
+
+    /** Floating point is the reference's rejection, at its position. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {"double|1.5", "float|1f"})
+    void floatingPointIsTheReferencesRejection(String type, String literal) {
+        LoweringFixture.assertSameMethodRejectionAsReference(returning(type, literal), "m");
     }
 
     /** {@code "a" + "b"} joins at run time: the tree keeps the {@code +}, and each literal is its own. */

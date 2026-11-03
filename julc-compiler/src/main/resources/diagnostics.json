@@ -1020,7 +1020,7 @@
       "severity": "error",
       "template": "The javac frontend does not compile {0} yet",
       "summary": "Reserved by ADR-068 (D4): during milestones M2-M4 the experimental javac frontend (CompilerOptions.frontend = JAVAC) rejects a construct it has not ported yet, naming it, and never falls back to the JavaParser frontend (I8). The default frontend is unaffected.",
-      "fix": "Compile with the default frontend until the construct is ported."
+      "fix": "The default frontend may compile it until it is ported; if that frontend rejects it too, it is outside the subset."
     },
     {
       "code": "JULC0085",

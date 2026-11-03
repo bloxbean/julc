@@ -6,18 +6,25 @@ import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
+import org.julclang.core.Constant;
+import org.julclang.core.PlutusData;
+import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.vm.EvalResult;
+import org.julclang.vm.JulcVm;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -427,5 +434,117 @@ class JavacLibrariesTest {
         assertEquals("JULC0095", javac.diagnostics().getFirst().code(), javac::getMessage);
         assertTrue(javac.getMessage().contains("SEVEN"), javac::getMessage);
         LoweringFixture.assertSameMethodAsReference(source, "f", List.of(library.replace("BigInteger.valueOf(7)", "BigInteger.TEN")), STDLIB);
+    }
+
+    private static String library(String name, String body) {
+        return "package com.lib;\nimport java.math.BigInteger;\nimport org.julclang.stdlib.annotation.OnchainLibrary;\n"
+                + "@OnchainLibrary\npublic class " + name + " {\n" + body + "}\n";
+    }
+
+    private static final String CALLER_OF_A = """
+            import com.lib.A;
+            import java.math.BigInteger;
+            class M { static BigInteger f(BigInteger a) { return A.a1(a); } }
+            """;
+
+    /** The reference's final pass can complete a unit that the last pass left half registered (review F1). */
+    @Test
+    void theFinalPassCompletesWhatTheLastPassLeft() {
+        var a = library("A", "public static BigInteger a1(BigInteger x) { return B.b1(x); }\n"
+                + "public static BigInteger a2(BigInteger x) { return x.add(BigInteger.ONE); }\n");
+        var b = library("B", "public static BigInteger b1(BigInteger x) { return x.add(x); }\n"
+                + "public static BigInteger b2(BigInteger x) { return A.a2(x); }\n");
+        LoweringFixture.assertSameMethodAsReference(CALLER_OF_A, "f", List.of(a, b), STDLIB);
+        LoweringFixture.assertSameMethodAsReference(CALLER_OF_A, "f", List.of(b, a), STDLIB);
+    }
+
+    /**
+     * A library root is compiled as a library too only where the reference's resolution compiles it (review F2):
+     * {@code ByteStringLib} calls itself by simple name, so the class path's resolution leaves it out, and the script is the
+     * reference's at every level.
+     */
+    @Test
+    void aLibraryRootIsALibraryOnlyWhereTheReferenceResolvesIt() {
+        var source = stdlibSource("ByteStringLib");
+        for (var level : OptimizationLevel.values()) {
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)).compileMethod(source, "length");
+            var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
+                    .setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "length");
+            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()),
+                    level::toString);
+        }
+    }
+
+    /**
+     * Two binders of one name, a root's helper and its library copy, where the copy is delayed for a field that may fail: a
+     * read of the helper is the helper's, so it is not called with unit (review F2, shared code: DelayedMethodPass).
+     */
+    @Test
+    void aDelayedCopyDoesNotDelayTheHelperOfItsName() {
+        var root = library("H", "static final BigInteger HALF = BigInteger.valueOf(100).divide(BigInteger.TWO);\n"
+                + "public static BigInteger g(BigInteger x) { return x.add(x); }\n"
+                + "public static BigInteger f(BigInteger x) { return g(x).add(HALF); }\n");
+        var off = new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+        for (var frontend : List.of(CompilerFrontend.JAVAPARSER, CompilerFrontend.JAVAC)) {
+            for (var level : OptimizationLevel.values()) {
+                var program = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF).setOptimizationLevel(level)
+                        .setFrontend(frontend)).compileMethod(root, "f", List.of(root)).program();
+                var result = JulcVm.create().evaluateWithArgs(program, List.of(PlutusData.integer(4)));
+                assertEquals(new Term.Const(Constant.integer(BigInteger.valueOf(58))),
+                        assertInstanceOf(EvalResult.Success.class, result, () -> frontend + " " + level).resultTerm(),
+                        () -> frontend + " " + level);
+            }
+        }
+        assertFalse(new JulcCompiler(STDLIB, off).compileMethod(root, "f", List.of(root)).hasErrors());
+        LoweringFixture.assertSameMethodAsReference(root, "f", List.of(root), STDLIB);
+    }
+
+    /** A concrete method that shares its name with a template is the template's name to the reference (review F3). */
+    @Test
+    void aNameAGenericOverloadSharesIsATemplates() {
+        var g = library("G", "public static BigInteger f(BigInteger x) { return x.add(x); }\n"
+                + "public static <T> T f(T x, BigInteger y) { return x; }\n");
+        var caller = "import com.lib.G;\nimport java.math.BigInteger;\nclass M { static BigInteger f(BigInteger a) { return G.f(a); } }\n";
+        var reference = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB).compileMethod(caller, "f", List.of(g)));
+        var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(caller, "f", List.of(g)));
+        // The reference throws the message alone; javac's has the call's position too.
+        assertTrue(javac.getMessage().contains(reference.getMessage()), javac::getMessage);
+        var simple = library("G", "static <T> T id(T x) { return x; }\npublic static BigInteger f(BigInteger x) { return id(x); }\n");
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(caller, "f", List.of(simple)));
+        assertTrue(failure.getMessage().contains("Unknown method: id"), failure::getMessage);
+    }
+
+    /** A root's field may call a library: the reference registers its class only once the callee is (review F4). */
+    @Test
+    void aRootsFieldWaitsForTheLibraryItCalls() {
+        var r = library("R", "static final BigInteger K = O.f(BigInteger.ONE);\n"
+                + "public static BigInteger g(BigInteger x) { return x.add(BigInteger.ONE); }\n"
+                + "public static BigInteger f(BigInteger x) { return x.add(K).add(O.z(x)); }\n");
+        var o = library("O", "public static BigInteger f(BigInteger y) { return y.add(BigInteger.TEN); }\n"
+                + "public static BigInteger z(BigInteger y) { return y; }\n");
+        var off = new CompilerOptions().setJavacGate(JavacGateMode.OFF);
+        for (var level : OptimizationLevel.values()) {
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setJavacGate(JavacGateMode.OFF).setOptimizationLevel(level))
+                    .compileMethod(r, "f", List.of(r, o));
+            var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level).setFrontend(CompilerFrontend.JAVAC))
+                    .compileMethod(r, "f", List.of(r, o));
+            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()), level::toString);
+        }
+        var cycle = o.replace("return y.add(BigInteger.TEN);", "return R.g(y);");
+        var expected = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB, off).compileMethod(r, "f", List.of(r, cycle)));
+        var actual = assertThrows(CompilerException.class, () -> new JulcCompiler(STDLIB,
+                new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(r, "f", List.of(r, cycle)));
+        assertEquals(expected.getMessage(), actual.getMessage());
+    }
+
+    /** An interface's or a record's static method is no library method: the reference's Undefined variable (review F6). */
+    @Test
+    void anInterfacesStaticMethodIsNoLibraryMethod() {
+        var iface = "package com.lib;\nimport java.math.BigInteger;\n"
+                + "public interface I { static BigInteger f(BigInteger x) { return x.add(x); } }";
+        var caller = "import com.lib.I;\nimport java.math.BigInteger;\nclass M { static BigInteger f(BigInteger a) { return I.f(a); } }";
+        LoweringFixture.assertSameMethodRejectionAsReference(caller, "f", List.of(iface), STDLIB);
     }
 }
