@@ -160,6 +160,46 @@ class Adr068LoopRepresentationsPropertyTest {
                 new PlutusData.ListData(List.of(map(1))), map(1), new PlutusData.ConstrData(1, List.of()))));
     }
 
+    /** Encoded Data whose Java type is {@code ListData} or {@code MapData}, by any start, carried in any loop beside another accumulator. */
+    @Property(tries = 200, seed = "20261103")
+    void anEncodedStart(@ForAll("plans") List<Integer> choices) {
+        var plan = new Plan(choices);
+        boolean map = plan.pick(List.of(false, true));
+        String type = map ? "PlutusData.MapData" : "PlutusData.ListData";
+        String start = map ? plan.pick(List.of("Builtins.mapData(Builtins.unMapData(m))", "enc(m)", "w", "b.mp()"))
+                : plan.pick(List.of("Builtins.listData(xs)", "Builtins.listData(Builtins.unListData(l))", "b.l()", "lp"));
+        String declared = plan.pick(List.of("var", type, "PlutusData"));
+        String update = plan.pick(List.of("c = c;", "c = s > 100 ? Builtins.tailList(c) : c;", "if (s > 100) { c = (Builtins.tailList(c)); }", "c = %s;".formatted(start)));
+        if (declared.equals("PlutusData") && update.contains("tailList(c) : c")) update = "c = s > 100 ? Builtins.tailList(c) : c;";
+        String loop = plan.pick(List.of("while (s < k) { %s s = s + 1; }", "for (var x : xs) { %s s = s + 1; }"));
+        // A written MapData is a pair list to the reference's while, which fails on it: aDeclaredTypeTheReferenceReadsFailsOnBoth.
+        if (map && declared.equals(type) && loop.startsWith("while")) declared = "var";
+        String end = plan.pick(List.of("return s;", "return s + (Builtins.equalsData(c, c) ? 1 : 2);", "return s + (Builtins.nullList(%s) ? 1 : 2);".formatted(map ? "Builtins.unMapData(c)" : "Builtins.unListData(c)")));
+        String source = """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.core.types.JulcList;
+                import org.julclang.stdlib.Builtins;
+
+                public class Case {
+                    public record Bx(PlutusData.ListData l, PlutusData.MapData mp) { }
+                    static PlutusData.MapData enc(PlutusData d) { return Builtins.mapData(Builtins.unMapData(d)); }
+                    static long walk(PlutusData.ListData lp, PlutusData m, PlutusData l, JulcList<BigInteger> xs, long k, Bx b) {
+                        var w = Builtins.mapData(Builtins.unMapData(m));
+                        %s c = %s; long s = 0; %s %s
+                    }
+                    public static long m(PlutusData m, PlutusData l, JulcList<BigInteger> xs, long k) {
+                        return walk(Builtins.listData(xs), m, l, xs, k, new Bx(Builtins.listData(xs), Builtins.mapData(Builtins.unMapData(m))));
+                    }
+                }
+                """.formatted(declared, start, loop.formatted(update), end);
+        int iterations = plan.pick(List.of(0, 1, 2));
+        var items = new ArrayList<PlutusData>();
+        for (int i = 0; i < iterations; i++) items.add(new PlutusData.IntData(BigInteger.valueOf(i)));
+        assertAgrees(new DiffCase("encoded", source, "Case", "m", List.of(map(2), integers(1, 2), new PlutusData.ListData(items),
+                new PlutusData.IntData(BigInteger.valueOf(iterations)))));
+    }
+
     /** A variable that starts from Data the analysis cannot name, and that a list may reach by any form on a path not taken. */
     @Property(tries = 200, seed = "20261103")
     void aStartFromData(@ForAll("plans") List<Integer> choices) {

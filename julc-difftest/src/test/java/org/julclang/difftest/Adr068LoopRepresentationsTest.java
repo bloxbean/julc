@@ -493,6 +493,51 @@ class Adr068LoopRepresentationsTest {
         assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), report::describe);
     }
 
+    /** {@code PlutusData.ListData} and {@code MapData} are the Java types of encoded Data too, so a declared type is no list. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { var c = Builtins.mapData(Builtins.unMapData(p)); long n = 0; while (n < k) { c = Builtins.mapData(Builtins.unMapData(p)); n = n + 1; } return n; }",
+            "public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { var w = Builtins.mapData(Builtins.unMapData(p)); PlutusData c = w; long n = 0; while (n < k) { c = w; n = n + 1; } return n; }",
+            "public static boolean m(PlutusData p, JulcList<BigInteger> xs, long k) { var w = Builtins.mapData(Builtins.unMapData(p)); PlutusData c = w; long n = 0; while (n < k) { c = p; n = n + 1; } return Builtins.equalsData(c, p); }",
+            "public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { PlutusData.ListData c = Builtins.listData(xs); long n = 0; while (n < k) { c = c; n = n + 1; } return n; }",
+            "public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { PlutusData.ListData c = Builtins.listData(xs); long n = 0; while (n < k) { c = n > 100 ? Builtins.tailList(c) : c; n = n + 1; } return n; }",
+            "public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { PlutusData.ListData c = Builtins.listData(xs); long n = 0; for (var u : xs) { c = c; n = n + 1; } return n; }",
+            "static long walk(PlutusData.ListData c, long k) { long n = 0; while (n < k) { c = c; n = n + 1; } return n; } public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { return walk(Builtins.listData(xs), k); }",
+            "static long walk(PlutusData.ListData c, long k) { long n = 0; while (n < k) { c = n > 100 ? Builtins.tailList(c) : c; n = n + 1; } return n; } public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { return walk(Builtins.listData(xs), k); }",
+            "static PlutusData.MapData enc(PlutusData d) { return Builtins.mapData(Builtins.unMapData(d)); } public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { var t = enc(p); long n = 0; while (n < k) { t = n > 100 ? enc(t) : t; n = n + 1; } return n; }",
+            "static PlutusData.MapData enc(PlutusData d) { return Builtins.mapData(Builtins.unMapData(d)); } public static boolean m(PlutusData p, JulcList<BigInteger> xs, long k) { var t = enc(p); long n = 0; for (var u : xs) { t = enc(t); n = n + 1; } return Builtins.equalsData(t, p); }",
+            "public static boolean m(PlutusData p, JulcList<BigInteger> xs, long k) { var w = Builtins.mapData(Builtins.unMapData(p)); PlutusData t = w; long n = 0; while (n < k) { t = p; n = n + 1; } return Builtins.equalsData(t, p); }",
+            "public record Lb(PlutusData.ListData l) { } public static long m(PlutusData p, JulcList<BigInteger> xs, long k) { var b = new Lb(Builtins.listData(xs)); PlutusData.ListData c = b.l(); long n = 0; while (n < k) { c = n > 100 ? Builtins.tailList(c) : c; n = n + 1; } return n; }",
+    })
+    void encodedDataIsData(String members) {
+        for (long k : List.of(0L, 2L)) {
+            var report = BOTH.run(new DiffCase("data", cursors(members), "Case", "m", List.of(MAP, list(integer(1), integer(2)), integer(k))));
+            assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        }
+    }
+
+    /** A written {@code MapData} is a pair list to the reference, and a native list in a {@code ListData} parameter is Data to both. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static long m(PlutusData p, long k) { PlutusData.MapData w = Builtins.mapData(Builtins.unMapData(p)); PlutusData c = w; long n = 0; while (n < k) { c = w; n = n + 1; } return n; }",
+            "static long walk(PlutusData.ListData c, long k) { long n = 0; while (n < k) { c = c; n = n + 1; } return n; } public static long m(PlutusData p, long k) { return walk(Builtins.unListData(Builtins.listData(JulcList.of(BigInteger.ONE))), k); }",
+    })
+    void aDeclaredTypeTheReferenceReadsFailsOnBoth(String members) {
+        var report = BOTH.run(new DiffCase("data", cursors(members), "Case", "m", List.of(MAP, integer(0))));
+        assertTrue(report.results().values().stream().allMatch(result -> result.verdict().kind() == Verdict.Kind.MISMATCH), report::describe);
+    }
+
+    /** The guides' pattern: a {@code var} of {@code mkNilPairData}, built by {@code mkCons}. */
+    @Test
+    void theGuidesPairListPattern() {
+        var report = BOTH.run(new DiffCase("pairs", cursors("public static PlutusData m(JulcList<BigInteger> xs) { var pairs = Builtins.mkNilPairData(); for (var x : xs) { pairs = Builtins.mkCons(Builtins.mkPairData(Builtins.iData(x), Builtins.iData(x)), pairs); } return Builtins.mapData(pairs); }"),
+                "Case", "m", List.of(list(integer(1), integer(2)))));
+        assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+        var walked = BOTH.run(new DiffCase("pairs", cursors("public static long m(PlutusData d) { var c = Builtins.unMapData(d); long n = 0; PlutusData r = c; while (!Builtins.nullList(r)) { r = Builtins.tailList(r); n = n + 1; } return n; }"),
+                "Case", "m", List.of(MAP)));
+        assertTrue(walked.all(Verdict.Kind.AGREE), walked::describe);
+    }
+
     private static String walkerOf(String method) {
         return "public sealed interface S { record A() implements S { } record B() implements S { } } " + method;
     }

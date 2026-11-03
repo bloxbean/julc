@@ -97,7 +97,9 @@ final class ReferenceAccumulatorTypes {
         return names;
     }
 
+    /** Whether {@code variable} is written {@code MapData}: the reference reads the written type, which a {@code var} has none of. */
     private boolean isMapData(VariableTree variable) {
+        if (facts.isInferred(variable)) return false;
         var type = facts.element(variable).asType();
         return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(MAP_DATA);
     }

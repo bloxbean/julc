@@ -22,7 +22,6 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -46,8 +45,6 @@ final class AccumulatorTypes {
 
     private static final PirType MAP = new PirType.MapType(new PirType.DataType(), new PirType.DataType());
     private static final PirType LIST = new PirType.ListType(new PirType.DataType());
-    private static final String MAP_DATA = JavacNames.PLUTUS_DATA + ".MapData";
-    private static final String LIST_DATA = JavacNames.PLUTUS_DATA + ".ListData";
 
     /** What is shown of a value. {@code SAME} is the variable being read, which says nothing of itself. */
     private enum Held {
@@ -124,14 +121,12 @@ final class AccumulatorTypes {
         }
 
         /**
-         * What an initializer or a declared type shows. A parameter's value is the caller's, so only what it is declared says
-         * anything, and {@code ListData} is a list of either kind. A {@code @Param}'s initializer can only be a literal.
+         * What an initializer shows. A declared type says nothing: {@code PlutusData.ListData} and {@code MapData} are also
+         * the types of encoded Data. A parameter's value is the caller's, and a {@code @Param}'s initializer can only be a literal.
          */
         private Held start(Element variable, Set<Element> read) {
-            if (isDeclared(variable, MAP_DATA)) return Held.PAIRS;
             boolean initialized = variable instanceof VariableElement local && facts.initializer(local) != null;
-            var held = initialized ? value(facts.initializer((VariableElement) variable), read) : Held.DATA;
-            return held == Held.DATA && isDeclared(variable, LIST_DATA) ? Held.CURSOR : held;
+            return initialized ? value(facts.initializer((VariableElement) variable), read) : Held.DATA;
         }
 
         private Held value(ExpressionTree tree, Set<Element> read) {
@@ -206,11 +201,6 @@ final class AccumulatorTypes {
         private boolean isRead(ExpressionTree tree, Element variable) {
             return tree instanceof IdentifierTree name && variable.equals(facts.elementOrNull(name));
         }
-    }
-
-    private boolean isDeclared(Element variable, String identity) {
-        var type = variable.asType();
-        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(identity);
     }
 
     private boolean isBuiltin(ExecutableElement method) {
