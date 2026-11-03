@@ -40,11 +40,10 @@ class LibrarySourceResolverTest {
     @Test
     void extractImportedClassNames_emptyForNoImports() {
         String source = """
-                import org.julclang.core.PlutusData;
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger r, PlutusData c) { return true; }
+                    static boolean validate(BigInteger r, org.julclang.core.PlutusData c) { return true; }
                 }
                 """;
 

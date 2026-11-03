@@ -330,13 +330,19 @@ class JavacStatementsTest {
     /** What the JVM tests by class and a tag cannot: each stops, and never compiles to another answer. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "sealed interface P1 permits R { } sealed interface P2 permits R { } record R() implements P1, P2 { } static boolean m(P1 p) { return p instanceof R r; }",
             "sealed interface O permits W { } static final class W implements O { } static boolean m(O o) { return o instanceof W v; }",
             "sealed interface N permits W { } @org.julclang.stdlib.annotation.NewType record W(BigInteger value) implements N { } "
                     + "static boolean m(N n) { return n instanceof W v; }",
     })
     void aTypeTestOutsideOneSum(String members) {
         assertInstanceOf(NotPorted.class, javac(SUM + members));
+    }
+
+    /** A variant of two sealed interfaces stops at its declaration (ADR-067 D6, {@code JULC0079}), before the test. */
+    @Test
+    void aTypeTestOfAVariantOfTwoSums() {
+        assertEquals("JULC0079", javac(SUM + "sealed interface P1 permits R { } sealed interface P2 permits R { } "
+                + "record R() implements P1, P2 { } static boolean m(P1 p) { return p instanceof R r; }").diagnostics().getFirst().code());
     }
 
     /** The ledger's sums, whose variants come from class files, in their fixed order. */

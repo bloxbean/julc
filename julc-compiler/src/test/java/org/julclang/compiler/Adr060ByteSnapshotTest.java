@@ -53,6 +53,9 @@ class Adr060ByteSnapshotTest {
             for (var row : List.of("NONE-false", "NONE-true", "BASELINE-true", "PV11_SAFE-true", "PV11_COSTED-true"))
                 EXPLAINED.putIfAbsent(entry.id() + "-" + row, compareTo + " in the stdlib's unused methods");
         }
+        // ADR-068 F904: an entry point's last parameter is the script context, so this golden validator reads its second
+        // integer as its datum, as a spending entry point of three parameters.
+        EXPLAINED.put("golden-0-", "ADR-068 F904: the golden validator's second integer is its datum");
         // ADR-068 B3: this program's drop takes a local count, which takes the check a negative count fails.
         EXPLAINED.put("hygiene-17-", "ADR-068 B3: JulcList.drop fails on a negative count");
         // ADR-068 B4: each of these compiles a method with no parameters that may fail, which is a function of a unit now.

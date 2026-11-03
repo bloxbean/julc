@@ -283,7 +283,12 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
      * with no lowering, a pattern variable named like a field, and two declarators in one statement.
      */
     private void requireNoRejectedStatement(BlockTree tree) {
-        for (var node : SubsetWalk.all(tree, Tree.class)) {
+        var written = new ArrayList<Tree>();
+        for (var statement : tree.getStatements()) {
+            // What javac wrote, such as a constructor's super(), is no source.
+            if (!facts.isGenerated(statement)) written.addAll(SubsetWalk.all(statement, Tree.class));
+        }
+        for (var node : written) {
             switch (node) {
                 case BreakTree loopExit -> visitBreak(loopExit, null);
                 case PrimitiveTypeTree type -> visitPrimitiveType(type, null);

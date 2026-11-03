@@ -12,6 +12,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -196,12 +197,19 @@ class JavacRecordsTest {
     /** What javac wrote into a constructor is not source: neither {@code super();} nor a compact constructor's assignments. */
     @ParameterizedTest
     @ValueSource(strings = {
-            "record R(BigInteger a) { R { } } static R m(BigInteger x) { return new R(x); }",
             "static class D { D() { } } static long m() { return 1; }",
             "; static long m() { return 1; } ;",
     })
     void whatJavacWroteIsNotSource(String members) {
         same(members);
+    }
+
+    /** A record's compact constructor, even an empty one, is a member a record does not hold (ADR-067 D9). */
+    @Test
+    void anEmptyCompactConstructorIsARecordMember() {
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                .compileMethod(source("record R(BigInteger a) { R { } } static R m(BigInteger x) { return new R(x); }"), "m", List.of()));
+        assertEquals("JULC0080", failure.diagnostics().getFirst().code());
     }
 
     /** A {@code ;} after a type is no declaration, which javac keeps among a unit's types. */

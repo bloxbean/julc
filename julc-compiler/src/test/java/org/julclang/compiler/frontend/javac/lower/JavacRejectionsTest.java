@@ -13,6 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
@@ -203,10 +204,12 @@ class JavacRejectionsTest {
             "int instance() { return super.hashCode(); }|METHOD_INVOCATION",
 })
     void theScanStopsWhatLoweringNeverReaches(String member, String construct) {
+        // Each is the reference validator's rule, so it is the reference's rejection here, with its code (I2a).
         String source = "class P {\n    static long m() { return 1; }\n    " + member + "\n}\n";
-        assertMethodNotPorted(source, "m", construct, 3);
-        assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions()).compileMethod(source, "m", List.of()),
-                "this fixture is only worth having if the reference rejects it");
+        assertSameMethodRejectionAsReference(source, "m");
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                .compileMethod(source, "m", List.of()));
+        assertNotNull(failure.diagnostics().getFirst().code(), construct);
     }
 
     /** What the reference's validator rejects in code no lowering reaches is its rejection here, with its code. */

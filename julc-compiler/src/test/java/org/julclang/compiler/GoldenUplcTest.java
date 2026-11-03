@@ -43,12 +43,13 @@ class GoldenUplcTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class LetValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                    var sum = redeemer.add(ctx);
+                static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
+                    var sum = datum.add(redeemer);
                     return sum == BigInteger.valueOf(100);
                 }
             }
@@ -124,11 +125,12 @@ class GoldenUplcTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class NestedWhileSum {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger sum = BigInteger.ZERO;
                     BigInteger i = BigInteger.ZERO;
                     while (i.compareTo(BigInteger.valueOf(3)) < 0) {

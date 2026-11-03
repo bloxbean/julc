@@ -90,7 +90,7 @@ class JavacSubsetCodesTest {
     /** What the rules let through: the nearest shapes, on the reference's bytes at every level. */
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
-            "class F { static BigInteger m() { var b = new byte[]{1, -2}; return BigInteger.valueOf(Builtins.lengthOfByteString(b)); } }",
+            "class F { static byte[] m() { var b = new byte[]{1, -2}; return b; } }",
             "class F { static long m(long a) { return -a; } }",
             "class F { static boolean m(boolean a) { return !a; } }",
             "class F { static long m(long a) { long b = a; if (a > 0) { return b; } return a; } }",

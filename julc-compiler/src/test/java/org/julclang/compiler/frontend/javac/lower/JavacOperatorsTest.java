@@ -125,16 +125,20 @@ class JavacOperatorsTest {
     /** A {@code compareTo} of another class is not D6's: on javac the receiver's type is what it is. */
     @Test
     void aUsersCompareToIsNotTheRule() {
+        // A record's own method is outside the subset (ADR-067 D9): it stops at the declaration, before any call of it.
         var failure = rejected("record R(BigInteger a) { int compareTo(R other) { return 0; } }\n"
                 + "static boolean m(R a, R b) { return a.compareTo(b) > 0; }");
-        assertEquals("JULC0055", failure.code());
+        assertEquals("JULC0080", failure.code());
     }
 
+    /** An operator the reference does not lower is its rejection, in its words and with a code (I2a). */
     @Test
-    void anOperatorTheReferenceDoesNotLowerStops() {
-        for (String body : List.of("a & b", "a | b", "a ^ b", "a << 1", "a >> 1", "~a", "+a")) {
-            var failure = javac("static long m(long a, long b) { return " + body + "; }");
-            assertInstanceOf(NotPorted.class, failure, body);
+    void anOperatorTheReferenceDoesNotLowerIsItsRejection() {
+        for (String body : List.of("a & b", "a | b", "a ^ b", "a << 1", "a >> 1", "a >>> 1", "~a", "+a")) {
+            String members = "static long m(long a, long b) { return " + body + "; }";
+            LoweringFixture.assertSameMethodRejectionAsReference(source(members), "m");
+            var code = javac(members).diagnostics().getFirst().code();
+            assertEquals(body.length() == 2 ? "JULC0119" : "JULC0118", code, body);
         }
     }
 
@@ -243,7 +247,8 @@ class JavacOperatorsTest {
 
     @Test
     void aRecordThatDeclaresEqualsIsNotOnTheAllowList() {
-        assertEquals("JULC0087", rejected("record R(BigInteger x) { public boolean equals(Object o) { return true; } }\n"
+        // A record declares no equals at all (ADR-067 D9): the declaration stops first.
+        assertEquals("JULC0080", rejected("record R(BigInteger x) { public boolean equals(Object o) { return true; } }\n"
                 + "static boolean m(R a, R b) { return a.equals(b); }").code());
     }
 
@@ -269,7 +274,7 @@ class JavacOperatorsTest {
     /** A kind is subset where lowering reaches it, so a call or an operator stops in a method nothing lowers. */
     @ParameterizedTest
     @ValueSource(strings = {"long notLowered(long a) { return a + 1; }", "long notLowered(BigInteger a) { return a.longValue(); }",
-            "static class N { static long f() { return 1 + 1; } }", "record N(long a) { long f() { return a + 1; } }"})
+            "static class N { static long f() { return 1 + 1; } }"})
     void aKindIsAllowedWhereLoweringReachesIt(String member) {
         assertInstanceOf(NotPorted.class, javac(member + "\nstatic boolean m() { return true; }"));
     }
@@ -309,10 +314,18 @@ class JavacOperatorsTest {
         assertSame("@SuppressWarnings(value = \"x\") static boolean m() { return true; }");
     }
 
-    /** A null is a rejection of its own, not a reference comparison: {@code JULC0017} comes with the subset's port. */
+    /** A null is a rejection of its own, not a reference comparison: {@code JULC0017}, as on the reference. */
     @Test
     void comparingWithNullIsNotJulc0086() {
         var failure = javac("static boolean m(BigInteger a) { return a == null; }");
-        assertTrue(failure instanceof NotPorted, failure::getMessage);
+        assertEquals("JULC0017", failure.diagnostics().getFirst().code(), failure::getMessage);
+        LoweringFixture.assertSameMethodRejectionAsReference(source("static boolean m(BigInteger a) { return a == null; }"), "m");
+    }
+
+    /** A record's method is outside the subset wherever it stands (ADR-067 D9). */
+    @Test
+    void aRecordsMethodIsNoMemberOfTheSubset() {
+        assertEquals("JULC0080", javac("record N(long a) { long f() { return a + 1; } }\nstatic boolean m() { return true; }")
+                .diagnostics().getFirst().code());
     }
 }

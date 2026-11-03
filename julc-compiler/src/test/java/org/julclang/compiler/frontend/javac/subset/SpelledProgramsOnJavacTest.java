@@ -85,17 +85,23 @@ class SpelledProgramsOnJavacTest {
      * statement it does not lower.
      */
     private static final Answer UNDEFINED = rejects(null);
+    /** The reference's {@code Undefined variable}, with the code the javac frontend gives it (I2a). */
+    private static final Answer UNDEFINED_VARIABLE = rejects("JULC0011");
+    /** The reference's {@code Unsupported statement}, with its code (I2a). */
+    private static final Answer STATEMENT = rejects("JULC0110");
+    /** A record's member other than a nested type: ADR-067 D9 on the javac frontend (D11), ahead of what it reads. */
+    private static final Answer RECORD_MEMBER = rejects("JULC0080");
 
     /** What each program of {@link SpelledReadingsTest} does here. */
     private static final Map<String, Answer> SPELLED = Map.ofEntries(
-            entry("a validator's nested class beside an unimported pool class of its name", UNDEFINED),
-            entry("a nested class beside a pool class of the same package", UNDEFINED),
-            entry("a nested class beside a class nested in a pool unit", UNDEFINED),
-            entry("a nested class beside an annotated library", UNDEFINED),
+            entry("a validator's nested class beside an unimported pool class of its name", UNDEFINED_VARIABLE),
+            entry("a nested class beside a pool class of the same package", UNDEFINED_VARIABLE),
+            entry("a nested class beside a class nested in a pool unit", UNDEFINED_VARIABLE),
+            entry("a nested class beside an annotated library", UNDEFINED_VARIABLE),
             entry("a member reached through a qualifier that inherits it", AGREES),
             entry("the same in a type argument", AGREES),
             entry("an annotation type as a qualifier, beside a record of its name", stops("ANNOTATION_TYPE")),
-            entry("a library of the root used from a pool unit, beside a pool library of its name", UNDEFINED),
+            entry("a library of the root used from a pool unit, beside a pool library of its name", UNDEFINED_VARIABLE),
             entry("a library record's type parameter beside a record of its name", UNDEFINED),
             entry("the same with an integer", UNDEFINED),
             entry("a generic method of a library compiled as the root", rejects("JULC0087")),
@@ -104,8 +110,8 @@ class SpelledProgramsOnJavacTest {
             entry("a guard reads an inherited field", stops("METHOD_INVOCATION")),
             entry("a class of the unnamed package named like a package of the compilation", AGREES),
             entry("a record of the unnamed package beside a pool record of its name", AGREES),
-            entry("a record of the unnamed package beside a library of its name", UNDEFINED),
-            entry("a record of the unnamed package beside a @NewType of its name", stops("PLUS")),
+            entry("a record of the unnamed package beside a library of its name", RECORD_MEMBER),
+            entry("a record of the unnamed package beside a @NewType of its name", RECORD_MEMBER),
             entry("instanceof through a widening cast", stops("an instanceof of an operand outside the variant's sealed interface")),
             entry("a datum read through its Optional", AGREES),
             entry("isPresent on an Optional of a record with that component", AGREES),
@@ -113,36 +119,36 @@ class SpelledProgramsOnJavacTest {
             entry("an inherited default method of a @NewType of an integer", stops("METHOD_INVOCATION")),
             entry("an inherited default method of a @NewType of bytes", rejects("JULC0055")),
             entry("an inherited default method of a @NewType of a string", rejects("JULC0055")),
-            entry("a static field read on a @NewType", rejects("JULC0055")),
+            entry("a static field read on a @NewType", RECORD_MEMBER),
             entry("an inherited constant read on a @NewType", rejects("JULC0055")),
             entry("clone on a byte array", stops("the method clone of a byte string")),
             entry("toString on a ledger hash", stops("the method toString of a byte string")),
             entry("a variant outside the interface, with instanceof", rejects("JULC0092")),
             entry("a variant outside the interface, with a switch", rejects("JULC0092")),
             entry("no variant in the interface", rejects("JULC0092")),
-            entry("a switch statement in a root", UNDEFINED),
-            entry("a switch statement in a library", UNDEFINED),
-            entry("a pattern switch statement in a library", UNDEFINED),
-            entry("a call of a generic sibling in a library", UNDEFINED),
+            entry("a switch statement in a root", STATEMENT),
+            entry("a switch statement in a library", STATEMENT),
+            entry("a pattern switch statement in a library", STATEMENT),
+            entry("a call of a generic sibling in a library", rejects("JULC0024")),
             entry("a nested class of a library calling its outer class", stops("a call of g that is not a static method of this class")),
-            entry("an operator a library cannot lower", stops("AND")),
+            entry("an operator a library cannot lower", rejects("JULC0118")),
             entry("instanceof on a qualified variant, a member holding its last name", AGREES),
             entry("instanceof on a qualified variant, an import holding its last name", AGREES),
             entry("instanceof on a variant whose name nothing else holds", AGREES),
             entry("instanceof on a sibling variant of a qualified one", AGREES),
             entry("a permits clause listing a variant outside the interface", AGREES),
             entry("a member reached through its owner", AGREES),
-            entry("a validator's nested class beside a plain library class", UNDEFINED),
-            entry("a second top-level class beside a plain library class", UNDEFINED),
-            entry("an inherited member class beside a plain library class", UNDEFINED),
-            entry("a nested class beside the plain library class the unit imports", UNDEFINED),
+            entry("a validator's nested class beside a plain library class", UNDEFINED_VARIABLE),
+            entry("a second top-level class beside a plain library class", UNDEFINED_VARIABLE),
+            entry("an inherited member class beside a plain library class", UNDEFINED_VARIABLE),
+            entry("a nested class beside the plain library class the unit imports", UNDEFINED_VARIABLE),
             entry("a nested class beside a plain class nested in a library", stops("METHOD_INVOCATION")),
             entry("a nested class beside a plain library class, by method", stops("METHOD_INVOCATION")),
             entry("a qualifier beside a plain library class of its name", AGREES),
             entry("a static-imported plain class beside a same-package class", AGREES),
             entry("a member through a record qualifier that inherits it", AGREES),
             entry("a member through a record qualifier of a sealed interface", AGREES),
-            entry("a nested record implementing an annotation of the interface's name", stops("ANNOTATION_TYPE")),
+            entry("a nested record implementing an annotation of the interface's name", RECORD_MEMBER),
             entry("a nested record implementing a sealed interface of the interface's name", rejects("JULC0092")),
             entry("a library's static field that runs at script start", rejects("JULC0095")));
 

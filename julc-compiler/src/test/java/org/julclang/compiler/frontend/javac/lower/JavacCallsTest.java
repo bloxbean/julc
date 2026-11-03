@@ -85,9 +85,10 @@ class JavacCallsTest {
 
     @Test
     void aUserValueDoesNotReachTheLedgersHandlers() {
+        // A record's own method is outside the subset (ADR-067 D9), so the user's Value stops at its declaration.
         var failure = rejected("record Value(BigInteger inner) { BigInteger lovelaceOf() { return inner; } }\n"
                 + "static BigInteger m(Value v) { return v.lovelaceOf(); }");
-        assertEquals("JULC0055", failure.code());
+        assertEquals("JULC0080", failure.code());
     }
 
     @Test
@@ -114,7 +115,7 @@ class JavacCallsTest {
         assertEquals("JULC0055", rejected("static int m(BigInteger a) { return a.hashCode(); }").code());
         assertEquals("JULC0055", rejected("static String m(BigInteger a) { return a.toString(); }").code());
         assertEquals("JULC0055", rejected("static BigInteger m(BigInteger a) { return a.pow(2); }").code());
-        assertEquals("JULC0055", rejected("record R(BigInteger a) { BigInteger twice() { return a; } }\n"
+        assertEquals("JULC0080", rejected("record R(BigInteger a) { BigInteger twice() { return a; } }\n"
                 + "static BigInteger m(R r) { return r.twice(); }").code());
     }
 
@@ -160,7 +161,7 @@ class JavacCallsTest {
 
     @Test
     void anEqualsOverloadIsNotEquals() {
-        assertEquals("JULC0055", rejected("record R(BigInteger x) { boolean equals(BigInteger y) { return true; } }\n"
+        assertEquals("JULC0080", rejected("record R(BigInteger x) { boolean equals(BigInteger y) { return true; } }\n"
                 + "static boolean m(R r, BigInteger y) { return r.equals(y); }").code());
     }
 
@@ -304,7 +305,7 @@ class JavacCallsTest {
     void aUsersFromPlutusDataIsNoIdentity() {
         var failure = rejected("record R(BigInteger a) { static R EMPTY; static R fromPlutusData(PlutusData d) { return EMPTY; } }\n"
                 + "static R m(PlutusData d) { return R.fromPlutusData(d); }");
-        assertEquals("Undefined variable: R", failure.message());
+        assertEquals("JULC0080", failure.code());
     }
 
     /** {@code PlutusData.cast}'s class must be a literal: nothing else says what the view is. */

@@ -835,10 +835,10 @@ class JavacTypesTest {
                 @SpendingValidator
                 class V {
                     @Entrypoint
-                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return ~1 == 0; }
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return (short) 1 == 0; }
                 }
                 """;
-        private static final String COVERED = VALIDATOR.replace("~1 == 0", "true");
+        private static final String COVERED = VALIDATOR.replace("(short) 1 == 0", "true");
         private static final CompilerOptions JAVAC = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
 
         @Test
@@ -851,7 +851,7 @@ class JavacTypesTest {
             var e = assertThrows(CompilerException.class, compile);
             var diagnostic = e.diagnostics().getFirst();
             assertEquals(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code(), diagnostic.code(), e.getMessage());
-            assertTrue(diagnostic.message().contains("BITWISE_COMPLEMENT `~1`"), diagnostic.message());
+            assertTrue(diagnostic.message().contains("a cast to short `(short) 1`"), diagnostic.message());
             assertEquals(8, diagnostic.line(), "the construct's line");
         }
 

@@ -710,7 +710,7 @@ class JavacSwitchesTest {
             "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.ON && c -> 1; default -> 2; }; }",
             "sealed interface Kn { boolean ON = true; boolean OFF = false; long N = 3; int M = 2147483647; String TEXT = \"a\"; static final long W = 4; record U() implements Kn { } } static long m(S s, boolean c) { return switch (s) { case A a when Kn.OFF || c -> 1; default -> 2; }; }",
             "sealed interface Kn { BigInteger B = BigInteger.ONE; record U() implements Kn { } } static long m(S s) { return switch (s) { case A a when a.v().equals(Kn.B) -> 1; default -> 2; }; }",
-            "record Rc(long n) { static long L = 3; } static long m(S s, long x) { return switch (s) { case A a when x > Rc.L -> 1; default -> 2; }; }",
+            "static class Rc { static long L = 3; } static long m(S s, long x) { return switch (s) { case A a when x > Rc.L -> 1; default -> 2; }; }",
     })
     void aFieldOfATypeThatIsNoConstantInAGuard(String members) {
         for (var frontend : CompilerFrontend.values()) {
@@ -780,14 +780,15 @@ class JavacSwitchesTest {
 
     /**
      * An operand of either parent of a variant passes {@code instanceof}'s rule on tags, so what a variant of two interfaces
-     * says, the stop at its type, comes next. Read against its first parent alone, the second would be {@code JULC0072}.
+     * says comes first: {@code JULC0079} at the record. Read against its first parent alone, the second would be {@code JULC0072}.
      */
     @ParameterizedTest
     @ValueSource(strings = {"Pf", "Pg"})
     void anOperandOfEitherParentOfAVariant(String parent) {
         String members = "sealed interface Pf permits Vb { } sealed interface Pg permits Vb { } record Vb(BigInteger v) implements Pf, Pg { } "
                 + "static long m(S s, " + parent + " x) { return switch (s) { case A a when x instanceof Vb -> 1; default -> 3; }; }";
-        assertEquals("JULC0084", javacCode(members));
+        // The record of two sealed parents stops at its declaration first (ADR-067 D6).
+        assertEquals("JULC0079", javacCode(members));
     }
 
     /** {@code JULC0053} in a colon group, where javac's two declarators stand in no block. */

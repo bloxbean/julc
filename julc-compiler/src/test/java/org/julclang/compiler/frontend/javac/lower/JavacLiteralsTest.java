@@ -121,11 +121,17 @@ class JavacLiteralsTest {
                 """, "m");
     }
 
-    /** A literal outside the subset, each until its own rule is ported. */
+    /** A literal outside the subset, until its own rule is ported. */
     @ParameterizedTest
-    @CsvSource(delimiter = '|', quoteCharacter = '"', value = {"int|'a'|CHAR_LITERAL", "String|null|NULL_LITERAL"})
+    @CsvSource(delimiter = '|', quoteCharacter = '"', value = {"int|'a'|CHAR_LITERAL"})
     void otherLiterals(String type, String literal, String construct) {
         assertMethodNotPorted(returning(type, literal), "m", construct, 4);
+    }
+
+    /** {@code null} is the reference's rejection, with its code: {@code JULC0017}. */
+    @Test
+    void nullIsTheReferencesRejection() {
+        assertSameMethodRejectionAsReference(returning("String", "null"), "m");
     }
 
     /** Floating point is the reference's rejection, at its position. */
@@ -173,9 +179,8 @@ class JavacLiteralsTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"new byte[2]", "new long[]{1}", "new byte[][]{new byte[]{1}}", "new byte[]{(byte) 1}", "new byte[]{'a'}"})
-    void otherArraysAreNotPorted(String expression) {
+    void otherArraysAreTheReferencesRejection(String expression) {
         String type = expression.contains("long") ? "long[]" : expression.contains("[][]") ? "byte[][]" : "byte[]";
-        assertThrows(NotPorted.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
-                .compileMethod(returning(type, expression), "m", List.of()));
+        assertSameMethodRejectionAsReference(returning(type, expression), "m");
     }
 }
