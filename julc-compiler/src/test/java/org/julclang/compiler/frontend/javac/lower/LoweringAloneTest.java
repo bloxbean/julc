@@ -260,6 +260,20 @@ class LoweringAloneTest {
         });
     }
 
+    /** A char and a variant of two sealed parents are the scan's codes, and the lowering's too, so no term holds one. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "static long m() { long c = 'x'; return c; }                                                       | JULC0124",
+            "static boolean m(java.math.BigInteger a) { S s = new B(a); return true; }                          | JULC0079",
+            "static boolean m(S s) { return s instanceof B b; }                                                 | JULC0079",
+            "static long m(S s) { return switch (s) { case A a -> 1; case B b -> 2; }; }                         | JULC0079"})
+    void whatTheScanCodesIsCodedHereToo(String method, String code) {
+        var types = "sealed interface S permits A, B { } sealed interface T permits B { } record A(java.math.BigInteger v) implements S { }"
+                + " record B(java.math.BigInteger v) implements S, T { } ";
+        withMethod("class P { " + types + method + " }", new CompilerOptions(), (facts, lowered) ->
+                assertEquals(code, assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst().code()));
+    }
+
     /** D6's rule is the lowering's too, so no {@code ==} on references reaches a term, read by the scan or not. */
     @Test
     void anIdentityComparisonIsNotLoweredHereToo() {
