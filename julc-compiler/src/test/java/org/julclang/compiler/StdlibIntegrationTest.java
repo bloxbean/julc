@@ -413,11 +413,12 @@ class StdlibIntegrationTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return 42 == 42;
                         }
                     }

@@ -588,9 +588,10 @@ class BlueprintTest {
         String source = """
                 import org.julclang.stdlib.annotation.*;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 @MintingValidator class BodyGate {
                     record Redeemer(BigInteger value) {}
-                    @Entrypoint static boolean validate(Redeemer redeemer, BigInteger ctx) {
+                    @Entrypoint static boolean validate(Redeemer redeemer, PlutusData ctx) {
                         return true;
                     }
                 }

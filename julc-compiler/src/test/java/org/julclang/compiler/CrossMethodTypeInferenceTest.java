@@ -20,6 +20,7 @@ class CrossMethodTypeInferenceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
@@ -28,7 +29,7 @@ class CrossMethodTypeInferenceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return isEqual(5, 10);
                     }
                 }
@@ -52,6 +53,7 @@ class CrossMethodTypeInferenceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
@@ -60,8 +62,8 @@ class CrossMethodTypeInferenceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return isEqual(redeemer, ctx);
+                    static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
+                        return isEqual(datum, redeemer);
                     }
                 }
                 """;
@@ -113,6 +115,7 @@ class CrossMethodTypeInferenceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
@@ -121,7 +124,7 @@ class CrossMethodTypeInferenceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         var result = doubleIt(redeemer);
                         return result.equals(BigInteger.TEN);
                     }
@@ -144,6 +147,7 @@ class CrossMethodTypeInferenceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
@@ -156,7 +160,7 @@ class CrossMethodTypeInferenceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return doubleAndAdd(redeemer).equals(BigInteger.valueOf(21));
                     }
                 }
@@ -179,11 +183,12 @@ class CrossMethodTypeInferenceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return redeemer.equals(BigInteger.valueOf(42));
                     }
                 }
@@ -206,6 +211,7 @@ class CrossMethodTypeInferenceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
@@ -219,7 +225,7 @@ class CrossMethodTypeInferenceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return checkComputed(redeemer);
                     }
                 }
@@ -242,12 +248,13 @@ class CrossMethodTypeInferenceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
-                        return redeemer == ctx;
+                    static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
+                        return datum == redeemer;
                     }
                 }
                 """;

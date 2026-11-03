@@ -79,11 +79,12 @@ class SourceDiscoveryTest {
                 package com.example;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class UseLib {
                     @Entrypoint
-                    static boolean validate(long redeemer, long ctx) {
+                    static boolean validate(long redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -110,11 +111,12 @@ class SourceDiscoveryTest {
                 package com.example;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class UseLib {
                     @Entrypoint
-                    static boolean validate(long redeemer, long ctx) {
+                    static boolean validate(long redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -168,11 +170,12 @@ class SourceDiscoveryTest {
                 package com.example;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class UseLib {
                     @Entrypoint
-                    static boolean validate(long redeemer, long ctx) {
+                    static boolean validate(long redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -199,11 +202,12 @@ class SourceDiscoveryTest {
                 package com.example;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class UseLib {
                     @Entrypoint
-                    static boolean validate(long redeemer, long ctx) {
+                    static boolean validate(long redeemer, PlutusData ctx) {
                         return true;
                     }
                 }

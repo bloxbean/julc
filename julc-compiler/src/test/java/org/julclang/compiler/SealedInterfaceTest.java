@@ -296,6 +296,7 @@ class SealedInterfaceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 sealed interface Action permits Mint, Burn {}
                 record Mint(int amt) implements Action {}
@@ -304,7 +305,7 @@ class SealedInterfaceTest {
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return redeemer.compareTo(BigInteger.ZERO) > 0;
                     }
                 }
@@ -320,6 +321,7 @@ class SealedInterfaceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 sealed interface Action permits Mint, Burn {}
                 record Mint(int amt) implements Action {}
@@ -328,7 +330,7 @@ class SealedInterfaceTest {
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         var action = new Mint(10);
                         return true;
                     }
@@ -344,6 +346,7 @@ class SealedInterfaceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 sealed interface Redeemer permits Pay, Refund, Cancel {}
                 record Pay(int amount, int fee) implements Redeemer {}
@@ -353,7 +356,7 @@ class SealedInterfaceTest {
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -368,6 +371,7 @@ class SealedInterfaceTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 sealed interface Action permits Mint, Burn {}
                 record Mint(int amt) implements Action {}
@@ -381,7 +385,7 @@ class SealedInterfaceTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return isMint();
                     }
                 }

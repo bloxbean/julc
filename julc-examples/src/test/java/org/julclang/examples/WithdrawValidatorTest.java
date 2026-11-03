@@ -27,6 +27,7 @@ class WithdrawValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.WithdrawValidator;
+            import org.julclang.core.PlutusData;
 
             @WithdrawValidator
             class AuthorizedWithdraw {
@@ -35,7 +36,7 @@ class WithdrawValidatorTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return isAuthorized(BigInteger.valueOf(12345), BigInteger.valueOf(12345));
                 }
             }
@@ -48,6 +49,7 @@ class WithdrawValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.WithdrawValidator;
+            import org.julclang.core.PlutusData;
 
             @WithdrawValidator
             class RejectingWithdraw {
@@ -56,7 +58,7 @@ class WithdrawValidatorTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return isAuthorized(BigInteger.valueOf(99999), BigInteger.valueOf(12345));
                 }
             }
@@ -69,11 +71,12 @@ class WithdrawValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.WithdrawValidator;
+            import org.julclang.core.PlutusData;
 
             @WithdrawValidator
             class AlwaysAllowWithdraw {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return true;
                 }
             }

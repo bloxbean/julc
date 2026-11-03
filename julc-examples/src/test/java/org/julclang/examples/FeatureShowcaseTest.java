@@ -30,6 +30,7 @@ class FeatureShowcaseTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class HelperDemo {
@@ -46,7 +47,7 @@ class FeatureShowcaseTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return compute(BigInteger.valueOf(5)).equals(BigInteger.valueOf(12));
                     }
                 }
@@ -75,6 +76,7 @@ class FeatureShowcaseTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class SealedDemo {
@@ -84,7 +86,7 @@ class FeatureShowcaseTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -113,11 +115,12 @@ class FeatureShowcaseTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class BooleanDemo {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         boolean a = 5 > 3;
                         boolean b = 10 == 10;
                         boolean c = 1 < 0;
@@ -149,6 +152,7 @@ class FeatureShowcaseTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class IfElseDemo {
@@ -161,7 +165,7 @@ class FeatureShowcaseTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return abs(BigInteger.valueOf(-42)).equals(BigInteger.valueOf(42));
                     }
                 }
@@ -190,11 +194,12 @@ class FeatureShowcaseTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class ArithmeticDemo {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger a = BigInteger.TEN;
                         BigInteger b = BigInteger.valueOf(3);
                         BigInteger sum = a.add(b);
@@ -229,6 +234,7 @@ class FeatureShowcaseTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class ChainDemo {
@@ -245,7 +251,7 @@ class FeatureShowcaseTest {
                     }
 
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return octuple(BigInteger.valueOf(3)).equals(BigInteger.valueOf(24));
                     }
                 }
@@ -274,11 +280,12 @@ class FeatureShowcaseTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class LetDemo {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger x = BigInteger.valueOf(5);
                         BigInteger y = x.multiply(BigInteger.TWO);
                         BigInteger z = y.add(x);

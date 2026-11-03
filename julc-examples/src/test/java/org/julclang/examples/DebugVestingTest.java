@@ -192,11 +192,12 @@ class DebugVestingTest extends ContractTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class AuctionValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger bid = BigInteger.valueOf(100);
                         BigInteger minBid = BigInteger.valueOf(50);
                         return MathUtils.max(bid, minBid).equals(BigInteger.valueOf(100));

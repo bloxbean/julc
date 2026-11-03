@@ -25,6 +25,7 @@ class NFTMintingPolicyTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class NFTMintingPolicy {
@@ -42,7 +43,7 @@ class NFTMintingPolicyTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger mintAmount = BigInteger.ONE;
                     return validateMint(mintAmount);
                 }
@@ -56,6 +57,7 @@ class NFTMintingPolicyTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class NFTBurnPolicy {
@@ -64,7 +66,7 @@ class NFTMintingPolicyTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger burnAmount = BigInteger.valueOf(-1);
                     return validateBurn(burnAmount);
                 }
@@ -78,6 +80,7 @@ class NFTMintingPolicyTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class NFTInvalidPolicy {
@@ -86,7 +89,7 @@ class NFTMintingPolicyTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger amount = BigInteger.ZERO;
                     return validateMint(amount);
                 }

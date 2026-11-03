@@ -53,11 +53,12 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return double_(redeemer).equals(BigInteger.TEN);
                 }
 
@@ -78,11 +79,12 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return quadruple(redeemer).equals(BigInteger.valueOf(20));
                 }
 
@@ -107,11 +109,12 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return a(redeemer).equals(BigInteger.valueOf(8));
                 }
 
@@ -140,11 +143,12 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return addViaA(redeemer).add(addViaB(redeemer)).equals(BigInteger.TEN);
                 }
 
@@ -203,6 +207,7 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
@@ -223,7 +228,7 @@ class MethodOrderingTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return isEven(redeemer);
                 }
             }
@@ -276,6 +281,7 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
@@ -292,7 +298,7 @@ class MethodOrderingTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger total = sumA(redeemer, BigInteger.ZERO);
                     return total.compareTo(BigInteger.ZERO) > 0;
                 }
@@ -316,6 +322,7 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
@@ -330,7 +337,7 @@ class MethodOrderingTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return fa(redeemer).compareTo(BigInteger.ZERO) > 0;
                 }
             }
@@ -349,6 +356,7 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
@@ -361,7 +369,7 @@ class MethodOrderingTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return quadruple(redeemer).equals(BigInteger.valueOf(40));
                 }
             }
@@ -378,11 +386,12 @@ class MethodOrderingTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MyValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return factorial(redeemer).equals(BigInteger.valueOf(120));
                 }
 

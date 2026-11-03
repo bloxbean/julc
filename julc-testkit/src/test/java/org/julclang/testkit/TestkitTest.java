@@ -290,11 +290,12 @@ class TestkitTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysTrueValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -311,11 +312,12 @@ class TestkitTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysFalseValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return false;
                         }
                     }
@@ -365,11 +367,12 @@ class TestkitTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysTrue {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -386,11 +389,12 @@ class TestkitTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class AlwaysFalse {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return false;
                         }
                     }

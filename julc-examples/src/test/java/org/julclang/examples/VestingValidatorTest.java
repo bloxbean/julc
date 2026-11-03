@@ -24,6 +24,7 @@ class VestingValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class VestingValidator {
@@ -36,7 +37,7 @@ class VestingValidatorTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return isPastDeadline(BigInteger.valueOf(2000), BigInteger.valueOf(1000)) && checkBeneficiary(BigInteger.valueOf(42), BigInteger.valueOf(42));
                 }
             }
@@ -49,6 +50,7 @@ class VestingValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class VestingValidator {
@@ -57,7 +59,7 @@ class VestingValidatorTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     return isPastDeadline(BigInteger.valueOf(500), BigInteger.valueOf(1000));
                 }
             }
@@ -70,6 +72,7 @@ class VestingValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class VestingValidator {
@@ -82,7 +85,7 @@ class VestingValidatorTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger doubled = double_(BigInteger.valueOf(21));
                     if (isPositive(doubled)) {
                         return doubled.equals(BigInteger.valueOf(42));

@@ -41,11 +41,12 @@ class CompileControllerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -181,10 +182,11 @@ class CompileControllerTest {
                         import java.math.BigInteger;
                         import org.julclang.stdlib.annotation.Entrypoint;
                         import org.julclang.stdlib.annotation.SpendingValidator;
+                        import org.julclang.core.PlutusData;
                         @SpendingValidator
                         class V {
                             @Entrypoint
-                            static boolean validate(BigInteger r, BigInteger c) { return true; }
+                            static boolean validate(BigInteger r, PlutusData c) { return true; }
                         }
                         """));
                 var res = client.post("/api/compile", body);

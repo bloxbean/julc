@@ -24,6 +24,7 @@ class MultiSigValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MultiSigValidator {
@@ -48,7 +49,7 @@ class MultiSigValidatorTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger value = BigInteger.valueOf(42);
                     BigInteger trueCount = boolToInt(check1(value)).add(boolToInt(check2(value))).add(boolToInt(check3(value)));
                     return trueCount.compareTo(BigInteger.TWO) >= 0;
@@ -63,6 +64,7 @@ class MultiSigValidatorTest {
             import java.math.BigInteger;
             import org.julclang.stdlib.annotation.Entrypoint;
             import org.julclang.stdlib.annotation.SpendingValidator;
+            import org.julclang.core.PlutusData;
 
             @SpendingValidator
             class MultiSigValidator {
@@ -87,7 +89,7 @@ class MultiSigValidatorTest {
                 }
 
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     BigInteger value = BigInteger.valueOf(-5);
                     BigInteger trueCount = boolToInt(check1(value)).add(boolToInt(check2(value))).add(boolToInt(check3(value)));
                     return trueCount.compareTo(BigInteger.valueOf(3)) >= 0;

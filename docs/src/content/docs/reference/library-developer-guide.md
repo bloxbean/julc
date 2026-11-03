@@ -550,7 +550,7 @@ class TokenUtilsTest {
             @SpendingValidator
             class TestValidator {
                 @Entrypoint
-                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                static boolean validate(BigInteger redeemer, PlutusData ctx) {
                     // Test logic calling TokenUtils
                     return true;
                 }

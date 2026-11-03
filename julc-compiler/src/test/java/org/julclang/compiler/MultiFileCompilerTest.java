@@ -88,11 +88,12 @@ class MultiFileCompilerTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class AuctionValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger bid = BigInteger.valueOf(100);
                         BigInteger minBid = BigInteger.valueOf(50);
                         return MathUtils.max(bid, minBid).equals(BigInteger.valueOf(100));
@@ -119,11 +120,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class MultiMethodValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             BigInteger maxVal = MathUtils.max(BigInteger.TEN, BigInteger.valueOf(20));
                             BigInteger minVal = MathUtils.min(BigInteger.TEN, BigInteger.valueOf(20));
                             return maxVal.equals(BigInteger.valueOf(20)) && minVal.equals(BigInteger.TEN);
@@ -165,11 +167,12 @@ class MultiFileCompilerTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MultiLibValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger doubled = LibA.double_(BigInteger.valueOf(21));
                         return LibB.isPositive(doubled) && doubled.equals(BigInteger.valueOf(42));
                     }
@@ -211,11 +214,12 @@ class MultiFileCompilerTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class PointValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         Point p = new Point(BigInteger.valueOf(3), BigInteger.valueOf(4));
                         return PointUtils.distance(p).equals(BigInteger.valueOf(7));
                     }
@@ -245,22 +249,24 @@ class MultiFileCompilerTest {
         void rejectsLibraryWithValidatorAnnotation() {
             var badLib = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class FakeValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) { return true; }
+                        static boolean validate(BigInteger r, PlutusData c) { return true; }
                     }
                     """;
             var validator = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class MyValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) { return true; }
+                        static boolean validate(BigInteger r, PlutusData c) { return true; }
                     }
                     """;
 
@@ -272,22 +278,24 @@ class MultiFileCompilerTest {
         void rejectsLibraryWithMintingValidatorAnnotation() {
             var badLib = """
                     import java.math.BigInteger;
+                    import org.julclang.core.PlutusData;
 
                     @MintingValidator
                     class FakePolicy {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) { return true; }
+                        static boolean validate(BigInteger r, PlutusData c) { return true; }
                     }
                     """;
             var validator = """
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class MyValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) { return true; }
+                        static boolean validate(BigInteger r, PlutusData c) { return true; }
                     }
                     """;
 
@@ -310,13 +318,14 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     record Datum(BigInteger value) {}
 
                     @SpendingValidator
                     class DupValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) { return true; }
+                        static boolean validate(BigInteger r, PlutusData c) { return true; }
                     }
                     """;
 
@@ -345,11 +354,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return redeemer.equals(BigInteger.valueOf(42));
                         }
                     }
@@ -364,11 +374,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return redeemer.equals(BigInteger.valueOf(42));
                         }
                     }
@@ -393,11 +404,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return true;
                         }
                     }
@@ -420,11 +432,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class Validator {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) {
+                        static boolean validate(BigInteger r, PlutusData c) {
                             return MyLib.check(BigInteger.valueOf(42));
                         }
                     }
@@ -478,11 +491,12 @@ class MultiFileCompilerTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class OrderValidator {
                     @Entrypoint
-                    static boolean validate(OrderDatum redeemer, BigInteger ctx) {
+                    static boolean validate(OrderDatum redeemer, PlutusData ctx) {
                         return OrderUtils.isBuyOrder(redeemer) && redeemer.amount().compareTo(BigInteger.ZERO) > 0;
                     }
                 }
@@ -493,11 +507,12 @@ class MultiFileCompilerTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class SettlementValidator {
                     @Entrypoint
-                    static boolean validate(OrderDatum redeemer, BigInteger ctx) {
+                    static boolean validate(OrderDatum redeemer, PlutusData ctx) {
                         return OrderUtils.orderAmount(redeemer).equals(BigInteger.valueOf(100))
                             && !OrderUtils.isBuyOrder(redeemer);
                     }
@@ -576,11 +591,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class BoolValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) {
+                        static boolean validate(BigInteger r, PlutusData c) {
                             return BoolUtils.and_(true, true)
                                 && BoolUtils.or_(false, true);
                         }
@@ -597,11 +613,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class BoolRejectValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger r, BigInteger c) {
+                        static boolean validate(BigInteger r, PlutusData c) {
                             return BoolUtils.and_(true, false);
                         }
                     }
@@ -636,11 +653,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             BigInteger val = BigInteger.valueOf(20);
                             return TypedLib.isAboveThreshold(val);
                         }
@@ -963,11 +981,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             return ConfigLib.isAboveThreshold(redeemer);
                         }
                     }
@@ -1001,11 +1020,12 @@ class MultiFileCompilerTest {
                     import java.math.BigInteger;
                     import org.julclang.stdlib.annotation.Entrypoint;
                     import org.julclang.stdlib.annotation.SpendingValidator;
+                    import org.julclang.core.PlutusData;
 
                     @SpendingValidator
                     class TestValidator {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(BigInteger redeemer, PlutusData ctx) {
                             var answer = ConfigLib2.getAnswer();
                             return answer.equals(BigInteger.TEN);
                         }

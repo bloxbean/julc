@@ -508,9 +508,10 @@ class LintEngineTest {
         String src = """
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 public class V {
                     @Entrypoint
-                    public static boolean validate(BigInteger amount, Object r, Object ctx) {
+                    public static boolean validate(BigInteger amount, Object r, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -525,10 +526,11 @@ class LintEngineTest {
         String src = """
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
                 public class V {
                     record D(BigInteger amount) {}
                     @Entrypoint
-                    public static boolean validate(D d, Object r, Object ctx) {
+                    public static boolean validate(D d, Object r, PlutusData ctx) {
                         return true;
                     }
                 }

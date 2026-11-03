@@ -1398,7 +1398,7 @@ static final String VALIDATOR = """
         @SpendingValidator
         class AuctionValidator {
             @Entrypoint
-            static boolean validate(BigInteger redeemer, BigInteger ctx) {
+            static boolean validate(BigInteger redeemer, PlutusData ctx) {
                 return MathUtils.max(100, 50) == 100;
             }
         }

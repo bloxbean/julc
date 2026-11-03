@@ -730,20 +730,21 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class NestedWhile {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger datum, BigInteger redeemer, PlutusData ctx) {
                         BigInteger outer = BigInteger.ZERO;
-                        while (outer.compareTo(redeemer) < 0) {
+                        while (outer.compareTo(datum) < 0) {
                             BigInteger inner = BigInteger.ZERO;
-                            while (inner.compareTo(ctx) < 0) {
+                            while (inner.compareTo(redeemer) < 0) {
                                 inner = inner.add(BigInteger.ONE);
                             }
                             outer = outer.add(BigInteger.ONE);
                         }
-                        return outer == redeemer;
+                        return outer == datum;
                     }
                 }
                 """;
@@ -761,11 +762,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -781,11 +783,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class MyValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -913,11 +916,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class CountdownValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = redeemer;
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             k = k.subtract(BigInteger.ONE);
@@ -937,11 +941,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class BoolWhileValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         boolean done = false;
                         while (!done) {
                             done = true;
@@ -961,11 +966,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class TwoAccWhileValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger sum = BigInteger.ZERO;
                         BigInteger k = redeemer;
                         while (k.compareTo(BigInteger.ZERO) > 0) {
@@ -987,11 +993,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class BreakWhileValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             if (k == BigInteger.valueOf(5)) {
@@ -1014,11 +1021,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class SideEffectWhileValidator {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         return true;
                     }
                 }
@@ -1057,11 +1065,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class CountdownEval {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             k = k.subtract(BigInteger.ONE);
@@ -1084,11 +1093,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class SumEval {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger sum = BigInteger.ZERO;
                         BigInteger k = BigInteger.valueOf(5);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
@@ -1113,11 +1123,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class BreakEval {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             if (k == BigInteger.valueOf(5)) {
@@ -1143,11 +1154,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class FollowingStmtsEval {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(3);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             k = k.subtract(BigInteger.ONE);
@@ -1173,11 +1185,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class BoolMultiAccEval {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         boolean found = false;
                         BigInteger k = BigInteger.valueOf(5);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
@@ -1205,11 +1218,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class BoolBreakMultiAccEval {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         boolean found = false;
                         BigInteger k = BigInteger.valueOf(5);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
@@ -1261,11 +1275,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class NestedWhileSum {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger sum = BigInteger.ZERO;
                         BigInteger i = BigInteger.ZERO;
                         while (i.compareTo(BigInteger.valueOf(3)) < 0) {
@@ -1389,11 +1404,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class ContainsDuplicate {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger size = BigInteger.valueOf(4);
                         boolean found = false;
                         BigInteger i = BigInteger.ZERO;
@@ -1426,11 +1442,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class InnerBreakOnly {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger outerSum = BigInteger.ZERO;
                         BigInteger i = BigInteger.ZERO;
                         while (i.compareTo(BigInteger.valueOf(3)) < 0) {
@@ -1487,11 +1504,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class TripleWhile {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger sum = BigInteger.ZERO;
                         BigInteger i = BigInteger.ZERO;
                         while (i.compareTo(BigInteger.valueOf(2)) < 0) {
@@ -1526,11 +1544,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class QuadWhile {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger count = BigInteger.ZERO;
                         BigInteger i = BigInteger.ZERO;
                         while (i.compareTo(BigInteger.valueOf(2)) < 0) {
@@ -1604,11 +1623,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class TripleBreak {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger outerSum = BigInteger.ZERO;
                         BigInteger i = BigInteger.ZERO;
                         while (i.compareTo(BigInteger.valueOf(3)) < 0) {
@@ -1646,11 +1666,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class TripleSharedAcc {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger total = BigInteger.ZERO;
                         BigInteger i = BigInteger.ZERO;
                         while (i.compareTo(BigInteger.valueOf(2)) < 0) {
@@ -1713,11 +1734,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class IfLastStmt {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             k = k.subtract(BigInteger.ONE);
@@ -1747,11 +1769,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class CondIncrement {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(100);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             if (k.compareTo(BigInteger.valueOf(95)) > 0) {
@@ -1781,11 +1804,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class IfFollowedByMod {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(20);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             if (k.compareTo(BigInteger.valueOf(15)) > 0) {
@@ -1812,11 +1836,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class WhileIfNoElse {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(5);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             if (k == BigInteger.valueOf(3)) {
@@ -1846,11 +1871,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class BreakAwareIfNoElse {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(10);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             if (k == BigInteger.valueOf(5)) {
@@ -1883,11 +1909,12 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import org.julclang.stdlib.annotation.Entrypoint;
                 import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.core.PlutusData;
 
                 @SpendingValidator
                 class NestedIfNoElse {
                     @Entrypoint
-                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    static boolean validate(BigInteger redeemer, PlutusData ctx) {
                         BigInteger k = BigInteger.valueOf(30);
                         while (k.compareTo(BigInteger.ZERO) > 0) {
                             if (k.compareTo(BigInteger.valueOf(20)) > 0) {
