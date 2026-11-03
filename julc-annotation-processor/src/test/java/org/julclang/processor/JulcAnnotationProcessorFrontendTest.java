@@ -93,7 +93,7 @@ class JulcAnnotationProcessorFrontendTest {
 
     @Test
     void theOptionReachesTheCompilation(@TempDir Path out) throws Exception {
-        String source = validator("var signers = (Object) ctx.txInfo().signatories(); return ctx.txInfo().signatories().isEmpty();");
+        String source = validator("long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;");
         assertEquals(List.of(), errors(process(out, source, "-Ajulc.frontend=javaparser")));
         var errors = errors(process(out, source, "-Ajulc.frontend=javac"));
         assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0084")), errors::toString);

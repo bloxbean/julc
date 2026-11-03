@@ -197,12 +197,12 @@ class JavacNamesTest {
         assertMethodNotPorted("""
                 class P {
                     static long helper(long a) {
-                        long b = (long) a;
+                        long b = (short) a;
                         return b;
                     }
                     static long m() { return 1; }
                 }
-                """, "m", "TYPE_CAST", 3);
+                """, "m", "a cast to short", 3);
     }
 
     @Test

@@ -20,6 +20,7 @@ import org.julclang.compiler.frontend.javac.NotPorted;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
@@ -125,6 +126,9 @@ public final class EqualityRules {
         }
     }
 
+    /** The package of the stdlib's libraries, which only its bundled sources declare. */
+    private static final String STDLIB_LIBRARIES = "org.julclang.stdlib.lib.";
+
     /** Whether {@code tree} is in a generic static method of a unit compiled as a library: a template (ADR-059). */
     private boolean inTemplate(Tree tree) {
         for (var at = facts.enclosing(tree, Tree.Kind.METHOD); at != null; at = facts.enclosing(at, Tree.Kind.METHOD)) {
@@ -191,7 +195,14 @@ public final class EqualityRules {
         if (method.getModifiers().contains(Modifier.STATIC) || !(tree.getMethodSelect() instanceof MemberSelectTree select)) return false;
         var receiver = select.getExpression();
         while (receiver instanceof ParenthesizedTree parenthesized) receiver = parenthesized.getExpression();
-        return !(receiver instanceof TypeCastTree);
+        // The stdlib views a Value as its map of Data through a raw cast (ValuesLib._containsPolicy); its keys are Data, which
+        // compare by value. Only a bundled source declares that package (D3, JULC0081).
+        return !(receiver instanceof TypeCastTree && inTheStdlib(tree));
+    }
+
+    private boolean inTheStdlib(Tree tree) {
+        var type = facts.enclosing(tree, Tree.Kind.CLASS);
+        return type != null && facts.identity((TypeElement) facts.element(type)).startsWith(STDLIB_LIBRARIES);
     }
 
     /** The receiver's static type, the enclosing class's for a simple name, or null for a static call. */

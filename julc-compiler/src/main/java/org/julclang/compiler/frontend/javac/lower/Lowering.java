@@ -53,6 +53,7 @@ public final class Lowering {
     private final Operators operators;
     private final Lambdas lambdas;
     private final Calls calls;
+    private final Casts casts;
     private final Records records;
     private final Typing typing;
     private final CallTargets targets;
@@ -78,7 +79,8 @@ public final class Lowering {
         this.statements = new Statements(facts, terms, typing, this, targets, typeTests, context, fieldUpdates);
         this.operators = new Operators(facts, typing, targets, this);
         this.lambdas = new Lambdas(facts, terms, typing, targets, this);
-        this.calls = new Calls(facts, terms, typing, targets, lambdas, this, context, stdlib, typeMethods);
+        this.casts = new Casts(facts, typing, targets, this);
+        this.calls = new Calls(facts, terms, typing, targets, lambdas, casts, this, context, stdlib, typeMethods);
         this.records = new Records(facts, typing, targets, this, names);
         this.switches = new Switches(facts, terms, typing, this, statements, targets, typeTests, typeMethods);
     }
@@ -159,8 +161,9 @@ public final class Lowering {
             case InstanceOfTree t -> terms.at(t, typeTests.instanceOf(t, frame));
             case LambdaExpressionTree t -> throw lambdas.outsideCall(t);
             case SwitchExpressionTree t -> terms.at(t, switches.expression(t, frame));
-            // A guard casts to a primitive type or to Boolean, which is its operand; any other cast is the cast's slice.
+            // A guard casts to a primitive type or to Boolean, which is its operand (ADR-067's rules hold the rest).
             case TypeCastTree t when frame.inGuard() -> expr(t.getExpression(), frame);
+            case TypeCastTree t -> casts.cast(t, frame);
             case AssignmentTree t -> throw reassignment(t.getVariable(), t, frame);
             case CompoundAssignmentTree t -> throw reassignment(t.getVariable(), t, frame);
             default -> throw NotPorted.at(facts, tree);

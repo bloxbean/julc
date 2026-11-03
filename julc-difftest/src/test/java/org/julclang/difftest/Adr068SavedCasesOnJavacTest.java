@@ -42,7 +42,7 @@ class Adr068SavedCasesOnJavacTest {
     @TestFactory
     Stream<DynamicTest> theyAgreeWithTheJvm() {
         var cases = saved().stream().filter(saved -> name(saved).contains("-068-") || T33_PINS.contains(name(saved))).toList();
-        assertEquals(27 + T33_PINS.size(), cases.size());
+        assertEquals(28 + T33_PINS.size(), cases.size());
         return cases.stream().map(saved -> DynamicTest.dynamicTest(name(saved), () -> {
             var report = RUNNER.run(saved.diffCase());
             assertTrue(report.all(Verdict.Kind.AGREE), report::describe);

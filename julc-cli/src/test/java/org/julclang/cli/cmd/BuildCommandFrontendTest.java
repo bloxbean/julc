@@ -102,7 +102,7 @@ class BuildCommandFrontendTest {
 
     @Test
     void theOptionReachesTheCompilation(@TempDir Path dir) throws Exception {
-        String body = "BigInteger left = (BigInteger) (Object) ctx.txInfo().fee(); return left.signum() > 0;";
+        String body = "long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;";
         assertEquals(0, build(project(dir, "reference", body), "--frontend", "javaparser"));
         assertEquals(1, build(project(dir, "javac", body), "--frontend", "javac"));
     }

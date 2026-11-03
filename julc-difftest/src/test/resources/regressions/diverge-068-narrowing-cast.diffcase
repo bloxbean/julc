@@ -1,0 +1,14 @@
+format: 3
+name: a long narrowed to int out of int's range
+class: Case
+method: m
+arg: 1b0000000100000005
+expect: DIVERGE M5 Value/Value
+jvm: Value 05 []
+uplc: Value 1b0000000100000005 []
+note: (int) of a long keeps its low 32 bits on the JVM; the default frontend erases the cast. Closed by M5.
+note: ADR-068 D13: on frontend=JAVAC this agrees with the JVM (Adr068SavedCasesOnJavacTest).
+---
+public class Case {
+    public static long m(long x) { return (int) x; }
+}

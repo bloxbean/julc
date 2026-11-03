@@ -1,12 +1,9 @@
 package org.julclang.compiler.frontend.javac.lower;
 
-import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
-import com.sun.source.tree.ParenthesizedTree;
-import com.sun.source.tree.SwitchExpressionTree;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTargetDiagnostics;
@@ -16,22 +13,16 @@ import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
-import org.julclang.compiler.frontend.javac.SwitchResults;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.compiler.pir.TypeMethodRegistry;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
-import org.julclang.core.DefaultFun;
 
-import javax.lang.model.element.Element;
-import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Lowers a {@link CallTarget}. The reference's shapes are kept, including those that evaluate an operand twice or not in
@@ -56,6 +47,7 @@ final class Calls {
     private final Typing typing;
     private final CallTargets targets;
     private final Lambdas lambdas;
+    private final Casts casts;
     private final Lowering lowering;
     private final CompilationContext context;
     private final StdlibLookup stdlib;
@@ -65,13 +57,14 @@ final class Calls {
     private final List<Lowering.LibraryCall> libraryCalls = new ArrayList<>();
     private final List<CompilerDiagnostic> warnings = new ArrayList<>();
 
-    Calls(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, Lambdas lambdas, Lowering lowering,
+    Calls(JavacFacts facts, Terms terms, Typing typing, CallTargets targets, Lambdas lambdas, Casts casts, Lowering lowering,
           CompilationContext context, StdlibLookup stdlib, TypeMethodRegistry typeMethods) {
         this.facts = facts;
         this.terms = terms;
         this.typing = typing;
         this.targets = targets;
         this.lambdas = lambdas;
+        this.casts = casts;
         this.lowering = lowering;
         this.context = context;
         this.stdlib = stdlib;
@@ -121,78 +114,13 @@ final class Calls {
     private PirTerm intrinsic(CallTarget.Intrinsic intrinsic, MethodInvocationTree tree, Frame frame) {
         return switch (intrinsic) {
             case IDENTITY -> lowering.expr(tree.getArguments().getFirst(), frame);
-            case CAST -> cast(tree, frame);
+            case CAST -> casts.plutusDataCast(tree, frame);
             case TO_DATA -> {
                 var receiver = receiver(tree);
                 var scope = lowering.expr(receiver, frame);
                 yield PirHelpers.wrapEncode(scope, typing.of(receiver, scope));
             }
         };
-    }
-
-    /** {@code PlutusData.cast(d, T.class)} views {@code d} as {@code T}; a map variable holds a pair list, so it decodes. */
-    private PirTerm cast(MethodInvocationTree tree, Frame frame) {
-        if (!(tree.getArguments().get(1) instanceof MemberSelectTree literal && literal.getIdentifier().contentEquals("class"))) {
-            throw facts.rejection("PlutusData.cast() second argument must be a literal ClassName.class expression", tree);
-        }
-        var argument = tree.getArguments().getFirst();
-        var inner = lowering.expr(argument, frame);
-        return toMap(tree) && !isMap(argument, inner) ? new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner) : inner;
-    }
-
-    private boolean toMap(MethodInvocationTree cast) {
-        try {
-            return typing.of(cast) instanceof PirType.MapType;
-        } catch (NotPorted e) {
-            return false;
-        }
-    }
-
-    /**
-     * Whether {@code inner} holds a decoded map, so a cast to a map decodes a value once, or not at all. javac's type goes
-     * first, since a binder can say Data of a decoded value ({@link Lambdas}, a {@code var}), and it is the type of what
-     * {@link #valuesOf} reaches: a cast that does not decode says nothing of the value. One term cannot decode one value it
-     * may hold and leave another, so a cast of both stops.
-     */
-    private boolean isMap(ExpressionTree argument, PirTerm inner) {
-        var values = new ArrayList<ExpressionTree>();
-        valuesOf(argument, new HashSet<>(), values);
-        if (values.size() == 1) {
-            try {
-                return typing.of(values.getFirst(), inner) instanceof PirType.MapType;
-            } catch (NotPorted e) {
-                return typing.ofTerm(inner) instanceof PirType.MapType;
-            }
-        }
-        boolean map = typing.of(values.getFirst()) instanceof PirType.MapType;
-        for (var value : values) {
-            if (typing.of(value) instanceof PirType.MapType != map) {
-                throw NotPorted.at(facts, argument, "a cast to a map of a value that holds another type on one path");
-            }
-        }
-        return map;
-    }
-
-    /**
-     * What {@code tree} may evaluate to, through parentheses, a choice of terms, a cast that does not decode and a variable,
-     * each variable once. A {@code @Param}'s value is what is applied, not its initializer, so the read ends at it.
-     */
-    private void valuesOf(ExpressionTree tree, Set<Element> read, List<ExpressionTree> values) {
-        switch (tree) {
-            case ParenthesizedTree parenthesized -> valuesOf(parenthesized.getExpression(), read, values);
-            case ConditionalExpressionTree conditional -> {
-                valuesOf(conditional.getTrueExpression(), read, values);
-                valuesOf(conditional.getFalseExpression(), read, values);
-            }
-            case SwitchExpressionTree selected -> SwitchResults.of(selected).forEach(result -> valuesOf(result, read, values));
-            case MethodInvocationTree call when targets.classify(call) == CallTarget.Intrinsic.CAST && !toMap(call) ->
-                    valuesOf(call.getArguments().getFirst(), read, values);
-            case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
-                    && facts.initializer(variable) != null && !facts.hasAnnotation(variable, JavacNames.PARAM) -> {
-                if (read.add(variable)) valuesOf(facts.initializer(variable), read, values);
-            }
-            default -> values.add(tree);
-        }
     }
 
     // --- Static methods ---

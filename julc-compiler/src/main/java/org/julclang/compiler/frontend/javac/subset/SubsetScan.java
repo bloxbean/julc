@@ -95,7 +95,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             Tree.Kind.SWITCH, Tree.Kind.SWITCH_EXPRESSION, Tree.Kind.CASE, Tree.Kind.YIELD, Tree.Kind.DEFAULT_CASE_LABEL,
             Tree.Kind.PATTERN_CASE_LABEL, Tree.Kind.CONSTANT_CASE_LABEL,
             Tree.Kind.ENHANCED_FOR_LOOP, Tree.Kind.WHILE_LOOP, Tree.Kind.BREAK, Tree.Kind.CONTINUE,
-            Tree.Kind.PREFIX_INCREMENT, Tree.Kind.PREFIX_DECREMENT, Tree.Kind.POSTFIX_INCREMENT, Tree.Kind.POSTFIX_DECREMENT);
+            Tree.Kind.PREFIX_INCREMENT, Tree.Kind.PREFIX_DECREMENT, Tree.Kind.POSTFIX_INCREMENT, Tree.Kind.POSTFIX_DECREMENT,
+            Tree.Kind.TYPE_CAST);
 
     /** The kinds only a {@code switch} guard holds: each is {@link GuardRules}' to reject, or a constant that needs no term. */
     private static final Set<Tree.Kind> IN_A_GUARD = EnumSet.of(Tree.Kind.TYPE_CAST, Tree.Kind.AND, Tree.Kind.OR, Tree.Kind.XOR,

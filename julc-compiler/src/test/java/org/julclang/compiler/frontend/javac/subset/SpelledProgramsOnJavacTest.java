@@ -106,7 +106,7 @@ class SpelledProgramsOnJavacTest {
             entry("a record of the unnamed package beside a pool record of its name", AGREES),
             entry("a record of the unnamed package beside a library of its name", UNDEFINED),
             entry("a record of the unnamed package beside a @NewType of its name", stops("PLUS")),
-            entry("instanceof through a widening cast", stops("TYPE_CAST")),
+            entry("instanceof through a widening cast", stops("an instanceof of an operand outside the variant's sealed interface")),
             entry("a datum read through its Optional", AGREES),
             entry("isPresent on an Optional of a record with that component", AGREES),
             entry("isEmpty on an Optional of a record with that component", AGREES),
@@ -120,8 +120,8 @@ class SpelledProgramsOnJavacTest {
             entry("a variant outside the interface, with instanceof", rejects("JULC0092")),
             entry("a variant outside the interface, with a switch", rejects("JULC0092")),
             entry("no variant in the interface", rejects("JULC0092")),
-            entry("a switch statement in a root", stops("TYPE_CAST")),
-            entry("a switch statement in a library", stops("TYPE_CAST")),
+            entry("a switch statement in a root", UNDEFINED),
+            entry("a switch statement in a library", UNDEFINED),
             entry("a pattern switch statement in a library", UNDEFINED),
             entry("a call of a generic sibling in a library", UNDEFINED),
             entry("a nested class of a library calling its outer class", stops("a call of g that is not a static method of this class")),
@@ -230,7 +230,7 @@ class SpelledProgramsOnJavacTest {
     /** The programs of this slice that can run now, each over a sealed value passed as Data. */
     private static Stream<Case> runnable() {
         return Stream.of(
-                new Case("a widening cast over a parameter", stops("TYPE_CAST"), """
+                new Case("a widening cast over a parameter", stops("an instanceof of an operand outside the variant's sealed interface"), """
                         import java.math.BigInteger;
                         class P {
                           sealed interface S { record A(BigInteger v) implements S { } record C(BigInteger v) implements S { } }
