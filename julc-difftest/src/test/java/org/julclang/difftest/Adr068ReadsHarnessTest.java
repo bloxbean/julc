@@ -343,11 +343,19 @@ class Adr068ReadsHarnessTest {
             "public interface I { BigInteger b(); } public record X(BigInteger a) { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
             "public interface I { BigInteger b(BigInteger x); } public record X(BigInteger b) implements Marker { } public interface Marker { } public static BigInteger m(BigInteger v) { var w = new X(v); return w.b(); }",
             "public sealed interface S { record A(BigInteger a) implements S { } record B(BigInteger b) implements S { } } public static BigInteger m(BigInteger v) { var x = new S.A(v); return x.a(); }",
-            "public record X(BigInteger a) implements Comparable<X> { public int compareTo(X o) { return 0; } } public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }",
     })
     void aRecordWhoseAccessorsImplementNothingKeepsLowering(String members) {
         var report = tagged(members, i(5));
         assertAgrees(report, CompilerFrontend.JAVAC);
+        assertAgrees(report, CompilerFrontend.JAVAPARSER);
+    }
+
+    /** A record that declares a method stops at its declaration on JAVAC (ADR-067 D9); the reference reads only the accessor. */
+    @Test
+    void aRecordThatDeclaresAMethodStopsOnJavac() {
+        var report = tagged("public record X(BigInteger a) implements Comparable<X> { public int compareTo(X o) { return 0; } } "
+                + "public static BigInteger m(BigInteger v) { var w = new X(v); return w.a(); }", i(5));
+        assertRejects(report, CompilerFrontend.JAVAC, "JULC0080");
         assertAgrees(report, CompilerFrontend.JAVAPARSER);
     }
 

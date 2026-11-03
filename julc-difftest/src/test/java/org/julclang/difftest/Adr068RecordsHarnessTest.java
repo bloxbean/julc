@@ -307,7 +307,10 @@ class Adr068RecordsHarnessTest {
         assertAgree("public record R(BigInteger a) { } public static BigInteger m(BigInteger a) { var r = new R(a.add(a)); return r.a().add(a); }", integer(3));
         assertAgree("public static BigInteger m(P p, BigInteger x) { return p.x().add(x); }", constr(0, integer(1), integer(2)), integer(5));
         assertAgree("public static BigInteger m(BigInteger x, BigInteger y) { var p = new P(y, x); return p.x().subtract(x); }", integer(1), integer(5));
-        assertAgree("public record R(BigInteger a) { static BigInteger a(BigInteger a) { return a; } } public static BigInteger m(BigInteger a) { var r = new R(a); return r.a(); }", integer(3));
+        // A record's static method is outside the subset on JAVAC (ADR-067 D9, JULC0080); the reference agrees with the JVM.
+        var report = run(RUNNER, "public record R(BigInteger a) { static BigInteger a(BigInteger a) { return a; } } public static BigInteger m(BigInteger a) { var r = new R(a); return r.a(); }", integer(3));
+        report.results().forEach((config, result) -> assertEquals(config.frontend() == CompilerFrontend.JAVAC ? Verdict.Kind.REJECTED
+                : Verdict.Kind.AGREE, result.verdict().kind(), report::describe));
     }
 
     @Test

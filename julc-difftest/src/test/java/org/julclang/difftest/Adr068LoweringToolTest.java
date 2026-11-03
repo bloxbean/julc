@@ -834,7 +834,8 @@ class Adr068LoweringToolTest {
     /** One method's rejection leaves the others compared. */
     @Test
     void aMethodIsComparedThoughAnotherIsRejected() {
-        assertRow("both-reject", 1, 1, "-", row("""
+        // The reference's Undefined variable has its code on javac (I2a): a Diagnostic change row, with the method compared.
+        assertRow("DIFFERENT-rejection", 1, 1, "-", row("""
                 class P {
                     static long keep(long z) { return z; }
                     static long other;
