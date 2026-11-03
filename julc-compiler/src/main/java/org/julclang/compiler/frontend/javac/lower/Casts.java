@@ -156,9 +156,9 @@ final class Casts {
 
     /**
      * What {@code tree} may evaluate to, through parentheses, a choice of terms, a cast that does not decode and an
-     * effectively final {@code var}, each variable once; a variable with a written type is what it is, as the reference binds
-     * it, and a variable assigned again stops (I8). A {@code @Param}'s value is what
-     * is applied, not its initializer, so the read ends at it.
+     * effectively final {@code var}, each variable once. A variable with a written type is what that type says, as the
+     * reference binds it, and so is a {@code var} assigned again whose type is a map; a {@code var} of another type assigned
+     * again stops (I8). A {@code @Param}'s value is what is applied, not its initializer, so the read ends at it.
      */
     private void valuesOf(ExpressionTree tree, Set<Element> read, List<ExpressionTree> values) {
         switch (tree) {
@@ -171,13 +171,19 @@ final class Casts {
             case ExpressionTree cast when isPlainView(cast) -> valuesOf(viewed(cast), read, values);
             case IdentifierTree name when facts.elementOrNull(name) instanceof VariableElement variable
                     && facts.initializer(variable) != null && !facts.hasAnnotation(variable, JavacNames.PARAM) -> {
-                // A variable assigned again may hold another value at the cast than its initializer's.
-                if (!facts.effectivelyFinal(variable)) {
-                    throw NotPorted.at(facts, name, "a cast to a map of a variable assigned after its declaration");
+                // The reference binds a variable with a written type as that type, and a var as its initializer is seen.
+                if (!isVar(variable)) {
+                    values.add(name);
+                } else if (!facts.effectivelyFinal(variable)) {
+                    // A var assigned again may hold another value than its initializer's: a map by its type holds a map
+                    // whatever was assigned, and Data may hold either, so it stops.
+                    if (!(typing.of(name) instanceof PirType.MapType)) {
+                        throw NotPorted.at(facts, name, "a cast to a map of a variable assigned after its declaration");
+                    }
+                    values.add(name);
+                } else if (read.add(variable)) {
+                    valuesOf(facts.initializer(variable), read, values);
                 }
-                // The reference binds a var as its initializer is seen, and a variable with a written type as that type.
-                if (!isVar(variable)) values.add(name);
-                else if (read.add(variable)) valuesOf(facts.initializer(variable), read, values);
             }
             default -> values.add(tree);
         }

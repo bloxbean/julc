@@ -65,14 +65,20 @@ final class JavacDebugScan {
     }
 
     /**
-     * A collector over {@code sources}, the first of which is {@code root}'s text: its declarations are scanned. The others
-     * are the libraries given; javac reads only those a program references (D8), and a compilation that reads one stops
-     * before its metadata, so they are named and not scanned.
+     * A collector over {@code sources}: the root's text first, then the libraries given, in their order. Each source javac
+     * read is scanned, under its id, in that order, as the reference scans every source it is given; {@code units} holds
+     * each source's tree, or null for a library javac did not read (D8), which is named and not scanned. The root must
+     * declare a method, as the reference requires of it.
      */
-    static DebugMetadataCollector collector(JavacFacts facts, CompilationUnitTree root,
-                                            List<DebugMetadataCollector.SourceText> sources) {
-        return DebugMetadataCollector.forSources(sources,
-                into -> new JavacDebugScan(facts, into, sources.getFirst().id(), root).scan());
+    static DebugMetadataCollector collector(JavacFacts facts, List<DebugMetadataCollector.SourceText> sources,
+                                            List<CompilationUnitTree> units) {
+        return DebugMetadataCollector.forSources(sources, into -> {
+            for (int i = 0; i < sources.size(); i++) {
+                if (units.get(i) == null) continue;
+                new JavacDebugScan(facts, into, sources.get(i).id(), units.get(i)).scan();
+                if (i == 0 && !into.hasScopes()) throw new CompilerException("Java debug metadata found no method scopes");
+            }
+        });
     }
 
     /** The name a string unit has in debug metadata: its first class or interface's, as the reference names it. */

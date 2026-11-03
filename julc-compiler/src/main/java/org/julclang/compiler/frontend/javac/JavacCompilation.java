@@ -36,6 +36,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -351,7 +352,8 @@ public final class JavacCompilation {
         // 1c. Debug metadata's declarations, scanned before the subset is validated, as in the reference
         DebugMetadataCollector debug = null;
         if (request.debugLibraries() != null) {
-            debug = JavacDebugScan.collector(facts, unit, debugSources(unit, request.debugLibraries()));
+            debug = JavacDebugScan.collector(facts, debugSources(unit, request.debugLibraries()),
+                    debugUnits(unit, request.debugLibraries()));
             lowering.terms().collectDebugMetadata(debug);
         }
         // 2. Validate subset
@@ -434,6 +436,16 @@ public final class JavacCompilation {
                     first == null ? "library-" + i + ".java" : first + ".java", libraries.get(i)));
         }
         return sources;
+    }
+
+    /** The tree of each source {@link #debugSources} names, or null for a library javac did not read. */
+    private List<CompilationUnitTree> debugUnits(CompilationUnitTree root, List<String> libraries) {
+        var read = new HashMap<String, CompilationUnitTree>();
+        for (var library : program.libraries()) read.putIfAbsent(facts.source(library), library);
+        var units = new ArrayList<CompilationUnitTree>();
+        units.add(root);
+        for (var library : libraries) units.add(read.get(library));
+        return units;
     }
 
     private List<JavacDiscovery.EntryPoint> entrypoints(ClassTree type, ScriptPurpose purpose) {

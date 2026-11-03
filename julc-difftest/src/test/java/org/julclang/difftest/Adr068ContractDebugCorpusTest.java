@@ -8,6 +8,7 @@ import org.julclang.compiler.OptimizationLevel;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.core.debug.DebugMetadata;
 import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -26,9 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * ADR-068, entry points' slice: what I1 does not compare. For every corpus case compiled with {@code compileContract} or
  * {@code compileForDebug}, the schema, and the debug metadata at every level, of both frontends. A difference is one the
- * evidence names, or a finding: a string source's {@code uri} is compared by its file name (I4), a binding's type where it
- * is shown, and a library javac does not read (D8) is no difference, since the case stops there on {@code frontend=JAVAC}.
- * Writes {@code contract-debug.tsv} to {@code adr068.out}.
+ * evidence names, or a finding: a string source's {@code uri} is compared by its file name (I4), and a binding's type where
+ * it is shown. A library the program reads is scanned on both frontends and compared; one javac does not read (D8) leaves
+ * other bytes, which I1 classifies, so its description is not compared. The corpus's debug cases read no library, so a
+ * program that does is added here. Writes {@code contract-debug.tsv} to {@code adr068.out}.
  */
 @Tag("adr068-contract-debug")
 class Adr068ContractDebugCorpusTest {
@@ -91,6 +93,13 @@ class Adr068ContractDebugCorpusTest {
             else debugs++;
             rows.put(c.key, c.entry + "\t" + String.join(" ", kinds));
         }
+        for (var level : OptimizationLevel.values()) {
+            var reference = readsALibrary(level, CompilerFrontend.JAVAPARSER);
+            var javac = readsALibrary(level, CompilerFrontend.JAVAC);
+            compared++;
+            if (!reference.equals(javac)) differences.add("a program that reads a library " + level + "\n" + diff(reference, javac));
+        }
+        debugs++;
         Files.createDirectories(OUT);
         Files.write(OUT.resolve("contract-debug.tsv"), rows.entrySet().stream().map(e -> e.getKey() + "\t" + e.getValue()).toList());
         Files.write(OUT.resolve("contract-debug-differences.txt"), differences);
@@ -120,6 +129,44 @@ class Adr068ContractDebugCorpusTest {
         } catch (RuntimeException e) {
             return new Rejected(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
+    }
+
+    private static final String LIBRARY = """
+            import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
+
+            @OnchainLibrary
+            class Lib {
+                static BigInteger inc(BigInteger v) {
+                    BigInteger w = v.add(BigInteger.ONE);
+                    return w;
+                }
+            }
+            """;
+
+    private static final String READS_LIBRARY = """
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
+
+            @MintingValidator
+            class UsesLib {
+                @Entrypoint
+                static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                    BigInteger a = Lib.inc(BigInteger.ONE);
+                    return a.signum() > 0;
+                }
+            }
+            """;
+
+    /** The bytes and debug metadata of a program that reads a library, as one text to compare. */
+    private static String readsALibrary(OptimizationLevel level, CompilerFrontend frontend) {
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                .setOptimizationLevel(level).setSourceMapEnabled(true).setFrontend(frontend))
+                .compileForDebug(READS_LIBRARY, List.of(LIBRARY));
+        return Arrays.toString(UplcFlatEncoder.encodeProgram(result.compileResult().program())) + "\n" + view(result.debugMetadata());
     }
 
     private static String diff(String reference, String javac) {

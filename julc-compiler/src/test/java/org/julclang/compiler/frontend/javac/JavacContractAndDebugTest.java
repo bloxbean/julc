@@ -377,6 +377,50 @@ class JavacContractAndDebugTest {
                 view(debug(trailing, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));
     }
 
+    private static final String LIBRARY = """
+            import java.math.BigInteger;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
+
+            @OnchainLibrary
+            class Lib {
+                static BigInteger inc(BigInteger v) {
+                    BigInteger w = v.add(BigInteger.ONE);
+                    return w;
+                }
+            }
+            """;
+
+    private static final String USES_LIBRARY = """
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
+
+            @MintingValidator
+            class UsesLib {
+                @Entrypoint
+                static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                    BigInteger a = Lib.inc(BigInteger.ONE);
+                    return a.signum() > 0;
+                }
+            }
+            """;
+
+    /** A library the program reads is scanned under its own id, its scopes and bindings the reference's. */
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void aLibraryTheProgramReadsIsTheReferences(OptimizationLevel level) {
+        var reference = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(CompilerFrontend.JAVAPARSER, level, true))
+                .compileForDebug(USES_LIBRARY, List.of(LIBRARY));
+        var javac = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(CompilerFrontend.JAVAC, level, true))
+                .compileForDebug(USES_LIBRARY, List.of(LIBRARY));
+        assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
+                UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
+        assertEquals(view(reference.debugMetadata()), view(javac.debugMetadata()));
+        assertTrue(javac.debugMetadata().bindings().stream().anyMatch(binding -> binding.id().startsWith("binding:library-0:")));
+    }
+
     /** A library given and not read is named by its first class, as the reference names it. */
     @Test
     void aLibrarySourceIsNamedByItsFirstClass() {

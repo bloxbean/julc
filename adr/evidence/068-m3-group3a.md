@@ -251,8 +251,12 @@ commits after them):
 | F3 (P3): `double` in an instance method or a template of a read library was `JULC0084` | Floating point is the reference's rejection in code nothing lowers and in a template | `JavacLibrariesTest.floatingPointInAnUnloweredPartOfALibraryIsTheReferencesRejection` |
 | F4 (P3): the MPF cost rows overstated the delta | `combineAt`, `combine` and `nullHash` read no nibble: 26 bytes more at `NONE`, and at every level with a map; equal from `BASELINE` without one, budgets equal. `5ec9100b` compares PIR only. `8817f132` is 25 bytes with a map at the PV11 levels | `068/g3a-accepted-differences.tsv` |
 
-The review's F1 program is outside Java's semantics (the JVM throws `ClassCastException` at the view, #288), so no JVM value is lost
-by the stop.
+The review's F1 program is outside Java's semantics (the JVM throws `ClassCastException` at the view, #288). That held for the
+review's program, not for the class the stop took: a variable whose written or `var` type is a map, assigned again, has a JVM
+value, which the reference also gives. After the confirmation, a variable with a written type is read as that type whether or
+not it is assigned again, and so is a `var` assigned again whose type is a map; only a `var` of another type assigned again
+stops (`Casts.valuesOf`). `Adr068CastsHarnessTest` holds the review's three programs to the JVM at all four levels on both
+frontends, and `JavacCastsTest` has the reference's method for the written forms.
 
 **I1** at `b6fab6c3`'s code (scratch `i1-7`): no row moved against `i1-6`. One new row, the B5 `.diffcase`, is `REFERENCE-DRIFT`
 with no committed row (73 bytes at `NONE`), for the integrator's freeze; `lowering-reference.tsv` is otherwise unchanged.

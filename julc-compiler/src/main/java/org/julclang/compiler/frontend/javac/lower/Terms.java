@@ -233,7 +233,8 @@ public final class Terms {
      * {@code @Param}. A binder I13 marked ({@code name'k}) is still the declaration's, and is shown under its source name.
      */
     public void declared(Element element, PirTerm binding, PirType type) {
-        if (debug != null) debug.associate(element, binding, type);
+        // The reference lowers a library without debug metadata, so a library's declarations are shown and never bound.
+        if (debug != null && !facts.inLibraryUnit(element)) debug.associate(element, binding, type);
     }
 
     /** Tells debug metadata, if collected, that the declaration of {@code element} has no binder it can show. */

@@ -143,6 +143,11 @@ public final class DebugMetadataCollector {
         private Declarations() {
         }
 
+        /** Whether any scope was declared yet. */
+        public boolean hasScopes() {
+            return !scopes.isEmpty();
+        }
+
         /** The scope of {@code owner} if one was declared, or null. */
         public String scopeOf(Object owner) {
             return scopeIds.get(owner);
