@@ -290,6 +290,79 @@ class JavacContractAndDebugTest {
         assertTrue(metadata.bindings().stream().anyMatch(binding -> binding.name().equals("k") && shown.contains(binding.id())));
     }
 
+    private static final String DECLARATIONS = """
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcList;
+            import org.julclang.core.types.JulcMap;
+            import org.julclang.ledger.ScriptContext;
+            import org.julclang.stdlib.annotation.Entrypoint;
+            import org.julclang.stdlib.annotation.MintingValidator;
+            import org.julclang.stdlib.annotation.Param;
+
+            @MintingValidator
+            class Declared {
+                @Param static BigInteger a, b;
+                @Param static byte owner[];
+
+                @Entrypoint
+                static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                    @SuppressWarnings("y = 1") var y = BigInteger.ONE;
+                    final var z = y.add(a).add(b);
+                    byte k[] = owner;
+                    JulcMap<byte[],
+                           JulcList<BigInteger>> m = JulcMap.empty();
+                    JulcList<BigInteger> xs /* xs = */ =
+                        JulcList.of(BigInteger.ONE);
+                    return z.signum() > 0 && k.length > 0 && m.isEmpty() && xs.size() > 0;
+                }
+            }
+            """;
+
+    /**
+     * Declarations the reference reads by its declarator: several in one field, an array's brackets after the name, a name
+     * in an annotation's string or a comment, a type across a line break. Their ranges and spellings are the reference's.
+     */
+    @ParameterizedTest
+    @EnumSource(OptimizationLevel.class)
+    void declaratorsAreTheReferences(OptimizationLevel level) {
+        var reference = debug(DECLARATIONS, CompilerFrontend.JAVAPARSER, level);
+        var javac = debug(DECLARATIONS, CompilerFrontend.JAVAC, level);
+        assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.compileResult().program()),
+                UplcFlatEncoder.encodeProgram(javac.compileResult().program()));
+        assertEquals(view(reference.debugMetadata()), view(javac.debugMetadata()));
+    }
+
+    /** Line ends of a lone CR give a range the metadata refuses, on both frontends; CRLF does not. */
+    @Test
+    void aSourceOfLoneCarriageReturnsIsRefusedAsByTheReference() {
+        String crlf = MINTING.replace("\n", "\r\n");
+        assertEquals(view(debug(crlf, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata()),
+                view(debug(crlf, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));
+        String cr = MINTING.replace("\n", "\r");
+        var reference = assertThrows(RuntimeException.class, () -> debug(cr, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT));
+        var javac = assertThrows(RuntimeException.class, () -> debug(cr, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT));
+        assertEquals(reference.getClass(), javac.getClass());
+        assertEquals(reference.getMessage(), javac.getMessage());
+    }
+
+    /** A library given and not read is named by its first class, as the reference names it. */
+    @Test
+    void aLibrarySourceIsNamedByItsFirstClass() {
+        String library = """
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+
+                @OnchainLibrary
+                class Lib {
+                    static BigInteger inc(BigInteger v) { return v.add(BigInteger.ONE); }
+                }
+                """;
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options(CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT, true));
+        var sources = compiler.compileForDebug(MINTING, List.of(library)).debugMetadata().sources();
+        assertEquals(List.of("Mint.java", "Lib.java"), sources.stream().map(source -> Path.of(source.uri()).getFileName().toString()).toList());
+    }
+
     private static String view(DebugMetadata metadata) {
         var text = new StringBuilder();
         // The reference names a string source by its path under the working directory, javac by its file name.

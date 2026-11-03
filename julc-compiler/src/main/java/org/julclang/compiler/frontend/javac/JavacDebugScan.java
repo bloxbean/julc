@@ -84,6 +84,11 @@ final class JavacDebugScan {
     }
 
     private void scan() {
+        // The reference counts lines by LF alone, so a lone CR gives it ranges that end before they start, which the
+        // metadata's form refuses: this frontend refuses the same source the same way.
+        if (text.replace("\r\n", "\n").indexOf('\r') >= 0) {
+            throw new DebugMetadata.ValidationException("Invalid source range in " + sourceId);
+        }
         var declarations = declarations(unit);
         int parameterOrdinal = 0;
         var paramFields = declarations.stream()
@@ -351,9 +356,8 @@ final class JavacDebugScan {
     }
 
     /**
-     * {@code [start, end)} in the reference's form: begin line and column, and the column after the last character. Lines
-     * are javac's, as the reference's are its parser's: a lone CR ends one, so a source with them gives the reference's
-     * invalid range, which the metadata's validation refuses on both frontends.
+     * {@code [start, end)} in the reference's form: begin line and column, and the column after the last character, as javac
+     * counts lines.
      */
     private DebugMetadata.SourceRange range(long start, long end) {
         int from = (int) start;
