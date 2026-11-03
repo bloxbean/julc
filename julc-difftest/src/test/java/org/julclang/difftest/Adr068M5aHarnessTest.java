@@ -1,0 +1,107 @@
+package org.julclang.difftest;
+
+import org.julclang.compiler.CompilerFrontend;
+import org.julclang.core.PlutusData;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * ADR-068 M5's entry gate, part 1 ({@code adr/evidence/068-m5a.md}): the shapes that stopped the corpus at {@code JULC0084}
+ * and now lower on {@code frontend=JAVAC} answer as the JVM, on both frontends, at all four levels, for every input below.
+ */
+class Adr068M5aHarnessTest {
+
+    private static final DiffRunner BOTH = new DiffRunner(configs(), 20_000);
+    private static final DiffRunner REFERENCE = new DiffRunner(DiffConfig.allLevels(), 20_000);
+
+    private static List<DiffConfig> configs() {
+        var configs = new ArrayList<>(DiffConfig.allLevels());
+        configs.addAll(DiffConfig.allLevels(CompilerFrontend.JAVAC));
+        return configs;
+    }
+
+    private static final String HEADER = """
+            import java.math.BigInteger;
+            import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcList;
+            import org.julclang.core.types.Tuple2;
+            import org.julclang.core.types.Tuple3;
+            import org.julclang.stdlib.Builtins;
+
+            public class Case {
+            """;
+
+    /** The variants the programs below declare, by their place in what {@code S} permits. */
+    private static final TagTable TAGS = new TagTable(List.of(new TagTable.Entry("Case$A", "Case$S", 0),
+            new TagTable.Entry("Case$B", "Case$S", 1)));
+
+    private static PlutusData integer(long v) {
+        return new PlutusData.IntData(BigInteger.valueOf(v));
+    }
+
+    private static PlutusData bool(boolean b) {
+        return new PlutusData.ConstrData(b ? 1 : 0, List.of());
+    }
+
+    private static int agreeOnEveryInput(String name, String members, TagTable tags, List<List<PlutusData>> inputs) {
+        int runs = 0;
+        for (var args : inputs) {
+            var report = BOTH.run(new DiffCase(name, HEADER + members + "\n}\n", "Case", "m", args, tags, null));
+            assertInstanceOf(Observation.Value.class, report.jvm(), report::describe);
+            assertTrue(report.all(Verdict.Kind.AGREE), report::describe);
+            runs += report.results().size();
+        }
+        return runs;
+    }
+
+    /** A raw {@code Tuple2} or {@code Tuple3}: each component is Data, as the reference reads it (StdlibCompileEvalTest's). */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public static BigInteger m(BigInteger a, boolean c) { Tuple2 t = new Tuple2(Builtins.iData(a), Builtins.iData(BigInteger.TEN)); return Builtins.unIData(t.first()).add(Builtins.unIData(t.second())); }",
+            "public static boolean m(BigInteger a, boolean c) { Tuple2 t = new Tuple2(Builtins.iData(a), Builtins.iData(BigInteger.TEN)); return Builtins.unIData(t.second()).equals(a); }",
+            "public static BigInteger m(BigInteger a, boolean c) { Tuple3 t = new Tuple3(Builtins.iData(a), Builtins.iData(BigInteger.TWO), Builtins.iData(BigInteger.TEN)); return Builtins.unIData(t.third()).subtract(Builtins.unIData(t.first())); }"})
+    void aRawTuplesComponentIsData(String members) {
+        var inputs = List.of(List.of(integer(10), bool(true)), List.of(integer(-3), bool(false)));
+        assertEquals(16, agreeOnEveryInput("raw-tuple-component", members, TagTable.EMPTY, inputs));
+    }
+
+    /**
+     * Arms that are all Data-shaped and differ in type: javac types the conditional or {@code switch} {@code Object} as an
+     * argument of {@code equals}, or an intersection under {@code var}.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B(BigInteger v) implements S { }\n"
+                    + "public static boolean m(BigInteger a, boolean c) { S s = c ? new A(a) : new B(a); return s.equals(switch (s) { case A x -> new A(a); default -> s; }); }",
+            "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B(BigInteger v) implements S { }\n"
+                    + "public static boolean m(BigInteger a, boolean c) { S s = new B(a); A x = new A(a); return s.equals(c ? s : x); }"})
+    void dataShapedArmsOfDifferentTypes(String members) {
+        var inputs = List.of(List.of(integer(4), bool(true)), List.of(integer(4), bool(false)));
+        assertEquals(16, agreeOnEveryInput("data-shaped-arms", members, TAGS, inputs));
+    }
+
+    /**
+     * Closed by M5 (D4's cap): the reference types a conditional by its then branch, so {@code JulcList.of(c ? a : d)} encodes
+     * the Data branch as an integer, and fails where the JVM's list holds the Data. {@code frontend=JAVAC} rejects it
+     * ({@code JULC0012}, in {@code JavacM5aTest}).
+     */
+    @Test
+    void theReferenceReadsAConditionalsElseBranchAsItsThenBranch() {
+        var source = HEADER + "public static long m(BigInteger a, boolean c) { return JulcList.of(c ? a : Builtins.iData(a)).size(); }\n}\n";
+        var then = REFERENCE.run(new DiffCase("conditional-then-typed", source, "Case", "m", List.of(integer(3), bool(true))));
+        assertTrue(then.all(Verdict.Kind.AGREE), then::describe);
+        var otherwise = REFERENCE.run(new DiffCase("conditional-then-typed", source, "Case", "m", List.of(integer(3), bool(false))));
+        assertInstanceOf(Observation.Value.class, otherwise.jvm(), otherwise::describe);
+        assertFalse(otherwise.all(Verdict.Kind.AGREE), otherwise::describe);
+    }
+}

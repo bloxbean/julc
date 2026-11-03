@@ -621,6 +621,14 @@ public final class DiagnosticCodes {
             "Unsupported PIR structure in {0}: {1}",
             "Restructure the term as described; for example bind recursive values as lambdas and give a DataMatch exactly one branch per constructor in tag order.");
 
+    public static final DiagnosticInfo PRIMITIVE_TYPE_UNSUPPORTED = new DiagnosticInfo(
+            "JULC0124",
+            "PRIMITIVE_TYPE_UNSUPPORTED",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Unsupported primitive type: {0}. Supported types: boolean, int, long",
+            "Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes.");
+
     public static final DiagnosticInfo REASSIGNMENT_OUTSIDE_LOOP = new DiagnosticInfo(
             "JULC0061",
             "REASSIGNMENT_OUTSIDE_LOOP",
@@ -692,6 +700,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "Unsupported statement: {0}",
             "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.");
+
+    public static final DiagnosticInfo STATIC_CALL_QUALIFIED_CLASS_NAME = new DiagnosticInfo(
+            "JULC0123",
+            "STATIC_CALL_QUALIFIED_CLASS_NAME",
+            CompilerDiagnostic.Level.ERROR,
+            "SYNTAX",
+            "Static call {0} names its class by a qualified name; on-chain code calls a static method through its class''s simple name",
+            "Import the class and call the method through its simple name, for example `import java.math.BigInteger;` and `BigInteger.valueOf(1)`.");
 
     public static final DiagnosticInfo STATIC_INITIALIZER_CALLS_METHOD = new DiagnosticInfo(
             "JULC0057",
@@ -1036,6 +1052,7 @@ public final class DiagnosticCodes {
             PIR_INVALID_BINDING,
             PIR_TYPE_MISMATCH,
             PIR_UNSUPPORTED_STRUCTURE,
+            PRIMITIVE_TYPE_UNSUPPORTED,
             REASSIGNMENT_OUTSIDE_LOOP,
             RECORD_MEMBER_UNSUPPORTED,
             RECORD_MULTIPLE_SEALED_PARENTS,
@@ -1045,6 +1062,7 @@ public final class DiagnosticCodes {
             SEALED_PERMITS_REQUIRED,
             SOURCE_PARSE_FAILED,
             STATEMENT_UNSUPPORTED,
+            STATIC_CALL_QUALIFIED_CLASS_NAME,
             STATIC_INITIALIZER_CALLS_METHOD,
             STDLIB_METHOD_WRONG_ARITY,
             STRING_CONCAT_NON_STRING,

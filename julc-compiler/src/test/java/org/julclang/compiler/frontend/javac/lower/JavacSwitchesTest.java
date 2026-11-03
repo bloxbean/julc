@@ -582,7 +582,7 @@ class JavacSwitchesTest {
             "JULC0090 | static long m(S s) { return switch (s) { case A a when (\"a\" + 1).equals(\"a1\") -> 1; default -> 3; }; }",
             "JULC0087 | static long m(S s, byte[] b, byte[] c) { return switch (s) { case A a when b.equals(c) -> 1; default -> 3; }; }",
             "JULC0072 | static long m(S s, String t) { return switch (s) { case A a when t.equals(a.v()) -> 1; default -> 3; }; }",
-            "JULC0084 | static long m(S s, BigInteger n) { return switch (s) { case A a when a.v().equals(s) -> 1; default -> 3; }; }",
+            "JULC0078 | static long m(S s, BigInteger n) { return switch (s) { case A a when a.v().equals(s) -> 1; default -> 3; }; }",
             "JULC0072 | static long m(S s, BigInteger n) { return switch (s) { case A a when a.v() == n -> 1; default -> 3; }; }",
             "JULC0086 | static long m(S s, S t, BigInteger n) { return switch (s) { case A a when switch (t) { case A b -> b.v() == n; default -> false; } -> 1; default -> 3; }; }",
             "JULC0086 | static long m(S s, BigInteger n) { return switch (s) { case A a -> a.v() == n ? 1 : 2; default -> 3; }; }",

@@ -1483,6 +1483,28 @@
       "template": "Generic library method {0} cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.",
       "summary": "A generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
       "fix": "Provide a concrete overload-free method for Java callers."
+    },
+    {
+      "code": "JULC0123",
+      "constant": "STATIC_CALL_QUALIFIED_CLASS_NAME",
+      "status": "emitted",
+      "title": "A static call names its class by a qualified name",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Static call {0} names its class by a qualified name; on-chain code calls a static method through its class''s simple name",
+      "summary": "JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it. A call through a package-qualified or nested-qualified class name, such as java.math.BigInteger.valueOf(1), is not resolved. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded, or as JULC0062 for JulcMap.of.",
+      "fix": "Import the class and call the method through its simple name, for example `import java.math.BigInteger;` and `BigInteger.valueOf(1)`."
+    },
+    {
+      "code": "JULC0124",
+      "constant": "PRIMITIVE_TYPE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "A primitive type with no on-chain representation",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Unsupported primitive type: {0}. Supported types: boolean, int, long",
+      "summary": "byte, short, char, float and double have no on-chain representation, and neither has a char literal. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "fix": "Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes."
     }
   ]
 }

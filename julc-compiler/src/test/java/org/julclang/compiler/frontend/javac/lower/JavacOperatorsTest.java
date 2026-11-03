@@ -271,12 +271,27 @@ class JavacOperatorsTest {
         assertSame("static boolean m(JulcList<PubKeyHash> l, PubKeyHash b) { return l.contains(b); }");
     }
 
-    /** A kind is subset where lowering reaches it, so a call or an operator stops in a method nothing lowers. */
+    /**
+     * Code nothing lowers never runs: after the reference's rules that hold wherever code stands, a statement there is passed
+     * over, as the reference passes over it (ADR-068 M5), so a method of it compiles to the reference's bytes.
+     */
     @ParameterizedTest
     @ValueSource(strings = {"long notLowered(long a) { return a + 1; }", "long notLowered(BigInteger a) { return a.longValue(); }",
-            "static class N { static long f() { return 1 + 1; } }"})
-    void aKindIsAllowedWhereLoweringReachesIt(String member) {
-        assertInstanceOf(NotPorted.class, javac(member + "\nstatic boolean m() { return true; }"));
+            "static class N { static long f() { return 1 + 1; } }",
+            "static class N { static long f(JulcList<BigInteger> xs) { long c = 0; for (var x : xs) { if (x.signum() < 0) { continue; } c = c + 1; } return c; } }",
+            "static class N { static long f(long a) { long c = a; while (c > 0) { c = c - 1; } done: { c = c + 1; } return c; } }"})
+    void codeNothingLowersIsPassedOver(String member) {
+        assertSame(member + "\nstatic boolean m() { return true; }");
+    }
+
+    /** What the reference rejects wherever it stands is rejected in code nothing lowers, with its code; a type declared there stops. */
+    @Test
+    void codeNothingLowersKeepsTheRulesThatHoldEverywhere() {
+        assertEquals("JULC0017", javac("static class N { static long f() { done: { BigInteger z = null; } return 1; } }\n"
+                + "static boolean m() { return true; }").diagnostics().getFirst().code());
+        // Rejected, whichever rule speaks first: a declaration is never passed over.
+        javac("static class N { static long f() { class L { } return 1; } }\nstatic boolean m() { return true; }");
+        javac("static class N { static Object f() { return new Object() { }; } }\nstatic boolean m() { return true; }");
     }
 
     /** A field the compilation lowers is read as a method is, so D6's rules reach its initializer. */

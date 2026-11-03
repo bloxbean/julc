@@ -2,6 +2,8 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.Tree;
@@ -17,6 +19,10 @@ import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.TermTypes;
 
+import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import java.util.Collections;
@@ -44,39 +50,108 @@ final class Typing {
     }
 
     /**
-     * {@code tree}'s static type. A type JuLC has no representation for stops here: nothing can be decided on it. javac types
-     * a conditional in an argument by its parameter, so one that reaches {@code Object} is typed by its operands, and a
-     * {@code switch} by its results.
+     * {@code tree}'s static type. A type JuLC has no representation for, {@code Object}, {@code java.lang.Record} or an
+     * intersection, is read from what the expression can be ({@link #unrepresented}); anything else with no representation
+     * stops here: nothing can be decided on it.
      */
     PirType of(ExpressionTree tree) {
         var type = facts.type(tree);
-        if (isObject(type)) {
-            if (tree instanceof ParenthesizedTree parenthesized) return of(parenthesized.getExpression());
-            if (tree instanceof ConditionalExpressionTree conditional) {
-                var operand = of(conditional.getTrueExpression());
-                if (operand.equals(of(conditional.getFalseExpression()))) return operand;
-            }
-            if (tree instanceof SwitchExpressionTree nested) {
-                var results = SwitchResults.of(nested);
-                var result = of(results.getFirst());
-                if (results.stream().allMatch(other -> of(other).equals(result))) return result;
-            }
-        }
         try {
             return facts.registry().resolveNamed(facts.valueType(type, tree));
         } catch (CompilerException e) {
+            var read = hasNoRepresentation(type) ? unrepresented(tree, type) : null;
+            if (read != null) return read;
             throw NotPorted.at(facts, tree, "an expression of type " + ArrayIdentityEquality.text(type));
         }
+    }
+
+    /**
+     * The type of an expression whose static type has no representation, or null:
+     * <ul>
+     *   <li>an intersection, such as {@code Record & S} for {@code c ? new S.A() : new S.B()}, is the one bound that has a
+     *       representation, as Java's value is a value of each bound; with none, or more than one, it is read as below;</li>
+     *   <li>a conditional or a {@code switch}, which javac types {@code Object} as an argument of an {@code Object} parameter,
+     *       or {@code Record} between two records, is what its arms are: their one type; Data where they differ and are all
+     *       Data-shaped, which is their encoding, as the reference types a {@code switch}; and otherwise
+     *       {@link PirHelpers#UNKNOWN}, which no encoding takes ({@code JULC0012}), as the reference says of a
+     *       {@code switch}. A conditional is held to that rule too, so its else branch is never read as its then branch;</li>
+     *   <li>a record component read through a raw type, {@code t.first()} of a raw {@code Tuple2}, is the field's type in
+     *       the record's representation, Data, as the reference reads it.</li>
+     * </ul>
+     */
+    private PirType unrepresented(ExpressionTree tree, TypeMirror type) {
+        if (type instanceof IntersectionType intersection) {
+            var bounds = new LinkedHashSet<PirType>();
+            for (var bound : intersection.getBounds()) {
+                if (isObject(bound) || isRecord(bound)) continue;
+                try {
+                    bounds.add(facts.registry().resolveNamed(facts.valueType(bound, tree)));
+                } catch (CompilerException noRepresentation) {
+                    // Number, Comparable or Serializable says nothing of the value's representation.
+                }
+            }
+            if (bounds.size() == 1) return bounds.iterator().next();
+        }
+        return switch (tree) {
+            case ParenthesizedTree parenthesized -> of(parenthesized.getExpression());
+            case ConditionalExpressionTree conditional -> arms(List.of(conditional.getTrueExpression(), conditional.getFalseExpression()));
+            case SwitchExpressionTree nested -> arms(SwitchResults.of(nested));
+            case MethodInvocationTree call -> rawComponent(call);
+            default -> null;
+        };
+    }
+
+    private PirType arms(List<? extends ExpressionTree> arms) {
+        var types = new LinkedHashSet<PirType>();
+        for (var arm : arms) types.add(of(arm));
+        if (types.size() == 1) return types.iterator().next();
+        return types.stream().allMatch(Typing::isDataShaped) ? new PirType.DataType() : PirHelpers.UNKNOWN;
+    }
+
+    /** A record's component read through a raw type: the field of the record's representation, or null. */
+    private PirType rawComponent(MethodInvocationTree call) {
+        if (!call.getArguments().isEmpty() || !(call.getMethodSelect() instanceof MemberSelectTree select)) return null;
+        if (!(facts.element(select) instanceof ExecutableElement method)
+                || method.getEnclosingElement().getKind() != ElementKind.RECORD) {
+            return null;
+        }
+        var record = (TypeElement) method.getEnclosingElement();
+        boolean component = record.getRecordComponents().stream()
+                .anyMatch(c -> c.getAccessor() != null && c.getAccessor().equals(method));
+        if (!component || !(of(select.getExpression()) instanceof PirType.RecordType fields)) return null;
+        String name = method.getSimpleName().toString();
+        return fields.fields().stream().filter(f -> f.name().equals(name)).map(PirType.Field::type).findFirst().orElse(null);
+    }
+
+    private boolean hasNoRepresentation(TypeMirror type) {
+        return isObject(type) || isRecord(type) || type.getKind() == TypeKind.INTERSECTION;
     }
 
     private boolean isObject(TypeMirror type) {
         return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.OBJECT);
     }
 
+    private boolean isRecord(TypeMirror type) {
+        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals("java.lang.Record");
+    }
+
     /** {@code lowered}'s type, for the expression {@code tree}: the one kept with it, or see the class's comment. */
     PirType of(ExpressionTree tree, PirTerm lowered) {
         if (kept.contains(lowered)) return ofVariable(lowered);
-        var type = of(tree);
+        PirType type;
+        try {
+            type = of(tree);
+        } catch (NotPorted stop) {
+            // A variable of a type with no representation, var x = c ? new R1(a) : new R2(a), holds what its initializer was
+            // typed, and its binder says that.
+            if (lowered instanceof PirTerm.Var && hasNoRepresentation(facts.type(tree))) return ofVariable(lowered);
+            throw stop;
+        }
+        if (type == PirHelpers.UNKNOWN) {
+            // The term alone would say its first arm's type: keep the unknown with it, for what encodes it.
+            termTypes.record(lowered, type);
+            return type;
+        }
         return facts.registry().resolveNamed(type instanceof PirType.DataType ? termTypes.infer(lowered) : type);
     }
 

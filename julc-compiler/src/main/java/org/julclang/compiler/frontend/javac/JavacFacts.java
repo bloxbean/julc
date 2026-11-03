@@ -18,6 +18,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.error.DiagnosticInfo;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -435,8 +436,7 @@ public final class JavacFacts {
             case BOOLEAN -> new PirType.BoolType();
             case INT, LONG -> new PirType.IntegerType();
             case VOID -> new PirType.UnitType();
-            case BYTE, SHORT, CHAR, FLOAT, DOUBLE -> throw rejection("Unsupported primitive type: " + type
-                    + ". Supported types: boolean, int, long", where);
+            case BYTE, SHORT, CHAR, FLOAT, DOUBLE -> throw unsupportedPrimitive(type, where);
             case ARRAY -> array((ArrayType) type, where);
             case DECLARED -> declared((DeclaredType) type, where, inferred);
             case TYPEVAR -> {
@@ -498,6 +498,16 @@ public final class JavacFacts {
         var at = location(where);
         return new CompilerException(diagnostic.message(), new CompilerDiagnostic(diagnostic.level(), diagnostic.message(),
                 at.fileName(), at.line(), at.column(), diagnostic.suggestion(), diagnostic.code()));
+    }
+
+    /**
+     * {@code JULC0124}: a primitive type, or a {@code char} literal, with no on-chain representation (I2a; the reference's
+     * message, uncoded there). With no tree, a type read from a class file, it has no position.
+     */
+    public CompilerException unsupportedPrimitive(Object type, Tree where) {
+        var info = DiagnosticCodes.PRIMITIVE_TYPE_UNSUPPORTED;
+        if (where != null) return rejection(info, where, type);
+        return new CompilerException(List.of(new CompilerDiagnostic(info.level(), info.format(type), null, 0, 0, info.fix(), info.code())));
     }
 
     /** A coded rejection at {@code where}, with the catalogue's message and fix. */

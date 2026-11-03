@@ -10,6 +10,7 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.frontend.javac.subset.SwitchRules;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -114,9 +115,8 @@ final class Switches {
         if (variant.getKind() != ElementKind.RECORD || facts.hasAnnotation(variant, JavacNames.NEW_TYPE)) {
             throw NotPorted.at(facts, arm.pattern(), "a case of a variant that is not a plain record");
         }
-        if (facts.sealedParents(variant).size() > 1) {
-            throw NotPorted.at(facts, arm.pattern(), "a case of a variant of two sealed interfaces");
-        }
+        var parents = facts.sealedParents(variant);
+        if (parents.size() > 1) throw RecordDeclarations.twoSealedParents(facts, arm.pattern(), variant, parents);
         return facts.permitted(sealed).indexOf(variant);
     }
 

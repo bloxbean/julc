@@ -144,6 +144,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     /** The nodes code nothing lowers has had read, once each though a lambda's block in it is a block of its own. */
     private final Set<Tree> walked = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** The blocks warned of, once each: code nothing lowers reaches a block both through a rejected statement and around it. */
+    private final Set<Tree> warned = Collections.newSetFromMap(new IdentityHashMap<>());
     /** The methods not read: a library's templates, which only a producer's request lowers. */
     private Set<Tree> skipped = Set.of();
     private boolean inLowered;
@@ -193,7 +195,11 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     @Override
     public Void scan(Tree tree, Void unused) {
         if (tree != null && tree.getKind() == Tree.Kind.EMPTY_STATEMENT && facts.parent(tree) instanceof CompilationUnitTree) return null;
-        if (tree != null && !allowed(tree.getKind())) throw NotPorted.at(facts, tree);
+        if (tree != null && !allowed(tree.getKind())) {
+            // A char has no on-chain representation, as the reference says of its type (JULC0124); a guard folds it.
+            if (tree.getKind() == Tree.Kind.CHAR_LITERAL) throw facts.unsupportedPrimitive("char", tree);
+            throw NotPorted.at(facts, tree);
+        }
         try {
             return super.scan(tree, unused);
         } catch (NotPorted stop) {
@@ -265,9 +271,13 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     }
 
     /**
-     * In code that is not lowered only {@code return} is read: a statement there can still be a rejected one. What javac
-     * wrote into a constructor, a {@code super();} or a compact constructor's assignments, is not source, and {@code JULC0099}
-     * has read the rest.
+     * A statement of code nothing lowers never runs, and the reference's validator reads it only for what it rejects wherever
+     * it stands, which {@link #requireNoRejectedStatement} has read, {@code null} included (ADR-068 M5): so it is passed over,
+     * with its strings' surrogates read as a field initializer's are and its blocks' unreachable code warned of, as the
+     * reference warns. A rejected statement is
+     * read for its own rule, and a statement that declares a type, or a {@code new} with a class body, still stops: a
+     * declaration there has rules of its own. What javac wrote into a constructor, a {@code super();} or a compact
+     * constructor's assignments, is not source, and {@code JULC0099} has read the rest.
      */
     @Override
     public Void visitBlock(BlockTree tree, Void unused) {
@@ -277,12 +287,23 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         warnUnreachable(tree);
         // In source order: a statement this list does not read stops the scan where it stands, after what came before it.
         for (var statement : written) {
-            boolean read = REJECTED_STATEMENTS.contains(statement.getKind())
-                    || (inLowered ? STATEMENTS.contains(statement.getKind()) : statement.getKind() == Tree.Kind.RETURN);
-            if (!read) throw NotPorted.at(facts, statement);
-            scan(statement, null);
+            boolean rejected = REJECTED_STATEMENTS.contains(statement.getKind());
+            if (inLowered && (rejected || STATEMENTS.contains(statement.getKind()))) {
+                scan(statement, null);
+            } else if (inLowered || declaresAType(statement)) {
+                throw NotPorted.at(facts, statement);
+            } else if (!rejected) {
+                // A rejected statement here the walk has read, by its own rule.
+                SubsetWalk.all(statement, LiteralTree.class).forEach(this::requirePairedSurrogates);
+                SubsetWalk.all(statement, BlockTree.class).forEach(this::warnUnreachable);
+            }
         }
         return null;
+    }
+
+    private static boolean declaresAType(Tree statement) {
+        return !SubsetWalk.all(statement, ClassTree.class).isEmpty()
+                || SubsetWalk.all(statement, NewClassTree.class).stream().anyMatch(created -> created.getClassBody() != null);
     }
 
     /**
@@ -341,6 +362,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
 
     /** One warning a block: javac has rejected a statement after a {@code return} or a {@code break}, so {@code Builtins.error()} is the rest. */
     private void warnUnreachable(BlockTree tree) {
+        if (!warned.add(tree)) return;
         var statements = tree.getStatements();
         for (int i = 0; i + 1 < statements.size(); i++) {
             if (isError(statements.get(i))) {

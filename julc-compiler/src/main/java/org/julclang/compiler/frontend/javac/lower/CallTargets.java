@@ -12,6 +12,7 @@ import com.sun.source.tree.TypeCastTree;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
@@ -100,10 +101,26 @@ final class CallTargets {
         return new CallTarget.NotLowered("a call of " + name(method) + " that is not a static method of this class");
     }
 
+    /**
+     * A static call through a qualified class name, {@code java.math.BigInteger.valueOf(1)}: the reference resolves a static
+     * call through its class's simple name and rejects this, uncoded, but for {@code JulcMap.of}, which it recognises by
+     * either name ({@code JULC0062}). So here it is {@code JULC0123}, and {@code JULC0062} for {@code JulcMap.of}. A static
+     * method reached through an expression that is no class name is not ported.
+     */
+    private CallTarget qualifiedByName(MemberSelectTree select, ExecutableElement method, TypeElement owner) {
+        if (!(facts.element(select.getExpression()) instanceof TypeElement)) {
+            return new CallTarget.NotLowered("a static call not qualified by a simple class name");
+        }
+        if (facts.identity(owner).equals(JavacNames.JULC_MAP) && name(method).equals("of")) {
+            return new CallTarget.Rejected(DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY);
+        }
+        return new CallTarget.Rejected(DiagnosticCodes.STATIC_CALL_QUALIFIED_CLASS_NAME, select.toString());
+    }
+
     private CallTarget qualifiedStatic(MethodInvocationTree tree, MemberSelectTree select, ExecutableElement method,
                                        TypeElement owner) {
         if (!(select.getExpression() instanceof IdentifierTree qualifier && facts.element(qualifier) instanceof TypeElement)) {
-            return new CallTarget.NotLowered("a static call not qualified by a simple class name");
+            return qualifiedByName(select, method, owner);
         }
         String identity = facts.identity(owner);
         String name = name(method);
@@ -192,10 +209,15 @@ final class CallTargets {
         return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.OBJECT);
     }
 
-    /** On an array {@code equals} is identity, which the subset rejects ({@code JULC0087}), so this reaches no term either. */
+    /**
+     * On an array {@code equals} is identity, which the subset rejects ({@code JULC0087}) before lowering; a method lowered on
+     * its own meets the same rule here, in the scan's words, and reaches no term either.
+     */
     private CallTarget equalsTarget(ExpressionTree receiver) {
-        boolean array = facts.types().erasure(facts.type(receiver)).getKind() == TypeKind.ARRAY;
-        return array ? new CallTarget.NotLowered("an equals on an array") : new CallTarget.Equals();
+        var type = facts.type(receiver);
+        if (facts.types().erasure(type).getKind() != TypeKind.ARRAY) return new CallTarget.Equals();
+        return new CallTarget.Rejected(DiagnosticCodes.ARRAY_EQUALS_UNSUPPORTED, "Object.equals", ArrayIdentityEquality.text(type),
+                "compares an array by identity");
     }
 
     /** A record's accessor has the name of a component and no parameter, so nothing else can be one. */

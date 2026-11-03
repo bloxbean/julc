@@ -12,6 +12,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.julclang.compiler.frontend.javac.lower.LoweringFixture.assertMethodNotPorted;
@@ -121,11 +122,13 @@ class JavacLiteralsTest {
                 """, "m");
     }
 
-    /** A literal outside the subset, until its own rule is ported. */
-    @ParameterizedTest
-    @CsvSource(delimiter = '|', quoteCharacter = '"', value = {"int|'a'|CHAR_LITERAL"})
-    void otherLiterals(String type, String literal, String construct) {
-        assertMethodNotPorted(returning(type, literal), "m", construct, 4);
+    /** A char has no on-chain representation: JULC0124 in the reference's words for its type, which it gives uncoded (M5). */
+    @Test
+    void aCharLiteralHasNoRepresentation() {
+        var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
+                .compileMethod(returning("int", "'a'"), "m", List.of()));
+        assertEquals("JULC0124", failure.diagnostics().getFirst().code(), failure::getMessage);
+        assertEquals("Unsupported primitive type: char. Supported types: boolean, int, long", failure.diagnostics().getFirst().message());
     }
 
     /** {@code null} is the reference's rejection, with its code: {@code JULC0017}. */

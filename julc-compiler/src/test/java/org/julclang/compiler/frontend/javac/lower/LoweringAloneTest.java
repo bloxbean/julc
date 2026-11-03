@@ -244,11 +244,20 @@ class LoweringAloneTest {
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
             "static String m(String a) { return a + 1; }                         | a string + with another type",
-            "static String m(String a) { return 1 + a; }                         | a string + with another type",
-            "static boolean m(byte[] a, byte[] b) { return a.equals(b); }        | an equals on an array"})
+            "static String m(String a) { return 1 + a; }                         | a string + with another type"})
     void whatTheSubsetRejectsIsNotLoweredHereToo(String method, String construct) {
         withMethod("class P { " + method + " }", new CompilerOptions(), (facts, lowered) ->
                 assertEquals(construct, assertThrows(NotPorted.class, lowered::term).construct()));
+    }
+
+    /** On an array {@code equals} is the scan's {@code JULC0087}, and the lowering's too, in the scan's words. */
+    @Test
+    void anEqualsOnAnArrayIsTheScansRejectionHereToo() {
+        withMethod("class P { static boolean m(byte[] a, byte[] b) { return a.equals(b); } }", new CompilerOptions(), (facts, lowered) -> {
+            var diagnostic = assertThrows(CompilerException.class, lowered::term).diagnostics().getFirst();
+            assertEquals("JULC0087", diagnostic.code());
+            assertEquals("Object.equals compares byte[], whose equality on the JVM compares an array by identity", diagnostic.message());
+        });
     }
 
     /** D6's rule is the lowering's too, so no {@code ==} on references reaches a term, read by the scan or not. */

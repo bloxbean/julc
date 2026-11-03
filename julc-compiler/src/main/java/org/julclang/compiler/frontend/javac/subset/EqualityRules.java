@@ -15,7 +15,6 @@ import org.julclang.compiler.frontend.javac.EqualityOperations;
 import org.julclang.compiler.frontend.javac.EqualityRelation;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
-import org.julclang.compiler.frontend.javac.NotPorted;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
@@ -45,9 +44,10 @@ import java.util.Set;
  *   <li>{@code JULC0078}: the same operations between types {@link EqualityRelation} finds unrelated: Java's answer is
  *       false, and on-chain {@code EqualsData} compares their representations, which can be equal.</li>
  * </ul>
- * {@code equals} between two types with no class in common does not lower, and is no rule yet: the corpora hold a validator
- * that writes it, so {@code JULC0078} there is a maintainer's decision. A raw receiver read through a cast stops at
- * the cast, and {@code ValuesLib} holds one: the cast's slice decides it.
+ * {@code equals} between two types with no class in common is {@code JULC0078} too (ADR-067 D5, r4; ADR-068 M5): Java's
+ * answer is false, and on-chain the reference compares representations, which can be equal or fail. The external
+ * {@code UVerifyProxy.java:70} writes {@code TxId.equals(byte[])}, and stops here; see {@code adr/evidence/068-m5a.md}.
+ * A raw receiver read through a cast stops at the cast, and {@code ValuesLib} holds one: the cast's slice decides it.
  * Inside a {@code switch} guard the guard's own rules speak first: {@link GuardRules} applies the others to a guard that is
  * not constant, after its own, and {@code Operators} applies {@link #requireValueEquality} to each {@code ==} that is lowered,
  * so no position in a guard goes unread.
@@ -183,13 +183,8 @@ public final class EqualityRules {
                 case UNRESOLVED -> throw CompilerTypeDiagnostics.equalityUnread(site.operation(),
                         ArrayIdentityEquality.text(result.left()) + " against " + ArrayIdentityEquality.text(result.right())
                                 + ", which cannot be decided", facts.location(tree));
-                case UNRELATED -> {
-                    if (!site.collectionOperation() && !result.inArgument()) {
-                        throw NotPorted.at(facts, tree, "an equals between unrelated types");
-                    }
-                    throw CompilerTypeDiagnostics.equalsAlwaysFalse(site.operation(), ArrayIdentityEquality.text(result.left()),
-                            ArrayIdentityEquality.text(result.right()), facts.location(tree));
-                }
+                case UNRELATED -> throw CompilerTypeDiagnostics.equalsAlwaysFalse(site.operation(),
+                        ArrayIdentityEquality.text(result.left()), ArrayIdentityEquality.text(result.right()), facts.location(tree));
             }
         }
     }

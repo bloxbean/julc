@@ -7,6 +7,7 @@ import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -123,7 +124,7 @@ final class TypeTests {
         if (variant.getKind() != ElementKind.RECORD || facts.hasAnnotation(variant, JavacNames.NEW_TYPE)) {
             throw NotPorted.at(facts, tree, "an instanceof of a variant that is not a plain record");
         }
-        if (parents.size() > 1) throw NotPorted.at(facts, tree, "an instanceof of a variant of two sealed interfaces");
+        if (parents.size() > 1) throw RecordDeclarations.twoSealedParents(facts, tree, variant, parents);
         var parent = parents.getFirst();
         var operand = facts.types().asElement(facts.type(tree.getExpression()));
         if (!variant.equals(operand) && !parent.equals(operand)) {

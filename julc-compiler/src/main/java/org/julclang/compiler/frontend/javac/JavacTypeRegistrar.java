@@ -253,8 +253,7 @@ final class JavacTypeRegistrar {
             return;
         }
         if (byteVarargs) {
-            throw facts.rejection("Unsupported primitive type: byte. Supported types: boolean, int, long",
-                    componentType(declared, components.size() - 1));
+            throw facts.unsupportedPrimitive("byte", componentType(declared, components.size() - 1));
         }
         var fields = new ArrayList<PirType.Field>();
         for (int i = 0; i < components.size(); i++) {

@@ -7,6 +7,7 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 
@@ -15,6 +16,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -63,6 +65,16 @@ public final class RecordDeclarations {
             throw facts.rejection(DiagnosticCodes.RECORD_MULTIPLE_SEALED_PARENTS, tree, record.getSimpleName(),
                     sealed.get(0).getSimpleName(), sealed.get(1).getSimpleName());
         }
+    }
+
+    /**
+     * {@code JULC0079} at a use of {@code record}, a variant of the sealed interfaces {@code parents}, which are two or more:
+     * a {@code new}, an {@code instanceof} or a {@code case} reads one tag, and a record has one only under one parent. The
+     * gate reports a record the program declares at its declaration first; this is the same rule where the lowering meets it.
+     */
+    public static CompilerException twoSealedParents(JavacFacts facts, Tree where, TypeElement record, List<TypeElement> parents) {
+        return facts.rejection(DiagnosticCodes.RECORD_MULTIPLE_SEALED_PARENTS, where, record.getSimpleName(),
+                parents.get(0).getSimpleName(), parents.get(1).getSimpleName());
     }
 
     private static void requireOnlyNestedTypes(JavacFacts facts, ClassTree tree) {

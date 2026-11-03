@@ -220,11 +220,10 @@ class JavacRejectionsTest {
         assertSameMethodRejectionAsReference("class P {\n    static long m() { return 1; }\n    " + member + "\n}\n", "m");
     }
 
-    /** The reference accepts this: it never lowers the method, and no rule rejects a loop. So it waits for the loops. */
+    /** The reference accepts this: it never lowers the method, and no rule rejects a loop. Code nothing lowers is passed over (M5). */
     @Test
-    void aLoopInCodeTheReferenceDoesNotLowerIsNotPortedYet() {
-        assertMethodNotPorted("class P {\n    static long m() { return 1; }\n    long instance() { while (true) { } }\n}\n",
-                "m", "WHILE_LOOP", 3);
+    void aLoopInCodeTheReferenceDoesNotLowerIsPassedOver() {
+        LoweringFixture.assertSameMethodAsReference("class P {\n    static long m() { return 1; }\n    long instance() { while (true) { } }\n}\n", "m");
     }
 
     /** {@code V.this} is a member select to javac, so {@code this} is not only an identifier. */

@@ -39,7 +39,9 @@ final class Literals {
             case INT_LITERAL, LONG_LITERAL -> integer(tree);
             case BOOLEAN_LITERAL -> new PirTerm.Const(Constant.bool((Boolean) tree.getValue()));
             case STRING_LITERAL -> string(tree);
-            // char, float and double are outside the subset, null is rejected, and each is ported with its rule.
+            // A char has no on-chain representation, as the reference says of its type (JULC0124). Floating point and null
+            // are rejected by their own rules before lowering.
+            case CHAR_LITERAL -> throw facts.unsupportedPrimitive("char", tree);
             default -> throw NotPorted.at(facts, tree);
         };
     }

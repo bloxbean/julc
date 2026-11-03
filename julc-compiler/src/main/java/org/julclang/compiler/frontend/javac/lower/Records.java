@@ -13,6 +13,7 @@ import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
 import org.julclang.compiler.frontend.javac.NotPorted;
+import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
@@ -117,7 +118,7 @@ final class Records {
     private PirTerm variant(NewClassTree tree, TypeElement variant, Frame frame) {
         if (variant.getKind() != ElementKind.RECORD) throw NotPorted.at(facts, tree, "a new of a variant that is not a record");
         var parents = facts.sealedParents(variant);
-        if (parents.size() > 1) throw NotPorted.at(facts, tree, "a new of a variant of two sealed interfaces");
+        if (parents.size() > 1) throw RecordDeclarations.twoSealedParents(facts, tree, variant, parents);
         var parent = parents.getFirst();
         var sum = (PirType.SumType) facts.registry().lookupNominal(facts.identity(parent)).orElseThrow();
         return constructed(tree, variant, sum, facts.permitted(parent).indexOf(variant), frame);

@@ -144,13 +144,27 @@ class JavacCallsTest {
         assertEquals("JULC0078", rejected("static boolean m(JulcList<byte[]> a, JulcList<long[]> b) { return java.util.Optional.of(a).equals(java.util.Optional.of(b)); }").code());
     }
 
+    /**
+     * ADR-068 M5 (ADR-067 D5, r4): {@code equals} between two types with no class in common is {@code JULC0078}. Java's answer
+     * is false, and on-chain the comparison reads the representations, which can be equal or fail.
+     */
     @Test
-    void equalsBetweenUnrelatedTypesDoesNotLower() {
-        assertEquals("an equals between unrelated types", notPorted("static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }"));
-        assertEquals("an equals between unrelated types", notPorted("static boolean m(BigInteger a, String b) { return a.equals(b); }"));
-        assertEquals("an equals between unrelated types", notPorted("static boolean m(BigInteger a) { return a.equals(1); }"));
-        assertEquals("an equals between unrelated types", notPorted("record A(BigInteger x) { } record B(BigInteger x) { }\n"
-                + "static boolean m(A a, B b) { return a.equals(b); }"));
+    void equalsBetweenUnrelatedTypesIsRejected() {
+        for (var members : new String[]{
+                "static boolean m(BigInteger a, PlutusData b) { return a.equals(b); }",
+                "static boolean m(BigInteger a, String b) { return a.equals(b); }",
+                "static boolean m(BigInteger a) { return a.equals(1); }",
+                "static boolean m(BigInteger a) { return \"a\".equals(true); }",
+                "record A(BigInteger x) { } record B(BigInteger x) { }\nstatic boolean m(A a, B b) { return a.equals(b); }",
+                "static boolean m(PubKeyHash a, BigInteger b) { return a.equals(b); }",
+                "static boolean m(PubKeyHash a, org.julclang.ledger.ScriptHash b) { return a.equals(b); }",
+                "static boolean m(org.julclang.ledger.TxId a, byte[] b) { return a.equals(b); }",
+                "static boolean m(PubKeyHash a, byte[] b) { return a.equals(b); }",
+                "static boolean m(boolean c, BigInteger a, PlutusData d) { return a.equals(c ? a : d); }"}) {
+            var diagnostic = rejected(members);
+            assertEquals("JULC0078", diagnostic.code(), members);
+            assertTrue(diagnostic.message().contains("which Java keeps distinct"), diagnostic::message);
+        }
     }
 
     @Test
@@ -337,10 +351,10 @@ class JavacCallsTest {
                 notPorted("static BigInteger m(BigInteger a) { return a.valueOf(1); }"));
     }
 
+    /** The reference resolves a static call through its class's simple name, and rejects this uncoded: JULC0123 (I2a). */
     @Test
-    void aQualifiedClassNameDoesNotLower() {
-        assertEquals("a static call not qualified by a simple class name",
-                notPorted("static java.math.BigInteger m() { return java.math.BigInteger.valueOf(1); }"));
+    void aQualifiedClassNameIsRejected() {
+        assertEquals("JULC0123", rejected("static java.math.BigInteger m() { return java.math.BigInteger.valueOf(1); }").code());
     }
 
     @Test
