@@ -8,6 +8,8 @@ import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.TypeCastTree;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
@@ -267,6 +269,16 @@ final class CallTargets {
      * widen the subset (I2). What a read decodes to is still javac's, which is {@link Typing#of}'s.
      */
     PirType seen(ExpressionTree tree, PirTerm term) {
+        // A cast is seen as its type, as the reference reads it, unless that is Data: then as what it casts.
+        if (tree instanceof TypeCastTree cast) {
+            PirType written;
+            try {
+                written = typing.of(cast);
+            } catch (CompilerException e) {
+                written = new PirType.DataType();
+            }
+            return written instanceof PirType.DataType ? seen(cast.getExpression(), term) : written;
+        }
         boolean known = tree instanceof NewClassTree || tree instanceof MethodInvocationTree call
                 && !(classify(call) instanceof CallTarget.Stdlib || classify(call) instanceof CallTarget.TypeMethod
                 || classify(call) instanceof CallTarget.Hof);

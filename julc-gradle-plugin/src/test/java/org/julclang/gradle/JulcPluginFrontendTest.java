@@ -108,7 +108,7 @@ class JulcPluginFrontendTest {
 
     @Test
     void theOptionReachesTheCompilation() throws IOException {
-        write("BigInteger left = (BigInteger) (Object) ctx.txInfo().fee(); return left.signum() > 0;");
+        write("long fee = (short) ctx.txInfo().fee().longValue(); return fee > 0;");
         configure("javaparser");
         assertEquals(TaskOutcome.SUCCESS, runner().build().task(":compileJulc").getOutcome());
         configure("javac");

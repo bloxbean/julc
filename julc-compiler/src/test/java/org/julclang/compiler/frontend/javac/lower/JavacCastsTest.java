@@ -57,6 +57,8 @@ class JavacCastsTest {
             "static long m(BigInteger a) { long x = a.longValue(); return (long) x + (long) (int) 5L; }",
             "static boolean m(boolean b) { return (boolean) b; }",
             "static BigInteger m(Value v) { return ((Value)(Object) v).lovelaceOf(); }",
+            "record R(BigInteger a, byte[] b) { } static BigInteger m(PlutusData d) { var r = (R)(Object) d; return r.a(); }",
+            "record R(BigInteger a, byte[] b) { } static BigInteger m(PlutusData d) { R r = (R)(Object) d; return r.a(); }",
     })
     void aCastIsTheReferences(String members) {
         LoweringFixture.assertSameMethodAsReference(method(members), "m", STDLIB);

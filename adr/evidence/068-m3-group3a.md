@@ -17,17 +17,17 @@ schemas and debug metadata are Group 3b's.
 | A library's static field holds `JULC0095`'s closed list on both frontends | `SubsetRules.library` |
 | Step 2 scans each library unit after the root; step 3 rejects a validator annotation, or a role conflict, in a library unit; library units' names count for the binder-namespace check; library `let`s are bound for I13's check | `JavacCompilation`, `JavacLibraries.scan`, `requireNoValidators`, `ValidatorAssembly.bindLibraries` |
 | `JavaLibraryProvider` on `JAVAC`: the units are roots compiled as libraries; each public static method of a class is an export, a scheme when generic (an unbounded type parameter only), or unsupported with the reference's reason; overloads of one name need one source signature; a specialization lowers the generic method with its type variables bound, by element, to the producer's PIR types | `JavacLibraryExports`, `JavacFacts.withTypeVariables` |
-| Hosts: on `JAVAC` a host gives its whole pool, the reference's resolved sources first and in their order, so the `let`s match | `LibrarySourceResolver.librariesFor`; `JulcCompiler.compile(String)`/`compileMethod(String)`, testkit `SourceDiscovery`/`JulcEval`, annotation processor, CLI `build` |
+| Hosts give both frontends what their resolution finds (`LibrarySourceResolver.resolve`), so a unit, a root included, is a library on `JAVAC` exactly where it is one on the reference (round 2, review F2); javac also reads the bundled stdlib for its types. Directory listings that decide an order are sorted (F5) | `JulcCompiler`, testkit `SourceDiscovery`/`JulcEval`, annotation processor, CLI `build`, Gradle plugin |
 
 ## Hosts (D8)
 
 | Host | Pool on `JAVAC` | Adapter test |
 |---|---|---|
-| Gradle plugin | Every non-validator file of the source directory, as on the reference (unchanged) | `JulcPluginFrontendTest.aLibraryOfTheSourceDirectoryCompilesAsOnTheReference` |
-| Annotation processor | Same-project and class-loader libraries, whole | `JulcAnnotationProcessorFrontendTest.aLibraryOfThePoolCompilesAsOnTheReference` |
-| Testkit | `SourceDiscovery`'s pool, whole; `JulcEval.forClass` on `JAVAC` uses it | `FrontendOptionTest.aLibraryOfThePoolRunsOnJavacAsOnTheReference` |
-| `JulcCompiler.compile(String)`, `compileMethod(String)` | The class path's scan, whole | `JavacLibrariesTest.theClassPathIsThePoolWhereTheCallerNamesNone` |
-| CLI `build` | The project's and class path's libraries, whole | `BuildCommandFrontendTest.aProjectLibraryBuildsAsOnTheReference` |
+| Gradle plugin | Every non-validator file of the source directory, in name order (round 2) | `JulcPluginFrontendTest.aLibraryOfTheSourceDirectoryCompilesAsOnTheReference` |
+| Annotation processor | Same-project and class-loader libraries, as resolved | `JulcAnnotationProcessorFrontendTest.aLibraryOfThePoolCompilesAsOnTheReference` |
+| Testkit | `SourceDiscovery`'s pool, as resolved; `JulcEval.forClass` on `JAVAC` uses it | `FrontendOptionTest.aLibraryOfThePoolRunsOnJavacAsOnTheReference` |
+| `JulcCompiler.compile(String)`, `compileMethod(String)` | The class path's scan, as resolved | `JavacLibrariesTest.theClassPathIsThePoolWhereTheCallerNamesNone` |
+| CLI `build` | The project's and class path's libraries, as resolved | `BuildCommandFrontendTest.aProjectLibraryBuildsAsOnTheReference` |
 | Elci's `JavaLibraryProvider` | Its units are the roots, each compiled as a library; empty input is the metadata-only task | `JavacExportsTest` |
 | Playground, `julc-wasm`, REPL | No frontend option yet: they compile on the default frontend | Not applicable until they expose it |
 
@@ -109,8 +109,13 @@ survived. 20 killed:
 One survives: the export's check that its source description equals its compiled type. The provider describes and compiles
 from one javac model, so for a supported type they cannot disagree; it stays as the reference's own check.
 
-A first control run without `--rerun` failed I13 in three `JavacLibrariesTest` tests; it did not reproduce in four controls with
-`--rerun`, nor in the full runs. Recorded, not explained.
+**The I13 failure that was reported once, explained.** It was not a failure of the code. The mutant tool rewrote one shared
+`mut.log` and read failures from the Gradle XML reports after a whole batch had run, so the failures it showed for the control were
+those of the batch's last mutant, M20 ("library `let`s not bound for I13"), whose failure is exactly "resolves to a binder of a
+generated name" in the three tests whose library methods call a method of their own class by its simple name. The control itself
+had failed on a fixture of `JavacExportsTest` (a recursive template in a class with a static field). Checked: `JavacLibrariesTest`
+and its neighbours run 17 times without `--rerun` (14 on a warm daemon, 3 with `--no-daemon`) and 20 times in shuffled order in
+one JVM, with no failure. The tool now reads each mutant's own report before the next one runs, so a control's failures are its own.
 
 ## Not done
 
@@ -130,5 +135,5 @@ A first control run without `--rerun` failed I13 in three `JavacLibrariesTest` t
   every program with two independent library methods (follow-ups, "A library's registration order").
 - **What the reference cannot register** is kept on `JAVAC`: a forward call by class name inside a library, a nested class's call
   of its outer class by name, a cycle of such calls. Stricter than Java on both frontends (follow-ups).
-- **The resolving hosts** use the reference's resolution (`LibrarySourceResolver.resolve`, a JavaParser reading) on `JAVAC` to order
-  the pool, and only to order it: a rejection there is ignored, and javac reads the whole pool. M6 must replace it.
+- **The resolving hosts** (round 2): both frontends compile as libraries what `LibrarySourceResolver.resolve` finds, a JavaParser
+  reading, so a library copy of a root exists exactly where the reference makes one. M6 must replace that reading.
