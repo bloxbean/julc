@@ -1,6 +1,10 @@
 package org.julclang.cli.mcp.tools;
 
 import org.julclang.compiler.JavaSourceParser;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import org.julclang.cli.mcp.lint.LintEngine;
+import org.julclang.cli.mcp.lint.LintTrees;
+import com.sun.source.tree.MethodTree;
 import org.julclang.compiler.CompileResult;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerOptions;
@@ -241,6 +245,28 @@ public final class EvaluateTool {
      * (the compiler will catch the real error).
      */
     static int expectedMethodArity(String source, String methodName) {
+        return expectedMethodArity(source, methodName, ARITY_READER);
+    }
+
+    /** The reader {@link #expectedMethodArity(String, String)} uses: the lint engine's ({@link LintEngine#DEFAULT_READER}). */
+    static final LintEngine.Reader ARITY_READER = LintEngine.DEFAULT_READER;
+
+    /** {@link #expectedMethodArity(String, String)} with {@code reader}; javac's reading of a rejected source is -1. */
+    static int expectedMethodArity(String source, String methodName, LintEngine.Reader reader) {
+        if (reader == LintEngine.Reader.JAVAC) {
+            try {
+                var syntax = JavacSyntax.read(source);
+                if (syntax.hasErrors()) return -1;
+                return LintTrees.methods(syntax).stream()
+                        .map(path -> (MethodTree) path.getLeaf())
+                        .filter(m -> m.getName().contentEquals(methodName))
+                        .mapToInt(m -> m.getParameters().size())
+                        .findFirst()
+                        .orElse(-1);
+            } catch (Exception e) {
+                return -1;
+            }
+        }
         try {
             var parsed = JavaSourceParser.parse(source);
             if (parsed.getResult().isEmpty()) return -1;

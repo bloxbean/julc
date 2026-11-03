@@ -14,6 +14,21 @@ import org.julclang.ledger.Vote;
 import org.julclang.ledger.Voter;
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import javax.lang.model.element.Modifier;
+import com.sun.source.tree.BindingPatternTree;
+import com.sun.source.tree.CaseLabelTree;
+import com.sun.source.tree.CaseTree;
+import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.ConstantCaseLabelTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.PatternCaseLabelTree;
+import com.sun.source.tree.SwitchExpressionTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
@@ -230,4 +245,135 @@ public final class SwitchFieldShadowRule implements LintRule {
     }
 
     private record PatternLabel(String typeName, String bindingName) {}
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        Map<String, Set<String>> variantFields = collectVariantFields(syntax);
+        for (TreePath method : LintTrees.methods(syntax)) {
+            Set<String> paramNames = new HashSet<>();
+            ((MethodTree) method.getLeaf()).getParameters().forEach(p -> paramNames.add(p.getName().toString()));
+            for (TreePath sw : LintTrees.findAll(method, SwitchExpressionTree.class)) {
+                for (TreePath entry : LintTrees.findAll(sw, CaseTree.class)) {
+                    checkEntry(syntax, entry, paramNames, variantFields, findings);
+                }
+            }
+        }
+        return findings;
+    }
+
+    private void checkEntry(JavacSyntax syntax, TreePath entry, Set<String> paramNames,
+                            Map<String, Set<String>> variantFields, List<LintFinding> out) {
+        for (CaseLabelTree label : ((CaseTree) entry.getLeaf()).getLabels()) {
+            PatternLabel pattern = patternLabel(label);
+            if (pattern == null) continue;
+            int line = syntax.line(label);
+            int col = syntax.column(label);
+
+            Set<String> alreadyReported = new HashSet<>();
+            Set<String> fields = fieldsForVariant(pattern.typeName(), variantFields);
+            for (String param : paramNames) {
+                if (!fields.contains(param)) continue;
+                if (!isReferenced(entry, param)) continue;
+                alreadyReported.add(param);
+                out.add(fieldShadowFinding(line, col, pattern.typeName(), pattern.bindingName(), param));
+            }
+
+            String bindingName = pattern.bindingName();
+            if (paramNames.contains(bindingName)
+                    && !alreadyReported.contains(bindingName)
+                    && isReferenced(entry, bindingName)) {
+                out.add(bindingShadowFinding(line, col, bindingName));
+            }
+        }
+    }
+
+    /** A type pattern's type and binding; for another label, JavaParser's reading of its printed text. */
+    private static PatternLabel patternLabel(CaseLabelTree label) {
+        if (label instanceof PatternCaseLabelTree pattern && pattern.getPattern() instanceof BindingPatternTree binding) {
+            return new PatternLabel(binding.getVariable().getType().toString(),
+                    binding.getVariable().getName().toString());
+        }
+        String text = label instanceof ConstantCaseLabelTree constant ? constant.getConstantExpression().toString()
+                : label.toString();
+        int sp = text.lastIndexOf(' ');
+        if (sp <= 0) return null;
+        String typeName = text.substring(0, sp).trim();
+        String identifier = text.substring(sp + 1).trim();
+        if (!isJavaIdentifier(identifier)) return null;
+        return new PatternLabel(typeName, identifier);
+    }
+
+    /** Whether a name expression in the case's body, not its labels or guard, is {@code identifier}. */
+    private static boolean isReferenced(TreePath entry, String identifier) {
+        var c = (CaseTree) entry.getLeaf();
+        List<? extends Tree> body = c.getCaseKind() == CaseTree.CaseKind.RULE ? List.of(c.getBody()) : c.getStatements();
+        for (Tree statement : body) {
+            for (TreePath path : LintTrees.findAll(new TreePath(entry, statement), IdentifierTree.class)) {
+                if (LintTrees.isNameExpression(path)
+                        && ((IdentifierTree) path.getLeaf()).getName().contentEquals(identifier)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private LintFinding fieldShadowFinding(int line, int col, String typeName, String bindingName, String fieldName) {
+        return LintFinding.warning(
+                "JULC-LINT-SWITCH-SHADOW",
+                "JULC0021",
+                "Switch case `" + typeName + " " + bindingName + "` binds a field `" +
+                        fieldName + "` that shadows a method parameter of the same name. " +
+                        "References to `" + fieldName + "` inside the case body resolve " +
+                        "to the case field, NOT the parameter.",
+                line, col,
+                "Rename the parameter. E.g. if the parameter is `BigInteger " +
+                        fieldName + "` and the case variant has field `" + fieldName +
+                        "`, rename the parameter to `point`.");
+    }
+
+    private LintFinding bindingShadowFinding(int line, int col, String identifier) {
+        return LintFinding.warning(
+                "JULC-LINT-SWITCH-SHADOW",
+                "JULC0021",
+                "Switch case binding `" + identifier + "` shadows a method parameter " +
+                        "of the same name and is referenced inside the case body. The " +
+                        "reference resolves to the case-bound value, NOT the parameter.",
+                line, col,
+                "Rename the parameter or the case binding. E.g. if the parameter is " +
+                        "`BigInteger " + identifier + "` and the case is `Finite " +
+                        identifier + "`, rename the parameter to `point`.");
+    }
+
+    /**
+     * The ledger's variants and the unit's records, each by its simple name and by the name qualified with its nearest
+     * enclosing named class or interface. javac's parser lists a record's components first among its members, as
+     * fields; a record has no other instance field.
+     */
+    private static Map<String, Set<String>> collectVariantFields(JavacSyntax syntax) {
+        Map<String, Set<String>> fields = new HashMap<>();
+        LEDGER_VARIANT_FIELDS.forEach((name, names) -> fields.put(name, new HashSet<>(names)));
+        for (TreePath path : LintTrees.findAll(syntax, ClassTree.class)) {
+            var record = (ClassTree) path.getLeaf();
+            if (record.getKind() != Tree.Kind.RECORD) continue;
+            Set<String> names = new HashSet<>();
+            for (Tree member : record.getMembers()) {
+                if (member instanceof VariableTree component
+                        && !component.getModifiers().getFlags().contains(Modifier.STATIC)) {
+                    names.add(component.getName().toString());
+                }
+            }
+            if (names.isEmpty()) continue;
+            addVariantFields(fields, record.getSimpleName().toString(), names);
+            for (TreePath up = path.getParentPath(); up != null; up = up.getParentPath()) {
+                if (up.getLeaf() instanceof ClassTree parent && !parent.getSimpleName().isEmpty()
+                        && (parent.getKind() == Tree.Kind.CLASS || parent.getKind() == Tree.Kind.INTERFACE)) {
+                    addVariantFields(fields, parent.getSimpleName() + "." + record.getSimpleName(), names);
+                    break;
+                }
+            }
+        }
+        return fields;
+    }
 }

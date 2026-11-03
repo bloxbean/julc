@@ -2,6 +2,16 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.AssignmentTree;
+import com.sun.source.tree.CompoundAssignmentTree;
+import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.WhileLoopTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
@@ -104,5 +114,58 @@ public final class MutableVarRule implements LintRule {
                     }
                 }));
         return acc;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath method : LintTrees.methods(syntax)) {
+            Set<String> locals = new HashSet<>();
+            for (TreePath path : LintTrees.findAll(method, VariableTree.class)) {
+                if (LintTrees.isDeclarator(path)) locals.add(((VariableTree) path.getLeaf()).getName().toString());
+            }
+            if (locals.isEmpty()) continue;
+
+            Set<String> whileAccumulators = new HashSet<>();
+            for (TreePath loop : LintTrees.findAll(method, WhileLoopTree.class)) {
+                for (TreePath assign : assignments(loop)) {
+                    String name = targetName(assign.getLeaf());
+                    if (name != null && locals.contains(name)) whileAccumulators.add(name);
+                }
+            }
+
+            for (TreePath path : assignments(method)) {
+                String name = targetName(path.getLeaf());
+                if (name == null || !locals.contains(name)) continue;
+                if (whileAccumulators.contains(name)) continue;
+                findings.add(LintFinding.warning(
+                        id(),
+                        null,
+                        "Re-assignment to local variable `" + name + "` after declaration. " +
+                                "JuLC on-chain code is single-assignment; the compiler will reject this. " +
+                                "(Inside a while-loop accumulator pattern, re-assignment IS allowed; " +
+                                "this lint runs a heuristic and may need a manual override.)",
+                        syntax.line(path.getLeaf()), syntax.column(path.getLeaf()),
+                        "Introduce a new variable: `var " + name + "2 = " + name + ".add(...)`. " +
+                                "Or, if you need an accumulator, wrap the loop body in a `while`."
+                ));
+            }
+        }
+        return findings;
+    }
+
+    /** JavaParser's assignment expressions: {@code =} and the compound ones, in pre-order. */
+    private static List<TreePath> assignments(TreePath root) {
+        return LintTrees.findAll(root, ExpressionTree.class).stream()
+                .filter(path -> path.getLeaf() instanceof AssignmentTree
+                        || path.getLeaf() instanceof CompoundAssignmentTree)
+                .toList();
+    }
+
+    /** The assigned simple name, or null when the target is anything else. */
+    private static String targetName(Tree assignment) {
+        ExpressionTree target = assignment instanceof AssignmentTree a ? a.getVariable()
+                : ((CompoundAssignmentTree) assignment).getVariable();
+        return target instanceof IdentifierTree id ? id.getName().toString() : null;
     }
 }

@@ -2,6 +2,10 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.VariableTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.FieldDeclaration;
 
@@ -70,5 +74,30 @@ public final class BannedParamTypesRule implements LintRule {
         String head = lt < 0 ? typeStr : typeStr.substring(0, lt);
         int dot = head.lastIndexOf('.');
         return dot < 0 ? head.trim() : head.substring(dot + 1).trim();
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath path : LintTrees.findAll(syntax, VariableTree.class)) {
+            if (!LintTrees.isField(path)) continue;
+            var field = (VariableTree) path.getLeaf();
+            boolean hasParam = field.getModifiers().getAnnotations().stream()
+                    .anyMatch(a -> "Param".equals(LintTrees.annotationName(a)));
+            if (!hasParam) continue;
+            String typeStr = field.getType().toString();
+            String simple = lastSegment(typeStr);
+            if (!BANNED_SIMPLE.contains(simple)) continue;
+            findings.add(LintFinding.error(
+                    id(),
+                    null,
+                    "@Param `" + field.getName() + "` uses banned type `" + typeStr + "`. " +
+                            "BytesData, MapData, ListData and IntData are not allowed for @Param.",
+                    syntax.line(field), syntax.column(field),
+                    "Use a typed alternative: `byte[]` for bytes, `BigInteger` for integers, " +
+                            "`JulcList<T>` for lists, or a typed record for structured data."
+            ));
+        }
+        return findings;
     }
 }

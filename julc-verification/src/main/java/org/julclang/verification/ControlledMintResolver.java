@@ -1,16 +1,10 @@
 package org.julclang.verification;
 
-import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.core.source.SourceLocation;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.expr.Expression;
-import com.github.javaparser.ast.expr.LongLiteralExpr;
-import com.github.javaparser.ast.expr.NormalAnnotationExpr;
-import com.github.javaparser.ast.expr.StringLiteralExpr;
+import org.julclang.verification.SourceAnnotations.Annotation;
+import org.julclang.verification.SourceAnnotations.Value;
 
 import java.util.HexFormat;
 import java.util.List;
@@ -28,11 +22,18 @@ public final class ControlledMintResolver {
 
     public static Optional<ControlledMintProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        CompilationUnit unit = JavaSourceParser.parseCompilationUnit(source);
-        TypeDeclaration<?> type = exactType(unit, validatorTitle, fileName);
-        List<AnnotationExpr> matches = annotations(type, unit);
+        return resolve(source, fileName, validatorTitle, schema, SourceAnnotations.DEFAULT_READER);
+    }
+
+    /** {@link #resolve(String, String, String, ContractSchema)} with the source read by {@code reader} (ADR-068 M6). */
+    static Optional<ControlledMintProperty> resolve(
+            String source, String fileName, String validatorTitle, ContractSchema schema,
+            SourceAnnotations.Reader reader) {
+        SourceAnnotations.Unit unit = SourceAnnotations.read(source, reader);
+        SourceAnnotations.Type type = exactType(unit, validatorTitle, fileName);
+        List<Annotation> matches = annotations(type, unit);
         if (matches.isEmpty()) return Optional.empty();
-        AnnotationExpr annotation = matches.getFirst();
+        Annotation annotation = matches.getFirst();
         if (matches.size() != 1) {
             throw error("Expected exactly one @ControlledMint annotation", annotation, fileName);
         }
@@ -103,7 +104,7 @@ public final class ControlledMintResolver {
     }
 
     private static PirType dereference(
-            PirType type, ContractSchema schema, AnnotationExpr annotation, String fileName) {
+            PirType type, ContractSchema schema, Annotation annotation, String fileName) {
         PirType current = type;
         var seen = new java.util.HashSet<String>();
         while (current instanceof PirType.NamedTypeRef ref) {
@@ -121,13 +122,13 @@ public final class ControlledMintResolver {
     }
 
     private static String hexMember(
-            AnnotationExpr annotation, String name, String fileName) {
-        Expression expression = member(annotation, name, fileName);
-        if (!(expression instanceof StringLiteralExpr literal)) {
+            Annotation annotation, String name, String fileName) {
+        Value expression = member(annotation, name, fileName);
+        if (expression.string() == null) {
             throw error("@ControlledMint " + name + " must be a hexadecimal string literal",
                     annotation, fileName);
         }
-        String value = literal.asString();
+        String value = expression.string();
         if ((value.length() & 1) != 0) {
             throw error("@ControlledMint " + name + " must have even hexadecimal length",
                     annotation, fileName);
@@ -142,60 +143,50 @@ public final class ControlledMintResolver {
     }
 
     private static long longMember(
-            AnnotationExpr annotation, String name, String fileName) {
-        Expression expression = member(annotation, name, fileName);
-        if (expression instanceof LongLiteralExpr literal) {
-            try {
-                return literal.asNumber().longValue();
-            } catch (RuntimeException ignored) { }
-        }
-        if (expression.isIntegerLiteralExpr()) {
-            try {
-                return expression.asIntegerLiteralExpr().asNumber().longValue();
-            } catch (RuntimeException ignored) { }
-        }
+            Annotation annotation, String name, String fileName) {
+        Value expression = member(annotation, name, fileName);
+        if (expression.integer() != null) return expression.integer();
         throw error("@ControlledMint " + name + " must be a positive long literal",
                 annotation, fileName);
     }
 
     private static String enumMember(
-            AnnotationExpr annotation, String name, String fileName) {
-        String value = member(annotation, name, fileName).toString();
+            Annotation annotation, String name, String fileName) {
+        String value = member(annotation, name, fileName).text();
         int dot = value.lastIndexOf('.');
         return dot < 0 ? value : value.substring(dot + 1);
     }
 
-    private static Expression member(
-            AnnotationExpr annotation, String name, String fileName) {
-        if (annotation instanceof NormalAnnotationExpr normal) {
-            var matches = normal.getPairs().stream()
-                    .filter(pair -> pair.getNameAsString().equals(name))
-                    .map(pair -> pair.getValue()).toList();
+    private static Value member(
+            Annotation annotation, String name, String fileName) {
+        if (annotation.normal()) {
+            var matches = annotation.members().stream()
+                    .filter(pair -> pair.name().equals(name))
+                    .map(SourceAnnotations.Member::value).toList();
             if (matches.size() == 1) return matches.getFirst();
         }
         throw error("@ControlledMint requires member '" + name + "'", annotation, fileName);
     }
 
-    private static List<AnnotationExpr> annotations(
-            TypeDeclaration<?> type, CompilationUnit unit) {
+    private static List<Annotation> annotations(
+            SourceAnnotations.Type type, SourceAnnotations.Unit unit) {
         String qualified = PACKAGE + ".ControlledMint";
-        boolean imported = unit.getImports().stream()
+        boolean imported = unit.imports().stream()
                 .filter(value -> !value.isStatic())
                 .anyMatch(value -> value.isAsterisk()
-                        ? value.getNameAsString().equals(PACKAGE)
-                        : value.getNameAsString().equals(qualified));
-        boolean samePackage = unit.getPackageDeclaration()
-                .map(value -> value.getNameAsString().equals(PACKAGE)).orElse(false);
-        return type.getAnnotations().stream().filter(annotation ->
-                qualified.equals(annotation.getNameAsString())
-                        || ("ControlledMint".equals(annotation.getNameAsString())
+                        ? value.name().equals(PACKAGE)
+                        : value.name().equals(qualified));
+        boolean samePackage = unit.packageName().equals(PACKAGE);
+        return type.annotations().stream().filter(annotation ->
+                qualified.equals(annotation.name())
+                        || ("ControlledMint".equals(annotation.name())
                         && (imported || samePackage))).toList();
     }
 
-    private static TypeDeclaration<?> exactType(
-            CompilationUnit unit, String validatorTitle, String fileName) {
-        var matches = unit.getTypes().stream()
-                .filter(type -> type.getNameAsString().equals(validatorTitle)).toList();
+    private static SourceAnnotations.Type exactType(
+            SourceAnnotations.Unit unit, String validatorTitle, String fileName) {
+        var matches = unit.types().stream()
+                .filter(type -> type.name().equals(validatorTitle)).toList();
         if (matches.size() != 1) {
             throw new VerificationPropertyException(
                     "Expected exactly one Java type named '" + validatorTitle + "'",
@@ -205,13 +196,11 @@ public final class ControlledMintResolver {
     }
 
     private static VerificationPropertyException error(
-            String message, AnnotationExpr annotation, String fileName) {
+            String message, Annotation annotation, String fileName) {
         return new VerificationPropertyException(message, location(annotation, fileName));
     }
 
-    private static SourceLocation location(AnnotationExpr annotation, String fileName) {
-        var begin = annotation.getBegin().orElse(null);
-        return new SourceLocation(fileName, begin == null ? 1 : begin.line,
-                begin == null ? 1 : begin.column, annotation.toString());
+    private static SourceLocation location(Annotation annotation, String fileName) {
+        return new SourceLocation(fileName, annotation.line(), annotation.column(), annotation.text());
     }
 }

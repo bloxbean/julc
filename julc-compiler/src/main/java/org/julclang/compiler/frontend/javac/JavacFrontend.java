@@ -18,6 +18,7 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
+import javax.tools.DiagnosticListener;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.SimpleJavaFileObject;
@@ -411,6 +412,34 @@ public final class JavacFrontend {
         if (javac == null) return Optional.empty();
         return Optional.of(files(javac, texts.stream().map(Unit::of).toList()).stream()
                 .map(JavacSourceFile::topLevelNames).toList());
+    }
+
+    /**
+     * {@code text} read by javac's parser alone, with {@link #OPTIONS} and no attribution, for JuLC's tools that read a
+     * source's shape ({@link JavacSyntax}); empty when the host's javac is not supported ({@link #supported()} says why).
+     */
+    public Optional<JavacSyntax> parse(String text) {
+        JavaCompiler javac = compiler();
+        if (javac == null) return Optional.empty();
+        var file = new SimpleJavaFileObject(URI.create("string:///Source.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return text;
+            }
+        };
+        var errors = new ArrayList<Diagnostic<? extends JavaFileObject>>();
+        DiagnosticListener<JavaFileObject> listener = d -> {
+            if (d.getKind() == Diagnostic.Kind.ERROR) errors.add(d);
+        };
+        var task = (JavacTask) javac.getTask(null, new EmbeddedFileManager(platform, List.of(), null), listener,
+                OPTIONS, null, List.of(file));
+        task.setLocale(Locale.ENGLISH);
+        try {
+            CompilationUnitTree unit = task.parse().iterator().next();
+            return Optional.of(new JavacSyntax(text, unit, Trees.instance(task).getSourcePositions(), errors));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** Accepted when the host's javac is supported (D3); otherwise rejected with {@code JULC0089}. */

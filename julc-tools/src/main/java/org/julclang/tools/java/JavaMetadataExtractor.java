@@ -61,6 +61,24 @@ public final class JavaMetadataExtractor {
      * Returns a CheckResponse with the same structure the frontend expects.
      */
     public static CheckResponse extract(String source) {
+        return extract(source, DEFAULT_READER);
+    }
+
+    /** How a source is read (ADR-068 M6): JavaParser's tree or javac's, for the same metadata. */
+    public enum Reader { JAVAPARSER, JAVAC }
+
+    /** The reader {@link #extract(String)} uses: JavaParser's until ADR-068 M5 makes javac the
+     * default. The {@code julc.tools.reader} system property ({@code JAVAPARSER} or {@code JAVAC}) chooses it for every
+     * tool, so that each module's tests run on either reading; it leaves at M6 with the JavaParser reading.
+     */
+    public static final Reader DEFAULT_READER = Reader.valueOf(System.getProperty("julc.tools.reader", "JAVAPARSER"));
+
+    /**
+     * {@link #extract(String)} with the source read by {@code reader}. javac's reading reports no subset diagnostics:
+     * those are the JavaParser frontend's validator's, and on javac they need attribution ({@link JavacMetadataReading}).
+     */
+    public static CheckResponse extract(String source, Reader reader) {
+        if (reader == Reader.JAVAC) return JavacMetadataReading.extract(source, VALIDATOR_ANNOTATIONS);
         CompilationUnit cu;
         var parseResult = JavaSourceParser.parse(source);
         if (!parseResult.isSuccessful() || parseResult.getResult().isEmpty()) {
@@ -177,6 +195,12 @@ public final class JavaMetadataExtractor {
         boolean hasErrors = diagnostics.stream().anyMatch(d -> "ERROR".equals(d.level()));
         return new CheckResponse(!hasErrors, contractName, purpose, params, datumName,
                 datumFields, redeemerVariants, redeemerFields, diagnostics);
+    }
+
+    /** The purpose a validator annotation names; every supported annotation names one. */
+    static String purposeOf(String annotationName) {
+        String mapped = ANNOTATION_TO_PURPOSE.get(annotationName);
+        return mapped != null ? mapped : "SPENDING";
     }
 
     private static String determinePurpose(String annotationName, ClassOrInterfaceDeclaration cls) {

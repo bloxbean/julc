@@ -2,6 +2,10 @@ package org.julclang.cli.mcp.lint.rules;
 
 import org.julclang.cli.mcp.lint.LintFinding;
 import org.julclang.cli.mcp.lint.LintRule;
+import org.julclang.cli.mcp.lint.LintTrees;
+import org.julclang.compiler.frontend.javac.JavacSyntax;
+import com.sun.source.util.TreePath;
+import com.sun.source.tree.MethodInvocationTree;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
@@ -66,6 +70,36 @@ public final class MkConsPairListRule implements LintRule {
                     "Replace `Builtins.mkNilData()` with `Builtins.mkNilPairData()`."
             ));
         });
+        return findings;
+    }
+
+    @Override
+    public List<LintFinding> check(JavacSyntax syntax) {
+        var findings = new ArrayList<LintFinding>();
+        for (TreePath method : LintTrees.methods(syntax)) {
+            MethodInvocationTree nilCall = null;
+            boolean usesPairOps = false;
+            for (TreePath path : LintTrees.findAll(method, MethodInvocationTree.class)) {
+                var call = (MethodInvocationTree) path.getLeaf();
+                String name = LintTrees.methodName(call);
+                if (!"Builtins".equals(LintTrees.dottedName(LintTrees.receiver(call)))) continue;
+                if ("mkNilData".equals(name) && nilCall == null) {
+                    nilCall = call;
+                } else if (PAIR_OPS.contains(name)) {
+                    usesPairOps = true;
+                }
+            }
+            if (nilCall == null || !usesPairOps) continue;
+            findings.add(LintFinding.warning(
+                    id(),
+                    null,
+                    "`Builtins.mkNilData()` seed in a method that also uses pair operations. " +
+                            "Pair lists must use `Builtins.mkNilPairData()` — the Scalus VM rejects " +
+                            "pair elements consed onto a non-pair nil.",
+                    syntax.line(nilCall), syntax.column(nilCall),
+                    "Replace `Builtins.mkNilData()` with `Builtins.mkNilPairData()`."
+            ));
+        }
         return findings;
     }
 }

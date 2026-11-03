@@ -1,6 +1,5 @@
 package org.julclang.verification;
 
-import org.julclang.compiler.JavaSourceParser;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.schema.ContractSchema;
 import org.julclang.verification.dsl.PropertyIrCodec;
@@ -8,12 +7,8 @@ import org.julclang.verification.dsl.StatefulSpendingDslLowering;
 import org.julclang.verification.dsl.type.ContractTypeProjection;
 import org.julclang.verification.dsl.DslPropertyValidator;
 import org.julclang.core.source.SourceLocation;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.expr.Expression;
-import com.github.javaparser.ast.expr.NormalAnnotationExpr;
-import com.github.javaparser.ast.expr.StringLiteralExpr;
+import org.julclang.verification.SourceAnnotations.Annotation;
+import org.julclang.verification.SourceAnnotations.Value;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,19 +25,26 @@ public final class StatefulSpendingResolver {
 
     public static Optional<StatefulSpendingProperty> resolve(
             String source, String fileName, String validatorTitle, ContractSchema schema) {
-        CompilationUnit unit = JavaSourceParser.parseCompilationUnit(source);
-        TypeDeclaration<?> type = exactType(unit, validatorTitle, fileName);
-        List<AnnotationExpr> monotonic = annotations(type, unit, "Monotonic");
-        List<AnnotationExpr> preserves = annotations(type, unit, "PreservesValue");
+        return resolve(source, fileName, validatorTitle, schema, SourceAnnotations.DEFAULT_READER);
+    }
+
+    /** {@link #resolve(String, String, String, ContractSchema)} with the source read by {@code reader} (ADR-068 M6). */
+    static Optional<StatefulSpendingProperty> resolve(
+            String source, String fileName, String validatorTitle, ContractSchema schema,
+            SourceAnnotations.Reader reader) {
+        SourceAnnotations.Unit unit = SourceAnnotations.read(source, reader);
+        SourceAnnotations.Type type = exactType(unit, validatorTitle, fileName);
+        List<Annotation> monotonic = annotations(type, unit, "Monotonic");
+        List<Annotation> preserves = annotations(type, unit, "PreservesValue");
         if (monotonic.isEmpty() && preserves.isEmpty()) return Optional.empty();
 
-        AnnotationExpr location = monotonic.isEmpty() ? preserves.getFirst() : monotonic.getFirst();
+        Annotation location = monotonic.isEmpty() ? preserves.getFirst() : monotonic.getFirst();
         if (monotonic.size() != 1 || preserves.size() != 1) {
             throw error("Stateful profile requires exactly one @Monotonic and one "
                     + "@PreservesValue", location, fileName);
         }
         RequiresSignerProperty signer = RequiresSignerResolver.resolve(
-                        source, fileName, validatorTitle, schema)
+                        source, fileName, validatorTitle, schema, reader)
                 .orElseThrow(() -> error("Stateful profile also requires exactly one "
                         + "@RequiresSigner", location, fileName));
         if (schema.purpose() != ContractSchema.Purpose.SPEND || schema.datum() == null) {
@@ -50,7 +52,7 @@ public final class StatefulSpendingResolver {
                     location, fileName);
         }
 
-        AnnotationExpr monotonicAnnotation = monotonic.getFirst();
+        Annotation monotonicAnnotation = monotonic.getFirst();
         String current = stringMember(monotonicAnnotation, "current", fileName);
         String next = stringMember(monotonicAnnotation, "next", fileName);
         String relation = enumMember(monotonicAnnotation, "relation", fileName);
@@ -124,7 +126,7 @@ public final class StatefulSpendingResolver {
             Class<? extends PirType> expectedType,
             ContractSchema.Argument argument,
             ContractSchema schema,
-            AnnotationExpr annotation,
+            Annotation annotation,
             String fileName) {
         String fieldName = directField(path, expectedRoot, annotation, fileName);
         PirType.RecordType root = recordRoot(
@@ -147,7 +149,7 @@ public final class StatefulSpendingResolver {
     private static PirType.RecordType recordRoot(
             ContractSchema.Argument argument,
             ContractSchema schema,
-            AnnotationExpr annotation,
+            Annotation annotation,
             String fileName,
             String rootName) {
         if (argument == null) {
@@ -164,7 +166,7 @@ public final class StatefulSpendingResolver {
     private static PirType dereference(
             PirType type,
             ContractSchema schema,
-            AnnotationExpr annotation,
+            Annotation annotation,
             String fileName) {
         var seen = new ArrayList<String>();
         PirType current = type;
@@ -183,7 +185,7 @@ public final class StatefulSpendingResolver {
     }
 
     private static String directField(
-            String path, String root, AnnotationExpr annotation, String fileName) {
+            String path, String root, Annotation annotation, String fileName) {
         String[] segments = path.split("\\.", -1);
         if (segments.length != 2 || !root.equals(segments[0])
                 || !IDENTIFIER.matcher(segments[1]).matches()) {
@@ -194,36 +196,36 @@ public final class StatefulSpendingResolver {
     }
 
     private static String stringMember(
-            AnnotationExpr annotation, String member, String fileName) {
-        Expression value = member(annotation, member, fileName);
-        if (value instanceof StringLiteralExpr literal) return literal.asString();
+            Annotation annotation, String member, String fileName) {
+        Value value = member(annotation, member, fileName);
+        if (value.string() != null) return value.string();
         throw error("@Monotonic " + member + " must be a string literal",
                 annotation, fileName);
     }
 
     private static String enumMember(
-            AnnotationExpr annotation, String member, String fileName) {
-        String value = member(annotation, member, fileName).toString();
+            Annotation annotation, String member, String fileName) {
+        String value = member(annotation, member, fileName).text();
         int separator = value.lastIndexOf('.');
         return separator < 0 ? value : value.substring(separator + 1);
     }
 
-    private static Expression member(
-            AnnotationExpr annotation, String name, String fileName) {
-        if (annotation instanceof NormalAnnotationExpr normal) {
-            var values = normal.getPairs().stream()
-                    .filter(pair -> pair.getNameAsString().equals(name))
-                    .map(pair -> pair.getValue()).toList();
+    private static Value member(
+            Annotation annotation, String name, String fileName) {
+        if (annotation.normal()) {
+            var values = annotation.members().stream()
+                    .filter(pair -> pair.name().equals(name))
+                    .map(SourceAnnotations.Member::value).toList();
             if (values.size() == 1) return values.getFirst();
         }
-        throw error("@" + annotation.getName().getIdentifier()
+        throw error("@" + annotation.identifier()
                 + " requires member '" + name + "'", annotation, fileName);
     }
 
-    private static TypeDeclaration<?> exactType(
-            CompilationUnit unit, String validatorTitle, String fileName) {
-        var matches = unit.getTypes().stream()
-                .filter(type -> type.getNameAsString().equals(validatorTitle)).toList();
+    private static SourceAnnotations.Type exactType(
+            SourceAnnotations.Unit unit, String validatorTitle, String fileName) {
+        var matches = unit.types().stream()
+                .filter(type -> type.name().equals(validatorTitle)).toList();
         if (matches.size() != 1) {
             throw new VerificationPropertyException(
                     "Expected exactly one Java type named '" + validatorTitle + "'",
@@ -232,39 +234,35 @@ public final class StatefulSpendingResolver {
         return matches.getFirst();
     }
 
-    private static List<AnnotationExpr> annotations(
-            TypeDeclaration<?> type, CompilationUnit unit, String simpleName) {
+    private static List<Annotation> annotations(
+            SourceAnnotations.Type type, SourceAnnotations.Unit unit, String simpleName) {
         String qualifiedName = PACKAGE + "." + simpleName;
-        boolean imported = unit.getImports().stream()
+        boolean imported = unit.imports().stream()
                 .filter(importDeclaration -> !importDeclaration.isStatic())
                 .anyMatch(importDeclaration -> importDeclaration.isAsterisk()
-                        ? importDeclaration.getNameAsString().equals(PACKAGE)
-                        : importDeclaration.getNameAsString().equals(qualifiedName));
-        boolean samePackage = unit.getPackageDeclaration()
-                .map(declaration -> declaration.getNameAsString().equals(PACKAGE))
-                .orElse(false);
-        return type.getAnnotations().stream().filter(annotation -> {
-            String name = annotation.getNameAsString();
+                        ? importDeclaration.name().equals(PACKAGE)
+                        : importDeclaration.name().equals(qualifiedName));
+        boolean samePackage = unit.packageName().equals(PACKAGE);
+        return type.annotations().stream().filter(annotation -> {
+            String name = annotation.name();
             return qualifiedName.equals(name)
                     || (simpleName.equals(name) && (imported || samePackage));
         }).toList();
     }
 
     private static StatefulSpendingProperty.SourceReference sourceReference(
-            String name, AnnotationExpr annotation, String fileName) {
+            String name, Annotation annotation, String fileName) {
         SourceLocation location = location(annotation, fileName);
         return new StatefulSpendingProperty.SourceReference(
                 name, fileName, location.line(), location.column(), location.fragment());
     }
 
     private static VerificationPropertyException error(
-            String message, AnnotationExpr annotation, String fileName) {
+            String message, Annotation annotation, String fileName) {
         return new VerificationPropertyException(message, location(annotation, fileName));
     }
 
-    private static SourceLocation location(AnnotationExpr annotation, String fileName) {
-        var begin = annotation.getBegin().orElse(null);
-        return new SourceLocation(fileName, begin == null ? 1 : begin.line,
-                begin == null ? 1 : begin.column, annotation.toString());
+    private static SourceLocation location(Annotation annotation, String fileName) {
+        return new SourceLocation(fileName, annotation.line(), annotation.column(), annotation.text());
     }
 }
