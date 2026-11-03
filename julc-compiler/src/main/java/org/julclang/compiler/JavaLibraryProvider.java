@@ -10,8 +10,8 @@ import org.julclang.compiler.corpus.CorpusRecorder;
 import org.julclang.compiler.error.DiagnosticCodes;
 import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
+import org.julclang.compiler.frontend.javac.JavacLibraryExports;
 import org.julclang.compiler.frontend.javac.JavacLibraryTypes;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.*;
 
@@ -19,11 +19,15 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.function.Function;
 
 /** Java implementation details stay behind LibraryProvider. No JVM library evaluation. */
 public final class JavaLibraryProvider implements LibraryProvider {
-    /** A generic method, specialized on request; {@code scheme} is null when it cannot be described. */
-    private record Template(ClassOrInterfaceDeclaration owner, MethodDeclaration method, LibraryScheme scheme) {}
+    /**
+     * A generic method, specialized on request by {@code compile}, which takes its type variables' PIR types by name;
+     * {@code scheme} is null when it cannot be described.
+     */
+    private record Template(LibraryScheme scheme, Function<Map<String, PirType>, LibraryCompiler.Specialization> compile) {}
 
     /** One compiled specialization. */
     private record Specialized(String name, PirTerm body, PirType type) {}
@@ -48,8 +52,6 @@ public final class JavaLibraryProvider implements LibraryProvider {
      * the caller's {@code CompilerOptions}, which may change afterwards, F313); null unless the recorder is active.
      */
     private final String corpusCase;
-    /** Library sources the javac frontend read but cannot lower yet (ADR-068 M3): their exports are {@code JULC0084}. */
-    private final boolean unportedSources;
 
     public JavaLibraryProvider(List<String> sources, StdlibLookup lookup, CompilerOptions options) {
         context = CompilationContext.resolve(options);
@@ -60,17 +62,28 @@ public final class JavaLibraryProvider implements LibraryProvider {
         contentHash = contentHash(sources);
         // ADR-068 D7, D8: javac reads the units and the stubs; nothing reaches the JavaParser frontend (I8).
         if (context.frontend() == CompilerFrontend.JAVAC) {
-            var described = JavacGate.onJavacFrontend(() -> JavacLibraryTypes.describe(sources));
-            types = described.types();
-            definitions = described.definitions();
-            unportedSources = !sources.isEmpty();
             resolver = null;
-            registry = null;
             known = Set.of();
             descriptions = null;
+            if (sources.isEmpty()) {
+                var described = JavacGate.onJavacFrontend(() -> JavacLibraryTypes.describe(sources));
+                types = described.types();
+                definitions = described.definitions();
+                registry = LibraryMethodRegistry.forCompilation(context);
+                return;
+            }
+            var javac = JavacGate.onJavacFrontend(() -> JavacLibraryExports.of(sources, lookup, context));
+            types = javac.types();
+            definitions = Map.copyOf(javac.definitions());
+            registry = javac.registry();
+            exports.putAll(javac.exports());
+            unsupported.putAll(javac.unsupported());
+            javac.templates().forEach((symbol, scheme) -> templates.put(symbol, new Template(scheme, environment -> {
+                var specialized = javac.specialize(symbol, environment);
+                return new LibraryCompiler.Specialization(specialized.body(), specialized.type(), List.of());
+            })));
             return;
         }
-        unportedSources = false;
         // ADR-068 M1's javac gate (D8): the supplied units are roots; with none, a metadata-only task over the stubs.
         if (sources.isEmpty()) JavacGate.metadata(options);
         else JavacGate.check("JavaLibraryProvider", sources.stream().map(JavacFrontend.Unit::of).toList(), List.of(),
@@ -203,7 +216,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
         if (bounded.isPresent()) {
             unsupported.put(symbol, "Type parameter " + bounded.get() + " has a bound; generic library "
                     + "methods support only unbounded type parameters");
-            templates.put(symbol, new Template(cls, method, null));
+            templates.put(symbol, new Template(null, null));
             return;
         }
         try {
@@ -216,12 +229,13 @@ public final class JavaLibraryProvider implements LibraryProvider {
                     + String.join(",", parameters.stream().map(LibraryType.Reference::canonical).toList())
                     + ")" + result.canonical();
             var scheme = new LibraryScheme(identity, symbol, typeParameters, parameters, result, context.target());
-            templates.put(symbol, new Template(cls, method, scheme));
+            templates.put(symbol, new Template(scheme, environment -> new LibraryCompiler(context).compileSpecialization(
+                    cls, method, environment, resolver, registry, lookup, known)));
             unsupported.put(symbol, "Polymorphic Java method: describe it with schemes(module) and "
                     + "instantiate it with LibraryRequest.Instantiate (ADR-059)");
         } catch (IllegalArgumentException e) {
             unsupported.put(symbol, e.getMessage());
-            templates.put(symbol, new Template(cls, method, null));
+            templates.put(symbol, new Template(null, null));
         } finally {
             descriptions.variables(Set.of());
         }
@@ -231,18 +245,11 @@ public final class JavaLibraryProvider implements LibraryProvider {
     @Override public int revision() { return BackendContract.REVISION_2; }
     @Override public Map<String, PirType> namedDefinitions() { return definitions; }
     @Override public Map<String, String> unsupportedExports() {
-        requireLowering();
         return Collections.unmodifiableMap(unsupported);
-    }
-
-    /** ADR-068 D4: what needs library methods lowered is not ported to the javac frontend; types are. */
-    private void requireLowering() {
-        if (unportedSources) throw NotPorted.of("the exports of library sources");
     }
 
     @Override
     public List<LibraryExport> describe(String module) {
-        requireLowering();
         return exports.values().stream()
                 .filter(e -> e.symbol().substring(0, e.symbol().lastIndexOf('.')).equals(module))
                 .toList();
@@ -250,7 +257,6 @@ public final class JavaLibraryProvider implements LibraryProvider {
 
     @Override
     public List<LibraryScheme> schemes(String module) {
-        requireLowering();
         return templates.values().stream()
                 .map(Template::scheme)
                 .filter(Objects::nonNull)
@@ -260,7 +266,6 @@ public final class JavaLibraryProvider implements LibraryProvider {
 
     @Override
     public PirTerm materialize(String symbol) {
-        requireLowering();
         if (!exports.containsKey(symbol))
             throw new IllegalArgumentException("Unknown public on-chain export: " + symbol);
         var root = registry.lookupMethod(symbol).orElseThrow();
@@ -277,7 +282,6 @@ public final class JavaLibraryProvider implements LibraryProvider {
      */
     @Override
     public LibraryImports materialize(List<LibraryRequest> requests) {
-        requireLowering();
         var reachable = new LinkedHashMap<String, PirTerm>();
         var bindings = new LinkedHashMap<LibraryRequest, LibraryImports.Binding>();
         for (var request : requests) {
@@ -358,8 +362,7 @@ public final class JavaLibraryProvider implements LibraryProvider {
         String name = "#" + request.symbol() + "#" + key.digest();
         LibraryCompiler.Specialization compiled;
         try {
-            compiled = new LibraryCompiler(context).compileSpecialization(template.owner(),
-                    template.method(), environment, resolver, registry, lookup, known);
+            compiled = template.compile().apply(environment);
         } catch (CompilerException e) {
             throw unsupported(request, "specialization does not compile: " + e.getMessage());
         }

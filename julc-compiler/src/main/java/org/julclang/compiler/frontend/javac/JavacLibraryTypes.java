@@ -2,6 +2,7 @@ package org.julclang.compiler.frontend.javac;
 
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerOptions;
@@ -17,6 +18,7 @@ import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.ElementFilter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.IntStream;
 
 /**
@@ -40,7 +43,7 @@ public final class JavacLibraryTypes {
 
     private final JavacFacts facts;
 
-    private JavacLibraryTypes(JavacFacts facts) {
+    JavacLibraryTypes(JavacFacts facts) {
         this.facts = facts;
     }
 
@@ -62,7 +65,7 @@ public final class JavacLibraryTypes {
     }
 
     /** Only {@code @OnchainLibrary} classes can be exported, as in the source path. */
-    private static void requireLibraries(JavacFacts facts, CompilationUnitTree unit) {
+    static void requireLibraries(JavacFacts facts, CompilationUnitTree unit) {
         new TreeScanner<Void, Void>() {
             @Override
             public Void visitClass(ClassTree tree, Void unused) {
@@ -77,7 +80,7 @@ public final class JavacLibraryTypes {
         }.scan(unit, null);
     }
 
-    private Described describe(JavacTypeRegistrar declared) {
+    Described describe(JavacTypeRegistrar declared) {
         var registry = facts.registry();
         var registered = registry.snapshot();
         var records = new LinkedHashMap<String, JavacTypeRegistrar.Declared>();
@@ -149,25 +152,43 @@ public final class JavacLibraryTypes {
     }
 
     private LibraryType.Reference reference(TypeMirror type) {
+        return reference(type, null, Set.of());
+    }
+
+    /**
+     * A source type as a producer sees it. {@code where} is the tree that writes it, whose text a rejection quotes as the
+     * reference does, or null; a type variable named in {@code variables} is a scheme's variable (ADR-059).
+     */
+    LibraryType.Reference reference(TypeMirror type, Tree where, Set<String> variables) {
         return switch (type.getKind()) {
             case VOID -> ref("Unit");
             case BOOLEAN -> ref("Bool");
             case INT, LONG, SHORT, BYTE, CHAR -> ref("Int");
             case ARRAY -> {
-                if (((ArrayType) type).getComponentType().getKind() != TypeKind.BYTE) throw unsupported(type);
+                if (((ArrayType) type).getComponentType().getKind() != TypeKind.BYTE) throw unsupported(type, where);
                 yield ref("Bytes");
             }
-            case DECLARED -> declared((DeclaredType) type);
-            default -> throw unsupported(type);
+            case DECLARED -> declared((DeclaredType) type, where, variables);
+            case TYPEVAR -> {
+                String name = ((TypeVariable) type).asElement().getSimpleName().toString();
+                if (!variables.contains(name)) throw unsupported(type, where);
+                yield LibraryType.Reference.variable(name);
+            }
+            default -> throw unsupported(type, where);
         };
     }
 
-    private LibraryType.Reference declared(DeclaredType type) {
-        var arguments = type.getTypeArguments().stream().map(this::reference).toList();
+    private LibraryType.Reference declared(DeclaredType type, Tree where, Set<String> variables) {
+        var written = where instanceof ParameterizedTypeTree parameterized ? parameterized.getTypeArguments() : null;
+        var arguments = new ArrayList<LibraryType.Reference>();
+        for (int i = 0; i < type.getTypeArguments().size(); i++) {
+            var argument = written != null && i < written.size() ? written.get(i) : null;
+            arguments.add(reference(type.getTypeArguments().get(i), argument, variables));
+        }
         String identity = facts.identity(type);
         // Nominal identities before primitive aliases; identity is never inferred from erased PIR.
         if (facts.registry().lookupNominal(identity).isPresent()) {
-            if (!arguments.isEmpty()) throw unsupported(type);
+            if (!arguments.isEmpty()) throw unsupported(type, where);
             return new LibraryType.Reference(identity, arguments);
         }
         String mapped = switch (identity) {
@@ -179,7 +200,7 @@ public final class JavacLibraryTypes {
             case "java.util.Map", "org.julclang.core.types.JulcMap" -> "Map";
             case "java.util.Optional" -> "JulcOptional";
             case "org.julclang.core.types.JulcArray" -> "Array";
-            default -> throw unsupported(type);
+            default -> throw unsupported(type, where);
         };
         int arity = switch (mapped) {
             case "List", "JulcOptional", "Array" -> 1;
@@ -187,7 +208,7 @@ public final class JavacLibraryTypes {
             default -> 0;
         };
         if (arguments.size() != arity) {
-            throw new IllegalArgumentException("Raw or invalid container signature: " + type);
+            throw new IllegalArgumentException("Raw or invalid container signature: " + (where != null ? where : type));
         }
         return new LibraryType.Reference(mapped, arguments);
     }
@@ -196,7 +217,7 @@ public final class JavacLibraryTypes {
         return new LibraryType.Reference(name, List.of());
     }
 
-    private static IllegalArgumentException unsupported(TypeMirror type) {
-        return new IllegalArgumentException("Unsupported on-chain source type: " + type);
+    private static IllegalArgumentException unsupported(TypeMirror type, Tree where) {
+        return new IllegalArgumentException("Unsupported on-chain source type: " + (where != null ? where : type));
     }
 }

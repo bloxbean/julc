@@ -310,6 +310,24 @@ public final class LibrarySourceResolver {
      *                           map of class name/FQCN to source string
      * @return list of resolved library source strings (in discovery order)
      */
+    /**
+     * The library sources a host gives a compilation from its pool (ADR-068 D8). The JavaParser frontend compiles what
+     * {@link #resolve} finds; the javac frontend takes the whole pool, and reads what the source references. For javac the
+     * resolved sources come first, in their order, so that the library {@code let}s its lowering builds follow the
+     * reference's; the order is all that reading decides there.
+     */
+    public static List<String> librariesFor(CompilerFrontend frontend, String source, Map<String, ?> availableLibraries) {
+        if (frontend != CompilerFrontend.JAVAC) return resolve(source, availableLibraries);
+        var ordered = new LinkedHashSet<String>();
+        try {
+            ordered.addAll(resolve(source, availableLibraries));
+        } catch (CompilerException e) {
+            // The reference's reading rejects here; javac reads the source itself, so only the order is lost.
+        }
+        normalizeLibrarySources(availableLibraries).values().forEach(library -> ordered.add(library.source()));
+        return List.copyOf(ordered);
+    }
+
     public static List<String> resolve(String source, Map<String, ?> availableLibraries) {
         return resolveLibrarySources(source, normalizeLibrarySources(availableLibraries)).stream()
                 .map(LibrarySource::source)

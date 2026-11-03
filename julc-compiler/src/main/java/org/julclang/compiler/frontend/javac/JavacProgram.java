@@ -66,6 +66,19 @@ public final class JavacProgram {
         return program;
     }
 
+    /**
+     * {@link #analyze} of a library provider's units (D8): they are the roots, and each is compiled as a library, in the
+     * order given.
+     */
+    public static JavacProgram analyzeLibraries(List<JavacFrontend.Unit> units) {
+        var frontend = JavacFrontend.shared();
+        var attribution = frontend.attribute(units, List.of());
+        if (!attribution.result().isAccepted()) throw new CompilerException(attribution.result().compilerDiagnostics());
+        var program = new JavacProgram(frontend, attribution.rootsAsLibraries());
+        program.registerTypes();
+        return program;
+    }
+
     /** {@link #analyze} without the types, for a compilation with rejections to make first, in the reference's order. */
     public static JavacProgram attribute(List<JavacFrontend.Unit> roots, List<JavacFrontend.Unit> pool) {
         return attribute(JavacFrontend.shared(), roots, pool);

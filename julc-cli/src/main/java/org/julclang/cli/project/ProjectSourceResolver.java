@@ -2,6 +2,7 @@ package org.julclang.cli.project;
 
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.LibrarySource;
+import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.LibrarySourceResolver;
 
 import java.util.Collections;
@@ -66,5 +67,10 @@ public final class ProjectSourceResolver {
      */
     public static List<String> resolve(String validatorSource, Map<String, ?> pool) {
         return LibrarySourceResolver.resolve(validatorSource, pool);
+    }
+
+    /** {@link #resolve}, for {@code frontend}: the javac frontend takes the whole pool (ADR-068 D8). */
+    public static List<String> resolve(CompilerFrontend frontend, String validatorSource, Map<String, ?> pool) {
+        return LibrarySourceResolver.librariesFor(frontend, validatorSource, pool);
     }
 }

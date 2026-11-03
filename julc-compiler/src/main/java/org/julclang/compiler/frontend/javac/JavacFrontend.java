@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -188,11 +189,23 @@ public final class JavacFrontend {
      * sources it did not offer left out (D8).
      */
     record Attribution(JavacResult result, List<CompilationUnitTree> roots, List<CompilationUnitTree> libraries,
-                       List<CompilationUnitTree> offered, List<CompilationUnitTree> offeredByName, Trees trees,
+                       List<CompilationUnitTree> offered, Map<CompilationUnitTree, String> names, Trees trees,
                        Elements elements, Types types) {
 
         static Attribution none(JavacResult result) {
-            return new Attribution(result, List.of(), List.of(), List.of(), List.of(), null, null, null);
+            return new Attribution(result, List.of(), List.of(), List.of(), Map.of(), null, null, null);
+        }
+
+        /** {@link #offered}, in qualified-name order (I4): by each unit's public type's name, or its first type's. */
+        List<CompilationUnitTree> offeredByName() {
+            var byName = new ArrayList<>(offered);
+            byName.sort(Comparator.comparing(names::get));
+            return List.copyOf(byName);
+        }
+
+        /** This attribution, with its roots as what is compiled as libraries: a library provider's units (D8). */
+        Attribution rootsAsLibraries() {
+            return new Attribution(result, roots, libraries, roots, names, trees, elements, types);
         }
     }
 
@@ -356,7 +369,7 @@ public final class JavacFrontend {
             if (tree != null && !rootUris.contains(file.toUri())) libraries.put(file.primaryName(), tree);
         }
         var read = new HashMap<String, CompilationUnitTree>();
-        var names = new HashMap<CompilationUnitTree, String>();
+        var names = new IdentityHashMap<CompilationUnitTree, String>();
         for (var tree : rootTrees) {
             var file = byUri.get(tree.getSourceFile().toUri());
             read.put(JavacPlatform.identity(file.text()), tree);
@@ -367,10 +380,8 @@ public final class JavacFrontend {
             names.put(tree, name);
         });
         var offeredRead = hostOrder.stream().map(read::get).filter(tree -> tree != null).toList();
-        var offeredByName = new ArrayList<>(offeredRead);
-        offeredByName.sort(Comparator.comparing(names::get));
         return new Attribution(result.withDropped(precedence.droppedIdentities()), rootTrees, List.copyOf(libraries.values()),
-                offeredRead, List.copyOf(offeredByName), Trees.instance(task), task.getElements(), task.getTypes());
+                offeredRead, Collections.unmodifiableMap(names), Trees.instance(task), task.getElements(), task.getTypes());
     }
 
     /**

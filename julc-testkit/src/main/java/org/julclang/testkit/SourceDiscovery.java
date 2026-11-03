@@ -139,7 +139,7 @@ public final class SourceDiscovery {
 
         var jarTexts = new ArrayList<String>();
         Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot, jarTexts);
-        List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
+        List<String> libSources = LibrarySourceResolver.librariesFor(options.getFrontend(), validatorSource, pool);
 
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compile(validatorSource, libSources);
@@ -228,6 +228,14 @@ public final class SourceDiscovery {
      * @throws AssertionError if the source file cannot be read or compilation fails
      */
     public static CompileResult compileMethod(Class<?> sourceClass, Path sourceRoot, String methodName) {
+        return compileMethod(sourceClass, sourceRoot, methodName, new CompilerOptions());
+    }
+
+    /**
+     * {@link #compileMethod(Class, Path, String)} with {@code options}: on the javac frontend the whole pool, which it reads
+     * from (ADR-068 D8).
+     */
+    public static CompileResult compileMethod(Class<?> sourceClass, Path sourceRoot, String methodName, CompilerOptions options) {
         Path sourceFile = sourceFileFor(sourceClass, sourceRoot);
         String source;
         try {
@@ -238,10 +246,9 @@ public final class SourceDiscovery {
 
         var jarTexts = new ArrayList<String>();
         Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot, jarTexts);
-        List<String> libSources = LibrarySourceResolver.resolve(source, pool);
+        List<String> libSources = LibrarySourceResolver.librariesFor(options.getFrontend(), source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(),
-                new CompilerOptions().setJarLibrarySources(jarTexts));
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options.setJarLibrarySources(jarTexts));
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {

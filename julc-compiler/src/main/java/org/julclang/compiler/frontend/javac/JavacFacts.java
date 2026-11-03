@@ -32,6 +32,7 @@ import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
@@ -70,11 +71,35 @@ public final class JavacFacts {
     /** What the reference compiles as libraries, of what javac read ({@code JavacFrontend.Attribution#offered}). */
     private final Set<CompilationUnitTree> offered = Collections.newSetFromMap(new IdentityHashMap<>());
 
+    /** What a specialization binds each type variable of its method to (ADR-059, D8); empty everywhere else. */
+    private final Map<Element, PirType> typeVariables;
+
     private JavacFacts(Trees trees, Elements elements, Types types, TypeRegistry registry) {
         this.trees = trees;
         this.elements = elements;
         this.types = types;
         this.registry = registry;
+        this.typeVariables = Map.of();
+    }
+
+    private JavacFacts(JavacFacts facts, Map<Element, PirType> typeVariables) {
+        this.trees = facts.trees;
+        this.elements = facts.elements;
+        this.types = facts.types;
+        this.registry = facts.registry;
+        this.paths.putAll(facts.paths);
+        this.libraries.addAll(facts.libraries);
+        this.offered.addAll(facts.offered);
+        this.typeVariables = Map.copyOf(typeVariables);
+    }
+
+    /**
+     * These facts, with each type variable of {@code typeVariables} read as the PIR type it is bound to: a generic library
+     * method lowered at the types a producer asked for (D8). The environment is explicit, so a producer's own type needs no
+     * Java declaration.
+     */
+    public JavacFacts withTypeVariables(Map<Element, PirType> typeVariables) {
+        return new JavacFacts(this, typeVariables);
     }
 
     /** Facts over an attributed task. */
@@ -365,7 +390,11 @@ public final class JavacFacts {
                     + ". Supported types: boolean, int, long", where);
             case ARRAY -> array((ArrayType) type, where);
             case DECLARED -> declared((DeclaredType) type, where, inferred);
-            case TYPEVAR -> throw rejection(registry.unknownTypeMessage(type.toString(), type.toString()), where);
+            case TYPEVAR -> {
+                var bound = typeVariables.get(((TypeVariable) type).asElement());
+                if (bound == null) throw rejection(registry.unknownTypeMessage(type.toString(), type.toString()), where);
+                yield bound;
+            }
             case ERROR -> throw new IllegalStateException("an error type reached JuLC: " + type);
             default -> throw rejection("Cannot resolve type: " + type + ". Supported types: BigInteger,"
                     + " String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces", where);

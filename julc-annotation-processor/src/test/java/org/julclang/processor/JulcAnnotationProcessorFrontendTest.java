@@ -76,9 +76,24 @@ class JulcAnnotationProcessorFrontendTest {
         }
     }
 
+    /** D8: the processor's pool, its class loader's library sources, is javac's pool too: the same script. */
+    @Test
+    void aLibraryOfThePoolCompilesAsOnTheReference(@TempDir Path reference, @TempDir Path javac) throws Exception {
+        String source = validator("return MathLib.pow(BigInteger.TWO, BigInteger.TEN).signum() > 0;")
+                .replace("import org.julclang.core.PlutusData;",
+                        "import java.math.BigInteger;\nimport org.julclang.core.PlutusData;\nimport org.julclang.stdlib.lib.MathLib;");
+        assertEquals(List.of(), errors(process(reference, source)));
+        assertEquals(List.of(), errors(process(javac, source, "-Ajulc.frontend=javac")));
+        try (var files = Files.walk(reference)) {
+            var outputs = files.filter(Files::isRegularFile).toList();
+            assertTrue(!outputs.isEmpty());
+            for (var output : outputs) assertEquals(Files.readString(output), Files.readString(javac.resolve(reference.relativize(output))));
+        }
+    }
+
     @Test
     void theOptionReachesTheCompilation(@TempDir Path out) throws Exception {
-        String source = validator("boolean none = true; for (var s : ctx.txInfo().signatories()) { none = false; } return none;");
+        String source = validator("java.math.BigInteger left = (java.math.BigInteger) (Object) ctx.txInfo().fee(); return left.signum() > 0;");
         assertEquals(List.of(), errors(process(out, source, "-Ajulc.frontend=javaparser")));
         var errors = errors(process(out, source, "-Ajulc.frontend=javac"));
         assertTrue(errors.stream().anyMatch(message -> message.contains("JULC0084")), errors::toString);

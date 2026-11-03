@@ -15,6 +15,7 @@ import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -127,6 +128,39 @@ class JavacLibrariesTest {
                 """;
         LoweringFixture.assertSameMethodAsReference(source, "f",
                 List.of(stdlibSource("MathLib"), stdlibSource("ByteStringLib")), STDLIB);
+    }
+
+    /**
+     * D8: {@code compile(String)} and {@code compileMethod(String, String)} take the class path's library sources as their
+     * pool, the reference's resolved ones first, so the bytes are the reference's.
+     */
+    @Test
+    void theClassPathIsThePoolWhereTheCallerNamesNone() {
+        var method = """
+                import org.julclang.stdlib.lib.MathLib;
+                import org.julclang.stdlib.lib.ByteStringLib;
+                import java.math.BigInteger;
+
+                class M {
+                    static BigInteger f(BigInteger a, byte[] b) {
+                        return MathLib.pow(a, BigInteger.valueOf(3)).add(BigInteger.valueOf(ByteStringLib.length(b)));
+                    }
+                }
+                """;
+        for (var level : OptimizationLevel.values()) {
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)).compileMethod(method, "f");
+            var javac = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level)
+                    .setFrontend(CompilerFrontend.JAVAC)).compileMethod(method, "f");
+            assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()),
+                    level::toString);
+        }
+        var validator = VALIDATOR.replace("import com.lib.RulesLib;\n", "").replace("import com.lib.TokenLib;\n",
+                "import org.julclang.stdlib.lib.MathLib;\n").replace(
+                "RulesLib.allowed(redeemer, RulesLib.twice(redeemer)) && TokenLib.small(redeemer)",
+                "MathLib.pow(redeemer, BigInteger.TWO).signum() >= 0");
+        var reference = new JulcCompiler(STDLIB).compile(validator);
+        var javac = new JulcCompiler(STDLIB, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compile(validator);
+        assertArrayEquals(UplcFlatEncoder.encodeProgram(reference.program()), UplcFlatEncoder.encodeProgram(javac.program()));
     }
 
     @Test
@@ -279,11 +313,16 @@ class JavacLibrariesTest {
         var source = """
                 import org.julclang.core.PlutusData;
                 import org.julclang.stdlib.Builtins;
+                import java.math.BigInteger;
                 class M {
                     static PlutusData g(byte[] a) { return D.id(Builtins.bData(a)); }
+                    static PlutusData f(BigInteger a) { return D.id(PlutusData.cast(a, PlutusData.class)); }
                 }
                 """;
         LoweringFixture.assertSameMethodAsReference(source, "g", List.of(library), STDLIB);
+        var warned = new JulcCompiler(STDLIB).compileMethod(source, "f", List.of(library)).diagnostics();
+        assertTrue(warned.stream().anyMatch(d -> d.message().contains("expects Data")), warned::toString);
+        LoweringFixture.assertSameMethodAsReference(source, "f", List.of(library), STDLIB);
     }
 
     @Test

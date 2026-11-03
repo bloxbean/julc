@@ -125,12 +125,29 @@ public final class EqualityRules {
         }
     }
 
+    /** Whether {@code tree} is in a generic static method of a unit compiled as a library: a template (ADR-059). */
+    private boolean inTemplate(Tree tree) {
+        for (var at = facts.enclosing(tree, Tree.Kind.METHOD); at != null; at = facts.enclosing(at, Tree.Kind.METHOD)) {
+            var method = (ExecutableElement) facts.element(at);
+            if (!method.getTypeParameters().isEmpty() && method.getModifiers().contains(Modifier.STATIC)
+                    && facts.inOfferedLibrary(method)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean isString(TypeMirror type) {
         return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.STRING);
     }
 
-    /** {@code JULC0087} and {@code JULC0078}, at each compared type of an operation in {@link EqualityOperations}' table. */
+    /**
+     * {@code JULC0087} and {@code JULC0078}, at each compared type of an operation in {@link EqualityOperations}' table. A
+     * generic library method is exempt: Java cannot call it, so only a producer's request instantiates it, and equality is the
+     * producer's (D6, "Generic library methods").
+     */
     void check(MethodInvocationTree tree) {
+        if (inTemplate(tree)) return;
         var method = (ExecutableElement) facts.element(tree.getMethodSelect());
         var argumentTypes = new ArrayList<TypeMirror>();
         for (var argument : tree.getArguments()) argumentTypes.add(facts.type(argument));

@@ -983,15 +983,14 @@ class JavacTypesTest {
             assertTrue(javac.types().containsKey("lib.L.Shape"));
         }
 
+        /** Group 3a: the exports are lowered, as the reference lowers them ({@code JavacExportsTest} compares them). */
         @Test
-        void whatNeedsLoweringIsNotPorted() {
+        void theExportsAreTheReferences() {
+            var reference = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setJavacGate(JavacGateMode.OFF));
             var javac = new JavaLibraryProvider(List.of(LIBRARY), null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC));
-            for (Executable call : List.<Executable>of(
-                    () -> javac.describe("lib.L"), () -> javac.schemes("lib.L"), javac::unsupportedExports,
-                    () -> javac.materialize("lib.L.x"), () -> javac.materialize(List.of()))) {
-                var e = assertThrows(CompilerException.class, call);
-                assertEquals(DiagnosticCodes.FRONTEND_CONSTRUCT_NOT_PORTED.code(), e.diagnostics().getFirst().code());
-            }
+            assertEquals(reference.describe("lib.L"), javac.describe("lib.L"));
+            assertEquals(reference.schemes("lib.L"), javac.schemes("lib.L"));
+            assertEquals(reference.unsupportedExports(), javac.unsupportedExports());
         }
 
         @Test

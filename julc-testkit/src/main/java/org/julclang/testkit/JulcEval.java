@@ -298,6 +298,9 @@ public final class JulcEval {
         CompileResult compiled;
         if (javaSource != null) {
             compiled = compiler.compileMethod(javaSource, methodName);
+        } else if (frontend == CompilerFrontend.JAVAC) {
+            // The class's source, with the project's and the class path's libraries as its pool (ADR-068 D8)
+            compiled = SourceDiscovery.compileMethod(sourceClass, sourceRoot, methodName, options);
         } else {
             // Read source file and compile method with source maps
             var sourceFile = SourceDiscovery.sourceFileFor(sourceClass, sourceRoot);

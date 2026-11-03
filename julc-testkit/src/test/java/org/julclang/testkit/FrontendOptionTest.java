@@ -50,6 +50,19 @@ class FrontendOptionTest {
         assertEquals(BigInteger.valueOf(42), result);
     }
 
+    /** D8: the testkit's pool, the context loader's library sources, is javac's pool too; the library is lowered whole. */
+    @Test
+    void aLibraryOfThePoolRunsOnJavacAsOnTheReference() {
+        var source = """
+                import java.math.BigInteger;
+                import org.julclang.stdlib.lib.MathLib;
+                class C { static BigInteger cube(BigInteger a) { return MathLib.pow(a, BigInteger.valueOf(3)).add(MathLib.sign(a)); } }
+                """;
+        var reference = JulcEval.forSource(source).call("cube", BigInteger.valueOf(-4)).asInteger();
+        assertEquals(BigInteger.valueOf(-65), reference);
+        assertEquals(reference, JulcEval.forSource(source).frontend(CompilerFrontend.JAVAC).call("cube", BigInteger.valueOf(-4)).asInteger());
+    }
+
     @Test
     void julcEvalReachesTheFrontend() {
         assertEquals(BigInteger.valueOf(42), JulcEval.forSource(NOT_PORTED).call("twice", BigInteger.valueOf(21)).asInteger());

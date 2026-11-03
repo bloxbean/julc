@@ -144,6 +144,19 @@ final class JavacLibraries {
         return e instanceof NotPorted notPorted ? notPorted.construct() : JavacCompilation.REJECTED;
     }
 
+    /**
+     * The generic {@code method}, lowered as an ordinary method of its class at the PIR types these facts bind its type
+     * variables to (ADR-059), as the reference's {@code compileSpecialization} lowers it. A call of itself by its simple name
+     * is a call of its binder, which the caller renames to the specialization's.
+     */
+    LibraryMethod specialized(MethodTree method) {
+        return lowering.terms().unlocated(() -> {
+            var lowered = new ClassLowering((ClassTree) facts.parent(method));
+            lowering.methodDeclared(lowered.binder(method));
+            return lowered.lowered(method);
+        });
+    }
+
     private List<LibraryRegistration.Method> lowerUnit(CompilationUnitTree unit) {
         var methods = new ArrayList<LibraryRegistration.Method>();
         for (var type : classes(unit)) {
@@ -202,6 +215,12 @@ final class JavacLibraries {
         LibraryRegistration.Method method(MethodTree method) {
             if (isTemplate(method)) return new LibraryRegistration.Method(null, List.of());
             lowering.drainLibraryCalls();
+            var lowered = lowered(method);
+            return new LibraryRegistration.Method(lowered, lowering.drainLibraryCalls());
+        }
+
+        /** {@code method}'s body under the class's fields, at its type. */
+        LibraryMethod lowered(MethodTree method) {
             PirTerm body = lowering.method(method, scope, false);
             for (int i = fields.size() - 1; i >= 0; i--) {
                 var field = facts.element(fields.get(i));
@@ -211,8 +230,7 @@ final class JavacLibraries {
             }
             var element = (ExecutableElement) facts.element(method);
             binders.putIfAbsent(binder(method), facts.binderMethod(element));
-            var lowered = new LibraryMethod(owner, method.getName().toString(), facts.methodType(element), body);
-            return new LibraryRegistration.Method(lowered, lowering.drainLibraryCalls());
+            return new LibraryMethod(owner, method.getName().toString(), facts.methodType(element), body);
         }
     }
 }

@@ -82,6 +82,30 @@ class JulcPluginFrontendTest {
         assertEquals(reference, script());
     }
 
+    /** D8: every other file of the source directory is the plugin's pool, on javac too: the same script. */
+    @Test
+    void aLibraryOfTheSourceDirectoryCompilesAsOnTheReference() throws IOException {
+        write("return FeeRules.ok(ctx.txInfo().fee());");
+        Files.writeString(project.resolve("src/main/plutus/com/example/FeeRules.java"), """
+                package com.example;
+
+                import java.math.BigInteger;
+                import org.julclang.stdlib.annotation.OnchainLibrary;
+
+                @OnchainLibrary
+                public class FeeRules {
+                    static final BigInteger LIMIT = BigInteger.TWO;
+                    public static boolean ok(BigInteger fee) { return fee.compareTo(LIMIT) > 0; }
+                }
+                """);
+        configure(null);
+        assertEquals(TaskOutcome.SUCCESS, runner().build().task(":compileJulc").getOutcome());
+        String reference = script();
+        configure("javac");
+        assertEquals(TaskOutcome.SUCCESS, runner().build().task(":compileJulc").getOutcome());
+        assertEquals(reference, script());
+    }
+
     @Test
     void theOptionReachesTheCompilation() throws IOException {
         write("BigInteger left = (BigInteger) (Object) ctx.txInfo().fee(); return left.signum() > 0;");

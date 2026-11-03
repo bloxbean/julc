@@ -111,7 +111,7 @@ public class JulcCompiler {
     /**
      * The library sources a source compiles with when the caller names none: what its imports resolve to in the class
      * path's scan. The javac frontend takes the whole scan as its pool, as JAR sources, and reads what the source
-     * references (ADR-068 D8).
+     * references (ADR-068 D8; {@link LibrarySourceResolver#librariesFor}).
      */
     private List<String> classpathLibraries(String source, ClassLoader classLoader, CompilationContext context) {
         var libraries = classpathLibraries(source, classLoader, context.frontend());
@@ -121,10 +121,7 @@ public class JulcCompiler {
 
     private static List<String> classpathLibraries(String source, ClassLoader classLoader, CompilerFrontend frontend) {
         var available = LibrarySourceResolver.scanClasspathSources(classLoader);
-        if (frontend == CompilerFrontend.JAVAC) {
-            return available.values().stream().map(library -> library.source()).toList();
-        }
-        return available.isEmpty() ? List.of() : LibrarySourceResolver.resolve(source, available);
+        return available.isEmpty() ? List.of() : LibrarySourceResolver.librariesFor(frontend, source, available);
     }
 
     /**
