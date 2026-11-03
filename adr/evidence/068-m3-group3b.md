@@ -57,7 +57,7 @@ moves the 25 rows of fixtures that write `validate(BigInteger, BigInteger)`. Not
 
 ## Rows moved, by class
 
-I1 at `7ddd5b3f`, against the M4 table, into scratch (`-Padr068.out`, no freeze): 17,096 cases. 29 rows moved, the 27 of this
+I1 against the M4 table, into scratch (`-Padr068.out`, no freeze), 17,096 cases: first at `c5895cae`, then at `9ab1bcc7` and at `7b7e4e2e`, the last code. Between the runs only the 8 `fromPlutusData` rows changed, in their bytes. 29 rows moved, the 27 of this
 slice and 2 new cases. No other row moved, so no byte changed elsewhere: the strict boundary builds what it did.
 
 | Rows | From | To | D13 class |
@@ -70,7 +70,8 @@ slice and 2 new cases. No other row moved, so no byte changed elsewhere: the str
 | 2 new: `diverge-068-ledger-from-data-refused`, `diverge-068-ledger-hash-from-data` | none | `REFERENCE-DRIFT`, "no committed row" | The freeze writes their reference rows; each is the same Semantic fix |
 
 The 8 `DIFFERENT-*` rows are classified in `068/g3b-accepted-differences.tsv`. The check costs bytes and budget on the inputs
-the JVM accepts too: 43 to 219 bytes at `NONE` for one `Credential`, 1,123 to 1,299 for `M3bStatics`. That is the price of
+the JVM accepts too, at `NONE` at the last code: 43 to 204 bytes for one `Credential`, 47 to 107 for a `PubKeyHash`, 1,123 to
+1,283 for `M3bStatics`, 43 to 524 for the largest probe. That is the price of
 failing where the JVM throws, and a review decision of D13's Cost change kind, folded into the fix's row.
 
 ## Tests
@@ -145,5 +146,7 @@ end:
 
 ## Not run
 
-- I1 after `9ab1bcc7`, whose `StrictBoundaryGenerator` refactor builds the same terms in strict mode (no layouts; an empty
-  `Optional`'s fields through the same exact rule): the module runs cover it.
+- The module suites and mutants after the last commit, which folds `left && true` to `left` in the ledger mode's check: I1 at
+  that commit moves only the 8 `fromPlutusData` rows' bytes, smaller, and `JavacLedgerFromDataTest` and
+  `JavacContractAndDebugTest` pass on it. A mutant that drops the fold changes cost alone, which no test reads.
+- The 2 new cases' reference rows, which only a freeze writes.
