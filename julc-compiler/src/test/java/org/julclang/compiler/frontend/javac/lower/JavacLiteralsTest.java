@@ -123,13 +123,13 @@ class JavacLiteralsTest {
                 """, "m");
     }
 
-    /** A char has no on-chain representation: JULC0124 in the reference's words for its type, which it gives uncoded (M5). */
+    /** A char literal is the reference's "Unsupported expression: CharLiteralExpr", with a code (JULC0125, I2a). */
     @Test
     void aCharLiteralHasNoRepresentation() {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(null, new CompilerOptions().setFrontend(CompilerFrontend.JAVAC))
                 .compileMethod(returning("int", "'a'"), "m", List.of()));
-        assertEquals("JULC0124", failure.diagnostics().getFirst().code(), failure::getMessage);
-        assertEquals("Unsupported primitive type: char. Supported types: boolean, int, long", failure.diagnostics().getFirst().message());
+        assertEquals("JULC0125", failure.diagnostics().getFirst().code(), failure::getMessage);
+        assertEquals("Unsupported expression: CharLiteralExpr", failure.diagnostics().getFirst().message());
     }
 
     /** {@code null} is the reference's rejection, with its code: {@code JULC0017}. */

@@ -175,16 +175,23 @@ public final class EqualityRules {
 
     /** The other side of the comparison, by each type it can have: javac types a conditional argument by its target. */
     private void requireRelated(EqualityOperations.Site site, MethodInvocationTree tree) {
-        for (var operand : EqualityRelation.operands(tree.getArguments().get(site.argument()))) {
-            var result = relation.between(site.compared(), facts.type(operand));
-            switch (result.kind()) {
-                case RELATED -> {
-                }
-                case UNRESOLVED -> throw CompilerTypeDiagnostics.equalityUnread(site.operation(),
+        var argument = tree.getArguments().get(site.argument());
+        // Arms of two types have no type, whatever they are compared with (ArmTypes): that rule speaks first.
+        ArmTypes.requireOneType(facts, argument);
+        var results = new ArrayList<EqualityRelation.Result>();
+        for (var operand : EqualityRelation.operands(argument)) results.add(relation.between(site.compared(), facts.type(operand)));
+        // JULC0078 only where Java's answer is false whatever the values: every operand unrelated. Where one can be equal and
+        // another cannot, or the relation cannot be decided, it is JULC0087 (ADR-067 I12: unknown sets keep no constant answer).
+        if (!results.isEmpty() && results.stream().allMatch(result -> result.kind() == EqualityRelation.Kind.UNRELATED)) {
+            var result = results.getFirst();
+            throw CompilerTypeDiagnostics.equalsAlwaysFalse(site.operation(),
+                    ArrayIdentityEquality.text(result.left()), ArrayIdentityEquality.text(result.right()), facts.location(tree));
+        }
+        for (var result : results) {
+            if (result.kind() != EqualityRelation.Kind.RELATED) {
+                throw CompilerTypeDiagnostics.equalityUnread(site.operation(),
                         ArrayIdentityEquality.text(result.left()) + " against " + ArrayIdentityEquality.text(result.right())
                                 + ", which cannot be decided", facts.location(tree));
-                case UNRELATED -> throw CompilerTypeDiagnostics.equalsAlwaysFalse(site.operation(),
-                        ArrayIdentityEquality.text(result.left()), ArrayIdentityEquality.text(result.right()), facts.location(tree));
             }
         }
     }

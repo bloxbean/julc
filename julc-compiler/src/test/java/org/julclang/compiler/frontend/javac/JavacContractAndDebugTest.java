@@ -372,6 +372,10 @@ class JavacContractAndDebugTest {
         var javac = assertThrows(RuntimeException.class, () -> debug(cr, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT));
         assertEquals(reference.getClass(), javac.getClass());
         assertEquals(reference.getMessage(), javac.getMessage());
+        // A lone CR inside the source, which the reference compiles (review F6): the same metadata, offsets as it counts them.
+        String inside = MINTING.replaceFirst("\n", "\n// c\r");
+        assertEquals(view(debug(inside, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata()),
+                view(debug(inside, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));
         String trailing = MINTING + "// end\r";
         assertEquals(view(debug(trailing, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT).debugMetadata()),
                 view(debug(trailing, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT).debugMetadata()));

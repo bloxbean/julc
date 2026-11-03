@@ -478,7 +478,8 @@ class JavacLoopsTest {
         var failure = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
                 new CompilerOptions().setFrontend(CompilerFrontend.JAVAC)).compileMethod(source, "m", List.of()));
         assertEquals("JULC0012", failure.diagnostics().getFirst().code());
-        assertEquals(13, failure.diagnostics().getFirst().line());
+        // The switch of arms of two types is itself rejected (ADR-068 M5), on its own line.
+        assertEquals(12, failure.diagnostics().getFirst().line());
     }
 
     /** A tuple's diamond takes its target's components, so a raw target takes only Data. */

@@ -76,8 +76,8 @@ class Adr068M5aHarnessTest {
     }
 
     /**
-     * Arms that are all Data-shaped and differ in type: javac types the conditional or {@code switch} {@code Object} as an
-     * argument of {@code equals}, or an intersection under {@code var}.
+     * Arms that are variants of one sealed interface, compared through {@code equals}: the argument is javac's {@code Object},
+     * so arms of two types, {@code JULC0012} since the review of M5a (F1, F2), where the JVM answers.
      */
     @ParameterizedTest
     @ValueSource(strings = {
@@ -85,9 +85,16 @@ class Adr068M5aHarnessTest {
                     + "public static boolean m(BigInteger a, boolean c) { S s = c ? new A(a) : new B(a); return s.equals(switch (s) { case A x -> new A(a); default -> s; }); }",
             "sealed interface S permits A, B { } record A(BigInteger v) implements S { } record B(BigInteger v) implements S { }\n"
                     + "public static boolean m(BigInteger a, boolean c) { S s = new B(a); A x = new A(a); return s.equals(c ? s : x); }"})
-    void dataShapedArmsOfDifferentTypes(String members) {
-        var inputs = List.of(List.of(integer(4), bool(true)), List.of(integer(4), bool(false)));
-        assertEquals(16, agreeOnEveryInput("data-shaped-arms", members, TAGS, inputs));
+    void armsOfTwoTypesComparedAreRejected(String members) {
+        for (var args : List.of(List.of(integer(4), bool(true)), List.of(integer(4), bool(false)))) {
+            var report = BOTH.run(new DiffCase("two-types", HEADER + members + "\n}\n", "Case", "m", args, TAGS, null));
+            assertInstanceOf(Observation.Value.class, report.jvm(), report::describe);
+            report.results().forEach((config, result) -> {
+                if (config.frontend() == CompilerFrontend.JAVAC) {
+                    assertEquals("JULC0012", assertInstanceOf(Observation.Rejected.class, result.uplc(), report::describe).code());
+                }
+            });
+        }
     }
 
     /**

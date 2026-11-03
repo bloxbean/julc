@@ -41,7 +41,8 @@ final class Literals {
             case STRING_LITERAL -> string(tree);
             // A char has no on-chain representation, as the reference says of its type (JULC0124). Floating point and null
             // are rejected by their own rules before lowering.
-            case CHAR_LITERAL -> throw facts.unsupportedPrimitive("char", tree);
+            // The reference's words for a char literal (I2a); the scan reads a char variable's type first.
+            case CHAR_LITERAL -> throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "CharLiteralExpr");
             case FLOAT_LITERAL, DOUBLE_LITERAL -> throw facts.rejection(DiagnosticCodes.FLOATING_POINT_UNSUPPORTED, tree);
             case NULL_LITERAL -> throw facts.rejection(DiagnosticCodes.NULL_UNSUPPORTED, tree);
             default -> throw facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());

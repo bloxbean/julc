@@ -110,8 +110,14 @@ final class CallTargets {
      */
     private CallTarget qualifiedByName(MemberSelectTree select, ExecutableElement method, TypeElement owner) {
         if (!(facts.element(select.getExpression()) instanceof TypeElement)) {
-            // A static method through an expression: the reference reads a member of that value, which has none.
-            return new CallTarget.Rejected(DiagnosticCodes.STATIC_CALL_QUALIFIED_CLASS_NAME, select.toString());
+            // A static method through an expression: the reference reads a member of that value, which has none (JULC0055).
+            return new CallTarget.Unresolved(name(method));
+        }
+        // Through a nested class's qualified name, Outer.Inner.f(a): the reference reads the outer name as a variable.
+        var outermost = select.getExpression();
+        while (outermost instanceof MemberSelectTree qualified) outermost = qualified.getExpression();
+        if (outermost instanceof IdentifierTree outer && facts.element(outer) instanceof TypeElement) {
+            return new CallTarget.Rejected(DiagnosticCodes.UNDEFINED_VARIABLE, outer.getName());
         }
         if (facts.identity(owner).equals(JavacNames.JULC_MAP) && name(method).equals("of")) {
             return new CallTarget.Rejected(DiagnosticCodes.JULCMAP_OF_OFF_CHAIN_ONLY);

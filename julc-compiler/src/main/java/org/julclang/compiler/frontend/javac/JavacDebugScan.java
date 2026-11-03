@@ -222,8 +222,10 @@ final class JavacDebugScan {
         var owner = (ClassTree) facts.enclosing(field, Tree.Kind.CLASS, Tree.Kind.INTERFACE);
         if (owner == null) throw new CompilerException("Debug @Param declaration has no class scope");
         long start = facts.start(owner);
-        String ownerId = "class:" + sourceId + ":" + owner.getSimpleName() + ":" + start;
-        return into.scope(owner, "scope:" + ownerId, null, sourceId, range(start, facts.end(owner)),
+        var range = range(start, facts.end(owner));
+        // An id holds the range's start as the reference counts it (past a lone CR, by LF alone).
+        String ownerId = "class:" + sourceId + ":" + owner.getSimpleName() + ":" + range.startUtf16();
+        return into.scope(owner, "scope:" + ownerId, null, sourceId, range,
                 DebugMetadata.ScopeKind.CLASS, ownerId);
     }
 
@@ -241,8 +243,9 @@ final class JavacDebugScan {
         String parentId = around == null ? null : scope(around, methodId);
         long start = facts.start(owner);
         var kind = kind(owner);
-        return into.scope(owner, "scope:" + sourceId + ":" + methodId + ":" + start + ":" + kind.name(), parentId, sourceId,
-                range(start, facts.end(owner)), kind, methodId);
+        var range = range(start, facts.end(owner));
+        return into.scope(owner, "scope:" + sourceId + ":" + methodId + ":" + range.startUtf16() + ":" + kind.name(), parentId, sourceId,
+                range, kind, methodId);
     }
 
     private static DebugMetadata.ScopeKind kind(Tree tree) {
@@ -420,16 +423,28 @@ final class JavacDebugScan {
     private DebugMetadata.SourceRange range(long start, long end) {
         int from = (int) start;
         int last = (int) Math.max(start, end - 1);
-        // The reference counts lines by LF alone, so a range that reaches past a lone CR has, for it, lines and columns that
-        // do not meet its offsets, which the metadata's form refuses: such a range is refused here too. One before it is not.
-        if (loneCarriageReturn >= 0 && loneCarriageReturn <= last) {
-            throw new DebugMetadata.ValidationException("Invalid source range in " + sourceId);
-        }
         var lines = unit.getLineMap();
-        long beginLine = lines.getLineNumber(from);
-        long endLine = lines.getLineNumber(last);
-        return new DebugMetadata.SourceRange(sourceId, from, Math.min(text.length(), last + 1), (int) beginLine,
-                (int) (from - lines.getStartPosition(beginLine) + 1), (int) endLine,
-                (int) (last - lines.getStartPosition(endLine) + 2));
+        int beginLine = (int) lines.getLineNumber(from);
+        int beginColumn = (int) (from - lines.getStartPosition(beginLine) + 1);
+        int endLine = (int) lines.getLineNumber(last);
+        int endColumn = (int) (last - lines.getStartPosition(endLine) + 2);
+        if (loneCarriageReturn < 0) {
+            return new DebugMetadata.SourceRange(sourceId, from, Math.min(text.length(), last + 1), beginLine, beginColumn, endLine, endColumn);
+        }
+        // A lone CR ends a line for javac, as for JavaParser, and the reference turns a line and column back into an offset by
+        // LF alone (DebugMetadataCollector.offset). Its offsets past one are then its own, and the metadata's form refuses
+        // some of them: they are taken here as it takes them, so this accepts and refuses what it does (ADR-068 M5, F6).
+        int startUtf16 = referenceOffset(beginLine, beginColumn);
+        int endUtf16 = Math.min(text.length(), referenceOffset(endLine, endColumn - 1) + 1);
+        return new DebugMetadata.SourceRange(sourceId, startUtf16, endUtf16, beginLine, beginColumn, endLine, endColumn);
+    }
+
+    /** {@code DebugMetadataCollector.offset}: the line's start counted by LF alone, plus the column. */
+    private int referenceOffset(int line, int column) {
+        var starts = new ArrayList<Integer>();
+        starts.add(0);
+        for (int i = 0; i < text.length(); i++) if (text.charAt(i) == '\n') starts.add(i + 1);
+        int at = Math.max(1, Math.min(line, starts.size()));
+        return Math.min(text.length(), starts.get(at - 1) + Math.max(0, column - 1));
     }
 }

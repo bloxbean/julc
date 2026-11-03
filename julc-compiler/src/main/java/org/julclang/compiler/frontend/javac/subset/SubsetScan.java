@@ -10,6 +10,7 @@ import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.CompoundAssignmentTree;
+import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ConstantCaseLabelTree;
 import com.sun.source.tree.DoWhileLoopTree;
 import com.sun.source.tree.ExpressionStatementTree;
@@ -29,6 +30,7 @@ import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.StatementTree;
+import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.TryTree;
@@ -197,7 +199,7 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
         if (tree != null && tree.getKind() == Tree.Kind.EMPTY_STATEMENT && facts.parent(tree) instanceof CompilationUnitTree) return null;
         if (tree != null && !allowed(tree.getKind())) {
             // A char has no on-chain representation, as the reference says of its type (JULC0124); a guard folds it.
-            if (tree.getKind() == Tree.Kind.CHAR_LITERAL) throw facts.unsupportedPrimitive("char", tree);
+            if (tree.getKind() == Tree.Kind.CHAR_LITERAL) throw charLiteral(tree);
             throw outside(tree);
         }
         try {
@@ -222,6 +224,19 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             case StatementTree statement -> facts.rejection(DiagnosticCodes.STATEMENT_UNSUPPORTED, tree, facts.location(tree).fragment());
             default -> facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, facts.location(tree).fragment());
         };
+    }
+
+    /**
+     * A {@code char} literal, in the reference's words: of a {@code char} variable, the type's ({@code JULC0124}, at the type);
+     * anywhere else, "Unsupported expression: CharLiteralExpr" ({@code JULC0125}).
+     */
+    private CompilerException charLiteral(Tree tree) {
+        if (facts.parent(tree) instanceof VariableTree variable && variable.getType() != null
+                && variable.getType().getKind() == Tree.Kind.PRIMITIVE_TYPE && facts.type(tree).getKind() == TypeKind.CHAR
+                && facts.element(variable).asType().getKind() == TypeKind.CHAR) {
+            return facts.unsupportedPrimitive("char", variable.getType());
+        }
+        return facts.rejection(DiagnosticCodes.EXPRESSION_UNSUPPORTED, tree, "CharLiteralExpr");
     }
 
     private boolean allowed(Tree.Kind kind) {
@@ -627,14 +642,37 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** D6: {@code ==}, {@code !=} and string {@code +} are Java's, not their on-chain lowering's. */
     @Override
     public Void visitBinary(BinaryTree tree, Void unused) {
+        requireOneArmTypeWithin(tree);
         if (!equalityDeferred) equality.check(tree);
         return super.visitBinary(tree, unused);
+    }
+
+    /** Arms of two types are the rule that speaks first in a call or a comparison: what is compared has no type (ArmTypes). */
+    private void requireOneArmTypeWithin(Tree tree) {
+        for (var choice : SubsetWalk.all(tree, ExpressionTree.class)) {
+            if (choice instanceof ConditionalExpressionTree || choice instanceof SwitchExpressionTree) ArmTypes.requireOneType(facts, choice);
+        }
+    }
+
+    /** A conditional of arms of two types has no type (ArmTypes, ADR-068 M5). */
+    @Override
+    public Void visitConditionalExpression(ConditionalExpressionTree tree, Void unused) {
+        ArmTypes.requireOneType(facts, tree);
+        return super.visitConditionalExpression(tree, unused);
+    }
+
+    /** A {@code switch} expression of arms of two types has no type (ArmTypes, ADR-068 M5). */
+    @Override
+    public Void visitSwitchExpression(SwitchExpressionTree tree, Void unused) {
+        ArmTypes.requireOneType(facts, tree);
+        return super.visitSwitchExpression(tree, unused);
     }
 
     /** D6: an operation that compares by {@code equals} must not reach an array by identity. */
     @Override
     public Void visitMethodInvocation(MethodInvocationTree tree, Void unused) {
         requireNoFunctionalCall(tree);
+        requireOneArmTypeWithin(tree);
         if (!equalityDeferred) equality.check(tree);
         return super.visitMethodInvocation(tree, unused);
     }

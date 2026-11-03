@@ -105,7 +105,9 @@ class JavacOperatorsTest {
         var source = source(members);
         var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
         var javac = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m", List.of()));
-        assertTrue(javac.getMessage().contains("Conditional else branch"), javac::getMessage);
+        // Arms of two types are rejected at the conditional first (ADR-068 M5), and never meet the native boundary.
+        assertEquals("JULC0012", javac.diagnostics().getFirst().code(), javac::getMessage);
+        assertTrue(javac.getMessage().contains("different types"), javac::getMessage);
     }
 
     @ParameterizedTest
@@ -235,8 +237,8 @@ class JavacOperatorsTest {
     @Test
     void aCaptureIsPrintedWithoutItsNumber() {
         String members = "static boolean m(boolean c, BigInteger a) { var x = c ? new org.julclang.core.types.Tuple2<>(a, true) : new org.julclang.core.types.Tuple2<>(new byte[]{1}, true); return x.first().equals(a); }";
-        var first = rejected(members).message();
-        assertEquals(first, rejected(members).message());
+        var first = javac(members).diagnostics().getFirst().message();
+        assertEquals(first, javac(members).diagnostics().getFirst().message());
         assertFalse(first.matches(".*capture#\\d.*"), first);
     }
 

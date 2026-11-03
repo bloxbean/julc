@@ -14,6 +14,7 @@ import org.julclang.compiler.frontend.javac.ArrayIdentityEquality;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.SwitchResults;
+import org.julclang.compiler.frontend.javac.subset.ArmTypes;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
@@ -59,16 +60,17 @@ final class Typing {
     }
 
     /**
-     * {@code tree}'s static type. A type JuLC has no representation for, {@code Object}, {@code java.lang.Record} or an
-     * intersection, is read from what the expression can be ({@link #unrepresented}); anything else with no representation
-     * stops here: nothing can be decided on it.
+     * {@code tree}'s static type. javac types a conditional or a {@code switch} that is an argument of an {@code Object}
+     * parameter {@code Object}; its arms have one type (ArmTypes rejects any other, ADR-068 M5), and it is that type. A record
+     * component read through a raw type, {@code t.first()} of a raw {@code Tuple2}, is the field of the record's
+     * representation, Data, as the reference reads it. Anything else with no representation is {@code JULC0012}.
      */
     PirType of(ExpressionTree tree) {
         var type = facts.type(tree);
         try {
             return facts.registry().resolveNamed(facts.valueType(type, tree));
         } catch (CompilerException e) {
-            var read = hasNoRepresentation(type) ? unrepresented(tree, type) : null;
+            var read = isObject(type) ? unrepresented(tree) : null;
             if (read != null) return read;
             // The reference's code for a value of a type it cannot resolve (I2a).
             throw new Unrepresented(facts.rejection(DiagnosticCodes.TYPE_RESOLUTION_FAILED, tree,
@@ -76,33 +78,22 @@ final class Typing {
         }
     }
 
-    /**
-     * The type of an expression whose static type has no representation, or null:
-     * <ul>
-     *   <li>a conditional or a {@code switch}, which javac types {@code Object} as an argument of an {@code Object} parameter,
-     *       {@code Record} between two records, or {@code Record & S} between two variants, is what its arms are: their one type; Data where they differ and are all
-     *       Data-shaped, which is their encoding, as the reference types a {@code switch}; and otherwise
-     *       {@link PirHelpers#UNKNOWN}, which no encoding takes ({@code JULC0012}), as the reference says of a
-     *       {@code switch}. A conditional is held to that rule too, so its else branch is never read as its then branch;</li>
-     *   <li>a record component read through a raw type, {@code t.first()} of a raw {@code Tuple2}, is the field's type in
-     *       the record's representation, Data, as the reference reads it.</li>
-     * </ul>
-     */
-    private PirType unrepresented(ExpressionTree tree, TypeMirror type) {
+    private PirType unrepresented(ExpressionTree tree) {
         return switch (tree) {
             case ParenthesizedTree parenthesized -> of(parenthesized.getExpression());
-            case ConditionalExpressionTree conditional -> arms(List.of(conditional.getTrueExpression(), conditional.getFalseExpression()));
-            case SwitchExpressionTree nested -> arms(SwitchResults.of(nested));
+            case ConditionalExpressionTree conditional -> arms(conditional, List.of(conditional.getTrueExpression(), conditional.getFalseExpression()));
+            case SwitchExpressionTree nested -> arms(nested, SwitchResults.of(nested));
             case MethodInvocationTree call -> rawComponent(call);
             default -> null;
         };
     }
 
-    private PirType arms(List<? extends ExpressionTree> arms) {
+    /** The arms' one type. A method lowered on its own has not met the scan, so the rule is held here too. */
+    private PirType arms(ExpressionTree tree, List<? extends ExpressionTree> arms) {
+        ArmTypes.requireOneType(facts, tree);
         var types = new LinkedHashSet<PirType>();
         for (var arm : arms) types.add(of(arm));
-        if (types.size() == 1) return types.iterator().next();
-        return types.stream().allMatch(Typing::isDataShaped) ? new PirType.DataType() : PirHelpers.UNKNOWN;
+        return types.size() == 1 ? types.iterator().next() : null;
     }
 
     /** A record's component read through a raw type: the field of the record's representation, or null. */
@@ -120,35 +111,14 @@ final class Typing {
         return fields.fields().stream().filter(f -> f.name().equals(name)).map(PirType.Field::type).findFirst().orElse(null);
     }
 
-    private boolean hasNoRepresentation(TypeMirror type) {
-        return isObject(type) || isRecord(type) || type.getKind() == TypeKind.INTERSECTION;
-    }
-
     private boolean isObject(TypeMirror type) {
         return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals(JavacNames.OBJECT);
-    }
-
-    private boolean isRecord(TypeMirror type) {
-        return type.getKind() == TypeKind.DECLARED && facts.identity(facts.typeElement(type)).equals("java.lang.Record");
     }
 
     /** {@code lowered}'s type, for the expression {@code tree}: the one kept with it, or see the class's comment. */
     PirType of(ExpressionTree tree, PirTerm lowered) {
         if (kept.contains(lowered)) return ofVariable(lowered);
-        PirType type;
-        try {
-            type = of(tree);
-        } catch (Unrepresented stop) {
-            // A variable of a type with no representation, var x = c ? new R1(a) : new R2(a), holds what its initializer was
-            // typed, and its binder says that.
-            if (lowered instanceof PirTerm.Var && hasNoRepresentation(facts.type(tree))) return ofVariable(lowered);
-            throw stop;
-        }
-        if (type == PirHelpers.UNKNOWN) {
-            // The term alone would say its first arm's type: keep the unknown with it, for what encodes it.
-            termTypes.record(lowered, type);
-            return type;
-        }
+        var type = of(tree);
         return facts.registry().resolveNamed(type instanceof PirType.DataType ? termTypes.infer(lowered) : type);
     }
 

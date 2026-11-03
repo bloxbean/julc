@@ -248,16 +248,24 @@ final class Adr068Lowering {
      * frontend, and whatever it throws but a {@code CompilerException} goes through {@link #coverage} untouched. A
      * {@link JavaLibraryProvider} is the one other API: on both frontends it refuses a source it cannot export with an
      * {@link IllegalArgumentException}. And {@code compileForDebug} refuses a source whose ranges its metadata cannot hold
-     * (lone carriage returns) with a {@link DebugMetadata.ValidationException}, on both frontends.
+     * (lone carriage returns) with a {@link DebugMetadata.ValidationException}: a rejection only where the reference refuses
+     * it alike, and otherwise the frontend breaking.
      */
     private Compilation onJavac(Adr068Corpus.Case c, CompilerOptions options) {
         var compilation = javac.compile(c, options);
         var thrown = compilation.thrown();
         boolean rejection = thrown == null || thrown instanceof CompilerException
                 || c.entry.equals("JavaLibraryProvider") && thrown instanceof IllegalArgumentException
-                || c.entry.equals("compileForDebug") && thrown instanceof DebugMetadata.ValidationException;
+                || c.entry.equals("compileForDebug") && thrown instanceof DebugMetadata.ValidationException
+                        && referenceRefusesAlike(c, options, thrown);
         if (!rejection) throw new AssertionError(c.key + ": " + thrown, thrown);
         return compilation;
+    }
+
+    /** Whether the reference refuses the same source with the same exception, class and words: only then is it a rejection. */
+    private static boolean referenceRefusesAlike(Adr068Corpus.Case c, CompilerOptions options, Throwable thrown) {
+        var reference = compile(c, options(c, options.getOptimizationLevel(), options.isSourceMapEnabled(), CompilerFrontend.JAVAPARSER)).thrown();
+        return reference != null && reference.getClass() == thrown.getClass() && Objects.equals(reference.getMessage(), thrown.getMessage());
     }
 
     /** The source-map settings a comparison reads: both, for a program. A provider's row has no map to set. */

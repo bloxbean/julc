@@ -73,11 +73,21 @@ class JavacM5aTest {
 
     // --- Arms of a conditional or a switch javac types Object, Record or an intersection ---
 
+    /**
+     * Arms of one sealed interface of records share its representation, and lower: in a return, a typed local, a switch. As a
+     * diamond's component their type is javac's intersection, {@code Record & S}, which has no representation: JULC0012.
+     */
+    @Test
+    void anIntersectionInADiamondHasNoType() {
+        assertEquals("JULC0012", rejected("sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } "
+                + "static boolean m(boolean c, BigInteger a) { var t = new Tuple2<>(c ? new S.A(a) : new S.B(), a); return true; }").code());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
-            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static boolean m(S s) { return s.equals(switch (s) { case A a -> a; default -> s; }); }",
-            "sealed interface S { record A() implements S { } } static boolean m(boolean c, S a, S.A b) { return a.equals(c ? a : b); }",
-            "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static boolean m(boolean c, BigInteger a) { var t = new Tuple2<>(c ? new S.A(a) : new S.B(), a); return true; }"})
+            "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static S m(boolean c, BigInteger a) { return c ? new S.A(a) : new S.B(); }",
+            "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static long m(boolean c, BigInteger a) { S s = c ? new S.A(a) : new S.B(); return switch (s) { case S.A p -> 1; case S.B q -> 2; }; }",
+            "sealed interface S { record A(BigInteger v) implements S { } record B() implements S { } } static S m(S s) { return switch (s) { case S.A p -> new S.B(); case S.B q -> s; }; }"})
     void armsOfOneRepresentationLower(String members) {
         compiler(CompilerFrontend.JAVAC).compileMethod(source(members), "m", List.of());
     }
@@ -94,11 +104,18 @@ class JavacM5aTest {
             // As a diamond's component, which holds Data: DiamondTupleDiffTest#switchesOfUnknownTypeAreNotEncoded's.
             "sealed interface S permits A, B { } record A(BigInteger n) implements S { } record B(BigInteger n) implements S { } static PlutusData d(BigInteger v) { return Builtins.iData(v); }\n"
                     + "static long m(BigInteger x, BigInteger y) { S s = new A(x); var t = new Tuple2<>(switch (s) { case A a -> a.n(); case B b -> d(b.n()); }, y); return 1; }",
-            "static long m(boolean c, BigInteger a) { var t = new Tuple2<>(c ? a : Builtins.iData(a), a); return 1; }"})
+            "static long m(boolean c, BigInteger a) { var t = new Tuple2<>(c ? a : Builtins.iData(a), a); return 1; }",
+            // Arms of two types, wherever they stand (review F1, F2): compared, in a var, nested, in a lambda.
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static boolean m(S s) { return s.equals(switch (s) { case A a -> a; default -> s; }); }",
+            "sealed interface S { record A() implements S { } } static boolean m(boolean c, S a, S.A b) { return a.equals(c ? a : b); }",
+            "static long m(boolean c, BigInteger a) { var v = c ? a : Builtins.iData(a); return 1; }",
+            "static long m(boolean c, boolean d, BigInteger a) { return JulcList.of(c ? Builtins.iData(a) : (d ? a : Builtins.iData(a))).size(); }",
+            "static long m(boolean c, BigInteger a) { JulcList<BigInteger> xs = JulcList.of(a); return xs.map(x -> c ? x : Builtins.iData(x)).size(); }",
+            "sealed interface S permits A, B { } record A() implements S { } record B() implements S { } static long m(S s, PlutusData d) { var v = switch (s) { case A a -> Builtins.tailList(Builtins.unListData(d)); default -> d; }; return JulcList.of(v).size(); }"})
     void armsOfDifferentRepresentationsAreNotEncoded(String members) {
         var diagnostic = rejected(members);
         assertEquals("JULC0012", diagnostic.code(), diagnostic::message);
-        assertTrue(diagnostic.message().contains("arms have different types"), diagnostic::message);
+        assertTrue(diagnostic.message().contains("whose arms have different types"), diagnostic::message);
     }
 
     // --- equals between types with no class in common (JULC0078, JavacCallsTest), and its remedy ---
@@ -120,6 +137,8 @@ class JavacM5aTest {
         assertTrue(diagnostic.message().contains("java.math.BigInteger.valueOf"), diagnostic::message);
         assertEquals("JULC0123", rejected("static boolean m(PlutusData r) { return org.julclang.stdlib.lib.MapLib.member("
                 + "PlutusData.cast(r, JulcMap.class), Builtins.iData(2)); }").code());
+        // A nested class's qualified name: the reference reads the outer name as a variable (JULC0011), as here (review F8).
+        assertEquals("JULC0011", rejected("static class H { static BigInteger f(BigInteger a) { return a; } } static BigInteger m(BigInteger a) { return C.H.f(a); }").code());
         // The reference recognises JulcMap.of by either name.
         assertEquals("JULC0062", rejected("static boolean m(byte[] a) { var map = org.julclang.core.types.JulcMap.of(a, BigInteger.ONE); "
                 + "return map.containsKey(a); }").code());
@@ -130,7 +149,11 @@ class JavacM5aTest {
         var diagnostic = rejected("static char m(BigInteger a) { char c = 'x'; return c; }");
         assertEquals("JULC0124", diagnostic.code());
         assertEquals("Unsupported primitive type: char. Supported types: boolean, int, long", diagnostic.message());
-        assertEquals("JULC0124", rejected("static long m(BigInteger a) { long c = 'x'; return c; }").code());
+        // A char literal elsewhere: the reference's words for it, "Unsupported expression: CharLiteralExpr" (review F7).
+        var literal = rejected("static long m(BigInteger a) { long c = 'x'; return c; }");
+        assertEquals("JULC0125", literal.code());
+        assertEquals("Unsupported expression: CharLiteralExpr", literal.message());
+        assertEquals("JULC0124", rejected("static long m(long a) { long q = (char) a; return q; }").code());
         assertEquals("JULC0124", rejected("static long m(short a) { return 1; }").code());
     }
 

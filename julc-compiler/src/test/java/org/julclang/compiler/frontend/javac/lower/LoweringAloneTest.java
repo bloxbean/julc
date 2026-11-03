@@ -263,7 +263,7 @@ class LoweringAloneTest {
     /** A char and a variant of two sealed parents are the scan's codes, and the lowering's too, so no term holds one. */
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
-            "static long m() { long c = 'x'; return c; }                                                       | JULC0124",
+            "static long m() { long c = 'x'; return c; }                                                       | JULC0125",
             "static boolean m(java.math.BigInteger a) { S s = new B(a); return true; }                          | JULC0079",
             "static boolean m(S s) { return s instanceof B b; }                                                 | JULC0079",
             "static long m(S s) { return switch (s) { case A a -> 1; case B b -> 2; }; }                         | JULC0079"})

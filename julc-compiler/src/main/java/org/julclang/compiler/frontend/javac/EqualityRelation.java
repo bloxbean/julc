@@ -5,6 +5,8 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.SwitchExpressionTree;
 
+import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
@@ -16,7 +18,9 @@ import javax.lang.model.type.WildcardType;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Whether Java's {@code equals} can hold between a value of one static type and a value of another (ADR-068 D6). On-chain
@@ -114,14 +118,12 @@ public final class EqualityRelation {
         return first ? decide(bound, other, argument) : decide(other, bound, argument);
     }
 
-    /** A value of an intersection has every bound, so one unrelated bound decides. {@code Object} says nothing here. */
+    /**
+     * An intersection, {@code Record & S} of a conditional's arms, is a type javac invents; whether its values meet another's is
+     * not read from its bounds one by one, and it cannot be decided (ADR-068 M5, F3).
+     */
     private Result decideBounds(IntersectionType intersection, TypeMirror other, boolean argument, boolean first) {
-        Result found = new Result(Kind.RELATED, intersection, other, argument);
-        for (var bound : intersection.getBounds()) {
-            if (isObject(bound)) continue;
-            found = worse(found, first ? decide(bound, other, argument) : decide(other, bound, argument));
-        }
-        return found;
+        return new Result(Kind.UNRESOLVED, first ? intersection : other, first ? other : intersection, argument);
     }
 
     private static Result worse(Result a, Result b) {
@@ -141,7 +143,37 @@ public final class EqualityRelation {
         var erasedRight = types.erasure(right);
         if (types.isSubtype(erasedLeft, erasedRight)) return arguments(left, right, argument);
         if (types.isSubtype(erasedRight, erasedLeft)) return arguments(right, left, argument);
-        return new Result(Kind.UNRELATED, left, right, argument);
+        // Neither is a subtype of the other. They are disjoint, so Java's answer is false, only if no class can be both: two
+        // classes, a final class and an interface it does not implement, or sealed types whose permitted classes cannot meet.
+        // Otherwise (Record against a sealed interface of records, two open interfaces) it cannot be decided.
+        boolean disjoint = !mayShareAValue((TypeElement) left.asElement(), (TypeElement) right.asElement(), new HashSet<>());
+        return new Result(disjoint ? Kind.UNRELATED : Kind.UNRESOLVED, left, right, argument);
+    }
+
+    /** Whether a class can be a subtype of both {@code a} and {@code b}, neither a subtype of the other's erasure. */
+    private boolean mayShareAValue(TypeElement a, TypeElement b, Set<TypeElement> seen) {
+        if (types.isSubtype(types.erasure(a.asType()), types.erasure(b.asType()))
+                || types.isSubtype(types.erasure(b.asType()), types.erasure(a.asType()))) {
+            return true;
+        }
+        boolean aInterface = a.getKind().isInterface(), bInterface = b.getKind().isInterface();
+        if (!aInterface && !bInterface) return false;   // one superclass each
+        if (isFinal(a) || isFinal(b)) return false;      // a final class that is not the other's subtype
+        for (var sealed : List.of(a, b)) {
+            if (sealed.getModifiers().contains(Modifier.SEALED) && seen.add(sealed)) {
+                var other = sealed == a ? b : a;
+                for (var permitted : sealed.getPermittedSubclasses()) {
+                    if (mayShareAValue((TypeElement) types.asElement(permitted), other, seen)) return true;
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isFinal(TypeElement type) {
+        return type.getModifiers().contains(Modifier.FINAL) || type.getKind() == ElementKind.RECORD
+                || type.getKind() == ElementKind.ENUM;
     }
 
     /** {@code narrow} seen as {@code wide}'s class, argument by argument. */

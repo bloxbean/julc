@@ -1492,7 +1492,7 @@
       "category": "SYNTAX",
       "severity": "error",
       "template": "Static call {0} names its class by a qualified name; on-chain code calls a static method through its class''s simple name",
-      "summary": "JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it. A call through a package-qualified or nested-qualified class name, such as java.math.BigInteger.valueOf(1), is not resolved. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded, or as JULC0062 for JulcMap.of.",
+      "summary": "JuLC resolves a static call through the simple name of its class, as an import or the enclosing class declares it. A call through a package-qualified class name, such as java.math.BigInteger.valueOf(1), is not resolved. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded, as an undefined name, or as JULC0062 for JulcMap.of. A nested class's qualified name, Outer.Inner.f(a), is the reference's JULC0011.",
       "fix": "Import the class and call the method through its simple name, for example `import java.math.BigInteger;` and `BigInteger.valueOf(1)`."
     },
     {
@@ -1503,7 +1503,7 @@
       "category": "TYPE",
       "severity": "error",
       "template": "Unsupported primitive type: {0}. Supported types: boolean, int, long",
-      "summary": "byte, short, char, float and double have no on-chain representation, and neither has a char literal. Emitted by the javac frontend (ADR-068 I2a); the reference frontend reports it uncoded.",
+      "summary": "byte, short, char, float and double have no on-chain representation, as a variable's, a component's or a cast's type. Emitted by the javac frontend (ADR-068 I2a), in the reference frontend's words, which it reports uncoded. A char literal elsewhere is JULC0125, in the reference's words for it.",
       "fix": "Use int or long for a number, BigInteger for an unbounded integer, boolean for a flag, and String or byte[] for text and bytes."
     },
     {

@@ -159,12 +159,22 @@ class JavacCallsTest {
                 "static boolean m(PubKeyHash a, BigInteger b) { return a.equals(b); }",
                 "static boolean m(PubKeyHash a, org.julclang.ledger.ScriptHash b) { return a.equals(b); }",
                 "static boolean m(org.julclang.ledger.TxId a, byte[] b) { return a.equals(b); }",
-                "static boolean m(PubKeyHash a, byte[] b) { return a.equals(b); }",
-                "static boolean m(boolean c, BigInteger a, PlutusData d) { return a.equals(c ? a : d); }"}) {
+                "static boolean m(PubKeyHash a, byte[] b) { return a.equals(b); }"}) {
             var diagnostic = rejected(members);
             assertEquals("JULC0078", diagnostic.code(), members);
             assertTrue(diagnostic.message().contains("which Java keeps distinct"), diagnostic::message);
         }
+    }
+
+    /**
+     * JULC0078 only where Java's answer is false whatever the values (review F3): a type that may share a value with the other, an
+     * open interface against a class that is not final, is JULC0087; arms of two types are JULC0012 first, whatever they meet.
+     */
+    @Test
+    void equalsThatJavaCanAnswerTrueIsNotAlwaysFalse() {
+        assertEquals("JULC0087", rejected("interface I { } record R(BigInteger v) implements I { } static boolean m(I i, BigInteger b) { return b.equals(i); }").code());
+        assertEquals("JULC0012", rejected("static boolean m(boolean c, BigInteger a, PlutusData d) { return a.equals(c ? a : d); }").code());
+        assertEquals("JULC0012", rejected("static boolean m(boolean c, BigInteger a) { BigInteger q = a; return q.equals(c ? 1 : a); }").code());
     }
 
     @Test
@@ -352,7 +362,8 @@ class JavacCallsTest {
 
     @Test
     void aStaticMethodThroughAVariableDoesNotLower() {
-        assertEquals("JULC0123", rejected("static BigInteger m(BigInteger a) { return a.valueOf(1); }").code());
+        // The reference reads a member of the value, which has none (JULC0055).
+        assertEquals("JULC0055", rejected("static BigInteger m(BigInteger a) { return a.valueOf(1); }").code());
     }
 
     /** The reference resolves a static call through its class's simple name, and rejects this uncoded: JULC0123 (I2a). */
