@@ -141,7 +141,7 @@ final class Calls {
         if (target.type() instanceof PirType.ByteStringType || target.type() instanceof PirType.IntegerType) {
             return terms.decode(data, target.type());
         }
-        return terms.checkedDecode(data, target.type(), read -> facts.exactShapeCheck(read, target.type()));
+        return terms.checkedDecode(data, target.type());
     }
 
     /** {@code PlutusData.cast(d, T.class)} views {@code d} as {@code T}; a map variable holds a pair list, so it decodes. */

@@ -2,6 +2,7 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
@@ -15,7 +16,6 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.function.Function;
 
 /**
  * The only code that builds a {@code Var}, {@code Lam} or {@code Let} for a source element (ADR-068 I13), and the only recorder of
@@ -29,6 +29,7 @@ public final class Terms {
     private final IdentityHashMap<PirTerm, SourceLocation> positions = new IdentityHashMap<>();
     private final Provenance provenance = new Provenance();
     private DebugMetadataCollector debug;
+    private StrictBoundaryGenerator shapes;
 
     Terms(JavacFacts facts, CompilationContext context) {
         this.facts = facts;
@@ -88,13 +89,20 @@ public final class Terms {
     }
 
     /**
-     * {@code let #fromData = data in if check #fromData then #fromData decoded as type else error}: Data that passes
-     * {@code check}, as {@code type} holds it. Nothing in its scope is built elsewhere, so the name is fixed (ADR-060).
+     * {@code let #fromData = data in if check #fromData then #fromData decoded as type else error}: Data of exactly
+     * {@code type}'s shape, as {@code type} holds it. The check is the program's one dispatcher, bound by
+     * {@link #bindShapeChecks}. Nothing in the {@code let}'s scope is built elsewhere, so the name is fixed (ADR-060).
      */
-    PirTerm.Let checkedDecode(PirTerm data, PirType type, Function<PirTerm, PirTerm> check) {
+    PirTerm.Let checkedDecode(PirTerm data, PirType type) {
+        if (shapes == null) shapes = facts.shapeChecks();
         var read = generated("#fromData", new PirType.DataType());
         return generatedLet("#fromData", data,
-                new PirTerm.IfThenElse(check.apply(read), PirHelpers.wrapDecode(read, type), new PirTerm.Error(type)));
+                new PirTerm.IfThenElse(shapes.checkShared(read, type), PirHelpers.wrapDecode(read, type), new PirTerm.Error(type)));
+    }
+
+    /** {@code program} under the one dispatcher of its shape checks, if it has any. */
+    public PirTerm bindShapeChecks(PirTerm program) {
+        return shapes == null ? program : shapes.bindShared(program);
     }
 
     /** What {@code data} decodes to as {@code type}, for a type whose decode reads all of it. */

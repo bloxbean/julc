@@ -585,11 +585,11 @@ public final class JavacFacts {
     }
 
     /**
-     * A {@code Bool} term that holds where {@code data} has exactly the shape of {@code type}: the strict boundary's check,
-     * the one a datum and a redeemer take.
+     * The exact-shape checks of one program: the strict boundary's check, the one a datum and a redeemer take, with one
+     * dispatcher for the program, bound under a name of its own so a datum's checker does not capture it.
      */
-    public PirTerm exactShapeCheck(PirTerm data, PirType type) {
-        return new StrictBoundaryGenerator(registry.namedDefinitions()).check(data, type);
+    public StrictBoundaryGenerator shapeChecks() {
+        return StrictBoundaryGenerator.shared(registry.namedDefinitions(), "#__julc-shape-check");
     }
 
     /** Whether a map is reachable in {@code type}'s shape, through its fields, constructors, elements and named types. */

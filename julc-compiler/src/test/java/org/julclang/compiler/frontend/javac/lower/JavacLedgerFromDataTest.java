@@ -185,6 +185,32 @@ class JavacLedgerFromDataTest {
         }
     }
 
+    /** A program has one dispatcher of shape checks, whatever the number of decodes and of their types. */
+    @Test
+    void decodesShareOneDispatcher() {
+        String one = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.Address;
+                import org.julclang.ledger.TxOutRef;
+
+                class C {
+                    static boolean m(PlutusData d, PlutusData e) {
+                        Address a = Address.fromPlutusData(d);
+                        TxOutRef r = TxOutRef.fromPlutusData(e);
+                        return true;
+                    }
+                }
+                """;
+        String two = one.replace("TxOutRef r = TxOutRef.fromPlutusData(e);",
+                "TxOutRef r = TxOutRef.fromPlutusData(e); Address b = Address.fromPlutusData(e); TxOutRef s = TxOutRef.fromPlutusData(d);");
+        for (var level : OptimizationLevel.values()) {
+            var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level);
+            int once = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(one, "m").scriptSizeBytes();
+            int twice = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(two, "m").scriptSizeBytes();
+            assertTrue(twice - once < 40, () -> level + ": " + once + " then " + twice + " bytes");
+        }
+    }
+
     /** A ledger type whose shape holds a map, a {@code Value} among them, is not decoded on-chain. */
     @ParameterizedTest
     @ValueSource(strings = {"Value", "TxOut", "TxInInfo", "TxInfo", "ScriptContext", "Committee", "GovernanceAction"})

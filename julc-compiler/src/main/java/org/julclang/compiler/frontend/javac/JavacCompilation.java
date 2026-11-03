@@ -286,7 +286,8 @@ public final class JavacCompilation {
                         if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) BindingCheck.check(term, terms.provenance());
                     },
                     (field, binding) -> terms.assembled(binding, field.name(), elements.get(field.name())),
-                    (name, binding) -> terms.assembled(binding, name, methodElements.get(name)));
+                    (name, binding) -> terms.assembled(binding, name, methodElements.get(name)),
+                    terms::bindShapeChecks);
         }
     }
 

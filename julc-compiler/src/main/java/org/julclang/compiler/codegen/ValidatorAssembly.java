@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
 /**
  * What a program's lowered methods become, whichever frontend lowered them (ADR-068 F846): static field, helper and
@@ -94,11 +95,22 @@ public final class ValidatorAssembly {
      * @param finalCheck  run on the assembled term, before the backend
      * @param staticBound told each static field's binding as it is built, one per copy, or null
      * @param methodBound told each method's binding by its binder name, one per copy, or null
+     * @param programBound what binds around the whole program, inside its {@code @Param}s, or null
      */
     public record Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
                            BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
                            BiConsumer<StaticField, PirTerm> staticBound,
-                           BiConsumer<String, PirTerm> methodBound) {
+                           BiConsumer<String, PirTerm> methodBound, UnaryOperator<PirTerm> programBound) {
+
+        public Frontend(Map<PirTerm, SourceLocation> positions, PirDebugProvenance provenance,
+                        BiConsumer<ParamField, PirTerm> paramBound, Consumer<PirTerm> finalCheck,
+                        BiConsumer<StaticField, PirTerm> staticBound, BiConsumer<String, PirTerm> methodBound) {
+            this(positions, provenance, paramBound, finalCheck, staticBound, methodBound, null);
+        }
+
+        PirTerm bindProgram(PirTerm program) {
+            return programBound == null ? program : programBound.apply(program);
+        }
     }
 
     /** A compiled program: the result, and what the backend returned for it. */
@@ -158,7 +170,7 @@ public final class ValidatorAssembly {
     /** Assembles a validator and lowers it. */
     public static Assembled validator(Validator validator, TypeRegistry types, CompilationContext context,
                                       Frontend frontend, boolean captureDetails) {
-        PirTerm wrapped = wrap(validator, types, context, frontend);
+        PirTerm wrapped = frontend.bindProgram(wrap(validator, types, context, frontend));
         wrapped = bindParams(validator.params(), wrapped, frontend);
         frontend.finalCheck().accept(wrapped);
         var lowered = PirBackend.lower(wrapped, context, frontend.positions(), true, frontend.provenance(),
@@ -320,7 +332,7 @@ public final class ValidatorAssembly {
         // 15. Wrap library methods as Let bindings
         body = bindLibraries(topoSortLibraryMethods(program.libraries()), body);
         // 16. Wrap with outer @Param lambdas
-        body = bindParams(program.params(), body, frontend);
+        body = bindParams(program.params(), frontend.bindProgram(body), frontend);
 
         frontend.finalCheck().accept(body);
         // 17. Lower to UPLC (with source map support)
