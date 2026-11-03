@@ -14,6 +14,8 @@ import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.JulcVm;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -546,5 +548,17 @@ class JavacLibrariesTest {
                 + "public interface I { static BigInteger f(BigInteger x) { return x.add(x); } }";
         var caller = "import com.lib.I;\nimport java.math.BigInteger;\nclass M { static BigInteger f(BigInteger a) { return I.f(a); } }";
         LoweringFixture.assertSameMethodRejectionAsReference(caller, "f", List.of(iface), STDLIB);
+    }
+
+    /** Floating point in a part of a read library nothing lowers, an instance method or a template, is the reference's rejection. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "public BigInteger inst(BigInteger x) { double d = 1.5; return x; }\n",
+            "static <T> T t(T x) { double d = 1.5; return x; }\n",
+    })
+    void floatingPointInAnUnloweredPartOfALibraryIsTheReferencesRejection(String unlowered) {
+        var l = library("L", "public static BigInteger f(BigInteger x) { return x.add(BigInteger.ONE); }\n" + unlowered);
+        var caller = "import com.lib.L;\nimport java.math.BigInteger;\nclass M { static BigInteger f(BigInteger a) { return L.f(a); } }";
+        LoweringFixture.assertSameMethodRejectionAsReference(caller, "f", List.of(l), STDLIB);
     }
 }
