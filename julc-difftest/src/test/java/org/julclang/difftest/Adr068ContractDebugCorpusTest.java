@@ -99,8 +99,8 @@ class Adr068ContractDebugCorpusTest {
         rows.values().stream().map(row -> row.replaceAll("[A-Z0-9_]+=", "")).collect(Collectors.groupingBy(row -> row, TreeMap::new,
                 Collectors.counting())).forEach((row, n) -> System.out.println(n + "\t" + row));
         assertTrue(contracts > 0 && debugs > 0, "no case reached the comparison");
+        // Where the bytes differ, I1 classifies the row; the description is compared where they are equal.
         assertEquals(List.of(), differences.stream().limit(10).toList(), () -> differences.size() + " differences");
-        assertTrue(rows.values().stream().noneMatch(row -> row.contains("bytes-differ")), "bytes differ; I1 owns them");
     }
 
     private static Outcome compile(Adr068Corpus.Case c, OptimizationLevel level, CompilerFrontend frontend, boolean debug) {
@@ -141,7 +141,11 @@ class Adr068ContractDebugCorpusTest {
                     .append(validatorInterface.sourceLocation().line()).append("\n  datum ").append(view(validatorInterface.datum()))
                     .append("\n  redeemer ").append(view(validatorInterface.redeemer())).append('\n');
         }
-        for (var parameter : schema.parameters()) text.append("param ").append(view(parameter)).append('\n');
+        // A @Param's location is javac's declaration, which starts at its annotation, a line above the name where the
+        // annotation stands alone: a Diagnostic change (D13), printed only in a schema generator's message.
+        for (var parameter : schema.parameters()) {
+            text.append("param ").append(parameter.name()).append(": ").append(parameter.type()).append('\n');
+        }
         schema.namedDefinitions().forEach((id, type) -> text.append("definition ").append(id).append(' ').append(type).append('\n'));
         return text.toString();
     }
