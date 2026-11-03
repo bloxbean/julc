@@ -164,11 +164,71 @@ the host has no supported javac (it now reports nothing, as compiling reports `J
 class in an anonymous class's qualified name, and the four reader enums (now `SourceReader`). The rest is listed above.
 No Codex review ran: the head is owed one, with the other heads in `068-followups.md`.
 
+### Second review (`m6a-review.md`, head `3e515e17`)
+
+No P0 or P1; the default reading is byte-identical to `e7603aaa` on 496 sources. Fixed, each in its own test:
+
+- **F1.** The CLI gate now fails on any `introspection:` class it does not list, as on `lint:`, `discovery:` and `arity:`.
+  The other gates had no such gap: the metadata gate fails on any `metadata:` or `subset:` class, the annotation gate on
+  any `annotations:`, the library gate on every class with a `:`.
+- **F3.** The metadata extractor's javac reading reports the subset's diagnostics a compilation reports, from
+  `JulcCompiler.subsetDiagnostics`, which calls `JavacCompilation.subset`: javac's rejection, or the subset's rules and
+  scan, through the same two helpers the validator and `compileMethod` compilations call (a source with a validator is
+  checked as its compilation checks it, any other as `compileMethod` does), with the libraries ranked as a compilation
+  ranks them. `/api/evaluate` passes its compiler and libraries. A validator with `try/catch` is `valid=false`, `JULC0015`
+  at the same position on both readings (`JavaMetadataExtractorReadersTest`). The gate compares whole responses,
+  diagnostics and validity included; the classes are below.
+- **F2.** The project scan and javac discovery visit in the tools' order (`SourceOrderScanner`): an enum's members before
+  its constants (`SourceReadersTest`, `TestDiscoveryOnJavacTest`).
+- **F5.** javac discovery skips a source whose only errors are of a later Java and that has no `@Test` method, as the
+  project scan does, and reports any other error (`TestDiscoveryOnJavacTest`).
+- **F4.** A block comment before an annotation value or member prints into the fragment as JavaParser prints it, and
+  `- 5` prints as `-5` (`SourceAnnotationsTest`). JavaParser also prints the comment into the value's own text, which only
+  an enum member's reading uses, and then wrongly; javac's value text has no comment (the gate's class
+  `javaparser-comment-in-value`).
+- **F6.** `JavacFrontend.parse` and the reader overload of `LibrarySourceResolver.extractTopLevelTypeName` are
+  package-private. `JavacSyntax`, `ExpressionRoles`, `SourceOrderScanner`, `SourceReader` and `LintTrees` cross modules, so
+  they stay public and say in their Javadoc that they are internal; so do the public reader overloads, which go at M6. A
+  `LintRule` says which readings it supports (`supports`, JavaParser's only by default); on another reading the engine
+  reports `Lint rule X does not run on the JAVAC reading of the source` as an info finding, and never calls it.
+- **F7.** No class reads `julc.tools.reader` in a static initializer: each tool reads it when used, so a bad value fails
+  that call with a message naming the property, and the next call with a good value works (`SourceReadersTest`).
+
+The reviewer's crafted inputs (tabs, CRLF and a lone CR, positions, nested enums, later Java, verification fragments,
+the role-detection probes) and a `try/catch` validator are gate inputs now, in
+`julc-cli/src/test/resources/adr068-tools-inputs` (line endings kept as written).
+
+**Results at this round's head.** The four gates on the full corpus plus the 23 crafted inputs (12,362 files) pass:
+lint 12,331 identical; discovery 12,358 (2 later Java skipped, 2 reader rejects); arity 33,587; project scan 12,242
+(34 javac rejects, 17 reader rejects, 63 later Java, 6 fail closed); library references 12,325, top-level names 12,362;
+annotations 12,301 (1 JavaParser comment in a value, 9 text of unread annotations, 34 javac rejects, 17 reader rejects).
+
+**The metadata extractor on the 1,283 corpus files where JavaParser's validator reports** (corpus alone, without the
+crafted inputs), the whole response compared:
+
+| Class | Files | What it is |
+|---:|---:|---|
+| identical | 32 | the same codes, positions, messages and validity |
+| `javac-attribution` | 1,070 | javac rejects the source when it attributes it (`JULC0085`), as a javac compilation does: mostly `cannot find symbol` for a JuLC annotation or type the case source never imports (the JavaParser frontend reads them by spelling), then javac's own Java checks (a dominated case label, a duplicate default, a switch that does not cover its input, a package that does not exist) |
+| `javac-codes` | 143 | the javac frontend rejects with its own code: mostly the JavaParser validator's message with I2a's code (`JULC0109` class inheritance, `JULC0014` arrays, `JULC0020` floating point, `JULC0106` `.apply()`, `JULC0004` `break`), and the javac frontend's policy rules (`JULC0087` `.equals` on `byte[]`, D6; `JULC0079`, `JULC0080`, `JULC0101`, `JULC0081`). Validity: 254 of the class's 279 files over the whole corpus are invalid on both, 23 become invalid on javac (a policy rule), 2 valid on both |
+| `same-first-error` | 7 | the first error's code and position agree, the error a compilation stops on; the frontends collect the rest differently |
+| `javac-rejects` | 31 | javac's parser rejects the source |
+
+Over the whole corpus (12,339 files): 4,294 identical; 7,577 `javac-attribution`; 279 `javac-codes`; 18 `not-ported`
+(a construct the javac frontend does not lower yet, `JULC0084`, M5's); 7 `same-first-error`; 114 both unparsable,
+33 javac rejects, 17 reader rejects. Each file is in `metadata-differences.tsv` with both responses. These are not tool
+differences: they are the javac frontend's answers, which M5's ledger (D13) owns; the check now gives what a
+compilation on that frontend gives.
+
+**Module tests at this round's head.** Default reading: julc-compiler (full), julc-cli, julc-tools, julc-verification,
+julc-testkit, julc-gradle-plugin, julc-annotation-processor, julc-playground pass. On `JAVAC`: all pass but
+`BundleJulcSourcesTaskTest.bundleFailsOnACandidateJuLCCannotRead`, which pins JavaParser's strict reading through the task
+(difference 1). One `EvaluateControllerTest` run failed with a connect timeout and passed on re-run. A playground test
+source now imports its annotations (`CheckControllerTest`), so that both readings read them as JuLC's.
+
 ### Open items
 
-1. **The metadata extractor's subset diagnostics on javac** need a host entry to the javac frontend's subset scan (with
-   the compilation's libraries), or the decision that `/api/check` reports them from the compile. That is the M5 compiler
-   slice's to provide; this slice's javac reading is complete otherwise.
+1. **The metadata extractor's subset diagnostics on javac**: done (F3 above).
 2. **D12 says the resolvers move to `javax.lang.model`.** They moved to javac's syntax trees, which keeps their behaviour
    (annotations matched by spelling, import and package). Resolving by element would match by identity, a change of what
    they accept: a decision for M6, not part of an equivalence port.
