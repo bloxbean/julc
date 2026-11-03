@@ -90,7 +90,11 @@ class JavacM5aTest {
     @ValueSource(strings = {
             "sealed interface S permits A, B { } record A(BigInteger n) implements S { } record B(BigInteger n) implements S { } static PlutusData d(BigInteger v) { return Builtins.iData(v); }\n"
                     + "static long m(BigInteger x) { S s = new A(x); var v = switch (s) { case A a -> a.n(); case B b -> d(b.n()); }; return JulcList.of(v).size(); }",
-            "static long m(boolean c, BigInteger a) { return JulcList.of(c ? a : Builtins.iData(a)).size(); }"})
+            "static long m(boolean c, BigInteger a) { return JulcList.of(c ? a : Builtins.iData(a)).size(); }",
+            // As a diamond's component, which holds Data: DiamondTupleDiffTest#switchesOfUnknownTypeAreNotEncoded's.
+            "sealed interface S permits A, B { } record A(BigInteger n) implements S { } record B(BigInteger n) implements S { } static PlutusData d(BigInteger v) { return Builtins.iData(v); }\n"
+                    + "static long m(BigInteger x, BigInteger y) { S s = new A(x); var t = new Tuple2<>(switch (s) { case A a -> a.n(); case B b -> d(b.n()); }, y); return 1; }",
+            "static long m(boolean c, BigInteger a) { var t = new Tuple2<>(c ? a : Builtins.iData(a), a); return 1; }"})
     void armsOfDifferentRepresentationsAreNotEncoded(String members) {
         var diagnostic = rejected(members);
         assertEquals("JULC0012", diagnostic.code(), diagnostic::message);

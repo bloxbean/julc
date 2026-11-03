@@ -14,6 +14,7 @@ import org.julclang.compiler.frontend.javac.JavacNames;
 import org.julclang.compiler.frontend.javac.LedgerLayouts;
 import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.frontend.javac.subset.RecordDeclarations;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
@@ -167,12 +168,18 @@ final class Records {
                 && NATIVE_RESULTS.contains(method.getSimpleName().toString());
     }
 
-    /** {@code JULC0091} for an argument holding a native array: the declared type does not show one under a diamond. */
+    /**
+     * {@code JULC0091} for an argument holding a native array: the declared type does not show one under a diamond. And
+     * {@code JULC0012} for an argument of no type, a {@code switch} or conditional whose arms are not all Data: a component
+     * holds Data, and such a value is not, as the reference says of a diamond's or a raw tuple's component.
+     */
     private List<PirTerm> fields(String name, NewClassTree tree, Frame frame) {
         var fields = new ArrayList<PirTerm>();
         for (var argument : tree.getArguments()) {
             var field = lowering.expr(argument, frame);
-            var array = nativeArrayIn(argument, field);
+            var type = typeOf(argument, field);
+            if (type == PirHelpers.UNKNOWN) throw CompilerTypeDiagnostics.unknownTypeEncoded(facts.location(argument));
+            var array = type == null ? null : PirType.nativeArrayIn(type);
             if (array != null) {
                 var at = facts.location(argument);
                 throw CompilerTypeDiagnostics.nativeArrayNotDataEncodable("Argument '" + at.fragment() + "' of new " + name, array, at);
@@ -182,9 +189,9 @@ final class Records {
         return fields;
     }
 
-    private PirType.ArrayType nativeArrayIn(ExpressionTree argument, PirTerm field) {
+    private PirType typeOf(ExpressionTree argument, PirTerm field) {
         try {
-            return PirType.nativeArrayIn(typing.of(argument, field));
+            return typing.of(argument, field);
         } catch (NotPorted e) {
             return null;
         }
