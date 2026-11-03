@@ -11,6 +11,13 @@ import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.flat.UplcFlatEncoder;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Objects;
+import java.util.TreeSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -197,9 +204,10 @@ public final class LoweringFixture {
 
     /**
      * The reference's error, as the javac frontend must give it. ADR-068 I2a: an uncoded rejection gets a code when it is
-     * ported, so where the reference's error has no code and javac's has one, javac's must have the reference's words and,
-     * where the reference gives one, its position: the words with no position or hint in them, the position from the text
-     * where the reference wrote it there. Any other difference is a difference.
+     * ported, so where the reference's error has no code and javac's has one, javac's must have the code the rejection
+     * catalogue gives that reference site ({@link #codeOfUncoded}), the reference's words, without the position and hint the
+     * reference wrote into its text, and the reference's position, from its diagnostic or from that text. Any other difference
+     * is a difference.
      */
     private static String error(CompilerException reference, CompilerException javac) {
         var referenceError = reference.diagnostics().stream().filter(CompilerDiagnostic::isError).findFirst();
@@ -208,6 +216,7 @@ public final class LoweringFixture {
         if (referenceError.map(CompilerDiagnostic::code).isPresent() || javacError.map(CompilerDiagnostic::code).isEmpty()) {
             return error(reference);
         }
+        String code = codeOfUncoded(words);
         int line = referenceError.map(CompilerDiagnostic::line).orElse(0);
         int column = referenceError.map(CompilerDiagnostic::column).orElse(0);
         var located = LOCATED.matcher(words);
@@ -223,7 +232,44 @@ public final class LoweringFixture {
             line = coded.line();
             column = coded.column();
         }
-        return coded.code() + " " + words + " @" + line + ":" + column;
+        return code + " " + words + " @" + line + ":" + column;
+    }
+
+    /** The rejection catalogue: julc-difftest's {@code rejection-sites.tsv}, which names each uncoded site a code ports. */
+    private static final Path SITES = Path.of("../julc-difftest/src/test/resources/adr068/rejection-sites.tsv");
+    private static final Pattern PORTED_SITES = Pattern.compile("uncoded \\((U-[\\w-]+(?:, U-[\\w-]+)*)\\)");
+    private static Map<Pattern, String> uncodedSites;
+
+    /**
+     * The code the catalogue gives the uncoded reference site whose pattern finds {@code message}: a code row names the sites it
+     * ports ("the reference rejects the same source uncoded (U-...)"). No such site, or two with different codes, is no code.
+     */
+    static synchronized String codeOfUncoded(String message) {
+        if (uncodedSites == null) {
+            try {
+                var patterns = new TreeMap<String, Pattern>();
+                var codes = new TreeMap<String, String>();
+                for (String row : Files.readAllLines(SITES)) {
+                    if (row.isBlank() || row.startsWith("#")) continue;
+                    String[] cells = row.split("\t", -1);
+                    if (cells[1].equals("uncoded")) patterns.put(cells[0], Pattern.compile(cells[2]));
+                    var ported = PORTED_SITES.matcher(cells[4]);
+                    if (cells[1].equals("code") && ported.find()) {
+                        for (String site : ported.group(1).split(", ")) codes.put(site, cells[2]);
+                    }
+                }
+                var sites = new LinkedHashMap<Pattern, String>();
+                codes.forEach((site, code) -> sites.put(Objects.requireNonNull(patterns.get(site), site), code));
+                uncodedSites = sites;
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+        var found = new TreeSet<String>();
+        uncodedSites.forEach((pattern, code) -> {
+            if (pattern.matcher(message).find()) found.add(code);
+        });
+        return found.size() == 1 ? found.first() : "no catalogued code for " + found + ": " + message;
     }
 
     /** The compilation stops with {@code JULC0084} at {@code construct}, on the line given. The reference must not. */

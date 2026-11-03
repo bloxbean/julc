@@ -129,6 +129,71 @@ class JavacSubsetCodesTest {
         assertEquals("JULC0017", thrown.diagnostics().getFirst().code());
     }
 
+    /**
+     * The reference reads a functional interface by the simple name a local's declaration writes, so a user's type of that
+     * name, called by that method, is its rejection on javac too: no program the reference rejects compiles.
+     */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "record Supplier(BigInteger get) { } static BigInteger m(BigInteger a) { Supplier s = new Supplier(a); return s.get(); }",
+            "record Function(BigInteger apply) { } static BigInteger m(BigInteger a) { Function f = new Function(a); return f.apply(); }",
+            "record Predicate(boolean test) { } static boolean m(boolean a) { Predicate p = new Predicate(a); return p.test(); }",
+            "record Consumer(BigInteger accept) { } static BigInteger m(BigInteger a) { Consumer c = new Consumer(a); return c.accept(); }",
+            "record BiFunction(BigInteger apply) { } static BigInteger m(BigInteger a) { BiFunction f = new BiFunction(a); return f.apply(); }",
+            "record UnaryOperator(BigInteger apply) { } static BigInteger m(BigInteger a) { UnaryOperator f = new UnaryOperator(a); return f.apply(); }"})
+    void aTypeNamedLikeAFunctionalInterfaceIsReadByItsName(String members) {
+        assertCoded("JULC0106", "class F { " + members + " }");
+    }
+
+    /** What the name rule lets through: a parameter, a {@code var}, and another method name, as the reference. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "record Supplier(BigInteger get) { } static BigInteger m(Supplier s) { return s.get(); }",
+            "record Supplier(BigInteger get) { } static BigInteger m(BigInteger a) { var s = new Supplier(a); return s.get(); }",
+            "record Supplier(BigInteger value) { } static BigInteger m(BigInteger a) { Supplier s = new Supplier(a); return s.value(); }"})
+    void theNameRuleReadsWhatTheReferenceReads(String members) {
+        assertSameMethodAsReference(IMPORTS + "class F { " + members + " }", "m");
+    }
+
+    /** {@code JULC0077} has the source's words, as the reference prints them, not javac's inferred types. */
+    @Test
+    void anInstanceofRecordPatternHasTheSourcesWords() {
+        assertCoded("JULC0077", "class F { sealed interface S permits A { } record A(BigInteger v) implements S { } "
+                + "static BigInteger m(S s) { if (s instanceof A(var v)) { return v; } return BigInteger.ZERO; } }");
+    }
+
+    // --- F946 in code nothing lowers, and ahead of a stop ---
+
+    /** Code nothing lowers: every rule's error, in source order, as the reference collects them. */
+    @Test
+    void codeNothingLowersCollectsEveryError() {
+        var source = IMPORTS + "class F { static long m() { return 1; } long n(BigInteger a) { BigInteger z = null; synchronized (a) { return 1; } } }";
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var codes = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"))
+                .diagnostics().stream().filter(CompilerDiagnostic::isError).map(CompilerDiagnostic::code).toList();
+        assertEquals(List.of("JULC0017", "JULC0104"), codes);
+        assertSameMethodRejectionAsReference(source, "m");
+    }
+
+    /** A statement not ported after a coded rejection: the rejection is the reference's, and no stop replaces it. */
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "class F { static long m(boolean b) { BigInteger z = null; assert b; return 1; } }",
+            "class F { static long m() { BigInteger z = null; class L { } return 1; } }"})
+    void aStatementNotPortedComesAfterAnEarlierError(String body) {
+        assertCoded("JULC0017", body);
+    }
+
+    /** One declaration of two declarators is one rejection, as the reference reports it. */
+    @Test
+    void twoDeclaratorsAreOneRejection() {
+        var source = IMPORTS + "class F { static long m() { long a = 1, b = 2; return a; } }";
+        var options = new CompilerOptions().setFrontend(CompilerFrontend.JAVAC);
+        var codes = assertThrows(CompilerException.class, () -> new JulcCompiler(null, options).compileMethod(source, "m"))
+                .diagnostics().stream().filter(CompilerDiagnostic::isError).map(CompilerDiagnostic::code).toList();
+        assertEquals(List.of("JULC0053"), codes);
+    }
+
     // --- ADR-067 on the javac frontend (D11): a record's declaration ---
 
     private static final String VALIDATOR = IMPORTS + """
