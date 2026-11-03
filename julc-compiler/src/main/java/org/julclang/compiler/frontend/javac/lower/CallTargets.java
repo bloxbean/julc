@@ -106,12 +106,12 @@ final class CallTargets {
         if (name.equals("fromPlutusData") && arguments == 1 && inLedger(identity)) {
             // The reference's identity checks nothing where the JVM decodes or throws, and leaves a hash undecoded: this
             // checks what the JVM's decoder reads, and decodes what the type holds (the entry points' slice).
-            if (LedgerLayouts.NOT_CONSTRUCTOR_DATA.contains(identity)) {
-                // Its Data is a map and the type a record of it, so no check of the type reads the Data the JVM decodes.
-                return new CallTarget.NotLowered("fromPlutusData on a ledger type whose Data is no constructor");
-            }
             if (facts.registry().lookupNominal(facts.identity(owner)).isPresent()) {
-                return new CallTarget.FromData(facts.pirType(method.getReturnType(), tree));
+                var type = facts.pirType(method.getReturnType(), tree);
+                // A map may repeat a key, and the JVM's value holds each key once, so its Data is not that value; a Value
+                // is a map, and its type here a record of it.
+                return facts.holdsMap(type) ? new CallTarget.NotLowered("fromPlutusData on a ledger type that holds a map")
+                        : new CallTarget.FromData(type);
             }
         }
         if (identity.equals(JavacNames.PLUTUS_DATA) && name.equals("cast") && arguments == 2) {

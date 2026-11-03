@@ -97,6 +97,11 @@ public final class Terms {
                 new PirTerm.IfThenElse(check.apply(read), PirHelpers.wrapDecode(read, type), new PirTerm.Error(type)));
     }
 
+    /** What {@code data} decodes to as {@code type}, for a type whose decode reads all of it. */
+    PirTerm decode(PirTerm data, PirType type) {
+        return PirHelpers.wrapDecode(data, type);
+    }
+
     /** {@code let binder = what data decodes to in body}: an accumulator out of the tuple it travels in. */
     PirTerm.Let unpacked(Binder binder, PirTerm data, PirTerm body) {
         return let(binder, PirHelpers.wrapDecode(data, binder.type()), body);

@@ -1,31 +1,37 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
 import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
+import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.core.PlutusData;
 import org.julclang.core.text.UplcPrinter;
+import org.julclang.ledger.TxOutRef;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.lang.reflect.InvocationTargetException;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A ledger type's {@code fromPlutusData} on {@code frontend=JAVAC} accepts exactly what the JVM's decoder accepts, at the
- * edges where that decoder is laxer than the strict boundary: a field more on a constructor, fields on a {@code Bool} and on
- * an empty {@code Optional}; and refuses what it refuses, a present {@code Optional} of two fields among them. The JVM's
- * answer is computed here, by the decoder itself, not written down.
+ * A ledger type's {@code fromPlutusData} on {@code frontend=JAVAC} accepts exactly the Data whose shape is the type's: what the
+ * JVM's decoder refuses fails, and so does what it decodes by ignoring part of it, so a value the script accepts is the JVM's.
+ * The expected answer is computed here, from the JVM's decoder and its encoder, not written down: the script accepts where the
+ * decoder returns a value whose Data is the input.
  */
 class JavacLedgerFromDataTest {
 
@@ -50,11 +56,6 @@ class JavacLedgerFromDataTest {
 
     private static final PlutusData TRUE = constr(1);
 
-    /** A Value of one policy and one token, as the ledger encodes it: a map of maps. */
-    private static PlutusData value(PlutusData amount) {
-        return new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(28),
-                new PlutusData.MapData(List.of(new PlutusData.Pair(bytes(3), amount))))));
-    }
 
     static Stream<Input> inputs() {
         var hash = bytes(28);
@@ -80,20 +81,27 @@ class JavacLedgerFromDataTest {
                         constr(0, credential, constr(0, constr(0, credential), integer(7)))),
                 new Input("Address", "an Optional of tag 2", constr(0, credential, constr(2))),
                 new Input("Address", "a list", new PlutusData.ListData(List.of())),
-                new Input("TxOut", "a Value as the map it is", constr(0, address, value(integer(5)), constr(0), constr(1))),
-                new Input("TxOut", "a Value as its record's constructor", constr(0, address, constr(0, value(integer(5))), constr(0), constr(1))),
-                new Input("TxOut", "an amount that is bytes", constr(0, address, value(bytes(1)), constr(0), constr(1))));
+                new Input("TxOutRef", "well-formed", constr(0, bytes(32), integer(0))),
+                new Input("TxOutRef", "a field more", constr(0, bytes(32), integer(0), integer(1))));
     }
 
-    private static boolean jvmDecodes(Input input) throws ReflectiveOperationException {
-        var method = Class.forName("org.julclang.ledger." + input.type()).getMethod("fromPlutusData", PlutusData.class);
+    /** Whether the JVM's decoder returns a value, and that value's Data is the input: nothing was ignored. */
+    private static boolean jvmDecodesExactly(String type, PlutusData data) throws ReflectiveOperationException {
+        var decoder = Class.forName("org.julclang.ledger." + type).getMethod("fromPlutusData", PlutusData.class);
+        Object value;
         try {
-            method.invoke(null, input.data());
-            return true;
-        } catch (java.lang.reflect.InvocationTargetException e) {
+            value = decoder.invoke(null, data);
+        } catch (InvocationTargetException e) {
             if (e.getCause() instanceof RuntimeException) return false;
             throw e;
         }
+        return value.getClass().getMethod("toPlutusData").invoke(value).equals(data);
+    }
+
+    private static EvalResult run(String source, OptimizationLevel level, PlutusData... arguments) {
+        var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                .setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level)).compileMethod(source, "m").program();
+        return CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(arguments));
     }
 
     private static String source(String type) {
@@ -136,13 +144,52 @@ class JavacLedgerFromDataTest {
 
     @ParameterizedTest
     @MethodSource("inputs")
-    void theScriptDecodesWhatTheJvmDecodes(Input input) throws ReflectiveOperationException {
-        boolean jvm = jvmDecodes(input);
+    void theScriptAcceptsExactlyTheTypesShape(Input input) throws ReflectiveOperationException {
+        boolean exact = jvmDecodesExactly(input.type(), input.data());
         for (var level : OptimizationLevel.values()) {
-            var program = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                    .setFrontend(CompilerFrontend.JAVAC).setOptimizationLevel(level)).compileMethod(source(input.type()), "m").program();
-            var result = CompilerTestVm.pv11("Java").evaluateWithArgs(program, List.of(input.data()));
-            assertEquals(jvm, result instanceof EvalResult.Success, () -> input + " at " + level + ": " + result);
+            var result = run(source(input.type()), level, input.data());
+            assertEquals(exact, result instanceof EvalResult.Success, () -> input + " at " + level + ": " + result);
         }
+    }
+
+    /**
+     * Two decoded values compare as the JVM's do wherever the script accepts both, and Data with a field the type has not
+     * is refused, so no comparison reads it.
+     */
+    @Test
+    void decodedValuesCompareAsTheJvmsOrTheDataIsRefused() throws ReflectiveOperationException {
+        var source = """
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.TxOutRef;
+
+                class C {
+                    static boolean m(PlutusData d, PlutusData other) {
+                        TxOutRef r = TxOutRef.fromPlutusData(d);
+                        return !r.equals(TxOutRef.fromPlutusData(other));
+                    }
+                }
+                """;
+        var other = constr(0, bytes(32), integer(0));
+        for (var d : List.of(constr(0, bytes(32), integer(0)), constr(0, bytes(32), integer(1)), constr(0, bytes(32), integer(0), integer(1)))) {
+            boolean exact = jvmDecodesExactly("TxOutRef", d);
+            boolean jvm = !TxOutRef.fromPlutusData(d).equals(TxOutRef.fromPlutusData(other));
+            for (var level : OptimizationLevel.values()) {
+                var result = run(source, level, d, other);
+                if (!exact) {
+                    assertInstanceOf(EvalResult.Failure.class, result, () -> d + " at " + level);
+                } else {
+                    var success = assertInstanceOf(EvalResult.Success.class, result, () -> d + " at " + level);
+                    assertTrue(UplcPrinter.print(success.resultTerm()).contains(jvm ? "True" : "False"), () -> d + " at " + level);
+                }
+            }
+        }
+    }
+
+    /** A ledger type whose shape holds a map, a {@code Value} among them, is not decoded on-chain. */
+    @ParameterizedTest
+    @ValueSource(strings = {"Value", "TxOut", "TxInInfo", "TxInfo", "ScriptContext", "Committee", "GovernanceAction"})
+    void aTypeThatHoldsAMapStops(String type) {
+        var stop = assertInstanceOf(NotPorted.class, assertThrows(CompilerException.class, () -> run(source(type), OptimizationLevel.DEFAULT)));
+        assertEquals("fromPlutusData on a ledger type that holds a map", stop.construct());
     }
 }

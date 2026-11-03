@@ -135,6 +135,11 @@ public final class JavacFrontend {
         this.bundled = bundled;
     }
 
+    /** The first class or interface, at any depth, that {@code text} declares, or null. */
+    String firstClassOrInterface(String text) {
+        return JavacUnits.infos(compiler(), platform, List.of(text)).getFirst().firstClassOrInterface();
+    }
+
     public JavacPlatform platform() {
         return platform;
     }

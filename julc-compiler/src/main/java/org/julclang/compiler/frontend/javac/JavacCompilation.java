@@ -411,7 +411,9 @@ public final class JavacCompilation {
         sources.add(new DebugMetadataCollector.SourceText("validator", JavacDebugScan.uri(root, "validator.java"),
                 facts.source(root)));
         for (int i = 0; i < libraries.size(); i++) {
-            sources.add(new DebugMetadataCollector.SourceText("library-" + i, "library-" + i + ".java", libraries.get(i)));
+            String first = JavacFrontend.shared().firstClassOrInterface(libraries.get(i));
+            sources.add(new DebugMetadataCollector.SourceText("library-" + i,
+                    first == null ? "library-" + i + ".java" : first + ".java", libraries.get(i)));
         }
         return sources;
     }

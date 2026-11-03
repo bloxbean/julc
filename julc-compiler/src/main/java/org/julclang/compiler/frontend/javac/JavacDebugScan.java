@@ -1,12 +1,18 @@
 package org.julclang.compiler.frontend.javac;
 
 import com.sun.source.tree.AnnotationTree;
+import com.sun.source.tree.ArrayTypeTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.LambdaExpressionTree;
+import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.ParameterizedTypeTree;
+import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.WildcardTree;
 import com.sun.source.util.TreeScanner;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.debug.DebugMetadataCollector;
@@ -17,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -40,7 +47,6 @@ final class JavacDebugScan {
     private final String sourceId;
     private final CompilationUnitTree unit;
     private final String text;
-    private final List<Integer> lineStarts = new ArrayList<>();
 
     private JavacDebugScan(JavacFacts facts, DebugMetadataCollector.Declarations into, String sourceId,
                            CompilationUnitTree unit) {
@@ -49,8 +55,6 @@ final class JavacDebugScan {
         this.sourceId = sourceId;
         this.unit = unit;
         this.text = facts.source(unit);
-        lineStarts.add(0);
-        for (int i = 0; i < text.length(); i++) if (text.charAt(i) == '\n') lineStarts.add(i + 1);
     }
 
     /**
@@ -241,31 +245,61 @@ final class JavacDebugScan {
 
     // --- Positions ---
 
-    /** How a declaration writes its type: its text, {@code var} for an inferred local, nothing for a lambda's. */
+    /**
+     * How a declaration writes its type, as the reference prints it: {@code var} for an inferred local, nothing for a lambda's
+     * parameter, and otherwise the type's structure, with no space in a type argument list and an array's brackets after
+     * its element type wherever the source wrote them.
+     */
     private String spelling(VariableTree variable) {
-        if (!facts.isInferred(variable)) return facts.text(variable.getType());
+        if (!facts.isInferred(variable)) return spell(variable.getType());
         return facts.parent(variable) instanceof LambdaExpressionTree ? "" : "var";
     }
 
+    private String spell(Tree type) {
+        return switch (type) {
+            case IdentifierTree identifier -> identifier.getName().toString();
+            case MemberSelectTree select -> spell(select.getExpression()) + "." + select.getIdentifier();
+            case PrimitiveTypeTree primitive -> primitive.getPrimitiveTypeKind().name().toLowerCase(Locale.ROOT);
+            case ArrayTypeTree array -> spell(array.getType()) + "[]";
+            case ParameterizedTypeTree parameterized -> spell(parameterized.getType()) + "<"
+                    + String.join(",", parameterized.getTypeArguments().stream().map(this::spell).toList()) + ">";
+            case WildcardTree wildcard -> switch (wildcard.getKind()) {
+                case EXTENDS_WILDCARD -> "? extends " + spell(wildcard.getBound());
+                case SUPER_WILDCARD -> "? super " + spell(wildcard.getBound());
+                default -> "?";
+            };
+            default -> facts.text(type).replaceAll("\\s+", "");
+        };
+    }
+
+    /** The type a declarator's name follows: under a C-style array declarator's brackets, which come after the name. */
+    private static Tree elementType(Tree type) {
+        return type instanceof ArrayTypeTree array ? elementType(array.getType()) : type;
+    }
+
     /**
-     * Where {@code variable}'s name starts: the first token after its modifiers and type that is its name and is followed
-     * by what may follow a declared name. With no such token, the declaration's start.
+     * Where {@code variable}'s name starts: the first token after its modifiers and element type that is its name and is
+     * followed by what may follow a declared name. Comments and string and character literals are skipped. With no such
+     * token, the declaration's start.
      */
     private long nameStart(VariableTree variable) {
-        long from = facts.isInferred(variable) ? facts.start(variable) : facts.end(variable.getType());
+        long from = facts.isInferred(variable) ? facts.start(variable) : facts.end(elementType(variable.getType()));
         String name = variable.getName().toString();
         int at = (int) Math.max(from, facts.start(variable));
         int end = (int) facts.end(variable);
         while (at < end) {
             at = skipBlank(at, end);
             if (at >= end) break;
-            if (Character.isJavaIdentifierStart(text.charAt(at))) {
+            char c = text.charAt(at);
+            if (Character.isJavaIdentifierStart(c)) {
                 int token = at;
                 while (at < end && Character.isJavaIdentifierPart(text.charAt(at))) at++;
                 int next = skipBlank(at, text.length());
                 boolean declares = next >= text.length() || "=;,:)[".indexOf(text.charAt(next)) >= 0
                         && !text.startsWith("==", next);
                 if (text.substring(token, at).equals(name) && declares) return token;
+            } else if (c == '"' || c == '\'') {
+                at = skipLiteral(at, end);
             } else {
                 at++;
             }
@@ -273,10 +307,27 @@ final class JavacDebugScan {
         return facts.start(variable);
     }
 
-    /** Where the reference's declarator ends: javac's declaration of a field or a local holds its {@code ;}, which that does not. */
+    /** Past the string, text block or character literal at {@code at}. */
+    private int skipLiteral(int at, int end) {
+        if (text.startsWith("\"\"\"", at)) {
+            int close = text.indexOf("\"\"\"", at + 3);
+            return close < 0 ? end : close + 3;
+        }
+        char quote = text.charAt(at);
+        for (int i = at + 1; i < end; i++) {
+            if (text.charAt(i) == '\\') i++;
+            else if (text.charAt(i) == quote) return i + 1;
+        }
+        return end;
+    }
+
+    /**
+     * Where the reference's declarator ends: javac's declaration of a field or a local holds the {@code ;} that ends it, or
+     * the {@code ,} before the next declarator, which that does not.
+     */
     private long declaratorEnd(VariableTree variable) {
         int end = (int) facts.end(variable);
-        if (end <= 0 || text.charAt(end - 1) != ';') return end;
+        if (end <= 0 || text.charAt(end - 1) != ';' && text.charAt(end - 1) != ',') return end;
         end--;
         while (end > 0 && Character.isWhitespace(text.charAt(end - 1))) end--;
         return end;
@@ -299,24 +350,19 @@ final class JavacDebugScan {
         return at;
     }
 
-    /** {@code [start, end)} in the reference's form: begin line and column, and the column after the last character. */
+    /**
+     * {@code [start, end)} in the reference's form: begin line and column, and the column after the last character. Lines
+     * are javac's, as the reference's are its parser's: a lone CR ends one, so a source with them gives the reference's
+     * invalid range, which the metadata's validation refuses on both frontends.
+     */
     private DebugMetadata.SourceRange range(long start, long end) {
         int from = (int) start;
         int last = (int) Math.max(start, end - 1);
-        int beginLine = line(from);
-        int endLine = line(last);
-        return new DebugMetadata.SourceRange(sourceId, from, Math.min(text.length(), last + 1), beginLine,
-                from - lineStarts.get(beginLine - 1) + 1, endLine, last - lineStarts.get(endLine - 1) + 2);
-    }
-
-    private int line(int offset) {
-        int low = 0;
-        int high = lineStarts.size() - 1;
-        while (low < high) {
-            int middle = (low + high + 1) >>> 1;
-            if (lineStarts.get(middle) <= offset) low = middle;
-            else high = middle - 1;
-        }
-        return low + 1;
+        var lines = unit.getLineMap();
+        long beginLine = lines.getLineNumber(from);
+        long endLine = lines.getLineNumber(last);
+        return new DebugMetadata.SourceRange(sourceId, from, Math.min(text.length(), last + 1), (int) beginLine,
+                (int) (from - lines.getStartPosition(beginLine) + 1), (int) endLine,
+                (int) (last - lines.getStartPosition(endLine) + 2));
     }
 }

@@ -11,13 +11,16 @@ import org.julclang.compiler.LedgerTypeProvider;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.PlutusData;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -34,14 +37,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Adr068LedgerFromDataPropertyTest {
 
-    private static final List<String> NAMES = List.of("Address", "Committee", "Constitution", "Credential", "DRep", "DatumHash",
+    static final List<String> NAMES = List.of("Address", "Committee", "Constitution", "Credential", "DRep", "DatumHash",
             "Delegatee", "GovernanceAction", "GovernanceActionId", "Interval", "IntervalBound", "IntervalBoundType", "OutputDatum",
             "PolicyId", "ProposalProcedure", "ProtocolVersion", "PubKeyHash", "Rational", "ScriptContext", "ScriptHash", "ScriptInfo",
             "ScriptPurpose", "StakingCredential", "TokenName", "TxCert", "TxId", "TxInInfo", "TxInfo", "TxOut", "TxOutRef",
             "ValidatorHash", "Vote", "Voter");
 
     private static final LedgerTypeProvider LEDGER = new LedgerTypeProvider();
-    private static final List<String> TYPES = NAMES.stream().filter(Adr068LedgerFromDataPropertyTest::decodable).toList();
+    /** The types decoded on-chain: a type whose shape holds a map stops there ({@code JavacLedgerFromDataTest}). */
+    static final List<String> TYPES = NAMES.stream().filter(Adr068LedgerFromDataPropertyTest::decodable)
+            .filter(name -> !holdsMap(type(name), new HashSet<>())).toList();
     private static final DiffRunner RUNNER = new DiffRunner(configs(), 50_000);
     private static final Map<String, Integer> SEEN = new ConcurrentHashMap<>();
 
@@ -52,7 +57,7 @@ class Adr068LedgerFromDataPropertyTest {
     }
 
     /** A type with a public static {@code fromPlutusData(PlutusData)} on the JVM and a type in the ledger's registry. */
-    private static boolean decodable(String name) {
+    static boolean decodable(String name) {
         try {
             Method method = Class.forName("org.julclang.ledger." + name).getMethod("fromPlutusData", PlutusData.class);
             return Modifier.isStatic(method.getModifiers()) && LEDGER.types().containsKey("org.julclang.ledger." + name);
@@ -61,11 +66,24 @@ class Adr068LedgerFromDataPropertyTest {
         }
     }
 
+    private static boolean holdsMap(PirType type, Set<String> seen) {
+        return switch (type) {
+            case PirType.MapType ignored -> true;
+            case PirType.NamedTypeRef ref -> seen.add(ref.stableId()) && holdsMap(LEDGER.namedDefinitions().get(ref.stableId()), seen);
+            case PirType.RecordType record -> record.fields().stream().anyMatch(field -> holdsMap(field.type(), seen));
+            case PirType.SumType sum -> sum.constructors().stream()
+                    .anyMatch(constructor -> constructor.fields().stream().anyMatch(field -> holdsMap(field.type(), seen)));
+            case PirType.ListType list -> holdsMap(list.elemType(), seen);
+            case PirType.OptionalType optional -> holdsMap(optional.elemType(), seen);
+            default -> false;
+        };
+    }
+
     private static PirType type(String name) {
         return LEDGER.types().get("org.julclang.ledger." + name).representation();
     }
 
-    private static String accepts(String name) {
+    static String accepts(String name) {
         return """
                 import org.julclang.core.PlutusData;
                 import org.julclang.ledger.%1$s;
@@ -103,19 +121,30 @@ class Adr068LedgerFromDataPropertyTest {
     }
 
     @Property(tries = 400, seed = "20261103")
-    void theScriptAcceptsWhatTheJvmDecodes(@ForAll("types") int index, @ForAll("seeds") long seed) {
+    void theScriptAcceptsExactlyTheTypesShape(@ForAll("types") int index, @ForAll("seeds") long seed) throws Exception {
         String name = TYPES.get(index);
         var random = new Random(seed);
         var generator = new DataGenerator(LEDGER.namedDefinitions(), random);
         boolean broken = random.nextInt(3) > 0;
         var data = broken ? generator.broken(type(name)) : generator.wellFormed(type(name), 0);
+        verify(name, data);
+    }
+
+    /**
+     * The rule over one input: {@code JAVAC} returns where the JVM's decoder returns a value whose Data is the input, and
+     * fails everywhere else, where the JVM throws and where it decodes by ignoring part of the input. Where it returns, the
+     * value read back is the JVM's. The reference's identity returns everywhere, counted.
+     */
+    static void verify(String name, PlutusData data) throws Exception {
+        boolean exact = decodesExactly(name, data);
         var report = RUNNER.run(new DiffCase("from-data-" + name, accepts(name), "Case", "m", List.of(data)));
         boolean jvmAccepts = report.jvm() instanceof Observation.Value;
-        SEEN.merge(jvmAccepts ? "jvm accepts" : "jvm throws", 1, Integer::sum);
+        SEEN.merge(!jvmAccepts ? "jvm throws" : exact ? "jvm decodes exactly" : "jvm ignores a part", 1, Integer::sum);
         SEEN.merge(name, 1, Integer::sum);
         report.results().forEach((config, result) -> {
             if (config.frontend() == CompilerFrontend.JAVAC) {
-                assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> name + " " + config + " on " + data + "\n" + report.describe());
+                if (exact) assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> name + " " + config + " on " + data + "\n" + report.describe());
+                else assertInstanceOf(Observation.Failure.class, result.uplc(), () -> name + " " + config + " on " + data + "\n" + report.describe());
             } else if (result.verdict().kind() != Verdict.Kind.AGREE) {
                 // The reference's identity: it returns where the JVM throws. Nothing else may differ.
                 assertTrue(!jvmAccepts, () -> name + " " + config + " on " + data + "\n" + report.describe());
@@ -123,27 +152,41 @@ class Adr068LedgerFromDataPropertyTest {
                 SEEN.merge("reference returns where the JVM throws", 1, Integer::sum);
             }
         });
-    }
-
-    @Property(tries = 200, seed = "20261104")
-    void aValueReadBackIsTheJvms(@ForAll("types") int index, @ForAll("seeds") long seed) {
-        String name = TYPES.get(index);
-        var data = new DataGenerator(LEDGER.namedDefinitions(), new Random(seed)).wellFormed(type(name), 0);
-        var report = RUNNER.run(new DiffCase("read-back-" + name, readsBack(name), "Case", "m", List.of(data)));
-        assertInstanceOf(Observation.Value.class, report.jvm(), () -> name + " on " + data);
-        report.results().forEach((config, result) -> {
+        if (!exact) return;
+        var readBack = RUNNER.run(new DiffCase("read-back-" + name, readsBack(name), "Case", "m", List.of(data)));
+        readBack.results().forEach((config, result) -> {
             if (config.frontend() == CompilerFrontend.JAVAC) {
-                assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> name + " " + config + "\n" + report.describe());
+                assertEquals(Verdict.Kind.AGREE, result.verdict().kind(), () -> name + " " + config + "\n" + readBack.describe());
             }
         });
         SEEN.merge("read back", 1, Integer::sum);
+    }
+
+    /** Whether the JVM's decoder returns a value whose Data is {@code data}: it ignored nothing. */
+    static boolean decodesExactly(String name, PlutusData data) throws Exception {
+        var decoder = Class.forName("org.julclang.ledger." + name).getMethod("fromPlutusData", PlutusData.class);
+        Object value;
+        try {
+            value = decoder.invoke(null, data);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof RuntimeException) return false;
+            throw e;
+        }
+        return value.getClass().getMethod("toPlutusData").invoke(value).equals(data);
+    }
+
+    @Property(tries = 200, seed = "20261104")
+    void aValueReadBackIsTheJvms(@ForAll("types") int index, @ForAll("seeds") long seed) throws Exception {
+        String name = TYPES.get(index);
+        verify(name, new DataGenerator(LEDGER.namedDefinitions(), new Random(seed)).wellFormed(type(name), 0));
     }
 
     @AfterContainer
     static void everyKindWasRun() {
         System.out.println("ledger fromPlutusData " + new TreeMap<>(SEEN));
         assertTrue(SEEN.getOrDefault("jvm throws", 0) >= 50, SEEN::toString);
-        assertTrue(SEEN.getOrDefault("jvm accepts", 0) >= 50, SEEN::toString);
+        assertTrue(SEEN.getOrDefault("jvm decodes exactly", 0) >= 50, SEEN::toString);
+        assertTrue(SEEN.getOrDefault("jvm ignores a part", 0) >= 10, SEEN::toString);
         assertTrue(SEEN.getOrDefault("read back", 0) >= 50, SEEN::toString);
         for (String name : TYPES) assertTrue(SEEN.getOrDefault(name, 0) >= 3, () -> name + " in too few tries: " + SEEN);
     }

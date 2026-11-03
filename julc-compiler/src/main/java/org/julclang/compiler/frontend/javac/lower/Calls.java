@@ -129,16 +129,19 @@ final class Calls {
     }
 
     /**
-     * {@code T.fromPlutusData(d)} for a ledger type {@code T}: {@code d} is evaluated once, then checked whole, before
-     * anything reads it, as the JVM decodes it whole before the call returns; what the JVM's decoder throws on fails here
-     * ({@code StrictBoundaryGenerator.forLedgerDecoding}). The value is {@code d} as {@code T} holds it: a hash's bytes, a
-     * map's pairs, a record's Data.
+     * {@code T.fromPlutusData(d)} for a ledger type {@code T} whose shape holds no map: {@code d} is evaluated once, then
+     * checked whole for exactly {@code T}'s shape, the strict boundary's check, before anything reads it. The JVM's decoder
+     * reads the same Data, and ignores what that shape has not; the script refuses it, so a value it accepts is the JVM's.
+     * A hash or an integer is its decode, which is its check. The value is {@code d} as {@code T} holds it.
      */
     private PirTerm fromData(CallTarget.FromData target, MethodInvocationTree tree, Frame frame) {
         var argument = tree.getArguments().getFirst();
         var term = lowering.expr(argument, frame);
         var data = PirHelpers.wrapEncode(term, typing.of(argument, term));
-        return terms.checkedDecode(data, target.type(), read -> facts.ledgerDecodingCheck(read, target.type()));
+        if (target.type() instanceof PirType.ByteStringType || target.type() instanceof PirType.IntegerType) {
+            return terms.decode(data, target.type());
+        }
+        return terms.checkedDecode(data, target.type(), read -> facts.exactShapeCheck(read, target.type()));
     }
 
     /** {@code PlutusData.cast(d, T.class)} views {@code d} as {@code T}; a map variable holds a pair list, so it decodes. */

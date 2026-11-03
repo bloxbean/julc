@@ -28,32 +28,9 @@ public final class StrictBoundaryGenerator {
 
     private final Map<String, PirType> namedDefinitions;
     private final LinkedHashMap<PirType, Integer> typeIds = new LinkedHashMap<>();
-    private final boolean ledgerDecoding;
-    private final Map<PirType, PirType> layouts;
 
     public StrictBoundaryGenerator(Map<String, PirType> namedDefinitions) {
-        this(namedDefinitions, false, Map.of());
-    }
-
-    private StrictBoundaryGenerator(Map<String, PirType> namedDefinitions, boolean ledgerDecoding,
-                                    Map<PirType, PirType> layouts) {
         this.namedDefinitions = Map.copyOf(namedDefinitions);
-        this.ledgerDecoding = ledgerDecoding;
-        this.layouts = Map.copyOf(layouts);
-    }
-
-    /**
-     * A checker that accepts what the ledger API's JVM {@code fromPlutusData} decodes, and only that (ADR-068, a ledger
-     * {@code fromPlutusData} on {@code frontend=JAVAC}): it is the strict check but for what those decoders ignore. A
-     * constructor's fields past its declared ones are not read ({@code PlutusDataHelper.expectConstr}, a variant's
-     * {@code fields().getFirst()}), and neither are the fields of a {@code Bool} ({@code decodeBool}) or of an empty
-     * {@code Optional} ({@code decodeOptional}). A present {@code Optional} has exactly one field there too.
-     *
-     * @param layouts the Data of a type whose Data is not what its type says, by that type: a {@code Value} record is a map
-     */
-    public static StrictBoundaryGenerator forLedgerDecoding(Map<String, PirType> namedDefinitions,
-                                                           Map<PirType, PirType> layouts) {
-        return new StrictBoundaryGenerator(namedDefinitions, true, layouts);
     }
 
     /** Opaque Data has no declared shape and therefore needs no generated guard. */
@@ -172,15 +149,13 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirType resolveNamed(PirType type) {
-        PirType resolved = type;
-        if (type instanceof PirType.NamedTypeRef ref) {
-            resolved = namedDefinitions.get(ref.stableId());
-            if (resolved == null) {
-                throw new IllegalArgumentException(
-                        "Unknown named strict boundary type '" + ref.stableId() + "'");
-            }
+        if (!(type instanceof PirType.NamedTypeRef ref)) return type;
+        PirType resolved = namedDefinitions.get(ref.stableId());
+        if (resolved == null) {
+            throw new IllegalArgumentException(
+                    "Unknown named strict boundary type '" + ref.stableId() + "'");
         }
-        return layouts.getOrDefault(resolved, resolved);
+        return resolved;
     }
 
     private PirTerm checkNode(PirType type, int nodeId, PirTerm data) {
@@ -214,7 +189,7 @@ public final class StrictBoundaryGenerator {
         var empty = builtin1(DefaultFun.NullList, fields);
         var validTag = or(equalsInteger(tag, 0), equalsInteger(tag, 1));
         return new PirTerm.Let(pairName, builtin1(DefaultFun.UnConstrData, data),
-                ledgerDecoding ? validTag : and(validTag, empty));
+                and(validTag, empty));
     }
 
     private PirTerm checkOptional(PirTerm data, PirType elementType) {
@@ -222,7 +197,7 @@ public final class StrictBoundaryGenerator {
         var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
-        var some = and(equalsInteger(tag, 0), checkExactFields(fields, List.of(elementType), 0));
+        var some = and(equalsInteger(tag, 0), checkFields(fields, List.of(elementType), 0));
         var none = and(equalsInteger(tag, 1), checkFields(fields, List.of(), 0));
         return new PirTerm.Let(pairName, builtin1(DefaultFun.UnConstrData, data),
                 or(some, none));
@@ -254,18 +229,9 @@ public final class StrictBoundaryGenerator {
                 and(equalsInteger(tag, expectedTag), checkFields(fieldList, fields, 0)));
     }
 
-    /** A constructor's fields: exactly {@code expected}, or under ledger decoding at least them. */
     private PirTerm checkFields(PirTerm fields, List<PirType> expected, int index) {
-        return checkFields(fields, expected, index, !ledgerDecoding);
-    }
-
-    private PirTerm checkExactFields(PirTerm fields, List<PirType> expected, int index) {
-        return checkFields(fields, expected, index, true);
-    }
-
-    private PirTerm checkFields(PirTerm fields, List<PirType> expected, int index, boolean exact) {
         if (index == expected.size()) {
-            return exact ? builtin1(DefaultFun.NullList, fields) : bool(true);
+            return builtin1(DefaultFun.NullList, fields);
         }
         String headName = "#__field-" + index;
         String tailName = "#__fields-" + (index + 1);
@@ -274,7 +240,7 @@ public final class StrictBoundaryGenerator {
         return new PirTerm.Let(headName, builtin1(DefaultFun.HeadList, fields),
                 new PirTerm.Let(tailName, builtin1(DefaultFun.TailList, fields),
                         and(applyCheck(register(expected.get(index)), head),
-                                checkFields(tail, expected, index + 1, exact))));
+                                checkFields(tail, expected, index + 1))));
     }
 
     private PirTerm checkList(PirTerm data, PirType elementType, int nodeId) {
@@ -357,9 +323,7 @@ public final class StrictBoundaryGenerator {
                 data);
     }
 
-    /** {@code left && right}; {@code left && true} is {@code left}, which only the ledger mode's unread fields build. */
     private static PirTerm and(PirTerm left, PirTerm right) {
-        if (right instanceof PirTerm.Const(Constant.BoolConst(boolean value)) && value) return left;
         return new PirTerm.IfThenElse(left, right, bool(false));
     }
 

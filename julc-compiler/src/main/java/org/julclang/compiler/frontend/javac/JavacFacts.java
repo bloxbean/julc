@@ -42,7 +42,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -585,13 +585,30 @@ public final class JavacFacts {
     }
 
     /**
-     * A {@code Bool} term that holds where {@code data} is what the ledger API's JVM {@code fromPlutusData} of
-     * {@code type} decodes ({@link StrictBoundaryGenerator#forLedgerDecoding}).
+     * A {@code Bool} term that holds where {@code data} has exactly the shape of {@code type}: the strict boundary's check,
+     * the one a datum and a redeemer take.
      */
-    public PirTerm ledgerDecodingCheck(PirTerm data, PirType type) {
-        var layouts = new HashMap<PirType, PirType>();
-        registry.lookupNominal(LedgerLayouts.VALUE).ifPresent(record -> layouts.put(record, LedgerLayouts.VALUE_DATA));
-        return StrictBoundaryGenerator.forLedgerDecoding(registry.namedDefinitions(), layouts).check(data, type);
+    public PirTerm exactShapeCheck(PirTerm data, PirType type) {
+        return new StrictBoundaryGenerator(registry.namedDefinitions()).check(data, type);
+    }
+
+    /** Whether a map is reachable in {@code type}'s shape, through its fields, constructors, elements and named types. */
+    public boolean holdsMap(PirType type) {
+        return holdsMap(type, new HashSet<>());
+    }
+
+    private boolean holdsMap(PirType type, Set<String> seen) {
+        return switch (type) {
+            case PirType.MapType ignored -> true;
+            case PirType.NamedTypeRef ref -> seen.add(ref.stableId())
+                    && holdsMap(registry.namedDefinitions().get(ref.stableId()), seen);
+            case PirType.RecordType record -> record.fields().stream().anyMatch(field -> holdsMap(field.type(), seen));
+            case PirType.SumType sum -> sum.constructors().stream()
+                    .anyMatch(constructor -> constructor.fields().stream().anyMatch(field -> holdsMap(field.type(), seen)));
+            case PirType.ListType list -> holdsMap(list.elemType(), seen);
+            case PirType.OptionalType optional -> holdsMap(optional.elemType(), seen);
+            case null, default -> false;
+        };
     }
 
     /** The text of {@code unit}, as javac read it. */
