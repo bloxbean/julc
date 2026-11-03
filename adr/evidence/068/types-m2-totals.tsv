@@ -1,32 +1,33 @@
-cases	17076
+cases	17080
 DIFFERENT	7
+DIFFERENT-provider	2
 both-reject	12
 both-reject-javac-first	38
 both-reject-tolerant	3
-equal	10313
-equal-reference-rejects-lowering	6
-equal-tolerant	6632
+equal	10320
+equal-tolerant	6633
 javac-rejects-unreadable	4
 ledger-source	38
 reference-rejects	23
 compared	class	cases	no-user-declaration	records	variants	sums	new-types	fields	distinct-definitions
 compared	DIFFERENT	7	7	0	0	0	0	0	0
+compared	DIFFERENT-provider	2	0	2	0	0	0	2	1
 compared	both-reject	12	12	0	0	0	0	0	0
 compared	both-reject-javac-first	38	38	0	0	0	0	0	0
 compared	both-reject-tolerant	3	3	0	0	0	0	0	0
-compared	equal	10313	6706	943	6635	3460	34	8689	1079
-compared	equal-reference-rejects-lowering	6	6	0	0	0	0	0	0
-compared	equal-tolerant	6632	4674	187	3727	1841	27	3845	264
+compared	equal	10320	6715	941	6635	3460	34	8687	1078
+compared	equal-tolerant	6633	4675	187	3727	1841	27	3845	264
 compared	javac-rejects-unreadable	4	4	0	0	0	0	0	0
 compared	ledger-source	38	38	0	0	0	0	0	0
 compared	reference-rejects	23	23	0	0	0	0	0	0
-compared	definitions only in sources javac rejects, variants included	33
+compared	definitions only in sources javac rejects, variants included	34
 part	blaster	equal	7
 part	c7	equal	6
 part	diffcase	DIFFERENT	6
 part	diffcase	both-reject	2
 part	diffcase	both-reject-javac-first	1
-part	diffcase	equal	215
+part	diffcase	equal	218
+part	diffcase	equal-tolerant	1
 part	diffcase	reference-rejects	8
 part	elci	equal	4
 part	external	equal	100
@@ -34,11 +35,11 @@ part	external	equal-tolerant	2
 part	g0	equal	376
 part	g1	equal	123
 part	head	DIFFERENT	5
+part	head	DIFFERENT-provider	2
 part	head	both-reject	12
 part	head	both-reject-javac-first	38
 part	head	both-reject-tolerant	3
 part	head	equal	10115
-part	head	equal-reference-rejects-lowering	2
 part	head	equal-tolerant	1389
 part	head	javac-rejects-unreadable	2
 part	head	reference-rejects	15
@@ -50,11 +51,9 @@ part	recorded	DIFFERENT	5
 part	recorded	both-reject	3
 part	recorded	both-reject-javac-first	28
 part	recorded	both-reject-tolerant	3
-part	recorded	equal	4684
-part	recorded	equal-reference-rejects-lowering	1
+part	recorded	equal	4685
 part	recorded	equal-tolerant	6491
 part	recorded	javac-rejects-unreadable	4
 part	recorded	reference-rejects	15
 part	rules	equal	4
-part	stdlib	equal	13
-part	stdlib	equal-reference-rejects-lowering	4
+part	stdlib	equal	17

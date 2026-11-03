@@ -277,11 +277,15 @@ final class Adr068Lowering {
 
         var level = OptimizationLevel.DEFAULT;
         var methods = new LinkedHashMap<String, Method>();
+        var observed = new LinkedHashMap<String, List<Method>>();
         var referenceOptions = options(c, level, c.sourceMap, CompilerFrontend.JAVAPARSER)
-                .setMethodObserver((binder, type, body) -> methods.put(binder, new Method(type, body)));
+                .setMethodObserver((binder, type, body) -> {
+                    methods.put(binder, new Method(type, body));
+                    observed.computeIfAbsent(binder, b -> new ArrayList<>()).add(new Method(type, body));
+                });
         var reference = compile(c, referenceOptions);
         var frozen = reference(c, reference, methods);
-        var row = classify(c, reference, methods);
+        var row = classify(c, reference, methods, observed);
         return read(c, frozen, row);
     }
 
@@ -321,11 +325,12 @@ final class Adr068Lowering {
         return CorpusFiles.sha256(text).substring(0, 16);
     }
 
-    private Row classify(Adr068Corpus.Case c, Compilation reference, Map<String, Method> methods) {
+    private Row classify(Adr068Corpus.Case c, Compilation reference, Map<String, Method> methods,
+            Map<String, List<Method>> observed) {
         var level = OptimizationLevel.DEFAULT;
         var javac = onJavac(c, options(c, level, c.sourceMap, CompilerFrontend.JAVAC));
 
-        var coverage = coverage(c, methods, reference.accepted());
+        var coverage = coverage(c, methods, observed, reference.accepted());
         String construct = javac.construct() != null ? javac.construct() : coverage.construct();
         if (reference.accepted() && javac.accepted()) {
             var differences = differences(c, reference, javac);
@@ -495,7 +500,13 @@ final class Adr068Lowering {
     private record Coverage(int covered, int total, String construct, String mismatch, List<String> pir) {
     }
 
-    private Coverage coverage(Adr068Corpus.Case c, Map<String, Method> reference, boolean referenceAccepted) {
+    /**
+     * A binder name the reference lowers more than once (a root offered as its own library has its helper twice) is compared
+     * observation by observation, when the javac frontend lowers it as often: the reference's map keeps the last, the
+     * attempts keep the first, and those are different methods. Overloads keep the rule below.
+     */
+    private Coverage coverage(Adr068Corpus.Case c, Map<String, Method> reference, Map<String, List<Method>> observed,
+            boolean referenceAccepted) {
         if (!Adr068Ledger.isProgramEntry(c.entry) || c.main == null) return new Coverage(0, reference.size(), "-", null, List.of());
         List<JavacEvidence.Attempt> attempts;
         try {
@@ -512,6 +523,25 @@ final class Adr068Lowering {
         // Overloads share a binder. The reference stops at the first it cannot accept, having recorded the one before it.
         for (var attempt : attempts) attempted.putIfAbsent(attempt.binder(), attempt);
         for (var entry : reference.entrySet()) {
+            var seen = observed.getOrDefault(entry.getKey(), List.of());
+            var repeated = attempts.stream().filter(a -> a.binder().equals(entry.getKey())).toList();
+            if (seen.size() > 1 && repeated.size() == seen.size() && repeated.stream().allMatch(a -> a.term() != null)) {
+                attempted.remove(entry.getKey());
+                boolean equal = true;
+                for (int i = 0; i < seen.size() && equal; i++) {
+                    equal = PirCanonical.of(seen.get(i).body()).equals(PirCanonical.of(repeated.get(i).term()))
+                            && seen.get(i).type().equals(repeated.get(i).type());
+                }
+                if (!equal) {
+                    if (mismatch == null) mismatch = entry.getKey() + " differs from the reference";
+                    for (var a : repeated) differing.append(entry.getKey()).append('\n').append(a.type()).append('\n')
+                            .append(PirCanonical.of(a.term())).append('\n');
+                    continue;
+                }
+                covered++;
+                pir.add(PirCanonical.of(entry.getValue().body()));
+                continue;
+            }
             var attempt = attempted.remove(entry.getKey());
             if (attempt == null || attempt.term() == null) {
                 // No attempt at all means the source was rejected first, and its row says how; it stopped at no construct.

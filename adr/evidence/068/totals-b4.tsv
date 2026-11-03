@@ -1,8 +1,8 @@
 # ADR-068 M0 totals. Generated; do not edit.
-cases	11456
+cases	11460
 cases.blaster	7
 cases.c7	6
-cases.diffcase	232
+cases.diffcase	236
 cases.elci	4
 cases.external	102
 cases.g0	376
@@ -16,10 +16,10 @@ g1.tries	150
 g1.cases.also-recorded	123/123
 g0.cases.also-recorded	376/376
 excluded.nondeterministic	org.julclang.compiler.IntegerLiteralTest#generatedLiteralsHaveJavacsValue	300
-ledger.NONE	accepted 9701	rejected 1745	unreplayable 10
-ledger.BASELINE	accepted 9701	rejected 1745	unreplayable 10
-ledger.PV11_SAFE	accepted 9701	rejected 1745	unreplayable 10
-ledger.PV11_COSTED	accepted 9701	rejected 1745	unreplayable 10
+ledger.NONE	accepted 9705	rejected 1745	unreplayable 10
+ledger.BASELINE	accepted 9705	rejected 1745	unreplayable 10
+ledger.PV11_SAFE	accepted 9705	rejected 1745	unreplayable 10
+ledger.PV11_COSTED	accepted 9705	rejected 1745	unreplayable 10
 instantiations.NONE	accepted 33	rejected 14	unreplayable 0
 instantiations.BASELINE	accepted 33	rejected 14	unreplayable 0
 instantiations.PV11_SAFE	accepted 33	rejected 14	unreplayable 0
@@ -27,11 +27,11 @@ instantiations.PV11_COSTED	accepted 33	rejected 14	unreplayable 0
 inventory.rows	permanent 1813	scheduled 29
 inventory.cases	1755
 coverage	sites 162	covered 117	not-source 45	uncovered 0	uncatalogued 0	contradicted 0
-runs	1904
-runs.verdicts.AGREE	7140
+runs	1908
+runs.verdicts.AGREE	7144
 runs.verdicts.CRASH	4
 runs.verdicts.INCONCLUSIVE	8
-runs.verdicts.MISMATCH	212
+runs.verdicts.MISMATCH	224
 runs.verdicts.REJECTED	252
 evaluations	22997
 evaluations.external.excluded.nondeterministic-tests	170
@@ -43,7 +43,7 @@ evaluations.recorded.replay.agree	1145
 evaluations.recorded.replay.matched-not-replayed	5518
 evaluations.recorded.replay.unmatched	16178
 sha256	ledger-b0-evaluations-external.tsv	18db22d98263c0e7c39a6759d229d5fca4648bf951d2c4c3806d24bcde4fb495
-sha256	ledger-b0-evaluations.tsv	ffa0397ddce0fc53a0021fa56478f9abeb26721d4f31cb88ccbdc6c550e0d5f8
+sha256	ledger-b0-evaluations.tsv	cc4c9115bdff0301120a73bd9987948b59267401235c2c47b96869e08709229e
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.StdlibIntegrationTest$1	5
 unreplayable	custom stdlib lookup custom:org.julclang.compiler.pir.CompositeStdlibLookup	2
 unreplayable	custom stdlib lookup custom:org.julclang.stdlib.StdlibRegistry	3
