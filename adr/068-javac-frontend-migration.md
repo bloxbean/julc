@@ -1182,6 +1182,27 @@ Decisions recorded from the M1a reviews:
 
 M3a closed on independent Claude reviewers and one external review. A Codex read of the name rules is owed (follow-ups).
 
+### M3: closed (2026-11-04)
+
+The evidence is in `068-m3a-*.md`, `068-m3-group1.md`, `068-m3-group2.md`, `068-m3-group3a.md`, `068-m3-group3b.md`,
+`068-m3-group4a.md` and the reference changes `068-m3-reference-b2.md` to `-b5.md`. Every non-loop construct of the plan
+lowers on `frontend=JAVAC`, with libraries, Elci's provider, entry points, contract schemas and debug metadata; M4's loops
+closed before it (r13). `JAVAPARSER` stays the default.
+
+| Exit criterion | Result |
+|---|---|
+| I1b rows for every covered method, I1a for fully covered programs, all classified | 17,098 cases; 9,424 programs of 15,171 identical to the reference (I1a), 113,553 of 172,457 methods covered; every `DIFFERENT-*` row is in `lowering-accepted-differences.tsv` |
+| The harness gate on covered programs | At `e772e8ec`: `./gradlew test` 16,740 tests, 0 failures, 530 skipped; `Javac21ParityTest` 51 of 51 with javac 21.0.3 required; `pairCaseTest`, `onChainHarnessTest` (offline) and Blaster pass; five rediscovery profiles pass and `REDISCOVER_162` ends in #162's rejection, as ADR-066 designs it |
+| I13's binding check over the corpus | Held in every gate run |
+| The rejection inventory for ported constructs | Every ported rejection has a code (I2a); `SubsetScan` collects every error in source order |
+| ADR-067 and ADR-062 revisions | ADR-067 M3 and M3b are on the javac frontend (r16); ADR-067's own revision of I9's oracle and its outcome matrix is owed, with D11's retirement of `Javac21ParityTest` at M5 |
+
+Each group closed on independent Claude reviews and confirmation rounds with no P0 or P1 open; Codex reads are owed at the
+heads in `068-followups.md`. **What M3 does not establish.** 35 programs still stop at a construct not ported (23 at
+`.equals` between unrelated types, which stays a stop by decision; 15 at a mixed-arm conditional or `switch` typed `Object`;
+2 at a chained read; 1 at a `char` literal; 1 at a static call not qualified by a simple class name), all M5's. No DevKit,
+Elci release smoke, external example, native or Wasm image ran on the lowering: those are M5's gate.
+
 ### M2: closed (2026-11-01)
 
 [`068-m2-types.md`](evidence/068-m2-types.md) holds the evidence. Types come from javac behind `frontend=JAVAC`; a

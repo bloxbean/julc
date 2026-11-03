@@ -196,6 +196,7 @@ If Codex cannot run, a milestone closes on independent Claude reviewers, and its
 | `edfa707b` | Group 1 and B4: `EqualityRelation` and `JULC0078`, `CallTargets.seen`, `JULC0101` at the declaration, `DelayedMethodPass` and `mayFail`, `String.length` | The group closed on independent Claude reviewers and a confirmation round. No Codex pass has run at this head |
 | `9ab85bc3`, Group 2's last code | `switch` and its guards, lambdas, `DelayedMethodPass` and its work limit | The maintainer chose to run Codex later; the group closes on independent Claude reviewers |
 | `63d265e1`, M4's last code | Loops, the pair-list model in `Builtins`, the Java VM's list type check | The group closed on independent Claude reviewers and confirmation rounds |
+| `a301e5c3` and `e772e8ec`, Group 3 and Group 4 | Libraries and Elci, casts, entry points, contract and debug, the ledger `fromPlutusData` check, B5; the subset's rejections, `JULC0103`, `JULC0079`, `JULC0080` | The groups closed on independent Claude reviews and confirmation rounds |
 
 ## Future stdlib enhancements (after ADR-068 is complete)
 
