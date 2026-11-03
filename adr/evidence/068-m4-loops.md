@@ -146,7 +146,7 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 
 ### Public API note
 
-> `Builtins.tailList(PlutusData)` and `Builtins.mkCons(PlutusData, PlutusData)` return `PlutusData`, where they returned `PlutusData.ListData`, and `Builtins.mkNilPairData` returns `PlutusData.MapData`. New overloads keep a type Java knows: `tailList(ListData)` and `mkCons(PlutusData, ListData)` return `ListData`, and `tailList(MapData)` and `mkCons(PlutusData, MapData)` return `MapData`. So `var pairs = Builtins.mkNilPairData(); pairs = Builtins.mkCons(Builtins.mkPairData(k, v), pairs);` and `var l = Builtins.mkNilData(); l = Builtins.mkCons(x, l);` compile as before. What no longer compiles: a `ListData` taken from `tailList` or `mkCons` of an argument whose static type is `PlutusData` or another subtype, and a `ListData` taken from `mkNilPairData` or from either call on a `MapData`. Write `PlutusData`, or a `var`. Off-chain, a map walked or built by these methods stays a `MapData`, and `mkCons` onto a map takes only a pair, `Constr 0` with two fields. Scripts are unchanged.
+> `Builtins.tailList(PlutusData)` and `Builtins.mkCons(PlutusData, PlutusData)` return `PlutusData`, where they returned `PlutusData.ListData`, and `Builtins.mkNilPairData` returns `PlutusData.MapData`. New overloads keep a type Java knows: `tailList(ListData)` and `mkCons(PlutusData, ListData)` return `ListData`, and `tailList(MapData)` and `mkCons(PlutusData, MapData)` return `MapData`. So `var pairs = Builtins.mkNilPairData(); pairs = Builtins.mkCons(Builtins.mkPairData(k, v), pairs);` and `var l = Builtins.mkNilData(); l = Builtins.mkCons(x, l);` compile as before. What no longer compiles: a `ListData` taken from `tailList` or `mkCons` of an argument whose static type is `PlutusData` or another subtype, and a `ListData` taken from `mkNilPairData` or from either call on a `MapData`. A `null` argument is ambiguous between the overloads. Write `PlutusData`, or a `var`. Off-chain, a map walked or built by these methods stays a `MapData`, and `mkCons` onto a map takes only a pair, `Constr 0` with two fields. Scripts are unchanged.
 
 ## The I1 gate
 
@@ -472,3 +472,21 @@ The reference's reading came at `6209a23b` with 8 more mutants, one runner under
 - **Shared code.** Nothing found. No file outside `frontend/javac` changed in `src/main`.
 - **Files of Group 1 and 2 touched:** `Ifs`, `Exits`, `Frame`, `Statements.local` and `single`, `Lowering.dispatch`, `Operators`, `Tuples`, `CallTargets`, `SubsetScan`, `JavacCompilation`.
 - **Tests outside this slice's files:** `JavacRejectionsTest`, `JavacLambdasTest`, `LoweringAloneTest` and `JavacStatementsTest` held rows that said a loop stops, and those moved to the positive form.
+
+## Gates at the freeze
+
+At `17bf4ff1` (frozen) and `63d265e1` (two test-only commits after it), through `build/m4g/gates.sh` and its steps, each under a time limit:
+
+| Gate | Result |
+|---|---|
+| `adr068Baseline` | The 18 new cases' rows added to the B4 tables; no other row changed, JVM results included. Then 0 |
+| `adr068Lowering`, I1 | 0, against the table frozen at `17bf4ff1`; one corpus row moved, by the label rule |
+| `adr068Types` | The 18 new cases' rows added; then 0 |
+| `./gradlew test --rerun --continue` | 16,510 tests, 2 failures (two hosts' samples of a construct not ported were loops), fixed at `63d265e1`, whose four modules then passed |
+| `:julc-compiler:pairCaseTest`, `:julc-e2e-tests:onChainHarnessTest` (offline) | 0 |
+| `Javac21ParityTest`, `-Pjulc.javac21.required=true`, javac 21.0.3 | 51 tests, 0 failures |
+| `rediscoveryDiffTest`, six profiles | `_209`, `_280`, `_146`, `_291`, `_291_LOOPS` pass; `_162` ends in #162's rejection at try 2, as ADR-066 designs it; `JAVAC` gives the same rejection at the same position |
+| `verification/blaster/scripts/prepare-artifacts.sh` | 0 |
+
+No DevKit, Elci, image or external example ran on M4.
+
