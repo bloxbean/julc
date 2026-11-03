@@ -67,8 +67,8 @@ final class JavacDebugScan {
     /**
      * A collector over {@code sources}: the root's text first, then the libraries given, in their order. Each source javac
      * read is scanned, under its id, in that order, as the reference scans every source it is given; {@code units} holds
-     * each source's tree, or null for a library javac did not read (D8), which is named and not scanned. The root must
-     * declare a method, as the reference requires of it.
+     * each source's tree, or null for a library javac did not read (D8), which is named and not scanned. A program with no
+     * method scope is refused, as the reference refuses it: a library javac reads is reached from a method of the root.
      */
     static DebugMetadataCollector collector(JavacFacts facts, List<DebugMetadataCollector.SourceText> sources,
                                             List<CompilationUnitTree> units) {
@@ -76,7 +76,6 @@ final class JavacDebugScan {
             for (int i = 0; i < sources.size(); i++) {
                 if (units.get(i) == null) continue;
                 new JavacDebugScan(facts, into, sources.get(i).id(), units.get(i)).scan();
-                if (i == 0 && !into.hasScopes()) throw new CompilerException("Java debug metadata found no method scopes");
             }
         });
     }

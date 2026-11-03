@@ -421,6 +421,22 @@ class JavacContractAndDebugTest {
         assertTrue(javac.debugMetadata().bindings().stream().anyMatch(binding -> binding.id().startsWith("binding:library-0:")));
     }
 
+    /** A validator that declares no method is refused by debug metadata before its entry point is sought, on both frontends. */
+    @Test
+    void aValidatorWithNoMethodIsRefusedAsByTheReference() {
+        String source = """
+                import org.julclang.stdlib.annotation.MintingValidator;
+
+                @MintingValidator
+                class Empty {
+                }
+                """;
+        var reference = assertThrows(CompilerException.class, () -> debug(source, CompilerFrontend.JAVAPARSER, OptimizationLevel.DEFAULT));
+        var javac = assertThrows(CompilerException.class, () -> debug(source, CompilerFrontend.JAVAC, OptimizationLevel.DEFAULT));
+        assertEquals(reference.getMessage(), javac.getMessage());
+        assertTrue(javac.getMessage().contains("no method scopes"), javac::getMessage);
+    }
+
     /** A library given and not read is named by its first class, as the reference names it. */
     @Test
     void aLibrarySourceIsNamedByItsFirstClass() {
