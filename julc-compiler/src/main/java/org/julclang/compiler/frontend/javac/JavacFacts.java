@@ -1,12 +1,15 @@
 package org.julclang.compiler.frontend.javac;
 
+import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.LineMap;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
@@ -226,6 +229,44 @@ public final class JavacFacts {
     /** The initializer of a variable a source declares, or null: a stub has none. */
     public ExpressionTree initializer(VariableElement variable) {
         return trees != null && trees.getTree(variable) instanceof VariableTree declaration ? declaration.getInitializer() : null;
+    }
+
+    /**
+     * Whether {@code variable} holds its initializer's value wherever it is read: it is {@code final}, or nothing in its unit
+     * assigns it, compounds it, or increments or decrements it, as javac's effectively final has it for a local.
+     */
+    public boolean effectivelyFinal(VariableElement variable) {
+        if (variable.getModifiers().contains(Modifier.FINAL)) return true;
+        var unit = unitOf(variable);
+        if (unit == null) return false;
+        boolean[] assigned = {false};
+        new TreeScanner<Void, Void>() {
+            private void target(ExpressionTree target) {
+                if (variable.equals(elementOrNull(target))) assigned[0] = true;
+            }
+
+            @Override
+            public Void visitAssignment(AssignmentTree tree, Void unused) {
+                target(tree.getVariable());
+                return super.visitAssignment(tree, unused);
+            }
+
+            @Override
+            public Void visitCompoundAssignment(CompoundAssignmentTree tree, Void unused) {
+                target(tree.getVariable());
+                return super.visitCompoundAssignment(tree, unused);
+            }
+
+            @Override
+            public Void visitUnary(UnaryTree tree, Void unused) {
+                switch (tree.getKind()) {
+                    case PREFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_INCREMENT, POSTFIX_DECREMENT -> target(tree.getExpression());
+                    default -> { }
+                }
+                return super.visitUnary(tree, unused);
+            }
+        }.scan(unit, null);
+        return !assigned[0];
     }
 
     /** The declaration of a variable a source declares, or null: a stub has none. */

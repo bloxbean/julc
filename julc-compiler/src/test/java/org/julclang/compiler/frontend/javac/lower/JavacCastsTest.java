@@ -3,6 +3,7 @@ package org.julclang.compiler.frontend.javac.lower;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerFrontend;
 import org.julclang.compiler.CompilerOptions;
+import org.julclang.compiler.CompilerTestVm;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.OptimizationLevel;
 import org.julclang.core.Constant;
@@ -60,6 +61,9 @@ class JavacCastsTest {
             "record R(BigInteger a, byte[] b) { } static BigInteger m(PlutusData d) { var r = (R)(Object) d; return r.a(); }",
             "record R(BigInteger a, byte[] b) { } static BigInteger m(PlutusData d) { R r = (R)(Object) d; return r.a(); }",
             "static boolean m(PlutusData d) { JulcMap<PlutusData, PlutusData> m = PlutusData.cast(d, JulcMap.class); return m.isEmpty(); }",
+            "static boolean m(JulcMap<PlutusData, PlutusData> x) { PlutusData p = (PlutusData)(Object) x; JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
+            "static boolean m(JulcMap<PlutusData, PlutusData> x) { var p = (PlutusData)(Object) x; JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
+            "static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { var p = (PlutusData)(Object) x; boolean any = false; for (var e : ds) { any = true; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty() || any; }",
             "static boolean m(boolean b, JulcMap<PlutusData, PlutusData> x, JulcMap<PlutusData, PlutusData> y) { JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) (b ? (PlutusData)(Object) x : (PlutusData)(Object) y); return m.isEmpty(); }",
     })
     void aCastIsTheReferences(String members) {
@@ -116,6 +120,47 @@ class JavacCastsTest {
     void aCastToANarrowerTypeStops(String type) {
         LoweringFixture.assertMethodNotPorted(method("static long m(long x) { return (" + type + ") x; }"), "m",
                 "a cast to " + type, 8);
+    }
+
+    /**
+     * A cast to a map reads a variable through its initializer only where nothing assigns it again: a variable assigned in a
+     * loop may hold another value at the cast, which the reference reads by the variable's type. It stops (I8).
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            // A view of a map, assigned a Data element in a for-each.
+            "static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { PlutusData p = (PlutusData)(Object) x; for (var e : ds) { p = e; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
+            // The same through a var.
+            "static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { var p = (PlutusData)(Object) x; for (var e : ds) { p = e; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
+            // Data first, a view of a map assigned in the loop.
+            "static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { PlutusData p = ds.head(); for (var e : ds) { p = (PlutusData)(Object) x; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
+            // Assigned on one branch.
+            "static boolean m(boolean b, JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { var p = (PlutusData)(Object) x; for (var e : ds) { if (b) { p = e; } } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }",
+            // In a lambda's body.
+            "static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { return ds.any(d -> { PlutusData p = (PlutusData)(Object) x; for (var e : ds) { p = e; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }); }",
+    })
+    void aCastToAMapOfAVariableAssignedAgainStops(String members) {
+        LoweringFixture.assertMethodNotPorted(method(members), "m", "a cast to a map of a variable assigned after its declaration", 8);
+    }
+
+    /**
+     * The review's program: the reference decodes what the variable holds after the loop, the initializer's view would not.
+     * Each answers one input and fails on the other, so {@code JAVAC} takes neither and stops.
+     */
+    @Test
+    void aViewAssignedAgainInALoopIsReadByTheReferenceAsData() {
+        var source = method("static boolean m(JulcMap<PlutusData, PlutusData> x, JulcList<PlutusData> ds) { PlutusData p = (PlutusData)(Object) x; for (var e : ds) { p = e; } JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) p; return m.isEmpty(); }");
+        var x = new PlutusData.MapData(List.of(new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2))));
+        var oneEmpty = new PlutusData.ListData(List.of(new PlutusData.MapData(List.of())));
+        var none = new PlutusData.ListData(List.of());
+        for (var level : OptimizationLevel.values()) {
+            var reference = new JulcCompiler(STDLIB, new CompilerOptions().setOptimizationLevel(level))
+                    .compileMethod(source, "m", List.of()).program();
+            assertEquals(new Term.Const(Constant.bool(true)), assertInstanceOf(EvalResult.Success.class,
+                    CompilerTestVm.pv11().evaluateWithArgs(reference, List.of(x, oneEmpty)), level::toString).resultTerm());
+            assertInstanceOf(EvalResult.Failure.class, CompilerTestVm.pv11().evaluateWithArgs(reference, List.of(x, none)), level::toString);
+        }
+        LoweringFixture.assertMethodNotPorted(source, "m", "a cast to a map of a variable assigned after its declaration", 8);
     }
 
     /** D6: a raw map receiver is JULC0087 through a cast too; the stdlib's own view of a Value is the one exception. */

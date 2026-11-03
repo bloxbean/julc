@@ -219,7 +219,9 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
     /** A constructor javac generated is not source: its {@code super()} call is no construct of the program. */
     @Override
     public Void visitMethod(MethodTree tree, Void unused) {
-        if (!facts.isGenerated(tree) && !skipped.contains(tree)) member(tree, () -> super.visitMethod(tree, unused));
+        if (facts.isGenerated(tree)) return null;
+        if (skipped.contains(tree)) requireNoFloatingPoint(tree);
+        else member(tree, () -> super.visitMethod(tree, unused));
         return null;
     }
 
@@ -245,13 +247,19 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
 
     /**
      * In code nothing lowers the walk stops at the first statement it does not read. What is rejected wherever it stands has
-     * its code even so, in source order.
+     * its code even so, in source order: a rejected statement, and floating point, which the reference rejects in any method.
      */
     private void requireNoRejectedStatement(BlockTree tree) {
-        for (var statement : SubsetWalk.all(tree, StatementTree.class)) {
-            if (statement instanceof BreakTree loopExit) visitBreak(loopExit, null);
-            if (REJECTED_STATEMENTS.contains(statement.getKind())) scan(statement, null);
+        for (var node : SubsetWalk.all(tree, Tree.class)) {
+            if (node instanceof BreakTree loopExit) visitBreak(loopExit, null);
+            if (REJECTED_STATEMENTS.contains(node.getKind())) scan(node, null);
+            if (node instanceof PrimitiveTypeTree type) visitPrimitiveType(type, null);
         }
+    }
+
+    /** A template is not read, but floating point in it is rejected as anywhere else. */
+    private void requireNoFloatingPoint(MethodTree tree) {
+        SubsetWalk.all(tree, PrimitiveTypeTree.class).forEach(type -> visitPrimitiveType(type, null));
     }
 
     /** One warning a block: javac has rejected a statement after a {@code return} or a {@code break}, so {@code Builtins.error()} is the rest. */
