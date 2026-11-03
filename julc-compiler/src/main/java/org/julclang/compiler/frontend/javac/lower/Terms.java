@@ -198,11 +198,10 @@ public final class Terms {
     /**
      * Tells debug metadata, if collected, that {@code binding} is the binder built for the declaration of {@code element},
      * holding a {@code type}. Called where the reference associates one: a method's and a lambda's parameter, a local, a
-     * {@code @Param}. A binder that took another name than the source's (I13) is not the declaration's as written, so it
-     * stays unassociated, as the reference's renamed copy does.
+     * {@code @Param}. A binder I13 marked ({@code name'k}) is still the declaration's, and is shown under its source name.
      */
-    public void declared(Element element, PirTerm binding, String name, PirType type) {
-        if (debug != null && name.equals(element.getSimpleName().toString())) debug.associate(element, binding, type);
+    public void declared(Element element, PirTerm binding, PirType type) {
+        if (debug != null) debug.associate(element, binding, type);
     }
 
     /** Tells debug metadata, if collected, that the declaration of {@code element} has no binder it can show. */

@@ -29,14 +29,17 @@ public final class StrictBoundaryGenerator {
     private final Map<String, PirType> namedDefinitions;
     private final LinkedHashMap<PirType, Integer> typeIds = new LinkedHashMap<>();
     private final boolean ledgerDecoding;
+    private final Map<PirType, PirType> layouts;
 
     public StrictBoundaryGenerator(Map<String, PirType> namedDefinitions) {
-        this(namedDefinitions, false);
+        this(namedDefinitions, false, Map.of());
     }
 
-    private StrictBoundaryGenerator(Map<String, PirType> namedDefinitions, boolean ledgerDecoding) {
+    private StrictBoundaryGenerator(Map<String, PirType> namedDefinitions, boolean ledgerDecoding,
+                                    Map<PirType, PirType> layouts) {
         this.namedDefinitions = Map.copyOf(namedDefinitions);
         this.ledgerDecoding = ledgerDecoding;
+        this.layouts = Map.copyOf(layouts);
     }
 
     /**
@@ -45,9 +48,12 @@ public final class StrictBoundaryGenerator {
      * constructor's fields past its declared ones are not read ({@code PlutusDataHelper.expectConstr}, a variant's
      * {@code fields().getFirst()}), and neither are the fields of a {@code Bool} ({@code decodeBool}) or of an empty
      * {@code Optional} ({@code decodeOptional}). A present {@code Optional} has exactly one field there too.
+     *
+     * @param layouts the Data of a type whose Data is not what its type says, by that type: a {@code Value} record is a map
      */
-    public static StrictBoundaryGenerator forLedgerDecoding(Map<String, PirType> namedDefinitions) {
-        return new StrictBoundaryGenerator(namedDefinitions, true);
+    public static StrictBoundaryGenerator forLedgerDecoding(Map<String, PirType> namedDefinitions,
+                                                           Map<PirType, PirType> layouts) {
+        return new StrictBoundaryGenerator(namedDefinitions, true, layouts);
     }
 
     /** Opaque Data has no declared shape and therefore needs no generated guard. */
@@ -166,13 +172,13 @@ public final class StrictBoundaryGenerator {
     }
 
     private PirType resolveNamed(PirType type) {
-        if (!(type instanceof PirType.NamedTypeRef ref)) return type;
+        if (!(type instanceof PirType.NamedTypeRef ref)) return layouts.getOrDefault(type, type);
         PirType resolved = namedDefinitions.get(ref.stableId());
         if (resolved == null) {
             throw new IllegalArgumentException(
                     "Unknown named strict boundary type '" + ref.stableId() + "'");
         }
-        return resolved;
+        return layouts.getOrDefault(resolved, resolved);
     }
 
     private PirTerm checkNode(PirType type, int nodeId, PirTerm data) {

@@ -82,7 +82,7 @@ final class Lambdas {
         // A parameter decoded from Data is the decode's binder, not the function's, and that is not proven: it is not shown,
         // with the reference's reason.
         if (decodes) terms.undeclared(element, "generated HOF parameter decoding is not identity-proven");
-        else terms.declared(element, function, data.lookup(element).name(), data.lookup(element).type());
+        else terms.declared(element, function, data.lookup(element).type());
         return function;
     }
 

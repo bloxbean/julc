@@ -40,7 +40,7 @@ test {
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'jqwik'
         excludeTags 'nightly', 'rediscovery', 'adr068-g1-capture', 'adr068-baseline', 'adr068-gate-timing', 'adr068-types',
-                'adr068-lowering'
+                'adr068-lowering', 'adr068-contract-debug'
     }
     // ./gradlew :julc-difftest:test -Pdifftest.cases=<dir> replays the .diffcase files in <dir>.
     def cases = providers.gradleProperty('difftest.cases')
@@ -206,3 +206,26 @@ tasks.register('adr068Lowering', Test) {
     outputs.upToDateWhen { false }
 }
 tasks.named('adr068Lowering').configure { maxHeapSize = '6g' }
+
+// ADR-068 entry points' slice: contract schemas and debug metadata of both frontends over the corpus, which I1 does not
+// compare. Same corpus arguments as adr068Lowering.
+tasks.register('adr068ContractDebug', Test) {
+    group = 'verification'
+    description = 'ADR-068: contract schemas and debug metadata of both frontends over the corpus'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeEngines 'junit-jupiter'
+        includeTags 'adr068-contract-debug'
+    }
+    systemProperty 'adr068.repo', rootDir.absolutePath
+    systemProperty 'julc.javacGate', 'off'
+    ['adr068.corpus', 'adr068.corpus.external', 'adr068.corpus.elci', 'adr068.corpus.head', 'adr068.out'].each { key ->
+        def value = providers.gradleProperty(key)
+        if (value.isPresent()) systemProperty key, rootProject.file(value.get()).absolutePath
+    }
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }
+    maxHeapSize = '6g'
+}
+

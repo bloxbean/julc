@@ -280,7 +280,7 @@ public final class JavacCompilation {
             return new ValidatorAssembly.Frontend(terms.positions(), debug == null ? null : debug.provenance(),
                     (param, binding) -> {
                         terms.assembled(binding, param.name(), elements.get(param.name()));
-                        terms.declared(elements.get(param.name()), binding, param.name(), param.type());
+                        terms.declared(elements.get(param.name()), binding, param.type());
                     },
                     term -> {
                         if (Boolean.getBoolean(JulcCompiler.VERIFY_BINDER_NAMESPACE)) BindingCheck.check(term, terms.provenance());

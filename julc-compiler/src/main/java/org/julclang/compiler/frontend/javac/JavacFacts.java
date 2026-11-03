@@ -42,6 +42,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -588,7 +589,9 @@ public final class JavacFacts {
      * {@code type} decodes ({@link StrictBoundaryGenerator#forLedgerDecoding}).
      */
     public PirTerm ledgerDecodingCheck(PirTerm data, PirType type) {
-        return StrictBoundaryGenerator.forLedgerDecoding(registry.namedDefinitions()).check(data, type);
+        var layouts = new HashMap<PirType, PirType>();
+        registry.lookupNominal(LedgerLayouts.VALUE).ifPresent(record -> layouts.put(record, LedgerLayouts.VALUE_DATA));
+        return StrictBoundaryGenerator.forLedgerDecoding(registry.namedDefinitions(), layouts).check(data, type);
     }
 
     /** The text of {@code unit}, as javac read it. */

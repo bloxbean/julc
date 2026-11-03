@@ -259,12 +259,9 @@ class JavacContractAndDebugTest {
         assertNotEquals(0, javac.bindings().size());
     }
 
-    /**
-     * A local that shadows a field takes another binder name (I13), so its binder is not the declaration as written: it
-     * compiles, and it is not shown, where the reference shows it under its own name.
-     */
+    /** A local that shadows a field takes a marked binder name (I13), and is shown under its source name. */
     @Test
-    void aRenamedLocalCompilesAndIsNotShown() {
+    void aRenamedLocalIsShownUnderItsSourceName() {
         var source = """
                 import java.math.BigInteger;
                 import org.julclang.core.PlutusData;
@@ -289,7 +286,7 @@ class JavacContractAndDebugTest {
                 .filter(id -> id != null).collect(Collectors.toSet());
         var local = metadata.bindings().stream().filter(binding -> binding.name().equals("K")
                 && binding.kind() == DebugMetadata.BindingKind.LOCAL).findFirst().orElseThrow();
-        assertTrue(!shown.contains(local.id()), "a renamed binder is not the declaration's");
+        assertTrue(shown.contains(local.id()), "a marked binder is the declaration's");
         assertTrue(metadata.bindings().stream().anyMatch(binding -> binding.name().equals("k") && shown.contains(binding.id())));
     }
 

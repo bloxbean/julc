@@ -102,7 +102,7 @@ final class Statements {
         for (int i = binders.size() - 1; i >= 0; i--) {
             var binder = binders.get(i);
             result = terms.lam(binder, result);
-            terms.declared(binder.element(), result, binder.name(), binder.type());
+            terms.declared(binder.element(), result, binder.type());
         }
         return terms.at(tree, result);
     }
@@ -203,7 +203,7 @@ final class Statements {
         }
         var binder = scope.lookup(element);
         var binding = terms.let(binder, value, rest.apply(frame.in(scope)));
-        terms.declared(element, binding, binder.name(), binder.type());
+        terms.declared(element, binding, binder.type());
         return binding;
     }
 
