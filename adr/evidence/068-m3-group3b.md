@@ -50,12 +50,21 @@ moves the 25 rows of fixtures that write `validate(BigInteger, BigInteger)`. Not
 
 ## Rows moved, by class
 
-Not measured: I1 did not run (below). The rows this slice should move are 27 of the M4 table: 15 `a contract schema` (one of
-them `reference-rejects-not-ported`), 4 `debug metadata`, 7 `fromPlutusData on a ledger type` and 1 `on a ledger hash`. The
-contract and debug rows are expected at `i1a-identical` or `DIFFERENT-provenance` (`JavacContractAndDebugTest` shows the
-bytes equal); the `fromPlutusData` rows at `DIFFERENT-bytes`, a Semantic fix, since the check is new bytes, with the two
-`diverge-068-ledger-*` cases as evidence, and any that reads `Value` stays `not-ported` under its new construct. The two new
-`.diffcase`s are new corpus cases, and need their own rows. No `g3b-accepted-differences.tsv` is written until I1 runs.
+I1 at `7ddd5b3f`, against the M4 table, into scratch (`-Padr068.out`, no freeze): 17,096 cases. 29 rows moved, the 27 of this
+slice and 2 new cases. No other row moved, so no byte changed elsewhere: the strict boundary builds what it did.
+
+| Rows | From | To | D13 class |
+|---|---|---|---|
+| 14 `compileContract` | `not-ported`, `a contract schema` | `i1a-identical` (2 with `fragment` provenance, the rest `same`) | None needed |
+| 1 `compileContract` (`68dd2d17`) | `reference-rejects-not-ported` | `both-reject`, the manual-dispatch message at the reference's position | None needed |
+| 4 `compileForDebug` | `not-ported`, `debug metadata` | `i1a-identical` | None needed |
+| 6 `fromPlutusData on a ledger type`, 1 `on a ledger hash` | `not-ported` | `DIFFERENT-bytes` | Semantic fix |
+| 1 (`5468f431`, `M3bWrapperReads.hashFromData`) | `not-ported` 2/6 | `DIFFERENT-pir` 2/6, the method that reads a hash from Data | Semantic fix |
+| 2 new: `diverge-068-ledger-from-data-refused`, `diverge-068-ledger-hash-from-data` | none | `REFERENCE-DRIFT`, "no committed row" | The freeze writes their reference rows; each is the same Semantic fix |
+
+The 8 `DIFFERENT-*` rows are classified in `068/g3b-accepted-differences.tsv`. The check costs bytes and budget on the inputs
+the JVM accepts too: 43 to 219 bytes at `NONE` for one `Credential`, 1,123 to 1,299 for `M3bStatics`. That is the price of
+failing where the JVM throws, and a review decision of D13's Cost change kind, folded into the fix's row.
 
 ## Tests
 
