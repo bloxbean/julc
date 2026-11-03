@@ -14,7 +14,8 @@ The plan is [`068-m3-lowering-structure.md`](068-m3-lowering-structure.md). Bran
 | A body with accumulators, one walk for the reference's four generators | `lower/LoopBody` | 235 |
 | The accumulators as one value: one binder or a tuple | `lower/Carried` | 114 |
 | Which variables a loop or an `if` around a loop carries, as elements | `lower/Accumulators` | 78 |
-| What a Data accumulator holds in a tuple | `lower/AccumulatorTypes` | 218 |
+| What a Data accumulator holds in a tuple | `lower/AccumulatorTypes` | 224 |
+| The reference's reading of one, on javac's trees | `lower/ReferenceAccumulatorTypes` | 178 |
 | The reads a pre-loop rebinding is ordered by | `lower/PreLoopReads` | 72 |
 | What a loop must be, in the reference's order | `subset/LoopRules` | 320 |
 | `JULC0056`, a field updated in a loop | `subset/FieldUpdates` | 111 |
@@ -54,9 +55,9 @@ In the `break` shapes the body makes the recursive call itself, and a `break` is
 
 ### What a tuple carries
 
-A `PlutusData` variable can hold Data, a list or a pair list, and Java's type does not say which. `AccumulatorTypes` reads what reaches it, from what javac bound: its start and every assignment to it in the method, at any depth of loops, through parentheses, a conditional, a `switch`, another variable and the `return`s of a helper. A variable is a list only if its start and every value that reaches it are shown to be a list of one kind. Anything else is Data, and travels as Data. The reference's analysis reads direct assignments in the body of a `while` of the loop's own statement list, and takes those for a list whatever the start is.
+A `PlutusData` variable can hold Data, a list or a pair list, and Java's type does not say which. `AccumulatorTypes` reads what reaches it, from what javac bound: its start and every assignment to it in the method, at any depth of loops, through parentheses, a conditional, a `switch`, another variable and the `return`s of a helper. `JAVAC` never reads less than the reference. A variable is what the reference's `AccumulatorTypeAnalyzer` reads it as when that says a list or a map: direct assignments in the body of a `while` of the loop's own statement list, whatever the start is. `ReferenceAccumulatorTypes` holds that on javac's trees, since the analyzer reads JavaParser's, and this frontend has none. Otherwise a variable is a list only if its start and every value that reaches it are shown to be a list of one kind. Anything else is Data, and travels as Data.
 
-| What reaches the variable | It travels as |
+| What reaches the variable, where the reference reads Data | It travels as |
 |---|---|
 | `unListData`, `mkNilData`, `constrFields`, `mkCons` onto a list | A list |
 | `unMapData`, `mkNilPairData`, a declared `MapData`, `mkCons` of a pair or onto a pair list | A pair list |
@@ -65,7 +66,7 @@ A `PlutusData` variable can hold Data, a list or a pair list, and Java's type do
 | Anything else: a parameter, a `@Param`, a read of a list or a record, a helper's Data, `iData` and the like | Data |
 | A list and Data, or a list and pairs | Data |
 
-So a list that arrives in a variable of Data fails on-chain. Where the start is the list, it fails on entry. `JavacLoopsTest` holds the rows that match the reference, and `Adr068LoopRepresentationsTest` the rest.
+So a list that arrives in a variable of Data fails on-chain, as on the reference, and where the start is the list, it fails on entry. `JavacLoopsTest` holds the rows that match the reference, and `Adr068LoopRepresentationsTest` the rest.
 
 A variable declared at another type keeps it. Nothing else changed: the body reads the accumulator at its declared type, as before, and no corpus row moved.
 
@@ -133,7 +134,7 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 4. **`if (c) ;`** was a rejection with a diagnostic where the reference has the located text. `Statements.single` now takes the reference's form, and a loop's body uses it too.
 5. **`JULC0012` and `JULC0041` on a tuple of accumulators have the loop's position** (F724), where the reference has none, and `JULC0041` on a for-each's native element has the iterable's. `JULC0091` keeps the reference's. No row of the corpus reaches them.
 6. **A list shown to be one is carried on `JAVAC`, and stays a failure on the reference where its analysis does not read it** (D4's cap, "Closed by M5"). Its analysis lives on the JavaParser side, so that frontend is not changed. `diverge-068-cursor-*` pin both answers.
-7. **What is not shown to be a list is Data, on `JAVAC`.** So the two frontends part in both directions. `diverge-068-data-start-in-a-while` runs here and fails on the reference, which takes the variable for a list. A list that arrives in a parameter by a direct `tailList`, and a list start with Data assigned on a path not taken, run on the reference and fail here: `anAssignmentAloneShowsNothing` and `aMixIsData` pin them. No row of the corpus holds either shape.
+7. **`JAVAC` never reads less than the reference.** What its analysis says of a list or a map stands, so every program that runs on the reference keeps its reading: `agree-068-walk-*`, a helper's parameter by a direct `tailList`, with a list and a pair list, one accumulator and several, and `aMixKeepsTheReferencesReading`. Where that reading fails, `JAVAC` fails with it, and these fail closed: a Data start with a direct assignment in a `while` (`diverge-data-start-in-a-while`), a list beside a map cursor (`diverge-cursor-beside-a-map-cursor`), `tailList(unMapData(d))` as a start, and a pair list in a nested `while`, which the reference reads as a list since it passes that loop nothing before it. `theReferencesReadingOfTheOtherKindStands` pins the last three. A list that arrives in a parameter by any other form still fails on both.
 8. **A pair list stays a map on the JVM, as on-chain** (the maintainer's decision). `Builtins.tailList` of a `MapData` and `mkCons` of a pair onto one leave a `MapData`, and `mkNilPairData` is an empty one, so every encoding of a pair list agrees with the JVM at all four levels, on zero, one and many iterations and an empty remainder. `aWalkedPairListIsAMap`, `aBuiltPairListIsAMap` and the jqwik family `aPairListInEveryEncoding` hold it. The reference's `while` forms now agree as well. Its for-each stays a failure, a Semantic fix row, `diverge-068-pair-list-in-a-for-each`. A single pair is a `Constr` on the JVM and a native pair on-chain, and encoding one fails on both frontends: 354 runs of 396 over every encoding, none a value, and the rest read the pair or stop before it. It stays so, pinned by `aSinglePairFailsOnBoth`.
 9. **What a variable holds wins over what the reference sees wherever the second is not decoded.** `var y = xs.find(p)` is an `Optional` to the reference, and holds the element. `diverge-068-found-element-in-a-tuple` pins it.
 
@@ -141,7 +142,7 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 
 ### ADR r14
 
-> **r14** (2026-11-03, M4, on the maintainer's decision). A pair list stays a map on the JVM, as on-chain. `Builtins.tailList` of a `MapData` is a `MapData` of the rest, `mkCons` of a pair onto a `MapData` is a `MapData` with the pair in front, and `mkNilPairData` is an empty `MapData`. `tailList` and `mkCons` of a `PlutusData` return `PlutusData`, their overloads on a `ListData` return a `ListData`, and `mkNilPairData` returns `PlutusData.MapData`. What a `PlutusData` accumulator carries (D4's cap): a variable is a list only if its start and every value that reaches it are shown to be a list of one kind, and anything else is Data. A variable's one type is what it holds wherever the reference's view of it is not decoded. An iterable's element is read by the reference's walk: a name, or a call or chain of calls rooted at one. A label's statement is read before the label's rejection.
+> **r14** (2026-11-03, M4, on the maintainer's decision). A pair list stays a map on the JVM, as on-chain. `Builtins.tailList` of a `MapData` is a `MapData` of the rest, `mkCons` of a pair onto a `MapData` is a `MapData` with the pair in front, and `mkNilPairData` is an empty `MapData`. `tailList` and `mkCons` of a `PlutusData` return `PlutusData`, their overloads on a `ListData` return a `ListData`, and `mkNilPairData` returns `PlutusData.MapData`. What a `PlutusData` accumulator carries (D4's cap): `JAVAC` never reads less than the reference, so a variable is what `AccumulatorTypeAnalyzer` says when that says a list or a map. Otherwise it is a list only if its start and every value that reaches it are shown to be a list of one kind, and anything else is Data. A variable's one type is what it holds wherever the reference's view of it is not decoded. An iterable's element is read by the reference's walk: a name, or a call or chain of calls rooted at one. A label's statement is read before the label's rejection.
 
 ### Public API note
 
@@ -151,9 +152,9 @@ none by construction, and no term is read. `FieldUpdates` has no state beyond wh
 
 `build/m4/i1.sh` against the tables frozen at `e0d6eefc`. The run fails by design at `assertListed` until the integrator adds the rows below, and moved rows are checked at the freeze. Nothing shrank: `lowering-i1-shrunk.tsv` is empty. No row has a loop as its first construct.
 
-The tables below are at `68a4f0b7`. The merges of `wip/068-m3g2` moved no row of this slice's. The fixes after them moved one, `f759f988`, a label's rejection: the other 17,075 cases have the same row before and after them, bytes included, so the corpus holds no program that reaches what they changed. That includes the change to `Builtins`, and no reference row moved, so the reference table needs only the new cases. No row stops at a rule of this round.
+The tables below are at `6209a23b`. The merges of `wip/068-m3g2` moved no row of this slice's. The fixes after them moved one, `f759f988`, a label's rejection: the other 17,075 cases have the same row before and after them, bytes included, so the corpus holds no program that reaches what they changed. That includes the change to `Builtins`, and no reference row moved, so the reference table needs only the new cases. No row stops at a rule of this round.
 
-The 14 new `.diffcase`s are cases 17,077 to 17,090. They have no row in `lowering-reference.tsv`, so I1 reports them as `REFERENCE-DRIFT`, `no committed row`, and the freeze must add them. With that table extended in a throwaway worktree, and nothing frozen here, all 14 are `DIFFERENT-bytes`, every other row is as below, and nothing shrank.
+The 18 new `.diffcase`s are cases 17,077 to 17,094. They have no row in `lowering-reference.tsv`, so I1 reports them as `REFERENCE-DRIFT`, `no committed row`, and the freeze must add them. With that table extended in a throwaway worktree, and nothing frozen here, 12 are `DIFFERENT-bytes`, 6 are `i1a-identical`, every other row is as below, and nothing shrank.
 
 | Class | `e0d6eefc` | M4 |
 |---|---:|---:|
@@ -172,8 +173,8 @@ The 14 new `.diffcase`s are cases 17,077 to 17,090. They have no row in `lowerin
 | `DIFFERENT-pir` | 33 | 33 |
 | `DIFFERENT-provenance` | 7 | 7 |
 | `DIFFERENT-diagnostics` | 5 | 5 |
-| `REFERENCE-DRIFT` | 0 | 14 |
-| Total | 17,076 | 17,090 |
+| `REFERENCE-DRIFT` | 0 | 18 |
+| Total | 17,076 | 17,094 |
 
 ### Every class of moved row
 
@@ -202,7 +203,7 @@ The 14 new `.diffcase`s are cases 17,077 to 17,090. They have no row in `lowerin
 
 ### New `DIFFERENT-*` rows
 
-[`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv) holds 64, one row each, in the table's format: the corpus's 50 and the new cases' 14. It was checked against the run with the extended reference table: stale entries 0, unlisted 0, no class differs. The reference table goes first, or the 14 are entries the tool cannot find.
+[`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv) holds 62, one row each, in the table's format: the corpus's 50 and the new cases' 12. It was checked against the run with the extended reference table: stale entries 0, unlisted 0, no class differs. The reference table goes first, or the 12 are entries the tool cannot find.
 
 | Rows | Class | D13 | Rule |
 |---:|---|---|---|
@@ -211,7 +212,7 @@ The 14 new `.diffcase`s are cases 17,077 to 17,090. They have no row in `lowerin
 | 2 | `DIFFERENT-bytes` | Cost change | Decision 1. 136 to 133 bytes and 231 to 228 where the identity `let` survives optimization. Smaller |
 | 1 | `DIFFERENT-bytes` | Cost change, **grows**, accepted | Decision 2. `for (var i : JulcList.of(x))` with `i` unread. The table below |
 | 2 | `DIFFERENT-rejection` | Diagnostic change | Two errors in one compilation, in one method and in two (D13): the reference collects one and throws the other, and this frontend stops at the first. With the first removed, both say the second alike |
-| 12 | `DIFFERENT-bytes` | Semantic fix | New cases. Each `diverge-068-` the reference fails on-chain or answers otherwise, and `JAVAC` agrees with the JVM at all four levels |
+| 10 | `DIFFERENT-bytes` | Semantic fix | New cases. Each `diverge-068-` the reference fails on-chain or answers otherwise, and `JAVAC` agrees with the JVM at all four levels |
 | 2 | `DIFFERENT-bytes` | Cost change, **grows**, accepted | New cases. `agree-068-inline-element-in-a-tuple` and `-mapped-`. The second table below |
 
 Row `64e378e9`, the one budget that grows in the corpus, on inputs 3 and 4, one iteration, value and traces agreeing at all four levels. The type's fix did not change it:
@@ -275,11 +276,11 @@ This slice ran its own suites and the two modules. `Javac21ParityTest`, ADR-066'
 
 | Run | What | Result |
 |---|---|---|
-| `JavacLoopsTest` | Rows against the reference, bytes at all four levels with and without a source map, and rejections by code, message and position | 265 |
+| `JavacLoopsTest` | Rows against the reference, bytes at all four levels with and without a source map, and rejections by code, message and position | 279 |
 | `Adr068LoopsHarnessTest` | Against the JVM, through each frontend at every level, on value, traces, failure, cost and size | 78 tests, 489 runs agreed |
 | `Adr068LoopsPropertyTest` | `LoopPrograms`, a plain Java model, the JVM and both frontends, 300 tries, read back on-chain | No disagreement |
 | `Adr068LoopsFuzzTest` | The same under Jazzer, 12 seeds, replayed by `test` | 793 runs in 61 s, no crash |
-| `Adr068LoopCasesOnJavacTest` | 52 saved cases with a loop on their expectation, and G0's 376 programs on 4 inputs | No disagreement |
+| `Adr068LoopCasesOnJavacTest` | 58 saved cases with a loop on their expectation, and G0's 376 programs on 4 inputs | No disagreement |
 | `LoopBreakContinuationTest` | The loop-break continuation suite, now on both frontends, on two VMs | 3 tests |
 | `Adr068LoopRepresentationsTest` | 10 element types, 9 iterables, a loop variable written two ways, 7 shapes: 1,260 programs, each the JVM's at all four levels. Then each form a list reaches a Data accumulator by, what stays Data, and each encoding of a pair list on no, one and many iterations with an empty remainder and `equals` both ways, on the reference and `JAVAC` | No disagreement on `JAVAC` beyond the rows decision 7 names |
 | `Adr068LoopRepresentationsPropertyTest` | Both families composed further, against the JVM: 150 elements under chains of variables and loops, 200 cursors by any form in any loop beside any accumulator, 200 starts from Data a list may reach on a path not taken, and 300 random maps at random iteration counts through every encoding | No disagreement |
@@ -305,7 +306,7 @@ Of the 1,260, the reference agrees on 1,056. It fails the other 204 with one def
 |---|---|
 | T21: `agree-t21-while-break-first`, `-if-update`, `-never-taken` | Agree at all four levels |
 | T23: `agree-t23-for-each-split-if-else-break-taken`, `-never-taken`, `corpus-input-1`, `-3` | Agree at all four levels |
-| Every saved case with a loop, 53, beside the 12 `diverge-068-`, which the reference answers alone and `Adr068SavedCasesOnJavacTest` holds | 52 on the case's expectation. `reject-g1-291-local-after-loop` stops at `an expression of type java.lang.Object`, `v.equals(switch ...)`, in `JavacStopsTest`, before its loop |
+| Every saved case with a loop, 59, beside the 10 `diverge-068-`, which the reference answers alone and `Adr068SavedCasesOnJavacTest` holds | 58 on the case's expectation. `reject-g1-291-local-after-loop` stops at `an expression of type java.lang.Object`, `v.equals(switch ...)`, in `JavacStopsTest`, before its loop |
 | G0's enumeration, 376 programs on 4 inputs at all four levels | No unexplained verdict |
 | `LoopBreakContinuationTest`'s three tests | Pass on both frontends |
 
@@ -326,13 +327,13 @@ The other loop suites compile by the default frontend, so they were run once in 
 
 ### Whole modules
 
-Under the machine lock, `--rerun`, from the XML, at `01471217`:
+Under the machine lock, `--rerun`, from the XML, at `6209a23b`:
 
 | Module | Tests | Failures | Errors | Skipped |
 |---|---:|---:|---:|---:|
 | `julc-stdlib` | 568 | 0 | 0 | 0 |
-| `julc-compiler` | 6,487 | 0 | 0 | 0 |
-| `julc-difftest` | 2,061 | 0 | 0 | 0 |
+| `julc-compiler` | 6,501 | 0 | 0 | 0 |
+| `julc-difftest` | 2,081 | 0 | 0 | 0 |
 | `julc-testkit` | 236 | 0 | 0 | 0 |
 | `julc-vm` | 114 | 0 | 0 | 0 |
 | `julc-vm-java` | 2,485 | 0 | 0 | 262 |
@@ -433,19 +434,21 @@ Four throwaway worktrees at `68a4f0b7`, then `01471217`, with `julc-stdlib`'s `B
 
 `theLibrariesOnAMap` now has a timeout, so a wrong map fails it rather than running on. The last three mutants ran only against `BuiltinsPairListTest`, each in one JVM, and each failed there.
 
+The reference's reading came at `6209a23b` with 8 more mutants, one runner under a limit of 5 minutes each, against `JavacLoopsTest` and `Adr068LoopRepresentationsTest`: the reading dropped, the statements before the loop dropped, and six of its rules. All 8 are killed, and the control passes.
+
 ## What this does not establish
 
 - **Loops in a library's body.** A library unit stops, so `ValuesLib`'s and `ContextsLib`'s `while` loops are compared as methods alone, where the corpus compiles them as a root, and never run on this frontend.
 - **Which programs the join's rule has never met.** The generator's nested loops reach two levels, and its accumulators three.
-- **`AccumulatorTypes` beyond what it reads.** A list that reaches a Data accumulator through a helper's parameter, a lambda or a tuple's component says nothing, so the accumulator packs as Data and fails on-chain. On the reference that holds for each form but a direct assignment in a `while`, which it reads (decision 7). A helper's `return` is read, its arguments are not.
+- **`AccumulatorTypes` beyond what it reads.** A list that reaches a Data accumulator through a helper's parameter, a lambda or a tuple's component, by anything but a direct assignment in a `while`, says nothing, so the accumulator packs as Data and fails on-chain, as on the reference. A helper's `return` is read, its arguments are not.
 - **A local at a method's level after a loop that hides a field, by cost.** Both frontends agree on value and failure, and `Adr068LoopsPropertyTest` does not compare cost on that shape alone. Its size is pinned in `JavacLoopsTest`.
-- **The 14 new `.diffcase`s in the committed tables.** `lowering-reference.tsv` has no row for them, so I1 lists them as `REFERENCE-DRIFT`, `no committed row`, until the freeze. Their classes come from a scratch table. See [the I1 gate](#the-i1-gate).
+- **The 18 new `.diffcase`s in the committed tables.** `lowering-reference.tsv` has no row for them, so I1 lists them as `REFERENCE-DRIFT`, `no committed row`, until the freeze. Their classes come from a scratch table. See [the I1 gate](#the-i1-gate).
 - **I2a's inventory** is still not run on this frontend as an inventory. `JavacLoopsTest` holds each rule to the reference.
 - **Images and DevKit** were not run. The code holds no thread, reflection, file access or `ServiceLoader`.
 
 ## For the integrator
 
-- **Freeze.** `adr/evidence/068/lowering-*.tsv`, the reference table first for the 14 new cases, and add [`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv)'s 64 rows to `lowering-accepted-differences.tsv`. Nothing shrank.
+- **Freeze.** `adr/evidence/068/lowering-*.tsv`, the reference table first for the 18 new cases, and add [`068/m4-accepted-differences.tsv`](068/m4-accepted-differences.tsv)'s 62 rows to `lowering-accepted-differences.tsv`. Nothing shrank.
 - **ADR text.**
   - M4's row: this slice. Its entry gate and its line on a loop that calls a library are r13's, and M3's library, entry-point and debug items stay open.
   - D6: `==` and `.equals` rows that a loop stopped now show.
