@@ -138,7 +138,8 @@ At `b71373e3` I1 has 42 `not-ported` and 19 `reference-rejects-not-ported` rows;
 
 ## Rows moved, by class
 
-I1 (`adr068Lowering`, the arguments of `freeze.sh lowering`, out to scratch, never frozen) on the code of `701f9300`, against the
+I1 (`adr068Lowering`, the arguments of `freeze.sh lowering`, out to scratch, never frozen) on the code of `701f9300` and again at
+`47dde88e` (identical tables), against the
 table at `b71373e3`: 17,098 cases, **389 rows moved**, 368 of them a "shrink" in the tool's sense (a row leaving
 `i1a-identical` or `both-reject`), which the freeze takes with `-Padr068.allowShrink=true` and this section's reasons.
 
@@ -166,12 +167,79 @@ an external example, a `.diffcase`, a stdlib library or a Blaster or C7 fixture.
 
 ## Tests run
 
-To be filled.
+Every Gradle run went through `heavy.sh`, `--offline --no-watch-fs`, JDK 25.0.2, with its limit started once the lock was held.
+
+| Run | At | Result |
+|---|---|---|
+| `:julc-compiler:test` | `0ee13635` | 6,709+ tests, 0 failures (`BUILD SUCCESSFUL`, 6m 24s) |
+| `:julc-difftest:test :julc-annotation-processor:test :julc-testkit:test :julc-examples:test :julc-playground:test :julc-blueprint:test :julc-cli:test :julc-verification:test` | `0ee13635` | difftest 2,116 tests, 3 failures, each a harness row that pinned what D9 or I2a now changes (fixed at `6da0a704`, rerun below); cli 472, annotation processor 30, testkit 237, examples 100, playground 46, blueprint 26, verification 93: 0 failures |
+| The three difftest classes, `Adr068RejectionSitesTest` and `JavacSubsetCodesTest` | `47dde88e` | Records harness 45, reads harness 252, lowering tool 67, rejection sites 2, `JavacSubsetCodesTest` 57: 0 failures |
+| I1, `adr068Lowering` into scratch | `701f9300`'s code, and again at `47dde88e` | 389 rows moved, all classified (above); the two runs' tables are identical |
+
+New tests: `SubsetRulesTest` (F904 in both directions: twelve types, every purpose, a datum, a multi-validator, words and
+position, the count's precedence, the accepted spellings at every level against the reference's bytes, a user's own
+`ScriptContext`, the reference with the gate off), `EntrypointContextPropertyTest` (jqwik, 120 tries, fixed seed: purpose by count
+by last type, both frontends), `JavacSubsetCodesTest` (each new code against the reference's words and position, the nearest
+accepted shapes at every level against the reference's bytes, F946's collection, `JULC0079`, `JULC0080`, `JULC0087`'s words), and
+`LoweringFixture`'s I2a comparison, which every existing test that compares the frontends now runs through.
+
+No evaluation is new: every rule here rejects, and what each lets through compiles to the reference's bytes at all four levels,
+so the JVM comparison of those programs is the reference's own.
 
 ## Mutants
 
-To be filled.
+Applied one at a time to the new lines, each run with its tests under a 5-minute limit.
+
+| Mutant | Line | Result |
+|---|---|---|
+| M1 | F904: the context check never rejects | Killed (22 failures) |
+| M2 | F904: any count is taken | Killed |
+| M3 | F904: any `PlutusData` subtype is the context | Killed |
+| M4 | The unlowered walk misses `null` | Killed |
+| M5 | The scan stops at its first error | Killed |
+| M6 | Two sealed parents allowed | Killed |
+| M7 | A record's static field allowed | Killed |
+| M8 | A user's own `Object` superclass coded | Killed |
+| M9 | `JULC0087`'s unread case worded as an array | Killed, after a test of a type variable and a raw argument was added (it survived the first round) |
+| M10 | A bare array initializer passes the scan | Survived: equivalent. Lowering stops at the same construct with the same `JULC0084`, and in code nothing lowers the statement stops first |
+| M11 | `>>` named `RIGHT_SHIFT`, not the reference's `SIGNED_RIGHT_SHIFT` | Killed |
+| M12 | The unlowered walk reads what javac wrote | Killed |
+| M13 | A compact constructor named as any canonical one | Killed, after a test of the words was added (it survived the first round) |
+| M14 | Unary `+` named `UNARY_PLUS` | Killed |
 
 ## Not done
 
-To be filled.
+- **I1 not frozen** (by instruction): `g4a-accepted-differences.tsv` holds the entries, with six replacements, and the freeze
+  needs `-Padr068.allowShrink=true` for the 368 rows this section explains.
+- **ADR text** is proposed above, not applied. **ADR-067's revision** (I9's oracle, the outcome matrix, `Javac21ParityTest`) is
+  not written.
+- **ADR-067 M2a and M2b** (record patterns) are not lowered: `JULC0076` stands. That is lowering, not a subset rule.
+- **Uncoded rejections that remain** on `JAVAC` (types, records, `new BigInteger`, `PlutusData.cast`, the discovery's): listed in
+  the follow-ups with their plan.
+- **The loop slice's two confirmation rows** (a label in code nothing lowers; what the reference goes on to past a rejection):
+  narrowed, not closed.
+- The gates outside `test` (`pairCaseTest`, `onChainHarnessTest`, `wasmSmokeFull`, the parity suite, rediscovery, Blaster) were
+  not run: no byte changes, and the rules reject only.
+
+## ADR deviations and decisions to confirm
+
+- **`JULC0080` rejects what the reference runs.** ADR-067 D9, which D11 puts on `frontend=JAVAC` in M3, rejects every record member
+  but a nested type. The reference compiles such a record where nothing reads the member, and M3d accepted `R { }` on `JAVAC`
+  (F908). Five corpus rows become Policy rejections, and harness rows that agreed now reject on `JAVAC`. This follows the accepted
+  ADRs; it is the one place this slice makes `JAVAC` read less than the reference, and it fails closed.
+- **F904 at the gate.** The rule is the gate's on the default frontend, so under `report` or `off` it does not hold there (D15's
+  modes), and the reference with the gate off is unchanged. 170 in-repo fixtures are rewritten.
+- **New codes for old words.** Every coded rejection keeps the reference's words exactly; the catalogue's planned templates for
+  `JULC0004`, `JULC0006` and `JULC0077` were re-worded to them before being emitted.
+
+## Where a reviewer should look
+
+- `SubsetScan`: the collection in `scan`/`check` (a rule's error is collected and its subtree skipped; a stop after an error yields
+  the errors), and `requireNoRejectedStatement`'s walk of code nothing lowers.
+- `SubsetRules.requireEntrypointSignatures` with `JavacDiscovery.takesParameterCount`: the count guard is what keeps the reference's
+  order.
+- `RecordDeclarations`: what counts as written (`isGenerated`), and its place after `JULC0101`/`JULC0099`.
+- `LoweringFixture.error(reference, javac)`: the I2a comparison every frontend test now uses; it accepts only a coded javac error
+  with the reference's words, and its position where the reference gives one.
+- `g4a-accepted-differences.tsv`: the 231 Diagnostic change rows were classified by script on the full texts; the 14 by hand are
+  the two-errors and D8 rows.
