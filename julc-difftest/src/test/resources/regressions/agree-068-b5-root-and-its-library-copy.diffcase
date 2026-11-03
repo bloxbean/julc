@@ -1,0 +1,28 @@
+format: 2
+name: a root its own resolution offers as a library, with a field that may fail, calls its helper (B5)
+class: B5SelfLibrary
+method: f
+arg: 04
+expect: AGREE
+note: ADR-068 reference change B5. The class path offers this class's own text (META-INF/plutus-sources), so resolution
+note: compiles the root as a library too, and two binders of the name B5SelfLibrary.g reach DelayedMethodPass: the root's
+note: helper and the library copy, which the may-fail field HALF delays. At B4 the pass took the root's read of the helper
+note: for the delayed copy and applied it to (), and the script failed (AddInteger: expected integer); at B5 a binder hides
+note: a delayed or total name of its own in its scope, and f(4) is 58, as on the JVM, on both frontends.
+---
+import java.math.BigInteger;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+
+@OnchainLibrary
+public class B5SelfLibrary {
+
+    static final BigInteger HALF = BigInteger.valueOf(100).divide(BigInteger.TWO);
+
+    public static BigInteger g(BigInteger x) {
+        return x.add(x);
+    }
+
+    public static BigInteger f(BigInteger x) {
+        return B5SelfLibrary.g(x).add(HALF);
+    }
+}
