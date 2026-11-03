@@ -259,6 +259,40 @@ class JavacContractAndDebugTest {
         assertNotEquals(0, javac.bindings().size());
     }
 
+    /**
+     * A local that shadows a field takes another binder name (I13), so its binder is not the declaration as written: it
+     * compiles, and it is not shown, where the reference shows it under its own name.
+     */
+    @Test
+    void aRenamedLocalCompilesAndIsNotShown() {
+        var source = """
+                import java.math.BigInteger;
+                import org.julclang.core.PlutusData;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.stdlib.annotation.MintingValidator;
+
+                @MintingValidator
+                class Shadow {
+                    static final BigInteger K = BigInteger.TEN;
+
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        BigInteger k = K;
+                        BigInteger K = k.add(k);
+                        return K.signum() > 0;
+                    }
+                }
+                """;
+        var metadata = debug(source, CompilerFrontend.JAVAC, OptimizationLevel.NONE).debugMetadata();
+        var shown = metadata.loweredBindings().stream().map(DebugMetadata.LoweredBinding::sourceBindingId)
+                .filter(id -> id != null).collect(Collectors.toSet());
+        var local = metadata.bindings().stream().filter(binding -> binding.name().equals("K")
+                && binding.kind() == DebugMetadata.BindingKind.LOCAL).findFirst().orElseThrow();
+        assertTrue(!shown.contains(local.id()), "a renamed binder is not the declaration's");
+        assertTrue(metadata.bindings().stream().anyMatch(binding -> binding.name().equals("k") && shown.contains(binding.id())));
+    }
+
     private static String view(DebugMetadata metadata) {
         var text = new StringBuilder();
         // The reference names a string source by its path under the working directory, javac by its file name.
