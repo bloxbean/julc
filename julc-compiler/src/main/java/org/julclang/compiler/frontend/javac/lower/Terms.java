@@ -2,6 +2,7 @@ package org.julclang.compiler.frontend.javac.lower;
 
 import com.sun.source.tree.Tree;
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.frontend.javac.JavacFacts;
 import org.julclang.compiler.frontend.javac.lower.Scope.Binder;
 import org.julclang.compiler.pir.PirHelpers;
@@ -14,6 +15,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * The only code that builds a {@code Var}, {@code Lam} or {@code Let} for a source element (ADR-068 I13), and the only recorder of
@@ -26,6 +28,7 @@ public final class Terms {
     private final boolean sourceMaps;
     private final IdentityHashMap<PirTerm, SourceLocation> positions = new IdentityHashMap<>();
     private final Provenance provenance = new Provenance();
+    private DebugMetadataCollector debug;
 
     Terms(JavacFacts facts, CompilationContext context) {
         this.facts = facts;
@@ -82,6 +85,16 @@ public final class Terms {
      */
     PirTerm.Let afterEffect(PirTerm effect, PirTerm rest) {
         return new PirTerm.Let(PirHelpers.hygienicName("#_if", PirHelpers.freeVariables(rest)), effect, rest);
+    }
+
+    /**
+     * {@code let #fromData = data in if check #fromData then #fromData decoded as type else error}: Data that passes
+     * {@code check}, as {@code type} holds it. Nothing in its scope is built elsewhere, so the name is fixed (ADR-060).
+     */
+    PirTerm.Let checkedDecode(PirTerm data, PirType type, Function<PirTerm, PirTerm> check) {
+        var read = generated("#fromData", new PirType.DataType());
+        return generatedLet("#fromData", data,
+                new PirTerm.IfThenElse(check.apply(read), PirHelpers.wrapDecode(read, type), new PirTerm.Error(type)));
     }
 
     /** {@code let binder = what data decodes to in body}: an accumulator out of the tuple it travels in. */
@@ -175,6 +188,26 @@ public final class Terms {
     /** A binder the assembly built for {@code element}: a static field's, a {@code @Param}'s or a method's. */
     public void assembled(PirTerm binding, String name, Element element) {
         provenance.binder(binding, name, element);
+    }
+
+    /** Debug metadata this compilation collects ({@code compileForDebug}), told of binders as they are built. */
+    public void collectDebugMetadata(DebugMetadataCollector collector) {
+        this.debug = collector;
+    }
+
+    /**
+     * Tells debug metadata, if collected, that {@code binding} is the binder built for the declaration of {@code element},
+     * holding a {@code type}. Called where the reference associates one: a method's and a lambda's parameter, a local, a
+     * {@code @Param}. A binder that took another name than the source's (I13) is not the declaration's as written, so it
+     * stays unassociated, as the reference's renamed copy does.
+     */
+    public void declared(Element element, PirTerm binding, String name, PirType type) {
+        if (debug != null && name.equals(element.getSimpleName().toString())) debug.associate(element, binding, type);
+    }
+
+    /** Tells debug metadata, if collected, that the declaration of {@code element} has no binder it can show. */
+    void undeclared(Element element, String reason) {
+        if (debug != null) debug.markUnsupported(element, reason);
     }
 
     /** Records where {@code term} came from, when this compilation has a source map. */

@@ -37,13 +37,24 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.julclang.core.debug.DebugMetadata.Availability.AVAILABLE;
 
-/** Compiler-owned declaration identities and final UPLC environment-slot proof. */
+/**
+ * Compiler-owned declaration identities and final UPLC environment-slot proof.
+ * <p>
+ * A frontend scans its trees into declarations (ADR-068: the JavaParser frontend's scan is here; the javac frontend's is
+ * {@code JavacDebugScan}, through {@link #forSources} and {@link Declarations}). A declaration is keyed by the identity of
+ * what that frontend holds for it, a JavaParser node or a javac element, and {@link #associate} takes the same key where the
+ * frontend builds the declaration's binder, so provenance keys on PIR node identity and no name is read afterwards.
+ */
 public final class DebugMetadataCollector {
     public record SourceInput(String id, String uri, String content, CompilationUnit compilationUnit) {}
+
+    /** A source the metadata names, as a frontend other than the JavaParser one gives it. */
+    public record SourceText(String id, String uri, String content) {}
 
     private static final List<DebugMetadata.Layout> LAYOUTS = List.of(
             new DebugMetadata.Layout("layout:integer", DebugMetadata.LayoutKind.INTEGER, List.of()),
@@ -86,22 +97,75 @@ public final class DebugMetadataCollector {
 
     private final List<DebugMetadata.Source> sources = new ArrayList<>();
     private final List<DebugMetadata.Scope> scopes = new ArrayList<>();
-    private final IdentityHashMap<Node, BindingDraft> bindingsByNode = new IdentityHashMap<>();
+    private final IdentityHashMap<Object, BindingDraft> bindingsByNode = new IdentityHashMap<>();
     private final LinkedHashMap<String, BindingDraft> bindings = new LinkedHashMap<>();
     private final LinkedHashMap<String, DebugMetadata.TypeInfo> types = new LinkedHashMap<>();
-    private final IdentityHashMap<Node, String> scopeIds = new IdentityHashMap<>();
-    private final IdentityHashMap<CompilationUnit, SourceInput> sourceInputs = new IdentityHashMap<>();
+    private final IdentityHashMap<Object, String> scopeIds = new IdentityHashMap<>();
+    private final List<SourceText> texts = new ArrayList<>();
     private final PirDebugProvenance provenance = new PirDebugProvenance();
 
     public DebugMetadataCollector(List<SourceInput> inputs) {
         int sourceOrdinal = 0;
         for (SourceInput input : inputs) {
-            Objects.requireNonNull(input.content());
-            sourceInputs.put(input.compilationUnit(), input);
-            sources.add(new DebugMetadata.Source(input.id(), input.uri(),
-                    DebugMetadata.sha256(input.content().getBytes(StandardCharsets.UTF_8)), input.content(),
-                    lineStarts(input.content())));
+            addSource(new SourceText(input.id(), input.uri(), input.content()));
             scan(input, sourceOrdinal++);
+        }
+    }
+
+    private DebugMetadataCollector() {
+    }
+
+    /**
+     * A collector of {@code sources}, whose declarations a frontend's scan gives through {@link Declarations}; the scan
+     * runs before any binder is built.
+     */
+    public static DebugMetadataCollector forSources(List<SourceText> sources, Consumer<Declarations> scan) {
+        var collector = new DebugMetadataCollector();
+        sources.forEach(collector::addSource);
+        scan.accept(collector.new Declarations());
+        if (collector.scopes.isEmpty()) throw new CompilerException("Java debug metadata found no method scopes");
+        return collector;
+    }
+
+    private void addSource(SourceText source) {
+        Objects.requireNonNull(source.content());
+        texts.add(source);
+        sources.add(new DebugMetadata.Source(source.id(), source.uri(),
+                DebugMetadata.sha256(source.content().getBytes(StandardCharsets.UTF_8)), source.content(),
+                lineStarts(source.content())));
+    }
+
+    /**
+     * What a scan declares: scopes and bindings, each keyed by the identity of the frontend's own object for it. Ids and
+     * kinds follow the JavaParser scan's scheme, so both frontends name a declaration alike.
+     */
+    public final class Declarations {
+        private Declarations() {
+        }
+
+        /** The scope of {@code owner} if one was declared, or null. */
+        public String scopeOf(Object owner) {
+            return scopeIds.get(owner);
+        }
+
+        /** Declares the scope of {@code owner}, once, and returns its id. */
+        public String scope(Object owner, String id, String parentId, String sourceId, DebugMetadata.SourceRange range,
+                            DebugMetadata.ScopeKind kind, String ownerId) {
+            String existing = scopeIds.get(owner);
+            if (existing != null) return existing;
+            scopes.add(new DebugMetadata.Scope(id, parentId, sourceId, range, kind, ownerId));
+            scopeIds.put(owner, id);
+            return id;
+        }
+
+        /** Declares the binding of {@code declaration}, once. */
+        public void binding(Object declaration, String id, String name, DebugMetadata.SourceRange range, String scopeId,
+                            DebugMetadata.BindingKind kind, String spelling, boolean materializable) {
+            if (bindingsByNode.containsKey(declaration)) return;
+            var draft = new BindingDraft("binding:" + id, name, range, scopeId, kind, spelling, materializable);
+            bindingsByNode.put(declaration, draft);
+            bindings.put(draft.id, draft);
+            types.putIfAbsent(draft.typeId, new DebugMetadata.TypeInfo(draft.typeId, spelling));
         }
     }
 
@@ -110,13 +174,13 @@ public final class DebugMetadataCollector {
     }
 
     /** Record a deliberately unsupported declaration lowering without inventing a binder. */
-    public void markUnsupported(Node declaration, String reason) {
+    public void markUnsupported(Object declaration, String reason) {
         BindingDraft draft = bindingsByNode.get(declaration);
         if (draft != null && draft.unavailableReason == null) draft.unavailableReason = reason;
     }
 
     /** Associate a Java declaration with the exact PIR binder created for it. */
-    public void associate(Node declaration, PirTerm binder, PirType physicalType) {
+    public void associate(Object declaration, PirTerm binder, PirType physicalType) {
         BindingDraft draft = bindingsByNode.get(declaration);
         if (draft == null || !draft.materializable) return;
         String display = displayType(physicalType);
@@ -355,7 +419,7 @@ public final class DebugMetadataCollector {
 
     private DebugMetadata.SourceRange range(SourceLocation location) {
         if (location.fileName() == null) return null;
-        List<SourceInput> matches = sourceInputs.values().stream()
+        List<SourceText> matches = texts.stream()
                 .filter(value -> location.fileName() != null && (value.uri().equals(location.fileName())
                         || value.uri().endsWith("/" + location.fileName())
                         || value.uri().endsWith("\\" + location.fileName())))
@@ -363,8 +427,8 @@ public final class DebugMetadataCollector {
         // A missing or non-unique source identity is unmapped. Choosing the first source would
         // manufacture an exact-looking Java location for a different compilation unit.
         if (matches.size() != 1) return null;
-        SourceInput input = matches.getFirst();
-        int start = offset(input, new Position(location.line(), Math.max(1, location.column())));
+        SourceText input = matches.getFirst();
+        int start = offset(input.content(), new Position(location.line(), Math.max(1, location.column())));
         int end = Math.min(input.content().length(), start + 1);
         return new DebugMetadata.SourceRange(input.id(), start, end, location.line(), Math.max(1, location.column()),
                 location.line(), Math.max(2, location.column() + 1));
@@ -404,10 +468,14 @@ public final class DebugMetadataCollector {
     }
 
     private static int offset(SourceInput input, Position position) {
-        List<Integer> starts = lineStarts(input.content());
+        return offset(input.content(), position);
+    }
+
+    private static int offset(String content, Position position) {
+        List<Integer> starts = lineStarts(content);
         int line = Math.max(1, Math.min(position.line, starts.size()));
         int start = starts.get(line - 1);
-        return Math.min(input.content().length(), start + Math.max(0, position.column - 1));
+        return Math.min(content.length(), start + Math.max(0, position.column - 1));
     }
 
     private static List<Integer> lineStarts(String content) {

@@ -28,9 +28,26 @@ public final class StrictBoundaryGenerator {
 
     private final Map<String, PirType> namedDefinitions;
     private final LinkedHashMap<PirType, Integer> typeIds = new LinkedHashMap<>();
+    private final boolean ledgerDecoding;
 
     public StrictBoundaryGenerator(Map<String, PirType> namedDefinitions) {
+        this(namedDefinitions, false);
+    }
+
+    private StrictBoundaryGenerator(Map<String, PirType> namedDefinitions, boolean ledgerDecoding) {
         this.namedDefinitions = Map.copyOf(namedDefinitions);
+        this.ledgerDecoding = ledgerDecoding;
+    }
+
+    /**
+     * A checker that accepts what the ledger API's JVM {@code fromPlutusData} decodes, and only that (ADR-068, a ledger
+     * {@code fromPlutusData} on {@code frontend=JAVAC}): it is the strict check but for what those decoders ignore. A
+     * constructor's fields past its declared ones are not read ({@code PlutusDataHelper.expectConstr}, a variant's
+     * {@code fields().getFirst()}), and neither are the fields of a {@code Bool} ({@code decodeBool}) or of an empty
+     * {@code Optional} ({@code decodeOptional}). A present {@code Optional} has exactly one field there too.
+     */
+    public static StrictBoundaryGenerator forLedgerDecoding(Map<String, PirType> namedDefinitions) {
+        return new StrictBoundaryGenerator(namedDefinitions, true);
     }
 
     /** Opaque Data has no declared shape and therefore needs no generated guard. */
@@ -189,7 +206,7 @@ public final class StrictBoundaryGenerator {
         var empty = builtin1(DefaultFun.NullList, fields);
         var validTag = or(equalsInteger(tag, 0), equalsInteger(tag, 1));
         return new PirTerm.Let(pairName, builtin1(DefaultFun.UnConstrData, data),
-                and(validTag, empty));
+                ledgerDecoding ? validTag : and(validTag, empty));
     }
 
     private PirTerm checkOptional(PirTerm data, PirType elementType) {
@@ -197,8 +214,8 @@ public final class StrictBoundaryGenerator {
         var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
-        var some = and(equalsInteger(tag, 0), checkFields(fields, List.of(elementType), 0));
-        var none = and(equalsInteger(tag, 1), checkFields(fields, List.of(), 0));
+        var some = and(equalsInteger(tag, 0), checkExactFields(fields, List.of(elementType), 0));
+        var none = ledgerDecoding ? equalsInteger(tag, 1) : and(equalsInteger(tag, 1), checkFields(fields, List.of(), 0));
         return new PirTerm.Let(pairName, builtin1(DefaultFun.UnConstrData, data),
                 or(some, none));
     }
@@ -229,9 +246,18 @@ public final class StrictBoundaryGenerator {
                 and(equalsInteger(tag, expectedTag), checkFields(fieldList, fields, 0)));
     }
 
+    /** A constructor's fields: exactly {@code expected}, or under ledger decoding at least them. */
     private PirTerm checkFields(PirTerm fields, List<PirType> expected, int index) {
+        return checkFields(fields, expected, index, !ledgerDecoding);
+    }
+
+    private PirTerm checkExactFields(PirTerm fields, List<PirType> expected, int index) {
+        return checkFields(fields, expected, index, true);
+    }
+
+    private PirTerm checkFields(PirTerm fields, List<PirType> expected, int index, boolean exact) {
         if (index == expected.size()) {
-            return builtin1(DefaultFun.NullList, fields);
+            return exact ? builtin1(DefaultFun.NullList, fields) : bool(true);
         }
         String headName = "#__field-" + index;
         String tailName = "#__fields-" + (index + 1);
@@ -240,7 +266,7 @@ public final class StrictBoundaryGenerator {
         return new PirTerm.Let(headName, builtin1(DefaultFun.HeadList, fields),
                 new PirTerm.Let(tailName, builtin1(DefaultFun.TailList, fields),
                         and(applyCheck(register(expected.get(index)), head),
-                                checkFields(tail, expected, index + 1))));
+                                checkFields(tail, expected, index + 1, exact))));
     }
 
     private PirTerm checkList(PirTerm data, PirType elementType, int nodeId) {

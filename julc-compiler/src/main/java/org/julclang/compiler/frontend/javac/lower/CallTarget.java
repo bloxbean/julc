@@ -1,5 +1,7 @@
 package org.julclang.compiler.frontend.javac.lower;
 
+import org.julclang.compiler.pir.PirType;
+
 import javax.lang.model.element.ExecutableElement;
 
 /**
@@ -18,6 +20,13 @@ sealed interface CallTarget {
         CAST,
         /** {@code x.toPlutusData()}: {@code x} encoded by its type. */
         TO_DATA
+    }
+
+    /**
+     * A ledger type's {@code fromPlutusData}: the Data checked as the JVM's decoder reads it, then the value of
+     * {@code type} it holds.
+     */
+    record FromData(PirType type) implements CallTarget {
     }
 
     /** What the stdlib lookup is asked for, by a key {@code CallTargets} takes from the owner's identity. */

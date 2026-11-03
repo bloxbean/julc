@@ -13,8 +13,10 @@ import com.sun.source.util.TreeScanner;
 import com.sun.source.util.Trees;
 import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
+import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.TypeRegistry;
 import org.julclang.core.source.SourceLocation;
@@ -579,6 +581,19 @@ public final class JavacFacts {
             throw rejection("Cannot read the source of this literal: " + e.getMessage(), tree);
         }
         return read.toString();
+    }
+
+    /**
+     * A {@code Bool} term that holds where {@code data} is what the ledger API's JVM {@code fromPlutusData} of
+     * {@code type} decodes ({@link StrictBoundaryGenerator#forLedgerDecoding}).
+     */
+    public PirTerm ledgerDecodingCheck(PirTerm data, PirType type) {
+        return StrictBoundaryGenerator.forLedgerDecoding(registry.namedDefinitions()).check(data, type);
+    }
+
+    /** The text of {@code unit}, as javac read it. */
+    String source(CompilationUnitTree unit) {
+        return text(unit);
     }
 
     /** The start offset of {@code tree} in its unit, or -1. */

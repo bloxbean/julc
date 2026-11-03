@@ -10,7 +10,6 @@ import org.julclang.compiler.frontend.javac.JavacFrontend;
 import org.julclang.compiler.frontend.javac.JavacGate;
 import org.julclang.compiler.frontend.javac.JavacGateMode;
 import org.julclang.compiler.frontend.javac.JavacProvenance;
-import org.julclang.compiler.frontend.javac.NotPorted;
 import org.julclang.compiler.pir.*;
 import org.julclang.compiler.resolve.ImportResolver;
 import org.julclang.compiler.resolve.LedgerSourceLoader;
@@ -136,10 +135,13 @@ public class JulcCompiler {
     private CompilationOutcome onJavac(JavacFrontend.Unit root, List<JavacFrontend.Unit> pool, boolean captureDetails,
                                        boolean captureContractSchema, boolean collectDebugMetadata,
                                        CompilationContext context) {
-        var result = JavacGate.onJavacFrontend(() -> JavacCompilation.validator(root, pool, stdlibLookup, context, captureDetails));
-        if (captureContractSchema) throw NotPorted.of("a contract schema");
-        if (collectDebugMetadata) throw NotPorted.of("debug metadata");
-        return new CompilationOutcome(result, null, null);
+        var request = new JavacCompilation.Request(captureDetails, captureContractSchema,
+                collectDebugMetadata ? pool.stream().map(JavacFrontend.Unit::text).toList() : null);
+        var compiled = JavacGate.onJavacFrontend(() -> JavacCompilation.validator(root, pool, stdlibLookup, context, request));
+        var result = compiled.result();
+        DebugMetadata metadata = compiled.debug() == null ? null : compiled.debug().finish(result, options,
+                compiled.lowered().debug().emittedBinders(), compiled.lowered().debug().exactUplcPositions());
+        return new CompilationOutcome(result, compiled.schema(), metadata);
     }
 
     private CompilationContext beginCompilation() {

@@ -78,7 +78,12 @@ final class Lambdas {
         var body = body(lambda, frame.lambda(scope));
         if (encodesResult) body = encoded(body, call, lambda);
         if (decodes) body = terms.decoded(element, data.lookup(element), scope.lookup(element), held, body);
-        return terms.lam(data.lookup(element), body);
+        var function = terms.lam(data.lookup(element), body);
+        // A parameter decoded from Data is the decode's binder, not the function's, and that is not proven: it is not shown,
+        // with the reference's reason.
+        if (decodes) terms.undeclared(element, "generated HOF parameter decoding is not identity-proven");
+        else terms.declared(element, function, data.lookup(element).name(), data.lookup(element).type());
+        return function;
     }
 
     /** What the parameter holds: the type javac gave it, as a declaration writes it or as javac inferred it. */

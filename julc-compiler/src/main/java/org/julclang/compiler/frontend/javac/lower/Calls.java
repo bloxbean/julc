@@ -79,6 +79,7 @@ final class Calls {
     PirTerm call(MethodInvocationTree tree, Frame frame) {
         return switch (targets.classify(tree)) {
             case CallTarget.Intrinsic intrinsic -> intrinsic(intrinsic, tree, frame);
+            case CallTarget.FromData target -> fromData(target, tree, frame);
             case CallTarget.Stdlib target -> stdlib(target, tree, frame);
             case CallTarget.Library target -> library(target, tree, frame);
             case CallTarget.Local target -> local(target, tree, frame);
@@ -125,6 +126,19 @@ final class Calls {
                 yield PirHelpers.wrapEncode(scope, typing.of(receiver, scope));
             }
         };
+    }
+
+    /**
+     * {@code T.fromPlutusData(d)} for a ledger type {@code T}: {@code d} is evaluated once, then checked whole, before
+     * anything reads it, as the JVM decodes it whole before the call returns; what the JVM's decoder throws on fails here
+     * ({@code StrictBoundaryGenerator.forLedgerDecoding}). The value is {@code d} as {@code T} holds it: a hash's bytes, a
+     * map's pairs, a record's Data.
+     */
+    private PirTerm fromData(CallTarget.FromData target, MethodInvocationTree tree, Frame frame) {
+        var argument = tree.getArguments().getFirst();
+        var term = lowering.expr(argument, frame);
+        var data = PirHelpers.wrapEncode(term, typing.of(argument, term));
+        return terms.checkedDecode(data, target.type(), read -> facts.ledgerDecodingCheck(read, target.type()));
     }
 
     /** {@code PlutusData.cast(d, T.class)} views {@code d} as {@code T}; a map variable holds a pair list, so it decodes. */
