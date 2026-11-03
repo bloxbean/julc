@@ -102,6 +102,10 @@ JULC0121	code	JULC0121	SWITCH_ARM_UPDATE_UNSUPPORTED	javac frontend: emitted wit
 JULC0122	code	JULC0122	GENERIC_LIBRARY_CALL_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, Group 4a); the reference rejects the same source uncoded (U-generic-call-from-java)
 JULC0123	code	JULC0123	STATIC_CALL_QUALIFIED_CLASS_NAME	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, M5a); the reference rejects the same source uncoded, or as JULC0062 for JulcMap.of
 JULC0124	code	JULC0124	PRIMITIVE_TYPE_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, M5a); the reference rejects the same source uncoded (U-primitive-type)
+JULC0125	code	JULC0125	EXPRESSION_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 I2a, M5); the reference rejects the same family uncoded (Unsupported expression)
+JULC0126	code	JULC0126	INSTANCEOF_OPERAND_UNRELATED	javac frontend: emitted with frontend=JAVAC (ADR-068 M5); not a reference-frontend rejection
+JULC0127	code	JULC0127	VARIANT_NOT_PLAIN_RECORD	javac frontend: emitted with frontend=JAVAC (ADR-068 M5); not a reference-frontend rejection
+JULC0128	code	JULC0128	DATA_VIEW_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 M5); not a reference-frontend rejection
 JULC0079	code	JULC0079	RECORD_MULTIPLE_SEALED_PARENTS	javac frontend: emitted with frontend=JAVAC (ADR-068 D11, ADR-067 M3, Group 4a); not a reference-frontend rejection
 JULC0080	code	JULC0080	RECORD_MEMBER_UNSUPPORTED	javac frontend: emitted with frontend=JAVAC (ADR-068 D11, ADR-067 M3b, Group 4a); not a reference-frontend rejection
 JULC0103	code	JULC0103	ENTRYPOINT_CONTEXT_PARAMETER	javac gate: emitted on javac's trees after analyze() (ADR-068 F904, Group 4a); not a rejection of the JavaParser frontend with the gate off

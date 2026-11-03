@@ -4,6 +4,7 @@ import com.sun.source.tree.CaseLabelTree;
 import com.sun.source.tree.CaseTree;
 import com.sun.source.tree.SwitchExpressionTree;
 import com.sun.source.util.TreeScanner;
+import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.frontend.javac.subset.SwitchRules;
 import org.junit.jupiter.api.Test;
 
@@ -13,12 +14,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A label nothing lowers stops. {@code -source 21} keeps a second pattern out of a program and the platform keeps out an
+ * A label nothing lowers is rejected: a second label {@code JULC0075}, one that is no pattern {@code JULC0076} (ADR-068 M5). {@code -source 21} keeps a second pattern out of a program and the platform keeps out an
  * {@code enum}, so no source reaches this today, and the tests hand {@link SwitchRules} what javac would build: real trees,
  * with the labels of a case replaced. Neither of those is a rule of JuLC's, so the rule is held here.
  */
@@ -76,22 +78,24 @@ class SwitchLabelsTest {
     }
 
     private static String stop(SwitchExpressionTree tree) {
-        return assertThrows(NotPorted.class, () -> new SwitchRules(PROGRAM.facts()).check(tree, null, null)).construct();
+        var rejection = assertThrows(CompilerException.class, () -> new SwitchRules(PROGRAM.facts()).check(tree, null, null));
+        assertFalse(rejection instanceof NotPorted, rejection::getMessage);
+        return rejection.diagnostics().getFirst().code();
     }
 
     @Test
     void aSecondPatternStops() {
-        assertEquals("a case label past the first", stop(withLabels(PATTERNS, label(PATTERNS, 0), label(PATTERNS, 1))));
+        assertEquals("JULC0075", stop(withLabels(PATTERNS, label(PATTERNS, 0), label(PATTERNS, 1))));
     }
 
     @Test
     void aSecondLabelStopsAfterADefaultToo() {
-        assertEquals("a case label past the first", stop(withLabels(FALLBACK, label(FALLBACK, 0), label(PATTERNS, 1))));
+        assertEquals("JULC0075", stop(withLabels(FALLBACK, label(FALLBACK, 0), label(PATTERNS, 1))));
     }
 
     @Test
     void aConstantLabelStops() {
-        assertEquals("a case label that is no pattern", stop(withLabels(PATTERNS, label(CONSTANT, 0))));
+        assertEquals("JULC0076", stop(withLabels(PATTERNS, label(CONSTANT, 0))));
     }
 
     @Test

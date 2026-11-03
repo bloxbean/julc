@@ -94,7 +94,7 @@ public final class SwitchRules {
     private void requireOneLabel(CaseTree entry) {
         var labels = entry.getLabels();
         if (labels.size() > 1) {
-            throw facts.rejection(DiagnosticCodes.SWITCH_GROUP_UNSUPPORTED, labels.get(1), facts.location(entry).fragment(),
+            throw facts.rejection(DiagnosticCodes.SWITCH_GROUP_UNSUPPORTED, labels.get(1), facts.location(labels.get(1)).fragment(),
                     "an arm takes one type pattern or default");
         }
         var label = labels.getFirst();
