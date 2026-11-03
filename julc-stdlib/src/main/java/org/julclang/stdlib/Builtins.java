@@ -79,6 +79,11 @@ public final class Builtins {
         return new PlutusData.ListData(new ArrayList<>(items.subList(1, items.size())));
     }
 
+    /** {@link #tailList(PlutusData)}: what Java has as a map stays one. */
+    public static PlutusData.MapData tailList(PlutusData.MapData map) {
+        return new PlutusData.MapData(new ArrayList<>(map.entries().subList(1, map.entries().size())));
+    }
+
     /** {@link #tailList(PlutusData)}: what Java has as a list stays one. */
     public static PlutusData.ListData tailList(PlutusData.ListData list) {
         var items = list.items();
@@ -92,16 +97,25 @@ public final class Builtins {
 
     /** Prepend an element to a Data list. Onto a map the element must be a pair, and a map stays a map, as a pair list on-chain does. */
     public static PlutusData mkCons(PlutusData elem, PlutusData list) {
-        if (list instanceof PlutusData.MapData map) {
-            var entries = new ArrayList<PlutusData.Pair>();
-            entries.add(new PlutusData.Pair(fstPair(elem), sndPair(elem)));
-            entries.addAll(map.entries());
-            return new PlutusData.MapData(entries);
-        }
+        if (list instanceof PlutusData.MapData map) return mkCons(elem, map);
         var items = new ArrayList<PlutusData>();
         items.add(elem);
         items.addAll(toList(list));
         return new PlutusData.ListData(items);
+    }
+
+    /**
+     * {@link #mkCons(PlutusData, PlutusData)} onto a map: the element must be a pair as {@link #mkPairData} makes one, a
+     * {@code Constr} of tag 0 with two fields, since on-chain it is a native pair. Anything else fails, as on-chain.
+     */
+    public static PlutusData.MapData mkCons(PlutusData elem, PlutusData.MapData map) {
+        if (!(elem instanceof PlutusData.ConstrData pair && pair.tag() == 0 && pair.fields().size() == 2)) {
+            throw new IllegalArgumentException("mkCons: a map takes a pair, got " + elem);
+        }
+        var entries = new ArrayList<PlutusData.Pair>();
+        entries.add(new PlutusData.Pair(pair.fields().get(0), pair.fields().get(1)));
+        entries.addAll(map.entries());
+        return new PlutusData.MapData(entries);
     }
 
     /** {@link #mkCons(PlutusData, PlutusData)}: what Java has as a list stays one. */

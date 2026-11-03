@@ -68,6 +68,40 @@ class BuiltinsPairListTest {
         assertEquals(new PlutusData.ListData(List.of(integer(1), integer(2))), Builtins.mkCons(integer(1), new PlutusData.ListData(List.of(integer(2)))));
     }
 
+    /** A pair is what {@code mkPairData} makes: a {@code Constr} of tag 0 with two fields. */
+    @Test
+    void consOntoAMapTakesOnlyAPair() {
+        var five = new PlutusData.ConstrData(5, List.of(integer(7), integer(8)));
+        var three = new PlutusData.ConstrData(0, List.of(integer(7), integer(8), integer(9)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(five, map(1)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(three, map(1)));
+        PlutusData data = map(1);
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(five, data));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(three, data));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(three, Builtins.mkNilPairData()));
+    }
+
+    /** javac's choice: a map stays typed as a map, a list as a list, and a {@code PlutusData} or another subtype gets {@code PlutusData}. */
+    @Test
+    void whatEachArgumentTypeBinds() {
+        PlutusData.MapData typed = Builtins.tailList(map(1, 2));
+        assertEquals(map(2), typed);
+        var pairs = Builtins.mkNilPairData();
+        pairs = Builtins.mkCons(Builtins.mkPairData(integer(1), integer(11)), pairs);
+        pairs = Builtins.tailList(Builtins.mkCons(Builtins.mkPairData(integer(2), integer(12)), pairs));
+        assertEquals(map(1), pairs);
+        PlutusData data = map(1, 2);
+        PlutusData tail = Builtins.tailList(data);
+        assertEquals(map(2), tail);
+        var list = Builtins.mkNilData();
+        list = Builtins.mkCons(integer(1), list);
+        list = Builtins.tailList(list);
+        assertEquals(new PlutusData.ListData(List.of()), list);
+        assertThrows(IllegalArgumentException.class, () -> Builtins.tailList(integer(1)));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.tailList(new PlutusData.ConstrData(0, List.of(integer(1)))));
+        assertThrows(IllegalArgumentException.class, () -> Builtins.mkCons(integer(1), new PlutusData.BytesData(new byte[]{1})));
+    }
+
     @Test
     void anEmptyPairListIsAnEmptyMap() {
         assertEquals(map(), Builtins.mkNilPairData());
