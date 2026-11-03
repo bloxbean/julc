@@ -298,13 +298,14 @@ class JavacOperatorsTest {
     void codeNothingLowersKeepsTheRulesThatHoldEverywhere() {
         assertEquals("JULC0017", javac("static class N { static long f() { done: { BigInteger z = null; } return 1; } }\n"
                 + "static boolean m() { return true; }").diagnostics().getFirst().code());
-        // A type declared there: the walk reads javac's generated super() in its constructor as 'super' (JULC0107), where the
-        // reference accepts. Fails closed; a follow-up (068-m5a.md).
+        // A type declared there is passed over too: javac's generated super() in its constructor is not source (M5a part 2).
         for (var member : new String[]{"static class N { static long f() { class L { } return 1; } }",
-                "static class N { static Object f() { return new Object() { }; } }",
                 "static class N { static long f() { record L(long a) { } return new L(1).a(); } }"}) {
-            assertEquals("JULC0107", javac(member + "\nstatic boolean m() { return true; }").diagnostics().getFirst().code(), member);
+            assertSame(member + "\nstatic boolean m() { return true; }");
         }
+        // A super written in the source is still the reference's rejection there.
+        assertEquals("JULC0107", javac("static class N { String f() { return super.toString(); } }\nstatic boolean m() { return true; }")
+                .diagnostics().getFirst().code());
     }
 
     /** A field the compilation lowers is read as a method is, so D6's rules reach its initializer. */

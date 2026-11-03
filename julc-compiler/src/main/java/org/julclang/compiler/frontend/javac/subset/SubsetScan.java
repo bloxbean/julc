@@ -313,7 +313,8 @@ public final class SubsetScan extends TreeScanner<Void, Void> {
             if (!facts.isGenerated(statement)) written.addAll(SubsetWalk.all(statement, Tree.class));
         }
         for (var node : written) {
-            if (!walked.add(node)) continue;
+            // What javac wrote at any depth, such as the super() of a local class's constructor, is no source either.
+            if (facts.isGenerated(node) || !walked.add(node)) continue;
             try {
                 requireNothingRejected(node);
             } catch (NotPorted stop) {
