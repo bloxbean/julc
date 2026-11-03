@@ -317,7 +317,7 @@ For `String` and `byte[]` comparison, use `.equals(...)` (compiles to `EqualsByt
 
 ### 6.13 An entry point returns `boolean`
 
-Every `@Entrypoint`, including each one of a `@MultiValidator`, returns `boolean` or `Boolean`. Anything else is `JULC0094`.
+Every `@Entrypoint`, including each one of a `@MultiValidator`, returns `boolean` or `Boolean`. Anything else is `JULC0094`. Its last parameter is `ScriptContext`, or `PlutusData` to keep the context as Data; anything else is `JULC0103`, since the script receives the context there undecoded. Two values a spending validator needs are its datum and redeemer: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`.
 
 ### 6.14 What a field initializer may hold
 

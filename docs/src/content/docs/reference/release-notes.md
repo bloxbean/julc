@@ -3,6 +3,24 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: an entry point takes the script context last
+
+An `@Entrypoint` method's last parameter is `ScriptContext` or `PlutusData`; anything else is `JULC0103`. The script
+receives the script context there, undecoded, so a last parameter typed `BigInteger`, `int`, a record or a subtype of
+`PlutusData` read the context as that type, and the method's JVM test did not test the script. A spending entry point that
+needs two values takes them as datum and redeemer: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`. An
+entry point with a parameter count its purpose does not take is still `JULC0008`. The rule holds on both frontends under the
+default gate (`enforce`); `-Djulc.javacGate=report` or `off` turns it off on the default frontend, with the other gate rules,
+until that frontend is removed. Scripts that compile do not change.
+
+On the experimental `frontend=JAVAC`, the subset's rejections carry codes, with the default frontend's words and position:
+`JULC0104`–`JULC0122` for `synchronized`, method references, calls through a functional local, `this` and `super`, array
+access, inheritance, unsupported statements, the loop and switch-arm rules and unsupported operators, and `JULC0001`,
+`JULC0002`, `JULC0004`, `JULC0006`, `JULC0011`, `JULC0014`, `JULC0020`, `JULC0024` and `JULC0077` for the rest. A source with
+several such errors reports each of them. A record that implements two sealed interfaces is `JULC0079`, and a record that
+declares any member but a nested type is `JULC0080` (ADR-067), so `record R(BigInteger a) { R { } }`, accepted there before,
+is rejected. See [Troubleshooting](/reference/troubleshooting/).
+
 ## Upcoming preview: `String.length` counts as Java does, and a method with no parameters runs when called
 
 `s.length()` counts UTF-16 code units, as Java does. It counted the bytes of the string's UTF-8

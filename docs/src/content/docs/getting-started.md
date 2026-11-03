@@ -1612,6 +1612,9 @@ following limitations apply:
 
 - **An entry point returns `boolean`** (or `Boolean`), and every entry point of a
   `@MultiValidator` does too (`JULC0094`).
+- **An entry point takes the script context last**: its last parameter is `ScriptContext`, or
+  `PlutusData` to keep the context as Data (`JULC0103`). Take other values from the redeemer, or
+  the datum of a spending validator.
 - **A field initializer that nothing lowers holds only a constant** (`JULC0095`).
   A `static` field of the class being compiled is lowered. Any other field (a
   `@Param`, an instance field, a field of a nested type or a record, a field of a

@@ -1430,6 +1430,146 @@ validator has two `@Entrypoint` methods.
 
 **Fix:** Declare the entry point `static`.
 
+### `JULC0103` `Entrypoint <method> of <class> takes <type> as its last parameter; the last parameter is the script context, ScriptContext or PlutusData`
+
+**Cause:** An `@Entrypoint` method of a validator declares its last parameter with a type other than `org.julclang.ledger.ScriptContext` or `org.julclang.core.PlutusData`. The script receives the script context there, undecoded, so a parameter typed `BigInteger`, a record or a subtype of `PlutusData` reads the context as that type, and the method's JVM test does not test the script. A type of your own named `ScriptContext` is not the ledger's. An entry point with a parameter count its purpose does not take is `JULC0008` instead. This rule holds on both frontends under the default gate (`enforce`); `-Djulc.javacGate=report` or `off` turns it off on the default frontend, as it does the other gate rules.
+
+**Fix:** Declare the last parameter `ScriptContext`, or `PlutusData` to keep the context as Data. Take other values from the redeemer, or, for a spending validator, from the datum: `validate(BigInteger datum, BigInteger redeemer, ScriptContext ctx)`.
+
+### `JULC0079` `Record <record> implements sealed interfaces <interface> and <interface>; a record may have at most one sealed parent`
+
+**Cause:** With `frontend=JAVAC`: a record implements two sealed interfaces. A Data value has one constructor tag, so one of the two families would read the record as another of its variants (ADR-067 D6). On the javac frontend every sealed interface counts.
+
+**Fix:** Give the record one sealed parent. For the second family, wrap it in a variant of its own: `record InT(A a) implements T { }`.
+
+### `JULC0080` `Record <record> declares <member>, which JuLC does not compile; a record body may contain only nested type declarations`
+
+**Cause:** With `frontend=JAVAC`: a record declares a member other than a nested type: a method, `equals`, `hashCode`, `toString`, a compact or other constructor, a static field or an initializer block. JuLC compiles a record as its components only, so such a member is never what the script runs (ADR-067 D9). A declared accessor or `toPlutusData` is `JULC0101`, and a constructor with a statement `JULC0099`, on both frontends.
+
+**Fix:** Move the logic into a static method of the enclosing class, which takes the record as a parameter, and let the record hold its components alone.
+
+### `JULC0104` `synchronized is not supported on-chain`
+
+**Cause:** With `frontend=JAVAC`: a synchronized block has no on-chain meaning. The default frontend reports the same words without a code.
+
+**Fix:** On-chain code is single-threaded; remove synchronized blocks.
+
+### `JULC0105` `Method references (::) are not supported on-chain`
+
+**Cause:** With `frontend=JAVAC`: a method reference has no on-chain lowering. The default frontend reports the same words without a code.
+
+**Fix:** Use a regular static method call instead.
+
+### `JULC0106` `Functional interface .<method>() is not supported on-chain`
+
+**Cause:** With `frontend=JAVAC`: a function exists on-chain only as the argument of the list method that applies it, so a local of a functional interface type cannot be called. The default frontend reports the same words without a code.
+
+**Fix:** Call the method directly instead of through a function reference.
+
+### `JULC0107` `'this or super' is not supported on-chain`
+
+**Cause:** With `frontend=JAVAC`: On-chain code has no objects and no inheritance, so this and super name nothing. The default frontend reports the same words without a code.
+
+**Fix:** On-chain validators are stateless; use static methods, and sealed interfaces with record variants instead of inheritance.
+
+### `JULC0108` `array access is not supported on-chain`
+
+**Cause:** With `frontend=JAVAC`: an array element read or write has no on-chain lowering. The default frontend reports the same words without a code.
+
+**Fix:** Use List<T> with list operations instead.
+
+### `JULC0109` `class inheritance is not supported on-chain`
+
+**Cause:** With `frontend=JAVAC`: a class that extends another class, or an interface that extends another, has no on-chain meaning. The default frontend reports the same words without a code.
+
+**Fix:** Use sealed interfaces with record variants instead.
+
+### `JULC0110` `Unsupported statement: <statement>`
+
+**Cause:** With `frontend=JAVAC`: a bare block, an empty statement or a switch statement among a method's statements has no lowering. The default frontend reports the same words without a code.
+
+**Fix:** Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.
+
+### `JULC0111` `'return' is not supported inside for-each loop body`
+
+**Cause:** With `frontend=JAVAC`: a for-each loop is compiled to a fold whose result is the variables the loop updates, so its body cannot return from the method. The default frontend reports the same words without a code.
+
+**Fix:** Use 'break' to exit the loop early, then return after the loop. Or use the accumulator pattern: result = value; (continue iterating) then return result; after the loop.
+
+### `JULC0112` `'yield' is not supported inside for-each or while loop body`
+
+**Cause:** With `frontend=JAVAC`: a loop body cannot yield a value of an enclosing switch expression. The default frontend reports the same words without a code.
+
+**Fix:** Use 'break' to exit the loop early, then yield after the loop. Or use the accumulator pattern: result = value; (continue iterating) then yield result; after the loop.
+
+### `JULC0113` `Conditional update to loop-body local '<local>' is not supported`
+
+**Cause:** With `frontend=JAVAC`: an if/else branch in a loop carries only the loop's accumulators out of the branch, so an update of a local declared in the loop body would be lost. The default frontend reports the same words without a code.
+
+**Fix:** An if/else branch carries only loop accumulators out of the branch. Use a conditional initializer (condition ? value : otherValue), or declare the variable before the loop so it is an accumulator (reset it each iteration if needed), or declare it inside the branch if its value is only needed there.
+
+### `JULC0114` `Assignment to <variable> is not supported at this position`
+
+**Cause:** With `frontend=JAVAC`: Inside a loop, an assignment is lowered only as a statement directly in the loop body or in an if/else branch of it. The default frontend reports the same words without a code.
+
+**Fix:** Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. In an if/else branch, assign an accumulator or a local declared within that branch; an assignment inside another expression or statement is not supported.
+
+### `JULC0115` `Unsupported <loop kind> body: <statement>`
+
+**Cause:** With `frontend=JAVAC`: a loop that breaks, or that updates several variables declared before it, lowers only declarations, assignments, if/else and break in its body. The default frontend reports the same words without a code.
+
+**Fix:** Inside loops with break or several accumulators, only variable declarations, assignments, if/else, and break are supported.
+
+### `JULC0116` `Assignment to undeclared variable '<variable>'`
+
+**Cause:** With `frontend=JAVAC`: a loop assigns a name that is neither an accumulator of the loop nor a local of its body, such as a field. The default frontend reports the same words without a code.
+
+**Fix:** Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.
+
+### `JULC0117` `Compound assignment <operator> to '<variable>' <what it needs>`
+
+**Cause:** With `frontend=JAVAC`: Compound assignment is lowered on integer variables, and += on String variables with a String operand. The default frontend reports the same words without a code.
+
+**Fix:** Write the update explicitly, e.g. x = x.add(y), or convert the right-hand side to the variable's type first.
+
+### `JULC0118` `Unsupported operator: <operator>`
+
+**Cause:** With `frontend=JAVAC`: a binary operator with no on-chain lowering, such as a shift or a bitwise operator. The default frontend reports the same words without a code.
+
+**Fix:** Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||.
+
+### `JULC0119` `Unsupported unary operator: <operator>`
+
+**Cause:** With `frontend=JAVAC`: a unary operator with no on-chain lowering, such as ~, + or an increment outside a loop update. The default frontend reports the same words without a code.
+
+**Fix:** Supported unary operators: ! (logical NOT) and - (negation).
+
+### `JULC0120` `Reassignment of switch case-pattern variable '<variable>' is not supported`
+
+**Cause:** With `frontend=JAVAC`: an arm of a switch reads a pattern variable through projections of the matched record, so an assignment to it would not be seen. The default frontend reports the same words without a code.
+
+**Fix:** Copy the pattern variable to a fresh local accumulator inside the arm, update that local, and yield its result instead.
+
+### `JULC0121` `Switch-expression arm cannot update enclosing variable '<variable>'`
+
+**Cause:** With `frontend=JAVAC`: a switch expression exports only its yielded value, so an update of a variable declared outside the arm would be lost. The default frontend reports the same words without a code.
+
+**Fix:** A switch expression exports only its yielded value. Declare an accumulator inside the arm, yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.
+
+### `JULC0122` `Generic library method <class.method> cannot be called from Java yet: generic @OnchainLibrary methods are specialized only by language-neutral library providers (ADR-059). Provide a concrete overload-free method for Java callers.`
+
+**Cause:** With `frontend=JAVAC`: a generic @OnchainLibrary method is a template that only a language-neutral producer instantiates (ADR-059), so Java code cannot call it. The default frontend reports the same words without a code.
+
+**Fix:** Provide a concrete overload-free method for Java callers.
+
+### Codes the javac frontend gives the reference's uncoded words
+
+With `frontend=JAVAC`, these rejections carry a code, with the default frontend's words and position: `JULC0001` (a method
+with no body), `JULC0002` (a local with no initializer), `JULC0004` (`break` outside a loop), `JULC0006` (a method that may not
+return), `JULC0011` (`Undefined variable`), `JULC0014` (an array other than a `byte[]` literal), `JULC0020` (`float` or
+`double`), `JULC0024` (`Unknown method`) and `JULC0077` (an `instanceof` with a record pattern). Their causes and fixes are those
+of the words; [`/ai/diagnostics.json`](/ai/diagnostics.json) has each entry.
+
 ### 3.1 `Failed to parse <label> source: <details>`
 
 **Cause:** The Java source code has syntax errors that JavaParser cannot parse.
