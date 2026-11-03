@@ -83,26 +83,54 @@ failing where the JVM throws, and a review decision of D13's Cost change kind, f
 | `diverge-068-ledger-from-data-refused`, `diverge-068-ledger-hash-from-data` | julc-difftest | The two Semantic-fix `.diffcase`s, run on `JAVAC` by `Adr068SavedCasesOnJavacTest` |
 | `JavacCallsTest`, `JavacStopsTest`, `JavacTypesTest` | julc-compiler | The retired stops are gone; a hash from Data reads as its bytes; contract and debug compile |
 
+## The reference did not move
+
+`adr068Baseline`, gate off, at `8027c03a`, into scratch: every row of `corpus-b4`, `ledger-b4`, its budget and semantic files
+and the rejection inventory is unchanged. It fails only because it finds 20 saved cases the B4 tables do not hold, all
+additions: the 18 `-068-` cases M4 saved after B4 (so the gate fails the same way at `17bf4ff1`) and this slice's 2. The
+integrator's freeze adds them. `DebugMetadataCollector`, `PirDebugProvenance` and `StrictBoundaryGenerator`, the shared code
+this slice changed, build what they did on the reference's paths.
+
+## Schemas and debug metadata over the corpus
+
+`adr068ContractDebug` (`Adr068ContractDebugCorpusTest`), new, compares the schema of every `compileContract` case and the
+debug metadata of every `compileForDebug` case at all four levels, on both frontends: 66 contract cases and 10 debug cases.
+30 compilations compiled on both, with equal bytes, and **0 differences** in what they describe. The rest are the I1 picture:
+3 rejected by both, the others stopped on `JAVAC` (`JULC0084` for a library unit or a cast, `JULC0085`, `JULC0087`). The
+three named differences cannot show there: the `uri` is compared by its file name, no compared case gives an unread library,
+and a binding's type is compared where it is shown.
+
 ## Tests run
 
-`:julc-compiler:test` on the touched classes, at the last code commit: 409 tests, 0 failures, 0 skipped
-(`JavacContractAndDebugTest` 13, `JavacLedgerFromDataTest` 17, `DebugCompileResultTest` 6, `ContractSchemaTest` 13,
-`JavacTypesTest` 146, `JavacCallsTest` 64, `JavacStopsTest` 138, `JavacLoweringLintTest` 10, `GeneratedBinderNameLintTest` 1,
-`BinderNameIndependenceTest` 1).
+| Module | Run | Result |
+|---|---|---|
+| julc-compiler | whole, at `7ddd5b3f` | 6,524 tests, 0 failures |
+| julc-difftest | whole, at `7ddd5b3f` | 2,103 tests, 0 failures. `Adr068LedgerFromDataPropertyTest`: 400 tries over 33 ledger types (179 the JVM accepts, 221 it refuses), `JAVAC` agreeing at every level; the reference returns where the JVM throws in 884 runs; 200 values read back equal to the JVM's |
+| julc-difftest | `adr068Lowering` (I1), `adr068Baseline`, `adr068ContractDebug` | Above |
+
+Module runs after the last code commit are in the report.
 
 ## Mutants
 
-Not run. The batch is written (`scratchpad/g3b/mutants.py`, 14 mutants and a control, each under a 5-minute limit, the batch
-under one lock): the three relaxations and the exact `Optional`, the check and the decode, the declarator's end and name,
-annotation assignments, a renamed binder, the `Optional` datum, the interfaces' order, and the `@Param`'s and a local's
-association.
+Each under a 5-minute limit, the batch under one lock, with a clean control before each batch. 19 mutants, all killed in the
+end:
+
+| Mutant | Killed by |
+|---|---|
+| A `Bool`'s fields checked in ledger mode | `JavacLedgerFromDataTest`, `IntervalBound: a Bool with a field` |
+| A present `Optional` of any number of fields | `Address: a present Optional of two fields` |
+| A constructor's extra fields refused | `Credential: a field more` |
+| No check | 10 inputs |
+| No decode | `aHashFromDataIsItsBytes` (added after it survived) |
+| A `Value` record not mapped to its map | `TxOut: a Value as the map it is` |
+| The layout not applied | the same (it survived while the layout was applied in two places; now one) |
+| An empty `Optional`'s fields checked | `Address: an empty Optional with a field` (a first form survived as equivalent: the ternary it mutated was redundant, and went) |
+| A declarator's end with its `;`, a name start at the tree's start, an annotation's `name = value` as an update | `debugMetadataIsTheReferences` |
+| A marked binder not matched | `aRenamedLocalIsShownUnderItsSourceName` |
+| A `@Param`'s or a local's binder not associated | `debugMetadataIsTheReferences` |
+| An `Optional` datum kept, interfaces in source order | `aContractHasTheReferencesBytesAndSchema` |
 
 ## Not run
 
-- I1 (`adr068Lowering`), so no row is classified and `g3b-accepted-differences.tsv` is not written.
-- `Adr068LedgerFromDataPropertyTest` and `Adr068SavedCasesOnJavacTest` (julc-difftest): written, never compiled or run.
-- The mutants above.
-- The full `julc-compiler`, `julc-difftest` and other module suites, `adr068Baseline` (the frozen frontend's gate-off bytes;
-  `DebugMetadataCollector` and `StrictBoundaryGenerator` are shared and changed, though their strict and JavaParser paths
-  build what they did), `pairCaseTest`, `onChainHarnessTest`.
-- A corpus-wide comparison of schemas and debug metadata between the frontends (the I1 tool compares only the compile result).
+- I1 after `9ab1bcc7`, whose `StrictBoundaryGenerator` refactor builds the same terms in strict mode (no layouts; an empty
+  `Optional`'s fields through the same exact rule): the module runs cover it.
